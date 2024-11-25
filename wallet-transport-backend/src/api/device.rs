@@ -1,0 +1,157 @@
+use super::BackendApi;
+use crate::response::BackendResponse;
+
+impl BackendApi {
+    pub async fn device_init(
+        &self,
+        req: &crate::request::DeviceInitReq,
+    ) -> Result<Option<()>, crate::Error> {
+        let res = self
+            .client
+            .post("device/init")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process()
+    }
+
+    pub async fn device_delete(
+        &self,
+        req: &crate::request::DeviceDeleteReq,
+    ) -> Result<Option<()>, crate::Error> {
+        let res = self
+            .client
+            .post("device/delete")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process()
+    }
+
+    pub async fn keys_init(
+        &self,
+        req: &crate::request::KeysInitReq,
+    ) -> Result<Option<()>, crate::Error> {
+        let res = self
+            .client
+            .post("keys/init")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+        res.process()
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use wallet_types::constant::{self, BASE_URL};
+    use wallet_utils::init_test_log;
+
+    use crate::{
+        api::BackendApi,
+        request::{DeviceDeleteReq, DeviceInitReq, KeysInitReq},
+    };
+
+    #[tokio::test]
+    async fn test_device_init() {
+        // let method = "POST";
+        let base_url = constant::BASE_URL;
+
+        let req = DeviceInitReq {
+            device_type: "ANDROID".to_string(),
+            sn: "dead3430844c05f837d2301d7b3bc2f3".to_string(),
+            code: "3".to_string(),
+            system_ver: "4".to_string(),
+            iemi: Some("5".to_string()),
+            meid: Some("6".to_string()),
+            iccid: Some("7".to_string()),
+            mem: Some("8".to_string()),
+            // app_id: Some("9".to_string()),
+        };
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .device_init(&req)
+            .await;
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_device_delete() {
+        // let method = "POST";
+        init_test_log();
+        let base_url = constant::BASE_URL;
+
+        let req = DeviceDeleteReq {
+            sn: "9580b55ec4a1d3d3af85077ae0c4c901885b1123e50f830cbd5bfbbe0cb161a3".to_string(),
+            uid_list: vec!["c7c8453fbf4368279c822a1c39f3c955".to_string()],
+        };
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .device_delete(&req)
+            .await;
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_keys_init() {
+        // let method = "POST";
+        init_test_log();
+        let base_url = BASE_URL;
+        // let base_url = "http://api.wallet.net";
+
+        let req = KeysInitReq {
+            uid: "dead3430844c05f837d2301d7b3bc2f3".to_string(),
+            sn: "dead3430844c05f837d2301d7b3bc2f3".to_string(),
+            client_id: Some("guanxiang".to_string()),
+            device_type: Some("ANDROID".to_string()),
+            app_id: Some("asad".to_string()),
+            name: "asad".to_string(),
+        };
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .keys_init(&req)
+            .await
+            .unwrap();
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_main() -> Result<(), Box<dyn std::error::Error>> {
+        let client = reqwest::Client::builder().build()?;
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("Content-Type", "application/json".parse()?);
+        headers.insert("Cookie", "sl-session=/hUSdIIxfWY+3tUC5NQC9A==".parse()?);
+
+        let data = r#"{
+            "deviceType": "ANDROID",
+            "sn": "2",
+            "code": "2",
+            "systemVer": "3",
+            "iemi": "4",
+            "meid": "5",
+            "iccid": "6",
+            "mem": "7"
+        }"#;
+
+        let json: serde_json::Value = serde_json::from_str(&data)?;
+
+        let request = client
+            .request(reqwest::Method::POST, "http://api.wallet.net/device/init")
+            .headers(headers)
+            .json(&json);
+
+        let response = request.send().await?;
+        let body = response.text().await?;
+
+        println!("{}", body);
+
+        Ok(())
+    }
+}

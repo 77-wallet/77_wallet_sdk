@@ -1,0 +1,141 @@
+use crate::multisig_tx::get_manager;
+use wallet_api::{response_vo::transaction::TransferParams, MemberVo};
+
+#[tokio::test]
+async fn test_create_multisig_account() {
+    let wallet_manager = get_manager().await;
+    let address = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string();
+    let chain_code = "tron".to_string();
+
+    let threshold = 2;
+    let member1 = MemberVo::new(
+        "account_1".to_string(),
+        "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+    );
+
+    let member2 = MemberVo::new(
+        "account_0".to_string(),
+        "TBRWDJdDtrdc9e8JWVKCVa2qaQNXfC9Wt7".to_string(),
+    );
+
+    // let member3 = MemberVo::new(
+    //     "account_3".to_string(),
+    //     "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+    // );
+
+    let member_list = vec![member1, member2];
+
+    let res = wallet_manager
+        .create_multisig_account(
+            "".to_string(),
+            address,
+            chain_code,
+            threshold,
+            member_list,
+            None,
+        )
+        .await;
+
+    tracing::info!("{:?}", serde_json::to_string(&res));
+}
+
+#[tokio::test]
+async fn test_balance() {
+    let wallet_manager = get_manager().await;
+
+    let addr = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
+    let chain_code = "tron";
+    let symbol = "TRX";
+
+    // let symbol = "USDT";
+    let balance = wallet_manager
+        .chain_balance(addr, chain_code, &symbol)
+        .await;
+
+    tracing::info!("balance: {:?}", balance);
+}
+
+#[tokio::test]
+async fn test_create_transfer() {
+    let manager = get_manager().await;
+
+    let password = "123456".to_string();
+    let params = TransferParams {
+        from: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_owned(),
+        to: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_owned(),
+        value: "1".to_owned(),
+        expiration: Some(2),
+        chain_code: "tron".to_owned(),
+        symbol: "TRX".to_owned(),
+        password,
+        notes: Some("salary".to_string()),
+    };
+
+    // 创建交易
+    let res = manager.create_multisig_queue(params).await;
+    let res = serde_json::to_string(&res).unwrap();
+    tracing::info!("tx info of = {:?}", res);
+}
+
+#[tokio::test]
+async fn test_queue_list() {
+    let manager = get_manager().await;
+
+    // 列表
+    let res = manager.multisig_queue_list(None, None, 5, 0, 10).await;
+    let res = serde_json::to_string(&res).unwrap();
+    tracing::info!("queue list = {}", res);
+}
+
+#[tokio::test]
+async fn test_queue_info() {
+    let manager = get_manager().await;
+
+    // 队列详情
+    let id = "187019359078715392".to_string();
+    let res = manager.multisig_queue_info(id).await;
+    let res = serde_json::to_string(&res).unwrap();
+    tracing::info!("queue info = {}", res);
+}
+
+// 签名交易
+#[tokio::test]
+async fn test_sign_transaction() {
+    let wallet_manager = get_manager().await;
+
+    let queue_id = "194563240280330240".to_owned();
+    let status = 1;
+    let password = "123456".to_string();
+    let sign = wallet_manager
+        .sign_transaction(queue_id, status, password, None)
+        .await;
+
+    tracing::info!("sign res  = {:?}", sign);
+}
+
+#[tokio::test]
+async fn test_multisig_transfer_fee() {
+    let wallet_manager = get_manager().await;
+
+    let queue_id = "194563240280330240".to_owned();
+    let fee = wallet_manager
+        .estimate_multisig_transfer_fee(queue_id)
+        .await;
+
+    tracing::info!("transfer fee = {}", serde_json::to_string(&fee).unwrap());
+}
+
+// 执行交易
+#[tokio::test]
+async fn test_execute() {
+    let wallet_manager = get_manager().await;
+    let id = "198123734828191744".to_string();
+
+    let password = "123456".to_string();
+    let fee = None;
+
+    let result = wallet_manager
+        .exec_transaction(id, password, fee, None)
+        .await;
+    tracing::info!("execute res = {}", serde_json::to_string(&result).unwrap());
+}

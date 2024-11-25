@@ -1,0 +1,45 @@
+{
+  "chains": [
+    {
+      "name": "Ethereum",
+      "chain_code": "eth",
+      "rpc_url": "https://eth-mainnet.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05"
+    },
+    {
+      "name": "Ethereum-Test",
+      "chain_code": "eth_Test",
+      "rpc_url": "https://eth-sepolia.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05",
+      "network": "testnet"
+    },
+    {
+      "name": "Tron",
+      "chain_code": "tron",
+      "rpc_url": "https://api.trongrid.io"
+    },
+    {
+      "name": "Tron-Test",
+      "chain_code": "tron_test",
+      "rpc_url": "https://api.nileex.io"
+    },
+    {
+      "name": "Solana",
+      "chain_code": "sol",
+      "rpc_url": "https://solana-mainnet.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05"
+    },
+    {
+      "name": "Solana-Dev",
+      "chain_code": "sol_dev",
+      "rpc_url": "https://solana-devnet.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05"
+    },
+    {
+      "name": "BNB Smart Chain",
+      "chain_code": "bnb",
+      "rpc_url": "https://go.getblock.io/cf6a4222335a4e1d9b351b3aa6e56204"
+    },
+    {
+      "name": "BNB Smart Chain",
+      "chain_code": "bnb_test",
+      "rpc_url": "https://go.getblock.io/d51b9998c91b42c281a5da0eea5567a0"
+    }
+  ]
+}

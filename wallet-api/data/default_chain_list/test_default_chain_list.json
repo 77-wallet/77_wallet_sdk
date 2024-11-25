@@ -1,0 +1,30 @@
+{
+    "Ethereum": {
+        "coins": [
+            {
+                "coin": "ETH",
+                "token": null,
+                "decimals": 18
+            },
+            {
+                "coin": "USDT",
+                "token": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                "decimals": 6
+            }
+        ]
+    },
+    "Tron": {
+        "coins": [
+            {
+                "coin": "TRX",
+                "token": null,
+                "decimals": 6
+            },
+            {
+                "coin": "JST",
+                "token": "TF17BgPaZYbz8oxbjhriubPDsA7ArKoLX3",
+                "decimals": 18
+            }
+        ]
+    }
+}
