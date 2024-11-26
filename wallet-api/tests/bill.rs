@@ -1,3 +1,4 @@
+use solana_sdk::blake3::hash;
 use std::{env, path::PathBuf};
 use wallet_api::WalletManager;
 use wallet_utils::init_test_log;
