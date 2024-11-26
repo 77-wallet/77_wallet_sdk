@@ -2,24 +2,25 @@ pub(crate) mod attributes;
 use attributes::derive_attr::Resource;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Error, Fields, Lit, Meta};
+use syn::Fields;
 
 pub(crate) fn expand_derive_entity(
     input: syn::DeriveInput,
 ) -> syn::Result<proc_macro2::TokenStream> {
-    Ok(DeriveResource::new(input)?)
+    DeriveResource::new(input)
 }
 
 #[derive(Debug)]
+// #[allow(dead_code)]
 struct DeriveResource {
-    struct_ident: syn::Ident,
-    struct_generics: syn::Generics,
-    schema_name: Option<syn::Ident>,
-    sqlite_table_name: String,
-    primary_keys: Vec<(syn::Ident, syn::Ident)>,
-    constraint: String,
-    fields: Vec<Field>,
-    error: syn::Ident,
+    // struct_ident: syn::Ident,
+    // struct_generics: syn::Generics,
+    // schema_name: Option<syn::Ident>,
+    // sqlite_table_name: String,
+    // primary_keys: Vec<(syn::Ident, syn::Ident)>,
+    // constraint: String,
+    // fields: Vec<Field>,
+    // error: syn::Ident,
 }
 
 #[derive(Debug, Clone)]
@@ -31,14 +32,14 @@ impl DeriveResource {
     fn new(input: syn::DeriveInput) -> Result<proc_macro2::TokenStream, syn::Error> {
         let name = &input.ident;
         let Resource {
-            schema_name,
+            // schema_name,
             query_req,
             // upsert_req,
             sqlite_table_name,
-            constraint,
-            primary_key,
+            // constraint,
+            // primary_key,
             // table_iden: _,
-            error,
+            // error,
         } = Resource::from_attributes(&input.attrs)?;
 
         let query_req_type = if let Some(syn::Lit::Str(lit_str)) = &query_req {

@@ -17,11 +17,11 @@
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros::Resource)]
 #[resource(
-    schema_name = "wallet",
+    // schema_name = "wallet",
     query_req = "crate::entities::exchange_rate::QueryReq",
     sqlite_table_name = "exchange_rate",
-    primary_key = "target_currency: String",
-    constraint = "exchange_rate_symbol_currency_chain_code_idx"
+    // primary_key = "target_currency: String",
+    // constraint = "exchange_rate_symbol_currency_chain_code_idx"
 )]
 pub struct ExchangeRateEntity {
     pub name: String,

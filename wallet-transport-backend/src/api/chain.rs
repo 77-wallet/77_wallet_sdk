@@ -43,7 +43,6 @@ impl BackendApi {
 #[cfg(test)]
 mod test {
 
-    use wallet_types::constant;
     use wallet_utils::init_test_log;
 
     use crate::api::BackendApi;

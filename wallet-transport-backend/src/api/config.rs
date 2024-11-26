@@ -20,7 +20,6 @@ impl BackendApi {
 
 #[cfg(test)]
 mod test {
-    use wallet_types::constant;
 
     use crate::{api::BackendApi, request::FindConfigByKey};
 

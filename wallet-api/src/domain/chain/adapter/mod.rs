@@ -43,7 +43,7 @@ impl ChainAdapterFactory {
             None
         };
 
-        Ok(MultisigAdapter::new(chain, node, header_opt)?)
+        MultisigAdapter::new(chain, node, header_opt)
     }
 
     pub async fn get_transaction_adapter(

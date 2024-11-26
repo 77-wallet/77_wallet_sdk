@@ -3,6 +3,9 @@ name = "wallet-transport-backend"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+test = []
+
 [dependencies]
 wallet-utils = { workspace = true }
 # wallet-error = { workspace = true }

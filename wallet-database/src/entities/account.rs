@@ -1,11 +1,11 @@
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros ::Resource)]
 #[serde(rename_all = "camelCase")]
 #[resource(
-    schema_name = "wallet",
+    // schema_name = "wallet",
     query_req = "crate::entities::account::QueryReq",
     sqlite_table_name = "account",
-    primary_key = "address:String, chain_code: String",
-    constraint = "account_address_chain_code_idx"
+    // primary_key = "address:String, chain_code: String",
+    // constraint = "account_address_chain_code_idx"
 )]
 pub struct AccountEntity {
     #[resource(detail = "QueryReq")]

@@ -67,9 +67,7 @@ impl RpcChange {
             for node in rpc_address_info_body_list.iter() {
                 let network = "mainnet";
                 let node = wallet_database::entities::node::NodeCreateVo::new(
-                    &node.name,
-                    &chain_code,
-                    &node.url,
+                    &node.name, chain_code, &node.url,
                 )
                 .with_network(network);
                 match wallet_database::repositories::node::NodeRepoTrait::add(&mut repo, node).await

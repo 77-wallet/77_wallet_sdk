@@ -1,27 +1,7 @@
-// #[derive(Debug, PartialEq, Eq, Hash)]
-// pub struct ExchangeRateId {
-//     pub currency: String,
-//     pub chain_code: String,
-//     pub symbol: String,
-// }
-
-// impl ExchangeRateId {
-//     pub fn new(currency: &str, chain_code: &str, symbol: &str) -> Self {
-//         Self {
-//             currency: currency.to_string(),
-//             chain_code: chain_code.to_string(),
-//             symbol: symbol.to_string(),
-//         }
-//     }
-// }
-
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros::Resource)]
 #[resource(
-    schema_name = "wallet",
     query_req = "crate::entities::system_notification::QueryReq",
-    sqlite_table_name = "system_notification",
-    primary_key = "target_currency: String",
-    constraint = "system_notification_id_idx"
+    sqlite_table_name = "system_notification"
 )]
 #[serde(rename_all = "camelCase")]
 pub struct SystemNotificationEntity {

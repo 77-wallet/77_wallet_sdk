@@ -96,7 +96,7 @@ impl NodeDomain {
                         .find(|node| node.chain_code == chain.chain_code)
                     {
                         if let Err(e) = ChainEntity::set_chain_node(
-                            &*pool,
+                            pool,
                             &chain.chain_code,
                             &backend_nodes.node_id,
                         )
@@ -109,7 +109,7 @@ impl NodeDomain {
                         .find(|node| node.chain_code == chain.chain_code)
                     {
                         if let Err(e) =
-                            ChainEntity::set_chain_node(&*pool, &chain.chain_code, &node.node_id)
+                            ChainEntity::set_chain_node(pool, &chain.chain_code, &node.node_id)
                                 .await
                         {
                             tracing::error!("set_chain_node: {:?}", e);
