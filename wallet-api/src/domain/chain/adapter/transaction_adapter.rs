@@ -39,7 +39,8 @@ impl TransactionAdapter {
         http_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<TransactionAdapter, chain::Error> {
-        let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        // let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        let network = wallet_types::chain::network::NetworkKind::Testnet;
 
         match chain_code {
             ChainType::Bitcoin => {

@@ -38,7 +38,8 @@ impl MultisigAdapter {
         chian_node: wallet_database::sqlite::logic::chain::ChainWithNode,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<MultisigAdapter, crate::ServiceError> {
-        let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        // let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        let network = wallet_types::chain::network::NetworkKind::Testnet;
 
         match chain_code {
             ChainType::Bitcoin => {

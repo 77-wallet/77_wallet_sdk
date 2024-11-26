@@ -41,8 +41,9 @@ async fn get_manager() -> WalletManager {
 
 async fn create_wallet(manager: &WalletManager, create: bool) {
     if create {
-        let phrase =
-            "will match face problem tongue fortune rebuild stool moon assist virtual lounge";
+        let phrase = "victory member rely dirt treat woman boring tomato two hollow erosion drop";
+        // let phrase =
+        //     "will match face problem tongue fortune rebuild stool moon assist virtual lounge";
 
         // let phrase =
         //     "nose bird celery bread slice hero black session tonight winner pitch foot".to_string();
@@ -53,7 +54,7 @@ async fn create_wallet(manager: &WalletManager, create: bool) {
         // let phrase =
         //     "task mammal cinnamon nuclear old meat giraffe fringe concert imitate lyrics lady";
 
-        let salt = "12345678";
+        let salt = "";
         // let salt = "1234qwer";
         manager
             .create_wallet(1, phrase, salt, "test", "123456", None)
