@@ -260,7 +260,8 @@ mod test {
 
         let chain_code = "tron";
         // let token_address = "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd";
-        let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
+        // let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
+        let token_address = "111";
 
         let res = wallet_manager
             .customize_coin(wallet_address, 1, chain_code, token_address, protocol)

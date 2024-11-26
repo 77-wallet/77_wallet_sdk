@@ -33,7 +33,7 @@ pub enum BusinessError {
     Announcement(#[from] announcement::AnnouncementError),
     #[error("stake error:{0}")]
     Stake(#[from] stake::StakeError),
-    #[error("stake error:{0}")]
+    #[error("coin error:{0}")]
     Coin(#[from] coin::CoinError),
     #[error("exchange error:{0}")]
     ExchangeRate(#[from] exchange_rate::ExchangeRate),

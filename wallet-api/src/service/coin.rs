@@ -345,8 +345,15 @@ impl CoinService {
         let chain_instance =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;
-
-        let decimals = chain_instance.decimals(token_address).await?;
+        let decimals = chain_instance.decimals(token_address).await.map_err(|e| {
+            if let wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_)) = e {
+                crate::ServiceError::Business(crate::BusinessError::Coin(
+                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                ))
+            } else {
+                crate::ServiceError::ChainInteract(e)
+            }
+        })?;
         let symbol = chain_instance.token_symbol(token_address).await?;
         let name = chain_instance.token_name(token_address).await?;
 
@@ -373,19 +380,20 @@ impl CoinService {
             account_id: Some(account_id),
             status: Some(1),
         };
-        let account = AccountEntity::detail(pool.as_ref(), &req)
-            .await
-            .unwrap()
-            .ok_or(crate::ServiceError::Business(
-                crate::BusinessError::Account(crate::AccountError::NotFound),
-            ))?;
+        let account = AccountEntity::detail(pool.as_ref(), &req).await?.ok_or(
+            crate::ServiceError::Business(crate::BusinessError::Account(
+                crate::AccountError::NotFound,
+            )),
+        )?;
 
         // 查询余额
         let balance = chain_instance
             .balance(&account.address, Some(token_address.to_string()))
             .await?;
+        tracing::info!("balance: {balance}");
         let balance = wallet_utils::unit::format_to_string(balance, decimals)
             .unwrap_or_else(|_| "0".to_string());
+        tracing::info!("balance: {balance}");
 
         let assets_id = AssetsId::new(&account.address, chain_code, &symbol);
         let assets = CreateAssetsVo::new(
