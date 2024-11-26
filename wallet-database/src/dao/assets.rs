@@ -80,13 +80,27 @@ impl AssetsEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let addresses = crate::sqlite::operator::any_in_collection(address, "','");
-        let mut sql = "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code, 
-        a.token_address, a.protocol, a.status, a.balance, a.is_multisig, 
-        a.created_at, a.updated_at, acc.address_type 
-        FROM assets AS a
-        JOIN account AS acc ON a.address = acc.address AND a.chain_code = acc.chain_code
-        WHERE a.status = 1"
-            .to_string();
+        let base_sql = |table_name: &str| -> String {
+            format!(
+                "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code, 
+                a.token_address, a.protocol, a.status, a.balance, a.is_multisig, 
+                a.created_at, a.updated_at, acc.address_type 
+                FROM assets AS a
+                JOIN {table_name} AS acc 
+                ON a.address = acc.address AND a.chain_code = acc.chain_code
+                WHERE a.status = 1"
+            )
+        };
+
+        let mut sql = match is_multisig {
+            Some(true) => base_sql("multisig_account"),
+            Some(false) => base_sql("account"),
+            None => format!(
+                "{} UNION {}",
+                base_sql("account"),
+                base_sql("multisig_account")
+            ),
+        };
 
         if !addresses.is_empty() {
             let str = format!(" AND a.address IN ('{}')", addresses);
