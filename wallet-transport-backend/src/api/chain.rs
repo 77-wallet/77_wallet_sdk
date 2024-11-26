@@ -51,7 +51,7 @@ mod test {
     #[tokio::test]
     async fn test_chain_default_list() {
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
@@ -66,7 +66,7 @@ mod test {
     async fn test_chain_list() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
@@ -82,7 +82,7 @@ mod test {
     #[tokio::test]
     async fn test_chain_rpc_list() {
         init_test_log();
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let chain_code = "tron";
         let res = BackendApi::new(Some(base_url.to_string()), None)

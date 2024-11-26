@@ -38,13 +38,12 @@ mod test {
         api::BackendApi,
         request::{AddressDetailsReq, AddressInitReq},
     };
-    use wallet_types::constant;
     use wallet_utils::init_test_log;
 
     #[tokio::test]
     async fn test_address_init() {
         init_test_log();
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let uid = "cd2ac48fa33ba24a8bc0d89e7658a2cd";
         let req = AddressInitReq {
@@ -68,7 +67,7 @@ mod test {
     #[tokio::test]
     async fn test_address_details() {
         init_test_log();
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = AddressDetailsReq {
             // address: "TSL4wp6qcLwub88FmEu2gozA1Buz8CnsTn".to_string(),

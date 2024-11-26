@@ -16,7 +16,7 @@ pub fn pare_fee_setting(fee_setting: &str) -> Result<FeeSetting, crate::ServiceE
 pub fn rpc_need_header(url: &str) -> Result<bool, crate::ServiceError> {
     let url = Url::parse(url).expect("Invalid URL");
 
-    Ok(url.host_str() == Some(wallet_types::constant::BASE_RPC_URL))
+    Ok(url.host_str() == Some(wallet_transport_backend::consts::BASE_RPC_URL))
 }
 
 pub fn check_address(

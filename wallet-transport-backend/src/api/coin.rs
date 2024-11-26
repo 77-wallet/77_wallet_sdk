@@ -190,7 +190,7 @@ mod test {
     async fn test_custom_token_init() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         // {"chainCode":"eth","symbol":"XRP","tokenName":"XRP(IBC)","contractAddress":"0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24","master":false,"unit":6}
 
@@ -215,7 +215,7 @@ mod test {
     async fn test_token_subscribe() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = TokenSubscribeReq {
             chain_code: "eth".to_string(),
@@ -239,7 +239,7 @@ mod test {
     #[tokio::test]
     async fn test_token_query_currency() {
         init_test_log();
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
@@ -253,7 +253,7 @@ mod test {
     #[tokio::test]
     async fn test_token_cancel_subscribe() {
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = TokenCancelSubscribeReq {
             address: "".to_string(),
@@ -273,7 +273,7 @@ mod test {
     async fn test_token_query_price() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         // let req = TokenQueryPriceReq(vec![TokenQueryPrice {
         //     chain_code: "eth".to_string(),
@@ -302,7 +302,7 @@ mod test {
     async fn test_token_list() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         // let order_column = Some(())
 
@@ -322,7 +322,7 @@ mod test {
     async fn test_popular_token_list() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         // let order_column = Some(())
 
@@ -341,7 +341,7 @@ mod test {
     async fn test_token_query_by_contract_address() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = TokenQueryByContractAddressReq {
             chain_code: "tron".to_string(),
@@ -362,7 +362,7 @@ mod test {
     async fn test_token_query_his_price() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = TokenQueryHistoryPrice {
             chain_code: "tron".to_string(),
@@ -386,7 +386,7 @@ mod test {
     async fn test_token_rates() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
@@ -404,7 +404,7 @@ mod test {
     async fn test_query_popular_by_page() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         // let code = Some("b".to_string());
         let code = None;
@@ -508,7 +508,7 @@ mod test {
     async fn _test_token_query_price() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = TokenQueryPriceReq(vec![TokenQueryPrice {
             // chain_code: "eth".to_string(),

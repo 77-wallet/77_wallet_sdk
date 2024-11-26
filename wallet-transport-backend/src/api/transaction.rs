@@ -86,8 +86,8 @@ mod tests {
     use crate::request::SignedTranUpdateHashReq;
 
     use super::*;
+    use crate::consts::BASE_URL;
     use serde_json::json;
-    use wallet_types::constant::BASE_URL;
     use wallet_utils::init_test_log;
 
     #[tokio::test]

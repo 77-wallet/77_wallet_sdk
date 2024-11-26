@@ -60,7 +60,7 @@ impl BackendApi {
 #[cfg(test)]
 mod test {
     use crate::api::BackendApi;
-    use wallet_types::constant::BASE_URL;
+    use crate::consts::BASE_URL;
     use wallet_utils::init_test_log;
 
     #[tokio::test]

@@ -1,19 +1,10 @@
 [workspace]
 members = [
-    "wallet-chain-interact",
     "wallet-api",
     "wallet-database",
-    "wallet-keystore",
-    "wallet-utils",
-    "wallet-core",
-    # "wallet-example",
-    "wallet-transport",
     "wallet-transport-backend",
     # "wallet-error",
-    "wallet-chain-instance",
-    "wallet-types",
     "wallet-macro",
-    "wallet-tree",
 ]
 
 resolver = "2"
@@ -26,18 +17,18 @@ rev = "dad00cb00e92baa7e28a542eb94bc2a78762f583"
 wallet-api = { version = "0.1.0", default-features = false, path = "wallet-api", features = [
     "test_net",
 ] }
-wallet-chain-interact = { version = "0.1.0", default-features = false, path = "wallet-chain-interact" }
-wallet-chain-instance = { version = "0.1.0", default-features = false, path = "wallet-chain-instance" }
-wallet-transport = { version = "0.1.0", default-features = false, path = "wallet-transport" }
-wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-database = { version = "0.1.0", default-features = false, path = "wallet-database" }
-wallet-keystore = { version = "0.1.0", default-features = false, path = "wallet-keystore" }
-wallet-utils = { version = "0.1.0", default-features = false, path = "wallet-utils" }
-wallet-types = { version = "0.1.0", default-features = false, path = "wallet-types" }
+wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
+wallet-chain-interact = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
+wallet-chain-instance = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
+wallet-transport = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
+wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
+wallet-utils = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
+wallet-types = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
-wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree" }
+wallet-tree = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
 # wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
-wallet-core = { version = "0.1.0", default-features = false, path = "wallet-core" }
+wallet-core = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
 # wallet-error = { version = "0.1.0", default-features = false, path = "wallet-error" }
 
 

@@ -25,7 +25,7 @@ impl BackendApi {
         backend_url: Option<String>,
         headers_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, crate::Error> {
-        let url = backend_url.unwrap_or(wallet_types::constant::BASE_URL.to_string());
+        let url = backend_url.unwrap_or(crate::consts::BASE_URL.to_string());
         Ok(Self {
             base_url: url.to_string(),
             client: wallet_transport::client::HttpClient::new(&url, headers_opt)?,

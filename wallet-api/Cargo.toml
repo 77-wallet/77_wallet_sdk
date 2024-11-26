@@ -14,6 +14,7 @@ loop = []
 test = ["wallet-types/test"]
 
 [dependencies]
+
 wallet-database = { workspace = true }
 wallet-utils = { workspace = true }
 wallet-keystore = { workspace = true }

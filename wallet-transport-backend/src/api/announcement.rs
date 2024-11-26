@@ -30,7 +30,7 @@ mod test {
     async fn test_announcement_list() {
         init_test_log();
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = AnnouncementListReq {
             // uid: "626e71f65a6eccc7c51f2a8295cae861".to_string(),

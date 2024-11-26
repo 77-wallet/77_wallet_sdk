@@ -27,7 +27,7 @@ mod test {
     #[tokio::test]
     async fn test_find_config_by_key() {
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = FindConfigByKey {
             key: "OFFICIAL:WEBSITE".to_string(),

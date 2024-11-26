@@ -47,7 +47,6 @@ impl BackendApi {
 #[cfg(test)]
 mod test {
 
-    use wallet_types::constant::{self, BASE_URL};
     use wallet_utils::init_test_log;
 
     use crate::{
@@ -58,7 +57,7 @@ mod test {
     #[tokio::test]
     async fn test_device_init() {
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = DeviceInitReq {
             device_type: "ANDROID".to_string(),
@@ -83,7 +82,7 @@ mod test {
     async fn test_device_delete() {
         // let method = "POST";
         init_test_log();
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = DeviceDeleteReq {
             sn: "9580b55ec4a1d3d3af85077ae0c4c901885b1123e50f830cbd5bfbbe0cb161a3".to_string(),
@@ -101,7 +100,7 @@ mod test {
     async fn test_keys_init() {
         // let method = "POST";
         init_test_log();
-        let base_url = BASE_URL;
+        let base_url = crate::consts::BASE_URL;
         // let base_url = "http://api.wallet.net";
 
         let req = KeysInitReq {

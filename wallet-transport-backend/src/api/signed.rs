@@ -179,7 +179,7 @@ mod test {
     #[tokio::test]
     async fn test_address_find_address_raw_data() {
         init_test_log();
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         // let chain_code = "tron";
         // let uid = "cd2ac48fa33ba24a8bc0d89e7658a2cd";

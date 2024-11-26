@@ -99,7 +99,7 @@ mod test {
     async fn test_version_his_version() {
         // let method = "POST";
         init_test_log();
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
@@ -115,7 +115,7 @@ mod test {
         init_test_log();
 
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = VersionViewReq {
             device_type: "ANDROID".to_string(),
@@ -134,7 +134,7 @@ mod test {
         init_test_log();
 
         // let method = "POST";
-        let base_url = constant::BASE_URL;
+        let base_url = crate::consts::BASE_URL;
 
         let req = LanguageInitReq {
             client_id: "104.2.0.125C00".to_string(),

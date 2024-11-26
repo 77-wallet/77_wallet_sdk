@@ -287,7 +287,7 @@ impl WalletManager {
         sender: Option<UnboundedSender<FrontendNotifyEvent>>,
     ) -> Result<WalletManager, crate::ServiceError> {
         let dir = Dirs::new(root_dir)?;
-        let mqtt_url = wallet_types::constant::MQTT_URL.to_string();
+        let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
 
         let context = init_context(sn, device_type, dir, &mqtt_url, sender).await?;
 
