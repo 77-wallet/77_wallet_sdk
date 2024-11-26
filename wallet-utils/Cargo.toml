@@ -13,7 +13,7 @@ tracing-error = { workspace = true }
 
 
 # system_info
-sysinfo = "0.30.12"
+sysinfo = "0.32"
 
 # serde
 serde.workspace = true
