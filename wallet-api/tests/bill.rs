@@ -1,3 +1,4 @@
+use solana_sdk::blake3::hash;
 use std::{env, path::PathBuf};
 use wallet_api::WalletManager;
 use wallet_utils::init_test_log;
@@ -66,8 +67,9 @@ async fn bill_lists() {
 async fn query_bill_result() {
     let wallet_manager = get_manager().await;
 
-    let hash = "8c52f860446bc943ed7182067d83d405c000ae9ec8ba87d0e0f89f8a2a3f4713";
-    let c = wallet_manager.query_tx_result(hash.to_owned()).await;
+    let hashs =
+        vec!["44cc89a80fec777a03d47814f33e5f0b015690b0a5e44a4e43877e52ce31281b".to_string()];
+    let c = wallet_manager.query_tx_result(hashs).await;
 
     tracing::info!("查询结果{:?}", c);
 }

@@ -17,6 +17,10 @@ members = [
 ]
 
 resolver = "2"
+[patch.crates-io.libc]
+git = "https://github.com/rust-lang/libc.git"
+rev = "dad00cb00e92baa7e28a542eb94bc2a78762f583"
+
 
 [workspace.dependencies]
 wallet-api = { version = "0.1.0", default-features = false, path = "wallet-api", features = [
@@ -35,6 +39,7 @@ wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree
 # wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
 wallet-core = { version = "0.1.0", default-features = false, path = "wallet-core" }
 # wallet-error = { version = "0.1.0", default-features = false, path = "wallet-error" }
+
 
 # http
 reqwest = { version = "0.12.4", default-features = false, features = [

@@ -168,14 +168,27 @@ impl TransactionService {
         Ok(lists)
     }
 
-    pub async fn query_tx_result(tx_hash: &str) -> Result<Option<BillEntity>, crate::ServiceError> {
+    pub async fn query_tx_result(hashs: Vec<String>) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
+        for tx_hash in hashs.iter() {
+            if let Err(e) = Self::sync_bill_info(tx_hash, pool.clone()).await {
+                tracing::warn!("sync bill err tx_hash = {},err = {}", tx_hash, e)
+            }
+        }
+        Ok(())
+    }
+
+    async fn sync_bill_info(
+        tx_hash: &str,
+        pool: wallet_database::DbPool,
+    ) -> Result<(), crate::ServiceError> {
         let transaction = BillDao::get_one_by_hash(tx_hash, &*pool)
             .await?
             .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
+
         if transaction.status != wallet_database::entities::bill::BillStatus::Pending.to_i8() {
-            return Ok(Some(transaction));
+            return Ok(());
         }
 
         let sync_bill = match Self::get_tx_res(&transaction).await? {
@@ -189,7 +202,7 @@ impl TransactionService {
                             crate::SystemError::Service(format!("update bill fail:{e:?}"))
                         })?;
                 }
-                return Ok(Some(transaction));
+                return Ok(());
             }
         };
 
@@ -204,7 +217,8 @@ impl TransactionService {
             .await
             .map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
-        Self::handle_pending_tx_status(&transaction, &sync_bill, tx).await
+        let _ = Self::handle_pending_tx_status(&transaction, &sync_bill, tx).await?;
+        Ok(())
     }
 
     async fn handle_pending_tx_status(

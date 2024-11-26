@@ -98,8 +98,8 @@ impl crate::WalletManager {
     }
 
     // 单笔查询交易并处理
-    pub async fn query_tx_result(&self, hash: String) -> ReturnType<Option<BillEntity>> {
-        crate::service::transaction::TransactionService::query_tx_result(&hash)
+    pub async fn query_tx_result(&self, hash: Vec<String>) -> ReturnType<()> {
+        crate::service::transaction::TransactionService::query_tx_result(hash)
             .await
             .into()
     }
