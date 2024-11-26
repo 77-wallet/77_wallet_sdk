@@ -301,7 +301,15 @@ impl CoinService {
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;
 
-        let decimals = chain_instance.decimals(token_address).await?;
+        let decimals = chain_instance.decimals(token_address).await.map_err(|e| {
+            if let wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_)) = e {
+                crate::ServiceError::Business(crate::BusinessError::Coin(
+                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                ))
+            } else {
+                crate::ServiceError::ChainInteract(e)
+            }
+        })?;
         if decimals == 0 {
             return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                 crate::CoinError::InvalidContractAddress(token_address.to_string()),

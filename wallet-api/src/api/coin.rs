@@ -204,7 +204,8 @@ mod test {
 
         let chain_code = "bnb";
         // let token_address = "0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24";
-        let token_address = "0xB8c77482e45F1F44dE1745F52C74426C631bDD52";
+        // let token_address = "0xB8c77482e45F1F44dE1745F52C74426C631bDD52";
+        let token_address = "1111";
 
         // let chain_code = "tron";
         // let token_address = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
