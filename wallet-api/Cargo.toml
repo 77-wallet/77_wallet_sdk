@@ -11,7 +11,7 @@ transaction = []
 test_net = []
 token = []
 loop = []
-test = ["wallet-types/test"]
+test = ["wallet-transport-backend/test"]
 
 [dependencies]
 
