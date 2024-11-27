@@ -5,6 +5,8 @@ use wallet_api::{
     InitDeviceReq,
 };
 
+// TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // std::env::set_var("RUST_BACKTRACE", "1");
@@ -14,9 +16,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     "chuckle practice chicken permit swarm giant improve absurd melt kitchen oppose scrub"
     //         .to_string(),
     // );
-    let phrase = Some(
-        "arrest hover fury mercy slim answer hospital area morning student riot deal".to_string(),
-    );
+    // let phrase = Some(
+    //     "arrest hover fury mercy slim answer hospital area morning student riot deal".to_string(),
+    // );
     // let phrase = Some(
     //     "spoil first width hat submit inflict impact quantum love funny warrior spike".to_string(),
     // );
@@ -27,10 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     "will match face problem tongue fortune rebuild stool moon assist virtual lounge"
     //         .to_string(),
     // );
-    // let phrase = Some(
-    //     "drum planet ugly present absorb chair simple shiver honey object captain unable"
-    //         .to_string(),
-    // );
+    let phrase = Some(
+        "drum planet ugly present absorb chair simple shiver honey object captain unable"
+            .to_string(),
+    );
     // let phrase = Some(
     //     "loan tiny planet lucky rigid clip coil recall praise obvious debris dilemma".to_string(),
     // );
