@@ -45,6 +45,20 @@ pub struct DeviceDeleteReq {
     pub uid_list: Vec<String>,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceUnbindAddressReq {
+    pub sn: String,
+    pub address: Vec<DeviceUnbindAddress>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceUnbindAddress {
+    pub chain_code: String,
+    pub address: String,
+}
+
 impl DeviceDeleteReq {
     pub fn new(sn: &str, uid_list: &[String]) -> Self {
         Self {

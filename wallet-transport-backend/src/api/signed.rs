@@ -184,7 +184,7 @@ mod test {
         // let uid = "cd2ac48fa33ba24a8bc0d89e7658a2cd";
         // let uid = "2b51f4ce273ca0f7d3df0c333a228a37";
         // let uid = "de896a784586944bb22f0498d0574d6f";
-        let uid = "b3089eeacb169efd69c73610df944073";
+        let uid = "598e4144d26d871676e266036af660b3b38d38ea670a0abbfb75effab60890ad";
         // let uid = "894f24c0d49a0ac1061c683bde3b8e72";
 
         // let typ = Some("multisig".to_string());

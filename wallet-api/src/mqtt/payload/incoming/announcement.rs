@@ -36,18 +36,15 @@ pub struct BulletinMsg {
     pub content: String,
     /// 语言
     pub language: String,
-    #[serde(skip_serializing)]
-    pub operator: Operator,
-    #[serde(skip_serializing)]
+    pub operation: Operation,
     pub send_time: Option<String>,
-    #[serde(skip_serializing)]
     pub status: Option<String>,
-    #[serde(skip_serializing)]
-    pub update_time: Option<String>,
-    #[serde(skip_serializing)]
-    pub create_time: Option<String>,
-    #[serde(skip_serializing)]
-    pub r#type: Option<String>,
+    // #[serde(skip_serializing)]
+    // pub update_time: Option<String>,
+    // #[serde(skip_serializing)]
+    // pub create_time: Option<String>,
+    // #[serde(skip_serializing)]
+    // pub r#type: Option<String>,
 }
 
 // "body": {
@@ -90,7 +87,7 @@ pub struct BulletinMsg {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum Operator {
+pub enum Operation {
     Send,
     Delete,
 }
@@ -99,26 +96,31 @@ impl BulletinMsg {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let Self {
             ref id,
-            ref operator,
+            ref operation,
             ..
         } = self;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        match operator {
-            Operator::Send => {
+
+        match operation {
+            Operation::Send => {
+                let send_time = self
+                    .send_time
+                    .clone()
+                    .or(Some(wallet_utils::time::now().to_string()));
                 let input = CreateAnnouncementVo {
                     id: self.id.clone(),
                     title: self.title.clone(),
                     content: self.content.clone(),
                     language: self.language.clone(),
                     status: 0,
-                    send_time: self.send_time.clone(),
+                    send_time,
                 };
                 AnnouncementService::new(repo).add(vec![input]).await?;
                 let data = crate::notify::NotifyEvent::BulletinMsg(self);
                 crate::notify::FrontendNotifyEvent::new(data).send().await?;
             }
-            Operator::Delete => {
+            Operation::Delete => {
                 AnnouncementService::new(repo).physical_delete(id).await?;
             }
         }

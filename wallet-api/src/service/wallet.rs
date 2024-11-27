@@ -704,12 +704,14 @@ impl WalletService {
         wallet_address: &str,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        let wallet = WalletRepoTrait::detail(&mut tx, wallet_address).await?;
+        let wallet = WalletRepoTrait::detail(&mut tx, wallet_address)
+            .await?
+            .ok_or(crate::ServiceError::Business(crate::BusinessError::Wallet(
+                crate::WalletError::NotFound,
+            )))?;
 
-        if let Some(wallet) = wallet {
-            MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
-            MultisigQueueDomain::recover_all_queue_data(&wallet.uid).await?;
-        }
+        MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
+        MultisigQueueDomain::recover_all_queue_data(&wallet.uid).await?;
 
         Ok(())
     }
