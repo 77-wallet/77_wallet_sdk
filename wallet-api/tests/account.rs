@@ -11,7 +11,7 @@ async fn get_manager() -> WalletManager {
         .to_string_lossy()
         .to_string();
 
-    WalletManager::new("sn", "ANDROID", &path, None)
+    WalletManager::new("guangxiang", "ANDROID", &path, None)
         .await
         .unwrap()
 }

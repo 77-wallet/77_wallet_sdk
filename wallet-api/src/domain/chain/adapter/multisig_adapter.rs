@@ -39,7 +39,6 @@ impl MultisigAdapter {
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<MultisigAdapter, crate::ServiceError> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;
-
         match chain_code {
             ChainType::Bitcoin => {
                 // let auth = wallet_chain_interact::btc::provider::RpcAuth {

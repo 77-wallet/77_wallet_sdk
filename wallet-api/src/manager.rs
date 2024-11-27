@@ -111,13 +111,13 @@ pub struct Context {
 #[derive(Debug, Clone)]
 pub struct DeviceInfo {
     pub(crate) sn: String,
-    // pub(crate) device_type: String,
+    pub(crate) client_id: String,
 }
 impl DeviceInfo {
-    pub fn new(sn: &str) -> Self {
+    pub fn new(sn: &str, client_id: &str) -> Self {
         Self {
             sn: sn.to_owned(),
-            // device_type: device_type.to_owned(),
+            client_id: client_id.to_owned(),
         }
     }
 }
@@ -140,7 +140,7 @@ impl Context {
         let identify = crate::domain::app::DeviceDomain::device_identifier(sn, device_type);
         let client_id = crate::domain::app::DeviceDomain::client_id_by_identifier(&identify);
 
-        let header_opt = Some(HashMap::from([("clientId".to_string(), client_id)]));
+        let header_opt = Some(HashMap::from([("clientId".to_string(), client_id.clone())]));
         let backend_api = wallet_transport_backend::api::BackendApi::new(None, header_opt)?;
 
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
@@ -163,7 +163,7 @@ impl Context {
             task_manager,
             mqtt_topics: Arc::new(RwLock::new(crate::mqtt::topic::Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
-            device: Arc::new(DeviceInfo::new(sn)),
+            device: Arc::new(DeviceInfo::new(sn, &client_id)),
         })
     }
 
@@ -235,12 +235,12 @@ impl Context {
             let backend_api = cx.backend_api.clone();
 
             let new_token_response = backend_api
-                .rpc_token(&cx.device.sn)
+                .rpc_token(&cx.device.client_id)
                 .await
                 .map_err(|_| crate::BusinessError::Chain(crate::ChainError::NodeToken))?;
 
             let new_token = RpcToken {
-                token: new_token_response.token,
+                token: new_token_response,
                 instance: tokio::time::Instant::now() + tokio::time::Duration::from_secs(8 * 60),
             };
 

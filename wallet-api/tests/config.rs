@@ -29,7 +29,7 @@ async fn test_set_min_value_config() {
     let wallet_manager = get_manager().await;
 
     let config = MinValueSwitchConfig {
-        switch: false,
+        switch: true,
         value: 2.0,
         currency: "USD".to_string(),
     };

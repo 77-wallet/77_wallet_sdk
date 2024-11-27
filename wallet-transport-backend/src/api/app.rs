@@ -1,5 +1,5 @@
 use super::BackendApi;
-use crate::{request::LanguageInitReq, response::BackendResponse, response_vo::app::AppRpcToken};
+use crate::{request::LanguageInitReq, response::BackendResponse};
 
 impl BackendApi {
     pub async fn app_install_save(
@@ -16,11 +16,10 @@ impl BackendApi {
         res.process()
     }
 
-    // TODO
-    pub async fn rpc_token(&self, client_id: &str) -> Result<AppRpcToken, crate::Error> {
+    pub async fn rpc_token(&self, client_id: &str) -> Result<String, crate::Error> {
         self.client
-            .post(".....")
-            .json(serde_json::json!(client_id))
+            .post("app/rpc/token")
+            .json(serde_json::json!({"clientId":client_id}))
             .send::<BackendResponse>()
             .await?
             .process()
@@ -103,6 +102,21 @@ mod test {
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .version_his_version()
+            .await
+            .unwrap();
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_token() {
+        // let method = "POST";
+        init_test_log();
+        let base_url = crate::consts::BASE_URL;
+
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .rpc_token("52f2a22938c434f33c9904c05f6b1d83")
             .await
             .unwrap();
 

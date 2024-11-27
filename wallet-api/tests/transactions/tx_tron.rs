@@ -48,7 +48,7 @@ async fn test_transfer() {
 
     let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
     let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
-    let value = "0.4";
+    let value = "0.1";
     let symbol = "TRX";
     // let symbol = "USDT";
     // let symbol = "WIN";
