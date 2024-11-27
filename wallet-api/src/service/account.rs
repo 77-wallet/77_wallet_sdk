@@ -3,10 +3,13 @@ use wallet_database::{
     entities::{account::AccountEntity, assets::AssetsId, wallet::WalletEntity},
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, wallet::WalletRepoTrait, ResourcesRepo, TransactionTrait as _,
+        coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
+        TransactionTrait as _,
     },
 };
-use wallet_transport_backend::request::TokenQueryPriceReq;
+use wallet_transport_backend::request::{
+    DeviceUnbindAddress, DeviceUnbindAddressReq, TokenQueryPriceReq,
+};
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
@@ -296,6 +299,7 @@ impl AccountService {
         let mut wallet_tree =
             wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
         let subs_path = dirs.get_subs_dir(wallet_address)?;
+        let mut addresses = Vec::new();
         for del in deleted {
             wallet_tree.delete_subkeys(
                 wallet_address,
@@ -303,6 +307,21 @@ impl AccountService {
                 &del.address,
                 &del.chain_code.as_str().try_into()?,
             )?;
+            let address = DeviceUnbindAddress::new(&del.chain_code, &del.address);
+            addresses.push(address);
+        }
+
+        if let Some(device) = tx.get_device_info().await? {
+            let req = DeviceUnbindAddressReq::new(&device.sn, addresses);
+            let device_unbind_address_task = domain::task_queue::Task::BackendApi(
+                domain::task_queue::BackendApiTask::BackendApi(
+                    domain::task_queue::BackendApiTaskData::new(
+                        wallet_transport_backend::consts::endpoint::DEVICE_UNBIND_ADDRESS,
+                        &req,
+                    )?,
+                ),
+            );
+            Tasks::new().push(device_unbind_address_task).send().await?;
         }
 
         tx.commit_transaction().await?;

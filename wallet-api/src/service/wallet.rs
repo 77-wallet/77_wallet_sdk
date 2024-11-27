@@ -9,7 +9,10 @@ use wallet_database::{
 };
 use wallet_transport_backend::{
     consts::endpoint,
-    request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
+    request::{
+        DeviceDeleteReq, DeviceUnbindAddress, DeviceUnbindAddressReq, LanguageInitReq,
+        TokenQueryPriceReq,
+    },
 };
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
@@ -607,6 +610,7 @@ impl WalletService {
         } else {
             None
         };
+        let accounts = tx.get_account_list_by_wallet_address(Some(address)).await?;
         tx.update_uid(uid.as_deref()).await?;
         tx.commit_transaction().await?;
         let pool = crate::Context::get_global_sqlite_pool()?;
@@ -623,13 +627,32 @@ impl WalletService {
             }
 
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
-
-            let task = domain::task_queue::Task::BackendApi(
+            let device_delete_task = domain::task_queue::Task::BackendApi(
                 domain::task_queue::BackendApiTask::BackendApi(
                     domain::task_queue::BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?,
                 ),
             );
-            Tasks::new().push(task).send().await?;
+
+            let mut addresses = Vec::new();
+            for account in accounts {
+                let address = DeviceUnbindAddress::new(&account.chain_code, &account.address);
+                addresses.push(address);
+            }
+
+            let req = DeviceUnbindAddressReq::new(&device.sn, addresses);
+            let device_unbind_address_task = domain::task_queue::Task::BackendApi(
+                domain::task_queue::BackendApiTask::BackendApi(
+                    domain::task_queue::BackendApiTaskData::new(
+                        endpoint::DEVICE_UNBIND_ADDRESS,
+                        &req,
+                    )?,
+                ),
+            );
+            Tasks::new()
+                .push(device_delete_task)
+                .push(device_unbind_address_task)
+                .send()
+                .await?;
         };
         // let accounts = tx.get_account_list_by_wallet_address(Some(address)).await?;
         tokio::spawn(async move {
@@ -677,7 +700,8 @@ impl WalletService {
         let device = tx.get_device_info().await?;
 
         WalletRepoTrait::physical_delete_all(&mut tx).await?;
-        AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
+        let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
+
         tx.commit_transaction().await?;
 
         if let Some(device) = &device {
@@ -688,7 +712,27 @@ impl WalletService {
                     domain::task_queue::BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?,
                 ),
             );
-            Tasks::new().push(task).send().await?;
+
+            let mut addresses = Vec::new();
+            for account in accounts {
+                let address = DeviceUnbindAddress::new(&account.chain_code, &account.address);
+                addresses.push(address);
+            }
+
+            let req = DeviceUnbindAddressReq::new(&device.sn, addresses);
+            let device_unbind_address_task = domain::task_queue::Task::BackendApi(
+                domain::task_queue::BackendApiTask::BackendApi(
+                    domain::task_queue::BackendApiTaskData::new(
+                        endpoint::DEVICE_UNBIND_ADDRESS,
+                        &req,
+                    )?,
+                ),
+            );
+            Tasks::new()
+                .push(task)
+                .push(device_unbind_address_task)
+                .send()
+                .await?;
         };
         let pool = crate::Context::get_global_sqlite_pool()?;
 

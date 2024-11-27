@@ -52,11 +52,29 @@ pub struct DeviceUnbindAddressReq {
     pub address: Vec<DeviceUnbindAddress>,
 }
 
+impl DeviceUnbindAddressReq {
+    pub fn new(sn: &str, address: Vec<DeviceUnbindAddress>) -> Self {
+        Self {
+            sn: sn.to_string(),
+            address,
+        }
+    }
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceUnbindAddress {
     pub chain_code: String,
     pub address: String,
+}
+
+impl DeviceUnbindAddress {
+    pub fn new(chain_code: &str, address: &str) -> Self {
+        Self {
+            chain_code: chain_code.to_string(),
+            address: address.to_string(),
+        }
+    }
 }
 
 impl DeviceDeleteReq {
