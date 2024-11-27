@@ -94,7 +94,7 @@ impl crate::WalletManager {
                 wallet_address,
                 Some(account_id),
                 symbol,
-                None,
+                Some(false),
             )
             .await?
             .into()
@@ -127,7 +127,7 @@ mod tests {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
-        let address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
+        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let symbol = "USDT";
         let res = wallet_manager.get_chain_list(address, 1, symbol).await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;

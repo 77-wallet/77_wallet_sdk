@@ -218,9 +218,9 @@ pub async fn setup_test_environment(
 
     // 测试参数
     let language_code = 1;
-    let salt = "12345678".to_string();
+    // let salt = "12345678".to_string();
     // let salt = "1234qwer".to_string();
-    // let salt = "qwer1234".to_string();
+    let salt = "qwer1234".to_string();
     // let salt = "123".to_string();
     // let salt = "".to_string();
     if temp {
