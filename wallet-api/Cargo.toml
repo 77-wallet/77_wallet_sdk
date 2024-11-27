@@ -29,7 +29,7 @@ wallet-types = { workspace = true }
 
 anyhow = { workspace = true }
 alloy = { workspace = true }
-solana-sdk = { workspace = true }
+# solana-sdk = { workspace = true }
 
 rand = { workspace = true }
 

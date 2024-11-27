@@ -18,17 +18,18 @@ wallet-api = { version = "0.1.0", default-features = false, path = "wallet-api",
     "test_net",
 ] }
 wallet-database = { version = "0.1.0", default-features = false, path = "wallet-database" }
+wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
+wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
+
 wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
 wallet-chain-interact = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
 wallet-chain-instance = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
 wallet-transport = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
-wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-utils = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
 wallet-types = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
-wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 wallet-tree = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
-# wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
 wallet-core = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git" }
+# wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
 # wallet-error = { version = "0.1.0", default-features = false, path = "wallet-error" }
 
 
@@ -112,8 +113,8 @@ coins-bip39 = "0.8.7"
 coins-bip32 = "0.8.7"
 
 
-# chain
-solana-sdk = "2"
+# # chain
+# solana-sdk = "2"
 bitcoin = { version = "0.32.2", features = [
     "rand-std",
     "serde",
