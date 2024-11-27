@@ -48,3 +48,9 @@ pub struct SyncBillResp {
     #[serde(default)]
     pub notes: String,
 }
+impl SyncBillResp {
+    pub fn transaction_fee(&self) -> String {
+        self.transaction_fee
+            .map_or_else(|| "0".to_string(), |fee| fee.to_string())
+    }
+}

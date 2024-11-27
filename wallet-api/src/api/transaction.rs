@@ -106,7 +106,18 @@ impl crate::WalletManager {
 
     pub async fn sync_bill(&self, chain_code: String, address: String) -> ReturnType<()> {
         BillService::new(self.repo_factory.resuource_repo())
-            .sync_bills(&chain_code, &address)
+            .sync_bill_by_address(&chain_code, &address)
+            .await?
+            .into()
+    }
+
+    pub async fn sync_bill_by_wallet_and_account(
+        &self,
+        wallet_address: String,
+        account_id: u32,
+    ) -> ReturnType<()> {
+        BillService::new(self.repo_factory.resuource_repo())
+            .sync_bill_by_wallet_and_account(wallet_address, account_id)
             .await?
             .into()
     }

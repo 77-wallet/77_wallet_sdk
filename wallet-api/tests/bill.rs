@@ -78,9 +78,20 @@ async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    // let address = "TJuoqpfuVSxyjtobLP5Nb1oUMT8Fqew22j".to_string();
     let address = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
+    tracing::warn!("同步结果{:?}", _c);
+}
+
+#[tokio::test]
+async fn test_sync_bill_by_address() {
+    let wallet_manager = get_manager().await;
+
+    let wallet_address = "0x3d669d78532F763118561b55daa431956ede4155".to_string();
+    let account_id = 1;
+    let _c = wallet_manager
+        .sync_bill_by_wallet_and_account(wallet_address, account_id)
+        .await;
     tracing::warn!("同步结果{:?}", _c);
 }
 

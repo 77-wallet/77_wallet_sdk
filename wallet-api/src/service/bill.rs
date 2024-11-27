@@ -2,18 +2,18 @@ use crate::{
     domain::{self, app::config::ConfigDomain},
     response_vo::CoinCurrency,
 };
-use sqlx::{Pool, Sqlite};
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
     entities::{
         account::AccountEntity,
-        bill::{BillEntity, BillKind, NewBillEntity},
+        bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
     pagination::Pagination,
     repositories::{account::AccountRepoTrait, bill::BillRepoTrait},
 };
+use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 
 pub struct BillService<T: BillRepoTrait + AccountRepoTrait> {
     repo: T,
@@ -86,67 +86,97 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         Ok(lists)
     }
 
-    pub async fn sync_bills(
+    pub async fn sync_bill_by_address(
         &self,
         chain_code: &str,
         address: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        self.sync_bills(chain_code, address).await
+    }
 
-        let time = self
-            .get_last_bill_time(chain_code, address, pool.clone())
-            .await?;
+    pub async fn sync_bill_by_wallet_and_account(
+        &self,
+        wallet_address: String,
+        account_id: u32,
+    ) -> Result<(), crate::ServiceError> {
+        // get all
+        let executor = crate::Context::get_global_sqlite_pool()?;
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let resp = backend.record_lists(chain_code, address, time).await;
-        match resp {
-            Ok(resp) => {
-                for item in resp.list {
-                    let multisig_tx = item.is_multisig > 0;
+        let accounts = AccountEntity::account_list(
+            executor.as_ref(),
+            Some(wallet_address.as_str()),
+            None,
+            None,
+            vec![],
+            Some(account_id),
+        )
+        .await?;
 
-                    let status = if item.status { 2 } else { 3 };
-
-                    let tx_kind = BillKind::try_from(item.tx_kind)?;
-
-                    let fee = item
-                        .transaction_fee
-                        .map_or_else(|| "0".to_string(), |fee| fee.to_string());
-
-                    // BillResourceConsume::
-                    let consumer = BillResourceConsume {
-                        net_used: item.net_used.unwrap_or_default(),
-                        energy_used: item.energy_used.unwrap_or_default(),
-                    };
-
-                    let time = wallet_utils::time::datetime_to_timestamp(&item.transaction_time);
-
-                    let new_entity = NewBillEntity {
-                        hash: item.tx_hash,
-                        from: item.from_addr,
-                        to: item.to_addr,
-                        token: item.token,
-                        chain_code: item.chain_code,
-                        symbol: item.symbol.to_uppercase(),
-                        status,
-                        value: item.value,
-                        transaction_fee: fee,
-                        resource_consume: consumer.to_json_str()?,
-                        transaction_time: time,
-                        multisig_tx,
-                        tx_type: item.transfer_type,
-                        tx_kind,
-                        queue_id: item.queue_id,
-                        block_height: item.block_height.to_string(),
-                        notes: item.notes,
-                    };
-
-                    domain::bill::BillDomain::create_bill(new_entity).await?;
-                }
-            }
-            Err(e) => {
-                tracing::warn!("record lists error:{e:?}");
+        for account in accounts.iter() {
+            if let Err(e) = self.sync_bills(&account.chain_code, &account.address).await {
+                tracing::warn!(
+                    "[bill::sync_bill_by_wallet_and_account] chain_code:{},address {},fail {}",
+                    account.chain_code,
+                    account.address,
+                    e
+                );
             }
         }
+
+        Ok(())
+    }
+
+    async fn sync_bills(&self, chain_code: &str, address: &str) -> Result<(), crate::ServiceError> {
+        let start_time = self.get_last_bill_time(chain_code, address).await?;
+
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        let resp = backend
+            .record_lists(chain_code, address, start_time)
+            .await?;
+
+        for item in resp.list {
+            if let Err(e) = self.handle_sync_bill(item).await {
+                tracing::warn!("[bill::sync_bills] failed {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn handle_sync_bill(&self, item: SyncBillResp) -> Result<(), crate::ServiceError> {
+        let status = if item.status {
+            BillStatus::Success.to_i8()
+        } else {
+            BillStatus::Failed.to_i8()
+        };
+
+        let transaction_fee = item.transaction_fee();
+
+        let new_entity = NewBillEntity {
+            hash: item.tx_hash,
+            from: item.from_addr,
+            to: item.to_addr,
+            token: item.token,
+            chain_code: item.chain_code,
+            symbol: item.symbol,
+            status,
+            value: item.value,
+            transaction_fee,
+            resource_consume: BillResourceConsume {
+                net_used: item.net_used.unwrap_or_default(),
+                energy_used: item.energy_used.unwrap_or_default(),
+            }
+            .to_json_str()?,
+            transaction_time: wallet_utils::time::datetime_to_timestamp(&item.transaction_time),
+            multisig_tx: item.is_multisig > 0,
+            tx_type: item.transfer_type,
+            tx_kind: BillKind::try_from(item.tx_kind)?,
+            queue_id: item.queue_id,
+            block_height: item.block_height.to_string(),
+            notes: item.notes,
+        };
+
+        domain::bill::BillDomain::create_bill(new_entity).await?;
         Ok(())
     }
 
@@ -177,8 +207,9 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         &self,
         chain_code: &str,
         address: &str,
-        pool: std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<Option<String>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
         let bill = BillDao::last_bill(chain_code, address, pool.as_ref())
             .await
             .map_err(|e| crate::SystemError::Database(e.into()))?;
@@ -192,7 +223,7 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         };
 
         // Non-Tron chains
-        if chain_code != "tron" {
+        if chain_code != wallet_types::constant::chain_code::TRON {
             return Ok(Some(adjusted_time(bill)));
         }
 
@@ -215,33 +246,25 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
             .await
             .map_err(|e| crate::SystemError::Database(e.into()))?;
 
-        match account {
-            Some(account) => {
-                if account.owner == MultiAccountOwner::Participant.to_i8() {
-                    // If participant, compare bill and account creation time
-                    if let Some(bill) = bill {
-                        let crate_time =
-                            account.created_at + std::time::Duration::from_secs(86400 * 5);
-                        if bill.transaction_time > crate_time {
-                            // tracing::warn!("参与方，订单的时间大于多签账号创建的时间");
-                            return Ok(Some(
-                                bill.transaction_time
-                                    .format("%Y-%m-%d %H:%M:%S")
-                                    .to_string(),
-                            ));
-                        }
+        if let Some(account) = account {
+            if account.owner == MultiAccountOwner::Participant.to_i8() {
+                // If participant, compare bill and account creation time
+                if let Some(bill) = bill {
+                    let crate_time = account.created_at + std::time::Duration::from_secs(86400 * 5);
+                    if bill.transaction_time > crate_time {
+                        return Ok(Some(
+                            bill.transaction_time
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string(),
+                        ));
                     }
-                    // tracing::warn!("参与方，但是最后的订单时间小于多签账号的创建时间");
-                    let time = account.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-                    Ok(Some(time))
-                } else {
-                    Ok(Some(adjusted_time(bill)))
                 }
+                let time = account.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+                return Ok(Some(time));
             }
-            None => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotFound,
-            )
-            .into()),
+            return Ok(Some(adjusted_time(bill)));
         }
+
+        Err(crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound).into())
     }
 }
