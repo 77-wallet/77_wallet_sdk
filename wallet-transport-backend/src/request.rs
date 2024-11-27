@@ -236,6 +236,7 @@ pub struct AppInstallSaveReq {
     pub device_type: Option<String>,
     pub channel: Option<String>,
 }
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VersionViewReq {

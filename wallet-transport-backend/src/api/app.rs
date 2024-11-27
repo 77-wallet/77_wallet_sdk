@@ -16,6 +16,16 @@ impl BackendApi {
         res.process()
     }
 
+    pub async fn app_install_download(&self) -> Result<String, crate::Error> {
+        let res = self
+            .client
+            .post("/app/install/download")
+            .send::<serde_json::Value>()
+            .await?;
+        let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
+        res.process()
+    }
+
     pub async fn rpc_token(&self, client_id: &str) -> Result<String, crate::Error> {
         self.client
             .post("app/rpc/token")
@@ -91,6 +101,21 @@ mod test {
             .unwrap();
 
         println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_app_install_download() {
+        init_test_log();
+        // let method = "POST";
+        let base_url = crate::consts::BASE_URL;
+
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .app_install_download()
+            .await
+            .unwrap();
+
+        println!("[test_app_install_download] res: {res:?}");
     }
 
     #[tokio::test]
