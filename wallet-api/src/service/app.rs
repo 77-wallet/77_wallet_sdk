@@ -320,4 +320,9 @@ impl<
 
         Ok(res)
     }
+
+    pub async fn app_install_download(&self) -> Result<String, crate::ServiceError> {
+        let backend = crate::Context::get_global_backend_api()?;
+        Ok(backend.app_install_download().await?)
+    }
 }

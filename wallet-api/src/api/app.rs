@@ -142,6 +142,13 @@ impl crate::WalletManager {
             .await?
             .into()
     }
+
+    pub async fn app_install_download(&self) -> ReturnType<String> {
+        AppService::new(self.repo_factory.resuource_repo())
+            .app_install_download()
+            .await?
+            .into()
+    }
 }
 
 #[cfg(test)]
@@ -156,6 +163,18 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
         let res = wallet_manager.get_official_website().await;
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_app_install_download() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { wallet_manager, .. } =
+            setup_test_environment(None, None, false, None).await?;
+        let res = wallet_manager.app_install_download().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
