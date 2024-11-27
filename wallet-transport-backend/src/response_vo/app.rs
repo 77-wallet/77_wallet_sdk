@@ -60,3 +60,11 @@ pub struct FindConfigByKeyRes {
 pub struct AppRpcToken {
     pub token: String,
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSendMsgAccount {
+    pub amount: f64,
+    pub sn: String,
+    pub is_open: bool,
+}

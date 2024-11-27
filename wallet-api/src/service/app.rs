@@ -296,7 +296,28 @@ impl<
         value: String,
     ) -> Result<ConfigEntity, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let min_config =
+            wallet_database::entities::config::MinValueSwitchConfig::try_from(value.clone())?;
+
         let res = ConfigDao::upsert(key, value, pool.as_ref()).await?;
+
+        // Report to the backend
+        let cx = crate::Context::get_context()?;
+
+        let sn = cx.device.sn.clone();
+        tracing::warn!("report sn = {}", sn);
+        let req = wallet_transport_backend::response_vo::app::SaveSendMsgAccount {
+            sn: sn.clone(),
+            amount: min_config.value,
+            is_open: min_config.switch,
+        };
+
+        let backend = crate::Context::get_global_backend_api()?;
+        if let Err(e) = backend.save_send_msg_account(req).await {
+            tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
+        }
+
         Ok(res)
     }
 }

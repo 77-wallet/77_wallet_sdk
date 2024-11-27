@@ -42,6 +42,19 @@ impl BackendApi {
             .await?;
         res.process()
     }
+
+    // report filter min value config
+    pub async fn save_send_msg_account(
+        &self,
+        req: crate::response_vo::app::SaveSendMsgAccount,
+    ) -> Result<(), crate::Error> {
+        self.client
+            .post("device/saveSendMsgAmount")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?
+            .process()
+    }
 }
 
 #[cfg(test)]
