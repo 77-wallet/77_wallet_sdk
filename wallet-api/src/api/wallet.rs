@@ -285,7 +285,8 @@ mod test {
         } = setup_test_environment(None, None, false, None).await?;
 
         // 前端的uid
-        let uid = "71512c7dcca484ad9a03a0f7798e7bdd45602891ed464e0a541657137328d92d";
+        // let uid = "c447318b94179614d70e50644233b30a";
+        let uid = "598e4144d26d871676e266036af660b3b38d38ea670a0abbfb75effab60890ad";
         // let uid = "de896a784586944bb22f0498d0574d6f";
         let start_time = std::time::Instant::now();
 
