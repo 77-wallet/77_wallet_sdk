@@ -1,4 +1,5 @@
 use crate::domain::chain::adapter::MultisigAdapter;
+use crate::domain::chain::TransferResp;
 use crate::domain::task_queue::{CommonTask, Task, Tasks};
 use crate::mqtt::payload::incoming::transaction::{
     MultiSignTransAccept, MultiSignTransAcceptCompleteMsgBody,
@@ -508,7 +509,7 @@ impl MultisigTransactionService {
         let instance =
             domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(&queue.chain_code)
                 .await?;
-        let (tx_hash, bill_consumer) = match instance {
+        let tx_resp = match instance {
             MultisigAdapter::Ethereum(chain) => {
                 let multisig_account =
                     domain::multisig::MultisigDomain::account_by_address(&queue.from_addr, &pool)
@@ -545,15 +546,19 @@ impl MultisigTransactionService {
                 let balance = chain
                     .balance(&multisig_account.initiator_addr, None)
                     .await?;
-                if balance < fee_setting.transaction_fee() {
+
+                let fee = fee_setting.transaction_fee();
+                if balance < fee {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientFeeBalance,
                     ))?;
                 }
 
                 let tx_hash = chain.exec_transaction(params, fee_setting, key).await?;
-
-                (tx_hash, "".to_string())
+                TransferResp::new(
+                    tx_hash,
+                    unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+                )
             }
             MultisigAdapter::BitCoin(chain) => {
                 let account =
@@ -583,7 +588,7 @@ impl MultisigTransactionService {
                     .await
                     .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
 
-                (tx_hash, "".to_string())
+                TransferResp::new(tx_hash, "0".to_string())
             }
             MultisigAdapter::Solana(chain) => {
                 let multisig_account =
@@ -617,7 +622,7 @@ impl MultisigTransactionService {
                 let tx_hash = chain
                     .exec_transaction(params, key, None, instructions, 0)
                     .await?;
-                (tx_hash, "".to_string())
+                TransferResp::new(tx_hash, fee.transaction_fee().to_string())
             }
             MultisigAdapter::Tron(chain) => {
                 // check balance
@@ -688,13 +693,16 @@ impl MultisigTransactionService {
                     consumer.get_energy(),
                 );
                 let tx_hash = chain.exec_multisig_transaction(params, signs_list).await?;
-                (tx_hash, bill_consumer.to_json_str()?)
+
+                let mut resp = TransferResp::new(tx_hash, consumer.transaction_fee());
+                resp.with_consumer(bill_consumer);
+                resp
             }
         };
 
         // 创建本地pending 交易
         let tx = NewBillEntity::new(
-            tx_hash.clone(),
+            tx_resp.tx_hash.clone(),
             queue.from_addr,
             queue.to_addr,
             queue.value.parse().unwrap(),
@@ -705,12 +713,18 @@ impl MultisigTransactionService {
             queue.notes.clone(),
         )
         .with_queue_id(queue_id)
-        .with_resource_consume(&bill_consumer);
+        .with_resource_consume(&tx_resp.resource_consume()?)
+        .with_transaction_fee(&tx_resp.fee);
+
         domain::bill::BillDomain::create_bill(tx).await?;
 
         // sync status and tx_hash
-        repo.update_status_and_hash(queue_id, MultisigQueueStatus::InConfirmation, &tx_hash)
-            .await?;
+        repo.update_status_and_hash(
+            queue_id,
+            MultisigQueueStatus::InConfirmation,
+            &tx_resp.tx_hash,
+        )
+        .await?;
 
         let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
             .await?
@@ -718,7 +732,7 @@ impl MultisigTransactionService {
         // 上报后端
         let req = SignedTranUpdateHashReq {
             withdraw_id: queue_id.to_string(),
-            hash: tx_hash.clone(),
+            hash: tx_resp.tx_hash.clone(),
             remark: queue.notes,
             raw_data,
         };
@@ -738,6 +752,6 @@ impl MultisigTransactionService {
             let _rs = backend.delegate_complete(&request_id).await;
         }
 
-        Ok(tx_hash)
+        Ok(tx_resp.tx_hash)
     }
 }

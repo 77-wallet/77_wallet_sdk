@@ -2,7 +2,7 @@ use crate::{
     dispatch,
     domain::{
         self,
-        chain::{pare_fee_setting, transaction::ChainTransaction},
+        chain::{pare_fee_setting, transaction::ChainTransaction, TransferResp},
     },
     request::transaction::{self},
     response_vo::{self, FeeDetails, TronFeeDetails},
@@ -131,7 +131,7 @@ impl TransactionAdapter {
         &self,
         params: &transaction::TransferReq,
         private_key: ChainPrivateKey,
-    ) -> Result<(String, String), crate::ServiceError> {
+    ) -> Result<TransferResp, crate::ServiceError> {
         let transfer_amount =
             ChainTransaction::check_min_transfer(&params.base.value, params.base.decimals)?;
 
@@ -152,8 +152,9 @@ impl TransactionAdapter {
                     )
                     .await?;
 
+                let fee = fee_setting.transaction_fee();
                 // check transaction_fee
-                if remain_balance < fee_setting.transaction_fee() {
+                if remain_balance < fee {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientFeeBalance,
                     ))?;
@@ -164,7 +165,10 @@ impl TransactionAdapter {
                     .exec_transaction(params, fee_setting, private_key)
                     .await?;
 
-                Ok((tx_hash, "".to_string()))
+                Ok(TransferResp::new(
+                    tx_hash,
+                    unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+                ))
             }
             Self::BitCoin(chain) => {
                 let account = domain::chain::transaction::ChainTransaction::account(
@@ -185,7 +189,7 @@ impl TransactionAdapter {
                     .await
                     .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
 
-                Ok((tx_hash, "".to_string()))
+                Ok(TransferResp::new(tx_hash, "0".to_string()))
             }
             Self::Solana(chain) => {
                 // check balance
@@ -220,7 +224,10 @@ impl TransactionAdapter {
                     .exec_transaction(params, private_key, None, instructions, 0)
                     .await?;
 
-                Ok((tx_hash, "".to_string()))
+                Ok(TransferResp::new(
+                    tx_hash,
+                    fee.transaction_fee().to_string(),
+                ))
             }
             Self::Tron(chain) => {
                 if let Some(contract) = &params.base.token_address {
@@ -270,12 +277,16 @@ impl TransactionAdapter {
                     let bandwidth = consumer.need_extra_bandwidth() as u64;
                     let energy = consumer.need_extra_energy() as u64;
 
+                    let fee = consumer.transaction_fee();
                     transfer_params.set_fee_limit(consumer);
 
                     let bill_consumer = BillResourceConsume::new_tron(bandwidth, energy);
                     let tx_hash = chain.exec_transaction(transfer_params, private_key).await?;
 
-                    Ok((tx_hash, bill_consumer.to_json_str()?))
+                    let mut resp = TransferResp::new(tx_hash, fee);
+                    resp.with_consumer(bill_consumer);
+
+                    Ok(resp)
                 } else {
                     // 转账的金额转换为sun
                     let value_f64 = unit::format_to_f64(transfer_amount, params.base.decimals)?;
@@ -311,7 +322,11 @@ impl TransactionAdapter {
                         BillResourceConsume::new_tron(consumer.bandwidth.consumer as u64, 0);
 
                     let tx_hash = chain.exec_transaction_v1(tx, private_key).await?;
-                    Ok((tx_hash, bill_consumer.to_json_str()?))
+
+                    let mut resp = TransferResp::new(tx_hash, consumer.transaction_fee());
+                    resp.with_consumer(bill_consumer);
+
+                    Ok(resp)
                 }
             }
         }

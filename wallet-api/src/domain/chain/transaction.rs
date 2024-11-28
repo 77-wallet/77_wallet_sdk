@@ -100,12 +100,13 @@ impl ChainTransaction {
         params.base.with_token(assets.token_address());
         params.base.with_decimals(assets.decimals);
 
-        let (tx_hash, bill_consumer) = adapter.transfer(&params, private_key).await?;
+        let resp = adapter.transfer(&params, private_key).await?;
 
         let mut new_bill = wallet_database::entities::bill::NewBillEntity::try_from(&params)?;
         new_bill.tx_kind = bill_kind;
-        new_bill.hash = tx_hash.clone();
-        new_bill.resource_consume = bill_consumer;
+        new_bill.hash = resp.tx_hash.clone();
+        new_bill.resource_consume = resp.resource_consume()?;
+        new_bill.transaction_fee = resp.fee;
 
         crate::domain::bill::BillDomain::create_bill(new_bill).await?;
 
@@ -113,7 +114,7 @@ impl ChainTransaction {
             let backend = crate::manager::Context::get_global_backend_api()?;
             let _ = backend.delegate_complete(&request_id).await;
         }
-        Ok(tx_hash)
+        Ok(resp.tx_hash)
     }
 
     pub async fn gas_oracle(

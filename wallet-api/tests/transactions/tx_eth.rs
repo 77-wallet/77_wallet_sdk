@@ -65,7 +65,7 @@ async fn test_transfer() {
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
-        fee_setting:  r#"{"gasLimit":23100,"baseFee":"9442592981","priorityFee":"351636179","maxFeePerGas":"14691343740"}"#.to_string(),
+        fee_setting:  r#"{"gasLimit":23100,"baseFee":"7683647958","priorityFee":"79000000","maxFeePerGas":"11643971937"}"#.to_string(),
     };
 
     let token_fee = wallet_manager.transfer(params).await;

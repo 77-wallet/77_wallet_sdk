@@ -76,47 +76,6 @@ pub struct ChainAssets {
     // pub is_multichain: bool,
 }
 
-// #[derive(Debug, serde::Serialize, Default)]
-// #[serde(rename_all = "camelCase")]
-// pub struct ChainAssetsList(pub Vec<ChainAssets>);
-
-// impl Deref for ChainAssetsList {
-//     type Target = Vec<ChainAssets>;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
-// impl DerefMut for ChainAssetsList {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.0
-//     }
-// }
-
-// impl ChainAssetsList {
-//     // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
-//     pub(crate) fn mark_multichain_assets(&mut self) {
-//         // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
-//         let mut symbol_chain_map: HashMap<String, HashSet<String>> = HashMap::new();
-
-//         // 先填充 symbol_chain_map，每个 symbol 对应的 HashSet 包含不同的 chain_code
-//         for asset in self.iter() {
-//             symbol_chain_map
-//                 .entry(asset.symbol.clone())
-//                 .or_default()
-//                 .insert(asset.chain_code.clone());
-//         }
-
-//         // 再次遍历 self，设置 is_multichain 标记
-//         for asset in self.iter_mut() {
-//             if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
-//                 asset.is_multichain = chain_codes.len() > 1;
-//             }
-//         }
-//     }
-// }
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeDynData {
