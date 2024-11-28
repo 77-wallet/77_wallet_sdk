@@ -153,19 +153,20 @@ impl AccountDomain {
         let Some(device) = DeviceRepoTrait::get_device_info(repo).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        let req = wallet_transport_backend::request::AddressInitReq {
-            uid: uid.to_string(),
-            address: address.to_string(),
+        let address_init_req = wallet_transport_backend::request::AddressInitReq::new(
+            uid,
+            address,
             index,
-            chain_code: chain_code.to_string(),
-            sn: device.sn,
-            contract_address: vec!["".to_string()],
-            name: name.to_string(),
-        };
+            chain_code,
+            &device.sn,
+            vec!["".to_string()],
+            name,
+        );
         let address_init_task_data = crate::domain::task_queue::BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::ADDRESS_INIT,
-            &req,
+            &address_init_req,
         )?;
+
         super::task_queue::Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 address_init_task_data,

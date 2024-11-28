@@ -19,9 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let phrase = Some(
     //     "arrest hover fury mercy slim answer hospital area morning student riot deal".to_string(),
     // );
-    // let phrase = Some(
-    //     "spoil first width hat submit inflict impact quantum love funny warrior spike".to_string(),
-    // );
+    let phrase = Some(
+        "spoil first width hat submit inflict impact quantum love funny warrior spike".to_string(),
+    );
     // let phrase = Some(
     //     "fetch bronze forward wish only gentle picture noise vocal essay devote steel".to_string(),
     // );
@@ -29,10 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     "will match face problem tongue fortune rebuild stool moon assist virtual lounge"
     //         .to_string(),
     // );
-    let phrase = Some(
-        "drum planet ugly present absorb chair simple shiver honey object captain unable"
-            .to_string(),
-    );
+    // let phrase = Some(
+    //     "drum planet ugly present absorb chair simple shiver honey object captain unable"
+    //         .to_string(),
+    // );
     // let phrase = Some(
     //     "loan tiny planet lucky rigid clip coil recall praise obvious debris dilemma".to_string(),
     // );
@@ -110,22 +110,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("init_device res: {_res:?}");
 
     tracing::info!("start create wallet");
-    // let start_time = std::time::Instant::now();
-    // let _res = wallet_manager
-    //     .create_wallet(language_code, &phrase, &salt, &wallet_name, &password, None)
-    //     .await
-    //     .result
-    //     .unwrap();
-    // tracing::info!("create_wallet res: {_res:?}");
-    // let elapsed_time = start_time.elapsed();
-    // tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
-    // wallet_manager
-    //     .create_account(&_res.address, &password, None, None, None, None)
-    //     .await
-    //     .result
-    //     .unwrap();
-    // tracing::info!("create_wallet res: {_res:?}");
-    // let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    let start_time = std::time::Instant::now();
+    let _res = wallet_manager
+        .create_wallet(language_code, &phrase, &salt, &wallet_name, &password, None)
+        .await
+        .result
+        .unwrap();
+    tracing::info!("create_wallet res: {_res:?}");
+    let elapsed_time = start_time.elapsed();
+    tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
+    wallet_manager
+        .create_account(&_res.address, &password, None, None, None, None)
+        .await
+        .result
+        .unwrap();
+    tracing::info!("create_wallet res: {_res:?}");
+    let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
 
     wallet_manager
         .mqtt_subscribe(vec!["wallet/token/btc/btc".to_string()], None)

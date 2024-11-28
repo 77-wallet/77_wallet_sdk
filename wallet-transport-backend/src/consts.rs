@@ -25,6 +25,7 @@ pub mod endpoint {
     pub const DEVICE_INIT: &str = "device/init";
     pub const DEVICE_DELETE: &str = "device/delete";
     pub const DEVICE_UNBIND_ADDRESS: &str = "device/unBindAddress";
+    pub const DEVICE_BIND_ADDRESS: &str = "device/bindAddress";
     pub const KEYS_INIT: &str = "keys/init";
     pub const ADDRESS_INIT: &str = "address/init";
     pub const LANGUAGE_INIT: &str = "language/init";
@@ -42,7 +43,7 @@ pub const BASE_URL: &str = "https://api.puke668.top";
 #[cfg(feature = "test")]
 pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
 
-// // // 开发环境
+// // 开发环境
 // #[cfg(not(feature = "test"))]
 // pub const BASE_URL: &str = "https://api.puke668.top";
 // #[cfg(not(feature = "test"))]
