@@ -4,8 +4,8 @@
       "name": "Tron",
       "chain_code": "tron",
       "main_symbol": "TRX",
-      "node_name": "Platform Node",
-      "rpc_url": "http://rpc.88ai.fun/tron",
+      "node_name": "TRON Official Node",
+      "rpc_url": "https://api.trongrid.io",
       "http_url": "",
       "protocols": [
         "TRC20"
@@ -16,8 +16,8 @@
       "name": "Tron",
       "chain_code": "tron",
       "main_symbol": "TRX",
-      "node_name": "TRON Official Node",
-      "rpc_url": "https://api.trongrid.io",
+      "node_name": "Platform Node",
+      "rpc_url": "http://rpc.88ai.fun/tron",
       "http_url": "",
       "protocols": [
         "TRC20"

@@ -11,9 +11,14 @@ async fn get_manager() -> WalletManager {
         .to_string_lossy()
         .to_string();
 
-    WalletManager::new("guangxiang", "ANDROID", &path, None)
-        .await
-        .unwrap()
+    WalletManager::new(
+        "bdb6412a9cb4b12c48ebe1ef4e9f052b07af519b7485cd38a95f38d89df97cb8",
+        "ANDROID",
+        &path,
+        None,
+    )
+    .await
+    .unwrap()
 }
 
 #[tokio::test]

@@ -218,8 +218,8 @@ pub async fn setup_test_environment(
 
     // 测试参数
     let language_code = 1;
-    let salt = "12345678".to_string();
-    // let salt = "1234qwer".to_string();
+    // let salt = "12345678".to_string();
+    let salt = "1234qwer".to_string();
     // let salt = "qwer1234".to_string();
     // let salt = "123".to_string();
     // let salt = "".to_string();
@@ -236,8 +236,13 @@ pub async fn setup_test_environment(
 
     let password = "123456".to_string();
     info!("[setup_test_environment] storage_dir: {:?}", storage_dir);
-    let wallet_manager =
-        WalletManager::new("sn", "ANDROID", &storage_dir.to_string_lossy(), None).await?;
+    let wallet_manager = WalletManager::new(
+        "bdb6412a9cb4b12c48ebe1ef4e9f052b07af519b7485cd38a95f38d89df97cb8",
+        "ANDROID",
+        &storage_dir.to_string_lossy(),
+        None,
+    )
+    .await?;
     // tracing::info!("wallet_manager: {:?}", wallet_manager);
 
     let wallet_env = TestWalletEnv::new(language_code, phrase, salt, wallet_name, password);

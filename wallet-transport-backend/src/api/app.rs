@@ -141,7 +141,7 @@ mod test {
 
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
-            .rpc_token("52f2a22938c434f33c9904c05f6b1d83")
+            .rpc_token("6f88a37aca2384cec6029d5983fac0e2")
             .await
             .unwrap();
 

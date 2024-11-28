@@ -19,9 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let phrase = Some(
     //     "arrest hover fury mercy slim answer hospital area morning student riot deal".to_string(),
     // );
-    let phrase = Some(
-        "spoil first width hat submit inflict impact quantum love funny warrior spike".to_string(),
-    );
+    // let phrase = Some(
+    //     "spoil first width hat submit inflict impact quantum love funny warrior spike".to_string(),
+    // );
     // let phrase = Some(
     //     "fetch bronze forward wish only gentle picture noise vocal essay devote steel".to_string(),
     // );
@@ -36,9 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let phrase = Some(
     //     "loan tiny planet lucky rigid clip coil recall praise obvious debris dilemma".to_string(),
     // );
-    // let phrase = Some(
-    //     "divorce word join around degree mother quiz math just custom lunar angle".to_string(),
-    // );
+    let phrase = Some(
+        "divorce word join around degree mother quiz math just custom lunar angle".to_string(),
+    );
     // let phrase = Some(
     //     "nose bird celery bread slice hero black session tonight winner pitch foot".to_string(),
     // );

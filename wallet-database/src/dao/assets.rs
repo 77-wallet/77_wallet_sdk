@@ -92,35 +92,44 @@ impl AssetsEntity {
             )
         };
 
-        let mut sql = match is_multisig {
-            Some(true) => base_sql("multisig_account"),
-            Some(false) => base_sql("account"),
-            None => format!(
-                "{} UNION {}",
-                base_sql("account"),
-                base_sql("multisig_account")
-            ),
+        let add_dynamic_conditions = |sql: &mut String| {
+            if !addresses.is_empty() {
+                sql.push_str(&format!(" AND a.address IN ('{}')", addresses));
+            }
+            if chain_code.is_some() {
+                sql.push_str(" AND a.chain_code = ?");
+            }
+            if symbol.is_some() {
+                sql.push_str(" AND a.symbol = ?");
+            }
+            if let Some(is_multisig) = is_multisig {
+                let is_multisig_values = if is_multisig { vec![1] } else { vec![0, 2] };
+                let is_multisig_str =
+                    crate::sqlite::operator::any_in_collection(is_multisig_values, "','");
+                sql.push_str(&format!(" AND a.is_multisig IN ('{}')", is_multisig_str));
+            }
         };
 
-        if !addresses.is_empty() {
-            let str = format!(" AND a.address IN ('{}')", addresses);
-            sql.push_str(&str);
-        }
+        let sql = match is_multisig {
+            Some(true) => {
+                let mut sql = base_sql("multisig_account");
+                add_dynamic_conditions(&mut sql);
+                sql
+            }
+            Some(false) => {
+                let mut sql = base_sql("account");
+                add_dynamic_conditions(&mut sql);
+                sql
+            }
+            None => {
+                let mut sql1 = base_sql("account");
 
-        if chain_code.is_some() {
-            sql.push_str(" AND a.chain_code = ?");
-        }
-
-        if symbol.is_some() {
-            sql.push_str(" AND a.symbol = ?");
-        }
-
-        if let Some(is_multisig) = is_multisig {
-            let is_multisig = if is_multisig { vec![1] } else { vec![0, 2] };
-            let is_multisig = crate::sqlite::operator::any_in_collection(is_multisig, "','");
-            let str = format!(" AND a.is_multisig IN ('{}')", is_multisig);
-            sql.push_str(&str);
-        }
+                let mut sql2 = base_sql("multisig_account");
+                add_dynamic_conditions(&mut sql1);
+                add_dynamic_conditions(&mut sql2);
+                format!("{sql1} UNION {sql2}")
+            }
+        };
 
         tracing::info!("sql: {sql}");
         let mut query = sqlx::query_as::<_, AssetsEntityWithAddressType>(&sql);
