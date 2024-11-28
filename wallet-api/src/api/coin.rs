@@ -235,8 +235,10 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
 
-        let wallet_address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
+        let wallet_address = "6zg35sbjhTaxUCH59zHn7UGVKJRsdroyYZ4KuYUCNWR5";
         // let chain_code = "eth";
+        // let chain_code = "sol";
+        let chain_code = "btc";
         // let symbol = "ATLA";
         // let token_address = Some("0x45e9F834539bC2a0936f184779cED638c9B26459".to_string());
         // let protocol = Some("ERC20".to_string());
@@ -244,7 +246,8 @@ mod test {
 
         // let symbol = "XRP";
         // let token_address = Some("0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24".to_string());
-        let protocol = Some("ERC20".to_string());
+        // let protocol = Some("ERC20".to_string());
+        let protocol = None;
         // let decimals = 6;
 
         // json
@@ -259,10 +262,11 @@ mod test {
         // }
         //     "#;
 
-        let chain_code = "tron";
+        // let chain_code = "tron";
         // let token_address = "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd";
         // let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
-        let token_address = "111";
+        // let token_address = "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB";
+        let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
         let res = wallet_manager
             .customize_coin(wallet_address, 1, chain_code, token_address, protocol)
