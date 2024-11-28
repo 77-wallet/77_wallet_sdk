@@ -72,7 +72,7 @@
     "default": true
   },
   {
-    "name": "ETH-Test",
+    "name": "ETH",
     "symbol": "ETH",
     "chain_code": "eth",
     "decimals": 18,

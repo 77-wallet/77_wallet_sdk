@@ -4,19 +4,7 @@
       "name": "Tron",
       "chain_code": "tron",
       "main_symbol": "TRX",
-      "node_name": "Platform Node",
-      "rpc_url": "http://rpc.88ai.fun/tron",
-      "http_url": "",
-      "protocols": [
-        "TRC20"
-      ],
-      "network": "mainnet"
-    },
-    {
-      "name": "Tron",
-      "chain_code": "tron",
-      "main_symbol": "TRX",
-      "node_name": "TRON Official Node",
+      "node_name": "TronGrid",
       "rpc_url": "https://api.trongrid.io",
       "http_url": "",
       "protocols": [
@@ -28,7 +16,7 @@
       "name": "Tron",
       "chain_code": "tron",
       "main_symbol": "TRX",
-      "node_name": "Third-Party Node",
+      "node_name": "TronDefault",
       "rpc_url": "https://rpc.ankr.com/premium-http/tron/2554129db2045e61c3b8584ad6ee32b7b7808916d160e3e16b51dfee6d17d56c",
       "http_url": "",
       "protocols": [
@@ -40,19 +28,7 @@
       "name": "Ethereum",
       "chain_code": "eth",
       "main_symbol": "ETH",
-      "node_name": "Platform Node",
-      "rpc_url": "http://rpc.88ai.fun/eth",
-      "http_url": "",
-      "protocols": [
-        "ERC20"
-      ],
-      "network": "mainnet"
-    },
-    {
-      "name": "Ethereum",
-      "chain_code": "eth",
-      "main_symbol": "ETH",
-      "node_name": "Third-Party Node",
+      "node_name": "Ethereum",
       "rpc_url": "https://rpc.ankr.com/eth/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb",
       "http_url": "",
       "protocols": [
@@ -76,19 +52,7 @@
       "name": "BNB Smart Chain",
       "chain_code": "bnb",
       "main_symbol": "BNB",
-      "node_name": "Platform Node",
-      "rpc_url": "http://rpc.88ai.fun/bnb",
-      "http_url": "",
-      "protocols": [
-        "BEP20"
-      ],
-      "network": "mainnet"
-    },
-    {
-      "name": "BNB Smart Chain",
-      "chain_code": "bnb",
-      "main_symbol": "BNB",
-      "node_name": "Third-Party Node",
+      "node_name": "GetBlock",
       "rpc_url": "https://rpc.ankr.com/bsc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb",
       "http_url": "",
       "protocols": [
@@ -112,8 +76,8 @@
       "name": "Solana",
       "chain_code": "sol",
       "main_symbol": "SOL",
-      "node_name": "Platform Node",
-      "rpc_url": "http://rpc.88ai.fun/sol",
+      "node_name": "Solana",
+      "rpc_url": "https://rpc.ankr.com/solana/1de0b2109f36eb77145fdd195bcf3fbad10cc878d49e1ade16f550f1b4115c26",
       "http_url": "",
       "protocols": [],
       "network": "mainnet"
@@ -122,8 +86,8 @@
       "name": "Solana",
       "chain_code": "sol",
       "main_symbol": "SOL",
-      "node_name": "Third-Party Node",
-      "rpc_url": "https://rpc.ankr.com/solana/1de0b2109f36eb77145fdd195bcf3fbad10cc878d49e1ade16f550f1b4115c26",
+      "node_name": "Solana2",
+      "rpc_url": "https://solana-mainnet.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05",
       "http_url": "",
       "protocols": [],
       "network": "mainnet"
@@ -142,18 +106,8 @@
       "name": "BTC",
       "chain_code": "btc",
       "main_symbol": "BTC",
-      "node_name": "Platform Node",
-      "http_url": "http://rpc.88ai.fun/btc/http/btc_blockbook/api/v2/",
-      "rpc_url": "http://rpc.88ai.fun/btc",
-      "protocols": [],
-      "network": "mainnet"
-    },
-    {
-      "name": "BTC",
-      "chain_code": "btc",
-      "main_symbol": "BTC",
-      "node_name": "BThird-Party Node",
-      "http_url": "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api/v2/",
+      "node_name": "Bitcoin",
+      "http_url": "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api",
       "rpc_url": "https://rpc.ankr.com/btc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb",
       "protocols": [],
       "network": "mainnet"
