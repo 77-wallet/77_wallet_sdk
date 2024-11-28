@@ -5,7 +5,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "0x3EC161C02Cd5a49EE8657947DC99DA58D1259aA1";
+    let addr = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
     let chain_code = "eth";
     let symbol = "ETH";
     // let symbol = "USDT";
@@ -22,12 +22,12 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "0x998522f928A37837Fa8d6743713170243b95f98a";
-    let to = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
-    let value = "1";
+    let from = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
+    let to = "0x998522f928A37837Fa8d6743713170243b95f98a";
+    let value = "0.0001";
     let chain_code = "eth";
-    // let symbol = "ETH";
-    let symbol = "USDT";
+    let symbol = "ETH";
+    // let symbol = "USDT";
 
     let params = transaction::BaseTransferReq::new(
         from.to_string(),
@@ -46,9 +46,9 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "0x3EC161C02Cd5a49EE8657947DC99DA58D1259aA1";
-    let to = "0x0Bb5c82158760F1C1c73722e4aD51EE24f1559c3";
-    let value = "0.1";
+    let from = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
+    let to = "0x998522f928A37837Fa8d6743713170243b95f98a";
+    let value = "0.0001";
     let chain_code = "eth";
     let symbol = "ETH";
     // let symbol = "USDT";
@@ -65,7 +65,7 @@ async fn test_transfer() {
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
-        fee_setting:  r#"{"gasLimit":50706,"baseFee":"14058071718","priorityFee":"64000000","maxFeePerGas":"21183107577"}"#.to_string(),
+        fee_setting:  r#"{"gasLimit":23100,"baseFee":"9442592981","priorityFee":"351636179","maxFeePerGas":"14691343740"}"#.to_string(),
     };
 
     let token_fee = wallet_manager.transfer(params).await;

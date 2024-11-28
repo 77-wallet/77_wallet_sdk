@@ -1,10 +1,36 @@
 use crate::response_vo;
 use reqwest::Url;
-use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting};
+use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
 use wallet_types::chain::network;
 
 pub mod adapter;
 pub mod transaction;
+
+pub struct TransferResp {
+    pub tx_hash: String,
+    pub fee: String,
+    pub consumer: Option<BillResourceConsume>,
+}
+impl TransferResp {
+    pub fn new(tx_hash: String, fee: String) -> Self {
+        Self {
+            tx_hash,
+            fee,
+            consumer: None,
+        }
+    }
+    pub fn with_consumer(&mut self, consumer: BillResourceConsume) {
+        self.consumer = Some(consumer);
+    }
+
+    pub fn resource_consume(&self) -> Result<String, crate::ServiceError> {
+        if let Some(consumer) = &self.consumer {
+            Ok(consumer.to_json_str()?)
+        } else {
+            Ok(String::new())
+        }
+    }
+}
 
 /// Parses a fee setting string into a `FeeSetting` struct.
 pub fn pare_fee_setting(fee_setting: &str) -> Result<FeeSetting, crate::ServiceError> {

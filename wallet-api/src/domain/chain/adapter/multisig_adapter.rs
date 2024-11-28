@@ -181,9 +181,6 @@ impl MultisigAdapter {
                     .await?;
 
                 Ok((tx_hash, "".to_string()))
-                // Ok(chain
-                //     .exec_transaction(params, key, None, instructions)
-                //     .await?)
             }
             Self::Tron(chain) => {
                 let params = tron::operations::multisig::MultisigAccountOpt::new(

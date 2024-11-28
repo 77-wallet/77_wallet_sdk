@@ -21,12 +21,12 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn";
+    let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
     let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
-    let value = "1";
+    let value = "0.1";
     let chain_code = "tron";
-    // let symbol = "TRX";
-    let symbol = "WIN";
+    let symbol = "TRX";
+    // let symbol = "WIN";
 
     let mut params = transaction::BaseTransferReq::new(
         from.to_string(),
