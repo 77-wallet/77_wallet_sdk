@@ -30,9 +30,23 @@ impl BackendApi {
         res.process()
     }
 
+    pub async fn device_bind_address(
+        &self,
+        req: &crate::request::DeviceBindAddressReq,
+    ) -> Result<Option<()>, crate::Error> {
+        let res = self
+            .client
+            .post("device/bindAddress")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process()
+    }
+
     pub async fn device_unbind_address(
         &self,
-        req: &crate::request::DeviceUnbindAddressReq,
+        req: &crate::request::DeviceBindAddressReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
             .client
@@ -79,8 +93,7 @@ mod test {
     use crate::{
         api::BackendApi,
         request::{
-            DeviceDeleteReq, DeviceInitReq, DeviceUnbindAddress, DeviceUnbindAddressReq,
-            KeysInitReq,
+            DeviceBindAddressReq, DeviceDeleteReq, DeviceInitReq, DeviceUnbindAddress, KeysInitReq,
         },
     };
 
@@ -127,12 +140,33 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_device_bind_address() {
+        // let method = "POST";
+        init_test_log();
+        let base_url = crate::consts::BASE_URL;
+
+        let req = DeviceBindAddressReq {
+            sn: "bdb6412a9cb4b12c48ebe1ef4e9f052b07af519b7485cd38a95f38d89df97cb8".to_string(),
+            address: vec![DeviceUnbindAddress {
+                chain_code: "tron".to_string(),
+                address: "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB".to_string(),
+            }],
+        };
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .device_bind_address(&req)
+            .await;
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
     async fn test_device_unbind_address() {
         // let method = "POST";
         init_test_log();
         let base_url = crate::consts::BASE_URL;
 
-        let req = DeviceUnbindAddressReq {
+        let req = DeviceBindAddressReq {
             sn: "bdb6412a9cb4b12c48ebe1ef4e9f052b07af519b7485cd38a95f38d89df97cb8".to_string(),
             address: vec![DeviceUnbindAddress {
                 chain_code: "tron".to_string(),

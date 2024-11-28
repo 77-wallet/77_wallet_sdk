@@ -47,17 +47,22 @@ pub struct DeviceDeleteReq {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceUnbindAddressReq {
+pub struct DeviceBindAddressReq {
     pub sn: String,
     pub address: Vec<DeviceUnbindAddress>,
 }
 
-impl DeviceUnbindAddressReq {
-    pub fn new(sn: &str, address: Vec<DeviceUnbindAddress>) -> Self {
+impl DeviceBindAddressReq {
+    pub fn new(sn: &str) -> Self {
         Self {
             sn: sn.to_string(),
-            address,
+            address: Default::default(),
         }
+    }
+
+    pub fn push(&mut self, chain_code: &str, address: &str) {
+        self.address
+            .push(DeviceUnbindAddress::new(chain_code, address));
     }
 }
 
@@ -333,6 +338,28 @@ pub struct AddressInitReq {
     #[serde(default)]
     pub contract_address: Vec<String>,
     pub name: String,
+}
+
+impl AddressInitReq {
+    pub fn new(
+        uid: &str,
+        address: &str,
+        index: i32,
+        chain_code: &str,
+        sn: &str,
+        contract_address: Vec<String>,
+        name: &str,
+    ) -> Self {
+        Self {
+            uid: uid.to_string(),
+            address: address.to_string(),
+            index,
+            chain_code: chain_code.to_string(),
+            sn: sn.to_string(),
+            contract_address,
+            name: name.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]

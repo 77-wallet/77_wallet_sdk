@@ -7,16 +7,19 @@ use wallet_database::{
         TransactionTrait as _,
     },
 };
-use wallet_transport_backend::request::{
-    DeviceUnbindAddress, DeviceUnbindAddressReq, TokenQueryPriceReq,
-};
+use wallet_transport_backend::request::{DeviceBindAddressReq, TokenQueryPriceReq};
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
 };
 
 use crate::{
-    domain::{self, account::AccountDomain, task_queue::Tasks, wallet::WalletDomain},
+    domain::{
+        self,
+        account::AccountDomain,
+        task_queue::{BackendApiTask, Task, Tasks},
+        wallet::WalletDomain,
+    },
     response_vo::account::DerivedAddressesList,
 };
 
@@ -164,9 +167,30 @@ impl AccountService {
                 }
             }
         }
+
+        let accounts = tx.list().await?;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        let mut device_bind_address_req =
+            wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
+        for account in accounts {
+            device_bind_address_req.push(&account.chain_code, &account.address);
+        }
+
+        let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
+            &device_bind_address_req,
+        )?;
         let task =
             domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
-        Tasks::new().push(task).send().await?;
+        Tasks::new()
+            .push(task)
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                device_bind_address_task_data,
+            )))
+            .send()
+            .await?;
         Ok(())
     }
 
@@ -299,7 +323,12 @@ impl AccountService {
         let mut wallet_tree =
             wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
         let subs_path = dirs.get_subs_dir(wallet_address)?;
-        let mut addresses = Vec::new();
+
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        tx.commit_transaction().await?;
+        let mut req = DeviceBindAddressReq::new(&device.sn);
         for del in deleted {
             wallet_tree.delete_subkeys(
                 wallet_address,
@@ -307,24 +336,18 @@ impl AccountService {
                 &del.address,
                 &del.chain_code.as_str().try_into()?,
             )?;
-            let address = DeviceUnbindAddress::new(&del.chain_code, &del.address);
-            addresses.push(address);
+            req.push(&del.chain_code, &del.address);
         }
 
-        if let Some(device) = tx.get_device_info().await? {
-            let req = DeviceUnbindAddressReq::new(&device.sn, addresses);
-            let device_unbind_address_task = domain::task_queue::Task::BackendApi(
-                domain::task_queue::BackendApiTask::BackendApi(
-                    domain::task_queue::BackendApiTaskData::new(
-                        wallet_transport_backend::consts::endpoint::DEVICE_UNBIND_ADDRESS,
-                        &req,
-                    )?,
-                ),
-            );
-            Tasks::new().push(device_unbind_address_task).send().await?;
-        }
+        let device_unbind_address_task =
+            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
+                domain::task_queue::BackendApiTaskData::new(
+                    wallet_transport_backend::consts::endpoint::DEVICE_UNBIND_ADDRESS,
+                    &req,
+                )?,
+            ));
+        Tasks::new().push(device_unbind_address_task).send().await?;
 
-        tx.commit_transaction().await?;
         Ok(())
     }
 
