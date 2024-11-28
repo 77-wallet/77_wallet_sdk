@@ -139,7 +139,7 @@
       "network": "testnet"
     },
     {
-      "name": "BTC",
+      "name": "Bitcoin",
       "chain_code": "btc",
       "main_symbol": "BTC",
       "node_name": "Platform Node",
@@ -149,7 +149,7 @@
       "network": "mainnet"
     },
     {
-      "name": "BTC",
+      "name": "Bitcoin",
       "chain_code": "btc",
       "main_symbol": "BTC",
       "node_name": "BThird-Party Node",
