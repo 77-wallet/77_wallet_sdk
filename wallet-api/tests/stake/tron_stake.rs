@@ -5,7 +5,7 @@ use crate::get_manager;
 #[tokio::test]
 async fn test_account_resource() {
     let manager = get_manager().await;
-    let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let account = "TQHq9gP34tLiE2Eg1MeAQjhN6KA6oLRBos".to_string();
     let res = manager.resource_info(account).await;
 
     tracing::info!(

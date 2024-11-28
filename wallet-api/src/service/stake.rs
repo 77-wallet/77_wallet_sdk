@@ -1,3 +1,5 @@
+use crate::domain;
+use crate::domain::chain::adapter::TransactionAdapter;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
 use crate::request::stake;
@@ -232,10 +234,22 @@ impl StackService {
         &self,
         account: &str,
     ) -> Result<AccountResource, crate::error::ServiceError> {
-        let tron_chain = self.get_chain().await?;
-        let resource = tron_chain.account_resource(account).await?;
+        // let tron_chain = self.get_chain().await?;
 
-        let account = tron_chain.account_info(account).await?;
+        let chain =
+            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter("tron").await?;
+
+        let chain = match chain {
+            TransactionAdapter::Tron(chain) => chain,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?;
+            }
+        };
+
+        let resource = chain.account_resource(account).await?;
+        let account = chain.account_info(account).await?;
 
         let mut res: AccountResource = AccountResource {
             balance: (account.balance / 1_000_000).to_string(),
