@@ -296,20 +296,26 @@ impl CoinService {
         chain_code: &str,
         token_address: &str,
     ) -> Result<crate::response_vo::coin::TokenInfo, crate::ServiceError> {
+        let net = wallet_types::chain::network::NetworkKind::Mainnet;
+        domain::chain::check_address(token_address, chain_code.try_into()?, net)?;
+
         // let chain_instance = service.get_transaction_adapter(chain_code).await?;
         let chain_instance =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;
 
-        let decimals = chain_instance.decimals(token_address).await.map_err(|e| {
-            if let wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_)) = e {
-                crate::ServiceError::Business(crate::BusinessError::Coin(
-                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
-                ))
-            } else {
-                crate::ServiceError::ChainInteract(e)
-            }
-        })?;
+        let decimals = chain_instance
+            .decimals(token_address)
+            .await
+            .map_err(|e| match e {
+                wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
+                | wallet_chain_interact::Error::RpcError(_) => {
+                    crate::ServiceError::Business(crate::BusinessError::Coin(
+                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                    ))
+                }
+                _ => crate::ServiceError::ChainInteract(e),
+            })?;
         if decimals == 0 {
             return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                 crate::CoinError::InvalidContractAddress(token_address.to_string()),
@@ -355,15 +361,21 @@ impl CoinService {
         let chain_instance =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;
-        let decimals = chain_instance.decimals(token_address).await.map_err(|e| {
-            if let wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_)) = e {
-                crate::ServiceError::Business(crate::BusinessError::Coin(
-                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
-                ))
-            } else {
-                crate::ServiceError::ChainInteract(e)
-            }
-        })?;
+
+        tracing::info!("customize_coin");
+        let decimals = chain_instance
+            .decimals(token_address)
+            .await
+            .map_err(|e| match e {
+                wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
+                | wallet_chain_interact::Error::RpcError(_) => {
+                    crate::ServiceError::Business(crate::BusinessError::Coin(
+                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                    ))
+                }
+                _ => crate::ServiceError::ChainInteract(e),
+            })?;
+        tracing::info!("decimal: {decimals}");
         if decimals == 0 {
             return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                 crate::CoinError::InvalidContractAddress(token_address.to_string()),

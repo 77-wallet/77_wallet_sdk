@@ -38,6 +38,8 @@ wallet-core = { default-features = false, git = "https://github.com/77-wallet/77
 # wallet-types = { default-features = false, path = "../77_wallet_core/wallet-types" }
 # wallet-tree = { default-features = false, path = "../77_wallet_core/wallet-tree" }
 # wallet-core = { default-features = false, path = "../77_wallet_core/wallet-core" }
+
+
 # wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
 # wallet-error = { version = "0.1.0", default-features = false, path = "wallet-error" }
 
