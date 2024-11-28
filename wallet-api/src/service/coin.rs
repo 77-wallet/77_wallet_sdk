@@ -343,6 +343,8 @@ impl CoinService {
         token_address: &str,
         protocol: Option<String>,
     ) -> Result<(), crate::ServiceError> {
+        let net = wallet_types::chain::network::NetworkKind::Mainnet;
+        domain::chain::check_address(token_address, chain_code.try_into()?, net)?;
         let tx = &mut self.repo;
         let Some(_) = tx.detail_with_node(chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
@@ -362,6 +364,11 @@ impl CoinService {
                 crate::ServiceError::ChainInteract(e)
             }
         })?;
+        if decimals == 0 {
+            return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
+                crate::CoinError::InvalidContractAddress(token_address.to_string()),
+            )));
+        }
         let symbol = chain_instance.token_symbol(token_address).await?;
         let name = chain_instance.token_name(token_address).await?;
 
@@ -401,7 +408,6 @@ impl CoinService {
         tracing::info!("balance: {balance}");
         let balance = wallet_utils::unit::format_to_string(balance, decimals)
             .unwrap_or_else(|_| "0".to_string());
-        tracing::info!("balance: {balance}");
 
         let assets_id = AssetsId::new(&account.address, chain_code, &symbol);
         let assets = CreateAssetsVo::new(
