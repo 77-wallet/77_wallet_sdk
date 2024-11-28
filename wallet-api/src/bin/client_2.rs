@@ -46,7 +46,7 @@ async fn create_wallet(manager: &WalletManager, create: bool) {
 
         let salt = "12345678";
         manager
-            .create_wallet(1, phrase, salt, "test", "123456", None)
+            .create_wallet(1, phrase, salt, "test", "账户", true, "123456", None)
             .await;
     }
 }

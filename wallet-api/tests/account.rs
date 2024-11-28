@@ -44,9 +44,19 @@ async fn create_wallet() {
     //     "february crunch banner cave afford chuckle left plate session tackle crash approve";
     let salt = "qwer1234";
     let wallet_name = "my_wallet";
+    let account_name = "账户";
     let password = "123456";
     let res = wallet_manager
-        .create_wallet(1, phrase, salt, wallet_name, password, None)
+        .create_wallet(
+            1,
+            phrase,
+            salt,
+            wallet_name,
+            account_name,
+            true,
+            password,
+            None,
+        )
         .await;
 
     println!("创建的钱包{:?}", res);
@@ -58,6 +68,7 @@ async fn create_account() {
     // let wallet_name = "0xA33A4Ae897E0B878Bc442b387554907025133766";
     // let wallet_name = "0x67Fd771e4698D04f19ef4b29B8A95d5637f52B7C";
     let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
+    let account_name = "账户";
     let root_password = "123456";
     // let resp = wallet_manager
     //     .create_account(wallet_name, root_password, None, None)
@@ -65,7 +76,15 @@ async fn create_account() {
     // tracing::info!("create_account {:?}", resp);
     for _i in 0..2 {
         let resp = wallet_manager
-            .create_account(wallet_name, root_password, None, None, None, None)
+            .create_account(
+                wallet_name,
+                root_password,
+                None,
+                None,
+                None,
+                account_name,
+                true,
+            )
             .await;
         tracing::info!("create_account {:?}", resp);
     }

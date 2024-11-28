@@ -46,7 +46,8 @@ impl AccountService {
         derive_password: Option<String>,
         derivation_path: Option<String>,
         index: Option<i32>,
-        name: Option<String>,
+        name: &str,
+        is_default_name: bool,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
@@ -141,7 +142,8 @@ impl AccountService {
                         &wallet.address,
                         wallet_password,
                         derive_password.clone(),
-                        &name,
+                        name,
+                        is_default_name,
                     )
                     .await?;
                 for coin in &default_coins_list {

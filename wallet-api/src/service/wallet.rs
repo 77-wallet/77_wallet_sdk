@@ -132,6 +132,8 @@ impl WalletService {
         path: &str,
         wallet_address: &str,
         wallet_password: &str,
+        account_name: &str,
+        is_default_name: bool,
     ) -> Result<crate::response_vo::wallet::ImportDerivationPathRes, crate::ServiceError> {
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
@@ -177,7 +179,8 @@ impl WalletService {
                     wallet_address,
                     wallet_password,
                     None,
-                    &None,
+                    account_name,
+                    is_default_name,
                 )
                 .await?;
             accounts.push(account.address)
@@ -221,6 +224,8 @@ impl WalletService {
         phrase: &str,
         salt: &str,
         wallet_name: &str,
+        account_name: &str,
+        is_default_name: bool,
         wallet_password: &str,
         derive_password: Option<String>,
     ) -> Result<CreateWalletRes, crate::ServiceError> {
@@ -301,7 +306,8 @@ impl WalletService {
                             address,
                             wallet_password,
                             derive_password.clone(),
-                            &None,
+                            account_name,
+                            is_default_name,
                         )
                         .await?;
                     for coin in &coins {

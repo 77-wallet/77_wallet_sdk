@@ -41,6 +41,8 @@ impl crate::WalletManager {
         phrase: &str,
         salt: &str,
         wallet_name: &str,
+        account_name: &str,
+        is_default_name: bool,
         wallet_password: &str,
         derive_password: Option<String>,
     ) -> ReturnType<CreateWalletRes> {
@@ -50,6 +52,8 @@ impl crate::WalletManager {
                 phrase,
                 salt,
                 wallet_name,
+                account_name,
+                is_default_name,
                 wallet_password,
                 derive_password,
             )
@@ -73,9 +77,17 @@ impl crate::WalletManager {
         path: &str,
         wallet_address: &str,
         wallet_password: &str,
+        account_name: &str,
+        is_default_name: bool,
     ) -> ReturnType<crate::response_vo::wallet::ImportDerivationPathRes> {
         WalletService::new(self.repo_factory.resuource_repo())
-            .import_derivation_path(path, wallet_address, wallet_password)
+            .import_derivation_path(
+                path,
+                wallet_address,
+                wallet_password,
+                account_name,
+                is_default_name,
+            )
             .await?
             .into()
     }
@@ -202,9 +214,19 @@ mod test {
             "hard boost cup illegal express interest spread mother weapon make repeat weapon";
         // let phrase = "wife smoke help special across among want screen solve anxiety worth enforse";
         let salt = "Test1234";
+        let account_name = "账户";
         let _ = wallet_manager.init_data().await;
         let res = wallet_manager
-            .create_wallet(1, phrase, salt, wallet_name, password, None)
+            .create_wallet(
+                1,
+                phrase,
+                salt,
+                wallet_name,
+                account_name,
+                true,
+                password,
+                None,
+            )
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -224,9 +246,19 @@ mod test {
         let phrase = "virtual muscle bracket drip tent undo design reason dice total ugly beach";
         let salt = "Muson@3962";
         let wallet_name = "导入6";
+        let account_name = "账户";
         let password = "Muson@3962";
         let res = wallet_manager
-            .create_wallet(*language_code, phrase, salt, wallet_name, password, None)
+            .create_wallet(
+                *language_code,
+                phrase,
+                salt,
+                wallet_name,
+                account_name,
+                true,
+                password,
+                None,
+            )
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -397,8 +429,9 @@ mod test {
             .to_string_lossy()
             .to_string();
         let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
+        let account_name = "账户";
         let res = wallet_manager
-            .import_derivation_path(&storage_dir, wallet_address, password)
+            .import_derivation_path(&storage_dir, wallet_address, password, account_name, true)
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
