@@ -170,6 +170,7 @@ impl AcctChange {
                 asset_list.push(from_addr.to_string());
             }
 
+            tracing::warn!("[AcctChange] asset_list:{asset_list:?}");
             if !asset_list.is_empty() {
                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
                 let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
