@@ -48,13 +48,6 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         &wallet_transport_backend::request::FindConfigByKey::new("OFFICIAL:WEBSITE"),
     )?;
 
-    tokio::spawn(async move {
-        if let Err(e) =
-            crate::domain::multisig::MultisigQueueDomain::recover_all_uid_queue_data().await
-        {
-            tracing::error!("recover multisig account data error: {}", e);
-        };
-    });
     crate::domain::task_queue::Tasks::new()
         .push(Task::Initialization(InitializationTask::PullAnnouncement))
         .push(Task::Initialization(InitializationTask::PullHotCoins))
@@ -69,6 +62,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             set_official_website_req,
         )))
+        .push(Task::Initialization(InitializationTask::RecoverQueueData))
         .send()
         .await?;
 
