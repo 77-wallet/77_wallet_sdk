@@ -11,7 +11,8 @@ impl crate::WalletManager {
         derive_password: Option<String>,
         derivation_path: Option<String>,
         index: Option<i32>,
-        name: Option<String>,
+        name: &str,
+        is_default_name: bool,
     ) -> ReturnType<()> {
         AccountService::new(self.repo_factory.resuource_repo())
             .create_account(
@@ -21,6 +22,7 @@ impl crate::WalletManager {
                 derivation_path,
                 index,
                 name,
+                is_default_name,
             )
             .await?
             .into()
@@ -234,7 +236,8 @@ mod test {
                 Some(wallet_env.password.to_string()),
                 derivation_path,
                 index,
-                Some("牛逼".to_string()),
+                "牛逼",
+                true,
             )
             .await
             .message;

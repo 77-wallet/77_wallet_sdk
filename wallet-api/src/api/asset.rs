@@ -226,7 +226,7 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::test::env::{setup_test_environment, TestData, TestWalletEnv};
+    use crate::test::env::{setup_test_environment, TestData};
     use anyhow::Result;
 
     #[tokio::test]
@@ -495,43 +495,6 @@ mod test {
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_create_wallet() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let TestData {
-            wallet_manager,
-            wallet_env,
-            ..
-        } = setup_test_environment(None, None, false, None).await?;
-        let TestWalletEnv {
-            language_code,
-            phrase,
-            salt,
-            wallet_name,
-            password,
-        } = &wallet_env;
-
-        let res = wallet_manager
-            .create_wallet(*language_code, phrase, salt, wallet_name, password, None)
-            .await;
-        // let CreateWalletRes { address } = res.result.unwrap();
-        let message = res.message;
-
-        tracing::error!("message: {message}");
-        // let chain_code = "ETH";
-        // let account_name = "test_account";
-
-        let list = wallet_manager.get_wallet_list(None, None).await;
-        tracing::info!("list: {list:?}");
-
-        let account_asset = wallet_manager
-            .get_account_assets(1, &res.result.unwrap().address)
-            .await;
-        tracing::info!("account_asset: {account_asset:?}");
         Ok(())
     }
 }

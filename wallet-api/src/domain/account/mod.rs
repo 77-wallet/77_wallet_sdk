@@ -109,7 +109,8 @@ impl AccountDomain {
         wallet_address: &str,
         root_password: &str,
         derive_password: Option<String>,
-        name: &Option<String>,
+        name: &str,
+        is_default_name: bool,
     ) -> Result<CreateAccountRes, crate::ServiceError> {
         let (address, name) = self
             .derive_subkey(
@@ -123,6 +124,7 @@ impl AccountDomain {
                 root_password,
                 derive_password,
                 name,
+                is_default_name,
             )
             .await?;
 
@@ -187,7 +189,8 @@ impl AccountDomain {
         wallet_address: &str,
         root_password: &str,
         derive_password: Option<String>,
-        name: &Option<String>,
+        name: &str,
+        is_default_name: bool,
     ) -> Result<CreateAccountRes, crate::ServiceError> {
         let (address, name) = self
             .derive_subkey(
@@ -201,6 +204,7 @@ impl AccountDomain {
                 root_password,
                 derive_password,
                 name,
+                is_default_name,
             )
             .await?;
 
@@ -231,12 +235,18 @@ impl AccountDomain {
         wallet_address: &str,
         root_password: &str,
         derive_password: Option<String>,
-        name: &Option<String>,
+        name: &str,
+        is_default_name: bool,
     ) -> Result<(String, String), crate::ServiceError> {
-        let account_name = name
-            .as_ref()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("账户{}", account_index_map.account_id));
+        // let account_name = name
+        //     .as_ref()
+        //     .map(|s| s.to_string())
+        //     .unwrap_or_else(|| format!("账户{}", account_index_map.account_id));
+        let account_name = if is_default_name {
+            format!("{name}{}", account_index_map.account_id)
+        } else {
+            name.to_string()
+        };
         tracing::info!("account_name: {}", account_name);
         // Get the path to the subkeys directory for the given wallet name.
         let subs_dir = dirs.get_subs_dir(wallet_address)?;

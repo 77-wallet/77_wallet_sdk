@@ -110,9 +110,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("init_device res: {_res:?}");
 
     tracing::info!("start create wallet");
+
+    let account_name = "账户";
     let start_time = std::time::Instant::now();
     let _res = wallet_manager
-        .create_wallet(language_code, &phrase, &salt, &wallet_name, &password, None)
+        .create_wallet(
+            language_code,
+            &phrase,
+            &salt,
+            &wallet_name,
+            account_name,
+            true,
+            &password,
+            None,
+        )
         .await
         .result
         .unwrap();
@@ -120,7 +131,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let elapsed_time = start_time.elapsed();
     tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
     wallet_manager
-        .create_account(&_res.address, &password, None, None, None, None)
+        .create_account(
+            &_res.address,
+            &password,
+            None,
+            None,
+            None,
+            account_name,
+            true,
+        )
         .await
         .result
         .unwrap();
