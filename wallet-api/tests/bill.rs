@@ -1,5 +1,5 @@
 use std::{env, path::PathBuf};
-use wallet_api::WalletManager;
+use wallet_api::{request::transaction::QueryBillReusltReq, WalletManager};
 use wallet_utils::init_test_log;
 
 async fn get_manager() -> WalletManager {
@@ -66,9 +66,12 @@ async fn bill_lists() {
 async fn query_bill_result() {
     let wallet_manager = get_manager().await;
 
-    let hashs =
-        vec!["44cc89a80fec777a03d47814f33e5f0b015690b0a5e44a4e43877e52ce31281b".to_string()];
-    let c = wallet_manager.query_tx_result(hashs).await;
+    let req = vec![QueryBillReusltReq {
+        tx_hash: "1c0115f491df71f9a34498ea4c512bee964204f04d220657b8a59f4fe78274dc".to_string(),
+        transfer_type: 1,
+    }];
+
+    let c = wallet_manager.query_tx_result(req).await;
 
     tracing::info!("查询结果{:?}", c);
 }

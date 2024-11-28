@@ -1,5 +1,5 @@
 use super::ReturnType;
-use crate::request::transaction;
+use crate::request::transaction::{self, QueryBillReusltReq};
 use crate::response_vo::CoinCurrency;
 use crate::response_vo::{
     self,
@@ -98,8 +98,11 @@ impl crate::WalletManager {
     }
 
     // 单笔查询交易并处理
-    pub async fn query_tx_result(&self, hash: Vec<String>) -> ReturnType<()> {
-        crate::service::transaction::TransactionService::query_tx_result(hash)
+    pub async fn query_tx_result(
+        &self,
+        req: Vec<QueryBillReusltReq>,
+    ) -> ReturnType<Vec<BillEntity>> {
+        crate::service::transaction::TransactionService::query_tx_result(req)
             .await
             .into()
     }
