@@ -502,7 +502,6 @@ impl MultisigAccountService {
                 ("address".to_string(), resp.multisig_address.clone()),
                 ("salt".to_string(), resp.salt.clone()),
                 ("authority_addr".to_string(), resp.authority_address.clone()),
-                ("status".to_string(), status),
             ]);
             let multisig_account = self
                 .repo
@@ -538,7 +537,10 @@ impl MultisigAccountService {
                 )
                 .await?;
 
-            let params = HashMap::from([("deploy_hash".to_string(), hash)]);
+            let params = HashMap::from([
+                ("deploy_hash".to_string(), hash),
+                ("status".to_string(), status),
+            ]);
             let _ = self.repo.update_by_id(account_id, params).await?;
         }
         Ok(())
