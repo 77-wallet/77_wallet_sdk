@@ -2,6 +2,7 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{config_key::MIN_VALUE_SWITCH, MinValueSwitchConfig},
 };
+use wallet_transport_backend::response_vo::app::SaveSendMsgAccount;
 
 pub struct ConfigDomain;
 
@@ -39,5 +40,38 @@ impl ConfigDomain {
         };
 
         Ok(None)
+    }
+
+    /// Report the minimum filtering amount configuration to the backend each time a wallet is created.
+    pub async fn report_backend(sn: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let config = ConfigDao::find_by_key(
+            wallet_database::entities::config::config_key::MIN_VALUE_SWITCH,
+            pool.as_ref(),
+        )
+        .await?;
+
+        let req = if let Some(config) = config {
+            let min_config =
+                wallet_database::entities::config::MinValueSwitchConfig::try_from(config.value)?;
+            SaveSendMsgAccount {
+                amount: min_config.value,
+                sn: sn.to_string(),
+                is_open: min_config.switch,
+            }
+        } else {
+            SaveSendMsgAccount {
+                amount: 0.0,
+                sn: sn.to_string(),
+                is_open: false,
+            }
+        };
+
+        let backend = crate::Context::get_global_backend_api()?;
+        if let Err(e) = backend.save_send_msg_account(req).await {
+            tracing::error!(sn = sn, "report min value error:{} ", e);
+        }
+        Ok(())
     }
 }

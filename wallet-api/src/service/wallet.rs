@@ -394,6 +394,9 @@ impl WalletService {
                 &device_bind_address_req,
             )?;
 
+            //
+            let _ = domain::app::config::ConfigDomain::report_backend(&device.sn).await;
+
             domain::task_queue::Tasks::new()
                 .push(Task::BackendApi(BackendApiTask::BackendApi(
                     keys_init_task_data,

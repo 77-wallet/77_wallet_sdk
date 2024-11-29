@@ -44,9 +44,8 @@ async fn create_device() {
 #[tokio::test]
 async fn create_wallet() {
     let wallet_manager = get_manager().await;
-    let phrase = "nose bird celery bread slice hero black session tonight winner pitch foot";
-    // let phrase =
-    //     "february crunch banner cave afford chuckle left plate session tackle crash approve";
+    let phrase =
+        "february crunch banner cave afford chuckle left plate session tackle crash approve";
     let salt = "qwer1234";
     let wallet_name = "my_wallet";
     let account_name = "账户";
