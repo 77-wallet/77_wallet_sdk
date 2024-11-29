@@ -19,6 +19,8 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::multisig::SIGNED_TRAN_ACCEPT,
         endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH,
         endpoint::DEVICE_DELETE,
+        endpoint::DEVICE_BIND_ADDRESS,
+        endpoint::DEVICE_UNBIND_ADDRESS,
     ]
     .iter()
     .cloned()

@@ -280,7 +280,7 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
 
         let account_id = 1;
-        let wallet_address = "0x27f9aFAA8c9F6A3Bb9FEbeDcC903b037FD9cB09e";
+        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
         let account = wallet_manager
             .physical_delete_account(wallet_address, account_id)
             .await;
