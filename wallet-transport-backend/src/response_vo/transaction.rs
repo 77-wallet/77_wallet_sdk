@@ -41,7 +41,7 @@ pub struct SyncBillResp {
     pub energy_used: Option<u64>,
     // 队列id
     #[serde(default)]
-    pub queue_id: String,
+    pub queue_id: Option<String>,
     // 块高
     pub block_height: i64,
     // 备注

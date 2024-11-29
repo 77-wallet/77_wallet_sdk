@@ -171,7 +171,7 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
             multisig_tx: item.is_multisig > 0,
             tx_type: item.transfer_type,
             tx_kind: BillKind::try_from(item.tx_kind)?,
-            queue_id: item.queue_id,
+            queue_id: item.queue_id.unwrap_or("".to_string()),
             block_height: item.block_height.to_string(),
             notes: item.notes,
         };
