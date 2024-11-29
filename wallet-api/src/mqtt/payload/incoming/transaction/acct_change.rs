@@ -369,6 +369,9 @@ impl AcctChange {
             }
         };
 
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let list = wallet_database::entities::assets::AssetsEntity::list(&*pool).await?;
+        tracing::warn!("[AcctChange] list: {:?}", list);
         let repo = RepositoryFactory::repo(pool.clone());
         let system_notification_service = SystemNotificationService::new(repo);
 
