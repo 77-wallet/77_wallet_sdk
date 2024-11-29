@@ -40,26 +40,25 @@ where
 
 impl From<crate::ServiceError> for (u32, String) {
     fn from(err: crate::ServiceError) -> Self {
-        // 网络的错误类型单独提出来
+        // record log to upload to aliyun
+        tracing::error!(?err, "api_error");
+        // Separate network error types.
         if err.is_network_error() {
             return (502, err.to_string());
         }
 
         let (code, message) = match err {
-            // 给前端展示的错误
-            crate::ServiceError::Business(msg) => (msg.get_status_code(), msg.to_string()), // 业务逻辑错误
+            crate::ServiceError::Business(msg) => (msg.get_status_code(), msg.to_string()),
             crate::ServiceError::Parameter(_) => (422, err.to_string()),
-            // 不给前端展示的错误（返回统一的错误信息，详细信息仅记录日志）
-            crate::ServiceError::System(_) => (500, err.to_string()), // 系统内部错误
-            crate::ServiceError::Keystore(_) => (510, err.to_string()), // 密钥库错误
-            crate::ServiceError::Utils(_) => (520, err.to_string()),  // 工具类错误
-            // 后端错误
+            crate::ServiceError::System(_) => (500, err.to_string()),
+            crate::ServiceError::Keystore(_) => (510, err.to_string()),
+            crate::ServiceError::Utils(_) => (520, err.to_string()),
             crate::ServiceError::TransportBackend(bakend_err) => map_backend_error(bakend_err),
-            crate::ServiceError::Transport(_) => (531, err.to_string()), // 传输错误
-            crate::ServiceError::ChainInteract(_) => (540, err.to_string()), // 链交互错误
-            crate::ServiceError::ChainInstance(_) => (550, err.to_string()), // 链实例错误
-            crate::ServiceError::Core(_) => (610, err.to_string()),      // 核心逻辑错误
-            crate::ServiceError::Types(_) => (620, err.to_string()),     // 类型相关错误
+            crate::ServiceError::Transport(_) => (531, err.to_string()),
+            crate::ServiceError::ChainInteract(_) => (540, err.to_string()),
+            crate::ServiceError::ChainInstance(_) => (550, err.to_string()),
+            crate::ServiceError::Core(_) => (610, err.to_string()),
+            crate::ServiceError::Types(_) => (620, err.to_string()),
             crate::ServiceError::Database(_) => (630, err.to_string()),
             crate::ServiceError::Tree(_) => (640, err.to_string()),
         };

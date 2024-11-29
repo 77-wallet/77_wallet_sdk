@@ -103,7 +103,6 @@ impl NodeEntity {
         WHERE chain_code in ('{}');",
             chain_codes
         );
-        tracing::info!("sql: {sql}");
         sqlx::query_as::<sqlx::Sqlite, NodeEntity>(&sql)
             .bind(chain_codes)
             .fetch_all(exec)

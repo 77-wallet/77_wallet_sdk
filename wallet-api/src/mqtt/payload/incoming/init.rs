@@ -78,9 +78,6 @@ impl Init {
                 })
                 .await?;
 
-            tracing::info!("[init] exec: {:?}", assets);
-
-            // let chain_instance = service.get_transaction_adapter(&chain_code).await?;
             let chain_instance =
                 domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                     .await?;
@@ -99,7 +96,6 @@ impl Init {
                     .unit
             };
             // TODO: 处理余额计算
-            tracing::info!("balance: {balance}");
             let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), decimals)?;
 
             match assets {
@@ -118,11 +114,6 @@ impl Init {
                         .await?;
                 }
                 None => {
-                    // // 查询余额
-                    // let balance = chain_instance
-                    //     .balance(address, token_address.clone())
-                    //     .await?;
-
                     let main_code =
                         wallet_database::entities::coin::CoinEntity::main_coin(chain_code, &*pool)
                             .await?;

@@ -61,7 +61,6 @@ impl AssetsEntity {
         WHERE status = 1 AND address in ('{}');",
             addresses
         );
-        // tracing::info!("sql: {sql}");
         sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
             .bind(addresses)
             .fetch_all(exec)
@@ -131,7 +130,6 @@ impl AssetsEntity {
             }
         };
 
-        tracing::info!("sql: {sql}");
         let mut query = sqlx::query_as::<_, AssetsEntityWithAddressType>(&sql);
 
         if let Some(code) = chain_code {
@@ -194,8 +192,6 @@ impl AssetsEntity {
         if let Some(sym) = symbol {
             query = query.bind(sym);
         }
-
-        tracing::info!("sql: {sql}");
 
         query
             .fetch_all(exec)
@@ -445,9 +441,6 @@ impl AssetsEntity {
         WHERE chain_code = $1 AND symbol = $2 AND token_address = $3;
         "#;
 
-        tracing::info!("[update_status] chain_code: {chain_code}");
-        tracing::info!("[update_status] symbol: {symbol}");
-        tracing::info!("[update_status] token_address: {token_address:?}");
         sqlx::query(sql)
             .bind(chain_code)
             .bind(symbol)

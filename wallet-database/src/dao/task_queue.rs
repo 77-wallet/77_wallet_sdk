@@ -16,7 +16,6 @@ impl TaskQueueEntity {
         let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
             "insert into task_queue (id, task_name, request_body, type, status, created_at, updated_at) ",
         );
-        tracing::info!("reqs: {:?}", reqs);
         query_builder.push_values(reqs, |mut b, req| {
             b.push_bind(req.id.clone())
                 .push_bind(req.task_name)

@@ -243,7 +243,6 @@ pub async fn setup_test_environment(
         None,
     )
     .await?;
-    // tracing::info!("wallet_manager: {:?}", wallet_manager);
 
     let wallet_env = TestWalletEnv::new(language_code, phrase, salt, wallet_name, password);
 

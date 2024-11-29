@@ -76,8 +76,6 @@ impl CoinService {
         }
 
         // 获取所有链的资产
-        tracing::warn!("[get_hot_coin_list] get_chain_assets_by_address_chain_code_symbol start");
-
         let _is_multisig = if let Some(is_multisig) = is_multisig
             && !is_multisig
         {
@@ -95,38 +93,19 @@ impl CoinService {
             .await
             .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
 
-        tracing::info!("[get_hot_coin_list] symbol_list: {symbol_list:?}");
         let symbol_list: std::collections::HashSet<String> =
             symbol_list.into_iter().map(|coin| coin.symbol).collect();
-        // let symbol_list = Vec::new();
 
-        // tracing::error!("local_coin_list: {symbol_list:?}");
         let chain_codes = tx
             .get_chain_list()
             .await?
             .into_iter()
             .map(|chain| chain.chain_code)
             .collect();
-        // tracing::error!("[get_hot_coin_list] chain_codes: {chain_codes:?}");
-        // 排除掉已有的资产，查询出剩下的热门币
 
-        // // 遍历剩下的热门币，获取所有的币种符号
-        // let symbol_list = query_coins
-        //     .data
-        //     .into_iter()
-        //     .map(|coin| coin.symbol)
-        //     .collect();
-
-        // let list = service
-        //     .coin_service
-        //     ._get_hot_coin_list(&chain_codes, keyword, &symbol_list, page, page_size)
-        //     .await?;
-
-        tracing::warn!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
         let list = tx
             .hot_coin_list_symbol_not_in(&chain_codes, keyword, &symbol_list, page, page_size)
             .await?;
-        tracing::info!("[get_hot_coin_list] hot_coin_list_symbol_not_in: {list:?}");
 
         let mut data = CoinInfoList::default();
         for coin in list.data {
@@ -153,7 +132,6 @@ impl CoinService {
             }
         }
 
-        tracing::warn!("[get_hot_coin_list] mark_multichain_assets start");
         data.mark_multichain_assets();
 
         let res = wallet_database::pagination::Pagination {
@@ -162,7 +140,6 @@ impl CoinService {
             total_count: list.total_count,
             data: data.0,
         };
-        tracing::warn!("[get_hot_coin_list] 完成");
 
         Ok(res)
     }
@@ -207,7 +184,6 @@ impl CoinService {
                 }
             }
         }
-        // tracing::info!("data len: {}", data.len());
 
         // 拉取流行币种数据并追加到 `data`
         let req =
@@ -227,7 +203,6 @@ impl CoinService {
 
         let coin_list = tx.coin_list(None, None).await?;
 
-        // tracing::info!("coin_list: {coin_list:?}");
         let req: Vec<TokenQueryPrice> = coin_list
             .into_iter()
             .map(|coin| TokenQueryPrice {
@@ -321,7 +296,6 @@ impl CoinService {
                 crate::CoinError::InvalidContractAddress(token_address.to_string()),
             )));
         }
-        tracing::info!("decimal: {decimals}");
         let symbol = chain_instance.token_symbol(token_address).await?;
         if symbol.is_empty() {
             return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
@@ -362,7 +336,6 @@ impl CoinService {
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;
 
-        tracing::info!("customize_coin");
         let decimals = chain_instance
             .decimals(token_address)
             .await
@@ -375,7 +348,6 @@ impl CoinService {
                 }
                 _ => crate::ServiceError::ChainInteract(e),
             })?;
-        tracing::info!("decimal: {decimals}");
         if decimals == 0 {
             return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                 crate::CoinError::InvalidContractAddress(token_address.to_string()),
@@ -417,7 +389,6 @@ impl CoinService {
         let balance = chain_instance
             .balance(&account.address, Some(token_address.to_string()))
             .await?;
-        tracing::info!("balance: {balance}");
         let balance = wallet_utils::unit::format_to_string(balance, decimals)
             .unwrap_or_else(|_| "0".to_string());
 
@@ -572,7 +543,6 @@ impl CoinService {
                 is_popular,
             ));
         }
-        // tracing::info!("coin_datas len: {}", coin_datas.len());
 
         tx.upsert_multi_coin(coin_datas).await?;
         Ok(())

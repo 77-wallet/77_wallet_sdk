@@ -170,7 +170,7 @@ impl ChainEntity {
         WHERE chain_code in ('{}');",
             chain_codes
         );
-        tracing::info!("sql: {sql}");
+
         sqlx::query_as::<sqlx::Sqlite, ChainEntity>(&sql)
             .bind(chain_codes)
             .fetch_all(db.as_ref())

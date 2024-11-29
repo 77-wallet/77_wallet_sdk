@@ -184,45 +184,15 @@ impl ChainService {
             }
         }
 
-        tracing::info!("account_addresses: {:?}", account_addresses);
         let datas = tx
             .get_assets_by_address(account_addresses, None, Some(symbol), is_multisig)
             .await?;
-        // let datas = service
-        //     .asset_service
-        //     .get_chain_assets_by_account_address_chain_code_symbol(
-        //         account_addresses,
-        //         None,
-        //         Some(symbol),
-        //     )
-        //     .await?;
-        tracing::info!("datas: {:?}", datas);
+
         let chains = tx.get_chain_list().await?;
         let res = token_currencies
             .calculate_chain_assets_list(datas, chains)
             .await?;
 
-        // self.cx()
-        //     .chain_list_by_chain_codes(chain_code)
-        //     .await
-        //     .map_err(|e| crate::Error::System(crate::SystemError::Database(e)))
-        // res.mark_multichain_assets();
-
         Ok(res)
     }
-    // pub async fn init_chains_info(self) -> Result<(), crate::ServiceError> {
-    //     let tx = self.repo;
-    //     let list = crate::default_data::chains::init_default_chains_list()?;
-    //     for default_chain in &list.chains {
-    //         let input = wallet_database::dao::chain::ChainCreateVo {
-    //             name: "name".to_string(),
-    //             chain_code: default_chain.chain_code.to_string(),
-    //             node_id: default_chain.node_id.to_string(),
-    //             status: 1,
-    //         };
-    //         let res = tx.add(input).await?;
-    //     }
-    //     // self.add_chain("name", "address", Some(1)).await
-    //     Ok(())
-    // }
 }

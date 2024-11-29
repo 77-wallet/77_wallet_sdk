@@ -115,14 +115,11 @@ impl AssetsDomain {
         } else {
             is_multisig
         };
-        tracing::info!("_is_multisig: {:?}", _is_multisig);
 
-        tracing::info!("get_local_coin_list: {:?}", addresses);
         let coin_list = tx
             .lists(addresses, chain_code, keyword, _is_multisig)
             .await
             .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
-        tracing::info!("get_local_coin_list: {:?}", coin_list);
         let mut res = crate::response_vo::coin::CoinInfoList::default();
         for coin in coin_list {
             if let Some(info) = res.iter_mut().find(|info| info.symbol == coin.symbol) {
@@ -235,7 +232,6 @@ impl AssetsDomain {
                         return None;
                     }
                 };
-                tracing::info!("[sync_assets] balance: {balance:?}");
                 let balance = wallet_utils::unit::format_to_string(balance, coin.decimals)
                     .unwrap_or_else(|_| "0".to_string());
 

@@ -70,10 +70,7 @@ impl Topics {
         for topic in unique_topics.iter() {
             match mqtt_processor.client().subscribe(topic, qos).await {
                 Ok(_) => {
-                    tracing::info!("成功订阅主题: {}", topic);
-
                     let now = std::time::SystemTime::now();
-
                     // 插入新的订阅数据到 HashMap
                     self.data.insert(
                         topic.clone(),
@@ -111,7 +108,6 @@ impl Topics {
             .collect();
 
         if unique_topics.is_empty() {
-            tracing::info!("没有需要取消订阅的主题");
             return Ok(());
         }
 
@@ -125,8 +121,6 @@ impl Topics {
         for topic in unique_topics.iter() {
             match mqtt_processor.client().unsubscribe(topic).await {
                 Ok(_) => {
-                    tracing::info!("取消订阅成功: {}", topic);
-
                     // 移除 HashMap 中的订阅数据
                     if let Some(topic_data) = self.data.remove(topic) {
                         // 从 BTreeSet 中移除对应的 TopicEntry

@@ -152,12 +152,9 @@ impl Tasks {
             create_entities.push(create_req);
         }
 
-        tracing::info!("task_send: {:?}", create_entities);
-
         let entities = repo.create_multi_task(&create_entities).await?;
-
-        tracing::info!("task_send tasks: {:?}", entities);
         task_sender.get_task_sender().send(entities).unwrap();
+
         Ok(())
     }
 }

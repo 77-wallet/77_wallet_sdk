@@ -512,7 +512,6 @@ impl WalletService {
         } else {
             tx.wallet_list().await?
         };
-        // tracing::info!("wallet_list: {:?}", wallet_list);
         let mut res = Vec::new();
         for wallet_info in wallet_list {
             let list = tx
@@ -533,16 +532,11 @@ impl WalletService {
                     .assets_domain
                     .get_account_assets_entity(tx, account.account_id, &wallet_info.address, None)
                     .await?;
-                // tracing::info!("account_assets_entity: {:#?}", account_assets_entity);
                 let account_total_assets = token_currencies
                     .calculate_account_total_assets(&mut account_assets_entity)
                     .await?;
-                tracing::info!("account_total_assets: {:#?}", account_total_assets);
-                // let balance =
-                //     wallet_utils::parse_func::decimal_from_str(&account_assets_entity.balance)?;
                 let fiat_value = account_total_assets.fiat_value;
                 let amount = account_total_assets.amount;
-                // tracing::warn!("[get_wallet_list] balance_f: {:?}", fiat_value);
                 account.balance.fiat_add(fiat_value);
                 account.balance.amount_add(amount);
                 wallet_assets.fiat_add(fiat_value);

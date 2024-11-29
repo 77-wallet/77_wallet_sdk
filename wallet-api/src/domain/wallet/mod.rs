@@ -67,8 +67,6 @@ impl WalletDomain {
         )
         .map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
-        tracing::info!("storage_path: {root_dir:?}");
-
         // Clear any existing keystore at the storage path
         wallet_utils::file_func::recreate_dir_all(&root_dir)?;
 

@@ -50,7 +50,6 @@ pub async fn send_request(
         .await
         .map_err(|e| wallet_utils::Error::Http(e.into()))?;
 
-    tracing::info!("[send_request] response status: {:?}", response.status());
     if !response.status().is_success() {
         return Err(
             wallet_utils::Error::Http(wallet_utils::HttpError::NonSuccessStatus(response.status()))
@@ -62,7 +61,6 @@ pub async fn send_request(
         .await
         .map_err(|e| wallet_utils::Error::Http(e.into()))?;
     let res: BackendResponse = wallet_utils::serde_func::serde_from_str(&res)?;
-    tracing::info!("[send_request] text: {res:?}");
 
     res.process()
 }

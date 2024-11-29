@@ -462,7 +462,6 @@ mod tests {
         let wallet_tree =
             wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
 
-        tracing::info!("钱包树: {:?}", wallet_tree);
         Ok(())
     }
 }

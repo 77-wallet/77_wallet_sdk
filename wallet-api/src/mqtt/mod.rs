@@ -31,7 +31,6 @@ pub fn init_mqtt_processor<'a>(
 
         let up = user_property.to_vec();
 
-        tracing::info!("[mqtt] init mqtt processor, up: {up:?}");
         let (client, eventloop) =
             MqttClientBuilder::new(&user_property.client_id, url, username, password, up)
                 .build()?;
@@ -75,8 +74,6 @@ async fn handle_eventloop(
     _client: AsyncClient,
     mut eventloop: EventLoop,
 ) {
-    tracing::info!("[mqtt] eventloop start");
-
     // 创建一个限流器，限制每秒最多处理 5 个错误
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
 
@@ -84,7 +81,6 @@ async fn handle_eventloop(
         let event = eventloop.poll().await;
         match event {
             Ok(notif) => {
-                // tracing::info!("[mqtt] Event = {notif:?}");
                 if let Err(e) = tx.send(notif) {
                     tracing::error!("[handle eventloop] send channel error: {e}");
                 };
@@ -122,7 +118,6 @@ pub async fn exec_event(
     client: rumqttc::v5::AsyncClient,
 ) -> Result<(), crate::ServiceError> {
     while let Some(notif) = rx.next().await {
-        tracing::info!("[exec_event] event: {notif:?}");
         let res = match notif {
             rumqttc::v5::Event::Incoming(packet) => {
                 crate::mqtt::handle::exec_incoming(&client, packet).await

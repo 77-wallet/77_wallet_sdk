@@ -414,7 +414,6 @@ impl TokenCurrencies {
                 let name = chains.get(&account.chain_code);
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-                tracing::info!("account_index_map: {:#?}", account_index_map);
                 account_list.push(crate::response_vo::wallet::AccountInfo {
                     account_id: account.account_id,
                     account_index_map,

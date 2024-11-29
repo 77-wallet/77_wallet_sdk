@@ -112,7 +112,6 @@ impl AccountService {
         } else {
             wallet_utils::address::AccountIndexMap::from_account_id(1)?
         };
-        tracing::info!("account_index_map: {:?}", account_index_map);
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         for chain_code in &chains {

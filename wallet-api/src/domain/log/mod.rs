@@ -5,19 +5,12 @@ use tokio::time;
 pub async fn periodic_log_report(interval: Duration) {
     tokio::spawn(async move {
         let mut interval = time::interval(interval);
-        // let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
         loop {
             interval.tick().await;
-            // let start = Instant::now();
 
-            // Create a new AppService instance for each iteration
-            // let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-            // let app_service = AppService::new(repo);
-
-            // Perform log reporting here
-            let res = upload_log_file().await;
-            tracing::info!("upload_log_file: res: {res:?}");
-            // let elapsed = start.elapsed();
+            if let Err(e) = upload_log_file().await {
+                tracing::error!("upload log file error:{}", e);
+            };
         }
     });
 }
@@ -35,19 +28,12 @@ pub async fn upload_log_file() -> Result<(), crate::ServiceError> {
 
     let timestamp = sqlx::types::chrono::Utc::now();
     let dst_file_name = format!("sdk:{}.txt", timestamp.format("%Y-%m-%d %H:%M:%S"));
-    tracing::info!(
-        "upload_log_file: src_file_path: {src_file_path}, dst_file_name: {dst_file_name}"
-    );
     oss_client
         .upload_local_file(&src_file_path, &dst_file_name)
         .await?;
 
     // Clear the log file after successful upload
     wallet_utils::file_func::clear_file(&src_file_path)?;
-    tracing::info!(
-        "Log file cleared after successful upload: {}",
-        src_file_path
-    );
 
     Ok(())
 }

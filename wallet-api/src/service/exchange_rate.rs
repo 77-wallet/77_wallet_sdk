@@ -43,7 +43,6 @@ impl ExchangeRateService {
         self,
         rates: wallet_transport_backend::response_vo::coin::TokenRates,
     ) -> Result<(), crate::ServiceError> {
-        tracing::info!("[init] begin!!!");
         let tx = self.repo;
         let mut tx = tx.begin_transaction().await?;
 

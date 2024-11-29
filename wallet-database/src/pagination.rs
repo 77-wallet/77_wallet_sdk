@@ -85,47 +85,4 @@ where
             Err(_e) => Ok(0),
         }
     }
-
-    // #[deprecated]
-    // pub async fn total_count<'a, E>(&self, exec: &E, sql: &str) -> Result<i64, crate::Error>
-    // where
-    //     for<'c> &'c E: Executor<'c, Database = Sqlite>,
-    // {
-    //     let count_sql = "SELECT count(*) FROM";
-
-    //     let start = sql.find("FROM").unwrap_or(0) + 4;
-    //     let sql = format!("{} {}", count_sql, &sql[start..]);
-
-    //     let count = sqlx::query_scalar::<_, i64>(&sql).fetch_one(exec).await;
-
-    //     match count {
-    //         Ok(count) => Ok(count),
-    //         Err(_e) => Ok(0),
-    //     }
-    // }
-
-    // #[deprecated]
-    // pub async fn page<'a, E>(mut self, exec: &E, sql: &str) -> Result<Self, crate::Error>
-    // where
-    //     for<'c> &'c E: Executor<'c, Database = Sqlite>,
-    // {
-    //     self.total_count = self.total_count(exec, sql).await?;
-
-    //     let sql = format!(
-    //         "{} LIMIT {} OFFSET {}",
-    //         sql,
-    //         self.page_size,
-    //         self.page * self.page_size
-    //     );
-
-    //     // tracing::info!("result sql = {}", sql);
-    //     let res = sqlx::query_as::<_, T>(&sql)
-    //         .fetch_all(exec)
-    //         .await
-    //         .map_err(|e| crate::Error::Database(e.into()))?;
-
-    //     // tracing::info!("result res = {:?}", res);
-    //     self.data = res;
-    //     Ok(self)
-    // }
 }

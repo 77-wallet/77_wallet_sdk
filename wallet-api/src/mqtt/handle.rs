@@ -59,19 +59,16 @@ pub async fn exec_incoming_publish(
     } = &publish;
 
     // let topic_ = String::from_utf8(topic.to_vec())?;
-    // tracing::info!("topic: {topic_}");
     let crate::mqtt::constant::TopicClientId {
         topic,
         client_id: _,
     } = super::constant::Topic::from_bytes(topic.to_vec())?;
-    // tracing::info!("topic: {topic:?}, client_id: {client_id:?}");
     match topic {
         super::constant::Topic::Switch => {}
         #[cfg(feature = "token")]
         super::constant::Topic::Token => {
             let payload: crate::mqtt::payload::incoming::token::TokenPriceChange =
                 serde_json::from_slice(&payload)?;
-            // tracing::info!("payload: {payload:?}");
             payload.exec().await?;
         }
         super::constant::Topic::Order
@@ -106,8 +103,6 @@ pub async fn exec_incoming_publish(
                     ]);
                     if let Err(e) = backend_api.send_msg_confirm(&req).await {
                         tracing::error!("send_msg_confirm error: {}", e);
-                    } else {
-                        tracing::info!("send_msg_confirm success");
                     }
                 };
             });
@@ -291,7 +286,6 @@ async fn exec_incoming_connack(
                 body.to_vec()?,
             )
             .await?;
-        tracing::info!("send ok");
     }
 
     let data = crate::notify::NotifyEvent::MqttConnected;

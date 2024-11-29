@@ -90,16 +90,10 @@ impl TaskManager {
         for task in failed_queue {
             if !running.contains(&task.id) {
                 tasks.push(task);
-            } else {
-                tracing::info!(
-                    "[check_handle] task {} is already running, skipping",
-                    task.id
-                );
             }
         }
-        drop(running); // 释放锁
+        drop(running);
 
-        tracing::info!("task queue: {:?}", tasks);
         if let Err(e) = manager.get_task_sender().send(tasks) {
             tracing::error!("send task queue error: {}", e);
         }
@@ -123,16 +117,10 @@ impl TaskManager {
                     {
                         let mut running = running_tasks.lock().await;
                         if running.contains(&task_id) {
-                            tracing::info!(
-                                "[task_process] task {} is already running, skipping",
-                                task_id
-                            );
                             continue;
                         }
                         running.insert(task_id.clone());
                     } // 释放锁
-
-                    tracing::info!("[task_process] task {} started", task_id);
 
                     let running_tasks_clone = Arc::clone(&running_tasks);
                     if let Err(e) = Self::once_handle(&task).await {
@@ -146,8 +134,6 @@ impl TaskManager {
                             task.task_name,
                             e
                         );
-                    } else {
-                        tracing::info!("[task_process] task {} completed successfully", task_id);
                     }
                     let mut running = running_tasks_clone.lock().await;
                     running.remove(&task_id);
@@ -173,26 +159,21 @@ impl TaskManager {
                     let announcement_service = AnnouncementService::new(repo);
                     let res = announcement_service.pull_announcement().await;
 
-                    tracing::info!("pull announcement result: {res:?}");
                     res?;
-                    tracing::info!("pull announcement success");
                 }
                 InitializationTask::PullHotCoins => {
                     let repo = RepositoryFactory::repo(pool.clone());
                     let mut coin_service = CoinService::new(repo);
                     coin_service.pull_hot_coins().await?;
-                    tracing::info!("pull hot coins success");
                     let repo = RepositoryFactory::repo(pool.clone());
                     let coin_service = CoinService::new(repo);
                     coin_service.init_token_price().await?;
-                    tracing::info!("init token price success");
                 }
                 InitializationTask::InitTokenPrice => {
                     let repo = RepositoryFactory::repo(pool.clone());
                     let coin_service = CoinService::new(repo);
 
                     coin_service.init_token_price().await?;
-                    tracing::info!("init token price success");
                 }
                 InitializationTask::ProcessUnconfirmMsg => {
                     let repo = RepositoryFactory::repo(pool.clone());
@@ -210,15 +191,12 @@ impl TaskManager {
                         )
                         .await?
                         .list;
-                    tracing::warn!("unconfirm msg: {data:?}");
                     crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
-                    tracing::info!("confirm msg success");
                 }
                 InitializationTask::SetBlockBrowserUrl => {
                     let repo = RepositoryFactory::repo(pool.clone());
                     let mut app_service = crate::service::app::AppService::new(repo);
                     app_service.set_block_browser_url().await?;
-                    tracing::info!("set block browser url success");
                 }
                 InitializationTask::SetFiat => {
                     let repo = RepositoryFactory::repo(pool.clone());
@@ -230,7 +208,6 @@ impl TaskManager {
                     if let Ok(Some(device_info)) = res {
                         let _ = app_service.set_fiat(&device_info.currency).await;
                     }
-                    tracing::info!("set fiat success");
                 }
                 InitializationTask::RecoverQueueData => {
                     MultisigQueueDomain::recover_all_uid_queue_data().await?;
@@ -238,7 +215,6 @@ impl TaskManager {
             },
             Task::BackendApi(backend_api_task) => match backend_api_task {
                 BackendApiTask::BackendApi(data) => {
-                    tracing::info!("backend api task: {:#?}", data);
                     BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api).await?;
                 }
             },
@@ -260,7 +236,6 @@ impl TaskManager {
                     let repo = RepositoryFactory::repo(pool.clone());
                     let coin_service = CoinService::new(repo);
                     coin_service.query_token_price(data).await?;
-                    tracing::info!("query coin price success");
                 }
                 CommonTask::QueryQueueResult(data) => {
                     domain::multisig::MultisigQueueDomain::sync_queue_status(&data.id).await?

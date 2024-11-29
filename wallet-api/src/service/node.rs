@@ -136,18 +136,14 @@ impl NodeService {
                 )
                 .await?;
 
-            // tracing::info!("chain_code: {}", chain_code);
             let start = std::time::Instant::now();
-            // tracing::info!("start: {}", start.elapsed().as_millis());
             let block_height = chain_instance
                 .block_num()
                 .await
                 .ok()
                 .map(|h| h as i64)
                 .unwrap_or(-1);
-            // tracing::info!("block_height: {:?}", block_height);
             let delay = (start.elapsed().as_millis() / 2) as u64;
-            // tracing::info!("delay: {}", delay);
             res.push(crate::response_vo::chain::NodeDynData {
                 chain_code: chain_code.to_string(),
                 node_id,

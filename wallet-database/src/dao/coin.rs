@@ -213,8 +213,6 @@ impl CoinEntity {
             sql.push_str(&conditions.join(" AND "));
         }
 
-        tracing::info!("sql: {sql}");
-
         let paginate = Pagination::<Self>::init(page, page_size);
         Ok(paginate.page_v1(exec, &sql).await?)
     }

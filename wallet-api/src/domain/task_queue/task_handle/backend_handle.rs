@@ -100,48 +100,38 @@ impl EndpointHandler for SpecialHandler {
         match endpoint {
             endpoint::DEVICE_INIT => {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
-                tracing::info!("[special handler] device init result: {:?}", res);
                 res?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
                 repo.device_init().await?;
-                tracing::info!("[special handler] device init success");
             }
             endpoint::KEYS_INIT => {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
-                tracing::info!("[special handler] keys init result: {:?}", res);
                 res?;
                 let req: wallet_transport_backend::request::KeysInitReq =
                     wallet_utils::serde_func::serde_from_value(body)?;
-                tracing::info!("[special handler] keys init uid: {}", req.uid);
                 use wallet_database::repositories::wallet::WalletRepoTrait as _;
                 repo.wallet_init(&req.uid).await?;
-                tracing::info!("[special handler] keys init success");
             }
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
                 repo.language_init().await?;
-                tracing::info!("language init success");
             }
             endpoint::ADDRESS_INIT => {
                 let res = backend.post_req_str::<()>(endpoint, &body).await;
-                tracing::info!("address init result: {:?}", res);
                 res?;
                 use wallet_database::repositories::account::AccountRepoTrait as _;
                 let req: wallet_transport_backend::request::AddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body)?;
                 repo.account_init(&req.address, &req.chain_code).await?;
-                tracing::info!("address init success");
             }
             endpoint::TOKEN_CUSTOM_TOKEN_INIT => {
                 let res = backend.post_req_str::<bool>(endpoint, &body).await;
-                tracing::info!("custom token init result: {:?}", res);
                 res?;
 
                 let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
                 let coin_service = crate::service::coin::CoinService::new(repo);
                 coin_service.init_token_price().await?;
-                tracing::info!("custom token init success");
             }
 
             endpoint::TOKEN_QUERY_RATES => {
@@ -151,7 +141,6 @@ impl EndpointHandler for SpecialHandler {
                 let exchange_rate_service =
                     crate::service::exchange_rate::ExchangeRateService::new(repo);
                 exchange_rate_service.init(rates).await?;
-                tracing::info!("token query rates success");
             }
             endpoint::SYS_CONFIG_FIND_CONFIG_BY_KEY => {
                 let req: FindConfigByKey =
@@ -164,14 +153,11 @@ impl EndpointHandler for SpecialHandler {
                         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
                         let app_service = crate::service::app::AppService::new(repo);
                         app_service.set_official_website(res.value).await?;
-                        tracing::info!("set official website success");
                     }
                     _ => {
                         tracing::warn!("unknown key: {}", req.key);
                     }
                 }
-
-                tracing::info!("sys config find config by key success");
             }
 
             _ => {

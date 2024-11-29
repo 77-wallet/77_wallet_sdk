@@ -275,14 +275,6 @@ impl AssetsService {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<AccountChainAssetList, crate::ServiceError> {
-        // tracing::info!("[获取资产列表] 开始获取资产列表");
-        // tracing::info!(
-        //     "[获取资产列表] 账户地址: {:?}, account_id: {:?}, chain_code: {:?}, is_multisig: {:?}",
-        //     address,
-        //     account_id,
-        //     chain_code,
-        //     is_multisig
-        // );
         let mut tx = self.repo;
         let account_addresses = self
             .account_domain
@@ -295,14 +287,8 @@ impl AssetsService {
             )
             .await?;
 
-        tracing::info!("[获取资产列表] 账户地址: {:?}", account_addresses);
-        // let mut account_addresses = account_addresses
-        //     .into_iter()
-        //     .map(|address| address.address)
-        //     .collect::<HashSet<String>>();
         let mut res = AccountChainAssetList::default();
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
-        // tracing::info!("[获取资产列表] 代币汇率: {:?}", token_currencies);
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
             let assets: Vec<AssetsEntity> = tx
@@ -314,15 +300,12 @@ impl AssetsService {
                 )
                 .await?;
             for asset in assets {
-                // tracing::info!("[获取资产列表] 计算前的总资产: {:?}", res);
                 if let Some(existing_asset) = res.iter_mut().find(|a| a.symbol == asset.symbol) {
-                    // tracing::info!("[获取资产列表] 资产已存在， 合并: 资产: {asset:?}");
                     token_currencies
                         .calculate_assets(asset, existing_asset)
                         .await?;
                 } else {
                     let balance = token_currencies.calculate_assets_entity(&asset).await?;
-                    // let balance = (token_currency, &asset).try_into()?;
                     let chain_code = if chain_code.is_none()
                         && let Some(chain) = tx.detail_with_main_symbol(&asset.symbol).await?
                     {
@@ -341,8 +324,6 @@ impl AssetsService {
                     });
                 }
             }
-
-            // tracing::info!("[获取资产列表] 计算后的总资产: {:?}", res);
         }
 
         // 过滤掉multisig的资产
@@ -441,7 +422,6 @@ impl AssetsService {
             .account_domain
             .get_addresses(tx, address, account_id, None, is_multisig)
             .await?;
-        tracing::info!("[remove_coin] accounts: {:?}", accounts);
         let mut assets_ids = Vec::new();
         let mut coin_ids = Vec::new();
         for account in accounts {
@@ -475,12 +455,10 @@ impl AssetsService {
                 is_multisig,
             )
             .await?;
-        tracing::info!("[get_coin_list] account_addresses: {:?}", account_addresses);
         let account_addresses = account_addresses
             .into_iter()
             .map(|address| address.address)
             .collect::<Vec<String>>();
-        tracing::info!("[get_coin_list] account_addresses: {:?}", account_addresses);
         let mut res = self
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)

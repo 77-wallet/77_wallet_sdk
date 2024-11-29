@@ -59,9 +59,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
 
         tokio::spawn(async move {
             let content = domain::app::DeviceDomain::device_content(&device).unwrap();
-            // tracing::info!("device init success, content: {:?}", content);
             let client_id = domain::app::DeviceDomain::client_id_by_device(&device).unwrap();
-            // tracing::info!("device init success, client_id: {:?}", client_id);
             crate::mqtt::init_mqtt_processor(
                 &device.sn,
                 APP_ID,
