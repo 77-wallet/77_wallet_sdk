@@ -422,6 +422,8 @@ impl AssetsService {
             .account_domain
             .get_addresses(tx, address, account_id, None, is_multisig)
             .await?;
+
+        // tracing::info!("remove_coin: {:?}", accounts);
         let mut assets_ids = Vec::new();
         let mut coin_ids = Vec::new();
         for account in accounts {

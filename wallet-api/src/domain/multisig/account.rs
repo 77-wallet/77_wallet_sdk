@@ -230,6 +230,15 @@ impl MultisigDomain {
         Ok(account)
     }
 
+    pub async fn list(
+        pool: &std::sync::Arc<Pool<Sqlite>>,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
+        let accounts = MultisigAccountDaoV1::list(vec![], pool.as_ref())
+            .await
+            .map_err(|e| crate::SystemError::Database(e.into()))?;
+        Ok(accounts)
+    }
+
     pub async fn queue_by_id(
         queue_id: &str,
         pool: &std::sync::Arc<Pool<Sqlite>>,

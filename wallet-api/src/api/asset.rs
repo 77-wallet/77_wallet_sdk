@@ -6,9 +6,19 @@ use crate::service::asset::AssetsService;
 
 impl crate::WalletManager {
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        AssetsService::new(self.repo_factory.resuource_repo())
+            .add_coin(
+                &req.wallet_address,
+                Some(req.account_id),
+                &req.symbol,
+                req.chain_code,
+                None,
+            )
+            .await?
+            .into()
+    }
 
+    pub async fn add_regular_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resuource_repo())
             .add_coin(
                 &req.wallet_address,
@@ -25,9 +35,6 @@ impl crate::WalletManager {
         &self,
         req: crate::request::coin::AddMultisigCoinReq,
     ) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .add_coin(&req.address, None, &req.symbol, None, Some(true))
             .await?
@@ -56,19 +63,20 @@ impl crate::WalletManager {
         account_id: u32,
         symbol: &str,
     ) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
-            .remove_coin(wallet_address, Some(account_id), symbol, Some(false))
+            .remove_coin(wallet_address, Some(account_id), symbol, None)
+            .await?
+            .into()
+    }
+
+    pub async fn remove_regular_coin(&self, address: &str, symbol: &str) -> ReturnType<()> {
+        AssetsService::new(self.repo_factory.resuource_repo())
+            .remove_coin(address, None, symbol, Some(false))
             .await?
             .into()
     }
 
     pub async fn remove_multisig_coin(&self, address: &str, symbol: &str) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .remove_coin(address, None, symbol, Some(true))
             .await?
@@ -237,8 +245,8 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id: 1,
-            symbol: "TRX".to_string(),
-            wallet_address: "0x68182CECe1CE6A382bD6D2e953be0B0840D38A76".to_string(),
+            symbol: "WIN".to_string(),
+            wallet_address: "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F".to_string(),
             chain_code: None,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;
@@ -275,10 +283,10 @@ mod test {
 
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         // let wallet_address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
-        let wallet_address = "0x68a52fCC626b754092Dfc30DECfaf7deB3dAb796";
+        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
         // let symbol = "LTC";
         // let symbol = "BEANS";
-        let symbol = "USDT";
+        let symbol = "ETH";
         let res = wallet_manager.remove_coin(wallet_address, 1, symbol).await;
         tracing::info!("res: {res:?}");
         Ok(())

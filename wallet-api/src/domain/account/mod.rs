@@ -6,7 +6,10 @@ use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
 use crate::{response_vo::account::CreateAccountRes, service::asset::AddressChainCode};
 
-use super::task_queue::{BackendApiTask, Task};
+use super::{
+    multisig::MultisigDomain,
+    task_queue::{BackendApiTask, Task},
+};
 
 pub struct AccountDomain {}
 
@@ -89,6 +92,18 @@ impl AccountDomain {
                     account_addresses.push(AddressChainCode {
                         address: account.address,
                         chain_code: account.chain_code,
+                    });
+                }
+            }
+            let multisig_accounts = MultisigDomain::list(&pool).await?;
+            for multisig_account in multisig_accounts {
+                if !account_addresses.iter().any(|address| {
+                    address.address == multisig_account.address
+                        && address.chain_code == multisig_account.chain_code
+                }) {
+                    account_addresses.push(AddressChainCode {
+                        address: multisig_account.address,
+                        chain_code: multisig_account.chain_code,
                     });
                 }
             }
