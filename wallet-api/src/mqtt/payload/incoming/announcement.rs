@@ -117,14 +117,14 @@ impl BulletinMsg {
                         send_time,
                     };
                     AnnouncementService::new(repo).add(vec![input]).await?;
-                    let data = crate::notify::NotifyEvent::BulletinMsg(self);
-                    crate::notify::FrontendNotifyEvent::new(data).send().await?;
                 }
                 Operation::Delete => {
                     AnnouncementService::new(repo).physical_delete(id).await?;
                 }
             }
         }
+        let data = crate::notify::NotifyEvent::BulletinMsg(self);
+        crate::notify::FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

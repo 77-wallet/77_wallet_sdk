@@ -1,7 +1,7 @@
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
-        config_key::{BLOCK_BROWSER_URL_LIST, OFFICIAL_WEBSITE},
+        config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE, OFFICIAL_WEBSITE},
         ConfigEntity,
     },
     repositories::{
@@ -113,6 +113,7 @@ impl<
     pub async fn language_init(self, language: &str) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
 
+        ConfigDomain::set_config(LANGUAGE, language).await?;
         let device_info = tx.get_device_info().await?;
         if let Some(device_info) = device_info {
             let language_req = wallet_transport_backend::request::LanguageInitReq {

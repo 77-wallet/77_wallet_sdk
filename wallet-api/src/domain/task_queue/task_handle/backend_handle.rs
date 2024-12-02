@@ -116,6 +116,9 @@ impl EndpointHandler for SpecialHandler {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
                 repo.language_init().await?;
+                let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo)
+                    .await?;
             }
             endpoint::ADDRESS_INIT => {
                 let res = backend.post_req_str::<()>(endpoint, &body).await;

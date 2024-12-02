@@ -157,6 +157,18 @@ mod test {
     use anyhow::Result;
 
     #[tokio::test]
+    async fn test_set_language() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { wallet_manager, .. } =
+            setup_test_environment(None, None, false, None).await?;
+        let res = wallet_manager.set_language("ENGLISH").await;
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_get_official_website() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>

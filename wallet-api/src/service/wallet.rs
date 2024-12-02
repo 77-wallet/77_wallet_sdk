@@ -20,6 +20,7 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
+        announcement::AnnouncementDomain,
         assets::AssetsDomain,
         coin::CoinDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
@@ -85,6 +86,7 @@ impl WalletService {
                 lan: language.to_string(),
             };
             backend.language_init(req).await?;
+            AnnouncementDomain::pull_announcement(&mut tx).await?;
         }
 
         Ok(())

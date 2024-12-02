@@ -1,18 +1,20 @@
 use wallet_database::{
-    entities::announcement::{AnnouncementEntity, CreateAnnouncementVo},
+    entities::announcement::AnnouncementEntity,
     pagination::Pagination,
-    repositories::{announcement::AnnouncementRepoTrait, device::DeviceRepoTrait},
+    repositories::{
+        announcement::AnnouncementRepoTrait, ResourcesRepo,
+        TransactionTrait as _,
+    },
 };
-use wallet_transport_backend::request::AnnouncementListReq;
 
-use crate::manager::Context;
+use crate::domain::announcement::AnnouncementDomain;
 
-pub struct AnnouncementService<T: AnnouncementRepoTrait> {
-    repo: T,
+pub struct AnnouncementService {
+    repo: ResourcesRepo,
 }
 
-impl<T: AnnouncementRepoTrait + DeviceRepoTrait> AnnouncementService<T> {
-    pub fn new(repo: T) -> Self {
+impl AnnouncementService {
+    pub fn new(repo: ResourcesRepo) -> Self {
         Self { repo }
     }
 
@@ -28,45 +30,7 @@ impl<T: AnnouncementRepoTrait + DeviceRepoTrait> AnnouncementService<T> {
 
     pub async fn pull_announcement(mut self) -> Result<(), crate::error::ServiceError> {
         let tx = &mut self.repo;
-        let backend = Context::get_global_backend_api()?;
-
-        let list = tx.list().await?;
-
-        if let Some(device) = tx.get_device_info().await?
-            && let Some(uid) = device.uid
-        {
-            let req = AnnouncementListReq::new(uid, 0, 50);
-            let res = backend.announcement_list(req).await?;
-
-            let res_ids: std::collections::HashSet<_> =
-                res.list.iter().map(|info| info.id.to_string()).collect();
-            let to_delete: Vec<_> = list
-                .into_iter()
-                .filter(|item| !res_ids.contains(&item.id))
-                .map(|item| item.id)
-                .collect();
-
-            for id in to_delete {
-                tx.physical_delete(&id).await?;
-            }
-
-            let input = res
-                .list
-                .into_iter()
-                .map(|info| CreateAnnouncementVo {
-                    id: info.id.to_string(),
-                    title: info.i18n.title,
-                    content: info.i18n.content,
-                    language: info.language,
-                    status: 0,
-                    send_time: info.send_time,
-                })
-                .collect();
-            tx.add(input).await?;
-        } else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        }
-
+        AnnouncementDomain::pull_announcement(tx).await?;
         Ok(())
     }
 
