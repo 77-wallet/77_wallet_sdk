@@ -286,7 +286,7 @@ mod test {
         let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
         // let symbol = "LTC";
         // let symbol = "BEANS";
-        let symbol = "ETH";
+        let symbol = "WIN";
         let res = wallet_manager.remove_coin(wallet_address, 1, symbol).await;
         tracing::info!("res: {res:?}");
         Ok(())

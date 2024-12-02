@@ -98,6 +98,19 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         )
     }
 
+    async fn get_coin_assets_in_address_all_status(
+        &mut self,
+        addresses: Vec<String>,
+    ) -> Result<Vec<AssetsEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(
+            executor,
+            AssetsEntity::get_coin_assets_in_address,
+            addresses,
+            None
+        )
+    }
+
     async fn get_coin_assets_in_address(
         &mut self,
         addresses: Vec<String>,
@@ -106,7 +119,8 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(
             executor,
             AssetsEntity::get_coin_assets_in_address,
-            addresses
+            addresses,
+            Some(1)
         )
     }
 

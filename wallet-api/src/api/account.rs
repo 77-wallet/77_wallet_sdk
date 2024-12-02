@@ -4,6 +4,13 @@ use crate::service::account::AccountService;
 use wallet_database::entities::account::AccountEntity;
 
 impl crate::WalletManager {
+    pub async fn switch_account(&self, wallet_address: &str, account_id: u32) -> ReturnType<()> {
+        AccountService::new(self.repo_factory.resuource_repo())
+            .switch_account(wallet_address, account_id)
+            .await?
+            .into()
+    }
+
     pub async fn create_account(
         &self,
         wallet_address: &str,
@@ -164,6 +171,22 @@ impl crate::WalletManager {
 mod test {
     use crate::test::env::{setup_test_environment, TestData};
     use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_switch_account() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { wallet_manager, .. } =
+            setup_test_environment(None, None, false, None).await?;
+        let account = wallet_manager
+            .switch_account("0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F", 2)
+            .await;
+        tracing::info!("[test_switch_account] account: {account:?}");
+        let res = serde_json::to_string(&account).unwrap();
+        tracing::info!("[test_switch_account] account: {res:?}");
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_account_detail() -> Result<()> {

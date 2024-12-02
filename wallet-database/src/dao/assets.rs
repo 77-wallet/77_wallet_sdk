@@ -47,22 +47,40 @@ impl AssetsEntity {
 
     pub async fn get_coin_assets_in_address<'a, E>(
         exec: E,
-
         address: Vec<String>,
+        status: Option<u8>,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(address, "','");
-        let sql = format!(
-            "SELECT name, symbol, decimals, address, chain_code, token_address, protocol, status, balance,is_multisig,
-            created_at, updated_at
-        FROM assets
-        WHERE status = 1 AND address in ('{}');",
-            addresses
+        let mut sql = String::from(
+            "SELECT name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
+            FROM assets"
         );
-        sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
-            .bind(addresses)
+
+        let mut conditions = Vec::new();
+        if !address.is_empty() {
+            let addresses = crate::sqlite::operator::any_in_collection(address, "','");
+            conditions.push(format!(" address IN ('{}')", addresses));
+        }
+
+        if status.is_some() {
+            conditions.push(" status = ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+
+        let mut query = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql);
+
+        if let Some(status_value) = status {
+            query = query.bind(status_value)
+        }
+
+        // 执行查询并返回结果
+        query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
