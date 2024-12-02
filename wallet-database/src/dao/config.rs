@@ -5,8 +5,8 @@ pub struct ConfigDao;
 
 impl ConfigDao {
     pub async fn upsert<'a, E>(
-        key: String,
-        value: String,
+        key: &str,
+        value: &str,
         exec: E,
     ) -> Result<ConfigEntity, crate::Error>
     where
