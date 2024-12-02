@@ -124,9 +124,9 @@ async fn test_generate_phrase() {
 async fn test_show_key() {
     init_test_log();
 
-    let parse = "will match face problem tongue fortune rebuild stool moon assist virtual lounge"
+    let parse = "member diesel marine culture boat differ spirit patient drum fix chunk sadness"
         .to_string();
-    let (_key, seed) = wallet_core::xpriv::phrase_to_master_key(1, &parse, "12345678").unwrap();
+    let (_key, seed) = wallet_core::xpriv::phrase_to_master_key(1, &parse, "1234qwer").unwrap();
 
     let chain_code = "tron";
     let network = wallet_types::chain::network::NetworkKind::Mainnet;

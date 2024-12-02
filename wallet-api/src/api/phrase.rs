@@ -90,6 +90,16 @@ impl crate::WalletManager {
 mod tests {
     use crate::test::env::{setup_test_environment, TestData};
 
+    #[tokio::test]
+    async fn generate_phrase() {
+        let TestData { wallet_manager, .. } = setup_test_environment(None, None, false, None)
+            .await
+            .unwrap();
+
+        let phrase = wallet_manager.generate_phrase(1, 12);
+        println!("{:?}", phrase);
+    }
+
     #[test]
     fn query_phrase() -> Result<(), Box<dyn std::error::Error>> {
         let language_code = 1;

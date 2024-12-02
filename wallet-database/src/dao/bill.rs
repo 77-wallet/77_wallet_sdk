@@ -6,6 +6,7 @@ use crate::{
 };
 use sqlx::{Executor, Pool, Sqlite};
 use std::{collections::HashSet, sync::Arc};
+use wallet_types::constant::chain_code;
 pub struct BillDao;
 
 impl BillDao {
@@ -212,7 +213,10 @@ impl BillDao {
 
         // 一笔代币转账两次账变通知、如果第一次是手续费的通知，symbol 为空，等第二次代币的通知在修改symbol
         // TODO 此处需要优化 不能简单的判断value = 0,在部署多签账号的时候有问题
-        let (symbol, to) = if value == 0.0 && tx_kind == BillKind::Transfer.to_i8() {
+        let (symbol, to) = if value == 0.0
+            && tx_kind == BillKind::Transfer.to_i8()
+            && chain_code == chain_code::TRON
+        {
             ("".to_string(), "".to_string())
         } else {
             (symbol, to)

@@ -208,7 +208,7 @@ impl NewBillEntity {
             tx_kind: BillKind::DeployMultiSign,
             queue_id: "".to_string(),
             block_height: "0".to_string(),
-            notes: "deploy multisig account transaction".to_string(),
+            notes: "".to_string(),
         }
     }
 
