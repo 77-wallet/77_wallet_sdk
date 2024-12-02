@@ -28,6 +28,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     let mut node_service = NodeService::new(repo);
     node_service.init_node_info().await?;
 
+    crate::domain::app::config::ConfigDomain::init_url().await?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut coin_service = CoinService::new(repo);
 

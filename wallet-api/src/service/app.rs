@@ -1,6 +1,9 @@
 use wallet_database::{
     dao::config::ConfigDao,
-    entities::config::ConfigEntity,
+    entities::config::{
+        config_key::{BLOCK_BROWSER_URL_LIST, OFFICIAL_WEBSITE},
+        ConfigEntity,
+    },
     repositories::{
         announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
         system_notification::SystemNotificationRepoTrait, wallet::WalletRepoTrait,
@@ -12,7 +15,10 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::task_queue::{BackendApiTask, Task, Tasks},
+    domain::{
+        app::config::ConfigDomain,
+        task_queue::{BackendApiTask, Task, Tasks},
+    },
     response_vo::app::GetConfigRes,
 };
 
@@ -45,27 +51,40 @@ impl<
         // };
         // let backend = crate::manager::Context::get_global_backend_api()?;
         // let res = backend.find_config_by_key(req).await?;
-        let mut config = crate::config::CONFIG.write().await;
-        config.set_official_website(website);
+        let value = wallet_utils::serde_func::serde_to_string(&website)?;
+        if let Some(official_website) = website {
+            ConfigDomain::set_config(OFFICIAL_WEBSITE, &official_website).await?;
+            let mut config = crate::config::CONFIG.write().await;
+            config.set_official_website(Some(official_website));
+        }
 
         Ok(())
     }
 
     pub async fn get_config(self) -> Result<GetConfigRes, crate::ServiceError> {
-        let config = crate::config::CONFIG.write().await;
+        let config = crate::config::CONFIG.read().await;
         // if config.url().official_website.is_none() {
         //     let official_website = self.app_domain.get_official_website().await.ok();
         //     if let Some(official_website) = official_website {
         //         config.set_official_website(official_website.official_website);
         //     }
         // };
-
+        let url = config.url().clone();
+        drop(config);
+        if url.block_browser_url_list.is_empty() {
+            ConfigDomain::init_block_browser_url_list().await?;
+        }
+        if url.official_website.is_none() {
+            ConfigDomain::init_official_website().await?;
+        }
         let mut tx = self.repo;
         let wallet_list = tx.wallet_list().await?;
         let device_info = tx.get_device_info().await?;
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
         let unread_system_notification_count =
             SystemNotificationRepoTrait::count_unread_status(&mut tx).await?;
+
+        let config = crate::config::CONFIG.read().await;
         Ok(GetConfigRes {
             fiat: config.currency().to_string(),
             wallet_list,
@@ -238,6 +257,8 @@ impl<
                 )
             })
             .collect();
+        let value = wallet_utils::serde_func::serde_to_string(&block_browser_url_list)?;
+        ConfigDomain::set_config(BLOCK_BROWSER_URL_LIST, &value).await?;
         let mut config = crate::config::CONFIG.write().await;
         config.set_block_browser_url(block_browser_url_list);
         Ok(())
@@ -300,7 +321,7 @@ impl<
         let min_config =
             wallet_database::entities::config::MinValueSwitchConfig::try_from(value.clone())?;
 
-        let res = ConfigDao::upsert(key, value, pool.as_ref()).await?;
+        let res = ConfigDao::upsert(&key, &value, pool.as_ref()).await?;
 
         // Report to the backend
         let cx = crate::Context::get_context()?;

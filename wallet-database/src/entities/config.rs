@@ -2,6 +2,8 @@ use sqlx::types::chrono::{DateTime, Utc};
 
 pub mod config_key {
     pub const MIN_VALUE_SWITCH: &str = "min_value_switch";
+    pub const BLOCK_BROWSER_URL_LIST: &str = "block_browser_url_list";
+    pub const OFFICIAL_WEBSITE: &str = "official_website";
 }
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]

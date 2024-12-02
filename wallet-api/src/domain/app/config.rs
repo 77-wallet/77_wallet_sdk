@@ -1,6 +1,9 @@
 use wallet_database::{
     dao::config::ConfigDao,
-    entities::config::{config_key::MIN_VALUE_SWITCH, MinValueSwitchConfig},
+    entities::config::{
+        config_key::{BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, OFFICIAL_WEBSITE},
+        MinValueSwitchConfig,
+    },
 };
 use wallet_transport_backend::response_vo::app::SaveSendMsgAccount;
 
@@ -72,6 +75,47 @@ impl ConfigDomain {
         if let Err(e) = backend.save_send_msg_account(req).await {
             tracing::error!(sn = sn, "report min value error:{} ", e);
         }
+        Ok(())
+    }
+
+    pub async fn set_config(key: &str, value: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        ConfigDao::upsert(key, value, pool.as_ref()).await?;
+
+        Ok(())
+    }
+
+    pub async fn init_official_website() -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let official_website = ConfigDao::find_by_key(OFFICIAL_WEBSITE, pool.as_ref()).await?;
+        if let Some(official_website) = official_website {
+            Self::set_config(OFFICIAL_WEBSITE, &official_website.value).await?;
+            let mut config = crate::config::CONFIG.write().await;
+            config.set_official_website(Some(official_website.value));
+        }
+        Ok(())
+    }
+
+    pub async fn init_block_browser_url_list() -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let block_browser_url_list =
+            ConfigDao::find_by_key(BLOCK_BROWSER_URL_LIST, pool.as_ref()).await?;
+        if let Some(block_browser_url_list) = block_browser_url_list {
+            Self::set_config(BLOCK_BROWSER_URL_LIST, &block_browser_url_list.value).await?;
+            let mut config = crate::config::CONFIG.write().await;
+            let value = wallet_utils::serde_func::serde_from_str(&block_browser_url_list.value)?;
+
+            config.set_block_browser_url(value);
+        }
+
+        Ok(())
+    }
+
+    pub async fn init_url() -> Result<(), crate::ServiceError> {
+        Self::init_official_website().await?;
+        Self::init_block_browser_url_list().await?;
+
         Ok(())
     }
 }
