@@ -175,7 +175,7 @@ mod test {
         let base_url = crate::consts::BASE_URL;
 
         let req = LanguageInitReq {
-            client_id: "104.2.0.125C00".to_string(),
+            client_id: "6f88a37aca2384cec6029d5983fac0e2".to_string(),
             lan: "CHINESE_SIMPLIFIED".to_string(),
         };
         let res = BackendApi::new(Some(base_url.to_string()), None)

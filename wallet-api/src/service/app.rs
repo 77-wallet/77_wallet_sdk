@@ -51,7 +51,6 @@ impl<
         // };
         // let backend = crate::manager::Context::get_global_backend_api()?;
         // let res = backend.find_config_by_key(req).await?;
-        let value = wallet_utils::serde_func::serde_to_string(&website)?;
         if let Some(official_website) = website {
             ConfigDomain::set_config(OFFICIAL_WEBSITE, &official_website).await?;
             let mut config = crate::config::CONFIG.write().await;
@@ -116,8 +115,10 @@ impl<
         ConfigDomain::set_config(LANGUAGE, language).await?;
         let device_info = tx.get_device_info().await?;
         if let Some(device_info) = device_info {
+            let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device_info)?;
+
             let language_req = wallet_transport_backend::request::LanguageInitReq {
-                client_id: device_info.sn,
+                client_id,
                 lan: language.to_string(),
             };
             let language_init_task_data = crate::domain::task_queue::BackendApiTaskData::new(

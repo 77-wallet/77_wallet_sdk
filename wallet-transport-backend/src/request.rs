@@ -300,16 +300,16 @@ impl LanguageInitReq {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnouncementListReq {
-    pub uid: String,
+    pub client_id: String,
     pub order_column: String,
     pub page_num: u32,
     pub page_size: u32,
 }
 
 impl AnnouncementListReq {
-    pub fn new(uid: String, page_num: u32, page_size: u32) -> Self {
+    pub fn new(client_id: String, page_num: u32, page_size: u32) -> Self {
         Self {
-            uid,
+            client_id,
             order_column: "create_time".to_string(),
             page_num,
             page_size,

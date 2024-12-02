@@ -33,7 +33,7 @@ mod test {
 
         let req = AnnouncementListReq {
             // uid: "626e71f65a6eccc7c51f2a8295cae861".to_string(),
-            uid: "71512c7dcca484ad9a03a0f7798e7bdd45602891ed464e0a541657137328d92d".to_string(),
+            client_id: "6f88a37aca2384cec6029d5983fac0e2".to_string(),
             order_column: "create_time".to_string(),
             page_num: 0,
             page_size: 1000,
