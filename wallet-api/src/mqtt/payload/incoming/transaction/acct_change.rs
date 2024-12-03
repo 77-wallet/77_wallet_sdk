@@ -164,11 +164,12 @@ impl AcctChange {
         {
             let mut asset_list = Vec::new();
 
-            if transfer_type == 0 {
-                asset_list.push(address.to_string());
-            } else if transfer_type == 1 && multisig_tx {
-                asset_list.push(from_addr.to_string());
-            }
+            asset_list.push(address.to_string());
+            // if transfer_type == 0 {
+            //     asset_list.push(address.to_string());
+            // } else if transfer_type == 1 && multisig_tx {
+            //     asset_list.push(from_addr.to_string());
+            // }
 
             tracing::warn!("[AcctChange] asset_list:{asset_list:?}");
             if !asset_list.is_empty() {

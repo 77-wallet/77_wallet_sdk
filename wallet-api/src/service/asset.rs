@@ -287,6 +287,8 @@ impl AssetsService {
             )
             .await?;
 
+        // tracing::info!("account_addresses: {:?}", account_addresses);
+
         let mut res = AccountChainAssetList::default();
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
         // 根据账户地址、网络查询币资产
@@ -313,7 +315,7 @@ impl AssetsService {
                     } else {
                         asset.chain_code
                     };
-                    tracing::warn!("[获取资产列表] 链码: {:?}", chain_code);
+                    // tracing::warn!("[获取资产列表] 链码: {:?}", chain_code);
                     res.push(AccountChainAsset {
                         chain_code,
                         symbol: asset.symbol,
