@@ -59,14 +59,7 @@ impl CoinService {
 
         let accounts = self
             .account_domain
-            .get_addresses(
-                tx,
-                address,
-                account_id,
-                chain_code.clone(),
-                is_multisig,
-                false,
-            )
+            .get_addresses(tx, address, account_id, chain_code.clone(), is_multisig)
             .await?;
 
         let addresses = accounts

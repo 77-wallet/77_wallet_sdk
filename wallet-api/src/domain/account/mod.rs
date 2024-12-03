@@ -6,10 +6,7 @@ use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
 use crate::{response_vo::account::CreateAccountRes, service::asset::AddressChainCode};
 
-use super::{
-    multisig::MultisigDomain,
-    task_queue::{BackendApiTask, Task},
-};
+use super::task_queue::{BackendApiTask, Task};
 
 pub struct AccountDomain {}
 
@@ -31,7 +28,6 @@ impl AccountDomain {
         account_id: Option<u32>,
         chain_code: Option<String>,
         is_multisig: Option<bool>,
-        just_upgrade_multisig: bool,
     ) -> Result<Vec<AddressChainCode>, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let mut account_addresses = Vec::new();
@@ -94,20 +90,6 @@ impl AccountDomain {
                         address: account.address,
                         chain_code: account.chain_code,
                     });
-                }
-            }
-            if !just_upgrade_multisig {
-                let multisig_accounts = MultisigDomain::list(&pool).await?;
-                for multisig_account in multisig_accounts {
-                    if !account_addresses.iter().any(|address| {
-                        address.address == multisig_account.address
-                            && address.chain_code == multisig_account.chain_code
-                    }) {
-                        account_addresses.push(AddressChainCode {
-                            address: multisig_account.address,
-                            chain_code: multisig_account.chain_code,
-                        });
-                    }
                 }
             }
         }
