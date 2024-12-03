@@ -220,20 +220,24 @@ impl AccountService {
             }
         }
 
-        let accounts = tx.list().await?;
+        // let accounts = tx.list().await?;
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        let mut device_bind_address_req =
-            wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
-        for account in accounts {
-            device_bind_address_req.push(&account.chain_code, &account.address);
-        }
+        // let mut device_bind_address_req =
+        //     wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
+        // for account in accounts {
+        //     device_bind_address_req.push(&account.chain_code, &account.address);
+        // }
 
-        let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
-            &device_bind_address_req,
-        )?;
+        let device_bind_address_task_data =
+            domain::app::DeviceDomain::gen_device_bind_address_task_data(&mut tx, &device.sn)
+                .await?;
+
+        // let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+        //     wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
+        //     &device_bind_address_req,
+        // )?;
         let task =
             domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
         Tasks::new()

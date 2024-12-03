@@ -386,22 +386,10 @@ impl WalletService {
                 &device_delete_req,
             )?;
 
-            let accounts = tx.list().await?;
-            // let Some(device) = tx.get_device_info().await? else {
-            //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-            // };
-            let mut device_bind_address_req =
-                wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
-            for account in accounts {
-                device_bind_address_req.push(&account.chain_code, &account.address);
-            }
+            let device_bind_address_task_data =
+                domain::app::DeviceDomain::gen_device_bind_address_task_data(tx, &device.sn)
+                    .await?;
 
-            let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
-                &device_bind_address_req,
-            )?;
-
-            //
             let _ = domain::app::config::ConfigDomain::report_backend(&device.sn).await;
 
             domain::task_queue::Tasks::new()
@@ -774,6 +762,18 @@ impl WalletService {
         MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
         MultisigQueueDomain::recover_all_queue_data(&wallet.uid).await?;
 
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        let device_bind_address_task_data =
+            domain::app::DeviceDomain::gen_device_bind_address_task_data(&mut tx, &device.sn)
+                .await?;
+        domain::task_queue::Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                device_bind_address_task_data,
+            )))
+            .send()
+            .await?;
         Ok(())
     }
 

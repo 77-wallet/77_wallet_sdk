@@ -48,6 +48,29 @@ impl DeviceDomain {
 
         Ok(DeviceDomain::client_id_by_identifier(&identifier))
     }
+
+    pub(crate) async fn gen_device_bind_address_task_data(
+        repo: &mut wallet_database::repositories::ResourcesRepo,
+        sn: &str,
+    ) -> Result<super::task_queue::BackendApiTaskData, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let mut device_bind_address_req =
+            wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
+        let accounts = wallet_database::repositories::account::AccountRepoTrait::list(repo).await?;
+        let multisig_accounts = super::multisig::MultisigDomain::list(&pool).await?;
+        for account in accounts {
+            device_bind_address_req.push(&account.chain_code, &account.address);
+        }
+        for multisig_account in multisig_accounts {
+            device_bind_address_req.push(&multisig_account.chain_code, &multisig_account.address);
+        }
+        let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
+            &device_bind_address_req,
+        )?;
+        Ok(device_bind_address_task_data)
+    }
 }
 
 #[cfg(test)]
