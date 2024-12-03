@@ -20,7 +20,6 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        announcement::AnnouncementDomain,
         assets::AssetsDomain,
         coin::CoinDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
@@ -78,15 +77,21 @@ impl WalletService {
             let config = crate::config::CONFIG.read().await;
             let language = config.language();
 
-            let backend = crate::manager::Context::get_global_backend_api()?;
-
             let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
-            let req = wallet_transport_backend::request::LanguageInitReq {
+            let language_req = wallet_transport_backend::request::LanguageInitReq {
                 client_id,
                 lan: language.to_string(),
             };
-            backend.language_init(req).await?;
-            AnnouncementDomain::pull_announcement(&mut tx).await?;
+            let language_init_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
+                &language_req,
+            )?;
+            Tasks::new()
+                .push(Task::BackendApi(BackendApiTask::BackendApi(
+                    language_init_task_data,
+                )))
+                .send()
+                .await?;
         }
 
         Ok(())
