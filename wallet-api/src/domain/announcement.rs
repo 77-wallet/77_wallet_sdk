@@ -46,7 +46,8 @@ impl AnnouncementDomain {
         } else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         }
-
+        let data = crate::notify::NotifyEvent::FetchBulletinMsg;
+        crate::notify::FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
 }
