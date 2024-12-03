@@ -229,10 +229,13 @@ impl Context {
         if token_expired {
             let backend_api = cx.backend_api.clone();
 
-            let new_token_response = backend_api
-                .rpc_token(&cx.device.client_id)
-                .await
-                .map_err(|_| crate::BusinessError::Chain(crate::ChainError::NodeToken))?;
+            let new_token_response =
+                backend_api
+                    .rpc_token(&cx.device.client_id)
+                    .await
+                    .map_err(|e| {
+                        crate::BusinessError::Chain(crate::ChainError::NodeToken(e.to_string()))
+                    })?;
 
             let new_token = RpcToken {
                 token: new_token_response,

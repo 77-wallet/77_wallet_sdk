@@ -66,7 +66,7 @@ mod test {
     #[tokio::test]
     async fn test_delegate_is_open() {
         init_test_log();
-        let base_url = "https://api.puke668.top";
+        let base_url = BASE_URL;
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .delegate_is_open()

@@ -153,7 +153,7 @@
       "chain_code": "btc",
       "main_symbol": "BTC",
       "node_name": "BThird-Party Node",
-      "http_url": "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api/v2/",
+      "http_url": "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api/v2",
       "rpc_url": "https://rpc.ankr.com/btc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb",
       "protocols": [],
       "network": "mainnet"

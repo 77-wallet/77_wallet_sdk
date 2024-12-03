@@ -19,7 +19,7 @@ pub enum ChainError {
     #[error("The chain does not support this operation")]
     NotSupportChain,
     #[error("get node token err pelase change node!")]
-    NodeToken,
+    NodeToken(String),
 }
 
 impl ChainError {
@@ -34,7 +34,7 @@ impl ChainError {
             ChainError::AmountLessThanMin => 3507,
             ChainError::AddressNotInit => 3508,
             ChainError::NotSupportChain => 3509,
-            ChainError::NodeToken => 3510,
+            ChainError::NodeToken(_) => 3510,
         }
     }
 }
