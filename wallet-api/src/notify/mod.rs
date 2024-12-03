@@ -51,6 +51,7 @@ pub enum NotifyEvent {
     Init(crate::mqtt::payload::incoming::init::Init),
     BulletinMsg(crate::mqtt::payload::incoming::announcement::BulletinMsg),
 
+    FetchBulletinMsg,
     MqttConnected,
     MqttDisconnected,
     KeepAlive,
@@ -79,6 +80,8 @@ impl NotifyEvent {
             NotifyEvent::TokenPriceChange(_) => "TOKEN_PRICE_CHANGE".to_string(),
             NotifyEvent::Init(_) => "INIT".to_string(),
             NotifyEvent::BulletinMsg(_) => "BULLETIN_MSG".to_string(),
+
+            NotifyEvent::FetchBulletinMsg => "FETCH_BULLETIN_MSG".to_string(),
             NotifyEvent::MqttConnected => "MQTT_CONNECTED".to_string(),
             NotifyEvent::MqttDisconnected => "MQTT_DISCONNECTED".to_string(),
             NotifyEvent::KeepAlive => "KEEP_ALIVE".to_string(),

@@ -49,3 +49,20 @@ impl DeviceDomain {
         Ok(DeviceDomain::client_id_by_identifier(&identifier))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_device_identifier() {
+        let identifier = DeviceDomain::device_identifier(
+            "14ae14461d0891116eb85ef447ecb28dc22781d987b5cb0f75f8d3bcca18ebed",
+            "ANDROID",
+        );
+
+        let client_id = DeviceDomain::client_id_by_identifier(&identifier);
+
+        println!("identifier:{},client_id:{}", identifier, client_id);
+    }
+}
