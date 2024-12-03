@@ -284,6 +284,7 @@ impl AssetsService {
                 account_id,
                 chain_code.clone(),
                 is_multisig,
+                true,
             )
             .await?;
 
@@ -360,6 +361,7 @@ impl AssetsService {
                 account_id,
                 chain_code.clone(),
                 is_multisig,
+                false,
             )
             .await?;
 
@@ -422,7 +424,7 @@ impl AssetsService {
         let tx = &mut self.repo;
         let accounts = self
             .account_domain
-            .get_addresses(tx, address, account_id, None, is_multisig)
+            .get_addresses(tx, address, account_id, None, is_multisig, false)
             .await?;
 
         // tracing::info!("remove_coin: {:?}", accounts);
@@ -457,6 +459,7 @@ impl AssetsService {
                 account_id,
                 chain_code.clone(),
                 is_multisig,
+                false,
             )
             .await?;
         let account_addresses = account_addresses

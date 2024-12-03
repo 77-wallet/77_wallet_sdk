@@ -83,6 +83,7 @@ impl crate::WalletManager {
             .into()
     }
 
+    /// 获取普通账户已添加的币列表
     pub async fn get_coin_list(
         &self,
         address: &str,
