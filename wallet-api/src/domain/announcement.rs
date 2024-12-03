@@ -10,10 +10,9 @@ impl AnnouncementDomain {
 
         let list = AnnouncementRepoTrait::list(repo).await?;
 
-        if let Some(device) = DeviceRepoTrait::get_device_info(repo).await?
-            && let Some(uid) = device.uid
-        {
-            let req = wallet_transport_backend::request::AnnouncementListReq::new(uid, 0, 50);
+        if let Some(device) = DeviceRepoTrait::get_device_info(repo).await? {
+            let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;
+            let req = wallet_transport_backend::request::AnnouncementListReq::new(client_id, 0, 50);
             let res = backend.announcement_list(req).await?;
 
             let res_ids: std::collections::HashSet<_> =
