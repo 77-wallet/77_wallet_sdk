@@ -792,4 +792,63 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_eth() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { .. } = setup_test_environment(None, None, false, None).await?;
+
+        use rumqttc::v5::mqttbytes::v5::Publish;
+        use serde_json::json;
+
+        // 模拟 JSON 数据
+        let json_data = json!({
+            "msgId": "321321",
+            "appId": "191e35f7e0c29077f08",
+            "bizType": "ACCT_CHANGE",
+            "body": {
+                "blockHeight": 21328166,
+                "chainCode": "eth",
+                "fromAddr": "0x148805B49819371EEF9A822f7F880b42Cf67834D",
+                "isMultisig": 1,
+                "status": true,
+                "symbol": "ETH",
+                "toAddr": "0x8F1E2a99CB688587c02B8b836Ba9Ca39dC60D63B",
+                "token": "",
+                "transactionFee": 0.000515902158014156,
+                "transferType": 0,
+                "txHash": "0xba1bbff453e350a47a4d41b395b4c3367ecf68b75bf41c1ee57030e413ec6d5b",
+                "txKind": 1,
+                "value": 0.000025,
+            },
+            "clientId": "e0c7f98723a4227477968524c580af6c",
+            "deviceType": "IOS",
+            "sn": "7eeff112cb87de43c54f2fa4b44664a84e469c19c64ab87625857267b5d063c0"
+        });
+
+        // 将 JSON 数据转换为 payload
+        let payload = serde_json::to_vec(&json_data).expect("Failed to serialize JSON");
+
+        // 创建模拟的 Publish 数据包
+        let publish = Publish {
+            dup: false,
+            qos: rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
+            retain: false,
+            topic: "wallet/order".into(),
+            pkid: 0,
+            payload: payload.into(),
+            properties: Default::default(),
+        };
+
+        // 调用 exec_incoming_publish 并断言结果
+        let result = exec_incoming_publish(&publish).await;
+        assert!(
+            result.is_ok(),
+            "exec_incoming_publish failed: {:?}",
+            result.err()
+        );
+
+        Ok(())
+    }
 }

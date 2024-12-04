@@ -345,7 +345,7 @@ impl AcctChange {
                     let notif = Notification::new_transaction_notification(
                         AccountType::Multisig,
                         &multisig_account.name,
-                        from_addr,
+                        address,
                         value,
                         symbol,
                         &transaction_status,
