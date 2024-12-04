@@ -58,7 +58,11 @@ impl DeviceDomain {
         let mut device_bind_address_req =
             wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
         let accounts = wallet_database::repositories::account::AccountRepoTrait::list(repo).await?;
-        let multisig_accounts = super::multisig::MultisigDomain::list(&pool).await?;
+        let multisig_accounts =
+            wallet_database::dao::multisig_account::MultisigAccountDaoV1::find_owner_on_chain_account(&*pool)
+                .await
+                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+
         for account in accounts {
             device_bind_address_req.push(&account.chain_code, &account.address);
         }

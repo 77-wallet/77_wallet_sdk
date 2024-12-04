@@ -401,6 +401,22 @@ impl MultisigAccountDaoV1 {
         Ok(result)
     }
 
+    pub async fn find_owner_on_chain_account<'a, E>(
+        exec: E,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from multisig_account where 
+            is_del = 0 and status = ? and pay_status = 1 and owner in (1, 2)";
+
+        let result = sqlx::query_as(sql)
+            .bind(MultisigAccountStatus::OnChain.to_i8())
+            .fetch_all(exec)
+            .await?;
+        Ok(result)
+    }
+
     pub async fn logic_del_multisig_account<'a, E>(
         id: &str,
         exec: E,
