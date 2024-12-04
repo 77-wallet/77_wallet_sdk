@@ -33,7 +33,8 @@ impl ChainService {
         main_symbol: &str,
     ) -> Result<(), crate::error::ServiceError> {
         let input = ChainCreateVo::new(name, chain_code, node_id, protocols, main_symbol);
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
 
         let _res = tx.add(input).await?;
 
@@ -47,7 +48,8 @@ impl ChainService {
         chain_code: &str,
         node_id: &str,
     ) -> Result<(), crate::error::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         tx.set_chain_node(chain_code, node_id).await?;
 
         tx.commit_transaction().await?;
@@ -56,8 +58,8 @@ impl ChainService {
     }
 
     pub async fn get_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
-
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         let res = tx.get_chain_list().await?;
         tx.commit_transaction().await?;
 
@@ -73,7 +75,8 @@ impl ChainService {
     pub async fn get_chain_list_with_node_info(
         self,
     ) -> Result<Vec<ChainWithNode>, crate::error::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         let res = tx.get_chain_node_list().await?;
 
         tx.commit_transaction().await?;
@@ -84,7 +87,8 @@ impl ChainService {
         self,
         chain_code: &str,
     ) -> Result<Option<ChainEntity>, crate::error::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         let res = ChainRepoTrait::detail(&mut tx, chain_code).await?;
 
         tx.commit_transaction().await?;

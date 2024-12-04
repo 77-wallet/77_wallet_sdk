@@ -362,7 +362,8 @@ impl AccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
 
         // Check if this is the last account
         let account_count = tx.count_unique_account_ids(wallet_address).await?;

@@ -80,6 +80,33 @@ impl TransactionTrait for ResourcesRepo {
             Ok(ExecutorWrapper::Pool(&self.db_pool))
         }
     }
+
+    async fn begin_transaction(&mut self) -> Result<(), crate::Error>
+    where
+        Self: Sized,
+    {
+        let conn = self.get_db_pool();
+        let tx = conn
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        self.insert_transaction(tx);
+        Ok(())
+    }
+
+    async fn commit_transaction(&mut self) -> Result<(), crate::Error>
+    where
+        Self: Sized,
+    {
+        if let Some(transaction) = self.transaction.take() {
+            transaction
+                .commit()
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))?;
+        }
+
+        Ok(())
+    }
 }
 
 pub enum ExecutorWrapper<'a> {
@@ -108,30 +135,30 @@ impl<'a> ExecutorWrapper<'a> {
 
 #[async_trait::async_trait]
 pub trait TransactionTrait: std::marker::Send {
-    async fn begin_transaction(mut self) -> Result<Self, crate::Error>
+    async fn begin_transaction(&mut self) -> Result<(), crate::Error>
     where
-        Self: Sized,
-    {
-        let conn = self.get_db_pool();
-        let tx = conn
-            .begin()
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-        self.insert_transaction(tx);
-        Ok(self)
-    }
+        Self: Sized;
+    // {
+    //     let conn = self.get_db_pool();
+    //     let tx = conn
+    //         .begin()
+    //         .await
+    //         .map_err(|e| crate::Error::Database(e.into()))?;
+    //     self.insert_transaction(tx);
+    //     Ok(self)
+    // }
 
-    async fn commit_transaction(mut self) -> Result<(), crate::Error>
+    async fn commit_transaction(&mut self) -> Result<(), crate::Error>
     where
-        Self: Sized,
-    {
-        let conn = self.get_transaction()?;
-        conn.commit()
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        Self: Sized;
+    // {
+    //     let conn = self.get_transaction()?;
+    //     conn.commit()
+    //         .await
+    //         .map_err(|e| crate::Error::Database(e.into()))?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     fn get_mut_transaction(
         &mut self,

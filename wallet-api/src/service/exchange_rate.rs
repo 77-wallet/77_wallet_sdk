@@ -43,8 +43,8 @@ impl ExchangeRateService {
         self,
         rates: wallet_transport_backend::response_vo::coin::TokenRates,
     ) -> Result<(), crate::ServiceError> {
-        let tx = self.repo;
-        let mut tx = tx.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
 
         for rate in rates.list.into_iter() {
             tx.upsert(&rate.target_currency, &rate.name, rate.rate)

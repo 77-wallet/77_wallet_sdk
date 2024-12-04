@@ -554,7 +554,8 @@ impl WalletService {
     }
 
     pub async fn logic_delete(self, address: &str) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         let wallet = tx.wallet_detail_by_address(address).await?;
         WalletRepoTrait::reset(&mut tx, address).await?;
         AccountRepoTrait::reset(&mut tx, address).await?;
@@ -602,7 +603,8 @@ impl WalletService {
     }
 
     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         let wallet = tx.wallet_detail_by_address(address).await?;
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
         AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
@@ -679,7 +681,8 @@ impl WalletService {
     }
 
     pub async fn logic_reset(self) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         let device = tx.get_device_info().await?;
 
         WalletRepoTrait::reset_all_wallet(&mut tx).await?;

@@ -463,8 +463,8 @@ mod tests {
             .await
             .unwrap();
         let dirs = crate::manager::Context::get_global_dirs()?;
-        let wallet_tree =
-            wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+
+        wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
 
         Ok(())
     }

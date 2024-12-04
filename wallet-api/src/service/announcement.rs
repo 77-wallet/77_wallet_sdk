@@ -19,7 +19,8 @@ impl AnnouncementService {
         self,
         input: Vec<wallet_database::entities::announcement::CreateAnnouncementVo>,
     ) -> Result<(), crate::error::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         tx.add(input).await?;
         tx.commit_transaction().await?;
         Ok(())
@@ -42,7 +43,8 @@ impl AnnouncementService {
     }
 
     pub async fn read(self, id: Option<&str>) -> Result<(), crate::error::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         tx.read(id).await?;
         tx.commit_transaction().await?;
         Ok(())
@@ -57,7 +59,8 @@ impl AnnouncementService {
     }
 
     pub async fn physical_delete(self, id: &str) -> Result<(), crate::error::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let mut tx = self.repo;
+        tx.begin_transaction().await?;
         tx.physical_delete(id).await?;
         tx.commit_transaction().await?;
         Ok(())
