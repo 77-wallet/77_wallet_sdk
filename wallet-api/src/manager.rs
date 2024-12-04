@@ -1,7 +1,6 @@
 use crate::domain::task_queue::{BackendApiTask, InitializationTask, Task};
 use crate::notify::FrontendNotifyEvent;
 use crate::service::coin::CoinService;
-use crate::service::device::DeviceService;
 use crate::service::node::NodeService;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -128,22 +127,21 @@ impl Context {
         mqtt_url: &str,
         frontend_notify: FrontendNotifySender,
     ) -> Result<Context, crate::ServiceError> {
-        let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy())
-            .await
-            .map_err(|e| crate::ServiceError::System(e.into()))?;
+        let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
 
-        let identify = crate::domain::app::DeviceDomain::device_identifier(sn, device_type);
-        let client_id = crate::domain::app::DeviceDomain::client_id_by_identifier(&identify);
-
+        let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         let header_opt = Some(HashMap::from([("clientId".to_string(), client_id.clone())]));
         let backend_api = wallet_transport_backend::api::BackendApi::new(None, header_opt)?;
 
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
-        let mut config = crate::config::CONFIG.write().await;
+
+        {
+            let mut config = crate::config::CONFIG.write().await;
+            config.set_backend_url(Some(backend_api.base_url.clone()));
+            config.set_mqtt_url(Some(mqtt_url.to_string()));
+        }
 
         let oss_client = wallet_transport::client::OssClient::new();
-        config.set_backend_url(Some(backend_api.base_url.clone()));
-        config.set_mqtt_url(Some(mqtt_url.to_string()));
 
         // 创建 TaskManager 实例
         let task_manager = crate::domain::task_queue::task_manager::TaskManager::new();
@@ -285,8 +283,8 @@ impl WalletManager {
         sender: Option<UnboundedSender<FrontendNotifyEvent>>,
     ) -> Result<WalletManager, crate::ServiceError> {
         let dir = Dirs::new(root_dir)?;
-        let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
 
+        let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
         let context = init_context(sn, device_type, dir, &mqtt_url, sender).await?;
 
         let pool = context.sqlite_context.get_pool().unwrap();
@@ -312,14 +310,12 @@ impl WalletManager {
     }
 
     pub async fn init_log(level: Option<&str>) -> Result<(), crate::ServiceError> {
-        let pool = Context::get_global_sqlite_pool()?;
-        let dirs = Context::get_global_dirs()?;
-        let log_dir = dirs.get_log_dir();
-        let repo = RepositoryFactory::repo(pool.clone());
-        let device_service = DeviceService::new(repo);
-        if let Some(device) = device_service.get_device_info().await? {
-            wallet_utils::log::set_sn_code(&device.sn);
-        }
+        let context = Context::get_context()?;
+
+        let log_dir = context.dirs.get_log_dir();
+        let sn = &context.device.sn;
+
+        wallet_utils::log::set_sn_code(&sn);
 
         Ok(wallet_utils::log::file::init_log(
             log_dir.to_string_lossy().as_ref(),

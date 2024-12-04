@@ -129,11 +129,7 @@ impl TaskManager {
                                 wallet_database::factory::RepositoryFactory::repo(pool.clone());
                             let _ = repo.task_failed(&task_id).await;
                         };
-                        tracing::error!(
-                            "[task_process] task name: [{:?}`{task_id}`], task process error: {}",
-                            task.task_name,
-                            e
-                        );
+                        tracing::error!(?task, "[task_process]a error: {}", e)
                     }
                     let mut running = running_tasks_clone.lock().await;
                     running.remove(&task_id);
@@ -149,7 +145,9 @@ impl TaskManager {
 
         let id = task_entity.id.clone();
         let task: Task = task_entity.try_into()?;
-        let backend_api = crate::manager::Context::get_global_backend_api().unwrap();
+        let backend_api = crate::manager::Context::get_global_backend_api()?;
+
+        // update task running status
         repo.task_running(&id).await?;
 
         match task {
