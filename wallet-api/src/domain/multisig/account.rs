@@ -283,6 +283,22 @@ impl MultisigDomain {
     }
 
     pub async fn physical_delete_account(
+        members: &[wallet_database::entities::multisig_member::MultisigMemberEntity],
+        pool: std::sync::Arc<Pool<Sqlite>>,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
+        let mut res = Vec::new();
+        for member in members {
+            let mut multisig_account =
+                Self::physical_delete_multisig_data(&member.account_id, pool.clone()).await?;
+            if let Some(multisig_account) = multisig_account.pop() {
+                res.push(multisig_account);
+            }
+        }
+
+        Ok(res)
+    }
+
+    pub async fn physical_delete_wallet_account(
         members: wallet_database::entities::multisig_member::MultisigMemberEntities,
         uid: &str,
         pool: std::sync::Arc<Pool<Sqlite>>,
@@ -308,38 +324,45 @@ impl MultisigDomain {
             if members.iter().any(|m| m.account_id == account_id) {
                 continue;
             }
-
             let mut multisig_account =
-                MultisigAccountDaoV1::physical_del_multisig_account(&account_id, &*pool)
-                    .await
-                    .map_err(|e| {
-                        crate::ServiceError::Database(wallet_database::Error::Database(e))
-                    })?;
+                Self::physical_delete_multisig_data(&account_id, pool.clone()).await?;
             if let Some(multisig_account) = multisig_account.pop() {
                 res.push(multisig_account);
             }
-            // member也不能删除,因为可能还有其他的账户参与了多签
-            wallet_database::dao::multisig_member::MultisigMemberDaoV1::physical_del_multisig_member(
-            &account_id,
-            &*pool,
-                )
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-
-            // queue也不能删除,因为可能还有其他的账户参与了多签
-            let queues = MultisigQueueDaoV1::physical_del_multisig_queue(&account_id, &*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
-                .into_iter()
-                .map(|queue| queue.id)
-                .collect();
-            // signatures也不能删除,因为可能还有其他的账户参与了多签
-            wallet_database::dao::multisig_signatures::MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(&*pool,queues, )
-            .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
         }
 
         Ok(res)
+    }
+
+    async fn physical_delete_multisig_data(
+        account_id: &str,
+        pool: std::sync::Arc<Pool<Sqlite>>,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
+        let multisig_account =
+            MultisigAccountDaoV1::physical_del_multisig_account(&account_id, &*pool)
+                .await
+                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+
+        // member也不能删除,因为可能还有其他的账户参与了多签
+        wallet_database::dao::multisig_member::MultisigMemberDaoV1::physical_del_multisig_member(
+            &account_id,
+            &*pool,
+        )
+        .await
+        .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+
+        // queue也不能删除,因为可能还有其他的账户参与了多签
+        let queues = MultisigQueueDaoV1::physical_del_multisig_queue(&account_id, &*pool)
+            .await
+            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
+            .into_iter()
+            .map(|queue| queue.id)
+            .collect();
+        // signatures也不能删除,因为可能还有其他的账户参与了多签
+        wallet_database::dao::multisig_signatures::MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(&*pool,queues, )
+    .await
+    .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+        Ok(multisig_account)
     }
 
     pub async fn physical_delete_all_account(
