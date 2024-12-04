@@ -607,7 +607,7 @@ impl WalletService {
         tx.begin_transaction().await?;
         let wallet = tx.wallet_detail_by_address(address).await?;
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
-        AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
+        let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
@@ -629,7 +629,6 @@ impl WalletService {
         } else {
             None
         };
-        let accounts = tx.get_account_list_by_wallet_address(Some(address)).await?;
         tx.update_uid(uid.as_deref()).await?;
         tx.commit_transaction().await?;
         let pool = crate::Context::get_global_sqlite_pool()?;
