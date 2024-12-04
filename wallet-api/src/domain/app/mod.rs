@@ -1,4 +1,6 @@
 pub mod config;
+use wallet_database::entities::account::AccountEntity;
+
 use crate::service::device::APP_ID;
 
 pub struct AppDomain<T> {
@@ -55,14 +57,14 @@ impl DeviceDomain {
     }
 
     pub(crate) async fn gen_device_bind_address_task_data(
-        repo: &mut wallet_database::repositories::ResourcesRepo,
         sn: &str,
     ) -> Result<super::task_queue::BackendApiTaskData, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let mut device_bind_address_req =
             wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
-        let accounts = wallet_database::repositories::account::AccountRepoTrait::list(repo).await?;
+
+        let accounts = AccountEntity::account_list(&*pool, None, None, None, vec![], None).await?;
         let multisig_accounts =
             wallet_database::dao::multisig_account::MultisigAccountDaoV1::find_owner_on_chain_account(&*pool)
                 .await

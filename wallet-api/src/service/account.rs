@@ -230,8 +230,7 @@ impl AccountService {
         // }
 
         let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data(&mut tx, &device.sn)
-                .await?;
+            domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
         // let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
         //     wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,

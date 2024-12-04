@@ -1,4 +1,7 @@
-use crate::domain;
+use crate::domain::{
+    self,
+    task_queue::{BackendApiTask, Task},
+};
 use sqlx::{Pool, Sqlite};
 use wallet_database::{
     dao::{
@@ -8,6 +11,7 @@ use wallet_database::{
     entities::{
         assets::AssetsEntity,
         coin::CoinMultisigStatus,
+        device::DeviceEntity,
         multisig_account::{
             MultiAccountOwner, MultisigAccountData, MultisigAccountEntity,
             MultisigAccountPayStatus, MultisigAccountStatus, NewMultisigAccountEntity,
@@ -115,6 +119,19 @@ impl MultisigDomain {
                 };
             }
         }
+
+        let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+
+        let device_bind_address_task_data =
+            domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
+        domain::task_queue::Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                device_bind_address_task_data,
+            )))
+            .send()
+            .await?;
         Ok(())
     }
 

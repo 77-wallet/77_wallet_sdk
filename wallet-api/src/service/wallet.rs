@@ -388,8 +388,7 @@ impl WalletService {
             )?;
 
             let device_bind_address_task_data =
-                domain::app::DeviceDomain::gen_device_bind_address_task_data(tx, &device.sn)
-                    .await?;
+                domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
             let _ = domain::app::config::ConfigDomain::report_backend(&device.sn).await;
 
@@ -760,18 +759,6 @@ impl WalletService {
         MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
         MultisigQueueDomain::recover_all_queue_data(&wallet.uid).await?;
 
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
-        let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data(&mut tx, &device.sn)
-                .await?;
-        domain::task_queue::Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_bind_address_task_data,
-            )))
-            .send()
-            .await?;
         Ok(())
     }
 
