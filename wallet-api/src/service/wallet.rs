@@ -9,7 +9,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::{
     consts::endpoint,
-    request::{DeviceBindAddressReq, DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
+    request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
@@ -20,6 +20,7 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
+        app::DeviceDomain,
         assets::AssetsDomain,
         coin::CoinDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
@@ -605,7 +606,9 @@ impl WalletService {
         let wallet = tx.wallet_detail_by_address(address).await?;
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
         AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
-        let device = tx.get_device_info().await?;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(Some(address));
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
@@ -629,17 +632,7 @@ impl WalletService {
         tx.commit_transaction().await?;
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        if let Some(device) = device
-            && let Some(wallet) = wallet
-        {
-            let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-
-            for member in members.0 {
-                MultisigDomain::physical_delete_account(&member.account_id, pool.clone()).await?;
-            }
-
+        if let Some(wallet) = wallet {
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
             let device_delete_task = domain::task_queue::Task::BackendApi(
                 domain::task_queue::BackendApiTask::BackendApi(
@@ -647,18 +640,22 @@ impl WalletService {
                 ),
             );
 
-            let mut req = DeviceBindAddressReq::new(&device.sn);
-            for account in accounts {
-                req.push(&account.chain_code, &account.address);
-            }
+            let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool)
+                .await
+                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+
+            let multisig_accounts =
+                MultisigDomain::physical_delete_account(members, &wallet.uid, pool.clone()).await?;
+
+            let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
+                &accounts,
+                multisig_accounts,
+                &device.sn,
+            )
+            .await?;
 
             let device_unbind_address_task = domain::task_queue::Task::BackendApi(
-                domain::task_queue::BackendApiTask::BackendApi(
-                    domain::task_queue::BackendApiTaskData::new(
-                        endpoint::DEVICE_UNBIND_ADDRESS,
-                        &req,
-                    )?,
-                ),
+                domain::task_queue::BackendApiTask::BackendApi(device_unbind_address_task),
             );
             Tasks::new()
                 .push(device_delete_task)
@@ -708,7 +705,8 @@ impl WalletService {
     }
 
     pub async fn physical_reset(self) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo.begin_transaction().await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let mut tx = self.repo;
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
@@ -716,32 +714,28 @@ impl WalletService {
         WalletRepoTrait::physical_delete_all(&mut tx).await?;
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
 
-        tx.commit_transaction().await?;
-
         let req = DeviceDeleteReq::new(&device.sn, &[]);
+        let device_delete_task =
+            domain::task_queue::BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
+        let multisig_accounts = MultisigDomain::physical_delete_all_account(pool).await?;
 
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?,
-            ));
+        let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
+            &accounts,
+            multisig_accounts,
+            &device.sn,
+        )
+        .await?;
 
-        let mut req = DeviceBindAddressReq::new(&device.sn);
-        for account in accounts {
-            req.push(&account.chain_code, &account.address);
-        }
-
-        let device_unbind_address_task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData::new(endpoint::DEVICE_UNBIND_ADDRESS, &req)?,
-            ));
         Tasks::new()
-            .push(task)
-            .push(device_unbind_address_task)
+            .push(domain::task_queue::Task::BackendApi(
+                domain::task_queue::BackendApiTask::BackendApi(device_delete_task),
+            ))
+            .push(domain::task_queue::Task::BackendApi(
+                domain::task_queue::BackendApiTask::BackendApi(device_unbind_address_task),
+            ))
             .send()
             .await?;
-        let pool = crate::Context::get_global_sqlite_pool()?;
 
-        MultisigDomain::physical_delete_all_account(pool).await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;

@@ -1,6 +1,9 @@
 use super::multisig_signatures::MultisigSignatureEntity;
 use sqlx::types::chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
 use wallet_types::valueobject::AddressPubkey;
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -21,6 +24,19 @@ pub struct MultisigMemberEntity {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
 pub struct MultisigMemberEntities(pub Vec<MultisigMemberEntity>);
+
+impl Deref for MultisigMemberEntities {
+    type Target = Vec<MultisigMemberEntity>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for MultisigMemberEntities {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl MultisigMemberEntities {
     pub fn get_owner_pubkey(&self) -> Vec<AddressPubkey> {

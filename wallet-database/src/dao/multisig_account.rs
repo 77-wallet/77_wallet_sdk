@@ -417,13 +417,16 @@ impl MultisigAccountDaoV1 {
     pub async fn physical_del_multisig_account<'a, E>(
         id: &str,
         exec: E,
-    ) -> Result<(), crate::DatabaseError>
+    ) -> Result<Vec<MultisigAccountEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "DELETE FROM multisig_account WHERE id = $1".to_string();
-        sqlx::query(&sql).bind(id).execute(exec).await?;
-        Ok(())
+        let sql = "DELETE FROM multisig_account WHERE id = $1 RETURNING *".to_string();
+
+        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigAccountEntity>(&sql)
+            .bind(id)
+            .fetch_all(exec)
+            .await?)
     }
 
     pub async fn physical_del_multi_multisig_account<'a, E>(

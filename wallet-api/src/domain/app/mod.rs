@@ -71,6 +71,26 @@ impl DeviceDomain {
         )?;
         Ok(device_bind_address_task_data)
     }
+
+    pub(crate) async fn gen_device_unbind_all_address_task_data(
+        accounts: &Vec<wallet_database::entities::account::AccountEntity>,
+        multisig_accounts: Vec<wallet_database::entities::multisig_account::MultisigAccountEntity>,
+        sn: &str,
+    ) -> Result<super::task_queue::BackendApiTaskData, crate::ServiceError> {
+        let mut device_unbind_address_req =
+            wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
+        for account in accounts {
+            device_unbind_address_req.push(&account.chain_code, &account.address);
+        }
+        for multisig_account in multisig_accounts {
+            device_unbind_address_req.push(&multisig_account.chain_code, &multisig_account.address);
+        }
+        let device_unbind_address_task = crate::domain::task_queue::BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::DEVICE_UNBIND_ADDRESS,
+            &device_unbind_address_req,
+        )?;
+        Ok(device_unbind_address_task)
+    }
 }
 
 #[cfg(test)]

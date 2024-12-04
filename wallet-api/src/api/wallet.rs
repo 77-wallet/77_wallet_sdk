@@ -286,7 +286,7 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
 
-        let wallet_address = "0x25d438EF0C15FbA678B73C9D0b943cF7Fe581730";
+        let wallet_address = "0x82C818D352BAf6cC7dd007B89E5CC82B4DAF2c9c";
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         let res = wallet_manager.physical_delete_wallet(wallet_address).await;
         tracing::info!("res: {res:?}");
