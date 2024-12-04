@@ -91,4 +91,5 @@ pub enum TaskName {
     // common
     QueryCoinPrice,
     QueryQueueResult,
+    RecoverMultisigAccountData,
 }

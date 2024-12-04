@@ -86,6 +86,7 @@ pub(crate) enum MqttTask {
 pub(crate) enum CommonTask {
     QueryCoinPrice(TokenQueryPriceReq),
     QueryQueueResult(QueueTaskEntity),
+    RecoverMultisigAccountData(String),
 }
 
 pub(crate) struct TaskItem {
@@ -261,6 +262,7 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     wallet_utils::serde_func::serde_from_str::<RpcChange>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::RpcChange(req))))
             }
+            // common
             TaskName::QueryCoinPrice => {
                 let req = wallet_utils::serde_func::serde_from_str::<TokenQueryPriceReq>(
                     &value.request_body,
@@ -273,6 +275,9 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 )?;
                 Ok(Task::Common(CommonTask::QueryQueueResult(req)))
             }
+            TaskName::RecoverMultisigAccountData => Ok(Task::Common(
+                CommonTask::RecoverMultisigAccountData(value.request_body.clone()),
+            )),
         }
     }
 }
@@ -314,6 +319,7 @@ impl Task {
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(_) => TaskName::QueryCoinPrice,
                 CommonTask::QueryQueueResult(_) => TaskName::QueryQueueResult,
+                CommonTask::RecoverMultisigAccountData(_) => TaskName::RecoverMultisigAccountData,
             },
         }
     }
@@ -373,6 +379,9 @@ impl Task {
                 }
                 CommonTask::QueryQueueResult(queue) => {
                     Some(wallet_utils::serde_func::serde_to_string(queue)?)
+                }
+                CommonTask::RecoverMultisigAccountData(recover_multisig_account_data) => {
+                    Some(recover_multisig_account_data.to_string())
                 }
             },
         })

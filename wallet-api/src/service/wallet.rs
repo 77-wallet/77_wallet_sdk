@@ -24,7 +24,7 @@ use crate::{
         assets::AssetsDomain,
         coin::CoinDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
-        task_queue::{BackendApiTask, Task, Tasks},
+        task_queue::{BackendApiTask, CommonTask, Task, Tasks},
         wallet::WalletDomain,
     },
     response_vo::{
@@ -406,6 +406,7 @@ impl WalletService {
                 .push(Task::BackendApi(BackendApiTask::BackendApi(
                     device_bind_address_task_data,
                 )))
+                .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
                 .send()
                 .await?;
         }

@@ -207,6 +207,7 @@ impl TaskManager {
                         let _ = app_service.set_fiat(&device_info.currency).await;
                     }
                 }
+
                 InitializationTask::RecoverQueueData => {
                     MultisigQueueDomain::recover_all_uid_queue_data().await?;
                 }
@@ -237,6 +238,10 @@ impl TaskManager {
                 }
                 CommonTask::QueryQueueResult(data) => {
                     domain::multisig::MultisigQueueDomain::sync_queue_status(&data.id).await?
+                }
+                CommonTask::RecoverMultisigAccountData(uid) => {
+                    domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid).await?;
+                    MultisigQueueDomain::recover_all_queue_data(&uid).await?;
                 }
             },
         }
