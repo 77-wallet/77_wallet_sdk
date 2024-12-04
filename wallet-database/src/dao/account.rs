@@ -95,6 +95,22 @@ impl AccountEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn list_in_address<'a, E>(
+        executor: E,
+        addresses: &[String],
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let addresses = crate::sqlite::operator::any_in_collection(addresses, "','");
+        let sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
+
+        sqlx::query_as::<sqlx::Sqlite, AccountEntity>(&sql)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn account_list<'a, E>(
         executor: E,
         wallet_address: Option<&str>,

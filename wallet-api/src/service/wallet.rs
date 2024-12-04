@@ -647,7 +647,8 @@ impl WalletService {
                 .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
             let multisig_accounts =
-                MultisigDomain::physical_delete_account(members, &wallet.uid, pool.clone()).await?;
+                MultisigDomain::physical_delete_wallet_account(members, &wallet.uid, pool.clone())
+                    .await?;
 
             let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
                 &accounts,

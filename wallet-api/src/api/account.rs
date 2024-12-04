@@ -237,7 +237,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let TestData {
             wallet_manager,
-            wallet_env,
+            wallet_env: _,
             ..
         } = setup_test_environment(None, None, false, None).await?;
 
@@ -248,15 +248,18 @@ mod test {
         let derivation_path = None;
         // let index = Some(2147478971);
         // let index = Some(2);
-        let index = Some(-2);
+        let index = Some(2);
         // let index = Some(i32::MIN);
         // let address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
-        let address = "0x25d438EF0C15FbA678B73C9D0b943cF7Fe581730";
+        let address = "0x2b3f8269917dE02b02f5ac22fe1B4291Ed94D10a";
+
+        // let password = wallet_env.password;
+        let password = "qwer1234";
         let account = wallet_manager
             .create_account(
                 address,
-                &wallet_env.password,
-                Some(wallet_env.password.to_string()),
+                &password,
+                Some(password.to_string()),
                 derivation_path,
                 index,
                 "牛逼",
@@ -303,7 +306,7 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
 
         let account_id = 1;
-        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
+        let wallet_address = "0x2b3f8269917dE02b02f5ac22fe1B4291Ed94D10a";
         let account = wallet_manager
             .physical_delete_account(wallet_address, account_id)
             .await;

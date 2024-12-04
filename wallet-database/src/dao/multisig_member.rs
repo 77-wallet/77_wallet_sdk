@@ -192,6 +192,53 @@ impl MultisigMemberDaoV1 {
         Ok(MultisigMemberEntities(res))
     }
 
+    pub async fn list_by_addresses<'a, E>(
+        addresses: &[String],
+        exec: E,
+    ) -> Result<MultisigMemberEntities, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let addresses = crate::sqlite::operator::any_in_collection(addresses, "','");
+
+        let sql = format!(
+            "SELECT *
+            FROM multisig_member
+            WHERE address IN ('{}')",
+            addresses
+        );
+        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql)
+            .fetch_all(exec)
+            .await?;
+        Ok(MultisigMemberEntities(res))
+    }
+
+    pub async fn list_by_account_ids_not_addresses<'a, E>(
+        account_ids: &[String],
+        addresses: &[String],
+        exec: E,
+    ) -> Result<MultisigMemberEntities, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let addresses = crate::sqlite::operator::any_in_collection(addresses, "','");
+        let account_ids = crate::sqlite::operator::any_in_collection(account_ids, "','");
+
+        let sql = format!(
+            "SELECT *
+            FROM multisig_member
+            WHERE account_id IN ('{}')
+            AND address NOT IN ('{}')",
+            account_ids, addresses
+        );
+
+        tracing::warn!("sql: {}", sql);
+        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql)
+            .fetch_all(exec)
+            .await?;
+        Ok(MultisigMemberEntities(res))
+    }
+
     pub async fn logic_del_multisig_member<'a, E>(
         id: &str,
         exec: E,
