@@ -183,7 +183,7 @@ impl AcctChange {
             // 如果是多签交易
             if multisig_tx {
                 let assets_id = AssetsId {
-                    address: from_addr.to_string(),
+                    address: address.to_string(),
                     chain_code: chain_code.to_string(),
                     symbol: symbol.to_string(),
                 };
