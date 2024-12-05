@@ -113,6 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let account_name = "账户";
     let start_time = std::time::Instant::now();
+
     let _res = wallet_manager
         .create_wallet(
             language_code,

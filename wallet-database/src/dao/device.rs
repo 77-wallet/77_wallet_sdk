@@ -45,7 +45,7 @@ impl DeviceEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn update_password<'a, E>(exec: E, password: &str) -> Result<(), crate::Error>
+    pub async fn update_password<'a, E>(exec: E, password: Option<&str>) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

@@ -17,13 +17,6 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn create_password(&self, encrypted_password: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resuource_repo())
-            .create_password(encrypted_password)
-            .await?
-            .into()
-    }
-
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resuource_repo())
             .switch_wallet(wallet_address)
@@ -285,6 +278,20 @@ mod test {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn test_encrypt_password() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { wallet_manager, .. } =
+            setup_test_environment(None, None, false, None).await?;
+
+        // let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
+        let password = "123456";
+        let res = wallet_manager.encrypt_password(password).await;
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
     #[tokio::test]
     async fn test_logic_delete_wallet() -> Result<()> {
         wallet_utils::init_test_log();
