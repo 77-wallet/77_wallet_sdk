@@ -60,6 +60,46 @@ impl WalletService {
         }
     }
 
+    pub(crate) async fn encrypt_password(
+        mut self,
+        password: &str,
+    ) -> Result<String, crate::ServiceError> {
+        let Some(device) = self.repo.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+
+        let encrypted_password =
+            wallet_utils::pbkdf2_string(password, &format!("{}salt", device.sn), 100000, 32)?;
+        Ok(encrypted_password)
+    }
+
+    pub(crate) async fn create_password(
+        self,
+        encrypted_password: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let mut tx = self.repo;
+        tx.update_password(encrypted_password).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn validate_password(
+        mut self,
+        encrypted_password: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let Some(device) = self.repo.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        let Some(password) = device.password else {
+            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
+        };
+
+        if password != encrypted_password {
+            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
+        }
+
+        Ok(())
+    }
+
     pub(crate) async fn switch_wallet(
         self,
         wallet_address: &str,

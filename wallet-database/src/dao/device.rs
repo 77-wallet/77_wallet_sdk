@@ -45,6 +45,19 @@ impl DeviceEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn update_password<'a, E>(exec: E, password: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "UPDATE device SET password = ?";
+        sqlx::query(sql)
+            .bind(password)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn language_init<'a, E>(exec: E) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

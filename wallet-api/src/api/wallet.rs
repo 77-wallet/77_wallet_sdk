@@ -3,6 +3,27 @@ use crate::response_vo::wallet::{CreateWalletRes, ResetRootRes};
 use crate::service::wallet::WalletService;
 
 impl crate::WalletManager {
+    pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
+        WalletService::new(self.repo_factory.resuource_repo())
+            .encrypt_password(password)
+            .await?
+            .into()
+    }
+
+    pub async fn validate_password(&self, encrypted_password: &str) -> ReturnType<()> {
+        WalletService::new(self.repo_factory.resuource_repo())
+            .validate_password(encrypted_password)
+            .await?
+            .into()
+    }
+
+    pub async fn create_password(&self, encrypted_password: &str) -> ReturnType<()> {
+        WalletService::new(self.repo_factory.resuource_repo())
+            .create_password(encrypted_password)
+            .await?
+            .into()
+    }
+
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resuource_repo())
             .switch_wallet(wallet_address)

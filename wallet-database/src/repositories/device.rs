@@ -20,6 +20,11 @@ pub trait DeviceRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, DeviceEntity::update_currency, currency)
     }
 
+    async fn update_password(&mut self, password: &str) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, DeviceEntity::update_password, password)
+    }
+
     async fn update_uid(&mut self, uid: Option<&str>) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, DeviceEntity::update_uid, uid)

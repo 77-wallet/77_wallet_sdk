@@ -8,6 +8,10 @@ pub enum WalletError {
     AlreadyExist,
     #[error("Wallet not exist")]
     NotFound,
+    #[error("Password incorrect")]
+    PasswordIncorrect,
+    #[error("Password not set")]
+    PasswordNotSet,
 }
 
 impl WalletError {
@@ -15,6 +19,8 @@ impl WalletError {
         match self {
             WalletError::AlreadyExist => 3100,
             WalletError::NotFound => 3101,
+            WalletError::PasswordIncorrect => 3102,
+            WalletError::PasswordNotSet => 3103,
         }
     }
 }
