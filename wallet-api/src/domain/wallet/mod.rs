@@ -4,6 +4,8 @@ use wallet_database::repositories::{
 
 use crate::request::wallet::ResetRootReq;
 
+const DEFAULT_SALT: &str = "salt";
+
 pub struct WalletDomain {}
 impl Default for WalletDomain {
     fn default() -> Self {
@@ -13,6 +15,35 @@ impl Default for WalletDomain {
 impl WalletDomain {
     pub fn new() -> Self {
         Self {}
+    }
+
+    pub(crate) fn encrypt_password(
+        password: &str,
+        salt: &str,
+    ) -> Result<String, crate::ServiceError> {
+        let encrypted_password = wallet_utils::pbkdf2_string(
+            password,
+            &format!("{}{}", salt, DEFAULT_SALT),
+            100000,
+            32,
+        )?;
+        Ok(encrypted_password)
+    }
+
+    pub(crate) fn validate_password(
+        device: &wallet_database::entities::device::DeviceEntity,
+        password: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let encrypted_password = Self::encrypt_password(password, &device.sn)?;
+
+        let Some(pw) = &device.password else {
+            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
+        };
+
+        if pw != &encrypted_password {
+            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
+        }
+        Ok(())
     }
 
     pub(crate) fn get_seed_wallet(

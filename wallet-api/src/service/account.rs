@@ -101,7 +101,10 @@ impl AccountService {
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
-
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        WalletDomain::validate_password(&device, wallet_password)?;
         // 根据钱包地址查询是否有钱包
         let wallet = tx
             .wallet_detail_by_address(wallet_address)
@@ -220,9 +223,7 @@ impl AccountService {
         }
 
         // let accounts = tx.list().await?;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
+
         // let mut device_bind_address_req =
         //     wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
         // for account in accounts {
@@ -466,6 +467,21 @@ impl AccountService {
         // let dirs = crate::manager::Context::get_global_dirs()?;
         let tx = &mut self.repo;
         let account_list = tx.list().await?;
+
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        let old_encrypted_password = WalletDomain::encrypt_password(old_password, &device.sn)?;
+
+        if let Some(password) = &device.password {
+            if password != &old_encrypted_password {
+                return Err(
+                    crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
+                );
+            }
+        }
+        let new_encrypted_password = WalletDomain::encrypt_password(new_password, &device.sn)?;
+        tx.update_password(Some(&new_encrypted_password)).await?;
 
         let wallet_list = tx.wallet_list().await?;
 

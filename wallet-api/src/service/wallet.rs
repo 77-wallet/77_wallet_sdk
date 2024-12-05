@@ -68,18 +68,8 @@ impl WalletService {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let encrypted_password =
-            wallet_utils::pbkdf2_string(password, &format!("{}salt", device.sn), 100000, 32)?;
+        let encrypted_password = WalletDomain::encrypt_password(password, &device.sn)?;
         Ok(encrypted_password)
-    }
-
-    pub(crate) async fn create_password(
-        self,
-        encrypted_password: &str,
-    ) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo;
-        tx.update_password(encrypted_password).await?;
-        Ok(())
     }
 
     pub(crate) async fn validate_password(
@@ -278,6 +268,23 @@ impl WalletService {
         derive_password: Option<String>,
     ) -> Result<CreateWalletRes, crate::ServiceError> {
         let tx = &mut self.repo;
+
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+
+        let encrypted_pw = WalletDomain::encrypt_password(wallet_password, &device.sn)?;
+        // 如果有密码，就校验，否则更新密码
+        if let Some(password) = &device.password {
+            if password != &encrypted_pw {
+                return Err(
+                    crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
+                );
+            }
+        } else {
+            tx.update_password(Some(&encrypted_pw)).await?;
+        }
+
         let dirs = crate::manager::Context::get_global_dirs()?;
 
         let wallet_keystore::api::RootInfo {
@@ -388,67 +395,65 @@ impl WalletService {
         Tasks::new().push(task).send().await?;
         tx.update_uid(Some(&uid)).await?;
 
-        if let Ok(Some(device)) = tx.get_device_info().await {
-            let config = crate::config::CONFIG.read().await;
-            let language = config.language();
+        let config = crate::config::CONFIG.read().await;
+        let language = config.language();
 
-            let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
+        let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
 
-            let language_req = LanguageInitReq::new(&client_id, language);
+        let language_req = LanguageInitReq::new(&client_id, language);
 
-            let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-                &uid,
-                &device.sn,
-                Some(client_id),
-                device.app_id,
-                Some(device.device_type),
-                wallet_name,
-            );
-            let keys_init_task_data = domain::task_queue::BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::KEYS_INIT,
-                &keys_init_req,
-            )?;
+        let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+            &uid,
+            &device.sn,
+            Some(client_id),
+            device.app_id,
+            Some(device.device_type),
+            wallet_name,
+        );
+        let keys_init_task_data = domain::task_queue::BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::KEYS_INIT,
+            &keys_init_req,
+        )?;
 
-            let language_init_task_data = domain::task_queue::BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
-                &language_req,
-            )?;
+        let language_init_task_data = domain::task_queue::BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
+            &language_req,
+        )?;
 
-            let uids = tx
-                .uid_list()
-                .await?
-                .into_iter()
-                .map(|uid| uid.0)
-                .collect::<Vec<String>>();
-            let device_delete_req = DeviceDeleteReq::new(&device.sn, &uids);
+        let uids = tx
+            .uid_list()
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect::<Vec<String>>();
+        let device_delete_req = DeviceDeleteReq::new(&device.sn, &uids);
 
-            let device_delete_task_data = domain::task_queue::BackendApiTaskData::new(
-                endpoint::DEVICE_DELETE,
-                &device_delete_req,
-            )?;
+        let device_delete_task_data = domain::task_queue::BackendApiTaskData::new(
+            endpoint::DEVICE_DELETE,
+            &device_delete_req,
+        )?;
 
-            let device_bind_address_task_data =
-                domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
+        let device_bind_address_task_data =
+            domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
-            let _ = domain::app::config::ConfigDomain::report_backend(&device.sn).await;
+        let _ = domain::app::config::ConfigDomain::report_backend(&device.sn).await;
 
-            domain::task_queue::Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    keys_init_task_data,
-                )))
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    language_init_task_data,
-                )))
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    device_delete_task_data,
-                )))
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    device_bind_address_task_data,
-                )))
-                .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
-                .send()
-                .await?;
-        }
+        domain::task_queue::Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                keys_init_task_data,
+            )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                language_init_task_data,
+            )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                device_delete_task_data,
+            )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                device_bind_address_task_data,
+            )))
+            .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
+            .send()
+            .await?;
 
         // let accounts = tx.get_account_list_by_wallet_address(Some(address)).await?;
         // tokio::spawn(async move {
@@ -753,6 +758,8 @@ impl WalletService {
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
+
+        tx.update_password(None).await?;
 
         WalletRepoTrait::physical_delete_all(&mut tx).await?;
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
