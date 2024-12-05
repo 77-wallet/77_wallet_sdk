@@ -18,7 +18,7 @@ wallet-api = { version = "0.1.0", default-features = false, path = "wallet-api",
     "test_net",
 ] }
 wallet-database = { version = "0.1.0", default-features = false, path = "wallet-database" }
-wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
+wallet-transport-backend = { version = "0.1.0", default-features = true, path = "wallet-transport-backend" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 
 wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "4585ac55d69d6d1675eaf72cd748518e1f015fb4" }
