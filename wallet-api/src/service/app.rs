@@ -297,7 +297,7 @@ impl<
         Ok(())
     }
 
-    pub async fn mqtt_resubscribe(&self) -> Result<(), crate::ServiceError> {
+    pub async fn mqtt_resubscribe(self) -> Result<(), crate::ServiceError> {
         // 获取全局已订阅的主题
         let global_topics = crate::manager::Context::get_global_mqtt_topics()?;
         let global_topics = global_topics.write().await;

@@ -596,7 +596,7 @@ impl MultisigAdapter {
         queue: &MultisigQueueEntity,
         assets: &AssetsEntity,
         backend: &wallet_transport_backend::api::BackendApi,
-        sign_count: i64,
+        sign_list: Vec<String>,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
         let currency = crate::config::CONFIG.read().await;
@@ -611,7 +611,12 @@ impl MultisigAdapter {
 
         match self {
             Self::Ethereum(chain) => {
+                let pool = crate::manager::Context::get_global_sqlite_pool()?;
                 let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
+                let multisig_account =
+                    domain::multisig::MultisigDomain::account_by_address(&queue.from_addr, &pool)
+                        .await?;
+
                 let gas_oracle = domain::chain::transaction::ChainTransaction::gas_oracle(
                     &queue.chain_code,
                     &chain.provider,
@@ -624,7 +629,12 @@ impl MultisigAdapter {
                     &queue.to_addr,
                     value,
                 )?
-                .with_token(assets.token_address())?;
+                .with_token(assets.token_address())?
+                .exec_params(
+                    &multisig_account.initiator_addr,
+                    queue.raw_data.clone(),
+                    sign_list.join(""),
+                )?;
 
                 let fee = chain.estimate_gas(params).await?;
                 let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
@@ -668,6 +678,7 @@ impl MultisigAdapter {
                 CommonFeeDetails::new(fee, token_currency, currency).to_json_str()
             }
             Self::Tron(chain) => {
+                let signature_num = sign_list.len() as u8;
                 let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
 
                 let memo = if queue.notes.is_empty() {
@@ -685,7 +696,7 @@ impl MultisigAdapter {
                     )?;
 
                     chain
-                        .contract_fee(&queue.from_addr, sign_count as u8, params)
+                        .contract_fee(&queue.from_addr, signature_num, params)
                         .await?
                 } else {
                     let memo = if queue.notes.is_empty() {
@@ -705,7 +716,7 @@ impl MultisigAdapter {
                         .simulate_simple_fee(
                             &queue.from_addr,
                             &queue.to_addr,
-                            sign_count as u8,
+                            signature_num,
                             params,
                         )
                         .await?

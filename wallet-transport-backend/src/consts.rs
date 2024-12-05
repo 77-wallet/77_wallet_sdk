@@ -43,7 +43,7 @@ pub const BASE_URL: &str = "https://api.puke668.top";
 #[cfg(feature = "test")]
 pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
 
-// 开发环境
+//开发环境
 // #[cfg(not(feature = "test"))]
 // pub const BASE_URL: &str = "https://api.puke668.top";
 // #[cfg(not(feature = "test"))]

@@ -114,7 +114,7 @@ async fn test_sign_transaction() {
 async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "169234572050042880".to_owned();
+    let queue_id = "203256774709612544".to_owned();
     let fee = wallet_manager
         .estimate_multisig_transfer_fee(queue_id)
         .await;

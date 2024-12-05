@@ -70,6 +70,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
                 ),
                 crate::mqtt::wrap_handle_eventloop,
             )
+            .await
             .unwrap();
         });
 

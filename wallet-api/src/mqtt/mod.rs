@@ -16,9 +16,7 @@ pub(crate) static MQTT_PROCESSOR: once_cell::sync::Lazy<
     once_cell::sync::OnceCell<MqttAsyncClient>,
 > = once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
 
-pub fn init_mqtt_processor<'a>(
-    // service: &crate::service::Service,
-    // cx: std::sync::Arc<wallet_database::SqliteContext>,
+pub async fn init_mqtt_processor<'a>(
     username: &str,
     password: &str,
     user_property: user_property::UserProperty,
@@ -36,27 +34,12 @@ pub fn init_mqtt_processor<'a>(
                 .build()?;
 
         let cli = client.client();
-
         let eventloop = MqttEventLoop::new(eventloop);
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async { eventloop.process(tx, cli, handle_eventloop).await })
-                .unwrap();
-        });
+        tokio::spawn(async move { eventloop.process(tx, cli, handle_eventloop).await });
 
         let cli = client.client();
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async {
-                exec_event(rx, cli).await.unwrap();
-            });
-        });
+        tokio::spawn(async move { exec_event(rx, cli).await });
+
         Ok(client)
     })
 }

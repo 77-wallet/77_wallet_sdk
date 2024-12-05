@@ -371,7 +371,8 @@ impl MultisigTransactionService {
         .await?;
 
         // 签名数
-        let sign_count = repo.get_signed_count(queue_id).await?;
+        let signs = repo.get_signed_list(queue_id).await?;
+        let sign_list = signs.get_order_sign_str();
 
         let instance =
             domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(&queue.chain_code)
@@ -385,7 +386,7 @@ impl MultisigTransactionService {
                 &queue,
                 &assets,
                 backend,
-                sign_count,
+                sign_list,
                 main_coin.symbol.as_str(),
             )
             .await?;
