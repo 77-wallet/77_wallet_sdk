@@ -123,16 +123,20 @@ impl TaskManager {
                     } // 释放锁
 
                     let running_tasks_clone = Arc::clone(&running_tasks);
-                    if let Err(e) = Self::once_handle(&task).await {
-                        if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
-                            let mut repo =
-                                wallet_database::factory::RepositoryFactory::repo(pool.clone());
-                            let _ = repo.task_failed(&task_id).await;
-                        };
-                        tracing::error!(?task, "[task_process]a error: {}", e)
-                    }
-                    let mut running = running_tasks_clone.lock().await;
-                    running.remove(&task_id);
+
+                    // TODO 验证
+                    tokio::spawn(async move {
+                        if let Err(e) = Self::once_handle(&task).await {
+                            if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                                let mut repo =
+                                    wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                                let _ = repo.task_failed(&task_id).await;
+                            };
+                            tracing::error!(?task, "[task_process]a error: {}", e)
+                        }
+                        let mut running = running_tasks_clone.lock().await;
+                        running.remove(&task_id);
+                    });
                 }
             }
         });

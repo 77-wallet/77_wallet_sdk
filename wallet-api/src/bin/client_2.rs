@@ -41,10 +41,9 @@ async fn get_manager() -> WalletManager {
 
 async fn create_wallet(manager: &WalletManager, create: bool) {
     if create {
-        let phrase =
-            "other phrase banana execute acquire scorpion amused route garage close hole barely";
+        let phrase = "empty depth sorry grunt innocent deer unique whip visit quantum phrase water";
 
-        let salt = "123456a!";
+        let salt = "12345qwe";
         manager
             .create_wallet(1, phrase, salt, "test", "账户", true, "123456", None)
             .await;

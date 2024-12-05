@@ -59,12 +59,12 @@ async fn test_create_transfer() {
 
     let password = "123456".to_string();
     let params = TransferParams {
-        from: "0xd2fC4383d6E8A2177Ac93D9f291f6dc98f6895c9".to_owned(),
-        to: "0x3EC161C02Cd5a49EE8657947DC99DA58D1259aA1".to_owned(),
+        from: "0x8F1E2a99CB688587c02B8b836Ba9Ca39dC60D63B".to_owned(),
+        to: "0x148805B49819371EEF9A822f7F880b42Cf67834D".to_owned(),
         value: "0.001".to_owned(),
         expiration: Some(10),
-        chain_code: "bnb".to_owned(),
-        symbol: "BNB".to_owned(),
+        chain_code: "eth".to_owned(),
+        symbol: "ETH".to_owned(),
         password,
         notes: Some("salary".to_string()),
     };
