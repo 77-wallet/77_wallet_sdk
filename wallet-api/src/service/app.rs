@@ -2,7 +2,7 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE, OFFICIAL_WEBSITE},
-        ConfigEntity,
+        ConfigEntity, OfficialWebsite,
     },
     repositories::{
         announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
@@ -46,13 +46,11 @@ impl<
         self,
         website: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        // let req = FindConfigByKey {
-        //     key: "OFFICIAL:WEBSITE".to_string(),
-        // };
-        // let backend = crate::manager::Context::get_global_backend_api()?;
-        // let res = backend.find_config_by_key(req).await?;
         if let Some(official_website) = website {
-            ConfigDomain::set_config(OFFICIAL_WEBSITE, &official_website).await?;
+            let config = OfficialWebsite {
+                url: official_website.clone(),
+            };
+            ConfigDomain::set_config(OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
             let mut config = crate::config::CONFIG.write().await;
             config.set_official_website(Some(official_website));
         }

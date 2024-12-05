@@ -18,6 +18,24 @@ pub struct ConfigEntity {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct OfficialWebsite {
+    pub url: String,
+}
+
+impl OfficialWebsite {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for OfficialWebsite {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct MinValueSwitchConfig {
     // true 开启状态 false 关闭状态
     pub switch: bool,

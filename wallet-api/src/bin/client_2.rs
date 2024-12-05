@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 初始化设备并启动mqtt
     manager.init_device(device_req()).await;
 
-    create_wallet(&manager, false).await;
+    create_wallet(&manager, true).await;
 
     while let Some(_data) = rx.next().await {
         tracing::info!("data: {_data:?}");

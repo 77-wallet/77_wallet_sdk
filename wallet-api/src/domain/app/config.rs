@@ -2,7 +2,7 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, OFFICIAL_WEBSITE},
-        MinValueSwitchConfig,
+        MinValueSwitchConfig, OfficialWebsite,
     },
 };
 use wallet_transport_backend::response_vo::app::SaveSendMsgAccount;
@@ -91,8 +91,11 @@ impl ConfigDomain {
         let official_website = ConfigDao::find_by_key(OFFICIAL_WEBSITE, pool.as_ref()).await?;
         if let Some(official_website) = official_website {
             Self::set_config(OFFICIAL_WEBSITE, &official_website.value).await?;
+
+            let official_website = OfficialWebsite::try_from(official_website.value)?;
+
             let mut config = crate::config::CONFIG.write().await;
-            config.set_official_website(Some(official_website.value));
+            config.set_official_website(Some(official_website.url));
         }
         Ok(())
     }

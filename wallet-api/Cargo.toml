@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+default = ["dev"]
 result = []
 response = []
 eth = []
@@ -11,6 +12,7 @@ transaction = []
 test_net = []
 token = []
 loop = []
+dev = ["wallet-transport-backend/dev"]
 test = ["wallet-transport-backend/test"]
 prod = ["wallet-transport-backend/prod"]
 
