@@ -12,6 +12,7 @@ test_net = []
 token = []
 loop = []
 test = ["wallet-transport-backend/test"]
+prod = ["wallet-transport-backend/prod"]
 
 [dependencies]
 

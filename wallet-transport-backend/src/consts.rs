@@ -37,36 +37,40 @@ pub mod endpoint {
     pub const ADDRESS_FIND_MULTI_SIGNED_DETAILS: &str = "address/findMultiSignedDetails";
 }
 
-/// 测试环境
+// /// 测试环境
+// #[cfg(feature = "test")]
+// pub const BASE_URL: &str = "https://api.puke668.top";
+// #[cfg(feature = "test")]
+// pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
+
+// //开发环境
+// // #[cfg(not(feature = "test"))]
+// // pub const BASE_URL: &str = "https://api.puke668.top";
+// // #[cfg(not(feature = "test"))]
+// // pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
+
+// #[cfg(not(feature = "test"))]
+// pub const BASE_URL: &str = "https://walletapi.puke668.top";
+// #[cfg(not(feature = "test"))]
+// pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
+
+// 代理的全局rpc节点
+pub const BASE_RPC_URL: &str = "rpc.88ai.fun";
+
+// 开发环境
+#[cfg(feature = "dev")]
+pub const BASE_URL: &str = "https://walletapi.puke668.top";
+#[cfg(feature = "dev")]
+pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
+
+// 测试环境
 #[cfg(feature = "test")]
 pub const BASE_URL: &str = "https://api.puke668.top";
 #[cfg(feature = "test")]
 pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
 
-//开发环境
-// #[cfg(not(feature = "test"))]
-// pub const BASE_URL: &str = "https://api.puke668.top";
-// #[cfg(not(feature = "test"))]
-// pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
-
-#[cfg(not(feature = "test"))]
-pub const BASE_URL: &str = "https://walletapi.puke668.top";
-#[cfg(not(feature = "test"))]
+// 生产环境
+#[cfg(feature = "prod")]
+pub const BASE_URL: &str = "https://api.77wallet.org";
+#[cfg(feature = "prod")]
 pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
-
-// 代理的全局rpc节点
-pub const BASE_RPC_URL: &str = "rpc.88ai.fun";
-
-// // pub const BASE_URL: &str = "http://api.puke668.net";
-// // pub const BASE_URL: &str = "http://api.wallet.net";
-
-// pub const MQTT_URL: &str = "mqtt://100.110.246.24:1883";
-// pub const MQTT_URL: &str = "mqtt://126.214.108.58:18830";
-
-// pub const MQTT_URL: &str = "mqtt://devmqtt.puke668.top";
-// pub const MQTT_URL: &str = "mqtt://mqttdev.puke668.top";
-// pub const MQTT_URL: &str = "ws://100.106.144.126:8083/mqtt";
-// pub const MQTT_URL: &str = "100.110.246.24";
-// pub const MQTT_URL: &str = "ws://api.puke668.top/mqtt";
-
-// pub const MQTT_BACKEND_URL: &str = "http://100.106.144.126:18083";
