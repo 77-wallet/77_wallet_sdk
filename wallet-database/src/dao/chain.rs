@@ -106,6 +106,35 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    // 把指定的链status设置为1，其他设置为0
+    pub async fn toggle_chains_status<'a, E>(
+        executor: E,
+        chain_codes: Vec<String>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let chain_codes = crate::any_in_collection(chain_codes, "','");
+        // 用逗号分隔的列表，用于 IN 查询
+        let sql = format!(
+            "UPDATE chain
+            SET 
+                status = CASE 
+                            WHEN chain_code IN ('{}') THEN 1 
+                            ELSE 0 
+                        END,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            RETURNING *",
+            chain_codes
+        );
+
+        // 为 `IN` 子句绑定参数，确保 chain_codes 被正确处理
+        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(&sql)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn detail<'a, E>(exec: E, chain_code: &str) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

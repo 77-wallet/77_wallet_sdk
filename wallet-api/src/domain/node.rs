@@ -42,6 +42,8 @@ impl NodeDomain {
 
         let mut backend_nodes = Vec::new();
 
+        let chains = backend.chain_default_list().await?;
+
         for node in default_nodes.iter() {
             let nodes = match backend.chain_rpc_list(&node.chain_code).await {
                 Ok(node) => node,
@@ -63,6 +65,9 @@ impl NodeDomain {
                 };
             }
         }
+
+        ChainRepoTrait::toggle_chains_status(&mut repo, chains.list).await?;
+
         Self::process_filtered_nodes(&mut repo, &pool, &backend_nodes, default_nodes).await?;
         Ok(())
     }

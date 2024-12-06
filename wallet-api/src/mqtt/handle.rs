@@ -925,7 +925,7 @@ mod tests {
 
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_eth3() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
