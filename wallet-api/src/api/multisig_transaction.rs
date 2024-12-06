@@ -1,8 +1,9 @@
 use crate::{
     api::ReturnType,
     response_vo::{
-        self, account::Balance, multisig_transaction::MultisigQueueInfoVo,
-        transaction::TransferParams, MultisigQueueFeeParams,
+        self, account::Balance, multisig_account::QueueInfo,
+        multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
+        MultisigQueueFeeParams,
     },
 };
 use wallet_database::pagination::Pagination;
@@ -121,5 +122,23 @@ impl crate::WalletManager {
         )
         .await
         .into()
+    }
+
+    pub async fn check_ongoing_queue(
+        &self,
+        chain_code: String,
+        address: String,
+    ) -> ReturnType<Option<QueueInfo>> {
+        crate::service::multisig_transaction::MultisigTransactionService::check_ongoing_queue(
+            chain_code, address,
+        )
+        .await
+        .into()
+    }
+
+    pub async fn cancel_queue(&self, queue_id: String) -> ReturnType<()> {
+        crate::service::multisig_transaction::MultisigTransactionService::cancel_queue(queue_id)
+            .await
+            .into()
     }
 }

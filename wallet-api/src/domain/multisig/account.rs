@@ -238,15 +238,20 @@ impl MultisigDomain {
     }
     pub async fn account_by_address(
         address: &str,
+        exclude_del: bool,
         pool: &std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<MultisigAccountEntity, crate::ServiceError> {
-        let account =
-            MultisigAccountDaoV1::find_by_conditions(vec![("address", address)], pool.as_ref())
-                .await
-                .map_err(|e| crate::SystemError::Database(e.into()))?
-                .ok_or(crate::BusinessError::MultisigAccount(
-                    crate::MultisigAccountError::NotFound,
-                ))?;
+        let mut conditions = vec![("address", address)];
+        if exclude_del {
+            conditions.push(("is_del", "0"));
+        }
+
+        let account = MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref())
+            .await
+            .map_err(|e| crate::SystemError::Database(e.into()))?
+            .ok_or(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotFound,
+            ))?;
         Ok(account)
     }
 

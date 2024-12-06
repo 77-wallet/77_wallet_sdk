@@ -1,6 +1,5 @@
-use crate::entities::{
-    multisig_account::MultisigAccountEntity,
-    multisig_member::{MultisigMemberEntities, MultisigMemberEntity, NewMemberEntity},
+use crate::entities::multisig_member::{
+    MultisigMemberEntities, MultisigMemberEntity, NewMemberEntity,
 };
 use sqlx::{Executor, Sqlite};
 

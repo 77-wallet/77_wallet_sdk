@@ -1,6 +1,7 @@
 pub mod acct_change;
 pub mod multisign_trans_accept;
 pub mod multisign_trans_accept_complete_msg;
+pub mod multisign_trans_cancel;
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_database::entities::{
     multisig_queue::MultisigQueueEntity, multisig_signatures::NewSignatureEntity,
@@ -52,6 +53,13 @@ impl From<MultisigQueueEntity> for MultiSignTransAccept {
             account_id: value.account_id,
         }
     }
+}
+
+// MULTI_SIGN_TRANS_CANCEL
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MultiSignTransCancel {
+    pub withdraw_id: String,
 }
 
 // biz_type = MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG

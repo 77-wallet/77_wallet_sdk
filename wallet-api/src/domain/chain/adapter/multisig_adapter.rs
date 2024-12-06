@@ -613,9 +613,12 @@ impl MultisigAdapter {
             Self::Ethereum(chain) => {
                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
                 let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
-                let multisig_account =
-                    domain::multisig::MultisigDomain::account_by_address(&queue.from_addr, &pool)
-                        .await?;
+                let multisig_account = domain::multisig::MultisigDomain::account_by_address(
+                    &queue.from_addr,
+                    true,
+                    &pool,
+                )
+                .await?;
 
                 let gas_oracle = domain::chain::transaction::ChainTransaction::gas_oracle(
                     &queue.chain_code,

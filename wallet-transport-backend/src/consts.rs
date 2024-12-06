@@ -73,4 +73,4 @@ pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
 #[cfg(feature = "prod")]
 pub const BASE_URL: &str = "https://api.77wallet.org";
 #[cfg(feature = "prod")]
-pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
+pub const MQTT_URL: &str = "mqtt://192.168.88.3:1883";

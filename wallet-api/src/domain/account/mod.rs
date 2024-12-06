@@ -42,7 +42,8 @@ impl AccountDomain {
             if is_multisig {
                 // 查询多签账户下的资产
                 let account =
-                    super::multisig::MultisigDomain::account_by_address(address, &pool).await?;
+                    super::multisig::MultisigDomain::account_by_address(address, true, &pool)
+                        .await?;
                 account_addresses.push(AddressChainCode {
                     address: account.address,
                     chain_code: account.chain_code,

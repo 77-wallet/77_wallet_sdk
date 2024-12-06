@@ -82,6 +82,7 @@ pub enum TaskName {
     OrderMultiSignServiceComplete,
     OrderMultiSignCancel,
     MultiSignTransAccept,
+    MultiSignTransCancel,
     MultiSignTransAcceptCompleteMsg,
     AcctChange,
     Init,

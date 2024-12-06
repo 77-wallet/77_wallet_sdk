@@ -163,6 +163,21 @@ impl BackendApi {
             .await?;
         res.process()
     }
+
+    // cancel multisig queue
+    pub async fn signed_trans_cancel(
+        &self,
+        queue_id: &str,
+        raw_data: String,
+    ) -> Result<(), crate::Error> {
+        let req = serde_json::json!({
+            "withdrawId":queue_id.to_string(),
+            "rawData":raw_data
+        });
+
+        self.post_request::<_, ()>("/signed/trans/cancel", req)
+            .await
+    }
 }
 
 #[cfg(test)]

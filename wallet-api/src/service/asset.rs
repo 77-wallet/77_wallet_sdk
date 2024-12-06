@@ -53,7 +53,8 @@ impl AssetsService {
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let multisig = domain::multisig::MultisigDomain::account_by_address(address, &pool).await?;
+        let multisig =
+            domain::multisig::MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
         let mut data = tx.get_coin_assets_in_address(address).await?;

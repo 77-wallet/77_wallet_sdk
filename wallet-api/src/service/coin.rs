@@ -71,7 +71,7 @@ impl CoinService {
         {
             let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let multisig =
-                domain::multisig::MultisigDomain::account_by_address(address, &pool).await?;
+                domain::multisig::MultisigDomain::account_by_address(address, true, &pool).await?;
             chain_code = Some(multisig.chain_code);
         }
 

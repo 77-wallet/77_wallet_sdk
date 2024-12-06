@@ -345,10 +345,7 @@ mod test {
         } = setup_test_environment(None, None, false, None).await?;
 
         // 前端的uid
-        // let uid = "c447318b94179614d70e50644233b30a";
-        // let uid = "598e4144d26d871676e266036af660b3b38d38ea670a0abbfb75effab60890ad";
-        let uid = "71512c7dcca484ad9a03a0f7798e7bdd45602891ed464e0a541657137328d92d";
-        // let uid = "de896a784586944bb22f0498d0574d6f";
+        let uid = "137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358";
         let start_time = std::time::Instant::now();
 
         let res = crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid).await;

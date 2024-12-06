@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::{ResourcesRepo, TransactionTrait};
 use crate::{
     dao::{
@@ -20,6 +18,7 @@ use crate::{
     pagination::Pagination,
 };
 use sqlx::{Pool, Sqlite};
+use std::sync::Arc;
 
 pub struct MultisigQueueRepo {
     repo: ResourcesRepo,
@@ -276,5 +275,16 @@ impl MultisigQueueRepo {
             queue,
             MultisigSignatureEntities(signatures),
         ))
+    }
+
+    pub async fn ongoing_queue(
+        &self,
+        chain_code: &str,
+        address: &str,
+    ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
+        let queue =
+            MultisigQueueDaoV1::ongoing_queue(self.repo.db_pool.as_ref(), chain_code, address)
+                .await?;
+        Ok(queue)
     }
 }

@@ -228,6 +228,7 @@ impl TaskManager {
                 MqttTask::OrderMultiSignCreated(data) => data.exec(&id).await?,
                 MqttTask::OrderMultiSignCancel(data) => data.exec(&id).await?,
                 MqttTask::MultiSignTransAccept(data) => data.exec(&id).await?,
+                MqttTask::MultiSignTransCancel(data) => data.exec(&id).await?,
                 MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(&id).await?,
                 MqttTask::AcctChange(data) => data.exec(&id).await?,
                 MqttTask::Init(data) => data.exec(&id).await?,

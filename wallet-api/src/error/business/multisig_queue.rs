@@ -10,6 +10,10 @@ pub enum MultisigQueueError {
     Expired,
     #[error("has already been executed")]
     AlreadyExecuted,
+    #[error("cannot cancel")]
+    CannotCancel,
+    #[error("faile queue,cannot exec or signature")]
+    FailedQueue,
 }
 
 impl MultisigQueueError {
@@ -20,6 +24,8 @@ impl MultisigQueueError {
             MultisigQueueError::NotPendingExecStatus => 3702,
             MultisigQueueError::Expired => 3703,
             MultisigQueueError::AlreadyExecuted => 3704,
+            MultisigQueueError::CannotCancel => 3705,
+            MultisigQueueError::FailedQueue => 3706,
         }
     }
 }

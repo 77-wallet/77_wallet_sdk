@@ -17,7 +17,9 @@ use crate::mqtt::payload::incoming::{
         OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
         OrderMultiSignCreated, OrderMultiSignServiceComplete,
     },
-    transaction::{AcctChange, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg},
+    transaction::{
+        AcctChange, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg, MultiSignTransCancel,
+    },
 };
 
 pub struct TaskDomain<T> {
@@ -76,6 +78,7 @@ pub(crate) enum MqttTask {
     OrderMultiSignCreated(OrderMultiSignCreated),
     OrderMultiSignCancel(OrderMultiSignCancel),
     MultiSignTransAccept(MultiSignTransAccept),
+    MultiSignTransCancel(MultiSignTransCancel),
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsg),
     AcctChange(AcctChange),
     Init(Init),
@@ -201,6 +204,12 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(req))))
             }
+            TaskName::MultiSignTransCancel => {
+                let req = wallet_utils::serde_func::serde_from_str::<MultiSignTransCancel>(
+                    &value.request_body,
+                )?;
+                Ok(Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(req))))
+            }
             TaskName::OrderMultiSignAcceptCompleteMsg => {
                 let req = wallet_utils::serde_func::serde_from_str::<
                     OrderMultiSignAcceptCompleteMsg,
@@ -308,6 +317,7 @@ impl Task {
                 MqttTask::OrderMultiSignCreated(_) => TaskName::OrderMultiSignCreated,
                 MqttTask::OrderMultiSignCancel(_) => TaskName::OrderMultiSignCancel,
                 MqttTask::MultiSignTransAccept(_) => TaskName::MultiSignTransAccept,
+                MqttTask::MultiSignTransCancel(_) => TaskName::MultiSignTransCancel,
                 MqttTask::MultiSignTransAcceptCompleteMsg(_) => {
                     TaskName::MultiSignTransAcceptCompleteMsg
                 }
@@ -354,6 +364,9 @@ impl Task {
                     Some(wallet_utils::serde_func::serde_to_string(req)?)
                 }
                 MqttTask::MultiSignTransAccept(req) => {
+                    Some(wallet_utils::serde_func::serde_to_string(req)?)
+                }
+                MqttTask::MultiSignTransCancel(req) => {
                     Some(wallet_utils::serde_func::serde_to_string(req)?)
                 }
                 MqttTask::MultiSignTransAcceptCompleteMsg(req) => {

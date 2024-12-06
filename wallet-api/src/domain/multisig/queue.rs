@@ -33,6 +33,12 @@ impl MultisigQueueDomain {
             ))?;
         }
 
+        if queue.status == MultisigQueueStatus::Fail.to_i8() {
+            return Err(crate::BusinessError::MultisigQueue(
+                crate::MultisigQueueError::FailedQueue,
+            ))?;
+        }
+
         // execute multisig tx need check status
         if execute && queue.status != MultisigQueueStatus::PendingExecution.to_i8() {
             return Err(crate::BusinessError::MultisigQueue(

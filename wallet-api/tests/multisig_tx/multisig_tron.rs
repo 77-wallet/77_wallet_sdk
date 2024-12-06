@@ -139,3 +139,26 @@ async fn test_execute() {
         .await;
     tracing::info!("execute res = {}", serde_json::to_string(&result).unwrap());
 }
+
+#[tokio::test]
+async fn test_check_ongoing() {
+    let wallet_manager = get_manager().await;
+
+    let chain_code = "tron".to_string();
+    let address = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
+    let rs = wallet_manager
+        .check_ongoing_queue(chain_code, address)
+        .await;
+
+    tracing::info!("res {}", serde_json::to_string(&rs).unwrap());
+}
+
+#[tokio::test]
+async fn test_cancel_queue() {
+    let wallet_manager = get_manager().await;
+
+    let queue_id = "203625107258740736".to_string();
+    let rs = wallet_manager.cancel_queue(queue_id).await;
+
+    tracing::info!("res {}", serde_json::to_string(&rs).unwrap());
+}

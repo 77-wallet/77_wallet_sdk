@@ -212,6 +212,21 @@ impl MultisigQueueDaoV1 {
         Ok(())
     }
 
+    pub async fn rollback_update_fail<'a, E>(
+        id: &str,
+        status: i8,
+        exec: E,
+    ) -> Result<(), crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"update multisig_queue set status = ?,fail_reason = '' where id = ?"#;
+
+        let _res = sqlx::query(sql).bind(status).bind(id).execute(exec).await?;
+
+        Ok(())
+    }
+
     pub async fn update_status_and_tx_hash<'a, E>(
         id: &str,
         status: MultisigQueueStatus,
@@ -299,5 +314,27 @@ impl MultisigQueueDaoV1 {
         Ok(sqlx::query_as::<sqlx::Sqlite, MultisigQueueEntity>(&sql)
             .fetch_all(exec)
             .await?)
+    }
+
+    pub async fn ongoing_queue<'a, E>(
+        exec: E,
+        chain_code: &str,
+        address: &str,
+    ) -> Result<Option<MultisigQueueEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from multisig_queue where from_addr = ? and chain_code = ? and status in (?,?,?)";
+
+        let res = sqlx::query_as::<_, MultisigQueueEntity>(sql)
+            .bind(address)
+            .bind(chain_code)
+            .bind(MultisigQueueStatus::PendingSignature.to_i8())
+            .bind(MultisigQueueStatus::HasSignature.to_i8())
+            .bind(MultisigQueueStatus::PendingExecution.to_i8())
+            .fetch_optional(exec)
+            .await?;
+
+        Ok(res)
     }
 }

@@ -153,7 +153,8 @@ impl ChainService {
             if is_multisig {
                 // 查询多签账户下的资产
                 let account =
-                    domain::multisig::MultisigDomain::account_by_address(address, &pool).await?;
+                    domain::multisig::MultisigDomain::account_by_address(address, true, &pool)
+                        .await?;
                 account_addresses.push(account.address);
             } else {
                 // 获取钱包下的这个账户的所有地址
