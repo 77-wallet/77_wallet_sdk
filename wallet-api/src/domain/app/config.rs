@@ -1,7 +1,9 @@
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
-        config_key::{BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, OFFICIAL_WEBSITE},
+        config_key::{
+            APP_INSTALL_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, OFFICIAL_WEBSITE,
+        },
         MinValueSwitchConfig, OfficialWebsite,
     },
 };
@@ -86,12 +88,49 @@ impl ConfigDomain {
         Ok(())
     }
 
+    pub async fn set_official_website(website: Option<String>) -> Result<(), crate::ServiceError> {
+        if let Some(official_website) = website {
+            let config = OfficialWebsite {
+                url: official_website.clone(),
+            };
+            ConfigDomain::set_config(OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
+            let mut config = crate::config::CONFIG.write().await;
+            config.set_official_website(Some(official_website));
+        }
+
+        Ok(())
+    }
+
+    pub async fn set_app_install_download_url(
+        app_install_download_url: &str,
+    ) -> Result<(), crate::ServiceError> {
+        // let tx = &mut self.repo;
+        let config = wallet_database::entities::config::AppInstallDownload {
+            url: app_install_download_url.to_string(),
+        };
+        ConfigDomain::set_config(APP_INSTALL_DOWNLOAD_URL, &config.to_json_str()?).await?;
+        let mut config = crate::config::CONFIG.write().await;
+        config.set_app_install_download_url(Some(app_install_download_url.to_string()));
+        Ok(())
+    }
+
+    pub async fn init_app_install_download_url() -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let app_install_download_url =
+            ConfigDao::find_by_key(APP_INSTALL_DOWNLOAD_URL, pool.as_ref()).await?;
+        if let Some(app_install_download_url) = app_install_download_url {
+            let app_install_download_url =
+                OfficialWebsite::try_from(app_install_download_url.value)?;
+
+            let mut config = crate::config::CONFIG.write().await;
+            config.set_app_install_download_url(Some(app_install_download_url.url));
+        }
+        Ok(())
+    }
     pub async fn init_official_website() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let official_website = ConfigDao::find_by_key(OFFICIAL_WEBSITE, pool.as_ref()).await?;
         if let Some(official_website) = official_website {
-            Self::set_config(OFFICIAL_WEBSITE, &official_website.value).await?;
-
             let official_website = OfficialWebsite::try_from(official_website.value)?;
 
             let mut config = crate::config::CONFIG.write().await;
@@ -105,7 +144,6 @@ impl ConfigDomain {
         let block_browser_url_list =
             ConfigDao::find_by_key(BLOCK_BROWSER_URL_LIST, pool.as_ref()).await?;
         if let Some(block_browser_url_list) = block_browser_url_list {
-            Self::set_config(BLOCK_BROWSER_URL_LIST, &block_browser_url_list.value).await?;
             let mut config = crate::config::CONFIG.write().await;
             let value = wallet_utils::serde_func::serde_from_str(&block_browser_url_list.value)?;
 

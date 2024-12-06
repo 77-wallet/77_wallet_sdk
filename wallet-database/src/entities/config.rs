@@ -4,6 +4,7 @@ pub mod config_key {
     pub const MIN_VALUE_SWITCH: &str = "min_value_switch";
     pub const BLOCK_BROWSER_URL_LIST: &str = "block_browser_url_list";
     pub const OFFICIAL_WEBSITE: &str = "official_website";
+    pub const APP_INSTALL_DOWNLOAD_URL: &str = "app_install_download_url";
     pub const LANGUAGE: &str = "language";
 }
 
@@ -29,6 +30,24 @@ impl OfficialWebsite {
 }
 
 impl TryFrom<String> for OfficialWebsite {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct AppInstallDownload {
+    pub url: String,
+}
+
+impl AppInstallDownload {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for AppInstallDownload {
     type Error = crate::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_str(&value)?)

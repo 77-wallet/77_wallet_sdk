@@ -51,6 +51,10 @@ impl Config {
         self.url.official_website = official_website
     }
 
+    pub fn set_app_install_download_url(&mut self, app_install_download_url: Option<String>) {
+        self.url.app_install_download_url = app_install_download_url
+    }
+
     pub fn get_official_website(&self) -> Option<String> {
         self.url.official_website.clone()
     }
