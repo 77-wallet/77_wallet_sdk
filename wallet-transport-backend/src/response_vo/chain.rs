@@ -23,6 +23,11 @@ pub struct ChainUrlInfo {
 pub struct ChainList {
     pub list: Vec<ChainUrlInfo>,
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct DefaultChainList {
+    pub list: Vec<String>,
+}
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ChainInfos {
     pub list: Vec<ChainInfo>,

@@ -50,7 +50,15 @@ impl NodeService {
                     continue;
                 }
             };
+            default_nodes.push(wallet_types::valueobject::NodeData::new(
+                &node.node_id,
+                &node.rpc_url,
+                &node.chain_code,
+            ));
 
+            if !default_chain.active {
+                continue;
+            }
             let req = wallet_database::entities::chain::ChainCreateVo::new(
                 &default_chain.name,
                 &default_chain.chain_code,
@@ -58,11 +66,6 @@ impl NodeService {
                 &default_chain.protocols,
                 &default_chain.main_symbol,
             );
-            default_nodes.push(wallet_types::valueobject::NodeData {
-                node_id: node.node_id,
-                rpc_url: node.rpc_url,
-                chain_code: node.chain_code,
-            });
 
             if let Err(e) = ChainRepoTrait::add(tx, req).await {
                 tracing::error!("Failed to create default chain: {:?}", e);

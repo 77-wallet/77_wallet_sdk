@@ -1,12 +1,12 @@
 use crate::{
     response::BackendResponse,
-    response_vo::chain::{ChainInfos, ChainList},
+    response_vo::chain::{ChainInfos, ChainList, DefaultChainList},
 };
 
 use super::BackendApi;
 
 impl BackendApi {
-    pub async fn chain_default_list(&self) -> Result<ChainList, crate::Error> {
+    pub async fn chain_default_list(&self) -> Result<DefaultChainList, crate::Error> {
         let res = self
             .client
             .post("chain/defaultList")

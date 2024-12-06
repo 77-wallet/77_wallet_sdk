@@ -14,6 +14,7 @@ CREATE TABLE
         uid VARCHAR(64) NULL,
         is_init INTEGER NOT NULL,
         language_init INTEGER NOT NULL,
+        password TEXT NULL,
         created_at TIMESTAMP NOT NULL,
         updated_at TIMESTAMP,
         PRIMARY KEY (sn)

@@ -13,6 +13,7 @@ pub(crate) struct DefaultChain {
     pub(crate) protocols: Vec<String>,
     pub(crate) main_symbol: String,
     pub(crate) network: String,
+    pub(crate) active: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]

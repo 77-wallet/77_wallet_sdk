@@ -48,6 +48,11 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         &wallet_transport_backend::request::FindConfigByKey::new("OFFICIAL:WEBSITE"),
     )?;
 
+    let set_app_install_download_req = crate::domain::task_queue::BackendApiTaskData::new(
+        wallet_transport_backend::consts::endpoint::APP_INSTALL_DOWNLOAD,
+        &(),
+    )?;
+
     crate::domain::task_queue::Tasks::new()
         .push(Task::Initialization(InitializationTask::PullAnnouncement))
         .push(Task::Initialization(InitializationTask::PullHotCoins))
@@ -61,6 +66,9 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         )))
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             set_official_website_req,
+        )))
+        .push(Task::BackendApi(BackendApiTask::BackendApi(
+            set_app_install_download_req,
         )))
         .push(Task::Initialization(InitializationTask::RecoverQueueData))
         .send()

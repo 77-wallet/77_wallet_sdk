@@ -33,6 +33,7 @@ pub mod endpoint {
     pub const TOKEN_CUSTOM_TOKEN_INIT: &str = "token/custom/token/init";
     pub const TOKEN_QUERY_RATES: &str = "token/queryRates";
     pub const SYS_CONFIG_FIND_CONFIG_BY_KEY: &str = "sys/config/findConfigByKey";
+    pub const APP_INSTALL_DOWNLOAD: &str = "app/install/download";
 
     pub const ADDRESS_FIND_MULTI_SIGNED_DETAILS: &str = "address/findMultiSignedDetails";
 }

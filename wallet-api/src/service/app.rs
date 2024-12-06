@@ -1,8 +1,8 @@
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
-        config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE, OFFICIAL_WEBSITE},
-        ConfigEntity, OfficialWebsite,
+        config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE},
+        ConfigEntity,
     },
     repositories::{
         announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
@@ -42,22 +42,6 @@ impl<
         Ok(GetOfficialWebsiteRes { official_website })
     }
 
-    pub async fn set_official_website(
-        self,
-        website: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
-        if let Some(official_website) = website {
-            let config = OfficialWebsite {
-                url: official_website.clone(),
-            };
-            ConfigDomain::set_config(OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
-            let mut config = crate::config::CONFIG.write().await;
-            config.set_official_website(Some(official_website));
-        }
-
-        Ok(())
-    }
-
     pub async fn get_config(self) -> Result<GetConfigRes, crate::ServiceError> {
         let config = crate::config::CONFIG.read().await;
         // if config.url().official_website.is_none() {
@@ -73,6 +57,9 @@ impl<
         }
         if url.official_website.is_none() {
             ConfigDomain::init_official_website().await?;
+        }
+        if url.app_install_download_url.is_none() {
+            ConfigDomain::init_app_install_download_url().await?;
         }
         let mut tx = self.repo;
         let wallet_list = tx.wallet_list().await?;
@@ -340,10 +327,5 @@ impl<
         }
 
         Ok(res)
-    }
-
-    pub async fn app_install_download(&self) -> Result<String, crate::ServiceError> {
-        let backend = crate::Context::get_global_backend_api()?;
-        Ok(backend.app_install_download().await?)
     }
 }
