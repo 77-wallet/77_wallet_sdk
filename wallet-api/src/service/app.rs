@@ -1,8 +1,8 @@
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
-        config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE, OFFICIAL_WEBSITE},
-        ConfigEntity, OfficialWebsite,
+        config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE},
+        ConfigEntity,
     },
     repositories::{
         announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
@@ -327,10 +327,5 @@ impl<
         }
 
         Ok(res)
-    }
-
-    pub async fn app_install_download(&self) -> Result<String, crate::ServiceError> {
-        let backend = crate::Context::get_global_backend_api()?;
-        Ok(backend.app_install_download().await?)
     }
 }
