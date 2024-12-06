@@ -24,6 +24,14 @@ pub trait AnnouncementRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, AnnouncementEntity::upsert, input)
     }
 
+    async fn update_existing(
+        &mut self,
+        input: Vec<CreateAnnouncementVo>,
+    ) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, AnnouncementEntity::update_existing, input)
+    }
+
     async fn list(&mut self) -> Result<Vec<AnnouncementEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AnnouncementEntity::list,)

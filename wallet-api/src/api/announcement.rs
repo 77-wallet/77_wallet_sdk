@@ -98,6 +98,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_pull_announcement() -> Result<()> {
+        wallet_utils::init_test_log();
+        let TestData { wallet_manager, .. } =
+            setup_test_environment(None, None, false, None).await?;
+
+        let announcement_list = wallet_manager.pull_announcement().await;
+        tracing::info!("pull_announcement: {announcement_list:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&announcement_list)?;
+        tracing::info!("res: {res}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_get_announcement_by_id() -> Result<()> {
         wallet_utils::init_test_log();
         let TestData { wallet_manager, .. } =

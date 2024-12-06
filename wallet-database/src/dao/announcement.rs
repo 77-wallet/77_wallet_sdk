@@ -4,6 +4,72 @@ use crate::{
 };
 
 impl AnnouncementEntity {
+    pub async fn update_existing<'a, E>(
+        exec: E,
+        reqs: Vec<CreateAnnouncementVo>,
+    ) -> Result<(), crate::Error>
+    where
+        E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
+    {
+        if reqs.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new("UPDATE announcement SET ");
+
+        // 使用辅助函数生成 CASE 语句
+        Self::append_case(&mut query_builder, "title", &reqs, |req| req.title.clone());
+        Self::append_case(&mut query_builder, "content", &reqs, |req| {
+            req.content.clone()
+        });
+        Self::append_case(&mut query_builder, "language", &reqs, |req| {
+            req.language.clone()
+        });
+
+        // 更新更新时间字段
+        query_builder.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
+
+        // 限制只更新存在的行
+        query_builder.push("WHERE id IN (");
+        for (i, req) in reqs.iter().enumerate() {
+            if i > 0 {
+                query_builder.push(", ");
+            }
+            query_builder.push_bind(&req.id);
+        }
+        query_builder.push(")");
+
+        // 执行查询
+        let query = query_builder.build();
+        query
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 辅助函数：构造字段的 CASE 语句
+    fn append_case<'a, 'b, F, T>(
+        query_builder: &'a mut sqlx::QueryBuilder<'b, sqlx::Sqlite>,
+        field_name: &str,
+        reqs: &'b [CreateAnnouncementVo],
+        value_extractor: F,
+    ) where
+        F: Fn(&CreateAnnouncementVo) -> T,
+        T: ToString,
+    {
+        query_builder.push(format!("{field_name} = CASE id "));
+        for req in reqs {
+            query_builder
+                .push("WHEN ")
+                .push_bind(&req.id)
+                .push(" THEN ")
+                .push_bind(value_extractor(req).to_string())
+                .push(" ");
+        }
+        query_builder.push("END, ");
+    }
+
     pub async fn upsert<'a, E>(exec: E, reqs: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Sqlite>,

@@ -41,7 +41,7 @@ impl AnnouncementDomain {
                     },
                 )
                 .collect();
-            AnnouncementRepoTrait::add(repo, input).await?;
+            AnnouncementRepoTrait::update_existing(repo, input).await?;
         } else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         }
