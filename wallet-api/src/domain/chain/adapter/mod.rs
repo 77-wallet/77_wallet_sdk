@@ -3,7 +3,7 @@ pub use transaction_adapter::*;
 mod multisig_adapter;
 use super::rpc_need_header;
 pub use multisig_adapter::*;
-use wallet_database::{entities::chain::ChainEntity, sqlite::logic::chain::ChainWithNode};
+use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 #[macro_export]
 macro_rules! dispatch {

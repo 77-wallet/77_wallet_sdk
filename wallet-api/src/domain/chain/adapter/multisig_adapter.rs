@@ -35,7 +35,7 @@ pub enum MultisigAdapter {
 impl MultisigAdapter {
     pub fn new(
         chain_code: ChainType,
-        chian_node: wallet_database::sqlite::logic::chain::ChainWithNode,
+        chian_node: wallet_database::entities::chain::ChainWithNode,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<MultisigAdapter, crate::ServiceError> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;

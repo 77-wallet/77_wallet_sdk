@@ -178,7 +178,7 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let uids = crate::sqlite::operator::any_in_collection(uids, "','");
+        let uids = crate::any_in_collection(uids, "','");
 
         let sql = format!(
             "SELECT *
@@ -199,7 +199,7 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(addresses, "','");
+        let addresses = crate::any_in_collection(addresses, "','");
 
         let sql = format!(
             "SELECT *
@@ -221,8 +221,8 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(addresses, "','");
-        let account_ids = crate::sqlite::operator::any_in_collection(account_ids, "','");
+        let addresses = crate::any_in_collection(addresses, "','");
+        let account_ids = crate::any_in_collection(account_ids, "','");
 
         let sql = format!(
             "SELECT *
@@ -277,7 +277,7 @@ impl MultisigMemberDaoV1 {
         let sql = if ids.is_empty() {
             "DELETE FROM multisig_member RETURNING *".to_string()
         } else {
-            let ids = crate::sqlite::operator::any_in_collection(ids, "','");
+            let ids = crate::any_in_collection(ids, "','");
             format!(
                 "DELETE FROM multisig_member WHERE account_id IN ('{}') RETURNING *",
                 ids

@@ -62,3 +62,22 @@ impl ChainCreateVo {
         }
     }
 }
+
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainWithNode {
+    pub name: String,
+    pub chain_code: String,
+    pub main_symbol: String,
+    pub node_id: String,
+    pub node_name: String,
+    pub rpc_url: String,
+    pub ws_url: String,
+    pub http_url: String,
+    pub network: String,
+    pub status: u8,
+    #[serde(skip_serializing)]
+    pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    #[serde(skip_serializing)]
+    pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}

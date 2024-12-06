@@ -138,7 +138,7 @@ impl MultisigQueueDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let account_ids = crate::sqlite::operator::any_in_collection(account_ids, "','");
+        let account_ids = crate::any_in_collection(account_ids, "','");
 
         let sql = format!(
             "select * from multisig_queue where account_id in ('{}') order by created_at desc limit 1",
@@ -304,7 +304,7 @@ impl MultisigQueueDaoV1 {
         let sql = if ids.is_empty() {
             "DELETE FROM multisig_queue RETURNING *".to_string()
         } else {
-            let ids = crate::sqlite::operator::any_in_collection(ids, "','");
+            let ids = crate::any_in_collection(ids, "','");
             format!(
                 "DELETE FROM multisig_queue WHERE account_id IN ('{}') RETURNING *",
                 ids

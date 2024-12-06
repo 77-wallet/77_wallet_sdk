@@ -154,7 +154,7 @@ impl MultisigSignatureDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let ids = crate::sqlite::operator::any_in_collection(ids, "','");
+        let ids = crate::any_in_collection(ids, "','");
 
         let sql = format!(
             "UPDATE multisig_signatures SET is_del = 1 WHERE queue_id IN ('{}')",
@@ -178,7 +178,7 @@ impl MultisigSignatureDaoV1 {
         let sql = if ids.is_empty() {
             "DELETE FROM multisig_signatures RETURNING *".to_string()
         } else {
-            let addresses = crate::sqlite::operator::any_in_collection(ids, "','");
+            let addresses = crate::any_in_collection(ids, "','");
             format!(
                 r#"
                 DELETE FROM multisig_signatures

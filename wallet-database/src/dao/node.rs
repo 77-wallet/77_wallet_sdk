@@ -97,7 +97,7 @@ impl NodeEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let chain_codes = crate::sqlite::operator::any_in_collection(chain_codes, "','");
+        let chain_codes = crate::any_in_collection(chain_codes, "','");
         let sql = format!(
             "SELECT * FROM node
         WHERE chain_code in ('{}');",

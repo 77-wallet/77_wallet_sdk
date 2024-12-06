@@ -1,6 +1,6 @@
 use crate::{
     dao::chain::ChainDao,
-    entities::chain::{ChainCreateVo, ChainEntity},
+    entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
 };
 
 #[async_trait::async_trait]
@@ -24,9 +24,7 @@ pub trait ChainRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, ChainEntity::list,)
     }
 
-    async fn get_chain_node_list(
-        &mut self,
-    ) -> Result<Vec<crate::sqlite::logic::chain::ChainWithNode>, crate::Error> {
+    async fn get_chain_node_list(&mut self) -> Result<Vec<ChainWithNode>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
 
         crate::execute_with_executor!(executor, ChainDao::list_with_node,)
@@ -53,7 +51,7 @@ pub trait ChainRepoTrait: super::TransactionTrait {
     async fn detail_with_node(
         &mut self,
         chain_code: &str,
-    ) -> Result<Option<crate::sqlite::logic::chain::ChainWithNode>, crate::Error> {
+    ) -> Result<Option<ChainWithNode>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, ChainEntity::chain_node_info, chain_code)
     }

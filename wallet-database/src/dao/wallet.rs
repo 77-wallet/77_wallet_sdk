@@ -265,7 +265,7 @@ impl WalletEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(wallet_addresses, "','");
+        let addresses = crate::any_in_collection(wallet_addresses, "','");
         let sql = format!(
             r#"
             update wallet set 
@@ -290,7 +290,7 @@ impl WalletEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(wallet_addresses, "','");
+        let addresses = crate::any_in_collection(wallet_addresses, "','");
         let sql = format!(
             r#"
             DELETE FROM wallet

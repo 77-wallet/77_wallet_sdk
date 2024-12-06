@@ -60,7 +60,7 @@ impl AssetsEntity {
 
         let mut conditions = Vec::new();
         if !address.is_empty() {
-            let addresses = crate::sqlite::operator::any_in_collection(address, "','");
+            let addresses = crate::any_in_collection(address, "','");
             conditions.push(format!(" address IN ('{}')", addresses));
         }
 
@@ -96,7 +96,7 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(address, "','");
+        let addresses = crate::any_in_collection(address, "','");
         let base_sql = |table_name: &str| -> String {
             format!(
                 "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code, 
@@ -121,8 +121,7 @@ impl AssetsEntity {
             }
             if let Some(is_multisig) = is_multisig {
                 let is_multisig_values = if is_multisig { vec![1] } else { vec![0, 2] };
-                let is_multisig_str =
-                    crate::sqlite::operator::any_in_collection(is_multisig_values, "','");
+                let is_multisig_str = crate::any_in_collection(is_multisig_values, "','");
                 sql.push_str(&format!(" AND a.is_multisig IN ('{}')", is_multisig_str));
             }
         };
@@ -175,7 +174,7 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(address, "','");
+        let addresses = crate::any_in_collection(address, "','");
         let mut sql = "SELECT name, symbol, decimals, address, chain_code, 
         token_address, protocol, status, balance,is_multisig, created_at, updated_at FROM assets 
         WHERE status = 1"
@@ -196,7 +195,7 @@ impl AssetsEntity {
 
         if let Some(is_multisig) = is_multisig {
             let is_multisig = if is_multisig { vec![1] } else { vec![0, 2] };
-            let is_multisig = crate::sqlite::operator::any_in_collection(is_multisig, "','");
+            let is_multisig = crate::any_in_collection(is_multisig, "','");
             let str = format!(" AND is_multisig in ('{}')", is_multisig);
             sql.push_str(&str);
         }
@@ -400,7 +399,7 @@ impl AssetsEntity {
 
         if let Some(is_multisig) = is_multisig {
             let is_multisig = if is_multisig { vec![1] } else { vec![0, 2] };
-            let is_multisig = crate::sqlite::operator::any_in_collection(is_multisig, "','");
+            let is_multisig = crate::any_in_collection(is_multisig, "','");
             let str = format!(" is_multisig in ('{}')", is_multisig);
             conditions.push(str);
         }

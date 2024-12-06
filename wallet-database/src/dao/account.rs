@@ -102,7 +102,7 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::sqlite::operator::any_in_collection(addresses, "','");
+        let addresses = crate::any_in_collection(addresses, "','");
         let sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
 
         sqlx::query_as::<sqlx::Sqlite, AccountEntity>(&sql)
@@ -122,7 +122,7 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let chain_codes = crate::sqlite::operator::any_in_collection(chain_codes, "','");
+        let chain_codes = crate::any_in_collection(chain_codes, "','");
         let mut sql = "SELECT * FROM account".to_string();
         let mut conditions = Vec::new();
 
@@ -262,7 +262,7 @@ impl AccountEntity {
         let sql = if wallet_addresses.is_empty() {
             "DELETE FROM account RETURNING *".to_string()
         } else {
-            let addresses = crate::sqlite::operator::any_in_collection(wallet_addresses, "','");
+            let addresses = crate::any_in_collection(wallet_addresses, "','");
             format!(
                 r#"
                 DELETE FROM account

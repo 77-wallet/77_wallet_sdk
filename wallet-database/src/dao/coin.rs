@@ -139,7 +139,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let symbol_list = crate::sqlite::operator::any_in_collection(symbol_list, "','");
+        let symbol_list = crate::any_in_collection(symbol_list, "','");
         let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
 
         let mut conditions = Vec::new();
@@ -180,8 +180,8 @@ impl CoinEntity {
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let symbol_list = crate::sqlite::operator::any_in_collection(symbol_list, "','");
-        let chain_codes = crate::sqlite::operator::any_in_collection(chain_codes, "','");
+        let symbol_list = crate::any_in_collection(symbol_list, "','");
+        let chain_codes = crate::any_in_collection(chain_codes, "','");
         let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
 
         let mut conditions = Vec::new();
@@ -225,7 +225,7 @@ impl CoinEntity {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<Self>, crate::Error> {
-        let symbol_list = crate::sqlite::operator::any_in_collection(symbol_list, "','");
+        let symbol_list = crate::any_in_collection(symbol_list, "','");
         let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
 
         let mut conditions = Vec::new();

@@ -1,4 +1,4 @@
-use wallet_database::{entities::chain::ChainEntity, sqlite::logic::chain::ChainWithNode};
+use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 use crate::{
     api::ReturnType,

@@ -455,7 +455,7 @@ impl MultisigAccountDaoV1 {
         let sql = if ids.is_empty() {
             "DELETE FROM multisig_account RETURNING *".to_string()
         } else {
-            let ids = crate::sqlite::operator::any_in_collection(ids, "','");
+            let ids = crate::any_in_collection(ids, "','");
             format!(
                 "DELETE FROM multisig_account WHERE id IN ('{}') RETURNING *",
                 ids

@@ -3,12 +3,11 @@ use crate::{
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{
-    entities::chain::{ChainCreateVo, ChainEntity},
+    entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
         coin::CoinRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
-    sqlite::logic::chain::ChainWithNode,
 };
 
 pub struct ChainService {
@@ -95,46 +94,6 @@ impl ChainService {
         Ok(res)
     }
 
-    // pub async fn calculate_chain_assets_list(
-    //     &self,
-    //     datas: Vec<AssetsEntity>,
-    // ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
-    //     let mut res = Vec::new();
-
-    //     for data in datas {
-    //         let token_currency =
-    //             super::get_current_coin_unit_price_option(&data.symbol, &data.chain_code).await?;
-
-    //         let balance = (token_currency, &data).try_into()?;
-    //         res.push(crate::response_vo::chain::ChainAssets {
-    //             chain_code: data.chain_code,
-    //             address: data.address,
-    //             balance,
-    //             symbol: data.symbol,
-    //         })
-    //     }
-    //     Ok(res)
-    // }
-
-    // pub async fn get_chain_list(
-    //     &self,
-    // ) -> Result<Vec<ChainEntity>, crate::ServiceError> {
-    //     crate::manager::Context::get_global_sqlite_context()?
-    //         .chain_list()
-    //         .await
-    //         .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))
-    // }
-
-    // pub async fn get_chain_list_with_node_info(
-    //     &self,
-    // ) -> Result<Vec<ChainWithNode>, crate::ServiceError>
-    // {
-    //     crate::manager::Context::get_global_sqlite_context()?
-    //         .chain_list_with_node_info()
-    //         .await
-    //         .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))
-    // }
-
     pub async fn get_chain_list_by_address_account_id_symbol(
         mut self,
         address: &str,
@@ -161,10 +120,6 @@ impl ChainService {
                 let accounts = tx
                     .get_account_list_by_wallet_address_and_account_id(Some(address), account_id)
                     .await?;
-                // let condition = Vec::new();
-                // let multisig_account = MultisigAccountEntity::list(condition, pool.as_ref())
-                //     .await
-                //     .unwrap();
                 for account in accounts {
                     if !account_addresses
                         .iter()
