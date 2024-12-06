@@ -10,7 +10,8 @@
       "protocols": [
         "TRC20"
       ],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": true
     },
     {
       "name": "Tron",
@@ -22,7 +23,8 @@
       "protocols": [
         "TRC20"
       ],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "Tron",
@@ -34,7 +36,8 @@
       "protocols": [
         "TRC20"
       ],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "Ethereum",
@@ -46,7 +49,8 @@
       "protocols": [
         "ERC20"
       ],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": true
     },
     {
       "name": "Ethereum",
@@ -58,7 +62,8 @@
       "protocols": [
         "ERC20"
       ],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "Ethereum",
@@ -70,7 +75,8 @@
       "protocols": [
         "ERC20"
       ],
-      "network": "testnet"
+      "network": "testnet",
+      "active": false
     },
     {
       "name": "BNB Smart Chain",
@@ -82,7 +88,8 @@
       "protocols": [
         "BEP20"
       ],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "BNB Smart Chain",
@@ -94,7 +101,8 @@
       "protocols": [
         "BEP20"
       ],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "BNB Smart Chain",
@@ -106,7 +114,8 @@
       "protocols": [
         "BEP20"
       ],
-      "network": "testnet"
+      "network": "testnet",
+      "active": false
     },
     {
       "name": "Solana",
@@ -116,7 +125,8 @@
       "rpc_url": "http://rpc.88ai.fun/sol",
       "http_url": "",
       "protocols": [],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "Solana",
@@ -126,7 +136,8 @@
       "rpc_url": "https://rpc.ankr.com/solana/1de0b2109f36eb77145fdd195bcf3fbad10cc878d49e1ade16f550f1b4115c26",
       "http_url": "",
       "protocols": [],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "Solana",
@@ -136,7 +147,8 @@
       "rpc_url": "https://solana-devnet.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05",
       "http_url": "",
       "protocols": [],
-      "network": "testnet"
+      "network": "testnet",
+      "active": false
     },
     {
       "name": "Bitcoin",
@@ -146,7 +158,8 @@
       "http_url": "http://rpc.88ai.fun/btc/http/btc_blockbook/api/v2/",
       "rpc_url": "http://rpc.88ai.fun/btc",
       "protocols": [],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     },
     {
       "name": "Bitcoin",
@@ -156,7 +169,8 @@
       "http_url": "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api/v2",
       "rpc_url": "https://rpc.ankr.com/btc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb",
       "protocols": [],
-      "network": "mainnet"
+      "network": "mainnet",
+      "active": false
     }
   ]
 }
