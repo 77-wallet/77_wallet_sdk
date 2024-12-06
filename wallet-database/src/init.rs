@@ -28,7 +28,7 @@ impl SqlitePoolProvider {
         let pool = Self::init_pool(&uri).await?;
 
         // run migrations
-        Self::run_migrate(pool.clone()).await?;
+        // Self::run_migrate(pool.clone()).await?;
 
         Ok(Self { uri, conn: pool })
     }

@@ -51,6 +51,8 @@ pub(crate) enum BizType {
     /// 多签转账-发起签名受理完成
     MultiSignTransAccept,
     /// 多签转账-发起签名受理完成
+    MultiSignTransCancel,
+    /// 多签转账-发起签名受理完成
     MultiSignTransAcceptCompleteMsg,
 
     /// 多签转账-确认完成
@@ -120,6 +122,7 @@ pub(crate) enum Body {
     OrderMultiSignCreated(signature::OrderMultiSignCreated),
     OrderMultiSignCancel(signature::OrderMultiSignCancel),
     MultiSignTransAccept(transaction::MultiSignTransAccept),
+    MultiSignTransCancel(transaction::MultiSignTransCancel),
 
     MultiSignTransAcceptCompleteMsg(transaction::MultiSignTransAcceptCompleteMsg),
     /// 账变

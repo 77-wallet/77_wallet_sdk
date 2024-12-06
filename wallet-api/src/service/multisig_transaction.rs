@@ -774,18 +774,27 @@ impl MultisigTransactionService {
         chain_code: String,
         address: String,
     ) -> Result<Option<QueueInfo>, crate::ServiceError> {
-        if chain_code.as_str() == chain_code::ETHEREUM || chain_code.as_str() == chain_code::BNB {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
-            let queue_repo = MultisigQueueRepo::new(pool.clone());
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let queue_repo = MultisigQueueRepo::new(pool.clone());
 
-            let rs = queue_repo
-                .ongoing_queue(&chain_code, &address)
-                .await?
-                .and_then(|q| Some(QueueInfo::from(q)));
-            Ok(rs)
-        } else {
-            Ok(None)
-        }
+        let rs = queue_repo
+            .ongoing_queue(&chain_code, &address)
+            .await?
+            .and_then(|q| Some(QueueInfo::from(q)));
+        Ok(rs)
+
+        // if chain_code.as_str() == chain_code::ETHEREUM || chain_code.as_str() == chain_code::BNB {
+        //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        //     let queue_repo = MultisigQueueRepo::new(pool.clone());
+
+        //     let rs = queue_repo
+        //         .ongoing_queue(&chain_code, &address)
+        //         .await?
+        //         .and_then(|q| Some(QueueInfo::from(q)));
+        //     Ok(rs)
+        // } else {
+        //     Ok(None)
+        // }
     }
 
     // cancel multisig queue

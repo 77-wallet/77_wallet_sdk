@@ -231,6 +231,18 @@ pub(crate) async fn exec_payload(
                 .await?;
         }
         (
+            super::payload::incoming::BizType::MultiSignTransCancel,
+            super::payload::incoming::Body::MultiSignTransCancel(data),
+        ) => {
+            crate::domain::task_queue::Tasks::new()
+                .push_with_id(
+                    &payload.msg_id,
+                    Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(data))),
+                )
+                .send()
+                .await?;
+        }
+        (
             super::payload::incoming::BizType::RpcAddressChange,
             super::payload::incoming::Body::RpcChange(data),
         ) => {
