@@ -172,7 +172,7 @@ mod test {
         let chain_code = Some("tron".to_string());
         let res = wallet_manager
             .get_multisig_hot_coin_list(
-                "TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N",
+                "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK",
                 chain_code,
                 keyword,
                 0,

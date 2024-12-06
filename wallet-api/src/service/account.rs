@@ -256,6 +256,12 @@ impl AccountService {
         password: &str,
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::ServiceError> {
+        let mut tx = self.repo;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        WalletDomain::validate_password(&device, password)?;
+
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
         let dirs = crate::manager::Context::get_global_dirs()?;
 
@@ -263,7 +269,6 @@ impl AccountService {
         let seed =
             wallet_keystore::api::KeystoreApi::load_seed(root_dir, wallet_address, password)?;
 
-        let mut tx = self.repo;
         // 获取默认链和币
         let chains = if !all {
             vec![
@@ -593,6 +598,11 @@ impl AccountService {
         account_id: u32,
     ) -> Result<crate::response_vo::account::GetAccountPrivateKeyRes, crate::ServiceError> {
         let tx = &mut self.repo;
+
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        WalletDomain::validate_password(&device, password)?;
 
         let account_list = tx
             .account_list_by_wallet_address_and_account_id_and_chain_codes(

@@ -863,4 +863,190 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_eth2() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { .. } = setup_test_environment(None, None, false, None).await?;
+
+        use rumqttc::v5::mqttbytes::v5::Publish;
+        use serde_json::json;
+
+        // 模拟 JSON 数据
+        let json_data = json!({
+            "msgId": "321321",
+            "appId": "18171adc038afd5c4ac",
+            "bizType": "ACCT_CHANGE",
+            "body": {
+                "blockHeight": 21342032,
+                "chainCode": "eth",
+                "fromAddr": "0x8f1e2a99cb688587c02b8b836ba9ca39dc60d63b",
+                "isMultisig": 1,
+                "notes": "test",
+                "queueId": "203611409211330560",
+                "status": true,
+                "symbol": "usdt",
+                "toAddr": "0x148805b49819371eef9a822f7f880b42cf67834d",
+                "token": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+                "transactionFee": 0.001107569750308281,
+                "transactionTime": "2024-12-06 07:42:23",
+                "transferType": 1,
+                "txHash": "0xa9143a51d9927cbc010e2b35dfe4c9d4bfc37bd97b02cf7e6e1b2e3f37f91d98",
+                "txKind": 1,
+                "value": 0.5
+            },
+            "clientId": "ed8a6aab27108febe9909ff1ae10d31c",
+            "deviceType": "IOS",
+            "sn": "845edde901f5ea0f7c17d4b2e891679955b0a7b648da1b6ba247dfb1d1ac9902"
+        });
+
+        // 将 JSON 数据转换为 payload
+        let payload = serde_json::to_vec(&json_data).expect("Failed to serialize JSON");
+
+        // 创建模拟的 Publish 数据包
+        let publish = Publish {
+            dup: false,
+            qos: rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
+            retain: false,
+            topic: "wallet/order".into(),
+            pkid: 0,
+            payload: payload.into(),
+            properties: Default::default(),
+        };
+
+        // 调用 exec_incoming_publish 并断言结果
+        let result = exec_incoming_publish(&publish).await;
+        assert!(
+            result.is_ok(),
+            "exec_incoming_publish failed: {:?}",
+            result.err()
+        );
+
+        Ok(())
+    }
+    
+    #[tokio::test]
+    async fn test_eth3() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { .. } = setup_test_environment(None, None, false, None).await?;
+
+        use rumqttc::v5::mqttbytes::v5::Publish;
+        use serde_json::json;
+
+        // 模拟 JSON 数据
+        let json_data = json!({
+            "msgId": "321321",
+            "appId": "191e35f7e0c290d7abd",
+            "bizType": "ACCT_CHANGE",
+            "body": {
+                "blockHeight": 21342785,
+                "chainCode": "eth",
+                "fromAddr": "0x8F1E2a99CB688587c02B8b836Ba9Ca39dC60D63B",
+                "isMultisig": 1,
+                "notes": "0.11223",
+                "queueId": "203663273910996992",
+                "status": true,
+                "symbol": "usdt",
+                "toAddr": "0x148805B49819371EEF9A822f7F880b42Cf67834D",
+                "token": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+                "transactionFee": 0.00135940441821096,
+                "transactionTime": "2024-12-06 10:13:47",
+                "transferType": 1,
+                "txHash": "0xaaa362dfd318f4da95e2d1e71c8c2a2ceabc8fd5df85e7c144843e6fc55f25e0",
+                "txKind": 1,
+                "value": 0.1112
+            },
+            "clientId": "7552bd49a9407eb98164c129d11da7e2",
+            "deviceType": "IOS",
+            "sn": "5bb0eada7cb7290b5d196362e6def48dcb9703e1468c0fb28eb7dd61073875e6"
+        });
+
+        // 将 JSON 数据转换为 payload
+        let payload = serde_json::to_vec(&json_data).expect("Failed to serialize JSON");
+
+        // 创建模拟的 Publish 数据包
+        let publish = Publish {
+            dup: false,
+            qos: rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
+            retain: false,
+            topic: "wallet/order".into(),
+            pkid: 0,
+            payload: payload.into(),
+            properties: Default::default(),
+        };
+
+        // 调用 exec_incoming_publish 并断言结果
+        let result = exec_incoming_publish(&publish).await;
+        assert!(
+            result.is_ok(),
+            "exec_incoming_publish failed: {:?}",
+            result.err()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_eth4() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { .. } = setup_test_environment(None, None, false, None).await?;
+
+        use rumqttc::v5::mqttbytes::v5::Publish;
+        use serde_json::json;
+
+        // 模拟 JSON 数据
+        let json_data = json!({
+            "msgId": "321321",
+            "appId": "191e35f7e0c290d7abd",
+            "bizType": "ACCT_CHANGE",
+            "body": {
+                "blockHeight": 21342785,
+                "chainCode": "eth",
+                "fromAddr": "0x8F1E2a99CB688587c02B8b836Ba9Ca39dC60D63B",
+                "isMultisig": 1,
+                "notes": "0.11223",
+                "queueId": "203663273910996992",
+                "status": true,
+                "symbol": "usdt",
+                "toAddr": "0x148805B49819371EEF9A822f7F880b42Cf67834D",
+                "token": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+                "transactionFee": 0.00135940441821096,
+                "transactionTime": "2024-12-06 10:13:47",
+                "transferType": 1,
+                "txHash": "0xaaa362dfd318f4da95e2d1e71c8c2a2ceabc8fd5df85e7c144843e6fc55f25e0",
+                "txKind": 1,
+                "value": 0.1112
+            },
+            "clientId": "7552bd49a9407eb98164c129d11da7e2",
+            "deviceType": "IOS",
+            "sn": "5bb0eada7cb7290b5d196362e6def48dcb9703e1468c0fb28eb7dd61073875e6"
+        });
+
+        // 将 JSON 数据转换为 payload
+        let payload = serde_json::to_vec(&json_data).expect("Failed to serialize JSON");
+
+        // 创建模拟的 Publish 数据包
+        let publish = Publish {
+            dup: false,
+            qos: rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
+            retain: false,
+            topic: "wallet/order".into(),
+            pkid: 0,
+            payload: payload.into(),
+            properties: Default::default(),
+        };
+
+        // 调用 exec_incoming_publish 并断言结果
+        let result = exec_incoming_publish(&publish).await;
+        assert!(
+            result.is_ok(),
+            "exec_incoming_publish failed: {:?}",
+            result.err()
+        );
+
+        Ok(())
+    }
 }

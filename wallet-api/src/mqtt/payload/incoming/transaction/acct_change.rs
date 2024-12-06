@@ -338,10 +338,11 @@ impl AcctChange {
                         return Ok(());
                     }
                 };
-
+                tracing::warn!("multisig account: address: {address}");
                 if let Some(multisig_account) =
                     MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
                 {
+                    tracing::warn!("multisig account: name: {}", multisig_account.name);
                     let notif = Notification::new_transaction_notification(
                         AccountType::Multisig,
                         &multisig_account.name,

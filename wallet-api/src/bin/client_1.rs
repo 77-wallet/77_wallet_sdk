@@ -39,6 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let phrase = Some(
         "divorce word join around degree mother quiz math just custom lunar angle".to_string(),
     );
+    let phrase = Some(
+        "pave sphere only enhance long between finger pudding undo escape avoid avoid".to_string(),
+    );
     // let phrase = Some(
     //     "nose bird celery bread slice hero black session tonight winner pitch foot".to_string(),
     // );

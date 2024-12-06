@@ -174,6 +174,10 @@ impl WalletService {
         is_default_name: bool,
     ) -> Result<crate::response_vo::wallet::ImportDerivationPathRes, crate::ServiceError> {
         let mut tx = self.repo;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        WalletDomain::validate_password(&device, wallet_password)?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;

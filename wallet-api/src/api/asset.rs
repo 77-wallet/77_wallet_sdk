@@ -287,7 +287,7 @@ mod test {
         let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
         // let symbol = "LTC";
         // let symbol = "BEANS";
-        let symbol = "WIN";
+        let symbol = "USDT";
         let res = wallet_manager.remove_coin(wallet_address, 1, symbol).await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -301,7 +301,7 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
 
         let res = wallet_manager
-            .remove_multisig_coin("0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc", "TRX")
+            .remove_multisig_coin("TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK", "SUN")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -365,10 +365,12 @@ mod test {
         // let is_multisig = None;
         let is_multisig = Some(true);
 
-        let address = "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK";
+        let address = "TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N";
         let res = wallet_manager
             .get_coin_list(address, None, chain_code, keyword, is_multisig)
             .await;
+        tracing::info!("res: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -467,7 +469,7 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        let address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
         // let chain_code = Some("bnb");
         // let chain_code = Some("btc");
         // let chain_code = Some("eth".to_string());

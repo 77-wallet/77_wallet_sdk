@@ -1,5 +1,7 @@
 use wallet_database::{
-    entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
+    entities::{
+        account::AccountEntity, chain::ChainEntity, device::DeviceEntity, wallet::WalletEntity,
+    },
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
@@ -301,6 +303,12 @@ pub async fn open_account_pk_with_password(
     address: &str,
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
+    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
+        return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+    };
+    super::wallet::WalletDomain::validate_password(&device, password)?;
+
     let db = crate::manager::Context::get_global_sqlite_pool()?;
     let dirs = crate::manager::Context::get_global_dirs()?;
 
