@@ -42,8 +42,6 @@ impl NodeDomain {
 
         let mut backend_nodes = Vec::new();
 
-        let chains = backend.chain_default_list().await?;
-
         for node in default_nodes.iter() {
             let nodes = match backend.chain_rpc_list(&node.chain_code).await {
                 Ok(node) => node,
@@ -65,8 +63,21 @@ impl NodeDomain {
                 };
             }
         }
-
-        ChainRepoTrait::toggle_chains_status(&mut repo, chains.list).await?;
+        // tokio::spawn(async move {
+        //     if let Err(e) = Self::toggle_chains().await {
+        //         tracing::error!("toggle_chains error: {:?}", e);
+        //     }
+        // });
+        let chain_list_req = crate::domain::task_queue::BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
+            &(),
+        )?;
+        super::task_queue::Tasks::new()
+            .push(super::task_queue::Task::BackendApi(
+                super::task_queue::BackendApiTask::BackendApi(chain_list_req),
+            ))
+            .send()
+            .await?;
 
         Self::process_filtered_nodes(&mut repo, &pool, &backend_nodes, default_nodes).await?;
         Ok(())

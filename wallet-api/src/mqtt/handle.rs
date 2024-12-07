@@ -1049,4 +1049,63 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_acct_change_bug() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { .. } = setup_test_environment(None, None, false, None).await?;
+
+        use rumqttc::v5::mqttbytes::v5::Publish;
+        use serde_json::json;
+
+        // 模拟 JSON 数据
+        let json_data = json!({
+            "appId": "191e35f7e0c290d7abd",
+            "bizType": "ACCT_CHANGE",
+            "body": {
+                "blockHeight": 21336350,
+                "chainCode": "eth",
+                "fromAddr": "0x148805B49819371EEF9A822f7F880b42Cf67834D",
+                "status": false,
+                "symbol": "eth",
+                "toAddr": "0x8F1E2a99CB688587c02B8b836Ba9Ca39dC60D63B",
+                "token": "eth",
+                "transactionFee": 0.000596818853647818,
+                "transactionTime": "2024-12-05 12:39:11",
+                "transferType": 1,
+                "txHash": "0xbf49c59702eb886675eec8929b0320fa8ae5e533c9d8f2ab3a845568e4b594ef",
+                "txKind": 1,
+                "value": 0
+            },
+            "clientId": "7552bd49a9407eb98164c129d11da7e2",
+            "deviceType": "IOS",
+            "sn": "5bb0eada7cb7290b5d196362e6def48dcb9703e1468c0fb28eb7dd61073875e6",
+            "msgId": "67519ef5a442286e3d1110cd"
+        });
+
+        // 将 JSON 数据转换为 payload
+        let payload = serde_json::to_vec(&json_data).expect("Failed to serialize JSON");
+
+        // 创建模拟的 Publish 数据包
+        let publish = Publish {
+            dup: false,
+            qos: rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
+            retain: false,
+            topic: "wallet/order".into(),
+            pkid: 0,
+            payload: payload.into(),
+            properties: Default::default(),
+        };
+
+        // 调用 exec_incoming_publish 并断言结果
+        let result = exec_incoming_publish(&publish).await;
+        assert!(
+            result.is_ok(),
+            "exec_incoming_publish failed: {:?}",
+            result.err()
+        );
+
+        Ok(())
+    }
 }

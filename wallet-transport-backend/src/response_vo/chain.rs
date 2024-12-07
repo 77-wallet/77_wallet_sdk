@@ -17,6 +17,7 @@ pub struct ChainUrlInfo {
     pub hash_url: Option<String>,
     #[serde(rename = "code")]
     pub chain_code: String,
+    pub enable: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
