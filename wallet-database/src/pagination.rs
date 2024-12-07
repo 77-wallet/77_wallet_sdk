@@ -3,6 +3,7 @@ use sqlx::{sqlite::SqliteRow, Executor, FromRow, Sqlite};
 
 // TODO 整个模块修改错误类型
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Pagination<T: Serialize> {
     pub page: i64,
     pub page_size: i64,

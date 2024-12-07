@@ -1,6 +1,7 @@
 use wallet_database::entities::system_notification::SystemNotificationEntity;
 
 #[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SystemNotification {
     pub id: String,
     pub r#type: String,
