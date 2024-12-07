@@ -56,8 +56,8 @@ impl TokenPriceChange {
         tx.update_price_unit(&coin_id, &price.to_string(), unit)
             .await?;
 
-        let config = crate::config::CONFIG.read().await;
-        let currency = config.currency();
+        let app_state = crate::app_state::APP_STATE.read().await;
+        let currency = app_state.currency();
 
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let exchange_rate = ExchangeRateService::new(repo)
