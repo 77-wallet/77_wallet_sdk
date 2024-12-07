@@ -8,7 +8,7 @@ use wallet_transport_backend::{
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
 
-use crate::domain::app::config::ConfigDomain;
+use crate::domain::{app::config::ConfigDomain, chain::ChainDomain};
 pub struct BackendTaskHandle;
 
 static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
@@ -165,6 +165,14 @@ impl EndpointHandler for SpecialHandler {
             endpoint::APP_INSTALL_DOWNLOAD => {
                 let url = backend.post_req_str::<String>(endpoint, &body).await?;
                 ConfigDomain::set_app_install_download_url(&url).await?;
+            }
+            endpoint::CHAIN_LIST => {
+                let chains = backend
+                    .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
+                        endpoint, &body,
+                    )
+                    .await?;
+                ChainDomain::toggle_chains(chains).await?;
             }
 
             _ => {

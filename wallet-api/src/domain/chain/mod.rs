@@ -84,3 +84,25 @@ pub fn check_address(
     };
     Ok(())
 }
+
+pub struct ChainDomain;
+
+impl ChainDomain {
+    pub(crate) async fn toggle_chains(
+        chains: wallet_transport_backend::response_vo::chain::ChainList,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let chains = chains
+            .list
+            .into_iter()
+            .filter(|c| c.enable.is_some_and(|c| c) || c.enable.is_none())
+            .map(|c| c.chain_code)
+            .collect();
+        wallet_database::repositories::chain::ChainRepoTrait::toggle_chains_status(
+            &mut repo, chains,
+        )
+        .await?;
+        Ok(())
+    }
+}
