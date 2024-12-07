@@ -5,15 +5,14 @@ use crate::{
     response_vo::{chain::GasOracle, transaction::RecordResp},
 };
 use std::collections::HashMap;
-use wallet_transport::client::HttpClient;
 
 impl BackendApi {
     pub async fn signed_tran_create(
         &self,
         req: &SignedTranCreateReq,
     ) -> Result<Option<()>, crate::Error> {
-        let client = HttpClient::new(&self.base_url, None)?;
-        let res = client
+        let res = self
+            .client
             .post("signed/trans/create")
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
@@ -25,8 +24,8 @@ impl BackendApi {
         &self,
         req: &SignedTranAcceptReq,
     ) -> Result<Option<()>, crate::Error> {
-        let client = HttpClient::new(&self.base_url, None)?;
-        let res = client
+        let res = self
+            .client
             .post("signed/trans/accept")
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
@@ -38,8 +37,8 @@ impl BackendApi {
         &self,
         req: &SignedTranUpdateHashReq,
     ) -> Result<Option<()>, crate::Error> {
-        let client = HttpClient::new(&self.base_url, None)?;
-        let res = client
+        let res = self
+            .client
             .post("signed/trans/updateTransdHash")
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
@@ -51,9 +50,8 @@ impl BackendApi {
         let mut params = HashMap::new();
         params.insert("chainCode", chain_code);
 
-        let client = HttpClient::new(&self.base_url, None)?;
-
-        let res = client
+        let res = self
+            .client
             .post("token/findGasTracker")
             .json(params)
             .send::<BackendResponse>()

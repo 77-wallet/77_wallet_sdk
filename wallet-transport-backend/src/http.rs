@@ -73,7 +73,7 @@ pub async fn _send_request(
     headers: Option<std::collections::HashMap<String, String>>,
 ) -> Result<std::collections::HashMap<String, serde_json::Value>, crate::Error> {
     let base_url = base_url.unwrap_or(BASE_URL.to_string());
-    let client = HttpClient::new(&base_url, headers)?;
+    let client = HttpClient::new(&base_url, headers, None)?;
 
     let method = wallet_utils::parse_func::method_from_str(method)?;
 

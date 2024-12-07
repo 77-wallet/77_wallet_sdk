@@ -40,7 +40,7 @@ impl TransactionAdapter {
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<TransactionAdapter, chain::Error> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;
-
+        let timeout = Some(std::time::Duration::from_secs(30));
         match chain_code {
             ChainType::Bitcoin => {
                 // let auth = wallet_chain_interact::btc::provider::RpcAuth {
@@ -53,23 +53,23 @@ impl TransactionAdapter {
                     http_url: http_url.to_string(),
                     http_api_key: None,
                 };
-                let btc_chain = chain::btc::BtcChain::new(config, network, header_opt)?;
+                let btc_chain = chain::btc::BtcChain::new(config, network, header_opt, timeout)?;
                 Ok(TransactionAdapter::BitCoin(btc_chain))
             }
             ChainType::Ethereum | ChainType::BnbSmartChain => {
-                let rpc_client = RpcClient::new(rpc_url, header_opt)?;
+                let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
                 let eth_chain = chain::eth::EthChain::new(provider, network)?;
                 Ok(TransactionAdapter::Ethereum(eth_chain))
             }
             ChainType::Solana => {
-                let rpc_client = RpcClient::new(rpc_url, header_opt)?;
+                let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
                 let provider = sol::Provider::new(rpc_client)?;
                 let sol_chain = chain::sol::SolanaChain::new(provider)?;
                 Ok(TransactionAdapter::Solana(sol_chain))
             }
             ChainType::Tron => {
-                let http_client = HttpClient::new(rpc_url, header_opt)?;
+                let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
                 let provider = tron::Provider::new(http_client)?;
 
                 let tron_chain = chain::tron::TronChain::new(provider)?;
