@@ -128,7 +128,7 @@ impl MultisigQueueDaoV1 {
         sql.push_str(" ORDER BY q.created_at DESC");
         let pagination = Pagination::<MultisigQueueWithAccountEntity>::init(page, page_size);
 
-        pagination.page_v1(&*pool, &sql).await
+        pagination.page(&*pool, &sql).await
     }
 
     pub async fn list_by_account_ids<'a, E>(

@@ -144,7 +144,7 @@ impl AnnouncementEntity {
 
         let sql = "SELECT * FROM announcement ORDER BY created_at DESC";
         let paginate = Pagination::<Self>::init(page, page_size);
-        Ok(paginate.page_v1(exec, sql).await?)
+        Ok(paginate.page(exec, sql).await?)
     }
 
     pub async fn get_announcement_by_id<'a, E>(

@@ -89,7 +89,7 @@ impl BillDao {
         tracing::warn!("{}", sql);
 
         let paginate = Pagination::<BillEntity>::init(page, page_size);
-        Ok(paginate.page_v1(pool, &sql).await?)
+        Ok(paginate.page(pool, &sql).await?)
     }
 
     pub async fn recent_bill(

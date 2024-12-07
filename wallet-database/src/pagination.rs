@@ -1,7 +1,6 @@
 use serde::Serialize;
 use sqlx::{sqlite::SqliteRow, Executor, FromRow, Sqlite};
 
-// TODO 整个模块修改错误类型
 #[derive(Debug, Serialize)]
 pub struct Pagination<T: Serialize> {
     pub page: i64,
@@ -23,11 +22,11 @@ where
         }
     }
 
-    pub async fn page_v1<'a, E>(mut self, exec: &E, sql: &str) -> Result<Self, crate::DatabaseError>
+    pub async fn page<'a, E>(mut self, exec: &E, sql: &str) -> Result<Self, crate::DatabaseError>
     where
         for<'c> &'c E: Executor<'c, Database = Sqlite>,
     {
-        self.total_count = self.total_count_v1(exec, sql).await?;
+        self.total_count = self.total_count(exec, sql).await?;
 
         let sql = format!(
             "{} LIMIT {} OFFSET {}",
@@ -65,11 +64,7 @@ where
         }
     }
 
-    pub async fn total_count_v1<'a, E>(
-        &self,
-        exec: &E,
-        sql: &str,
-    ) -> Result<i64, crate::DatabaseError>
+    pub async fn total_count<'a, E>(&self, exec: &E, sql: &str) -> Result<i64, crate::DatabaseError>
     where
         for<'c> &'c E: Executor<'c, Database = Sqlite>,
     {

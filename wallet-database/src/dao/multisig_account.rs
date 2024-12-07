@@ -237,7 +237,7 @@ impl MultisigAccountDaoV1 {
 
         let pagination = Pagination::<MultisigAccountEntity>::init(page, page_size);
 
-        pagination.page_v1(pool.as_ref(), &sql).await
+        pagination.page(pool.as_ref(), &sql).await
     }
 
     pub async fn update_name<'a, E>(

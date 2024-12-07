@@ -1,5 +1,4 @@
 mod macros;
-
 extern crate proc_macro;
 
 #[proc_macro_derive(Resource, attributes(resource))]

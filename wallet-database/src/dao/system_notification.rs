@@ -122,7 +122,7 @@ impl SystemNotificationEntity {
 
         // 执行查询并返回结果
         let paginate = Pagination::<SystemNotificationEntity>::init(page, page_size);
-        Ok(paginate.page_v1(tx, &sql).await?)
+        Ok(paginate.page(tx, &sql).await?)
     }
 
     pub async fn update_system_notification_status<'a, E>(

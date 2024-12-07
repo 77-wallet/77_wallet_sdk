@@ -43,7 +43,7 @@ pub async fn unfreeze_list(
     );
 
     let pagination = Pagination::init(page, page_size);
-    let res = pagination.page_v1(exec, &sql).await?;
+    let res = pagination.page(exec, &sql).await?;
 
     Ok(res)
 }
@@ -87,7 +87,7 @@ pub async fn delegate_list(
     );
 
     let pagination = Pagination::init(page, page_size);
-    let res = pagination.page_v1(&exec, &sql).await?;
+    let res = pagination.page(&exec, &sql).await?;
 
     Ok(res)
 }

@@ -1,7 +1,6 @@
+use crate::request::init::{BlockBrowserUrl, UrlParams};
 use once_cell::sync::Lazy;
 use tokio::sync::RwLock;
-
-use crate::request::init::{BlockBrowserUrl, UrlParams};
 
 pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
     // Arc::new()

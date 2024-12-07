@@ -131,7 +131,7 @@ impl AddressBookDao {
         }
         let sql = format!("{} ORDER BY created_at DESC", query);
         let res = Pagination::<AddressBookEntity>::init(page, page_size);
-        res.page_v1(&*pool, sql.as_str()).await
+        res.page(&*pool, sql.as_str()).await
     }
 
     pub async fn find_by_address<'a, E>(

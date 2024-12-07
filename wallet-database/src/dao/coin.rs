@@ -214,7 +214,7 @@ impl CoinEntity {
         }
 
         let paginate = Pagination::<Self>::init(page, page_size);
-        Ok(paginate.page_v1(exec, &sql).await?)
+        Ok(paginate.page(exec, &sql).await?)
     }
 
     pub async fn coin_list_page(
@@ -250,7 +250,7 @@ impl CoinEntity {
 
         // 执行查询并返回结果
         let paginate = Pagination::<CoinEntity>::init(page, page_size);
-        Ok(paginate.page_v1(&*pool, &sql).await?)
+        Ok(paginate.page(&*pool, &sql).await?)
     }
 
     pub async fn upsert_multi_coin<'a, E>(tx: E, coins: Vec<CoinData>) -> Result<(), crate::Error>
