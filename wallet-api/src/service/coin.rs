@@ -503,7 +503,7 @@ impl CoinService {
 
         let total_count = list.len() as i64;
 
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
 
         let exchange_rate = ExchangeRateRepoTrait::detail(tx, Some(currency.to_string())).await?;

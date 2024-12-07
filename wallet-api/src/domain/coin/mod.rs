@@ -23,7 +23,7 @@ impl CoinDomain {
         &mut self,
         repo: &mut ResourcesRepo,
     ) -> Result<TokenCurrencies, crate::ServiceError> {
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
 
         let coins = repo.coin_list(None, None).await?;
@@ -79,7 +79,7 @@ impl CoinDomain {
 
         let tokens = backend_api.token_query_price(req).await?.list;
 
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
 
         let exchange_rate = ExchangeRateRepoTrait::detail(tx, Some(currency.to_string())).await?;

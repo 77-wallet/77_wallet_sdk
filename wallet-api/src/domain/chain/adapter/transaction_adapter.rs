@@ -339,7 +339,7 @@ impl TransactionAdapter {
     ) -> Result<String, crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
 
-        let currency = crate::config::CONFIG.read().await;
+        let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
         let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency(

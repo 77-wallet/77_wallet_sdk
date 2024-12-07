@@ -32,6 +32,8 @@ pub async fn upload_log_file() -> Result<(), crate::ServiceError> {
         .upload_local_file(&src_file_path, &dst_file_name)
         .await?;
 
+    let backup_file_path = format!("{log_dir}/{dst_file_name}");
+    wallet_utils::file_func::copy_file(&src_file_path, &backup_file_path)?;
     // Clear the log file after successful upload
     wallet_utils::file_func::clear_file(&src_file_path)?;
 

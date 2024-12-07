@@ -61,6 +61,7 @@ impl From<crate::ServiceError> for (u32, String) {
             crate::ServiceError::Types(_) => (620, err.to_string()),
             crate::ServiceError::Database(_) => (630, err.to_string()),
             crate::ServiceError::Tree(_) => (640, err.to_string()),
+            crate::ServiceError::Oss(_) => (650, err.to_string()),
         };
         (code, message)
     }

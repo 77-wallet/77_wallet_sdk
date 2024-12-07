@@ -1,65 +1,29 @@
-use once_cell::sync::Lazy;
-use tokio::sync::RwLock;
+#![allow(unused)]
+use serde::Deserialize;
+use serde_yaml;
+use std::{fs, path::Path};
 
-use crate::request::init::{BlockBrowserUrl, UrlParams};
+#[derive(Deserialize, Debug)]
+struct Config {
+    oss: OssConfig,
+}
 
-pub static CONFIG: Lazy<RwLock<Config>> = Lazy::new(|| {
-    // Arc::new()
-    RwLock::new(Config {
-        currency: "USD".to_string(),
-        language: "ENGLISH".to_string(),
-        url: UrlParams::default(),
-    })
-});
-
-pub struct Config {
-    currency: String,
-    language: String,
-    url: UrlParams,
+#[derive(Deserialize, Debug)]
+struct OssConfig {
+    access_key_id: String,
+    access_key_secret: String,
+    bucket_name: String,
+    endpoint: String,
 }
 
 impl Config {
-    pub fn currency(&self) -> &str {
-        &self.currency
-    }
+    pub fn new<S: AsRef<Path>>(config_path: S) -> Result<Self, crate::ServiceError> {
+        let mut config_content = String::new();
+        wallet_utils::file_func::read(&mut config_content, config_path)?;
 
-    pub fn language(&self) -> &str {
-        &self.language
-    }
-
-    pub fn url(&self) -> &UrlParams {
-        &self.url
-    }
-
-    pub fn set_fiat_from_str(&mut self, fiat: &str) {
-        self.currency = fiat.to_string();
-    }
-
-    pub fn set_block_browser_url(&mut self, block_browser_url_list: Vec<BlockBrowserUrl>) {
-        self.url.block_browser_url_list = block_browser_url_list;
-    }
-
-    pub fn set_mqtt_url(&mut self, mqtt: Option<String>) {
-        self.url.mqtt = mqtt
-    }
-
-    pub fn set_backend_url(&mut self, backend: Option<String>) {
-        self.url.backend = backend
-    }
-
-    pub fn set_official_website(&mut self, official_website: Option<String>) {
-        self.url.official_website = official_website
-    }
-
-    pub fn set_app_install_download_url(&mut self, app_install_download_url: Option<String>) {
-        self.url.app_install_download_url = app_install_download_url
-    }
-
-    pub fn get_official_website(&self) -> Option<String> {
-        self.url.official_website.clone()
-    }
-
-    pub fn set_language(&mut self, language: &str) {
-        self.language = language.to_string();
+        let config: Config = serde_yaml::from_str(&config_content)
+            .map_err(|e| e.to_string())
+            .unwrap();
+        Ok(config)
     }
 }
