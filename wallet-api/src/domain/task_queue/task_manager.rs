@@ -132,7 +132,7 @@ impl TaskManager {
                                     wallet_database::factory::RepositoryFactory::repo(pool.clone());
                                 let _ = repo.task_failed(&task_id).await;
                             };
-                            tracing::error!(?task, "[task_process]a error: {}", e)
+                            tracing::error!(?task, "[task_process] error: {}", e)
                         }
                         let mut running = running_tasks_clone.lock().await;
                         running.remove(&task_id);

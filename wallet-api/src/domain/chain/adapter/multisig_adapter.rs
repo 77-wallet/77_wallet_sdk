@@ -458,7 +458,6 @@ impl MultisigAdapter {
                 Ok(args.get_raw_data(pda, tx_hash)?)
             }
             Self::Tron(chain) => {
-                // TODO 细化交易过期时间
                 let expiration = req.expiration.unwrap_or(1) * 3600;
 
                 if let Some(token) = token {
@@ -495,8 +494,12 @@ impl MultisigAdapter {
                         req.notes.clone(),
                     )?;
 
+                    let fee = chain
+                        .simulate_simple_fee(&req.from, &req.to, 1, params.clone())
+                        .await?;
+                    let fee = unit::u256_from_str(&fee.transaction_fee_i64().to_string())?;
                     let balance = chain.balance(&req.from, None).await?;
-                    if balance < value {
+                    if balance < value + fee {
                         return Err(crate::BusinessError::Chain(
                             crate::ChainError::InsufficientBalance,
                         ))?;
@@ -683,12 +686,8 @@ impl MultisigAdapter {
             Self::Tron(chain) => {
                 let signature_num = sign_list.len() as u8;
                 let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
+                let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-                let memo = if queue.notes.is_empty() {
-                    None
-                } else {
-                    Some(queue.notes.clone())
-                };
                 let consumer = if let Some(token) = assets.token_address() {
                     let params = tron::operations::transfer::ContractTransferOpt::new(
                         &token,
