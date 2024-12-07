@@ -130,6 +130,7 @@ impl<
     pub async fn check_version(
         self,
         device_type: Option<String>,
+        r#type: Option<String>,
     ) -> Result<AppVersionRes, crate::ServiceError> {
         let device_type = if let Some(device_type) = device_type {
             device_type
@@ -144,7 +145,7 @@ impl<
             device.device_type
         };
 
-        let req = VersionViewReq { device_type };
+        let req = VersionViewReq::new(&device_type, r#type);
         let backend = crate::manager::Context::get_global_backend_api()?;
         let res = backend.version_view(req).await?;
         Ok(res)

@@ -155,9 +155,9 @@ mod test {
         // let method = "POST";
         let base_url = crate::consts::BASE_URL;
 
-        let req = VersionViewReq {
-            device_type: "ANDROID".to_string(),
-        };
+        let device_type = "IOS";
+        let r#type = Some("android_google_shop".to_string());
+        let req = VersionViewReq::new(device_type, r#type);
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .version_view(req)

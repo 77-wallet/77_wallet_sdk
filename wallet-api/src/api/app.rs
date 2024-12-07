@@ -6,9 +6,13 @@ use wallet_transport_backend::response_vo::app::{
 
 impl crate::WalletManager {
     // app版本检测接口
-    pub async fn check_version(&self, device_type: Option<String>) -> ReturnType<AppVersionRes> {
+    pub async fn check_version(
+        &self,
+        device_type: Option<String>,
+        r#type: Option<String>,
+    ) -> ReturnType<AppVersionRes> {
         AppService::new(self.repo_factory.resuource_repo())
-            .check_version(device_type)
+            .check_version(device_type, r#type)
             .await?
             .into()
     }
@@ -171,7 +175,10 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
         let device_type = "ANDROID".to_string();
-        let res = wallet_manager.check_version(Some(device_type)).await;
+        let r#type = Some("android_google_shop".to_string());
+        let res = wallet_manager
+            .check_version(Some(device_type), r#type)
+            .await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
