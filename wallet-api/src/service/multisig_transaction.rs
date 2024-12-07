@@ -663,11 +663,7 @@ impl MultisigTransactionService {
                     )
                     .await?;
 
-                    let memo = if queue.notes.is_empty() {
-                        None
-                    } else {
-                        Some(queue.notes.clone())
-                    };
+                    let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
                     let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
                     let transfer_params = tron::operations::transfer::ContractTransferOpt::new(

@@ -6,7 +6,6 @@ impl TaskQueueEntity {
     pub async fn upsert_multi_task<'a, E>(
         exec: E,
         reqs: &[CreateTaskQueueEntity],
-        // reqs: Vec<CreateTaskQueueEntity>,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -32,8 +31,6 @@ impl TaskQueueEntity {
         );
 
         let query = query_builder.build_query_as::<TaskQueueEntity>();
-
-        // tracing::warn!("sql: {}", query.sql());
 
         query
             .fetch_all(exec)

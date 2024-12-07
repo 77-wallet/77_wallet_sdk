@@ -69,11 +69,7 @@ impl MultisigQueueDomain {
         let queue = MultisigQueueDaoV1::list_by_account_ids(&account_ids_vec, &*pool)
             .await
             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-        let raw_time = if let Some(queue) = queue {
-            Some(queue.created_at.to_string())
-        } else {
-            None
-        };
+        let raw_time = queue.map(|q| q.created_at.to_string());
 
         for uid in uid_list {
             Self::recover_queue_data_with_raw_time(&uid, raw_time.clone()).await?;
