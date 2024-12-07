@@ -82,7 +82,7 @@ async fn test_queue_list() {
     let manager = get_manager().await;
 
     // 列表
-    let res = manager.multisig_queue_list(None, None, 5, 0, 10).await;
+    let res = manager.multisig_queue_list(None, None, 3, 0, 10).await;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("queue list = {}", res);
 }

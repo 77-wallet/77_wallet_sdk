@@ -97,6 +97,7 @@ pub struct MultisigQueueWithAccountEntity {
     pub name: String,
     pub threshold: i32,
     pub member_num: i32,
+    pub initiator_addr: String,
     #[sqlx(default)]
     pub sign_num: Option<i64>,
     pub owner: i32,

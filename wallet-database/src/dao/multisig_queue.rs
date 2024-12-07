@@ -76,7 +76,7 @@ impl MultisigQueueDaoV1 {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-                select q.*,a.name,a.threshold,a.member_num,a.owner
+                select q.*,a.name,a.threshold,a.member_num,a.owner,a.initiator_addr
                 from multisig_queue as q  
                 join multisig_account a on q.account_id = a.id
                 where q.id = ?"#;
@@ -96,7 +96,7 @@ impl MultisigQueueDaoV1 {
         page_size: i64,
         pool: Arc<Pool<Sqlite>>,
     ) -> Result<Pagination<MultisigQueueWithAccountEntity>, crate::DatabaseError> {
-        let mut sql = "SELECT q.*, a.name, a.threshold, a.member_num, a.owner 
+        let mut sql = "SELECT q.*, a.name, a.threshold, a.member_num, a.owner,a.initiator_addr 
                    FROM multisig_queue AS q 
                    JOIN multisig_account AS a ON q.account_id = a.id"
             .to_string();
