@@ -23,6 +23,7 @@ wallet-database = { workspace = true }
 wallet-utils = { workspace = true }
 wallet-keystore = { workspace = true }
 wallet-tree = { workspace = true }
+wallet-oss = { workspace = true }
 # wallet-error = { workspace = true }
 wallet-core = { workspace = true }
 wallet-transport = { workspace = true }
@@ -47,6 +48,7 @@ sqlx = { workspace = true }
 
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml = { workspace = true }
 
 once_cell = { workspace = true }
 

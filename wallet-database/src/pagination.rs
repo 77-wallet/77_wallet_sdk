@@ -2,6 +2,7 @@ use serde::Serialize;
 use sqlx::{sqlite::SqliteRow, Executor, FromRow, Sqlite};
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Pagination<T: Serialize> {
     pub page: i64,
     pub page_size: i64,

@@ -224,7 +224,7 @@ impl MultisigAdapter {
         member: MultisigMemberEntities,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
-        let currency = crate::config::CONFIG.read().await;
+        let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
         let backend = crate::manager::Context::get_global_backend_api()?;
@@ -325,7 +325,7 @@ impl MultisigAdapter {
         token: Option<String>,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
-        let currency = crate::config::CONFIG.read().await;
+        let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
         match self {
             MultisigAdapter::Solana(solana_chain) => {
@@ -524,7 +524,7 @@ impl MultisigAdapter {
     ) -> Result<String, crate::ServiceError> {
         match self {
             MultisigAdapter::Solana(solana_chain) => {
-                let currency = crate::config::CONFIG.read().await;
+                let currency = crate::app_state::APP_STATE.read().await;
                 let currency = currency.currency();
 
                 let params = sol::operations::multisig::transfer::SignTransactionOpt::new(
@@ -604,7 +604,7 @@ impl MultisigAdapter {
         sign_list: Vec<String>,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
-        let currency = crate::config::CONFIG.read().await;
+        let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
         let token_currency = domain::coin::TokenCurrencyGetter::get_currency(

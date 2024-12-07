@@ -185,7 +185,7 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         chain_code: String,
         symbol: String,
     ) -> Result<CoinCurrency, crate::ServiceError> {
-        let currency = crate::config::CONFIG.read().await;
+        let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
         let token =

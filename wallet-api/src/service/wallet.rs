@@ -105,7 +105,7 @@ impl WalletService {
                 .ok_or(crate::BusinessError::Device(
                     crate::DeviceError::Uninitialized,
                 ))?;
-            let config = crate::config::CONFIG.read().await;
+            let config = crate::app_state::APP_STATE.read().await;
             let language = config.language();
 
             let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
@@ -399,7 +399,7 @@ impl WalletService {
         Tasks::new().push(task).send().await?;
         tx.update_uid(Some(&uid)).await?;
 
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let language = config.language();
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;

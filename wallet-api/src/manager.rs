@@ -11,6 +11,11 @@ use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::factory::RepositoryFactory;
 use wallet_database::SqliteContext;
 
+pub const ACCESS_KEY_ID: &str = "LTAI5tFE2vXoF27vcHaJiyyd";
+pub const ACCESS_KEY_SECRET: &str = "6GDaBRqk9nmAQV46BgHnSWAml88tRX";
+pub const BUCKET_NAME: &str = "ossbuk23";
+pub const ENDPOINT: &str = "https://oss-cn-hongkong.aliyuncs.com/";
+
 pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
@@ -102,7 +107,7 @@ pub struct Context {
     pub(crate) mqtt_url: String,
     pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
     pub(crate) sqlite_context: wallet_database::SqliteContext,
-    pub(crate) oss_client: wallet_transport::client::OssClient,
+    pub(crate) oss_client: wallet_oss::oss_client::OssClient,
     pub(crate) frontend_notify: Arc<RwLock<FrontendNotifySender>>,
     pub(crate) task_manager: crate::domain::task_queue::task_manager::TaskManager,
     pub(crate) mqtt_topics: Arc<RwLock<crate::mqtt::topic::Topics>>,
@@ -144,12 +149,17 @@ impl Context {
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
 
         {
-            let mut config = crate::config::CONFIG.write().await;
-            config.set_backend_url(Some(backend_api.base_url.clone()));
-            config.set_mqtt_url(Some(mqtt_url.to_string()));
+            let mut app_state = crate::app_state::APP_STATE.write().await;
+            app_state.set_backend_url(Some(backend_api.base_url.clone()));
+            app_state.set_mqtt_url(Some(mqtt_url.to_string()));
         }
 
-        let oss_client = wallet_transport::client::OssClient::new();
+        let oss_client = wallet_oss::oss_client::OssClient::new(
+            ACCESS_KEY_ID,
+            ACCESS_KEY_SECRET,
+            ENDPOINT,
+            BUCKET_NAME,
+        );
 
         // 创建 TaskManager 实例
         let task_manager = crate::domain::task_queue::task_manager::TaskManager::new();
@@ -200,7 +210,7 @@ impl Context {
     }
 
     pub(crate) fn get_global_oss_client(
-    ) -> Result<&'static wallet_transport::client::OssClient, crate::SystemError> {
+    ) -> Result<&'static wallet_oss::oss_client::OssClient, crate::SystemError> {
         Ok(&Context::get_context()?.oss_client)
     }
 

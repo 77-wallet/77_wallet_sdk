@@ -68,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // wallet_api::WalletManager::init_log(Some("warn"))
     //     .await
     //     .unwrap();
+    // Self::init_log(Some("error")).await?;
 
     let TestWalletEnv {
         language_code,
@@ -117,38 +118,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account_name = "账户";
     let start_time = std::time::Instant::now();
 
-    let _res = wallet_manager
-        .create_wallet(
-            language_code,
-            &phrase,
-            &salt,
-            &wallet_name,
-            account_name,
-            true,
-            &password,
-            None,
-        )
-        .await
-        .result
-        .unwrap();
-    tracing::info!("create_wallet res: {_res:?}");
-    let elapsed_time = start_time.elapsed();
-    tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
-    wallet_manager
-        .create_account(
-            &_res.address,
-            &password,
-            None,
-            None,
-            None,
-            account_name,
-            true,
-        )
-        .await
-        .result
-        .unwrap();
-    tracing::info!("create_wallet res: {_res:?}");
-    let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    // let _res = wallet_manager
+    //     .create_wallet(
+    //         language_code,
+    //         &phrase,
+    //         &salt,
+    //         &wallet_name,
+    //         account_name,
+    //         true,
+    //         &password,
+    //         None,
+    //     )
+    //     .await
+    //     .result
+    //     .unwrap();
+    // tracing::info!("create_wallet res: {_res:?}");
+    // let elapsed_time = start_time.elapsed();
+    // tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
+    // wallet_manager
+    //     .create_account(
+    //         &_res.address,
+    //         &password,
+    //         None,
+    //         None,
+    //         None,
+    //         account_name,
+    //         true,
+    //     )
+    //     .await
+    //     .result
+    //     .unwrap();
+    // tracing::info!("create_wallet res: {_res:?}");
+    // let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
 
     wallet_manager
         .mqtt_subscribe(vec!["wallet/token/btc/btc".to_string()], None)

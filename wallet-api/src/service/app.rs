@@ -36,14 +36,14 @@ impl<
     }
 
     pub async fn get_official_website(self) -> Result<GetOfficialWebsiteRes, crate::ServiceError> {
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
 
         let official_website = config.get_official_website();
         Ok(GetOfficialWebsiteRes { official_website })
     }
 
     pub async fn get_config(self) -> Result<GetConfigRes, crate::ServiceError> {
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         // if config.url().official_website.is_none() {
         //     let official_website = self.app_domain.get_official_website().await.ok();
         //     if let Some(official_website) = official_website {
@@ -68,7 +68,7 @@ impl<
         let unread_system_notification_count =
             SystemNotificationRepoTrait::count_unread_status(&mut tx).await?;
 
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         Ok(GetConfigRes {
             fiat: config.currency().to_string(),
             wallet_list,
@@ -153,7 +153,7 @@ impl<
     // fiat  = CNY
     pub async fn set_fiat(&mut self, fiat: &str) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
-        let mut config = crate::config::CONFIG.write().await;
+        let mut config = crate::app_state::APP_STATE.write().await;
         config.set_fiat_from_str(fiat);
 
         tx.update_currency(fiat).await?;
@@ -221,7 +221,7 @@ impl<
     }
 
     pub async fn get_fiat(&self) -> Result<GetFiatRes, crate::ServiceError> {
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
 
         Ok(GetFiatRes {
             fiat: config.currency().to_string(),
@@ -246,7 +246,7 @@ impl<
             .collect();
         let value = wallet_utils::serde_func::serde_to_string(&block_browser_url_list)?;
         ConfigDomain::set_config(BLOCK_BROWSER_URL_LIST, &value).await?;
-        let mut config = crate::config::CONFIG.write().await;
+        let mut config = crate::app_state::APP_STATE.write().await;
         config.set_block_browser_url(block_browser_url_list);
         Ok(())
     }

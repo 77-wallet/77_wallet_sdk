@@ -1,5 +1,4 @@
 use crate::{api::ReturnType, service::system_notification::SystemNotificationService};
-use wallet_database::entities::system_notification::SystemNotificationEntity;
 
 impl crate::WalletManager {
     pub async fn add_system_notification(
@@ -18,7 +17,11 @@ impl crate::WalletManager {
         &self,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<wallet_database::pagination::Pagination<SystemNotificationEntity>> {
+    ) -> ReturnType<
+        wallet_database::pagination::Pagination<
+            crate::response_vo::system_notification::SystemNotification,
+        >,
+    > {
         SystemNotificationService::new(self.repo_factory.resuource_repo())
             .get_system_notification_list(page, page_size)
             .await?

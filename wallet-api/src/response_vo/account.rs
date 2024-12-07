@@ -176,7 +176,7 @@ impl BalanceInfo {
     }
 
     pub async fn new_without_amount() -> Result<BalanceInfo, crate::ServiceError> {
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
         Ok(Self {
             amount: Default::default(),

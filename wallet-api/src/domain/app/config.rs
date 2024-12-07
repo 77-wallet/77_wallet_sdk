@@ -94,7 +94,7 @@ impl ConfigDomain {
                 url: official_website.clone(),
             };
             ConfigDomain::set_config(OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
-            let mut config = crate::config::CONFIG.write().await;
+            let mut config = crate::app_state::APP_STATE.write().await;
             config.set_official_website(Some(official_website));
         }
 
@@ -109,7 +109,7 @@ impl ConfigDomain {
             url: app_install_download_url.to_string(),
         };
         ConfigDomain::set_config(APP_INSTALL_DOWNLOAD_URL, &config.to_json_str()?).await?;
-        let mut config = crate::config::CONFIG.write().await;
+        let mut config = crate::app_state::APP_STATE.write().await;
         config.set_app_install_download_url(Some(app_install_download_url.to_string()));
         Ok(())
     }
@@ -122,7 +122,7 @@ impl ConfigDomain {
             let app_install_download_url =
                 OfficialWebsite::try_from(app_install_download_url.value)?;
 
-            let mut config = crate::config::CONFIG.write().await;
+            let mut config = crate::app_state::APP_STATE.write().await;
             config.set_app_install_download_url(Some(app_install_download_url.url));
         }
         Ok(())
@@ -133,7 +133,7 @@ impl ConfigDomain {
         if let Some(official_website) = official_website {
             let official_website = OfficialWebsite::try_from(official_website.value)?;
 
-            let mut config = crate::config::CONFIG.write().await;
+            let mut config = crate::app_state::APP_STATE.write().await;
             config.set_official_website(Some(official_website.url));
         }
         Ok(())
@@ -144,7 +144,7 @@ impl ConfigDomain {
         let block_browser_url_list =
             ConfigDao::find_by_key(BLOCK_BROWSER_URL_LIST, pool.as_ref()).await?;
         if let Some(block_browser_url_list) = block_browser_url_list {
-            let mut config = crate::config::CONFIG.write().await;
+            let mut config = crate::app_state::APP_STATE.write().await;
             let value = wallet_utils::serde_func::serde_from_str(&block_browser_url_list.value)?;
 
             config.set_block_browser_url(value);

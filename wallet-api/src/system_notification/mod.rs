@@ -152,12 +152,12 @@ pub enum TransactionStatus {
 }
 
 // 多签通知结构体
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MultisigNotification {
     account_name: String,
     account_address: String,
-    multisig_account_id: String,
+    pub(crate) multisig_account_id: String,
     notification_type: NotificationType,
 }
 
@@ -171,12 +171,12 @@ pub struct TransactionNotification {
     pub(crate) transaction_amount: f64,
     pub(crate) currency: String,
     transaction_status: TransactionStatus,
-    transaction_hash: String,
+    pub(crate) transaction_hash: String,
     notification_type: NotificationType,
 }
 
 // 通知类型枚举
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum Notification {
     Multisig(MultisigNotification),

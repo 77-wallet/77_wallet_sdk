@@ -1,5 +1,6 @@
 use wallet_database::{
-    entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
+    dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
+    entities::system_notification::CreateSystemNotificationEntity,
     repositories::system_notification::SystemNotificationRepoTrait,
 };
 
@@ -74,13 +75,54 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         page: i64,
         page_size: i64,
     ) -> Result<
-        wallet_database::pagination::Pagination<SystemNotificationEntity>,
+        wallet_database::pagination::Pagination<
+            crate::response_vo::system_notification::SystemNotification,
+        >,
         crate::ServiceError,
     > {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        tx.list(page, page_size)
+        let list = tx
+            .list(page, page_size)
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))
+            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+
+        let data = list.data;
+        let mut res = Vec::new();
+        for notif in data {
+            let no: crate::system_notification::Notification =
+                wallet_utils::serde_func::serde_from_str(&notif.content)?;
+            let val = match no {
+                crate::system_notification::Notification::Multisig(multisig_notification) => {
+                    match MultisigAccountDaoV1::find_by_id(
+                        &multisig_notification.multisig_account_id,
+                        &*pool,
+                    )
+                    .await?
+                    {
+                        Some(_) => (notif, true).into(),
+                        None => (notif, false).into(),
+                    }
+                }
+                crate::system_notification::Notification::Transaction(transaction_notification) => {
+                    let hash = transaction_notification.transaction_hash;
+                    match BillDao::get_one_by_hash(&hash, &*pool).await? {
+                        Some(_) => (notif, true).into(),
+                        None => (notif, false).into(),
+                    }
+                }
+            };
+            res.push(val);
+        }
+
+        let list = wallet_database::pagination::Pagination {
+            page,
+            page_size,
+            total_count: list.total_count,
+            data: res,
+        };
+
+        Ok(list)
     }
 }
 

@@ -182,7 +182,7 @@ impl TokenCurrencies {
         exchange_rate: f64,
         value: f64,
     ) -> Result<BalanceInfo, crate::ServiceError> {
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
         let unit_price = value * exchange_rate;
 
@@ -259,7 +259,7 @@ impl TokenCurrencies {
     ) -> Result<BalanceInfo, crate::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(balance)?;
 
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code);
 
@@ -292,7 +292,7 @@ impl TokenCurrencies {
     ) -> Result<BalanceInfo, crate::ServiceError> {
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
-        let config = crate::config::CONFIG.read().await;
+        let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();
         for assets in data.iter_mut() {
             let token_currency_id = TokenCurrencyId::new(&assets.symbol, &assets.chain_code);
@@ -347,7 +347,7 @@ impl TokenCurrencies {
 
         let token_currency_id = TokenCurrencyId::new(&data.symbol, &data.chain_code);
         let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            let config = crate::config::CONFIG.read().await;
+            let config = crate::app_state::APP_STATE.read().await;
             let currency = config.currency();
 
             let price = token_currency.get_price(currency);

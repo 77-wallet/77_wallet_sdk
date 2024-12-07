@@ -14,6 +14,8 @@ pub enum ServiceError {
     TransportBackend(#[from] wallet_transport_backend::Error),
     #[error("Transport error: `{0}`")]
     Transport(#[from] wallet_transport::TransportError),
+    #[error("Oss error: `{0}`")]
+    Oss(#[from] wallet_oss::TransportError),
     #[error("Chain instance error: `{0}`")]
     ChainInstance(#[from] wallet_chain_instance::Error),
     #[error("Chain interact error: `{0}`")]
