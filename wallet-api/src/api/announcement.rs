@@ -13,8 +13,6 @@ impl crate::WalletManager {
     }
 
     pub async fn pull_announcement(&self) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AnnouncementService::new(self.repo_factory.resuource_repo())
             .pull_announcement()
             .await?
@@ -26,9 +24,6 @@ impl crate::WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<AnnouncementEntity>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AnnouncementService::new(self.repo_factory.resuource_repo())
             .get_announcement_list(page, page_size)
             .await?
@@ -36,9 +31,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_announcement_by_id(&self, id: &str) -> ReturnType<Option<AnnouncementEntity>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AnnouncementService::new(self.repo_factory.resuource_repo())
             .get_announcement_by_id(id)
             .await?
@@ -46,9 +38,6 @@ impl crate::WalletManager {
     }
 
     pub async fn read_announcement(&self, id: Option<&str>) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AnnouncementService::new(self.repo_factory.resuource_repo())
             .read(id)
             .await?

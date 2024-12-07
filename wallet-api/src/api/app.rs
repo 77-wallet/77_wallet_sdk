@@ -7,8 +7,6 @@ use wallet_transport_backend::response_vo::app::{
 impl crate::WalletManager {
     // app版本检测接口
     pub async fn check_version(&self, device_type: Option<String>) -> ReturnType<AppVersionRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(self.repo_factory.resuource_repo())
             .check_version(device_type)
             .await?
@@ -16,8 +14,6 @@ impl crate::WalletManager {
     }
 
     pub async fn set_currency(&self, fiat: &str) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(self.repo_factory.resuource_repo())
             .set_fiat(fiat)
             .await?
@@ -25,8 +21,6 @@ impl crate::WalletManager {
     }
 
     pub async fn set_language(&self, language: &str) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(self.repo_factory.resuource_repo())
             .language_init(language)
             .await?
@@ -34,8 +28,6 @@ impl crate::WalletManager {
     }
 
     pub async fn set_app_id(&self, app_id: &str) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(self.repo_factory.resuource_repo())
             .set_app_id(app_id)
             .await?
@@ -43,8 +35,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_fiat(&self) -> ReturnType<GetFiatRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(self.repo_factory.resuource_repo())
             .get_fiat()
             .await?
@@ -52,24 +42,13 @@ impl crate::WalletManager {
     }
 
     pub async fn get_official_website(&self) -> ReturnType<GetOfficialWebsiteRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(self.repo_factory.resuource_repo())
             .get_official_website()
             .await?
             .into()
     }
 
-    // pub async fn set_config(&self, config: &str) -> ReturnType<()> {
-    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    //     let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-    //     AppService::new(repo).set_config(language).await?.into()
-    // }
-
     pub async fn get_config(&self) -> ReturnType<GetConfigRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AppService::new(self.repo_factory.resuource_repo())
             .get_config()
             .await?
@@ -77,8 +56,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_unread_status(&self) -> ReturnType<crate::response_vo::app::UnreadCount> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(self.repo_factory.resuource_repo())
             .get_unread_status()
             .await?
@@ -104,9 +81,6 @@ impl crate::WalletManager {
     }
 
     pub async fn mqtt_subscribe(&self, topics: Vec<String>, qos: Option<u8>) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AppService::new(self.repo_factory.resuource_repo())
             .mqtt_subscribe(topics, qos)
             .await?
@@ -114,9 +88,6 @@ impl crate::WalletManager {
     }
 
     pub async fn mqtt_unsubscribe(&self, topics: Vec<String>) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AppService::new(self.repo_factory.resuource_repo())
             .mqtt_unsubscribe_unsubscribe(topics)
             .await?
@@ -124,9 +95,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_configs(&self) -> ReturnType<Vec<ConfigEntity>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AppService::new(self.repo_factory.resuource_repo())
             .get_configs()
             .await?
@@ -134,9 +102,6 @@ impl crate::WalletManager {
     }
 
     pub async fn set_config(&self, key: String, value: String) -> ReturnType<ConfigEntity> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AppService::new(self.repo_factory.resuource_repo())
             .set_config(key, value)
             .await?

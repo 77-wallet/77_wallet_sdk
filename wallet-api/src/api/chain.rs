@@ -14,17 +14,9 @@ impl crate::WalletManager {
         rpc_url: &str,
         ws_url: &str,
     ) -> ReturnType<()> {
-        // let (rpc_url, ws_url) = self.get_url().await;
-        // let name = self.get_chain_info().await;
-
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         let node_id = NodeService::new(self.repo_factory.resuource_repo())
             .add_node(name, chain_code, rpc_url, ws_url)
             .await?;
-        // let repo = self.repo_factory.chain_repo();
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         ChainService::new(self.repo_factory.resuource_repo())
             .add(name, chain_code, &node_id, &[], "")
             .await?
@@ -32,9 +24,6 @@ impl crate::WalletManager {
     }
 
     pub async fn set_chain_node(&self, chain_code: &str, node_id: &str) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         ChainService::new(self.repo_factory.resuource_repo())
             .set_chain_node(chain_code, node_id)
             .await?
@@ -42,8 +31,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_market_chain_list(&self) -> ReturnType<Vec<String>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         ChainService::new(self.repo_factory.resuource_repo())
             .get_market_chain_list()
             .await?
@@ -51,9 +38,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_hot_chain_list(&self) -> ReturnType<Vec<ChainEntity>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         ChainService::new(self.repo_factory.resuource_repo())
             .get_chain_list()
             .await?
@@ -61,9 +45,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_setting_chain_list(&self) -> ReturnType<Vec<ChainWithNode>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         ChainService::new(self.repo_factory.resuource_repo())
             .get_chain_list_with_node_info()
             .await?
@@ -71,9 +52,6 @@ impl crate::WalletManager {
     }
 
     pub async fn get_protocol_list(&self, chain_code: &str) -> ReturnType<Option<ChainEntity>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         ChainService::new(self.repo_factory.resuource_repo())
             .get_protocol_list(chain_code)
             .await?
@@ -86,9 +64,6 @@ impl crate::WalletManager {
         account_id: u32,
         symbol: &str,
     ) -> ReturnType<Vec<ChainAssets>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         ChainService::new(self.repo_factory.resuource_repo())
             .get_chain_list_by_address_account_id_symbol(
                 wallet_address,
@@ -105,9 +80,6 @@ impl crate::WalletManager {
         address: &str,
         symbol: &str,
     ) -> ReturnType<Vec<ChainAssets>> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         ChainService::new(self.repo_factory.resuource_repo())
             .get_chain_list_by_address_account_id_symbol(address, None, symbol, Some(true))
             .await?

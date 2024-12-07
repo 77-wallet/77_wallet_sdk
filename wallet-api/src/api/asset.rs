@@ -48,9 +48,6 @@ impl crate::WalletManager {
         chain_code: &str,
         symbol: &str,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .detail(address, account_id, chain_code, symbol)
             .await?
@@ -92,9 +89,6 @@ impl crate::WalletManager {
         keyword: Option<&str>,
         is_multisig: Option<bool>,
     ) -> ReturnType<crate::response_vo::coin::CoinInfoList> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await?
@@ -107,9 +101,6 @@ impl crate::WalletManager {
         chain_code: &str,
         symbol: &str,
     ) -> ReturnType<AccountChainAsset> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_account_assets_by_symbol_and_chain_code(account_address, chain_code, symbol)
             .await?
@@ -121,9 +112,6 @@ impl crate::WalletManager {
         account_id: u32,
         wallet_address: Option<&str>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_all_account_assets(account_id, wallet_address)
             .await?
@@ -137,9 +125,6 @@ impl crate::WalletManager {
         account_id: u32,
         wallet_address: &str,
     ) -> ReturnType<GetAccountAssetsRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_account_assets(account_id, wallet_address)
             .await?
@@ -151,9 +136,6 @@ impl crate::WalletManager {
         &self,
         address: &str,
     ) -> ReturnType<GetAccountAssetsRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_multisig_account_assets(address)
             .await?
@@ -167,9 +149,6 @@ impl crate::WalletManager {
         address: &str,
         get_chain: crate::request::assets::GetChain,
     ) -> ReturnType<GetChainAssetsRes> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_chain_assets(address, get_chain)
             .await?
@@ -183,9 +162,6 @@ impl crate::WalletManager {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> ReturnType<AccountChainAssetList> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_account_chain_assets_v2(address, account_id, chain_code, is_multisig)
             .await?
@@ -199,9 +175,6 @@ impl crate::WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         let res = AssetsService::new(self.repo_factory.resuource_repo())
             .sync_assets_by_addr(addr, chain_code, symbol)
             .await;
@@ -219,9 +192,6 @@ impl crate::WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         let res = AssetsService::new(self.repo_factory.resuource_repo())
             .sync_assets_by_wallet(wallet_address, account_id, symbol)
             .await;
