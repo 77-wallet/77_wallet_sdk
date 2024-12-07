@@ -122,6 +122,7 @@ pub struct AcctChange {
     // 交易状态 true-成功 false-失败
     pub status: bool,
     // 是否多签 1-是，0-否
+    #[serde(default)]
     pub is_multisig: i32,
     // 队列id
     #[serde(default)]
