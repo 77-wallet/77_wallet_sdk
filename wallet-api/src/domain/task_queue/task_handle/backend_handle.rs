@@ -172,6 +172,7 @@ impl EndpointHandler for SpecialHandler {
                         endpoint, &body,
                     )
                     .await?;
+
                 ChainDomain::toggle_chains(chains).await?;
             }
 

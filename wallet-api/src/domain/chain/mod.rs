@@ -99,6 +99,7 @@ impl ChainDomain {
             .filter(|c| c.enable.is_some_and(|c| c) || c.enable.is_none())
             .map(|c| c.chain_code)
             .collect();
+
         wallet_database::repositories::chain::ChainRepoTrait::toggle_chains_status(
             &mut repo, chains,
         )
