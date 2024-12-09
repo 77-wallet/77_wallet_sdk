@@ -4,7 +4,7 @@ pub mod config_key {
     pub const MIN_VALUE_SWITCH: &str = "min_value_switch";
     pub const BLOCK_BROWSER_URL_LIST: &str = "block_browser_url_list";
     pub const OFFICIAL_WEBSITE: &str = "official_website";
-    pub const APP_INSTALL_DOWNLOAD_URL: &str = "app_install_download_url";
+    pub const APP_DOWNLOAD_QR_CODE_URL: &str = "app_download_qr_code_url";
     pub const VERSION_DOWNLOAD_URL: &str = "version_download_url";
     pub const LANGUAGE: &str = "language";
     pub const MQTT_URL: &str = "mqtt_url";

@@ -164,7 +164,7 @@ impl EndpointHandler for SpecialHandler {
             }
             endpoint::APP_INSTALL_DOWNLOAD => {
                 let url = backend.post_req_str::<String>(endpoint, &body).await?;
-                ConfigDomain::set_app_install_download_url(&url).await?;
+                ConfigDomain::set_app_download_qr_code_url(&url).await?;
                 ConfigDomain::set_version_download_url(&url).await?;
             }
             endpoint::CHAIN_LIST => {

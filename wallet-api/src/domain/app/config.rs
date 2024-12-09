@@ -2,7 +2,7 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_INSTALL_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, MQTT_URL,
+            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, MQTT_URL,
             OFFICIAL_WEBSITE, VERSION_DOWNLOAD_URL,
         },
         MinValueSwitchConfig, MqttUrl, OfficialWebsite,
@@ -118,16 +118,16 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn set_app_install_download_url(
-        app_install_download_url: &str,
+    pub async fn set_app_download_qr_code_url(
+        app_download_qr_code_url: &str,
     ) -> Result<(), crate::ServiceError> {
         // let tx = &mut self.repo;
         let config = wallet_database::entities::config::AppInstallDownload {
-            url: app_install_download_url.to_string(),
+            url: app_download_qr_code_url.to_string(),
         };
-        ConfigDomain::set_config(APP_INSTALL_DOWNLOAD_URL, &config.to_json_str()?).await?;
+        ConfigDomain::set_config(APP_DOWNLOAD_QR_CODE_URL, &config.to_json_str()?).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
-        config.set_app_install_download_url(Some(app_install_download_url.to_string()));
+        config.set_app_download_qr_code_url(Some(app_download_qr_code_url.to_string()));
         Ok(())
     }
 
@@ -147,13 +147,13 @@ impl ConfigDomain {
     pub async fn init_app_install_download_url() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let app_install_download_url =
-            ConfigDao::find_by_key(APP_INSTALL_DOWNLOAD_URL, pool.as_ref()).await?;
+            ConfigDao::find_by_key(APP_DOWNLOAD_QR_CODE_URL, pool.as_ref()).await?;
         if let Some(app_install_download_url) = app_install_download_url {
             let app_install_download_url =
                 OfficialWebsite::try_from(app_install_download_url.value)?;
 
             let mut config = crate::app_state::APP_STATE.write().await;
-            config.set_app_install_download_url(Some(app_install_download_url.url));
+            config.set_app_download_qr_code_url(Some(app_install_download_url.url));
         }
         Ok(())
     }
