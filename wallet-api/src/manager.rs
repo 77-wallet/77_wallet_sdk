@@ -58,6 +58,11 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         &(),
     )?;
 
+    let mqtt_init_req = crate::domain::task_queue::BackendApiTaskData::new(
+        wallet_transport_backend::consts::endpoint::MQTT_INIT,
+        &(),
+    )?;
+
     crate::domain::task_queue::Tasks::new()
         .push(Task::Initialization(InitializationTask::PullAnnouncement))
         .push(Task::Initialization(InitializationTask::PullHotCoins))
@@ -66,6 +71,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         ))
         .push(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
         .push(Task::Initialization(InitializationTask::SetFiat))
+        .push(Task::Initialization(InitializationTask::RecoverQueueData))
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             token_query_rates_req,
         )))
@@ -75,7 +81,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             set_app_install_download_req,
         )))
-        .push(Task::Initialization(InitializationTask::RecoverQueueData))
+        .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
         .send()
         .await?;
 

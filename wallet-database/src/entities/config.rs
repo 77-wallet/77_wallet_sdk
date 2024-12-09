@@ -6,6 +6,7 @@ pub mod config_key {
     pub const OFFICIAL_WEBSITE: &str = "official_website";
     pub const APP_INSTALL_DOWNLOAD_URL: &str = "app_install_download_url";
     pub const LANGUAGE: &str = "language";
+    pub const MQTT_URL: &str = "mqtt_url";
 }
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
@@ -30,6 +31,24 @@ impl OfficialWebsite {
 }
 
 impl TryFrom<String> for OfficialWebsite {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct MqttUrl {
+    pub url: String,
+}
+
+impl MqttUrl {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for MqttUrl {
     type Error = crate::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_str(&value)?)

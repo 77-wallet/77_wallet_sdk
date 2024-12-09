@@ -190,7 +190,6 @@ impl CoinService {
                 page,
                 page_size,
             );
-
             match backend_api.token_query_by_page(&req).await {
                 Ok(mut list) => {
                     data.append(&mut list.list);

@@ -2,9 +2,10 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_INSTALL_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, OFFICIAL_WEBSITE,
+            APP_INSTALL_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, MQTT_URL,
+            OFFICIAL_WEBSITE,
         },
-        MinValueSwitchConfig, OfficialWebsite,
+        MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
 use wallet_transport_backend::response_vo::app::SaveSendMsgAccount;
@@ -101,6 +102,19 @@ impl ConfigDomain {
         Ok(())
     }
 
+    pub async fn set_mqtt_url(mqtt_url: Option<String>) -> Result<(), crate::ServiceError> {
+        if let Some(mqtt_url) = mqtt_url {
+            let config = MqttUrl {
+                url: mqtt_url.clone(),
+            };
+            ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
+            let mut config = crate::app_state::APP_STATE.write().await;
+            config.set_mqtt_url(Some(mqtt_url));
+        }
+
+        Ok(())
+    }
+
     pub async fn set_app_install_download_url(
         app_install_download_url: &str,
     ) -> Result<(), crate::ServiceError> {
@@ -127,6 +141,7 @@ impl ConfigDomain {
         }
         Ok(())
     }
+
     pub async fn init_official_website() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let official_website = ConfigDao::find_by_key(OFFICIAL_WEBSITE, pool.as_ref()).await?;

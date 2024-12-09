@@ -12,10 +12,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // std::env::set_var("RUST_BACKTRACE", "1");
     wallet_utils::init_test_log();
 
-    // let phrase = Some(
-    //     "chuckle practice chicken permit swarm giant improve absurd melt kitchen oppose scrub"
-    //         .to_string(),
-    // );
+    let phrase = Some(
+        "chuckle practice chicken permit swarm giant improve absurd melt kitchen oppose scrub"
+            .to_string(),
+    );
     // let phrase = Some(
     //     "arrest hover fury mercy slim answer hospital area morning student riot deal".to_string(),
     // );
@@ -36,12 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let phrase = Some(
     //     "loan tiny planet lucky rigid clip coil recall praise obvious debris dilemma".to_string(),
     // );
-    let phrase = Some(
-        "divorce word join around degree mother quiz math just custom lunar angle".to_string(),
-    );
-    let phrase = Some(
-        "pave sphere only enhance long between finger pudding undo escape avoid avoid".to_string(),
-    );
+    // let phrase = Some(
+    //     "divorce word join around degree mother quiz math just custom lunar angle".to_string(),
+    // );
+    // let phrase = Some(
+    //     "pave sphere only enhance long between finger pudding undo escape avoid avoid".to_string(),
+    // );
     // let phrase = Some(
     //     "nose bird celery bread slice hero black session tonight winner pitch foot".to_string(),
     // );
@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("start create wallet");
 
     let account_name = "账户";
-    let start_time = std::time::Instant::now();
+    // let start_time = std::time::Instant::now();
 
     // let _res = wallet_manager
     //     .create_wallet(

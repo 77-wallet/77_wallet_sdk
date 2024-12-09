@@ -26,6 +26,16 @@ impl BackendApi {
         res.process()
     }
 
+    pub async fn mqtt_init(&self) -> Result<serde_json::Value, crate::Error> {
+        let res = self
+            .client
+            .post("mqtt/init")
+            .send::<serde_json::Value>()
+            .await?;
+        let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
+        res.process()
+    }
+
     pub async fn rpc_token(&self, client_id: &str) -> Result<String, crate::Error> {
         self.client
             .post("app/rpc/token")
@@ -155,8 +165,10 @@ mod test {
         // let method = "POST";
         let base_url = crate::consts::BASE_URL;
 
-        let device_type = "IOS";
+        let device_type = "ANDROID";
+        // let device_type = "IOS";
         let r#type = Some("android_google_shop".to_string());
+        // let r#type = None;
         let req = VersionViewReq::new(device_type, r#type);
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
@@ -181,6 +193,22 @@ mod test {
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .language_init(req)
+            .await
+            .unwrap();
+
+        println!("[test_language_init] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_mqtt_init() {
+        init_test_log();
+
+        // let method = "POST";
+        let base_url = crate::consts::BASE_URL;
+
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .mqtt_init()
             .await
             .unwrap();
 

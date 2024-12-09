@@ -175,7 +175,10 @@ impl EndpointHandler for SpecialHandler {
 
                 ChainDomain::toggle_chains(chains).await?;
             }
-
+            endpoint::MQTT_INIT => {
+                let mqtt_url = backend.post_req_str::<String>(endpoint, &body).await?;
+                ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
+            }
             _ => {
                 // 未知的 endpoint
                 tracing::warn!("unknown endpoint: {}", endpoint);
