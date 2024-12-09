@@ -58,7 +58,7 @@ impl<
         if url.official_website.is_none() {
             ConfigDomain::init_official_website().await?;
         }
-        if url.app_install_download_url.is_none() {
+        if url.app_download_qr_code_url.is_none() {
             ConfigDomain::init_app_install_download_url().await?;
         }
         let mut tx = self.repo;

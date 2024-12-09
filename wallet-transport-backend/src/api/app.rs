@@ -72,6 +72,19 @@ impl BackendApi {
         res.process()
     }
 
+    pub async fn version_download_url(
+        &self,
+        url: &str,
+    ) -> Result<crate::response_vo::app::AppVersionRes, crate::Error> {
+        let res = self
+            .client
+            .get(&format!("version/download/{url}"))
+            .send::<serde_json::Value>()
+            .await?;
+        let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
+        res.process()
+    }
+
     pub async fn language_init(&self, req: LanguageInitReq) -> Result<(), crate::Error> {
         let res = self
             .client
@@ -179,6 +192,24 @@ mod test {
         println!("[test_chain_default_list] res: {res:?}");
     }
 
+    #[tokio::test]
+    async fn test_version_download_url() {
+        init_test_log();
+
+        // https://api.77wallet.org//version/view/https%3A%2F%2F77.im%2F%23%2Fdownload
+        // let method = "POST";
+        let base_url = crate::consts::BASE_URL;
+
+        let url = "https://77.im/#/download";
+        let encode_url = urlencoding::encode(url);
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .version_download_url(&encode_url)
+            .await
+            .unwrap();
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
     #[tokio::test]
     async fn test_language_init() {
         init_test_log();

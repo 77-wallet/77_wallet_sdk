@@ -100,27 +100,6 @@ impl MultiSignTransAccept {
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
         }
 
-        // app 流事件
-        let data = crate::notify::NotifyEvent::MultiSignTransAccept(
-            crate::notify::MultiSignTransAcceptFrontend {
-                id: id.to_string(),
-                from_addr: from_addr.to_string(),
-                to_addr: to_addr.to_string(),
-                value: value.to_string(),
-                expiration,
-                symbol: symbol.to_string(),
-                chain_code: chain_code.to_string(),
-                token_addr: token_addr.clone(),
-                msg_hash: msg_hash.to_string(),
-                tx_hash: tx_hash.to_string(),
-                raw_data: raw_data.to_string(),
-                status,
-                notes: notes.to_string(),
-                created_at,
-            },
-        );
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
-
         if let Some(multisig_account) =
             MultisigAccountDaoV1::find_by_address(from_addr, pool.as_ref())
                 .await
@@ -142,6 +121,26 @@ impl MultiSignTransAccept {
                 .add_system_notification(id, notification, 0)
                 .await?;
         };
+
+        let data = crate::notify::NotifyEvent::MultiSignTransAccept(
+            crate::notify::MultiSignTransAcceptFrontend {
+                id: id.to_string(),
+                from_addr: from_addr.to_string(),
+                to_addr: to_addr.to_string(),
+                value: value.to_string(),
+                expiration,
+                symbol: symbol.to_string(),
+                chain_code: chain_code.to_string(),
+                token_addr: token_addr.clone(),
+                msg_hash: msg_hash.to_string(),
+                tx_hash: tx_hash.to_string(),
+                raw_data: raw_data.to_string(),
+                status,
+                notes: notes.to_string(),
+                created_at,
+            },
+        );
+        crate::notify::FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

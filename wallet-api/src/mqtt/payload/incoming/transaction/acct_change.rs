@@ -194,26 +194,6 @@ impl AcctChange {
                 .await?;
             }
         }
-        // 发送账变通知
-        let data = crate::notify::NotifyEvent::AcctChange(crate::notify::AcctChangeFrontend {
-            tx_hash: tx_hash.to_string(),
-            chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
-            transfer_type,
-            tx_kind,
-            from_addr: from_addr.to_string(),
-            to_addr: to_addr.to_string(),
-            token: token.clone(),
-            value,
-            transaction_fee,
-            transaction_time: transaction_time.to_string(),
-            status,
-            is_multisig,
-            queue_id: queue_id.to_string(),
-            block_height,
-            notes: notes.to_string(),
-        });
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
 
         let repo = RepositoryFactory::repo(pool.clone());
         let mut system_notification_service = SystemNotificationService::new(repo);
@@ -381,6 +361,26 @@ impl AcctChange {
             .add_multi_system_notification_with_key_value(&reqs)
             .await?;
 
+        // 发送账变通知
+        let data = crate::notify::NotifyEvent::AcctChange(crate::notify::AcctChangeFrontend {
+            tx_hash: tx_hash.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
+            transfer_type,
+            tx_kind,
+            from_addr: from_addr.to_string(),
+            to_addr: to_addr.to_string(),
+            token: token.clone(),
+            value,
+            transaction_fee,
+            transaction_time: transaction_time.to_string(),
+            status,
+            is_multisig,
+            queue_id: queue_id.to_string(),
+            block_height,
+            notes: notes.to_string(),
+        });
+        crate::notify::FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
 }

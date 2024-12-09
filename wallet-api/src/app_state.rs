@@ -51,8 +51,12 @@ impl AppState {
         self.url.official_website = official_website
     }
 
-    pub fn set_app_install_download_url(&mut self, app_install_download_url: Option<String>) {
-        self.url.app_install_download_url = app_install_download_url
+    pub fn set_app_download_qr_code_url(&mut self, app_download_qr_code_url: Option<String>) {
+        self.url.app_download_qr_code_url = app_download_qr_code_url
+    }
+
+    pub fn set_app_download_url(&mut self, app_download_url: Option<String>) {
+        self.url.app_download_url = app_download_url
     }
 
     pub fn get_official_website(&self) -> Option<String> {
