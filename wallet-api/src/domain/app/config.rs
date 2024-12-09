@@ -2,8 +2,8 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, MQTT_URL,
-            OFFICIAL_WEBSITE, VERSION_DOWNLOAD_URL,
+            APP_DOWNLOAD_QR_CODE_URL, APP_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH,
+            MQTT_URL, OFFICIAL_WEBSITE,
         },
         MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
@@ -138,7 +138,7 @@ impl ConfigDomain {
         let encoded_url = urlencoding::encode(app_install_download_url);
         let url = format!("{}/{}/{}", BASE_URL, VERSION_DOWNLOAD, encoded_url);
         let config = wallet_database::entities::config::VersionDownloadUrl::new(&url);
-        ConfigDomain::set_config(VERSION_DOWNLOAD_URL, &config.to_json_str()?).await?;
+        ConfigDomain::set_config(APP_DOWNLOAD_URL, &config.to_json_str()?).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         config.set_app_download_url(Some(url));
         Ok(())
