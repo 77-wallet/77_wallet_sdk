@@ -165,10 +165,10 @@ mod test {
         // let method = "POST";
         let base_url = crate::consts::BASE_URL;
 
-        let device_type = "ANDROID";
-        // let device_type = "IOS";
-        let r#type = Some("android_google_shop".to_string());
-        // let r#type = None;
+        // let device_type = "ANDROID";
+        let device_type = "IOS";
+        // let r#type = Some("android_google_shop".to_string());
+        let r#type = None;
         let req = VersionViewReq::new(device_type, r#type);
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
