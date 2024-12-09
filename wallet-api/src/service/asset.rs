@@ -96,6 +96,7 @@ impl AssetsService {
         symbol: &str,
     ) -> Result<CoinAssets, crate::ServiceError> {
         let tx = &mut self.repo;
+
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
         let address = if let Some(account_id) = account_id {
             let account = tx
@@ -143,6 +144,7 @@ impl AssetsService {
         })
     }
 
+    #[deprecated]
     pub async fn get_chain_assets(
         &mut self,
         address: &str,
@@ -472,6 +474,7 @@ impl AssetsService {
         Ok(res)
     }
 
+    #[deprecated]
     pub async fn get_account_assets_by_symbol_and_chain_code(
         mut self,
         account_address: &str,

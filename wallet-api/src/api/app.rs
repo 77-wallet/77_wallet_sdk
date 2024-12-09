@@ -177,7 +177,7 @@ mod test {
         let device_type = "ANDROID".to_string();
         // let device_type = "IOS".to_string();
         // let r#type = Some("android_google_shop".to_string());
-        let r#type = Some("official_website".to_string());
+        let r#type = Some("android_google_shop".to_string());
         // let r#type = None;
         let res = wallet_manager
             .check_version(Some(device_type), r#type)
