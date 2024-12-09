@@ -34,17 +34,22 @@ async fn get_manager() -> WalletManager {
         .join("test_data")
         .to_string_lossy()
         .to_string();
-    WalletManager::new("guangxiang", "ANDROID", &path, None)
-        .await
-        .unwrap()
+    WalletManager::new(
+        "ccc8a1e6f53affba2d13880049a1f2bd8dc83fdfe4159a7acac7e85fc9974432",
+        "IOS",
+        &path,
+        None,
+    )
+    .await
+    .unwrap()
 }
 
 async fn create_wallet(manager: &WalletManager, create: bool) {
     if create {
         let phrase =
-            "will match face problem tongue fortune rebuild stool moon assist virtual lounge";
+            "other phrase banana execute acquire scorpion amused route garage close hole barely";
 
-        let salt = "12345678";
+        let salt = "123456a!";
         manager
             .create_wallet(1, phrase, salt, "test", "账户", true, "123456", None)
             .await;
@@ -52,8 +57,8 @@ async fn create_wallet(manager: &WalletManager, create: bool) {
 }
 
 fn device_req() -> InitDeviceReq {
-    let device_type = "ANDROID";
-    let sn = "guangxiang";
+    let device_type = "IOS";
+    let sn = "ccc8a1e6f53affba2d13880049a1f2bd8dc83fdfe4159a7acac7e85fc9974432";
 
     InitDeviceReq {
         device_type: device_type.to_string(),

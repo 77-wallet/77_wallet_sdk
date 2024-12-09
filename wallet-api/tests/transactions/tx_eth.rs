@@ -5,7 +5,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
+    let addr = "0x998522f928A37837Fa8d6743713170243b95f98a";
     let chain_code = "eth";
     let symbol = "ETH";
     // let symbol = "USDT";
@@ -22,9 +22,9 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "0x3aeAa88A403977958FF3a09803Ed50EB5FdF8A91";
+    let from = "0x998522f928A37837Fa8d6743713170243b95f98a";
     let to = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
-    let value = "0.0001";
+    let value = "0.00008";
     let chain_code = "eth";
     let symbol = "ETH";
     // let symbol = "USDT";
