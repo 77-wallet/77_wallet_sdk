@@ -140,7 +140,7 @@ impl ConfigDomain {
         let config = wallet_database::entities::config::VersionDownloadUrl::new(&url);
         ConfigDomain::set_config(VERSION_DOWNLOAD_URL, &config.to_json_str()?).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
-        config.set_version_download_url(Some(url));
+        config.set_app_download_url(Some(url));
         Ok(())
     }
 

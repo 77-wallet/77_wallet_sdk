@@ -5,7 +5,7 @@ pub struct UrlParams {
     pub official_website: Option<String>,
     pub block_browser_url_list: Vec<BlockBrowserUrl>,
     pub app_download_qr_code_url: Option<String>,
-    pub version_download_url: Option<String>,
+    pub app_download_url: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
