@@ -16,10 +16,7 @@ impl FrontendNotifyEvent {
         }
     }
 
-    pub(crate) async fn send(
-        self,
-        // service: &crate::service::Service,
-    ) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
         let sender = crate::manager::Context::get_global_frontend_notify_sender()?;
         // let sender = service.get_global_frontend_notify_sender()?;
         let sender = sender.read().await;

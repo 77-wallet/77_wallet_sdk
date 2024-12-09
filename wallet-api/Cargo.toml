@@ -87,3 +87,5 @@ async-trait = { workspace = true }
 # surge-ping = { workspace = true }
 
 reqwest = { workspace = true }
+
+urlencoding = { workspace = true }

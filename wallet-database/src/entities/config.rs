@@ -5,6 +5,7 @@ pub mod config_key {
     pub const BLOCK_BROWSER_URL_LIST: &str = "block_browser_url_list";
     pub const OFFICIAL_WEBSITE: &str = "official_website";
     pub const APP_INSTALL_DOWNLOAD_URL: &str = "app_install_download_url";
+    pub const VERSION_DOWNLOAD_URL: &str = "version_download_url";
     pub const LANGUAGE: &str = "language";
     pub const MQTT_URL: &str = "mqtt_url";
 }
@@ -67,6 +68,30 @@ impl AppInstallDownload {
 }
 
 impl TryFrom<String> for AppInstallDownload {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct VersionDownloadUrl {
+    pub url: String,
+}
+
+impl VersionDownloadUrl {
+    pub fn new(url: &str) -> Self {
+        Self {
+            url: url.to_string(),
+        }
+    }
+
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for VersionDownloadUrl {
     type Error = crate::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_str(&value)?)

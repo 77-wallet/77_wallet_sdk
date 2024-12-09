@@ -3,12 +3,15 @@ use wallet_database::{
     entities::config::{
         config_key::{
             APP_INSTALL_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH, MQTT_URL,
-            OFFICIAL_WEBSITE,
+            OFFICIAL_WEBSITE, VERSION_DOWNLOAD_URL,
         },
         MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
-use wallet_transport_backend::response_vo::app::SaveSendMsgAccount;
+use wallet_transport_backend::{
+    consts::{endpoint::VERSION_DOWNLOAD, BASE_URL},
+    response_vo::app::SaveSendMsgAccount,
+};
 
 pub struct ConfigDomain;
 
@@ -125,6 +128,19 @@ impl ConfigDomain {
         ConfigDomain::set_config(APP_INSTALL_DOWNLOAD_URL, &config.to_json_str()?).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         config.set_app_install_download_url(Some(app_install_download_url.to_string()));
+        Ok(())
+    }
+
+    pub async fn set_version_download_url(
+        app_install_download_url: &str,
+    ) -> Result<(), crate::ServiceError> {
+        // let tx = &mut self.repo;
+        let encoded_url = urlencoding::encode(app_install_download_url);
+        let url = format!("{}/{}/{}", BASE_URL, VERSION_DOWNLOAD, encoded_url);
+        let config = wallet_database::entities::config::VersionDownloadUrl::new(&url);
+        ConfigDomain::set_config(VERSION_DOWNLOAD_URL, &config.to_json_str()?).await?;
+        let mut config = crate::app_state::APP_STATE.write().await;
+        config.set_version_download_url(Some(url));
         Ok(())
     }
 
