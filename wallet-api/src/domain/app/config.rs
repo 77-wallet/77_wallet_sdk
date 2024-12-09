@@ -187,6 +187,7 @@ impl ConfigDomain {
     pub async fn init_url() -> Result<(), crate::ServiceError> {
         Self::init_official_website().await?;
         Self::init_block_browser_url_list().await?;
+        Self::init_app_install_download_url().await?;
 
         Ok(())
     }

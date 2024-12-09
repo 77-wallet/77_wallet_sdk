@@ -19,6 +19,12 @@ pub struct AppVersionRes {
     pub status: Option<String>,
     /// 操作人员
     pub operator: Option<String>,
+    /// 下载链接类型
+    pub r#type: Option<String>,
+    /// 下载链接
+    pub download_url: Option<String>,
+    /// 服务器上app路径
+    pub app_url: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

@@ -23,6 +23,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::DEVICE_DELETE,
         endpoint::DEVICE_BIND_ADDRESS,
         endpoint::DEVICE_UNBIND_ADDRESS,
+        endpoint::VERSION_VIEW,
     ]
     .iter()
     .cloned()
@@ -165,7 +166,15 @@ impl EndpointHandler for SpecialHandler {
             endpoint::APP_INSTALL_DOWNLOAD => {
                 let url = backend.post_req_str::<String>(endpoint, &body).await?;
                 ConfigDomain::set_app_download_qr_code_url(&url).await?;
-                ConfigDomain::set_version_download_url(&url).await?;
+                // ConfigDomain::set_version_download_url(&url).await?;
+            }
+            endpoint::VERSION_VIEW => {
+                // let app_version_res = backend
+                //     .post_req_str::<wallet_transport_backend::response_vo::app::AppVersionRes>(
+                //         endpoint, &body,
+                //     )
+                //     .await?;
+                // ConfigDomain::set_version_download_url(app_version_res.download_url)
             }
             endpoint::CHAIN_LIST => {
                 let chains = backend
