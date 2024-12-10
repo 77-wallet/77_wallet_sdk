@@ -1,13 +1,10 @@
-use crate::{
-    dao::chain::ChainDao,
-    entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
-};
+use crate::entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode};
 
 #[async_trait::async_trait]
 pub trait ChainRepoTrait: super::TransactionTrait {
     async fn add(&mut self, input: ChainCreateVo) -> Result<ChainEntity, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, ChainDao::upsert, input)
+        crate::execute_with_executor!(executor, ChainEntity::upsert, input)
     }
 
     async fn set_chain_node(
@@ -35,7 +32,7 @@ pub trait ChainRepoTrait: super::TransactionTrait {
     async fn get_chain_node_list(&mut self) -> Result<Vec<ChainWithNode>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
 
-        crate::execute_with_executor!(executor, ChainDao::list_with_node,)
+        crate::execute_with_executor!(executor, ChainEntity::list_with_node_info,)
     }
 
     async fn detail(&mut self, chain_code: &str) -> Result<Option<ChainEntity>, crate::Error> {
