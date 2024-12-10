@@ -219,7 +219,7 @@ mod test {
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id: 1,
             symbol: "WIN".to_string(),
-            wallet_address: "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F".to_string(),
+            wallet_address: "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48".to_string(),
             chain_code: None,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;

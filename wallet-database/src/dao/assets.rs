@@ -159,15 +159,15 @@ impl AssetsEntity {
                     AND EXISTS (
                         SELECT 1
                         FROM chain
-                        WHERE chain.chain_code = assets.chain_code
+                        WHERE chain.chain_code = a.chain_code
                         AND chain.status = 1
                     )
                     AND EXISTS (
                         SELECT 1
                         FROM coin
-                        WHERE coin.chain_code = assets.chain_code
-                        AND coin.token_address = assets.token_address
-                        AND coin.symbol = assets.symbol
+                        WHERE coin.chain_code = a.chain_code
+                        AND coin.token_address = a.token_address
+                        AND coin.symbol = a.symbol
                         AND coin.status = 1
                     )"
             )

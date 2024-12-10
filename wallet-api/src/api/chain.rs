@@ -99,7 +99,7 @@ mod tests {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
-        let address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
+        let address = "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48";
         let symbol = "TRX";
         let res = wallet_manager.get_chain_list(address, 1, symbol).await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
