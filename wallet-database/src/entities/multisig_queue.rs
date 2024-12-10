@@ -179,7 +179,7 @@ impl NewMultisigQueueEntity {
     fn needs_expiration_check(&self) -> bool {
         matches!(
             self.status,
-            MultisigQueueStatus::InConfirmation
+            MultisigQueueStatus::PendingExecution
                 | MultisigQueueStatus::HasSignature
                 | MultisigQueueStatus::PendingSignature
         ) && self.tx_hash.is_empty()
