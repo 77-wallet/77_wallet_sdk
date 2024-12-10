@@ -43,48 +43,48 @@ impl AccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut tx = self.repo;
-        let accounts = tx
-            .get_account_list_by_wallet_address_and_account_id(
-                Some(wallet_address),
-                Some(account_id),
-            )
-            .await?;
+        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        // let mut tx = self.repo;
+        // let accounts = tx
+        //     .get_account_list_by_wallet_address_and_account_id(
+        //         Some(wallet_address),
+        //         Some(account_id),
+        //     )
+        //     .await?;
 
-        let accounts = accounts
-            .into_iter()
-            .map(|account| account.address)
-            .collect();
-        let regular_assets_list =
-            AssetsRepoTrait::get_coin_assets_in_address_all_status(&mut tx, accounts).await?;
+        // let accounts = accounts
+        //     .into_iter()
+        //     .map(|account| account.address)
+        //     .collect();
+        // let regular_assets_list =
+        //     AssetsRepoTrait::get_coin_assets_in_address_all_status(&mut tx, accounts).await?;
 
-        let multisig_accounts = domain::multisig::MultisigDomain::list(&pool).await?;
+        // let multisig_accounts = domain::multisig::MultisigDomain::list(&pool).await?;
 
-        let multisig_accounts = multisig_accounts
-            .into_iter()
-            .map(|account| account.address)
-            .collect();
-        let multisig_assets_list =
-            AssetsRepoTrait::get_coin_assets_in_address_all_status(&mut tx, multisig_accounts)
-                .await?;
+        // let multisig_accounts = multisig_accounts
+        //     .into_iter()
+        //     .map(|account| account.address)
+        //     .collect();
+        // let multisig_assets_list =
+        //     AssetsRepoTrait::get_coin_assets_in_address_all_status(&mut tx, multisig_accounts)
+        //         .await?;
 
         // Sync multisig assets status with regular assets
-        for multisig_asset in multisig_assets_list.iter() {
-            if let Some(regular_asset) = regular_assets_list
-                .iter()
-                .find(|&ra| ra.symbol == multisig_asset.symbol)
-            {
-                AssetsRepoTrait::update_status(
-                    &mut tx,
-                    &multisig_asset.chain_code,
-                    &multisig_asset.symbol,
-                    multisig_asset.token_address(),
-                    regular_asset.status,
-                )
-                .await?;
-            }
-        }
+        // for multisig_asset in multisig_assets_list.iter() {
+        //     if let Some(regular_asset) = regular_assets_list
+        //         .iter()
+        //         .find(|&ra| ra.symbol == multisig_asset.symbol)
+        //     {
+        //         AssetsRepoTrait::update_status(
+        //             &mut tx,
+        //             &multisig_asset.chain_code,
+        //             &multisig_asset.symbol,
+        //             multisig_asset.token_address(),
+        //             regular_asset.status,
+        //         )
+        //         .await?;
+        //     }
+        // }
 
         Ok(())
     }
