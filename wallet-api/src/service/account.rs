@@ -40,8 +40,8 @@ impl AccountService {
 
     pub(crate) async fn switch_account(
         self,
-        wallet_address: &str,
-        account_id: u32,
+        _wallet_address: &str,
+        _account_id: u32,
     ) -> Result<(), crate::ServiceError> {
         // let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // let mut tx = self.repo;

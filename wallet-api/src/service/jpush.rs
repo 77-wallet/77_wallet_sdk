@@ -1,4 +1,7 @@
 use wallet_database::entities::task_queue::TaskQueueEntity;
+use wallet_transport_backend::{consts::endpoint::SEND_MSG_CONFIRM, request::SendMsgConfirmReq};
+
+use crate::domain::task_queue::{BackendApiTask, Task};
 
 pub struct JPushService {}
 
@@ -25,18 +28,16 @@ impl JPushService {
                 crate::mqtt::handle::exec_payload(payload).await?;
             };
             ids.push(wallet_transport_backend::request::SendMsgConfirm::new(
-                id, source,
+                &id, source,
             ));
         }
         if !ids.is_empty() {
-            tokio::spawn(async move {
-                if let Ok(backend_api) = crate::manager::Context::get_global_backend_api() {
-                    let req = wallet_transport_backend::request::SendMsgConfirmReq::new(ids);
-                    if let Err(e) = backend_api.send_msg_confirm(&req).await {
-                        tracing::error!("send_msg_confirm error: {}", e);
-                    }
-                };
-            });
+            let send_msg_confirm_req =
+                BackendApiTask::new(SEND_MSG_CONFIRM, &SendMsgConfirmReq::new(ids))?;
+            crate::domain::task_queue::Tasks::new()
+                .push(Task::BackendApi(send_msg_confirm_req))
+                .send()
+                .await?;
         }
 
         Ok(())

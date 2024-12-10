@@ -1,8 +1,12 @@
 use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
 use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
+use wallet_transport_backend::{
+    consts::endpoint::SEND_MSG_CONFIRM,
+    request::{SendMsgConfirm, SendMsgConfirmReq},
+};
 
 use crate::{
-    domain::task_queue::{MqttTask, Task},
+    domain::task_queue::{BackendApiTask, MqttTask, Task},
     notify::FrontendNotifyEvent,
     service::{app::AppService, device::DeviceService},
 };
@@ -77,31 +81,24 @@ pub async fn exec_incoming_publish(
         | super::constant::Topic::BulletinInfo
         | super::constant::Topic::RpcChange => {
             let payload: super::payload::incoming::Message = serde_json::from_slice(payload)?;
+            let send_msg_confirm_req = BackendApiTask::new(
+                SEND_MSG_CONFIRM,
+                &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(&payload.msg_id, "MQTT")]),
+            )?;
+            crate::domain::task_queue::Tasks::new()
+                .push(Task::BackendApi(send_msg_confirm_req))
+                .send()
+                .await?;
 
-            match wallet_utils::serde_func::serde_to_value(payload.clone()) {
-                Ok(message) => {
-                    FrontendNotifyEvent::send_error(message).await?;
-                }
-                Err(e) => tracing::error!("[mqtt] debug message serde error: {e}"),
-            }
-
-            let id = payload.msg_id.clone();
-            tokio::spawn(async move {
-                if let Ok(backend_api) = crate::manager::Context::get_global_backend_api() {
-                    let req = wallet_transport_backend::request::SendMsgConfirmReq::new(vec![
-                        wallet_transport_backend::request::SendMsgConfirm::new(id, "MQTT"),
-                    ]);
-                    if let Err(e) = backend_api.send_msg_confirm(&req).await {
-                        tracing::error!("send_msg_confirm error: {}", e);
-                    }
-                };
-            });
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
                 .await?
                 .is_none()
             {
                 if let Err(e) = exec_payload(payload).await {
                     tracing::error!("exec_payload error: {}", e);
+                    if let Err(e) = FrontendNotifyEvent::send_error(e.to_string()).await {
+                        tracing::error!("send_error error: {}", e);
+                    }
                 };
             }
         }
