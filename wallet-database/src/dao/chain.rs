@@ -6,9 +6,7 @@ pub struct Id {
     pub node_id: String,
 }
 
-pub struct ChainDao;
-
-impl ChainDao {
+impl ChainEntity {
     pub async fn upsert<'c, E>(
         executor: E,
         input: ChainCreateVo,
@@ -39,49 +37,6 @@ impl ChainDao {
         Ok(rec.pop().ok_or(crate::DatabaseError::ReturningNone)?)
     }
 
-    pub async fn list<'c, E>(executor: E) -> Result<Vec<ChainEntity>, crate::Error>
-    where
-        E: Executor<'c, Database = Sqlite>,
-    {
-        let sql = "SELECT * FROM chain;";
-
-        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    pub async fn one<'a, E>(executor: E, id: String) -> Result<Option<ChainWithNode>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-        SELECT name, chain_code, node_id, protocols, main_symbol, status, created_at, updated_at
-        FROM chain
-        WHERE chain_code = $1;"#;
-        sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
-            .bind(id)
-            .fetch_optional(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    pub async fn list_with_node<'c, E>(executor: E) -> Result<Vec<ChainWithNode>, crate::Error>
-    where
-        E: Executor<'c, Database = Sqlite>,
-    {
-        let sql = "select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
-                        from chain as q  
-                        join node a on q.node_id = a.node_id;";
-
-        sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-}
-
-impl ChainEntity {
     pub async fn set_chain_node<'a, E>(
         executor: E,
         chain_code: &str,
@@ -142,7 +97,7 @@ impl ChainEntity {
         let sql = r#"
                         SELECT *
                         FROM chain
-                        WHERE chain_code = $1;"#;
+                        WHERE chain_code = $1 AND status = 1;"#;
         sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
             .bind(chain_code)
             .fetch_optional(exec)
@@ -157,7 +112,7 @@ impl ChainEntity {
         let sql = r#"
             SELECT *
             FROM chain
-            WHERE node_id = $1;"#;
+            WHERE node_id = $1 AND status = 1;"#;
         sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
             .bind(node_id)
             .fetch_optional(exec)
@@ -175,7 +130,7 @@ impl ChainEntity {
         let sql = r#"
                         SELECT *
                         FROM chain
-                        WHERE main_symbol = $1;"#;
+                        WHERE main_symbol = $1 AND status = 1;"#;
         sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
             .bind(main_symbol)
             .fetch_optional(exec)
@@ -187,7 +142,7 @@ impl ChainEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM chain;";
+        let sql = "SELECT * FROM chain WHERE status = 1;";
 
         sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
             .fetch_all(exec)
@@ -195,15 +150,17 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list_with_node_info(
-        db: std::sync::Arc<sqlx::Pool<sqlx::Sqlite>>,
-    ) -> Result<Vec<ChainWithNode>, crate::Error> {
-        let sql = "select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
+    pub async fn list_with_node_info<'a, E>(exec: E) -> Result<Vec<ChainWithNode>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, 
+        a.name as node_name
                             from chain as q  
-                            join node a on q.node_id = a.node_id;";
+                            join node a on q.node_id = a.node_id WHERE q.status = 1;";
 
         sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
-            .fetch_all(db.as_ref())
+            .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
@@ -219,7 +176,7 @@ impl ChainEntity {
                             select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
                             from chain as q  
                             join node a on q.node_id = a.node_id
-                            where q.chain_code = ?"#;
+                            where q.chain_code = ? and q.status = 1;"#;
         sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
             .bind(chain_code)
             .fetch_optional(exec)
@@ -234,7 +191,7 @@ impl ChainEntity {
         let chain_codes = crate::any_in_collection(chain_codes, "','");
         let sql = format!(
             "SELECT name, chain_code, node_id, protocols, main_symbol, status, created_at, updated_at FROM chain
-        WHERE chain_code in ('{}');",
+        WHERE chain_code in ('{}') and status = 1;",
             chain_codes
         );
 

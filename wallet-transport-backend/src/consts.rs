@@ -38,6 +38,8 @@ pub mod endpoint {
     pub const CHAIN_LIST: &str = "chain/list";
     pub const MQTT_INIT: &str = "mqtt/init";
 
+    pub const SEND_MSG_CONFIRM: &str = "sendMsg/confirm";
+
     pub const VERSION_DOWNLOAD: &str = "version/download";
 
     pub const ADDRESS_FIND_MULTI_SIGNED_DETAILS: &str = "address/findMultiSignedDetails";

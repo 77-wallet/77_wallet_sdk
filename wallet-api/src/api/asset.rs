@@ -95,6 +95,7 @@ impl crate::WalletManager {
             .into()
     }
 
+    #[deprecated]
     pub async fn get_account_assets_by_symbol_and_chain_code(
         &self,
         account_address: &str,
@@ -143,6 +144,7 @@ impl crate::WalletManager {
     }
 
     /// 获取网络资产
+    #[deprecated]
     pub async fn get_chain_assets(
         &self,
         // wallet_name: &str,
@@ -217,7 +219,7 @@ mod test {
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id: 1,
             symbol: "WIN".to_string(),
-            wallet_address: "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F".to_string(),
+            wallet_address: "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48".to_string(),
             chain_code: None,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;
@@ -311,7 +313,7 @@ mod test {
         let chain_code = None;
         // let is_multisig = None;
         let is_multisig = Some(false);
-        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
+        let wallet_address = "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48";
         let res = wallet_manager
             .get_coin_list(wallet_address, Some(1), chain_code, keyword, is_multisig)
             .await;
@@ -409,7 +411,7 @@ mod test {
         wallet_manager.set_currency("USD").await;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
-        let address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
+        let address = "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48";
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
         let account_asset = wallet_manager.get_account_assets(1, address).await;
         tracing::info!("account_asset: {account_asset:?}");

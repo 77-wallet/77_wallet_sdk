@@ -601,10 +601,10 @@ pub struct SendMsgConfirm {
 }
 
 impl SendMsgConfirm {
-    pub fn new(id: String, source: &str) -> Self {
+    pub fn new(id: &str, source: &str) -> Self {
         Self {
-            id,
-            source: source.to_owned(),
+            id: id.to_string(),
+            source: source.to_string(),
         }
     }
 }

@@ -123,7 +123,7 @@ impl MultiSignTransAccept {
         };
 
         let data = crate::notify::NotifyEvent::MultiSignTransAccept(
-            crate::notify::MultiSignTransAcceptFrontend {
+            crate::notify::event::transaction::MultiSignTransAcceptFrontend {
                 id: id.to_string(),
                 from_addr: from_addr.to_string(),
                 to_addr: to_addr.to_string(),

@@ -111,7 +111,8 @@ mod tests {
     #[test]
     fn test_device_identifier() {
         let identifier = DeviceDomain::device_identifier(
-            "14ae14461d0891116eb85ef447ecb28dc22781d987b5cb0f75f8d3bcca18ebed",
+            // "14ae14461d0891116eb85ef447ecb28dc22781d987b5cb0f75f8d3bcca18ebed",
+            "bdb6412a9cb4b12c48ebe1ef4e9f052b07af519b7485cd38a95f38d89df97cb8",
             "ANDROID",
         );
 

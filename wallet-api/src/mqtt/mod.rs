@@ -74,7 +74,7 @@ async fn handle_eventloop(
                 if let Ok(permit) = permit {
                     tracing::error!("[mqtt] Error = {err:?}");
                     let data = crate::notify::NotifyEvent::ConnectionError(
-                        crate::notify::ConnectionErrorFrontend {
+                        crate::notify::event::other::ConnectionErrorFrontend {
                             message: err.to_string(),
                         },
                     );
