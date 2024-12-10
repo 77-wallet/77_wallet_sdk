@@ -127,25 +127,8 @@ impl<
     //     Ok(())
     // }
 
-    pub async fn check_version(
-        self,
-        device_type: Option<String>,
-        r#type: Option<String>,
-    ) -> Result<AppVersionRes, crate::ServiceError> {
-        let device_type = if let Some(device_type) = device_type {
-            device_type
-        } else {
-            let mut tx = self.repo;
-            let device = tx
-                .get_device_info()
-                .await?
-                .ok_or(crate::BusinessError::Device(
-                    crate::DeviceError::Uninitialized,
-                ))?;
-            device.device_type
-        };
-
-        let req = VersionViewReq::new(&device_type, r#type);
+    pub async fn check_version(self, r#type: &str) -> Result<AppVersionRes, crate::ServiceError> {
+        let req = VersionViewReq::new(r#type);
         let backend = crate::manager::Context::get_global_backend_api()?;
         let res = backend.version_view(req).await?;
         Ok(res)

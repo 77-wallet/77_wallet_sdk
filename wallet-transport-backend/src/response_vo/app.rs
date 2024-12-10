@@ -1,8 +1,8 @@
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppVersionRes {
-    /// 设别系统 ANDROID, IOS, PC, WEB
-    pub device_type: Option<String>,
+    // /// 设别系统 ANDROID, IOS, PC, WEB
+    // pub device_type: Option<String>,
     /// 版本号
     pub version: Option<String>,
     /// 最低兼容版本号

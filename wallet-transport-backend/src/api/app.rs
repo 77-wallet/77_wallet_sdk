@@ -51,21 +51,8 @@ impl BackendApi {
     ) -> Result<crate::response_vo::app::AppVersionRes, crate::Error> {
         let res = self
             .client
-            .post("/version/view")
+            .post("version/view")
             .json(serde_json::json!(req))
-            .send::<serde_json::Value>()
-            .await?;
-        let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
-        res.process()
-    }
-
-    pub async fn version_his_version(
-        &self,
-    ) -> Result<std::collections::HashMap<String, serde_json::Value>, crate::Error> {
-        let res = self
-            .client
-            .post("/version/hisVersion")
-            // .json(serde_json::json!(req))
             .send::<serde_json::Value>()
             .await?;
         let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
@@ -142,21 +129,6 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_version_his_version() {
-        // let method = "POST";
-        init_test_log();
-        let base_url = crate::consts::BASE_URL;
-
-        let res = BackendApi::new(Some(base_url.to_string()), None)
-            .unwrap()
-            .version_his_version()
-            .await
-            .unwrap();
-
-        println!("[test_chain_default_list] res: {res:?}");
-    }
-
-    #[tokio::test]
     async fn test_token() {
         // let method = "POST";
         init_test_log();
@@ -177,13 +149,9 @@ mod test {
 
         // let method = "POST";
         let base_url = crate::consts::BASE_URL;
-
-        let device_type = "ANDROID";
-        // let device_type = "IOS";
-        let r#type = Some("android_google_shop".to_string());
-        // let r#type = Some("official_website".to_string());
-        // let r#type = None;
-        let req = VersionViewReq::new(device_type, r#type);
+        // let r#type = "android_google_shop".to_string();
+        let r#type = "official_website";
+        let req = VersionViewReq::new(r#type);
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .version_view(req)

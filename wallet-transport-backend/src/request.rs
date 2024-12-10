@@ -277,16 +277,15 @@ pub struct AppInstallSaveReq {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VersionViewReq {
-    pub device_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<String>,
+    // pub device_type: String,
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: String,
 }
 
 impl VersionViewReq {
-    pub fn new(device_type: &str, r#type: Option<String>) -> Self {
+    pub fn new(r#type: &str) -> Self {
         Self {
-            device_type: device_type.to_string(),
-            r#type,
+            r#type: r#type.to_string(),
         }
     }
 }
