@@ -9,6 +9,7 @@ use wallet_database::{
 
 use crate::{
     manager::Context,
+    notify::event::multisig::OrderMultiSignAcceptFrontend,
     service::{account::AccountService, system_notification::SystemNotificationService},
     system_notification::{Notification, NotificationType},
 };
@@ -127,16 +128,14 @@ impl OrderMultiSignAccept {
             .add_system_notification(msg_id, notification, 0)
             .await?;
 
-        let data = crate::notify::NotifyEvent::OrderMultiSignAccept(
-            crate::notify::OrderMultiSignAcceptFrontend {
-                name: name.to_string(),
-                initiator_addr: initiator_addr.to_string(),
-                address: address.to_string(),
-                chain_code: chain_code.to_string(),
-                threshold,
-                memeber: memeber.to_vec(),
-            },
-        );
+        let data = crate::notify::NotifyEvent::OrderMultiSignAccept(OrderMultiSignAcceptFrontend {
+            name: name.to_string(),
+            initiator_addr: initiator_addr.to_string(),
+            address: address.to_string(),
+            chain_code: chain_code.to_string(),
+            threshold,
+            memeber: memeber.to_vec(),
+        });
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())

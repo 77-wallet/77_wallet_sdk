@@ -3,6 +3,8 @@ use wallet_database::{
     entities::multisig_account::MultisigAccountStatus,
 };
 
+use crate::notify::event::{multisig::OrderMultiSignAcceptCompleteMsgFrontend, other::ErrFront};
+
 use super::OrderMultiSignAcceptCompleteMsg;
 
 // 参与方同意后、同步数据给其他的成员同步对应的状态数据(多签账号数据状态流转)
@@ -26,7 +28,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             tracing::error!("[order multisig accept complete msg] multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
 
-            let data = crate::notify::NotifyEvent::Err(crate::notify::ErrFront {
+            let data = crate::notify::NotifyEvent::Err(ErrFront {
                 event: event_name,
                 message: err.to_string(),
             });
@@ -96,7 +98,7 @@ impl OrderMultiSignAcceptCompleteMsg {
         // }
 
         let data = crate::notify::NotifyEvent::OrderMultiSignAcceptCompleteMsg(
-            crate::notify::OrderMultiSignAcceptCompleteMsgFrontend {
+            OrderMultiSignAcceptCompleteMsgFrontend {
                 status: status as i8,
                 multisign_address: account.address,
                 address_list,

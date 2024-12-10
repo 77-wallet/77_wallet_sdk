@@ -3,6 +3,8 @@ use wallet_database::{
     entities::multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
 };
 
+use crate::notify::event::{multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront};
+
 /*
     {
         "clientId": "wenjing",
@@ -45,7 +47,7 @@ impl OrderMultiSignServiceComplete {
             tracing::error!("[order multisig service complete] multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
 
-            let data = crate::notify::NotifyEvent::Err(crate::notify::ErrFront {
+            let data = crate::notify::NotifyEvent::Err(ErrFront {
                 event: self.name(),
                 message: err.to_string(),
             });
@@ -92,7 +94,7 @@ impl OrderMultiSignServiceComplete {
         }
 
         let data = crate::notify::NotifyEvent::OrderMultiSignServiceComplete(
-            crate::notify::OrderMultiSignServiceCompleteFrontend {
+            OrderMultiSignServiceCompleteFrontend {
                 multisign_address: account.address,
                 status,
                 r#type,

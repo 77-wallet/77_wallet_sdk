@@ -3,6 +3,7 @@ use wallet_database::{entities::task_queue::TaskQueueEntity, factory::Repository
 
 use crate::{
     domain::task_queue::{MqttTask, Task},
+    notify::FrontendNotifyEvent,
     service::{app::AppService, device::DeviceService},
 };
 
@@ -79,23 +80,12 @@ pub async fn exec_incoming_publish(
 
             match wallet_utils::serde_func::serde_to_value(payload.clone()) {
                 Ok(message) => {
-                    let data =
-                        crate::notify::NotifyEvent::Debug(crate::notify::DebugFront { message });
-                    match crate::notify::FrontendNotifyEvent::new(data).send().await {
-                        Ok(_) => tracing::debug!("[mqtt] send debug message ok"),
-                        Err(e) => tracing::error!("[mqtt] send debug message error: {e}"),
-                    };
+                    FrontendNotifyEvent::send_error(message).await?;
                 }
                 Err(e) => tracing::error!("[mqtt] debug message serde error: {e}"),
             }
 
             let id = payload.msg_id.clone();
-            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
-                .await?
-                .is_none()
-            {
-                exec_payload(payload).await?;
-            }
             tokio::spawn(async move {
                 if let Ok(backend_api) = crate::manager::Context::get_global_backend_api() {
                     let req = wallet_transport_backend::request::SendMsgConfirmReq::new(vec![
@@ -106,6 +96,14 @@ pub async fn exec_incoming_publish(
                     }
                 };
             });
+            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
+                .await?
+                .is_none()
+            {
+                if let Err(e) = exec_payload(payload).await {
+                    tracing::error!("exec_payload error: {}", e);
+                };
+            }
         }
         _ => {}
     }
@@ -115,7 +113,9 @@ pub async fn exec_incoming_publish(
 pub(crate) async fn exec_payload(
     payload: super::payload::incoming::Message,
 ) -> Result<(), crate::ServiceError> {
-    match (payload.biz_type, payload.body) {
+    let body: super::payload::incoming::Body =
+        wallet_utils::serde_func::serde_from_value(payload.body)?;
+    match (payload.biz_type, body) {
         (
             super::payload::incoming::BizType::OrderMultiSignAccept,
             super::payload::incoming::Body::OrderMultiSignAccept(data),
