@@ -1,4 +1,4 @@
-use wallet_chain_interact::tron::params as tron_params;
+use wallet_chain_interact::tron::operations::stake::{self, DelegateArgs, UnFreezeBalanceArgs};
 
 #[derive(serde::Serialize, Debug)]
 pub struct FreezeBalanceReq {
@@ -6,10 +6,10 @@ pub struct FreezeBalanceReq {
     pub resource: String,
     pub frozen_balance: String,
 }
-impl TryFrom<FreezeBalanceReq> for tron_params::FreezeBalanceArgs {
+impl TryFrom<FreezeBalanceReq> for stake::FreezeBalanceArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: FreezeBalanceReq) -> Result<Self, Self::Error> {
-        let args = tron_params::FreezeBalanceArgs::new(
+        let args = stake::FreezeBalanceArgs::new(
             &value.owner_address,
             &value.resource,
             &value.frozen_balance,
@@ -37,10 +37,10 @@ impl From<&UnFreezeBalanceReq> for wallet_database::entities::stake::NewUnFreeze
     }
 }
 
-impl TryFrom<UnFreezeBalanceReq> for tron_params::UnFreezeBalanceArgs {
+impl TryFrom<UnFreezeBalanceReq> for UnFreezeBalanceArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: UnFreezeBalanceReq) -> Result<Self, Self::Error> {
-        let args = tron_params::UnFreezeBalanceArgs::new(
+        let args = stake::UnFreezeBalanceArgs::new(
             &value.owner_address,
             &value.resource,
             &value.unfreeze_balance,
@@ -73,7 +73,7 @@ impl From<&DelegateReq> for wallet_database::entities::stake::NewDelegateEntity 
     }
 }
 
-impl TryFrom<DelegateReq> for tron_params::DelegateArgs {
+impl TryFrom<DelegateReq> for DelegateArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: DelegateReq) -> Result<Self, Self::Error> {
         let balance = wallet_utils::unit::convert_to_u256(&value.balance, 6)?;
@@ -81,7 +81,7 @@ impl TryFrom<DelegateReq> for tron_params::DelegateArgs {
             owner_address: wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?,
             receiver_address: wallet_utils::address::bs58_addr_to_hex(&value.receiver_address)?,
             balance: balance.to::<u64>(),
-            resource: tron_params::ResourceType::try_from(value.resource.as_str())?,
+            resource: stake::ResourceType::try_from(value.resource.as_str())?,
             lock: value.lock,
             lock_period: value.lock_period,
         };

@@ -1,3 +1,4 @@
+use super::TIME_OUT;
 use crate::{
     dispatch,
     domain::{
@@ -40,7 +41,7 @@ impl TransactionAdapter {
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<TransactionAdapter, chain::Error> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;
-        let timeout = Some(std::time::Duration::from_secs(30));
+        let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         match chain_code {
             ChainType::Bitcoin => {
                 // let auth = wallet_chain_interact::btc::provider::RpcAuth {

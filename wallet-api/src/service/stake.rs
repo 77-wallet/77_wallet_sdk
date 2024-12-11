@@ -1,22 +1,21 @@
 use crate::domain;
+use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::adapter::TransactionAdapter;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
 use crate::request::stake;
 use crate::response_vo::account::AccountResource;
 use crate::BusinessError;
-use wallet_chain_interact::factory::ChainFactory;
-use wallet_chain_interact::tron::params as tron_params;
-use wallet_chain_interact::tron::TronBlockChain;
-use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_database::entities::chain::ChainEntity;
+use wallet_chain_interact::tron::operations::stake::DelegateArgs;
+use wallet_chain_interact::tron::operations::stake::FreezeBalanceArgs;
+use wallet_chain_interact::tron::operations::stake::UnFreezeBalanceArgs;
+use wallet_chain_interact::tron::operations::TronTxOperation;
 use wallet_database::entities::stake::DelegateEntity;
-use wallet_database::entities::stake::NewDelegateEntity;
-use wallet_database::entities::stake::NewUnFreezeEntity;
 use wallet_database::entities::stake::UnFreezeEntity;
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::stake as db_stake;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
+use wallet_types::constant::chain_code;
 
 pub struct StackService {
     repo: db_stake::StakeRepo,
@@ -26,26 +25,6 @@ impl StackService {
     pub fn new(repo: db_stake::StakeRepo) -> Self {
         Self { repo }
     }
-
-    async fn get_chain(&self) -> Result<TronBlockChain, crate::error::ServiceError> {
-        let chain_code = "tron";
-        let tx = Context::get_global_sqlite_pool()?;
-        let node = ChainEntity::chain_node_info(tx.as_ref(), chain_code)
-            .await
-            .map_err(crate::SystemError::Database)?
-            .ok_or(crate::BusinessError::Chain(crate::ChainError::NotFound(
-                chain_code.to_string(),
-            )))?;
-        Ok(ChainFactory::tron_chain(&node.rpc_url)?)
-    }
-
-    async fn get_key(
-        &self,
-        address: &str,
-        password: &str,
-    ) -> Result<ChainPrivateKey, crate::error::ServiceError> {
-        crate::domain::account::open_account_pk_with_password("tron", address, password).await
-    }
 }
 
 impl StackService {
@@ -54,13 +33,19 @@ impl StackService {
         req: stake::FreezeBalanceReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
-        let tron_chain = self.get_chain().await?;
-        let key = self.get_key(&req.owner_address, password).await?;
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            password,
+        )
+        .await?;
 
-        let args = tron_params::FreezeBalanceArgs::try_from(req)?;
-        let res = tron_chain.freeze_balance(args, key).await?;
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        Ok(res)
+        let args = FreezeBalanceArgs::try_from(req)?;
+        let resp = args.build_raw_transaction(chain.get_provider()).await?;
+
+        Ok(chain.exec_transaction_v1(resp, key).await?)
     }
 
     pub async fn freeze_list(
@@ -81,20 +66,18 @@ impl StackService {
         req: stake::UnFreezeBalanceReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
-        let tron_chain = self.get_chain().await?;
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            password,
+        )
+        .await?;
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let mut new_unfreeze = NewUnFreezeEntity::from(&req);
+        let args = UnFreezeBalanceArgs::try_from(req)?;
+        let resp = args.build_raw_transaction(&chain.provider).await?;
 
-        let key = self.get_key(&req.owner_address, password).await?;
-        let args = tron_params::UnFreezeBalanceArgs::try_from(req)?;
-
-        let res = tron_chain.unfreeze_balance(args, key).await?;
-
-        new_unfreeze.tx_hash = res.clone();
-        new_unfreeze.freeze_time = wallet_utils::time::now_plus_days(14).timestamp();
-        self.repo.add_unfreeze(new_unfreeze).await?;
-
-        Ok(res)
+        Ok(chain.exec_transaction_v1(resp, key).await?)
     }
 
     pub async fn withdraw_unfreeze(
@@ -102,13 +85,16 @@ impl StackService {
         owner_address: &str,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
-        let tron_chain = self.get_chain().await?;
-        let key = self.get_key(owner_address, password).await?;
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let res = tron_chain
-            .withdraw_unfreeze_amount(owner_address, key)
-            .await?;
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &owner_address,
+            password,
+        )
+        .await?;
 
+        let res = chain.withdraw_unfreeze_amount(owner_address, key).await?;
         Ok(res)
     }
 
@@ -117,44 +103,46 @@ impl StackService {
         req: stake::DelegateReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
-        let tron_chain = self.get_chain().await?;
-        let key = self.get_key(&req.owner_address, password).await?;
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let mut new_delegate = NewDelegateEntity::from(&req);
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            password,
+        )
+        .await?;
 
-        let args = tron_params::DelegateArgs::try_from(req)?;
-        let res = tron_chain.delegate_resource(args, key).await?;
+        let args = DelegateArgs::try_from(req)?;
 
-        new_delegate.tx_hash = res.clone();
-        self.repo.add_delegate(new_delegate).await?;
-
-        Ok(res)
+        let resp = args.build_raw_transaction(&chain.provider).await?;
+        Ok(chain.exec_transaction_v1(resp, key).await?)
     }
 
     // Reclaim delegated energy
     pub async fn un_delegate_resource(
         &self,
-        id: String,
-        password: &str,
+        _id: String,
+        _password: &str,
     ) -> Result<String, crate::error::ServiceError> {
-        let tron_chain = self.get_chain().await?;
+        // let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let delegate = self.repo.find_delegate_by_id(&id).await?;
-        let key = self.get_key(&delegate.owner_address, password).await?;
+        // let key = domain::account::open_account_pk_with_password(
+        //     chain_code::TRON,
+        //     &req.owner_address,
+        //     password,
+        // )
+        // .await?;
 
-        let args = tron_params::UnDelegateArgs::new(
-            &delegate.owner_address,
-            &delegate.receiver_address,
-            &delegate.amount.to_string(),
-            &delegate.resource_type,
-        )?;
+        // let args = UnDelegateArgs::new(
+        //     &delegate.owner_address,
+        //     &delegate.receiver_address,
+        //     &delegate.amount.to_string(),
+        //     &delegate.resource_type,
+        // )?;
 
-        let res = tron_chain.un_delegate_resource(args, key).await?;
+        // let res = tron_chain.un_delegate_resource(args, key).await?;
 
-        // update delegate status
-        self.repo.update_delegate(&id).await?;
-
-        Ok(res)
+        Ok("".to_string())
     }
 
     pub async fn delegate_list(
@@ -198,7 +186,7 @@ impl StackService {
             return Err(BusinessError::Stake(StakeError::SwitchClose))?;
         }
 
-        let tron_chain = self.get_chain().await?;
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         // request resource
         let res = backhand.delegate_order(&account, energy).await?;
@@ -210,7 +198,7 @@ impl StackService {
         loop {
             if energy_status < 2 {
                 if let Some(hash) = &res.energy_hash {
-                    energy_status = match tron_chain.query_tx_res(hash).await {
+                    energy_status = match chain.query_tx_res(hash).await {
                         Ok(Some(rs)) if rs.status == 2 => 2,
                         Ok(_) => 1,
                         Err(_) => 1,

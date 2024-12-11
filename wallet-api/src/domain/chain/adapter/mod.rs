@@ -1,10 +1,14 @@
 mod transaction_adapter;
 pub use transaction_adapter::*;
+use wallet_chain_interact::tron::{self, TronChain};
+use wallet_transport::client::HttpClient;
+use wallet_types::constant::chain_code;
 mod multisig_adapter;
 use super::rpc_need_header;
 pub use multisig_adapter::*;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
+const TIME_OUT: u64 = 30;
 #[macro_export]
 macro_rules! dispatch {
     ($self:expr, $method:ident, $($arg:expr),*) => {
@@ -64,6 +68,22 @@ impl ChainAdapterFactory {
             &node.http_url,
             header_opt,
         )?)
+    }
+
+    pub async fn get_tron_adapter() -> Result<TronChain, crate::ServiceError> {
+        let node = ChainAdapterFactory::get_chain_node(chain_code::TRON).await?;
+
+        let header_opt = if rpc_need_header(&node.rpc_url)? {
+            Some(crate::Context::get_rpc_header().await?)
+        } else {
+            None
+        };
+        let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
+
+        let http_client = HttpClient::new(&node.rpc_url, header_opt, timeout)?;
+        let provider = tron::Provider::new(http_client)?;
+
+        Ok(tron::TronChain::new(provider)?)
     }
 
     pub async fn get_node_transaction_adapter(
