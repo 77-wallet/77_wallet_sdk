@@ -248,11 +248,11 @@ mod test {
         let derivation_path = None;
         // let index = Some(2147478971);
         // let index = Some(2);
-        let index = Some(3);
+        let index = Some(0);
         // let index = Some(i32::MIN);
         // let address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
         // let address = "0x2b3f8269917dE02b02f5ac22fe1B4291Ed94D10a";
-        let address = "0x76ab490669d54F312e15C9a8f0d24E6476a5CDc0";
+        let address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
 
         // let password = wallet_env.password;
         let password = "123456";
@@ -307,7 +307,7 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
 
         let account_id = 1;
-        let wallet_address = "0x2b3f8269917dE02b02f5ac22fe1B4291Ed94D10a";
+        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
         let account = wallet_manager
             .physical_delete_account(wallet_address, account_id)
             .await;

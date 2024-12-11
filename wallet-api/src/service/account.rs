@@ -16,7 +16,7 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        task_queue::{BackendApiTask, Task, Tasks},
+        task_queue::{BackendApiTask, CommonTask, Task, Tasks},
         wallet::WalletDomain,
     },
     response_vo::account::DerivedAddressesList,
@@ -237,6 +237,7 @@ impl AccountService {
         //     wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
         //     &device_bind_address_req,
         // )?;
+        let uid = wallet.uid;
         let task =
             domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
         Tasks::new()
@@ -244,6 +245,7 @@ impl AccountService {
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 device_bind_address_task_data,
             )))
+            .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
             .send()
             .await?;
         Ok(())
