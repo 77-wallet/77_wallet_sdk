@@ -7,9 +7,9 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, NodeEntity::upsert, input)
     }
 
-    async fn list(&mut self) -> Result<Vec<NodeEntity>, crate::Error> {
+    async fn list(&mut self, is_local: Option<u8>) -> Result<Vec<NodeEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, NodeEntity::list,)
+        crate::execute_with_executor!(executor, NodeEntity::list, is_local)
     }
 
     async fn get_node_list_in_chain_codes(

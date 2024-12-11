@@ -17,6 +17,7 @@ pub struct NodeEntity {
     pub http_url: String,
     pub network: String,
     pub status: u8,
+    pub is_local: u8,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
@@ -32,6 +33,7 @@ pub struct NodeCreateVo {
     pub http_url: String,
     pub network: String,
     pub status: u8,
+    pub is_local: u8,
 }
 
 pub struct QueryReq {

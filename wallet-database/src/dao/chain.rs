@@ -62,6 +62,52 @@ impl ChainEntity {
     }
 
     // 把指定的链status设置为1，其他设置为0
+    pub async fn upsert_multi_chain<'a, E>(
+        executor: E,
+        input: Vec<ChainCreateVo>,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if input.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+            "INSERT INTO chain (name, chain_code, node_id, protocols, status, main_symbol, created_at, updated_at) ",
+        );
+
+        query_builder.push_values(input, |mut b, chain| {
+            let protocols =
+                wallet_utils::serde_func::serde_to_string(&chain.protocols).unwrap_or_default();
+            b.push_bind(chain.name.clone())
+                .push_bind(chain.chain_code)
+                .push_bind(chain.node_id)
+                .push_bind(protocols)
+                .push_bind(chain.status)
+                .push_bind(chain.main_symbol)
+                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+        });
+
+        query_builder.push(
+            " ON CONFLICT (chain_code)
+              DO UPDATE SET
+                  name = excluded.name,
+                  node_id = excluded.node_id,
+                  status = excluded.status,
+                  main_symbol = excluded.main_symbol,
+                  updated_at = excluded.updated_at",
+        );
+        let query = query_builder.build();
+        query
+            .execute(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
+
+    // 把指定的链status设置为1，其他设置为0
     pub async fn toggle_chains_status<'a, E>(
         executor: E,
         chain_codes: Vec<String>,
@@ -190,7 +236,7 @@ impl ChainEntity {
     ) -> Result<Vec<Self>, crate::Error> {
         let chain_codes = crate::any_in_collection(chain_codes, "','");
         let sql = format!(
-            "SELECT name, chain_code, node_id, protocols, main_symbol, status, created_at, updated_at FROM chain
+            "SELECT * FROM chain
         WHERE chain_code in ('{}') and status = 1;",
             chain_codes
         );

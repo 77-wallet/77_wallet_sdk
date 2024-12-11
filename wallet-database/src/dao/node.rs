@@ -12,6 +12,7 @@ impl NodeCreateVo {
             http_url: "".to_string(),
             network: "mainnet".to_string(),
             status: 1,
+            is_local: 0,
         }
     }
 
@@ -24,6 +25,11 @@ impl NodeCreateVo {
         self.network = network.to_string();
         self
     }
+
+    pub fn with_is_local(mut self, is_local: u8) -> Self {
+        self.is_local = is_local;
+        self
+    }
 }
 
 impl NodeEntity {
@@ -32,8 +38,8 @@ impl NodeEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"Insert into node 
-            (node_id, name, chain_code, status, rpc_url, ws_url,http_url, network, created_at, updated_at)
-                values ($1, $2, $3, $4, $5, $6,$7,$8, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (node_id, name, chain_code, status, is_local, rpc_url, ws_url,http_url, network, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, $6,$7,$8, $9,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                 on conflict (node_id)
                 do update set
                     rpc_url = excluded.rpc_url,
@@ -52,6 +58,7 @@ impl NodeEntity {
             .bind(&req.name)
             .bind(&req.chain_code)
             .bind(req.status)
+            .bind(req.is_local)
             .bind(&req.rpc_url)
             .bind(&req.ws_url)
             .bind(&req.http_url)
@@ -78,13 +85,27 @@ impl NodeEntity {
     //         .map_err(|e| crate::Error::Database(e.into()))
     // }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E, is_local: Option<u8>) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM node;";
+        let mut sql = "SELECT * FROM node".to_string();
+        let mut conditions = Vec::new();
 
-        sqlx::query_as::<sqlx::Sqlite, NodeEntity>(sql)
+        if is_local.is_some() {
+            conditions.push("is_local = ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let mut query = sqlx::query_as::<_, Self>(&sql);
+
+        if let Some(is_local) = is_local {
+            query = query.bind(is_local);
+        }
+        query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

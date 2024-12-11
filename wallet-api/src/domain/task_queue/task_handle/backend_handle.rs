@@ -176,14 +176,15 @@ impl EndpointHandler for SpecialHandler {
                 //     .await?;
                 // ConfigDomain::set_version_download_url(app_version_res.download_url)
             }
-            endpoint::CHAIN_DEFAULT_LIST => {
-                let chains = backend
+            endpoint::CHAIN_LIST => {
+                let input = backend
                     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
                         endpoint, &body,
                     )
                     .await?;
 
-                ChainDomain::toggle_chains(chains).await?;
+                //先插入再过滤
+                ChainDomain::upsert_multi_chain_than_toggle(input).await?;
             }
             endpoint::MQTT_INIT => {
                 let mqtt_url = backend.post_req_str::<String>(endpoint, &body).await?;

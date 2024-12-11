@@ -1,6 +1,7 @@
 use crate::response_vo;
 use reqwest::Url;
 use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
+use wallet_database::repositories::chain::ChainRepoTrait;
 use wallet_types::chain::network;
 
 pub mod adapter;
@@ -88,20 +89,71 @@ pub fn check_address(
 pub struct ChainDomain;
 
 impl ChainDomain {
-    pub(crate) async fn toggle_chains(
+    pub(crate) async fn upsert_multi_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let chains = chains
-            .list
-            .into_iter()
-            .filter(|c| c.enable.is_some_and(|c| c) || c.enable.is_none())
-            .map(|c| c.chain_code)
-            .collect();
 
+        // 本地后端节点
+        let local_backend_nodes =
+            wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(0)).await?;
+
+        // 本地配置节点
+        let default_nodes =
+            wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(1)).await?;
+
+        let mut input = Vec::new();
+        let mut chain_codes = Vec::new();
+        for chain in chains.list {
+            let status = if chain.enable { 1 } else { 0 };
+            if let Some(node) = local_backend_nodes
+                .iter()
+                .find(|node| node.chain_code == chain.chain_code)
+            {
+                input.push(
+                    wallet_database::entities::chain::ChainCreateVo::new(
+                        &chain.name,
+                        &chain.chain_code,
+                        &node.node_id,
+                        &[],
+                        &chain.master_token_code,
+                    )
+                    .with_status(status),
+                );
+            } else if let Some(node) = default_nodes
+                .iter()
+                .find(|node| node.chain_code == chain.chain_code)
+            {
+                input.push(
+                    wallet_database::entities::chain::ChainCreateVo::new(
+                        &chain.name,
+                        &chain.chain_code,
+                        &node.node_id,
+                        &[],
+                        &chain.master_token_code,
+                    )
+                    .with_status(status),
+                );
+            }
+            if status == 1 {
+                chain_codes.push(chain.chain_code);
+            }
+        }
+
+        ChainRepoTrait::upsert_multi_chain(&mut repo, input).await?;
+        Self::toggle_chains(&mut repo, chain_codes).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn toggle_chains(
+        repo: &mut wallet_database::repositories::ResourcesRepo,
+        chain_codes: Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
         wallet_database::repositories::chain::ChainRepoTrait::toggle_chains_status(
-            &mut repo, chains,
+            repo,
+            chain_codes,
         )
         .await?;
         Ok(())

@@ -17,8 +17,8 @@ pub struct ChainUrlInfo {
     pub hash_url: Option<String>,
     #[serde(rename = "code")]
     pub chain_code: String,
-    pub enable: Option<bool>,
-    pub name: Option<String>,
+    pub enable: bool,
+    pub name: String,
     pub master_token_code: String,
 }
 

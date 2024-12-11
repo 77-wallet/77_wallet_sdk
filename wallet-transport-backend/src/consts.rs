@@ -35,7 +35,7 @@ pub mod endpoint {
     pub const SYS_CONFIG_FIND_CONFIG_BY_KEY: &str = "sys/config/findConfigByKey";
     pub const APP_INSTALL_DOWNLOAD: &str = "app/install/download";
     pub const VERSION_VIEW: &str = "version/view";
-    pub const CHAIN_DEFAULT_LIST: &str = "chain/defaultList";
+    // pub const CHAIN_DEFAULT_LIST: &str = "chain/defaultList";
     pub const CHAIN_LIST: &str = "chain/list";
     pub const MQTT_INIT: &str = "mqtt/init";
 

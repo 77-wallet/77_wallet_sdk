@@ -69,7 +69,7 @@ impl NodeDomain {
         //     }
         // });
         let chain_list_req = crate::domain::task_queue::BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_DEFAULT_LIST,
+            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
             &(),
         )?;
         super::task_queue::Tasks::new()
@@ -79,7 +79,7 @@ impl NodeDomain {
             .send()
             .await?;
 
-        Self::process_filtered_nodes(&mut repo, &pool, &backend_nodes, default_nodes).await?;
+        Self::process_filtered_nodes(&mut repo, &pool, &backend_nodes, &default_nodes).await?;
         Ok(())
     }
 
@@ -87,18 +87,19 @@ impl NodeDomain {
         repo: &mut ResourcesRepo,
         pool: &sqlx::SqlitePool,
         backend_nodes: &[NodeEntity],
-        default_nodes: Vec<NodeData>,
+        default_nodes: &[NodeData],
     ) -> Result<(), crate::ServiceError> {
-        let node_list = NodeRepoTrait::list(repo).await?;
-        // node_list 排除chains_c中的rpc_url一致的节点
-        let rpc_urls: Vec<String> = default_nodes
-            .iter()
-            .map(|node| node.rpc_url.clone())
-            .collect();
-        let filtered_nodes: Vec<_> = node_list
-            .into_iter()
-            .filter(|node| !rpc_urls.contains(&node.rpc_url))
-            .collect();
+        let filtered_nodes = NodeRepoTrait::list(repo, Some(0)).await?;
+        // // node_list 排除chains_c中的rpc_url一致的节点
+        // let rpc_urls: Vec<String> = default_nodes
+        //     .iter()
+        //     .map(|node| node.rpc_url.clone())
+        //     .collect();
+        // let filtered_nodes: Vec<_> = node_list
+        //     .into_iter()
+        //     .filter(|node| !rpc_urls.contains(&node.rpc_url))
+        //     .collect();
+
         // 比较filtered_nodes 和 backend_nodes的节点，把backend_nodes中没有，filtered_nodes有的节点，删除
 
         let backend_node_rpcs: HashSet<String> =
@@ -107,30 +108,8 @@ impl NodeDomain {
             if !backend_node_rpcs.contains(&node.rpc_url) {
                 let chain = ChainRepoTrait::detail_by_id(repo, &node.node_id).await?;
                 if let Some(chain) = chain {
-                    if let Some(backend_nodes) = backend_nodes
-                        .iter()
-                        .find(|node| node.chain_code == chain.chain_code)
-                    {
-                        if let Err(e) = ChainEntity::set_chain_node(
-                            pool,
-                            &chain.chain_code,
-                            &backend_nodes.node_id,
-                        )
-                        .await
-                        {
-                            tracing::error!("set_chain_node: {:?}", e);
-                        }
-                    } else if let Some(node) = default_nodes
-                        .iter()
-                        .find(|node| node.chain_code == chain.chain_code)
-                    {
-                        if let Err(e) =
-                            ChainEntity::set_chain_node(pool, &chain.chain_code, &node.node_id)
-                                .await
-                        {
-                            tracing::error!("set_chain_node: {:?}", e);
-                        }
-                    }
+                    Self::set_chain_node(pool, backend_nodes, default_nodes, &chain.chain_code)
+                        .await?;
                 }
 
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.rpc_url, &node.chain_code).await {
@@ -138,6 +117,33 @@ impl NodeDomain {
                 }
             }
         }
+        Ok(())
+    }
+
+    pub(crate) async fn set_chain_node(
+        pool: &sqlx::SqlitePool,
+        backend_nodes: &[NodeEntity],
+        default_nodes: &[NodeData],
+        chain_code: &str,
+    ) -> Result<(), crate::ServiceError> {
+        if let Some(backend_nodes) = backend_nodes
+            .iter()
+            .find(|node| node.chain_code == chain_code)
+        {
+            if let Err(e) =
+                ChainEntity::set_chain_node(pool, chain_code, &backend_nodes.node_id).await
+            {
+                tracing::error!("set_chain_node: {:?}", e);
+            }
+        } else if let Some(node) = default_nodes
+            .iter()
+            .find(|node| node.chain_code == chain_code)
+        {
+            if let Err(e) = ChainEntity::set_chain_node(pool, chain_code, &node.node_id).await {
+                tracing::error!("set_chain_node: {:?}", e);
+            }
+        }
+
         Ok(())
     }
 }

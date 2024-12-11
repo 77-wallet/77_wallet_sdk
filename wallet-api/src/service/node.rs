@@ -41,7 +41,8 @@ impl NodeService {
                 &default_chain.rpc_url,
             )
             .with_http_url(&default_chain.http_url)
-            .with_network(&default_chain.network);
+            .with_network(&default_chain.network)
+            .with_is_local(1);
 
             let node = match NodeRepoTrait::add(tx, node).await {
                 Ok(node) => node,
