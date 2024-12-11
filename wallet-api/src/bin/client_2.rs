@@ -3,6 +3,9 @@ use tokio_stream::StreamExt as _;
 use wallet_api::{notify::FrontendNotifyEvent, InitDeviceReq, WalletManager};
 use wallet_utils::init_test_log;
 
+const SN: &str = "guangxiang";
+const DEVICE_TYPE: &str = "ANDROID";
+
 // create wallet
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 初始化设备并启动mqtt
     manager.init_device(device_req()).await;
 
-    create_wallet(&manager, false).await;
+    create_wallet(&manager, true).await;
 
     while let Some(_data) = rx.next().await {
         tracing::info!("data: {_data:?}");
@@ -34,22 +37,17 @@ async fn get_manager() -> WalletManager {
         .join("test_data")
         .to_string_lossy()
         .to_string();
-    WalletManager::new(
-        "ccc8a1e6f53affba2d13880049a1f2bd8dc83fdfe4159a7acac7e85fc9974432",
-        "IOS",
-        &path,
-        None,
-    )
-    .await
-    .unwrap()
+    WalletManager::new(SN, DEVICE_TYPE, &path, None)
+        .await
+        .unwrap()
 }
 
 async fn create_wallet(manager: &WalletManager, create: bool) {
     if create {
         let phrase =
-            "embrace still summer two neglect lawsuit museum captain reward bronze dish curve";
+            "will match face problem tongue fortune rebuild stool moon assist virtual lounge";
 
-        let salt = "12345qwe";
+        let salt = "12345678";
         manager
             .create_wallet(1, phrase, salt, "test", "账户", true, "123456", None)
             .await;
@@ -57,8 +55,8 @@ async fn create_wallet(manager: &WalletManager, create: bool) {
 }
 
 fn device_req() -> InitDeviceReq {
-    let device_type = "IOS";
-    let sn = "ccc8a1e6f53affba2d13880049a1f2bd8dc83fdfe4159a7acac7e85fc9974432";
+    let device_type = DEVICE_TYPE;
+    let sn = SN;
 
     InitDeviceReq {
         device_type: device_type.to_string(),
