@@ -69,28 +69,30 @@ async fn handle_eventloop(
                 };
             }
             Err(err) => {
+                tracing::error!("[mqtt] Error = {err:?}");
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 // 尝试获取一个许可
-                let permit = semaphore.clone().try_acquire_owned();
-                if let Ok(permit) = permit {
-                    tracing::error!("[mqtt] Error = {err:?}");
-                    let data = crate::notify::NotifyEvent::ConnectionError(
-                        crate::notify::event::other::ConnectionErrorFrontend {
-                            message: err.to_string(),
-                        },
-                    );
-                    match crate::notify::FrontendNotifyEvent::new(data).send().await {
-                        Ok(_) => tracing::debug!("[mqtt] sender send ok"),
-                        Err(e) => tracing::error!("[mqtt] sender send error: {e}"),
-                    };
-                    // 设定许可在1秒后释放
-                    tokio::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
-                        drop(permit);
-                    });
-                } else {
-                    // 超过限流，忽略或记录简要信息
-                    // tracing::warn!("[mqtt] Error rate limited: {err:?}");
-                }
+                // let permit = semaphore.clone().try_acquire_owned();
+                // if let Ok(permit) = permit {
+                //     tracing::error!("[mqtt] Error = {err:?}");
+                let data = crate::notify::NotifyEvent::ConnectionError(
+                    crate::notify::event::other::ConnectionErrorFrontend {
+                        message: err.to_string(),
+                    },
+                );
+                match crate::notify::FrontendNotifyEvent::new(data).send().await {
+                    Ok(_) => tracing::debug!("[mqtt] sender send ok"),
+                    Err(e) => tracing::error!("[mqtt] sender send error: {e}"),
+                };
+                //     // 设定许可在1秒后释放
+                //     tokio::spawn(async move {
+                //         tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                //         drop(permit);
+                //     });
+                // } else {
+                //     // 超过限流，忽略或记录简要信息
+                //     // tracing::warn!("[mqtt] Error rate limited: {err:?}");
+                // }
             }
         }
     }
