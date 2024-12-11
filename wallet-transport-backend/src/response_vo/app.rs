@@ -12,7 +12,7 @@ pub struct AppVersionRes {
     /// 频率
     pub frequency: Option<i32>,
     /// 提示语
-    pub remark: Option<String>,
+    pub remark_list: Option<Vec<String>>,
     /// 开始时间
     pub start_time: Option<String>,
     /// 状态 {not_start:未开始}, {in_progress:进行中}, {expire:失效}
