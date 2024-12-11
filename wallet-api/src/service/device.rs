@@ -57,22 +57,22 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
                 crate::DeviceError::Uninitialized,
             ))?;
 
-        // tokio::spawn(async move {
-        //     let content = domain::app::DeviceDomain::device_content(&device).unwrap();
-        //     let client_id = domain::app::DeviceDomain::client_id_by_device(&device).unwrap();
-        //     crate::mqtt::init_mqtt_processor(
-        //         &device.sn,
-        //         APP_ID,
-        //         crate::mqtt::user_property::UserProperty::new(
-        //             &package_id.unwrap_or("77wallet".to_string()),
-        //             &content,
-        //             &client_id,
-        //         ),
-        //         crate::mqtt::wrap_handle_eventloop,
-        //     )
-        //     .await
-        //     .unwrap();
-        // });
+        tokio::spawn(async move {
+            let content = domain::app::DeviceDomain::device_content(&device).unwrap();
+            let client_id = domain::app::DeviceDomain::client_id_by_device(&device).unwrap();
+            crate::mqtt::init_mqtt_processor(
+                &device.sn,
+                APP_ID,
+                crate::mqtt::user_property::UserProperty::new(
+                    &package_id.unwrap_or("77wallet".to_string()),
+                    &content,
+                    &client_id,
+                ),
+                crate::mqtt::wrap_handle_eventloop,
+            )
+            .await
+            .unwrap();
+        });
 
         Ok(None)
     }
