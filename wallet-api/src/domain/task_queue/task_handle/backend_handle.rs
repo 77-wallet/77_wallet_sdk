@@ -176,7 +176,7 @@ impl EndpointHandler for SpecialHandler {
                 //     .await?;
                 // ConfigDomain::set_version_download_url(app_version_res.download_url)
             }
-            endpoint::CHAIN_LIST => {
+            endpoint::CHAIN_DEFAULT_LIST => {
                 let chains = backend
                     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
                         endpoint, &body,

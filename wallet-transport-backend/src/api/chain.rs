@@ -1,12 +1,12 @@
 use crate::{
     response::BackendResponse,
-    response_vo::chain::{ChainInfos, ChainList, DefaultChainList},
+    response_vo::chain::{ChainInfos, ChainList},
 };
 
 use super::BackendApi;
 
 impl BackendApi {
-    pub async fn chain_default_list(&self) -> Result<DefaultChainList, crate::Error> {
+    pub async fn chain_default_list(&self) -> Result<serde_json::Value, crate::Error> {
         let res = self
             .client
             .post("chain/defaultList")
@@ -17,6 +17,16 @@ impl BackendApi {
     }
 
     pub async fn chain_list(&self) -> Result<ChainList, crate::Error> {
+        let res = self
+            .client
+            .post("chain/list")
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process()
+    }
+
+    pub async fn _chain_list(&self) -> Result<serde_json::Value, crate::Error> {
         let res = self
             .client
             .post("chain/list")
@@ -58,6 +68,24 @@ mod test {
             .await
             .unwrap();
 
+        println!("[test_chain_default_list] res: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn _chain_list() {
+        // let method = "POST";
+        let base_url = crate::consts::BASE_URL;
+
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            ._chain_list()
+            .await
+            .unwrap();
+
+        println!("[test_chain_default_list] res: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         println!("[test_chain_default_list] res: {res:?}");
     }
 

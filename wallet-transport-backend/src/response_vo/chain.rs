@@ -18,6 +18,8 @@ pub struct ChainUrlInfo {
     #[serde(rename = "code")]
     pub chain_code: String,
     pub enable: Option<bool>,
+    pub name: Option<String>,
+    pub master_token_code: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

@@ -69,7 +69,7 @@ impl NodeDomain {
         //     }
         // });
         let chain_list_req = crate::domain::task_queue::BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
+            wallet_transport_backend::consts::endpoint::CHAIN_DEFAULT_LIST,
             &(),
         )?;
         super::task_queue::Tasks::new()
