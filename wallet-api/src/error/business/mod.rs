@@ -3,6 +3,7 @@ pub mod announcement;
 pub mod assets;
 pub mod bill;
 pub mod chain;
+pub mod chain_node;
 pub mod coin;
 pub mod device;
 pub mod exchange_rate;
@@ -37,6 +38,8 @@ pub enum BusinessError {
     Coin(#[from] coin::CoinError),
     #[error("exchange error:{0}")]
     ExchangeRate(#[from] exchange_rate::ExchangeRate),
+    #[error("chain node")]
+    ChainNode(#[from] chain_node::ChainNodeError),
 }
 
 impl BusinessError {
@@ -54,6 +57,7 @@ impl BusinessError {
             BusinessError::Stake(msg) => msg.get_status_code(),
             BusinessError::Coin(msg) => msg.get_status_code(),
             BusinessError::ExchangeRate(msg) => msg.get_status_code(),
+            BusinessError::ChainNode(msg) => msg.get_status_code(),
         }
     }
 }

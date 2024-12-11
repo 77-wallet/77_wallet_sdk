@@ -285,10 +285,9 @@ impl MultisigAccountService {
         let mut list = vec![];
         // main symbol
         for item in res.data.iter_mut() {
-            let chain = ChainEntity::detail(&*pool, &item.chain_code)
-                .await
-                .unwrap()
-                .unwrap();
+            let chain = ChainEntity::detail(&*pool, &item.chain_code).await?.ok_or(
+                crate::BusinessError::ChainNode(crate::ChainNodeError::ChainNotFound),
+            )?;
             item.address_type_to_category();
             list.push({
                 MultisigAccountList {

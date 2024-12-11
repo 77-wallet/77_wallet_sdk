@@ -20,8 +20,8 @@ pub mod test;
 pub use error::{
     business::{
         account::AccountError, announcement::AnnouncementError, assets::AssetsError,
-        bill::BillError, chain::ChainError, coin::CoinError, device::DeviceError,
-        exchange_rate::ExchangeRate, multisig_account::MultisigAccountError,
+        bill::BillError, chain::ChainError, chain_node::ChainNodeError, coin::CoinError,
+        device::DeviceError, exchange_rate::ExchangeRate, multisig_account::MultisigAccountError,
         multisig_queue::MultisigQueueError, wallet::WalletError, BusinessError,
     },
     system::SystemError,
