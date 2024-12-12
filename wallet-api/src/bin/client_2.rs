@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 初始化设备并启动mqtt
     manager.init_device(device_req()).await;
 
-    create_wallet(&manager, false).await;
+    create_wallet(&manager, true).await;
 
     while let Some(_data) = rx.next().await {
         tracing::info!("data: {_data:?}");
@@ -45,7 +45,7 @@ async fn get_manager() -> WalletManager {
 async fn create_wallet(manager: &WalletManager, create: bool) {
     if create {
         let phrase =
-            "will match face problem tongue fortune rebuild stool moon assist virtual lounge";
+            "better unknown female pave arctic brand abandon across time sniff dolphin forest";
 
         let salt = "12345678";
         manager

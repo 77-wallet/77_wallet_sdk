@@ -56,7 +56,6 @@ impl OrderMultiSignAccept {
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
         let OrderMultiSignAccept {
             ref id,
-            // ref order_id,
             ref name,
             ref initiator_addr,
             ref address,
@@ -98,6 +97,10 @@ impl OrderMultiSignAccept {
             if account.is_some() {
                 m.is_self = 1;
             }
+
+            if m.is_self == 1 && m.address != params.initiator_addr {
+                params.owner = MultiAccountOwner::Both;
+            }
         }
 
         // 创建多签账户以及多签成员
@@ -114,20 +117,12 @@ impl OrderMultiSignAccept {
             NotificationType::DeployInvite,
         );
 
-        // let r#type = SystemNotificationType::MultisigWaitJoin;
-        // let content = Content::MultisigWaitJoin {
-        //     multisig_account_id: id.to_string(),
-        //     multisig_account_address: address.to_string(),
-        //     multisig_account_name: name.to_string(),
-        // };
-
         let repo = RepositoryFactory::repo(pool);
         let system_notification_service = SystemNotificationService::new(repo);
 
         system_notification_service
             .add_system_notification(msg_id, notification, 0)
             .await?;
-
         let data = crate::notify::NotifyEvent::OrderMultiSignAccept(OrderMultiSignAcceptFrontend {
             name: name.to_string(),
             initiator_addr: initiator_addr.to_string(),

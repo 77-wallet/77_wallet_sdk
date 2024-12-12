@@ -13,6 +13,7 @@ use crate::{
         wallet::WalletEntity,
     },
     pagination::Pagination,
+    DbPool,
 };
 
 use super::ResourcesRepo;
@@ -237,6 +238,22 @@ impl MultisigAccountRepo {
 
         let member =
             MultisigMemberDaoV1::find_records_by_id(account_id, &*self.repo.db_pool).await?;
+
+        Ok(MultisigAccountData::new(account, member))
+    }
+
+    pub async fn multisig_raw_data(
+        account_id: &str,
+        pool: DbPool,
+    ) -> Result<MultisigAccountData, crate::Error> {
+        // get account
+        let conditions = vec![("id", account_id)];
+
+        let account = MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref())
+            .await?
+            .ok_or(crate::DatabaseError::ReturningNone)?;
+
+        let member = MultisigMemberDaoV1::find_records_by_id(account_id, pool.as_ref()).await?;
 
         Ok(MultisigAccountData::new(account, member))
     }

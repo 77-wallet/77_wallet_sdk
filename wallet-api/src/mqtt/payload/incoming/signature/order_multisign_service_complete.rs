@@ -3,7 +3,10 @@ use wallet_database::{
     entities::multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
 };
 
-use crate::notify::event::{multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront};
+use crate::{
+    domain,
+    notify::event::{multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront},
+};
 
 /*
     {
@@ -92,6 +95,10 @@ impl OrderMultiSignServiceComplete {
             .await
             .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
         }
+
+        let _r =
+            domain::multisig::account::MultisigDomain::update_raw_data(&multi_account_id, pool)
+                .await;
 
         let data = crate::notify::NotifyEvent::OrderMultiSignServiceComplete(
             OrderMultiSignServiceCompleteFrontend {

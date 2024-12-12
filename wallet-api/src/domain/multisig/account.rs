@@ -1,5 +1,6 @@
 use crate::domain::{
     self,
+    chain::adapter::ChainAdapterFactory,
     task_queue::{BackendApiTask, Task},
 };
 use sqlx::{Pool, Sqlite};
@@ -16,10 +17,11 @@ use wallet_database::{
             MultiAccountOwner, MultisigAccountData, MultisigAccountEntity,
             MultisigAccountPayStatus, MultisigAccountStatus, NewMultisigAccountEntity,
         },
-        multisig_member::MemberVo,
         multisig_queue::MultisigQueueEntity,
         wallet::WalletEntity,
     },
+    repositories::multisig_account::MultisigAccountRepo,
+    DbPool,
 };
 use wallet_transport_backend::request::FindAddressRawDataReq;
 
@@ -55,6 +57,7 @@ impl MultisigDomain {
             .into_iter()
             .map(|uid| uid.0)
             .collect::<std::collections::HashSet<String>>();
+
         MultisigDomain::recover_multisig_data(uid, &uid_list).await?;
         Ok(())
     }
@@ -68,55 +71,13 @@ impl MultisigDomain {
 
         let req = FindAddressRawDataReq::new_multisig(uid);
         let data = backend.address_find_address_raw_data(req).await?;
-        let list = data.list;
 
-        for address_raw_data in list {
-            if let Some(raw_data) = address_raw_data.raw_data {
-                if let Ok(mut data) = MultisigAccountData::from_string(&raw_data) {
-                    // handle deploy status
-                    if !data.account.deploy_hash.is_empty()
-                        && data.account.status != MultisigAccountStatus::OnChain.to_i8()
-                    {
-                        let adapter =
-                            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(
-                                &data.account.chain_code,
-                            )
-                            .await?;
-                        if let Some(tx_result) =
-                            adapter.query_tx_res(&data.account.deploy_hash).await?
-                        {
-                            data.account.status = if tx_result.status == 2 {
-                                MultisigAccountStatus::OnChain.to_i8()
-                            } else {
-                                MultisigAccountStatus::OnChainFail.to_i8()
-                            }
-                        }
-                    }
-                    // handle pay status
-                    if !data.account.fee_hash.is_empty()
-                        && data.account.pay_status != MultisigAccountPayStatus::Paid.to_i8()
-                    {
-                        let adapter =
-                            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(
-                                &data.account.chain_code,
-                            )
-                            .await?;
-                        if let Some(tx_result) =
-                            adapter.query_tx_res(&data.account.deploy_hash).await?
-                        {
-                            data.account.pay_status = if tx_result.status == 2 {
-                                MultisigAccountPayStatus::Paid.to_i8()
-                            } else {
-                                MultisigAccountPayStatus::PaidFail.to_i8()
-                            }
-                        }
-                    }
-                    if let Err(e) = Self::insert(pool.clone(), data, uid_list).await {
-                        tracing::error!("insert multisig data error: {:?}", e);
-                    };
-                } else {
-                    tracing::error!("parse multisig data error: {:?}", raw_data);
-                };
+        for multisig_raw_data in data.list {
+            let Some(raw_data) = multisig_raw_data.raw_data else {
+                continue;
+            };
+            if let Err(e) = Self::handle_one_mutlisg_data(&raw_data, pool.clone(), uid_list).await {
+                tracing::warn!("recover multisig data error :{}", e);
             }
         }
 
@@ -135,23 +96,80 @@ impl MultisigDomain {
         Ok(())
     }
 
+    pub async fn handle_one_mutlisg_data(
+        raw_data: &str,
+        pool: DbPool,
+        uid_list: &std::collections::HashSet<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let mut data = MultisigAccountData::from_string(raw_data)?;
+
+        let mut flag = false;
+        // handle deploy status
+        if !data.account.deploy_hash.is_empty()
+            && data.account.status == MultisigAccountStatus::OnChianPending.to_i8()
+        {
+            Self::handel_deploy_status(&mut data).await?;
+            flag = true;
+        }
+
+        // handle pay status
+        if !data.account.fee_hash.is_empty()
+            && data.account.pay_status == MultisigAccountPayStatus::PaidPending.to_i8()
+        {
+            Self::hanle_pay_status(&mut data).await?;
+            flag = true;
+        }
+
+        let account_id = data.account.id.clone();
+        Self::insert(pool.clone(), data, uid_list).await?;
+
+        if flag {
+            Self::update_raw_data(&account_id, pool.clone()).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn handel_deploy_status(
+        data: &mut MultisigAccountData,
+    ) -> Result<(), crate::ServiceError> {
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter(&data.account.chain_code).await?;
+
+        if let Some(tx_result) = adapter.query_tx_res(&data.account.deploy_hash).await? {
+            data.account.status = if tx_result.status == 2 {
+                MultisigAccountStatus::OnChain.to_i8()
+            } else {
+                MultisigAccountStatus::OnChainFail.to_i8()
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn hanle_pay_status(
+        data: &mut MultisigAccountData,
+    ) -> Result<(), crate::ServiceError> {
+        let adapter =
+            ChainAdapterFactory::get_transaction_adapter(&data.account.chain_code).await?;
+
+        if let Some(tx_result) = adapter.query_tx_res(&data.account.deploy_hash).await? {
+            data.account.pay_status = if tx_result.status == 2 {
+                MultisigAccountPayStatus::Paid.to_i8()
+            } else {
+                MultisigAccountPayStatus::PaidFail.to_i8()
+            }
+        }
+        Ok(())
+    }
+
     pub async fn insert(
         pool: std::sync::Arc<Pool<Sqlite>>,
         data: MultisigAccountData,
         uid_list: &std::collections::HashSet<String>,
     ) -> Result<(), crate::ServiceError> {
         let MultisigAccountData { account, members } = data;
-        let member_list = members
-            .0
-            .into_iter()
-            .map(|member| MemberVo {
-                name: member.name,
-                address: member.address,
-                pubkey: member.pubkey,
-                confirmed: member.confirmed,
-                uid: member.uid,
-            })
-            .collect::<Vec<MemberVo>>();
+        let member_list = members.to_member_vo();
 
         let pay_status = MultisigAccountPayStatus::try_from(account.pay_status)?;
         let status = MultisigAccountStatus::try_from(account.status)?;
@@ -318,6 +336,19 @@ impl MultisigDomain {
         }
 
         Ok(res)
+    }
+
+    // Report the successful mutlisig account back to the backend to update the raw data.
+    pub async fn update_raw_data(
+        account_id: &str,
+        pool: DbPool,
+    ) -> Result<(), crate::ServiceError> {
+        let raw_data = MultisigAccountRepo::multisig_raw_data(account_id, pool)
+            .await?
+            .to_string()?;
+
+        let backend_api = crate::Context::get_global_backend_api()?;
+        Ok(backend_api.update_raw_data(account_id, raw_data).await?)
     }
 
     pub async fn physical_delete_wallet_account(

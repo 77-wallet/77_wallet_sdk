@@ -66,16 +66,16 @@ impl MultisigAccountService {
         };
 
         // check whether has not complete account.
-        if self
-            .repo
-            .find_doing_account(&chain_code, &address)
-            .await?
-            .is_some()
-        {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::HasUncompletedAccount,
-            ))?;
-        }
+        // if self
+        //     .repo
+        //     .find_doing_account(&chain_code, &address)
+        //     .await?
+        //     .is_some()
+        // {
+        //     return Err(crate::BusinessError::MultisigAccount(
+        //         crate::MultisigAccountError::HasUncompletedAccount,
+        //     ))?;
+        // }
         let member_address = member_list
             .iter()
             .map(|m| m.address.clone())

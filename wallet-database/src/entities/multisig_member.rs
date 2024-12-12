@@ -93,6 +93,19 @@ impl MultisigMemberEntities {
             }
         });
     }
+
+    pub fn to_member_vo(self) -> Vec<MemberVo> {
+        self.0
+            .into_iter()
+            .map(|member| MemberVo {
+                name: member.name,
+                address: member.address,
+                pubkey: member.pubkey,
+                confirmed: member.confirmed,
+                uid: member.uid,
+            })
+            .collect::<Vec<MemberVo>>()
+    }
 }
 
 #[derive(Debug)]

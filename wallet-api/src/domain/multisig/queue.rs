@@ -133,7 +133,7 @@ impl MultisigQueueDomain {
         let mut params = NewMultisigQueueEntity::from(queue).check_expiration();
 
         let mut report = false;
-        if !params.tx_hash.is_empty() {
+        if !params.tx_hash.is_empty() && params.status == MultisigQueueStatus::InConfirmation {
             let tx =
                 domain::bill::BillDomain::get_onchain_bill(&params.tx_hash, &params.chain_code)
                     .await?;
