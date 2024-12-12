@@ -41,7 +41,7 @@ node_name = "Ethereum-Test"
 rpc_url = "https://eth-sepolia.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05"
 http_url = ""
 network = "testnet"
-active = true
+active = false
 
 [nodes.bnb]
 [[nodes.bnb.nodes]]
@@ -63,7 +63,7 @@ node_name = "BNB-Test"
 rpc_url = "https://go.getblock.io/d51b9998c91b42c281a5da0eea5567a0"
 http_url = ""
 network = "testnet"
-active = true
+active = false
 
 
 [nodes.sol]
@@ -86,7 +86,7 @@ node_name = "Solana-Dev"
 rpc_url = "https://solana-devnet.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05"
 http_url = ""
 network = "testnet"
-active = true
+active = false
 
 
 [nodes.btc]
