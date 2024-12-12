@@ -250,12 +250,11 @@ impl BillDao {
                     resource_consume =excluded.resource_consume, 
                     block_height = excluded.block_height,
                     transaction_time = excluded.transaction_time,
+                    transaction_fee = excluded.transaction_fee,
                     symbol = 
                         CASE WHEN bill.symbol = '' THEN excluded.symbol ELSE bill.symbol END,
                     to_addr = 
                         CASE WHEN bill.to_addr = '' THEN excluded.to_addr ELSE bill.to_addr END,
-                    transaction_fee = 
-                        CASE WHEN bill.transaction_fee = '0' THEN excluded.transaction_fee ELSE bill.transaction_fee END,
                     value =
                         CASE WHEN bill.value = '0' THEN excluded.value ELSE bill.value END,
                     updated_at = EXCLUDED.updated_at;
