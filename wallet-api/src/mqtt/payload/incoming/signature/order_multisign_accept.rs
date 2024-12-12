@@ -85,11 +85,10 @@ impl OrderMultiSignAccept {
             &uid_list,
         );
         // 如果查到该账号，说明是自己，修改Owner为自己
-        if account.is_some() {
-            params.owner = MultiAccountOwner::Owner;
-        } else {
-            params.owner = MultiAccountOwner::Participant;
-        }
+        params.owner = match account {
+            Some(_) => MultiAccountOwner::Owner,
+            None => MultiAccountOwner::Participant,
+        };
 
         for m in params.member_list.iter_mut() {
             // 查询每个成员的账号，如果查到，说明是自己，修改为是自己
@@ -98,7 +97,10 @@ impl OrderMultiSignAccept {
                 m.is_self = 1;
             }
 
-            if m.is_self == 1 && m.address != params.initiator_addr {
+            if params.owner == MultiAccountOwner::Owner
+                && m.is_self == 1
+                && m.address != params.initiator_addr
+            {
                 params.owner = MultiAccountOwner::Both;
             }
         }
