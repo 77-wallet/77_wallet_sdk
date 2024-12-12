@@ -158,6 +158,9 @@ impl AcctChange {
             MultisigQueueDaoV1::update_status_and_tx_hash(queue_id, q_status, tx_hash, &*pool)
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
+
+            domain::multisig::queue::MultisigQueueDomain::update_raw_data(queue_id, pool.clone())
+                .await?;
         }
 
         // 添加或更新资产余额

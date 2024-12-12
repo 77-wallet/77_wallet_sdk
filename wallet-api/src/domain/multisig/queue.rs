@@ -10,6 +10,7 @@ use wallet_database::{
         wallet::WalletEntity,
     },
     repositories::multisig_queue::MultisigQueueRepo,
+    DbPool,
 };
 
 pub struct MultisigQueueDomain;
@@ -131,8 +132,7 @@ impl MultisigQueueDomain {
         // 构建交易数据
         let mut params = NewMultisigQueueEntity::from(queue).check_expiration();
 
-        // TODO 后续交给后端处理
-        // 如果有交易的hash 去链上判读交易的执行状态
+        let mut report = false;
         if !params.tx_hash.is_empty() {
             let tx =
                 domain::bill::BillDomain::get_onchain_bill(&params.tx_hash, &params.chain_code)
@@ -144,6 +144,7 @@ impl MultisigQueueDomain {
                     params.status = MultisigQueueStatus::Fail;
                 }
             }
+            report = true;
         }
 
         for sig in signatures.0 {
@@ -165,21 +166,23 @@ impl MultisigQueueDomain {
                     &id,
                     &account_id,
                     multisig_account.threshold,
-                    pool,
+                    pool.clone(),
                 )
                 .await?;
             }
         }
 
+        if report {
+            Self::update_raw_data(&id, pool.clone()).await?;
+        }
+
         Ok(())
     }
 
-    // 同步交易的状态
+    // For transactions in the confirmation queue, periodically query the transaction results.
     pub async fn sync_queue_status(queue_id: &str) -> Result<(), crate::ServiceError> {
-        // 获取数据库连接池
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        // 查询队列信息
         let queue = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
@@ -202,12 +205,23 @@ impl MultisigQueueDomain {
                 MultisigQueueStatus::Fail
             };
 
-            // 更新数据库状态
             MultisigQueueDaoV1::update_status(queue_id, tx_status, pool.as_ref())
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
+
+            Self::update_raw_data(queue_id, pool).await?;
         }
 
         Ok(())
+    }
+
+    // Report the successful transaction queue back to the backend to update the raw data.
+    pub async fn update_raw_data(queue_id: &str, pool: DbPool) -> Result<(), crate::ServiceError> {
+        let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool)
+            .await?
+            .to_string()?;
+
+        let backend_api = crate::Context::get_global_backend_api()?;
+        Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
     }
 }

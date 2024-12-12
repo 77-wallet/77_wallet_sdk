@@ -67,10 +67,7 @@ async fn create_account() {
     let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
     let account_name = "账户";
     let root_password = "123456";
-    // let resp = wallet_manager
-    //     .create_account(wallet_name, root_password, None, None)
-    //     .await;
-    // tracing::info!("create_account {:?}", resp);
+
     for _i in 0..2 {
         let resp = wallet_manager
             .create_account(

@@ -365,7 +365,7 @@ mod test {
             wallet_manager: _, ..
         } = setup_test_environment(None, None, false, None).await?;
 
-        let uid = "cd4bb5410b8ee101434dab0a98b16394c6e1d71f7224f466751c016286fab1a4";
+        let uid = "137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358";
         let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data(uid).await;
         tracing::info!("res: {res:?}");
 

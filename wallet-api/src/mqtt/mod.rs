@@ -4,11 +4,9 @@ pub(crate) mod handle;
 pub mod payload;
 pub(crate) mod topic;
 pub mod user_property;
-
-use std::{future::Future, pin::Pin};
-
 use eventloop::{EventLoopHandler, MqttEventLoop};
 use rumqttc::v5::{AsyncClient, EventLoop};
+use std::{future::Future, pin::Pin};
 use tokio_stream::StreamExt as _;
 use wallet_transport::client::mqtt_client::{MqttAsyncClient, MqttClientBuilder};
 
@@ -57,9 +55,6 @@ async fn handle_eventloop(
     _client: AsyncClient,
     mut eventloop: EventLoop,
 ) {
-    // 创建一个限流器，限制每秒最多处理 5 个错误
-    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(1));
-
     loop {
         let event = eventloop.poll().await;
         match event {
@@ -69,12 +64,8 @@ async fn handle_eventloop(
                 };
             }
             Err(err) => {
-                tracing::error!("[mqtt] Error = {err:?}");
+                tracing::error!("[mqtt] connection error = {err:?}");
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                // 尝试获取一个许可
-                // let permit = semaphore.clone().try_acquire_owned();
-                // if let Ok(permit) = permit {
-                //     tracing::error!("[mqtt] Error = {err:?}");
                 let data = crate::notify::NotifyEvent::ConnectionError(
                     crate::notify::event::other::ConnectionErrorFrontend {
                         message: err.to_string(),
@@ -84,15 +75,6 @@ async fn handle_eventloop(
                     Ok(_) => tracing::debug!("[mqtt] sender send ok"),
                     Err(e) => tracing::error!("[mqtt] sender send error: {e}"),
                 };
-                //     // 设定许可在1秒后释放
-                //     tokio::spawn(async move {
-                //         tokio::time::sleep(std::time::Duration::from_secs(15)).await;
-                //         drop(permit);
-                //     });
-                // } else {
-                //     // 超过限流，忽略或记录简要信息
-                //     // tracing::warn!("[mqtt] Error rate limited: {err:?}");
-                // }
             }
         }
     }

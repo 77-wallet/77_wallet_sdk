@@ -178,6 +178,17 @@ impl BackendApi {
         self.post_request::<_, ()>("/signed/trans/cancel", req)
             .await
     }
+
+    // Update the raw data of the multisig account or queue.
+    pub async fn update_raw_data(&self, id: &str, raw_data: String) -> Result<(), crate::Error> {
+        let req = serde_json::json!({
+            "businessId":id.to_string(),
+            "rawData":raw_data
+        });
+
+        self.post_request::<_, ()>("/signed/order/saveRawData", req)
+            .await
+    }
 }
 
 #[cfg(test)]
