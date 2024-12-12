@@ -106,7 +106,11 @@ impl ChainDomain {
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
         for chain in chains.list {
+            let Some(master_token_code) = chain.master_token_code else {
+                continue;
+            };
             let status = if chain.enable { 1 } else { 0 };
+
             if let Some(node) = local_backend_nodes
                 .iter()
                 .find(|node| node.chain_code == chain.chain_code)
@@ -117,7 +121,7 @@ impl ChainDomain {
                         &chain.chain_code,
                         &node.node_id,
                         &[],
-                        &chain.master_token_code,
+                        &master_token_code,
                     )
                     .with_status(status),
                 );
@@ -131,7 +135,7 @@ impl ChainDomain {
                         &chain.chain_code,
                         &node.node_id,
                         &[],
-                        &chain.master_token_code,
+                        &master_token_code,
                     )
                     .with_status(status),
                 );

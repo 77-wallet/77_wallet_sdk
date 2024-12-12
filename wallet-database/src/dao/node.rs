@@ -16,6 +16,11 @@ impl NodeCreateVo {
         }
     }
 
+    pub fn with_status(mut self, status: u8) -> Self {
+        self.status = status;
+        self
+    }
+
     pub fn with_http_url(mut self, http_url: &str) -> Self {
         self.http_url = http_url.to_string();
         self
@@ -38,14 +43,19 @@ impl NodeEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"Insert into node 
-            (node_id, name, chain_code, status, is_local, rpc_url, ws_url,http_url, network, created_at, updated_at)
-                values ($1, $2, $3, $4, $5, $6,$7,$8, $9,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                (node_id, name, chain_code, status, is_local, 
+                    rpc_url, ws_url, http_url, network, 
+                    created_at, updated_at)
+                values ($1, $2, $3, $4, $5, 
+                        $6, $7, $8, $9,
+                        strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                 on conflict (node_id)
                 do update set
                     rpc_url = excluded.rpc_url,
                     ws_url = excluded.ws_url,
                     http_url = excluded.http_url,
                     name = excluded.name,
+                    status =  excluded.status,
                     network = excluded.network,
                     updated_at = excluded.updated_at
                 returning *"#;

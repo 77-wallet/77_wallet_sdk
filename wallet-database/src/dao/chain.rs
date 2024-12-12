@@ -19,6 +19,9 @@ impl ChainEntity {
                 values ($1, $2, $3, $4, $5, $6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                 on conflict (chain_code)
                 do update set
+                    status = excluded.status,
+                    name = excluded.name,
+                    protocols = excluded.protocols,
                     updated_at = excluded.updated_at
                 returning *"#;
         let protocols = wallet_utils::serde_func::serde_to_string(&input.protocols)?;

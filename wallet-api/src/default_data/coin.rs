@@ -14,7 +14,7 @@ static INIT_COINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<Vec<Defa
 pub(crate) fn init_default_coins_list() -> Result<&'static Vec<DefaultCoin>, crate::ServiceError> {
     INIT_COINS_INFO.get_or_try_init(|| {
         // let mut res = std::collections::HashMap::new();
-        let coin_json = include_str!("../../data/default_chain_list/coins.json");
+        let coin_json = include_str!("../../data/config/coin.json");
         let coin_json_data: Vec<DefaultCoin> = wallet_utils::serde_func::serde_from_str(coin_json)?;
         Ok(coin_json_data)
     })

@@ -35,9 +35,8 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut coin_service = CoinService::new(repo);
-
     let list: Vec<wallet_transport_backend::CoinInfo> =
-        crate::default_data::coins::init_default_coins_list()?
+        crate::default_data::coin::init_default_coins_list()?
             .iter()
             .map(|coin| coin.to_owned().into())
             .collect();
@@ -327,7 +326,9 @@ impl WalletManager {
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
 
         tokio::spawn(async move {
-            do_some_init().await.unwrap();
+            if let Err(e) = do_some_init().await {
+                tracing::error!("init_data error: {}", e);
+            };
         });
 
         Ok(())

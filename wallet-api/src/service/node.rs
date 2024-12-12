@@ -29,44 +29,53 @@ impl NodeService {
     }
 
     pub async fn init_node_info(&mut self) -> Result<(), crate::ServiceError> {
-        let list = crate::default_data::chains::init_default_chains_list()?;
+        let list = crate::default_data::chain::init_default_chains_list()?;
+
+        let node_list = crate::default_data::node::init_default_node_list()?;
         let tx = &mut self.repo;
 
         let mut default_nodes = Vec::new();
 
-        for default_chain in &list.chains {
-            let node = NodeCreateVo::new(
-                &default_chain.node_name,
-                &default_chain.chain_code,
-                &default_chain.rpc_url,
-            )
-            .with_http_url(&default_chain.http_url)
-            .with_network(&default_chain.network)
-            .with_is_local(1);
+        for (chain_code, nodes) in &node_list.nodes {
+            for default_node in nodes.nodes.iter() {
+                let status = if default_node.active { 1 } else { 0 };
+                let node =
+                    NodeCreateVo::new(&default_node.node_name, chain_code, &default_node.rpc_url)
+                        .with_http_url(&default_node.http_url)
+                        .with_network(&default_node.network)
+                        .with_status(status)
+                        .with_is_local(1);
+                let node = match NodeRepoTrait::add(tx, node).await {
+                    Ok(node) => node,
+                    Err(e) => {
+                        tracing::error!("Failed to create default node: {:?}", e);
+                        continue;
+                    }
+                };
 
-            let node = match NodeRepoTrait::add(tx, node).await {
-                Ok(node) => node,
-                Err(e) => {
-                    tracing::error!("Failed to create default node: {:?}", e);
-                    continue;
-                }
-            };
-            default_nodes.push(wallet_types::valueobject::NodeData::new(
-                &node.node_id,
-                &node.rpc_url,
-                &node.chain_code,
-            ));
-
-            if !default_chain.active {
-                continue;
+                default_nodes.push(wallet_types::valueobject::NodeData::new(
+                    &node.node_id,
+                    &node.rpc_url,
+                    &node.chain_code,
+                ));
             }
+        }
+
+        for (_, default_chain) in &list.chains {
+            // if !default_chain.active {
+            //     continue;
+            // }
+            let status = if default_chain.active { 1 } else { 0 };
+            let node_id =
+                NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
             let req = wallet_database::entities::chain::ChainCreateVo::new(
                 &default_chain.name,
                 &default_chain.chain_code,
-                &node.node_id,
+                &node_id,
                 &default_chain.protocols,
                 &default_chain.main_symbol,
-            );
+            )
+            .with_status(status);
 
             if let Err(e) = ChainRepoTrait::add(tx, req).await {
                 tracing::error!("Failed to create default chain: {:?}", e);

@@ -45,16 +45,18 @@ impl RpcChange {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let list = crate::default_data::chains::init_default_chains_list()?;
+        let list = crate::default_data::node::init_default_node_list()?;
 
         let mut default_nodes = Vec::new();
-        for default_chain in list.chains.iter() {
-            let node_id = NodeDomain::gen_node_id(&default_chain.name, &default_chain.chain_code);
-            default_nodes.push(wallet_types::valueobject::NodeData {
-                node_id,
-                rpc_url: default_chain.rpc_url.to_owned(),
-                chain_code: default_chain.chain_code.to_owned(),
-            });
+        for (chain_code, nodes) in list.nodes.iter() {
+            for default_node in nodes.nodes.iter() {
+                let node_id = NodeDomain::gen_node_id(&default_node.node_name, &chain_code);
+                default_nodes.push(wallet_types::valueobject::NodeData {
+                    node_id,
+                    rpc_url: default_node.rpc_url.to_owned(),
+                    chain_code: chain_code.to_owned(),
+                });
+            }
         }
         let RpcChange(body) = &self;
         let mut backend_nodes = Vec::new();

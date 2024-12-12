@@ -92,13 +92,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = InitDeviceReq {
         device_type: device_type.to_string(),
         sn: sn.to_string(),
-        code: device_type.to_string(),
-        system_ver: device_type.to_string(),
-        iemi: Some(device_type.to_string()),
-        meid: Some(device_type.to_string()),
-        iccid: Some(device_type.to_string()),
-        mem: Some(device_type.to_string()),
-        app_id: None,
+        code: "sdk_gphone64_arm64".to_string(),
+        system_ver: "15_12228598".to_string(),
+        iemi: None,
+        meid: None,
+        iccid: None,
+        mem: None,
+        app_id: Some("USD".to_string()),
         package_id: None,
     };
 

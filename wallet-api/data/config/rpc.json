@@ -89,7 +89,7 @@
         "BEP20"
       ],
       "network": "mainnet",
-      "active": true
+      "active": false
     },
     {
       "name": "BNB Smart Chain",
@@ -126,7 +126,7 @@
       "http_url": "",
       "protocols": [],
       "network": "mainnet",
-      "active": true
+      "active": false
     },
     {
       "name": "Solana",
@@ -159,7 +159,7 @@
       "rpc_url": "http://rpc.88ai.fun/btc",
       "protocols": [],
       "network": "mainnet",
-      "active": true
+      "active": false
     },
     {
       "name": "Bitcoin",

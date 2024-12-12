@@ -1,0 +1,54 @@
+[chains.tron]
+name = "Tron"
+chain_code = "tron"
+main_symbol = "TRX"
+node_name = "TRON Official Node"
+# rpc_url = "https://api.trongrid.io"
+# http_url = ""
+protocols = ["TRC20"]
+# network = "mainnet"
+active = true
+
+[chains.eth]
+name = "Ethereum"
+chain_code = "eth"
+main_symbol = "ETH"
+node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/eth"
+# http_url = ""
+protocols = ["ERC20"]
+# network = "mainnet"
+active = true
+
+[chains.bnb]
+name = "BNB Smart Chain"
+chain_code = "bnb"
+main_symbol = "BNB"
+node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/bnb"
+# http_url = ""
+protocols = ["BEP20"]
+# network = "mainnet"
+active = false
+
+[chains.sol]
+name = "Solana"
+chain_code = "sol"
+main_symbol = "SOL"
+node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/sol"
+# http_url = ""
+protocols = []
+# network = "mainnet"
+active = false
+
+[chains.btc]
+name = "Bitcoin"
+chain_code = "btc"
+main_symbol = "BTC"
+node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/btc/http/btc_blockbook/api/v2/"
+# http_url = ""
+protocols = []
+# network = "mainnet"
+active = false
