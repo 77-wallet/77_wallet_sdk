@@ -90,7 +90,6 @@ impl ChainEntity {
             " ON CONFLICT (chain_code)
               DO UPDATE SET
                   name = excluded.name,
-                  node_id = excluded.node_id,
                   status = excluded.status,
                   main_symbol = excluded.main_symbol,
                   updated_at = excluded.updated_at",
@@ -180,13 +179,27 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM chain WHERE status = 1;";
+        let mut sql = "SELECT * FROM chain".to_string();
+        let mut conditions = Vec::new();
 
-        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
+        if status.is_some() {
+            conditions.push("status = ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let mut query = sqlx::query_as::<_, Self>(&sql);
+
+        if let Some(status) = status {
+            query = query.bind(status);
+        }
+        query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
