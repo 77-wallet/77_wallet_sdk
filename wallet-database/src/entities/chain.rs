@@ -4,7 +4,7 @@ pub struct ChainEntity {
     pub name: String,
     pub chain_code: String,
     pub main_symbol: String,
-    pub node_id: String,
+    pub node_id: Option<String>,
     // #[sqlx(type_name = "TEXT")]
     pub protocols: StringList,
     pub status: u8,
@@ -38,7 +38,6 @@ impl sqlx::Type<sqlx::Sqlite> for StringList {
 pub struct ChainCreateVo {
     pub name: String,
     pub chain_code: String,
-    pub node_id: String,
     pub protocols: Vec<String>,
     pub status: u8,
     pub main_symbol: String,
@@ -48,14 +47,12 @@ impl ChainCreateVo {
     pub fn new(
         name: &str,
         chain_code: &str,
-        node_id: &str,
         protocols: &[String],
         main_symbol: &str,
     ) -> ChainCreateVo {
         Self {
             name: name.to_string(),
             chain_code: chain_code.to_string(),
-            node_id: node_id.to_string(),
             protocols: protocols.to_vec(),
             status: 1,
             main_symbol: main_symbol.to_string(),

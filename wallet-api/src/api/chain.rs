@@ -14,11 +14,11 @@ impl crate::WalletManager {
         rpc_url: &str,
         ws_url: &str,
     ) -> ReturnType<()> {
-        let node_id = NodeService::new(self.repo_factory.resuource_repo())
+        let _node_id = NodeService::new(self.repo_factory.resuource_repo())
             .add_node(name, chain_code, rpc_url, ws_url)
             .await?;
         ChainService::new(self.repo_factory.resuource_repo())
-            .add(name, chain_code, &node_id, &[], "")
+            .add(name, chain_code, &[], "")
             .await?
             .into()
     }

@@ -1,11 +1,6 @@
 use crate::entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode};
 use sqlx::{Executor, Sqlite};
 
-pub struct Id {
-    pub chain_code: String,
-    pub node_id: String,
-}
-
 impl ChainEntity {
     pub async fn upsert<'c, E>(
         executor: E,
@@ -15,8 +10,8 @@ impl ChainEntity {
         E: Executor<'c, Database = Sqlite>,
     {
         let sql = r#"Insert into chain 
-            (name, chain_code, node_id, protocols, main_symbol, status, created_at, updated_at)
-                values ($1, $2, $3, $4, $5, $6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (name, chain_code, protocols, main_symbol, status, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                 on conflict (chain_code)
                 do update set
                     status = excluded.status,
@@ -29,7 +24,6 @@ impl ChainEntity {
         let mut rec = sqlx::query_as::<_, ChainEntity>(sql)
             .bind(&input.name)
             .bind(&input.chain_code)
-            .bind(&input.node_id)
             .bind(protocols)
             .bind(&input.main_symbol)
             .bind(input.status)
@@ -77,7 +71,7 @@ impl ChainEntity {
         }
 
         let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
-            "INSERT INTO chain (name, chain_code, node_id, protocols, status, main_symbol, created_at, updated_at) ",
+            "INSERT INTO chain (name, chain_code, protocols, status, main_symbol, created_at, updated_at) ",
         );
 
         query_builder.push_values(input, |mut b, chain| {
@@ -85,7 +79,6 @@ impl ChainEntity {
                 wallet_utils::serde_func::serde_to_string(&chain.protocols).unwrap_or_default();
             b.push_bind(chain.name.clone())
                 .push_bind(chain.chain_code)
-                .push_bind(chain.node_id)
                 .push_bind(protocols)
                 .push_bind(chain.status)
                 .push_bind(chain.main_symbol)
