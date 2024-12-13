@@ -24,7 +24,7 @@ async fn test_fee() {
 
     let from = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
     let to = "0x998522f928A37837Fa8d6743713170243b95f98a";
-    let value = "0.00008";
+    let value = "10";
     let chain_code = "eth";
     let symbol = "ETH";
     // let symbol = "USDT";

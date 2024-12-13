@@ -8,7 +8,7 @@ use crate::{
     request::transaction::{self},
     response_vo::{self, FeeDetails, TronFeeDetails},
 };
-use alloy::primitives::{self, U256};
+use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
     self as chain,
@@ -354,7 +354,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => {
                 let value = unit::convert_to_u256(&req.value, req.decimals)?;
                 let balance = chain.balance(&req.from, req.token_address.clone()).await?;
-                if balance <= primitives::U256::default() {
+                if balance < value {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientBalance,
                     ))?;
@@ -429,6 +429,13 @@ impl TransactionAdapter {
                 let value = unit::convert_to_u256(&req.value, req.decimals)?;
 
                 let consumer = if let Some(contract) = req.token_address {
+                    let balance = chain.balance(&req.from, Some(contract.clone())).await?;
+                    if balance < value {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientBalance,
+                        ))?;
+                    }
+
                     let params = tron::operations::transfer::ContractTransferOpt::new(
                         &contract,
                         &req.from,
