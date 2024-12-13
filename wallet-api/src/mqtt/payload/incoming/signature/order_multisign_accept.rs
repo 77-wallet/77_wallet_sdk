@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::{
-        multisig_account::{MultiAccountOwner, NewMultisigAccountEntity},
+        multisig_account::{MultiAccountOwner, MultisigAccountStatus, NewMultisigAccountEntity},
         multisig_member::MemberVo,
     },
     factory::RepositoryFactory,
@@ -90,7 +90,12 @@ impl OrderMultiSignAccept {
             None => MultiAccountOwner::Participant,
         };
 
+        let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
+            if m.confirmed != 1 {
+                status = MultisigAccountStatus::Pending;
+            }
+
             // 查询每个成员的账号，如果查到，说明是自己，修改为是自己
             let account = AccountRepoTrait::detail(&mut tx, &m.address).await?;
             if account.is_some() {
@@ -104,6 +109,7 @@ impl OrderMultiSignAccept {
                 params.owner = MultiAccountOwner::Both;
             }
         }
+        params.status = status;
 
         // 创建多签账户以及多签成员
         wallet_database::dao::multisig_account::MultisigAccountDaoV1::create_account_with_member(
