@@ -5,6 +5,13 @@ use wallet_transport_backend::response_vo::app::{
 };
 
 impl crate::WalletManager {
+    pub async fn app_install(&self, sn: &str, device_type: &str, channel: &str) -> ReturnType<()> {
+        AppService::new(self.repo_factory.resuource_repo())
+            .app_install_save(sn, device_type, channel)
+            .await?
+            .into()
+    }
+
     // app版本检测接口
     pub async fn check_version(&self, r#type: &str) -> ReturnType<AppVersionRes> {
         AppService::new(self.repo_factory.resuource_repo())

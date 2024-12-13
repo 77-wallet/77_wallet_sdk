@@ -10,7 +10,7 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::{
-    request::VersionViewReq,
+    request::{AppInstallSaveReq, VersionViewReq},
     response_vo::app::{AppVersionRes, GetFiatRes, GetOfficialWebsiteRes},
 };
 
@@ -316,5 +316,17 @@ impl<
         }
 
         Ok(res)
+    }
+
+    pub async fn app_install_save(
+        self,
+        sn: &str,
+        device_type: &str,
+        channel: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let req = AppInstallSaveReq::new(sn, device_type, channel);
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        backend.app_install_save(req).await?;
+        Ok(())
     }
 }

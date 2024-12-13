@@ -270,8 +270,18 @@ pub struct TokenCancelSubscribeReq {
 #[serde(rename_all = "camelCase")]
 pub struct AppInstallSaveReq {
     pub sn: String,
-    pub device_type: Option<String>,
-    pub channel: Option<String>,
+    pub device_type: String,
+    pub channel: String,
+}
+
+impl AppInstallSaveReq {
+    pub fn new(sn: &str, device_type: &str, channel: &str) -> Self {
+        Self {
+            sn: sn.to_string(),
+            device_type: device_type.to_string(),
+            channel: channel.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]

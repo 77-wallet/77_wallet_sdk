@@ -134,13 +134,10 @@ impl NodeDomain {
             .iter()
             .find(|node| node.chain_code == chain_code)
         {
-            match ChainRepoTrait::set_chain_node(repo, chain_code, &backend_nodes.node_id).await {
-                Ok(data) => {
-                    tracing::info!("set_chain_node: {:?}", data);
-                }
-                Err(e) => {
-                    tracing::error!("set_chain_node error: {:?}", e);
-                }
+            if let Err(e) =
+                ChainRepoTrait::set_chain_node(repo, chain_code, &backend_nodes.node_id).await
+            {
+                tracing::error!("set_chain_node error: {:?}", e);
             }
         } else if let Some(node) = default_nodes
             .iter()

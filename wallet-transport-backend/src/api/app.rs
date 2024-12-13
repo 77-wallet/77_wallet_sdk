@@ -97,12 +97,12 @@ mod test {
     #[tokio::test]
     async fn test_app_install_save() {
         // let method = "POST";
-        let base_url = "http://api.wallet.net";
+        let base_url = crate::consts::BASE_URL;
 
         let req = AppInstallSaveReq {
-            sn: "1".to_string(),
-            channel: None,
-            device_type: Some("ANDROID".to_string()),
+            sn: "ebe42b137abb313f0d0012f588080395c3742e7eac77e60f43fac0afb363e67c".to_string(),
+            channel: "official_website".to_string(),
+            device_type: "ANDROID".to_string(),
         };
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
