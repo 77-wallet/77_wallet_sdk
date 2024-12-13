@@ -669,6 +669,7 @@ impl MultisigAccountService {
 
         let mut raw_data = self.repo.multisig_data(&account.id).await?;
         raw_data.account.deploy_hash = hash.clone();
+        raw_data.account.status = MultisigAccountStatus::OnChianPending.to_i8();
 
         let req = SignedUpdateSignedHashReq::new(
             &account.id,

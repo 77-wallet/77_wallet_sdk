@@ -106,7 +106,8 @@ impl MultisigDomain {
         let mut flag = false;
         // handle deploy status
         if !data.account.deploy_hash.is_empty()
-            && data.account.status == MultisigAccountStatus::OnChianPending.to_i8()
+            && data.account.status != MultisigAccountStatus::OnChain.to_i8()
+            && data.account.status != MultisigAccountStatus::OnChainFail.to_i8()
         {
             Self::handel_deploy_status(&mut data).await?;
             flag = true;
@@ -114,7 +115,8 @@ impl MultisigDomain {
 
         // handle pay status
         if !data.account.fee_hash.is_empty()
-            && data.account.pay_status == MultisigAccountPayStatus::PaidPending.to_i8()
+            && data.account.pay_status != MultisigAccountPayStatus::Paid.to_i8()
+            && data.account.pay_status != MultisigAccountPayStatus::PaidFail.to_i8()
         {
             Self::hanle_pay_status(&mut data).await?;
             flag = true;

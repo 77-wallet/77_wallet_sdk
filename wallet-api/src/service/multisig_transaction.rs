@@ -748,6 +748,8 @@ impl MultisigTransactionService {
             raw_data,
         };
 
+        // TODO 当前调试用,最终删除
+        tracing::error!("exec multisig tx = {}", tx_resp.tx_hash);
         let task =
             domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
                 domain::task_queue::BackendApiTaskData {
