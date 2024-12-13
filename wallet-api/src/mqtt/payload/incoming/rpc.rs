@@ -83,8 +83,7 @@ impl RpcChange {
             }
         }
 
-        NodeDomain::process_filtered_nodes(&mut repo, &pool, &backend_nodes, &default_nodes)
-            .await?;
+        NodeDomain::process_filtered_nodes(&mut repo, &backend_nodes, &default_nodes).await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;

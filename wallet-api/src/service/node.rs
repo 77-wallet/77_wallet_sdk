@@ -66,12 +66,11 @@ impl NodeService {
             //     continue;
             // }
             let status = if default_chain.active { 1 } else { 0 };
-            let node_id =
-                NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
+            // let node_id =
+            //     NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
             let req = wallet_database::entities::chain::ChainCreateVo::new(
                 &default_chain.name,
                 &default_chain.chain_code,
-                &node_id,
                 &default_chain.protocols,
                 &default_chain.main_symbol,
             )
@@ -109,7 +108,11 @@ impl NodeService {
         let res = node_list
             .into_iter()
             .map(|node| {
-                let status = if chain.node_id == node.node_id { 1 } else { 0 };
+                let status = if chain.node_id == Some(node.node_id.clone()) {
+                    1
+                } else {
+                    0
+                };
                 crate::response_vo::chain::NodeListRes {
                     node_id: node.node_id,
                     name: node.name,

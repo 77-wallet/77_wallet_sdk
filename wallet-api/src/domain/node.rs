@@ -1,11 +1,8 @@
 use std::collections::HashSet;
 
 use wallet_database::{
-    entities::{
-        chain::ChainEntity,
-        node::{NodeCreateVo, NodeEntity},
-    },
-    repositories::{chain::ChainRepoTrait, node::NodeRepoTrait, ResourcesRepo},
+    entities::node::{NodeCreateVo, NodeEntity},
+    repositories::{chain::ChainRepoTrait, node::NodeRepoTrait, ResourcesRepo, TransactionTrait},
 };
 use wallet_types::valueobject::NodeData;
 
@@ -79,13 +76,12 @@ impl NodeDomain {
             .send()
             .await?;
 
-        Self::process_filtered_nodes(&mut repo, &pool, &backend_nodes, &default_nodes).await?;
+        Self::process_filtered_nodes(&mut repo, &backend_nodes, &default_nodes).await?;
         Ok(())
     }
 
     pub(crate) async fn process_filtered_nodes(
         repo: &mut ResourcesRepo,
-        pool: &sqlx::SqlitePool,
         backend_nodes: &[NodeEntity],
         default_nodes: &[NodeData],
     ) -> Result<(), crate::ServiceError> {
@@ -106,22 +102,30 @@ impl NodeDomain {
             backend_nodes.iter().map(|n| n.rpc_url.clone()).collect();
         for node in filtered_nodes {
             if !backend_node_rpcs.contains(&node.rpc_url) {
-                let chain = ChainRepoTrait::detail_by_id(repo, &node.node_id).await?;
-                if let Some(chain) = chain {
-                    Self::set_chain_node(pool, backend_nodes, default_nodes, &chain.chain_code)
-                        .await?;
-                }
-
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.rpc_url, &node.chain_code).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
             }
         }
+
+        let chain_list = ChainRepoTrait::get_chain_list_all_status(repo).await?;
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        repo.begin_transaction().await?;
+        for chain in chain_list {
+            if chain.node_id.is_none() {
+                Self::set_chain_node(&mut repo, backend_nodes, default_nodes, &chain.chain_code)
+                    .await?;
+            }
+        }
+        repo.commit_transaction().await?;
+
         Ok(())
     }
 
     pub(crate) async fn set_chain_node(
-        pool: &sqlx::SqlitePool,
+        repo: &mut ResourcesRepo,
         backend_nodes: &[NodeEntity],
         default_nodes: &[NodeData],
         chain_code: &str,
@@ -130,20 +134,22 @@ impl NodeDomain {
             .iter()
             .find(|node| node.chain_code == chain_code)
         {
-            if let Err(e) =
-                ChainEntity::set_chain_node(pool, chain_code, &backend_nodes.node_id).await
-            {
-                tracing::error!("set_chain_node: {:?}", e);
+            match ChainRepoTrait::set_chain_node(repo, chain_code, &backend_nodes.node_id).await {
+                Ok(data) => {
+                    tracing::info!("set_chain_node: {:?}", data);
+                }
+                Err(e) => {
+                    tracing::error!("set_chain_node error: {:?}", e);
+                }
             }
         } else if let Some(node) = default_nodes
             .iter()
             .find(|node| node.chain_code == chain_code)
         {
-            if let Err(e) = ChainEntity::set_chain_node(pool, chain_code, &node.node_id).await {
-                tracing::error!("set_chain_node: {:?}", e);
+            if let Err(e) = ChainRepoTrait::set_chain_node(repo, chain_code, &node.node_id).await {
+                tracing::error!("set_chain_node error: {:?}", e);
             }
         }
-
         Ok(())
     }
 }

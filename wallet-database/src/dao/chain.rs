@@ -1,11 +1,6 @@
 use crate::entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode};
 use sqlx::{Executor, Sqlite};
 
-pub struct Id {
-    pub chain_code: String,
-    pub node_id: String,
-}
-
 impl ChainEntity {
     pub async fn upsert<'c, E>(
         executor: E,
@@ -15,8 +10,8 @@ impl ChainEntity {
         E: Executor<'c, Database = Sqlite>,
     {
         let sql = r#"Insert into chain 
-            (name, chain_code, node_id, protocols, main_symbol, status, created_at, updated_at)
-                values ($1, $2, $3, $4, $5, $6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (name, chain_code, protocols, main_symbol, status, created_at, updated_at)
+                values ($1, $2, $3, $4, $5, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                 on conflict (chain_code)
                 do update set
                     status = excluded.status,
@@ -29,7 +24,6 @@ impl ChainEntity {
         let mut rec = sqlx::query_as::<_, ChainEntity>(sql)
             .bind(&input.name)
             .bind(&input.chain_code)
-            .bind(&input.node_id)
             .bind(protocols)
             .bind(&input.main_symbol)
             .bind(input.status)
@@ -77,7 +71,7 @@ impl ChainEntity {
         }
 
         let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
-            "INSERT INTO chain (name, chain_code, node_id, protocols, status, main_symbol, created_at, updated_at) ",
+            "INSERT INTO chain (name, chain_code, protocols, status, main_symbol, created_at, updated_at) ",
         );
 
         query_builder.push_values(input, |mut b, chain| {
@@ -85,7 +79,6 @@ impl ChainEntity {
                 wallet_utils::serde_func::serde_to_string(&chain.protocols).unwrap_or_default();
             b.push_bind(chain.name.clone())
                 .push_bind(chain.chain_code)
-                .push_bind(chain.node_id)
                 .push_bind(protocols)
                 .push_bind(chain.status)
                 .push_bind(chain.main_symbol)
@@ -97,7 +90,6 @@ impl ChainEntity {
             " ON CONFLICT (chain_code)
               DO UPDATE SET
                   name = excluded.name,
-                  node_id = excluded.node_id,
                   status = excluded.status,
                   main_symbol = excluded.main_symbol,
                   updated_at = excluded.updated_at",
@@ -187,13 +179,27 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM chain WHERE status = 1;";
+        let mut sql = "SELECT * FROM chain".to_string();
+        let mut conditions = Vec::new();
 
-        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
+        if status.is_some() {
+            conditions.push("status = ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let mut query = sqlx::query_as::<_, Self>(&sql);
+
+        if let Some(status) = status {
+            query = query.bind(status);
+        }
+        query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

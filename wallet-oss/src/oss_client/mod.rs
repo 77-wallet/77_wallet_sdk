@@ -99,7 +99,6 @@ mod tests {
     pub const ACCESS_KEY_ID: &str = "";
     pub const ACCESS_KEY_SECRET: &str = "";
     pub const BUCKET_NAME: &str = "ossbuk23";
-
     pub const ENDPOINT: &str = "https://oss-cn-hongkong.aliyuncs.com/";
 
     #[tokio::test]

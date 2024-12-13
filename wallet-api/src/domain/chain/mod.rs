@@ -119,7 +119,6 @@ impl ChainDomain {
                     wallet_database::entities::chain::ChainCreateVo::new(
                         &chain.name,
                         &chain.chain_code,
-                        &node.node_id,
                         &[],
                         &master_token_code,
                     )
@@ -133,7 +132,6 @@ impl ChainDomain {
                     wallet_database::entities::chain::ChainCreateVo::new(
                         &chain.name,
                         &chain.chain_code,
-                        &node.node_id,
                         &[],
                         &master_token_code,
                     )

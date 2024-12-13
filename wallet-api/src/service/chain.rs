@@ -27,11 +27,10 @@ impl ChainService {
         self,
         name: &str,
         chain_code: &str,
-        node_id: &str,
         protocols: &[String],
         main_symbol: &str,
     ) -> Result<(), crate::error::ServiceError> {
-        let input = ChainCreateVo::new(name, chain_code, node_id, protocols, main_symbol);
+        let input = ChainCreateVo::new(name, chain_code, protocols, main_symbol);
         let mut tx = self.repo;
         tx.begin_transaction().await?;
 
