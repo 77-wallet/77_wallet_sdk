@@ -5,7 +5,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "0x998522f928A37837Fa8d6743713170243b95f98a";
+    let addr = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
     let chain_code = "eth";
     let symbol = "ETH";
     // let symbol = "USDT";
