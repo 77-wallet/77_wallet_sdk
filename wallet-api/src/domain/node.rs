@@ -105,6 +105,7 @@ impl NodeDomain {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.rpc_url, &node.chain_code).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
+                Self::set_chain_node(repo, backend_nodes, default_nodes, &node.chain_code).await?;
             }
         }
 
