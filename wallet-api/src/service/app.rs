@@ -17,7 +17,7 @@ use wallet_transport_backend::{
 use crate::{
     domain::{
         app::config::ConfigDomain,
-        task_queue::{BackendApiTask, Task, Tasks},
+        task_queue::{BackendApiTask, InitializationTask, Task, Tasks},
     },
     response_vo::app::GetConfigRes,
 };
@@ -71,6 +71,7 @@ impl<
         let config = crate::app_state::APP_STATE.read().await;
         Ok(GetConfigRes {
             fiat: config.currency().to_string(),
+            language: config.language().to_string(),
             wallet_list,
             device_info,
             url: config.url().clone(),
@@ -97,7 +98,8 @@ impl<
     pub async fn language_init(self, language: &str) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
 
-        ConfigDomain::set_config(LANGUAGE, language).await?;
+        let val = wallet_database::entities::config::Language::new(language);
+        ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
         let device_info = tx.get_device_info().await?;
         if let Some(device_info) = device_info {
             let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device_info)?;
@@ -114,8 +116,11 @@ impl<
                 .push(Task::BackendApi(BackendApiTask::BackendApi(
                     language_init_task_data,
                 )))
+                .push(Task::Initialization(InitializationTask::PullAnnouncement))
                 .send()
                 .await?;
+            let mut config = crate::app_state::APP_STATE.write().await;
+            config.set_language(language);
         }
 
         Ok(())

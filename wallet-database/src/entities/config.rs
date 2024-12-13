@@ -39,6 +39,30 @@ impl TryFrom<String> for OfficialWebsite {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct Language {
+    pub language: String,
+}
+
+impl Language {
+    pub fn new(language: &str) -> Self {
+        Self {
+            language: language.to_string(),
+        }
+    }
+
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for Language {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct MqttUrl {
     pub url: String,
 }

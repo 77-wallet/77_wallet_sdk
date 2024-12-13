@@ -4,6 +4,7 @@ use wallet_database::entities::{device::DeviceEntity, wallet::WalletEntity};
 #[serde(rename_all = "camelCase")]
 pub struct GetConfigRes {
     pub fiat: String,
+    pub language: String,
     pub unread_count: UnreadCount,
     pub wallet_list: Vec<WalletEntity>,
     pub device_info: Option<DeviceEntity>,

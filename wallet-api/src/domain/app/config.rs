@@ -2,8 +2,8 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, APP_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, MIN_VALUE_SWITCH,
-            MQTT_URL, OFFICIAL_WEBSITE,
+            APP_DOWNLOAD_QR_CODE_URL, APP_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, LANGUAGE,
+            MIN_VALUE_SWITCH, MQTT_URL, OFFICIAL_WEBSITE,
         },
         MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
@@ -170,6 +170,22 @@ impl ConfigDomain {
         Ok(())
     }
 
+    pub async fn init_language() -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let language = ConfigDao::find_by_key(LANGUAGE, pool.as_ref()).await?;
+        let mut config = crate::app_state::APP_STATE.write().await;
+        if let Some(language) = language {
+            let language = wallet_database::entities::config::Language::try_from(language.value)?;
+            config.set_language(&language.language);
+        } else {
+            let l = config.language();
+            let config = wallet_database::entities::config::Language::new(l);
+            ConfigDomain::set_config(LANGUAGE, &config.to_json_str()?).await?;
+        };
+
+        Ok(())
+    }
+
     pub async fn init_block_browser_url_list() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let block_browser_url_list =
@@ -188,6 +204,7 @@ impl ConfigDomain {
         Self::init_official_website().await?;
         Self::init_block_browser_url_list().await?;
         Self::init_app_install_download_url().await?;
+        Self::init_language().await?;
 
         Ok(())
     }
