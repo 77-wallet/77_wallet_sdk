@@ -97,7 +97,7 @@ impl NodeService {
     ) -> Result<Vec<crate::response_vo::chain::NodeListRes>, crate::ServiceError> {
         let tx = &mut self.repo;
 
-        if ChainRepoTrait::detail(tx, chain_code).await?.is_none() {
+        let Some(chain) = ChainRepoTrait::detail(tx, chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
                 crate::ChainError::NotFound(chain_code.to_string()),
             )));
@@ -108,13 +108,20 @@ impl NodeService {
 
         let res = node_list
             .into_iter()
-            .map(|node| crate::response_vo::chain::NodeListRes {
-                node_id: node.node_id,
-                name: node.name,
-                chain_code: node.chain_code,
-                rpc_url: node.rpc_url,
-                ws_url: node.ws_url,
-                status: node.status,
+            .map(|node| {
+                let status = if chain.node_id == Some(node.node_id.clone()) {
+                    1
+                } else {
+                    0
+                };
+                crate::response_vo::chain::NodeListRes {
+                    node_id: node.node_id,
+                    name: node.name,
+                    chain_code: node.chain_code,
+                    rpc_url: node.rpc_url,
+                    ws_url: node.ws_url,
+                    status,
+                }
             })
             .collect();
 
