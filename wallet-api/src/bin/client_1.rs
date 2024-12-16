@@ -88,7 +88,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let sn = "3f76bd432e027aa97d11f2c3f5092bee195991be461486f0466eec9d46940e9e";
     // let sn = "3b2d76e3495e411963e0d0232fbcbc68b0298ca8c6cbaef00d2abb172f28c370";
     // let sn = "9580b55ec4a1d3d3af85077ae0c4c901885b1123e50f830cbd5bfbbe0cb161a3";
-    let sn = "bdb6412a9cb4b12c48ebe1ef4e9f052b07af519b7485cd38a95f38d89df97cb8";
+    // let sn = "bdb6412a9cb4b12c48ebe1ef4e9f052b07af519b7485cd38a95f38d89df97cb8";
+    let sn = "ebe42b137abb313f0d0012f588080395c3742e7eac77e60f43fac0afb363e67c";
 
     // let client_id = "wenjing";
 
@@ -102,7 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meid: None,
         iccid: None,
         mem: None,
-        app_id: Some("USD".to_string()),
+        app_id: Some("13065ffa4e8f6958bd6".to_string()),
         package_id: None,
     };
 

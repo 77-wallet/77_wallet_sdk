@@ -715,17 +715,23 @@ impl WalletService {
                 .await?;
         };
         // let accounts = tx.get_account_list_by_wallet_address(Some(address)).await?;
-        tokio::spawn(async move {
-            for uid in rest_uids.iter() {
-                if let Err(e) = MultisigDomain::recover_uid_multisig_data(uid).await {
-                    tracing::error!("recover multisig account data error: {}", e);
-                };
+        // tokio::spawn(async move {
+        //     for uid in rest_uids.iter() {
+        //         if let Err(e) = MultisigDomain::recover_uid_multisig_data(uid).await {
+        //             tracing::error!("recover multisig account data error: {}", e);
+        //         };
 
-                if let Err(e) = MultisigQueueDomain::recover_all_queue_data(uid).await {
-                    tracing::error!("recover multisig queue data error: {}", e);
-                }
-            }
-        });
+        //         if let Err(e) = MultisigQueueDomain::recover_all_queue_data(uid).await {
+        //             tracing::error!("recover multisig queue data error: {}", e);
+        //         }
+        //     }
+        // });
+        for uid in rest_uids {
+            domain::task_queue::Tasks::new()
+                .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
+                .send()
+                .await?;
+        }
         Ok(())
     }
 
