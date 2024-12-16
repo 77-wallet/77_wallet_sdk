@@ -1,13 +1,13 @@
 use super::ReturnType;
 use crate::{
     request::stake::{DelegateReq, FreezeBalanceReq, UnFreezeBalanceReq},
-    response_vo::account::AccountResource,
+    response_vo::{
+        account::AccountResource,
+        stake::{EstimatedResourcesResp, FreezeListResp, UnfreezeListResp},
+    },
     service::stake::StackService,
 };
-use wallet_database::{
-    entities::stake::{DelegateEntity, UnFreezeEntity},
-    pagination::Pagination,
-};
+use wallet_database::{entities::stake::DelegateEntity, pagination::Pagination};
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 
 impl crate::WalletManager {
@@ -42,16 +42,28 @@ impl crate::WalletManager {
     }
 
     // freeze list
-    pub async fn freeze_list(
+    pub async fn freeze_list(&self, owner_address: String) -> ReturnType<Vec<FreezeListResp>> {
+        StackService::new(self.repo_factory.stake_repo())
+            .freeze_list(&owner_address)
+            .await?
+            .into()
+    }
+
+    pub async fn un_freeze_list(&self, owner_address: String) -> ReturnType<Vec<UnfreezeListResp>> {
+        StackService::new(self.repo_factory.stake_repo())
+            .un_freeze_list(&owner_address)
+            .await?
+            .into()
+    }
+
+    pub async fn cancel_all_unfreeze(
         &self,
         owner_address: String,
-        resource_type: String,
-        page: i64,
-        page_size: i64,
-    ) -> ReturnType<Pagination<UnFreezeEntity>> {
+        password: String,
+    ) -> ReturnType<String> {
         StackService::new(self.repo_factory.stake_repo())
-            .freeze_list(&owner_address, &resource_type, page, page_size)
-            .await?
+            .cancel_all_unfreeze(&owner_address, &password)
+            .await
             .into()
     }
 
@@ -113,6 +125,18 @@ impl crate::WalletManager {
         //     .await?
         //     .into()
         "used request_energy to instead".to_string().into()
+    }
+
+    pub async fn get_estimated_resources(
+        &self,
+        account: String,
+        value: i64,
+        resource_type: String,
+    ) -> ReturnType<EstimatedResourcesResp> {
+        StackService::new(self.repo_factory.stake_repo())
+            .get_estimated_resources(account, value, resource_type)
+            .await?
+            .into()
     }
 
     pub async fn system_resource(&self, account: String) -> ReturnType<SystemEnergyResp> {

@@ -1,17 +1,20 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
-use crate::domain::chain::adapter::TransactionAdapter;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
 use crate::request::stake;
 use crate::response_vo::account::AccountResource;
+use crate::response_vo::stake::EstimatedResourcesResp;
+use crate::response_vo::stake::FreezeListResp;
+use crate::response_vo::stake::UnfreezeListResp;
 use crate::BusinessError;
+use wallet_chain_interact::tron::operations::stake::CancelAllFreezeBalanceArgs;
 use wallet_chain_interact::tron::operations::stake::DelegateArgs;
 use wallet_chain_interact::tron::operations::stake::FreezeBalanceArgs;
+use wallet_chain_interact::tron::operations::stake::ResourceType;
 use wallet_chain_interact::tron::operations::stake::UnFreezeBalanceArgs;
 use wallet_chain_interact::tron::operations::TronTxOperation;
 use wallet_database::entities::stake::DelegateEntity;
-use wallet_database::entities::stake::UnFreezeEntity;
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::stake as db_stake;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
@@ -28,6 +31,30 @@ impl StackService {
 }
 
 impl StackService {
+    pub async fn get_estimated_resources(
+        &self,
+        account: String,
+        value: i64,
+        resource_type: String,
+    ) -> Result<EstimatedResourcesResp, crate::ServiceError> {
+        let resource_type = ResourceType::try_from(resource_type.as_str())?;
+
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let resource = chain.account_resource(&account).await?;
+
+        let (price, consumer) = match resource_type {
+            ResourceType::BANDWIDTH => (resource.net_price(), 268.0),
+            ResourceType::ENERGY => (resource.energy_price(), 70000.0),
+        };
+
+        Ok(EstimatedResourcesResp::new(
+            value,
+            price,
+            resource_type,
+            consumer,
+        ))
+    }
+
     pub async fn freeze_balance(
         &self,
         req: stake::FreezeBalanceReq,
@@ -51,14 +78,56 @@ impl StackService {
     pub async fn freeze_list(
         &self,
         owner: &str,
-        resource_type: &str,
-        page: i64,
-        page_size: i64,
-    ) -> Result<Pagination<UnFreezeEntity>, crate::error::ServiceError> {
-        Ok(self
-            .repo
-            .unfreeze_list(owner, resource_type, page, page_size)
-            .await?)
+    ) -> Result<Vec<FreezeListResp>, crate::error::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+
+        let account = chain.account_info(owner).await?;
+        let resource = chain.account_resource(owner).await?;
+
+        let mut res = vec![];
+
+        let bandwidth = account.frozen_v2_owner("");
+        if bandwidth > 0 {
+            let price = resource.net_price();
+            let freeze = FreezeListResp::new(bandwidth, price, ResourceType::BANDWIDTH);
+            res.push(freeze);
+        }
+
+        let energy = account.frozen_v2_owner("ENERGY");
+        if energy > 0 {
+            let energy_price = resource.energy_price();
+            let freeze = FreezeListResp::new(energy, energy_price, ResourceType::ENERGY);
+            res.push(freeze);
+        }
+
+        // TODO 匹配地址最新的交易记录里面的时间,需要匹配解质押
+
+        Ok(res)
+    }
+
+    pub async fn un_freeze_list(
+        &self,
+        owner: &str,
+    ) -> Result<Vec<UnfreezeListResp>, crate::error::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let account = chain.account_info(owner).await?;
+
+        let mut result = account
+            .unfreeze_v2
+            .iter()
+            .map(|item| {
+                let resource = if item.types.is_empty() {
+                    ResourceType::BANDWIDTH
+                } else {
+                    ResourceType::ENERGY
+                };
+                UnfreezeListResp::new(item.unfreeze_amount, resource, item.unfreeze_expire_time)
+            })
+            .collect::<Vec<UnfreezeListResp>>();
+
+        result.sort_by_key(|r| std::cmp::Reverse(r.available_at));
+
+        Ok(result)
     }
 
     pub async fn un_freeze_balance(
@@ -75,6 +144,22 @@ impl StackService {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let args = UnFreezeBalanceArgs::try_from(req)?;
+        let resp = args.build_raw_transaction(&chain.provider).await?;
+
+        Ok(chain.exec_transaction_v1(resp, key).await?)
+    }
+
+    pub async fn cancel_all_unfreeze(
+        &self,
+        owner: &str,
+        password: &str,
+    ) -> Result<String, crate::ServiceError> {
+        let key =
+            domain::account::open_account_pk_with_password(chain_code::TRON, &owner, password)
+                .await?;
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+
+        let args = CancelAllFreezeBalanceArgs::new(owner)?;
         let resp = args.build_raw_transaction(&chain.provider).await?;
 
         Ok(chain.exec_transaction_v1(resp, key).await?)
@@ -222,19 +307,7 @@ impl StackService {
         &self,
         account: &str,
     ) -> Result<AccountResource, crate::error::ServiceError> {
-        // let tron_chain = self.get_chain().await?;
-
-        let chain =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter("tron").await?;
-
-        let chain = match chain {
-            TransactionAdapter::Tron(chain) => chain,
-            _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
-            }
-        };
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let resource = chain.account_resource(account).await?;
         let account = chain.account_info(account).await?;

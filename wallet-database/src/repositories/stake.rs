@@ -1,7 +1,7 @@
 use super::ResourcesRepo;
 use crate::{
     dao::stake,
-    entities::stake::{DelegateEntity, NewDelegateEntity, NewUnFreezeEntity, UnFreezeEntity},
+    entities::stake::{DelegateEntity, NewDelegateEntity, NewUnFreezeEntity},
     pagination::Pagination,
 };
 
@@ -23,16 +23,14 @@ impl StakeRepo {
         Ok(stake::add_unfreeze(stake, &*pool).await?)
     }
 
-    pub async fn unfreeze_list(
-        &self,
-        owner: &str,
-        resource_type: &str,
-        page: i64,
-        page_size: i64,
-    ) -> Result<Pagination<UnFreezeEntity>, crate::Error> {
-        let pool = self.repo.pool();
-        Ok(stake::unfreeze_list(owner, resource_type, page, page_size, &pool).await?)
-    }
+    // pub async fn unfreeze_list(
+    //     &self,
+    //     owner: &str,
+    //     resource_type: &str,
+    // ) -> Result<Pagination<UnFreezeEntity>, crate::Error> {
+    //     let pool = self.repo.pool();
+    //     Ok(stake::unfreeze_list(owner, resource_type, page, page_size, &pool).await?)
+    // }
 
     pub async fn add_delegate(&self, delegate: NewDelegateEntity) -> Result<(), crate::Error> {
         let pool = self.repo.pool();

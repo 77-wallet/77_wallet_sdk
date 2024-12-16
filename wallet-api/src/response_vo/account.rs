@@ -59,13 +59,20 @@ pub struct AccountResource {
 pub struct Resource {
     pub limit_resource: i64,
     pub total_resource: i64,
-    // trx
+    // unit is trx
+    // 总共质押的数量
     pub total_freeze_amount: f64,
+    // 自己质押的数量
     pub owner_freeze_amount: f64,
+    // 委派出去的数量
     pub delegate_freeze_amount: f64,
+    // 被人给我的数量
     pub acquire_freeze_amount: f64,
+    // 可以解质押的数量
     pub can_unfreeze_amount: f64,
+    // 可以提现的数量
     pub can_withdraw_unfreeze_amount: f64,
+    // 对应资源的价格
     pub price: f64,
 }
 impl Resource {
