@@ -10,8 +10,6 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let time = sqlx::types::chrono::Utc::now().timestamp();
-
         let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
             "insert into task_queue (id, task_name, request_body, type, status, created_at, updated_at) ",
         );
@@ -21,8 +19,8 @@ impl TaskQueueEntity {
                 .push_bind(req.request_body.clone().unwrap_or_default())
                 .push_bind(req.r#type)
                 .push_bind(req.status)
-                .push_bind(time)
-                .push_bind(time);
+                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
         });
 
         query_builder.push(

@@ -388,6 +388,22 @@ impl AccountService {
         //     &deleted, &device.sn,
         // )
         // .await?;
+
+        let device_unbind_address_task =
+            domain::app::DeviceDomain::gen_device_unbind_all_address_task_data(
+                &deleted,
+                Vec::new(),
+                &device.sn,
+            )
+            .await?;
+
+        let device_unbind_address_task = domain::task_queue::Task::BackendApi(
+            domain::task_queue::BackendApiTask::BackendApi(device_unbind_address_task),
+        );
+        domain::task_queue::Tasks::new()
+            .push(device_unbind_address_task)
+            .send()
+            .await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let mut wallet_tree =
             wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
