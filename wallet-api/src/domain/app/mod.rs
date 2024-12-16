@@ -84,7 +84,7 @@ impl DeviceDomain {
     }
 
     pub(crate) async fn gen_device_unbind_all_address_task_data(
-        accounts: &Vec<wallet_database::entities::account::AccountEntity>,
+        accounts: &[wallet_database::entities::account::AccountEntity],
         multisig_accounts: Vec<wallet_database::entities::multisig_account::MultisigAccountEntity>,
         sn: &str,
     ) -> Result<super::task_queue::BackendApiTaskData, crate::ServiceError> {

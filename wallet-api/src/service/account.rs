@@ -369,7 +369,6 @@ impl AccountService {
         account_id: u32,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        let pool = crate::Context::get_global_sqlite_pool()?;
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
@@ -385,63 +384,10 @@ impl AccountService {
         let deleted =
             AccountRepoTrait::physical_delete(&mut tx, wallet_address, account_id).await?;
 
-        let addresses = deleted
-            .iter()
-            .map(|d| d.address.clone())
-            .collect::<Vec<_>>();
-
-        // 这个被删除的账户所关联的多签账户的成员
-        let members =
-            wallet_database::dao::multisig_member::MultisigMemberDaoV1::list_by_addresses(
-                &addresses, &*pool,
-            )
-            .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-
-        let account_ids = members
-            .0
-            .iter()
-            .map(|m| m.account_id.clone())
-            .collect::<Vec<_>>();
-
-        let other_members = wallet_database::dao::multisig_member::MultisigMemberDaoV1::list_by_account_ids_not_addresses(
-            &account_ids, &addresses, &*pool,
-        )
-        .await
-        .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-        // tracing::info!("other_members: {:#?}", other_members);
-
-        let other_addresses = other_members
-            .iter()
-            .map(|m| m.address.clone())
-            .collect::<Vec<_>>();
-        let other_accounts = AccountEntity::list_in_address(&*pool, &other_addresses).await?;
-        // tracing::info!("other_accounts: {:#?}", other_accounts);
-        let other_members = other_members
-            .0
-            .into_iter()
-            .filter(|m| other_accounts.iter().any(|a| a.address == m.address))
-            .collect::<Vec<_>>();
-
-        // tracing::info!("other_members after: {:#?}", other_members);
-        // 过滤members中有other_accounts的成员, 移除掉它们
-        let should_unbind = members
-            .0
-            .into_iter()
-            .filter(|m| !other_members.iter().any(|a| a.account_id == m.account_id))
-            .collect::<Vec<_>>();
-        // tracing::info!("should_unbind: {:#?}", should_unbind);
-        let multisig_accounts =
-            domain::multisig::MultisigDomain::physical_delete_account(&should_unbind, pool).await?;
-        // tracing::info!("multisig_accounts: {:#?}", multisig_accounts);
-        let device_unbind_address_task =
-            domain::app::DeviceDomain::gen_device_unbind_all_address_task_data(
-                &deleted,
-                multisig_accounts,
-                &device.sn,
-            )
-            .await?;
-
+        // domain::multisig::MultisigDomain::unbind_deleted_account_multisig_relations(
+        //     &deleted, &device.sn,
+        // )
+        // .await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let mut wallet_tree =
             wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
@@ -457,11 +403,6 @@ impl AccountService {
             )?;
             req.push(&del.chain_code, &del.address);
         }
-
-        let device_unbind_address_task = domain::task_queue::Task::BackendApi(
-            domain::task_queue::BackendApiTask::BackendApi(device_unbind_address_task),
-        );
-        Tasks::new().push(device_unbind_address_task).send().await?;
 
         Ok(())
     }
