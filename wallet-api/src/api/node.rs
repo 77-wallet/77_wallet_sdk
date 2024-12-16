@@ -68,7 +68,7 @@ mod tests {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
 
-        let chain_code = "tron";
+        let chain_code = "eth";
         let get_node_list = wallet_manager.get_node_list(chain_code).await;
         let get_node_list = wallet_utils::serde_func::serde_to_string(&get_node_list).unwrap();
         tracing::info!("get_node_list: {get_node_list:?}");

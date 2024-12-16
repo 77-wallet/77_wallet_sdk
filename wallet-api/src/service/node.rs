@@ -97,30 +97,24 @@ impl NodeService {
     ) -> Result<Vec<crate::response_vo::chain::NodeListRes>, crate::ServiceError> {
         let tx = &mut self.repo;
 
-        let Some(chain) = ChainRepoTrait::detail(tx, chain_code).await? else {
+        if ChainRepoTrait::detail(tx, chain_code).await?.is_none() {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
                 crate::ChainError::NotFound(chain_code.to_string()),
             )));
         };
 
-        let node_list = NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code]).await?;
+        let node_list =
+            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code], Some(1)).await?;
 
         let res = node_list
             .into_iter()
-            .map(|node| {
-                let status = if chain.node_id == Some(node.node_id.clone()) {
-                    1
-                } else {
-                    0
-                };
-                crate::response_vo::chain::NodeListRes {
-                    node_id: node.node_id,
-                    name: node.name,
-                    chain_code: node.chain_code,
-                    rpc_url: node.rpc_url,
-                    ws_url: node.ws_url,
-                    status,
-                }
+            .map(|node| crate::response_vo::chain::NodeListRes {
+                node_id: node.node_id,
+                name: node.name,
+                chain_code: node.chain_code,
+                rpc_url: node.rpc_url,
+                ws_url: node.ws_url,
+                status: node.status,
             })
             .collect();
 
@@ -132,14 +126,17 @@ impl NodeService {
         &mut self,
         chain_code: &str,
     ) -> Result<Vec<crate::response_vo::chain::NodeDynData>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // let node_list = self.get_node_list(chain_code).await?;
+        let tx = &mut self.repo;
+        // let list_with_node =
+        //     wallet_database::entities::node::NodeEntity::get_node_list_in_chain_codes(
+        //         &*pool,
+        //         vec![chain_code],
+        //     )
+        //     .await?;
         let list_with_node =
-            wallet_database::entities::node::NodeEntity::get_node_list_in_chain_codes(
-                &*pool,
-                vec![chain_code],
-            )
-            .await?;
+            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code], Some(1)).await?;
+
         let mut res = Vec::new();
         for node in list_with_node {
             let name = node.name.clone();

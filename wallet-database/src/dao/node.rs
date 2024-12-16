@@ -95,17 +95,30 @@ impl NodeEntity {
     //         .map_err(|e| crate::Error::Database(e.into()))
     // }
 
-    pub async fn list<'a, E>(exec: E, is_local: Option<u8>) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(
+        exec: E,
+        chain_codes: Vec<&str>,
+        is_local: Option<u8>,
+        status: Option<u8>,
+    ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let mut sql = "SELECT * FROM node".to_string();
+        let chain_codes = crate::any_in_collection(chain_codes, "','");
         let mut conditions = Vec::new();
+
+        if !chain_codes.is_empty() {
+            let str = format!("chain_code in ('{}')", chain_codes);
+            conditions.push(str)
+        }
 
         if is_local.is_some() {
             conditions.push("is_local = ?".to_string());
         }
-
+        if status.is_some() {
+            conditions.push("status = ?".to_string());
+        }
         if !conditions.is_empty() {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
@@ -115,31 +128,35 @@ impl NodeEntity {
         if let Some(is_local) = is_local {
             query = query.bind(is_local);
         }
+        if let Some(status) = status {
+            query = query.bind(status);
+        }
         query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn get_node_list_in_chain_codes<'a, E>(
-        exec: E,
-        chain_codes: Vec<&str>,
-    ) -> Result<Vec<Self>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let chain_codes = crate::any_in_collection(chain_codes, "','");
-        let sql = format!(
-            "SELECT * FROM node
-        WHERE chain_code in ('{}');",
-            chain_codes
-        );
-        sqlx::query_as::<sqlx::Sqlite, NodeEntity>(&sql)
-            .bind(chain_codes)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
+    // pub async fn get_node_list_in_chain_codes<'a, E>(
+    //     exec: E,
+    //     chain_codes: Vec<&str>,
+    //     status: Option<u8>,
+    // ) -> Result<Vec<Self>, crate::Error>
+    // where
+    //     E: Executor<'a, Database = Sqlite>,
+    // {
+    //     let chain_codes = crate::any_in_collection(chain_codes, "','");
+    //     let sql = format!(
+    //         "SELECT * FROM node
+    //     WHERE chain_code in ('{}');",
+    //         chain_codes
+    //     );
+    //     sqlx::query_as::<sqlx::Sqlite, NodeEntity>(&sql)
+    //         .bind(chain_codes)
+    //         .fetch_all(exec)
+    //         .await
+    //         .map_err(|e| crate::Error::Database(e.into()))
+    // }
 
     pub async fn delete<'a, E>(exec: E, rpc_url: &str, chain_code: &str) -> Result<(), crate::Error>
     where

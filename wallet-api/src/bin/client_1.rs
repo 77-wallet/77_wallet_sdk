@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .result
         .unwrap();
-    tracing::info!("create_wallet res: {_res:?}");
+    tracing::info!("create_account res: {_res:?}");
     // let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
 
     // wallet_manager

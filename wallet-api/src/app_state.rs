@@ -7,7 +7,7 @@ pub static APP_STATE: Lazy<RwLock<AppState>> = Lazy::new(|| {
     // Arc::new()
     RwLock::new(AppState {
         currency: "USD".to_string(),
-        language: "ENGLISH".to_string(),
+        language: "CHINESE_SIMPLIFIED".to_string(),
         url: UrlParams::default(),
     })
 });
