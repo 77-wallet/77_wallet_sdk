@@ -24,7 +24,7 @@ async fn test_fee() {
 
     let from = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
     let to = "0x998522f928A37837Fa8d6743713170243b95f98a";
-    let value = "10";
+    let value = "0.000001";
     let chain_code = "eth";
     let symbol = "ETH";
     // let symbol = "USDT";
@@ -65,7 +65,7 @@ async fn test_transfer() {
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
-        fee_setting:  r#"{"gasLimit":23100,"baseFee":"13338935551","priorityFee":"9400000","maxFeePerGas":"20022503326"}"#.to_string(),
+        fee_setting:  r#"{"gasLimit":23100,"baseFee":"8030957221","priorityFee":"74260000","maxFeePerGas":"12100000000"}"#.to_string(),
     };
 
     let token_fee = wallet_manager.transfer(params).await;
