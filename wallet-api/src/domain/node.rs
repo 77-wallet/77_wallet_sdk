@@ -49,7 +49,7 @@ impl NodeDomain {
             };
             for node in nodes.list.iter() {
                 let network = if node.test { "testnet" } else { "mainnet" };
-                let node = NodeCreateVo::new(&node.name, &node.chain_code, &node.rpc)
+                let node = NodeCreateVo::new(&node.id, &node.name, &node.chain_code, &node.rpc)
                     .with_network(network);
                 match NodeRepoTrait::add(&mut repo, node).await {
                     Ok(node) => backend_nodes.push(node),

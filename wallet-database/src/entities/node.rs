@@ -26,6 +26,7 @@ pub struct NodeEntity {
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 pub struct NodeCreateVo {
+    pub node_id: String,
     pub name: String,
     pub chain_code: String,
     pub rpc_url: String,

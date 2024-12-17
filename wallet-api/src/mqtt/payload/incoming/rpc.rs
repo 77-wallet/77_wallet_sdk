@@ -36,7 +36,9 @@ pub struct RpcChangeBody {
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcAddressInfoBody {
-    pub chain_id: i32,
+    #[serde(default)]
+    pub id: Option<String>,
+    pub chain_id: Option<i32>,
     pub name: String,
     pub url: String,
 }
@@ -51,11 +53,11 @@ impl RpcChange {
         for (chain_code, nodes) in list.nodes.iter() {
             for default_node in nodes.nodes.iter() {
                 let node_id = NodeDomain::gen_node_id(&default_node.node_name, &chain_code);
-                default_nodes.push(wallet_types::valueobject::NodeData {
-                    node_id,
-                    rpc_url: default_node.rpc_url.to_owned(),
-                    chain_code: chain_code.to_owned(),
-                });
+                default_nodes.push(wallet_types::valueobject::NodeData::new(
+                    &node_id,
+                    &default_node.rpc_url,
+                    chain_code,
+                ));
             }
         }
         let RpcChange(body) = &self;
@@ -67,9 +69,12 @@ impl RpcChange {
             } = rpc_change_body;
 
             for node in rpc_address_info_body_list.iter() {
+                let Some(id) = &node.id else {
+                    continue;
+                };
                 let network = "mainnet";
                 let node = wallet_database::entities::node::NodeCreateVo::new(
-                    &node.name, chain_code, &node.url,
+                    id, &node.name, chain_code, &node.url,
                 )
                 .with_network(network);
                 match wallet_database::repositories::node::NodeRepoTrait::add(&mut repo, node).await

@@ -21,7 +21,8 @@ impl NodeService {
         _ws_url: &str,
     ) -> Result<String, crate::ServiceError> {
         let tx = &mut self.repo;
-        let req = NodeCreateVo::new(name, chain_code, rpc_url);
+        let id = NodeDomain::gen_node_id(&name, chain_code);
+        let req = NodeCreateVo::new(&id, name, chain_code, rpc_url);
         let res = NodeRepoTrait::add(tx, req)
             .await
             .map_err(crate::SystemError::Database)?;
@@ -39,12 +40,18 @@ impl NodeService {
         for (chain_code, nodes) in &node_list.nodes {
             for default_node in nodes.nodes.iter() {
                 let status = if default_node.active { 1 } else { 0 };
-                let node =
-                    NodeCreateVo::new(&default_node.node_name, chain_code, &default_node.rpc_url)
-                        .with_http_url(&default_node.http_url)
-                        .with_network(&default_node.network)
-                        .with_status(status)
-                        .with_is_local(1);
+
+                let id = NodeDomain::gen_node_id(&default_node.node_name, chain_code);
+                let node = NodeCreateVo::new(
+                    &id,
+                    &default_node.node_name,
+                    chain_code,
+                    &default_node.rpc_url,
+                )
+                .with_http_url(&default_node.http_url)
+                .with_network(&default_node.network)
+                .with_status(status)
+                .with_is_local(1);
                 let node = match NodeRepoTrait::add(tx, node).await {
                     Ok(node) => node,
                     Err(e) => {
