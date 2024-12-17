@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 # default = ["test"]
-# default = ["dev"]
+default = ["dev"]
 # default = ["prod"]
 test = []
 dev = []
