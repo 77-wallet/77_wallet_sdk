@@ -67,3 +67,9 @@ impl EstimatedResourcesResp {
         }
     }
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanDelegatedResp {
+    pub amount: f64,
+}

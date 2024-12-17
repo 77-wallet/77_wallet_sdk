@@ -3,7 +3,7 @@ use crate::{
     request::stake::{DelegateReq, FreezeBalanceReq, UnFreezeBalanceReq},
     response_vo::{
         account::AccountResource,
-        stake::{EstimatedResourcesResp, FreezeListResp, UnfreezeListResp},
+        stake::{CanDelegatedResp, EstimatedResourcesResp, FreezeListResp, UnfreezeListResp},
     },
     service::stake::StackService,
 };
@@ -79,37 +79,6 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn delegate_resource(
-        &self,
-        req: DelegateReq,
-        password: String,
-    ) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
-            .delegate_resource(req, &password)
-            .await?
-            .into()
-    }
-
-    pub async fn delegate_list(
-        &self,
-        owner_address: String,
-        resource_type: String,
-        page: i64,
-        page_size: i64,
-    ) -> ReturnType<Pagination<DelegateEntity>> {
-        StackService::new(self.repo_factory.stake_repo())
-            .delegate_list(&owner_address, &resource_type, page, page_size)
-            .await?
-            .into()
-    }
-
-    pub async fn un_delegate_resource(&self, id: String, password: String) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
-            .un_delegate_resource(id, &password)
-            .await?
-            .into()
-    }
-
     pub async fn request_resource(
         &self,
         _account: String,
@@ -149,6 +118,49 @@ impl crate::WalletManager {
     pub async fn request_energy(&self, account: String, energy: i64) -> ReturnType<String> {
         StackService::new(self.repo_factory.stake_repo())
             .request_energy(account, energy)
+            .await?
+            .into()
+    }
+
+    // ********************** delegate ***************************
+    pub async fn get_can_delegated_max(
+        &self,
+        account: String,
+        resource_type: String,
+    ) -> ReturnType<CanDelegatedResp> {
+        StackService::new(self.repo_factory.stake_repo())
+            .can_delegated_max(account, resource_type)
+            .await?
+            .into()
+    }
+
+    pub async fn delegate_resource(
+        &self,
+        req: DelegateReq,
+        password: String,
+    ) -> ReturnType<String> {
+        StackService::new(self.repo_factory.stake_repo())
+            .delegate_resource(req, &password)
+            .await?
+            .into()
+    }
+
+    pub async fn delegate_list(
+        &self,
+        owner_address: String,
+        resource_type: String,
+        page: i64,
+        page_size: i64,
+    ) -> ReturnType<Pagination<DelegateEntity>> {
+        StackService::new(self.repo_factory.stake_repo())
+            .delegate_list(&owner_address, &resource_type, page, page_size)
+            .await?
+            .into()
+    }
+
+    pub async fn un_delegate_resource(&self, id: String, password: String) -> ReturnType<String> {
+        StackService::new(self.repo_factory.stake_repo())
+            .un_delegate_resource(id, &password)
             .await?
             .into()
     }

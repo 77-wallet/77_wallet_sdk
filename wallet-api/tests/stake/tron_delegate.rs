@@ -2,6 +2,17 @@ use crate::get_manager;
 use wallet_api::request::stake::DelegateReq;
 
 #[tokio::test]
+async fn test_query_available_max() {
+    let manager = get_manager().await;
+
+    let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let resource_type = "energy".to_string();
+    let res = manager.get_can_delegated_max(account, resource_type).await;
+
+    tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
 async fn test_delegate() {
     let manager = get_manager().await;
 

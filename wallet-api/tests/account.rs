@@ -64,11 +64,11 @@ async fn create_wallet() {
 #[tokio::test]
 async fn create_account() {
     let wallet_manager = get_manager().await;
-    let wallet_name = "0x5dd614A8d8973B659F4560BC8aDB988cb02b4a01";
+    let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
     let account_name = "账户";
     let root_password = "123456";
 
-    for _i in 0..2 {
+    for _i in 0..1 {
         let resp = wallet_manager
             .create_account(
                 wallet_name,

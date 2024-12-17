@@ -4,6 +4,7 @@ use crate::error::business::stake::StakeError;
 use crate::manager::Context;
 use crate::request::stake;
 use crate::response_vo::account::AccountResource;
+use crate::response_vo::stake::CanDelegatedResp;
 use crate::response_vo::stake::EstimatedResourcesResp;
 use crate::response_vo::stake::FreezeListResp;
 use crate::response_vo::stake::UnfreezeListResp;
@@ -183,66 +184,6 @@ impl StackService {
         Ok(res)
     }
 
-    pub async fn delegate_resource(
-        &self,
-        req: stake::DelegateReq,
-        password: &str,
-    ) -> Result<String, crate::error::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
-
-        let key = domain::account::open_account_pk_with_password(
-            chain_code::TRON,
-            &req.owner_address,
-            password,
-        )
-        .await?;
-
-        let args = DelegateArgs::try_from(req)?;
-
-        let resp = args.build_raw_transaction(&chain.provider).await?;
-        Ok(chain.exec_transaction_v1(resp, key).await?)
-    }
-
-    // Reclaim delegated energy
-    pub async fn un_delegate_resource(
-        &self,
-        _id: String,
-        _password: &str,
-    ) -> Result<String, crate::error::ServiceError> {
-        // let chain = ChainAdapterFactory::get_tron_adapter().await?;
-
-        // let key = domain::account::open_account_pk_with_password(
-        //     chain_code::TRON,
-        //     &req.owner_address,
-        //     password,
-        // )
-        // .await?;
-
-        // let args = UnDelegateArgs::new(
-        //     &delegate.owner_address,
-        //     &delegate.receiver_address,
-        //     &delegate.amount.to_string(),
-        //     &delegate.resource_type,
-        // )?;
-
-        // let res = tron_chain.un_delegate_resource(args, key).await?;
-
-        Ok("".to_string())
-    }
-
-    pub async fn delegate_list(
-        &self,
-        owner_address: &str,
-        resource_type: &str,
-        page: i64,
-        page_size: i64,
-    ) -> Result<Pagination<DelegateEntity>, crate::error::ServiceError> {
-        Ok(self
-            .repo
-            .delegate_list(owner_address, resource_type, page, page_size)
-            .await?)
-    }
-
     pub async fn system_resource(
         &self,
         address: String,
@@ -368,5 +309,83 @@ impl StackService {
         res.energy.price = resource.energy_price();
 
         Ok(res)
+    }
+
+    pub async fn can_delegated_max(
+        &self,
+        account: String,
+        resource_type: String,
+    ) -> Result<CanDelegatedResp, crate::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+
+        let resource_type = ResourceType::try_from(resource_type.as_str())?;
+        let res = chain
+            .provider
+            .can_delegate_resource(account.as_str(), resource_type)
+            .await?;
+
+        Ok(CanDelegatedResp {
+            amount: res.to_sun(),
+        })
+    }
+
+    pub async fn delegate_resource(
+        &self,
+        req: stake::DelegateReq,
+        password: &str,
+    ) -> Result<String, crate::error::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            password,
+        )
+        .await?;
+
+        let args = DelegateArgs::try_from(req)?;
+
+        let resp = args.build_raw_transaction(&chain.provider).await?;
+        Ok(chain.exec_transaction_v1(resp, key).await?)
+    }
+
+    // Reclaim delegated energy
+    pub async fn un_delegate_resource(
+        &self,
+        _id: String,
+        _password: &str,
+    ) -> Result<String, crate::error::ServiceError> {
+        // let chain = ChainAdapterFactory::get_tron_adapter().await?;
+
+        // let key = domain::account::open_account_pk_with_password(
+        //     chain_code::TRON,
+        //     &req.owner_address,
+        //     password,
+        // )
+        // .await?;
+
+        // let args = UnDelegateArgs::new(
+        //     &delegate.owner_address,
+        //     &delegate.receiver_address,
+        //     &delegate.amount.to_string(),
+        //     &delegate.resource_type,
+        // )?;
+
+        // let res = tron_chain.un_delegate_resource(args, key).await?;
+
+        Ok("".to_string())
+    }
+
+    pub async fn delegate_list(
+        &self,
+        owner_address: &str,
+        resource_type: &str,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<DelegateEntity>, crate::error::ServiceError> {
+        Ok(self
+            .repo
+            .delegate_list(owner_address, resource_type, page, page_size)
+            .await?)
     }
 }

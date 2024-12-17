@@ -7,10 +7,7 @@ async fn test_account_resource() {
     let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let res = manager.resource_info(account).await;
 
-    tracing::info!(
-        "account resource = {:?}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("resource = {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -24,10 +21,7 @@ async fn test_freeze() {
     let password = "123456".to_string();
 
     let res = manager.freeze_balance(req, password).await;
-    tracing::info!(
-        "freeze response = {:?}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("freeze = {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -43,10 +37,7 @@ async fn test_unfreeze() {
     let password = "123456".to_string();
     let res = manager.un_freeze_balance(req, password).await;
 
-    tracing::info!(
-        "unfreeze response = {:?}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("unfreeze  {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -55,10 +46,7 @@ async fn test_freeze_list() {
 
     let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let res = manager.freeze_list(owner).await;
-    tracing::info!(
-        "freeze list response = {}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("freeze  {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -67,10 +55,7 @@ async fn test_un_freeze_list() {
 
     let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let res = manager.un_freeze_list(owner).await;
-    tracing::info!(
-        "unfreeze list response = {}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("unfreeze = {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -81,10 +66,7 @@ async fn test_cancel_all_unfreeze() {
     let password = "123456".to_string();
 
     let res = manager.cancel_all_unfreeze(owner, password).await;
-    tracing::info!(
-        "unfreeze list response = {}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("unfreeze {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -95,10 +77,7 @@ async fn test_withdraw() {
     let password = "123456".to_string();
 
     let res = manager.withdraw_unfreeze(owner_address, password).await;
-    tracing::info!(
-        "withdraw response = {:?}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("withdraw {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -132,8 +111,5 @@ async fn test_request_energy() {
     let energy = 50;
 
     let res = manager.request_energy(address, energy).await;
-    tracing::info!(
-        "request resource = {}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("request {}", serde_json::to_string(&res).unwrap());
 }
