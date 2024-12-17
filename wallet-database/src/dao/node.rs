@@ -159,22 +159,27 @@ impl NodeEntity {
     //         .map_err(|e| crate::Error::Database(e.into()))
     // }
 
-    pub async fn delete<'a, E>(exec: E, rpc_url: &str, chain_code: &str) -> Result<(), crate::Error>
+    pub async fn delete<'a, E>(
+        exec: E,
+        node_id: &str,
+        // rpc_url: &str,
+        // chain_code: &str,
+    ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
             DELETE FROM node
-            WHERE rpc_url = $1 AND
-            chain_code = $2
+            WHERE node_id = $1
+            RETURNING *
             "#;
 
-        sqlx::query(sql)
-            .bind(rpc_url)
-            .bind(chain_code)
-            .execute(exec)
+        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+            // .bind(rpc_url)
+            // .bind(chain_code)
+            .bind(node_id)
+            .fetch_all(exec)
             .await
-            .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
 }

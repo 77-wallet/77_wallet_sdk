@@ -27,8 +27,13 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, NodeEntity::detail, &req)
     }
 
-    async fn delete(&mut self, rpc_url: &str, chain_code: &str) -> Result<(), crate::Error> {
+    async fn delete(
+        &mut self,
+        // rpc_url: &str,
+        // chain_code: &str,
+        node_id: &str,
+    ) -> Result<Vec<NodeEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, NodeEntity::delete, rpc_url, chain_code)
+        crate::execute_with_executor!(executor, NodeEntity::delete, node_id)
     }
 }

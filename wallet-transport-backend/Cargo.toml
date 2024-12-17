@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 # default = ["test"]
-default = ["dev"]
+# default = ["dev"]
 # default = ["prod"]
 test = []
 dev = []
@@ -35,3 +35,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 urlencoding = { workspace = true }
+cfg-if = { workspace = true }

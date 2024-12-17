@@ -58,6 +58,28 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn set_chain_node_id_empty<'a, E>(
+        executor: E,
+        node_id: &str,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            update chain set 
+                node_id = null,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            where node_id = $1
+            RETURNING *
+            "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ChainEntity>(sql)
+            .bind(node_id)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     // 把指定的链status设置为1，其他设置为0
     pub async fn upsert_multi_chain<'a, E>(
         executor: E,
