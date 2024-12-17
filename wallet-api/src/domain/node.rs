@@ -41,7 +41,10 @@ impl NodeDomain {
 
         for node in default_nodes.iter() {
             let nodes = match backend.chain_rpc_list(&node.chain_code).await {
-                Ok(node) => node,
+                Ok(node) => {
+                    tracing::warn!("node_create: {:?}", node);
+                    node
+                }
                 Err(e) => {
                     tracing::error!("node_create: {:?}", e);
                     continue;
