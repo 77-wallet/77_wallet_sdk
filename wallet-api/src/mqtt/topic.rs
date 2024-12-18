@@ -70,6 +70,7 @@ impl Topics {
         for topic in unique_topics.iter() {
             match mqtt_processor.client().subscribe(topic, qos).await {
                 Ok(_) => {
+                    tracing::warn!("订阅主题成功: {}", topic);
                     let now = std::time::SystemTime::now();
                     // 插入新的订阅数据到 HashMap
                     self.data.insert(
@@ -88,7 +89,7 @@ impl Topics {
                     });
                 }
                 Err(e) => {
-                    tracing::info!("订阅主题失败: {}, 错误信息：{:?}", topic, e);
+                    tracing::error!("订阅主题失败: {}, 错误信息：{:?}", topic, e);
                 }
             }
         }
@@ -117,10 +118,11 @@ impl Topics {
                 .ok_or(crate::ServiceError::System(
                     crate::SystemError::MqttClientNotInit,
                 ))?;
-
+        tracing::warn!("取消订阅的主题: {}", unique_topics.join(", "));
         for topic in unique_topics.iter() {
             match mqtt_processor.client().unsubscribe(topic).await {
                 Ok(_) => {
+                    tracing::warn!("取消订阅成功: {}", topic);
                     // 移除 HashMap 中的订阅数据
                     if let Some(topic_data) = self.data.remove(topic) {
                         // 从 BTreeSet 中移除对应的 TopicEntry
@@ -131,7 +133,7 @@ impl Topics {
                     }
                 }
                 Err(e) => {
-                    tracing::info!("取消订阅失败: {}, 错误信息：{:?}", topic, e);
+                    tracing::error!("取消订阅失败: {}, 错误信息：{:?}", topic, e);
                 }
             }
         }
