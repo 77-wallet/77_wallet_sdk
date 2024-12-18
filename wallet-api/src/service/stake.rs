@@ -1,5 +1,6 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
+use crate::domain::chain::transaction::ChainTransaction;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
 use crate::notify::event::other::Process;
@@ -20,6 +21,7 @@ use wallet_chain_interact::tron::operations::stake::FreezeBalanceArgs;
 use wallet_chain_interact::tron::operations::stake::ResourceType;
 use wallet_chain_interact::tron::operations::stake::UnFreezeBalanceArgs;
 use wallet_chain_interact::tron::operations::TronTxOperation;
+use wallet_chain_interact::tron::TronChain;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
 use wallet_database::entities::stake::DelegateEntity;
@@ -35,6 +37,40 @@ pub struct StackService {
 impl StackService {
     pub fn new(repo: db_stake::StakeRepo) -> Self {
         Self { repo }
+    }
+
+    async fn process_transaction<T>(
+        &self,
+        chain: &TronChain,
+        args: impl TronTxOperation<T>,
+        tx_kind: BillKind,
+        from: &str,
+        password: &str,
+    ) -> Result<String, crate::ServiceError> {
+        // 构建交易事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            tx_kind,
+            Process::Building,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
+        let resp = args.build_raw_transaction(&chain.provider).await?;
+
+        // 广播交易交易事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            tx_kind,
+            Process::Broadcast,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
+
+        let key = domain::account::open_account_pk_with_password(chain_code::TRON, from, password)
+            .await?;
+        let hash = chain.exec_transaction_v1(resp, key).await?;
+
+        // 写入本地交易数据
+        let entity = NewBillEntity::new_stake_bill(hash.clone(), from.to_string(), tx_kind);
+        domain::bill::BillDomain::create_bill(entity).await?;
+
+        Ok(hash)
     }
 }
 
@@ -336,50 +372,30 @@ impl StackService {
         })
     }
 
+    // 委派资源给账号
     pub async fn delegate_resource(
         &self,
         req: stake::DelegateReq,
         password: &str,
     ) -> Result<DelegateResp, crate::error::ServiceError> {
-        let key = domain::account::open_account_pk_with_password(
-            chain_code::TRON,
-            &req.owner_address,
-            password,
-        )
-        .await?;
-
-        let from = req.owner_address.clone();
-        let to = req.receiver_address.clone();
-        let args = DelegateArgs::try_from(req)?;
-
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        // 构建交易事件
-        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
-            BillKind::Delegate.to_i8(),
-            Process::Building,
-        ));
-        FrontendNotifyEvent::new(data).send().await?;
-        // 构建交易
-        let resp = args.build_raw_transaction(&chain.provider).await?;
+        let from = req.owner_address.clone();
+        let resource_type = ResourceType::try_from(req.resource.as_str())?;
+        let args = DelegateArgs::try_from(&req)?;
 
-        // 广播交易交易事件
-        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
-            BillKind::Delegate.to_i8(),
-            Process::Broadcast,
-        ));
-        FrontendNotifyEvent::new(data).send().await?;
-        let hash = chain.exec_transaction_v1(resp, key).await?;
+        let tx_hash = self
+            .process_transaction(&chain, args, BillKind::Delegate, &from, password)
+            .await?;
 
-        // 写入本地事件
-        let entity = NewBillEntity::new_stake_bill(hash.clone(), from, BillKind::Delegate);
-        domain::bill::BillDomain::create_bill(entity).await?;
+        let resource = ChainTransaction::account_resorce(&chain, &req.owner_address).await?;
+        let resource_value = resource.resource_value(resource_type, &req.balance)?;
 
         Ok(DelegateResp::new(
-            vec![to],
-            10.0,
-            ResourceType::BANDWIDTH,
-            hash,
+            vec![req.receiver_address.clone()],
+            resource_value,
+            resource_type,
+            tx_hash,
         ))
     }
 

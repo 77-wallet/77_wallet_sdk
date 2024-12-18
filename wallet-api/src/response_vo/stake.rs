@@ -86,13 +86,13 @@ impl DelegateResp {
     pub fn new(
         address: Vec<String>,
         resource_value: f64,
-        resocue_type: ResourceType,
+        resource_type: ResourceType,
         tx_hash: String,
     ) -> Self {
         Self {
             address,
             resource_value,
-            resource_type: resocue_type.to_string(),
+            resource_type: resource_type.to_string(),
             tx_hash,
         }
     }

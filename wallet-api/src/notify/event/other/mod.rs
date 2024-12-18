@@ -1,3 +1,5 @@
+use wallet_database::entities::bill::BillKind;
+
 // biz_type = ERR
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,16 +33,16 @@ pub struct TransactionProcessFrontend {
     pub process: Process,
 }
 impl TransactionProcessFrontend {
-    pub fn new(tx_kind: i8, process: Process) -> Self {
+    pub fn new(tx_kind: BillKind, process: Process) -> Self {
         Self {
-            tx_kind,
+            tx_kind: tx_kind.to_i8(),
             tx_num: None,
             process,
         }
     }
-    pub fn new_with_num(tx_kind: i8, tx_num: i32, process: Process) -> Self {
+    pub fn new_with_num(tx_kind: BillKind, tx_num: i32, process: Process) -> Self {
         Self {
-            tx_kind,
+            tx_kind: tx_kind.to_i8(),
             tx_num: Some(tx_num),
             process,
         }

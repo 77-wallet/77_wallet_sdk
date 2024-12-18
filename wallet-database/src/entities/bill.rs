@@ -89,7 +89,7 @@ impl BillStatus {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BillKind {
     // 普通交易
     Transfer = 1,

@@ -73,9 +73,9 @@ impl From<&DelegateReq> for wallet_database::entities::stake::NewDelegateEntity 
     }
 }
 
-impl TryFrom<DelegateReq> for DelegateArgs {
+impl TryFrom<&DelegateReq> for DelegateArgs {
     type Error = crate::error::ServiceError;
-    fn try_from(value: DelegateReq) -> Result<Self, Self::Error> {
+    fn try_from(value: &DelegateReq) -> Result<Self, Self::Error> {
         let balance = wallet_utils::unit::convert_to_u256(&value.balance, 6)?;
         let args = Self {
             owner_address: wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?,

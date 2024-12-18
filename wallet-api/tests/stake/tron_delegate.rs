@@ -17,20 +17,17 @@ async fn test_delegate() {
     let manager = get_manager().await;
 
     let req = DelegateReq {
-        owner_address: "TGyw6wH5UT5GVY5v6MTWedabScAwF4gffQ".to_string(),
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         receiver_address: "TZ92GD6UbW8MMk6XD6pxKTGzUGs42No6vn".to_string(),
-        balance: "10".to_string(),
-        resource: "bandwidth".to_string(),
+        balance: "100".to_string(),
+        resource: "energy".to_string(),
         lock: false,
         lock_period: 0,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;
 
-    tracing::info!(
-        "delegate response = {:?}",
-        serde_json::to_string(&res).unwrap()
-    );
+    tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
