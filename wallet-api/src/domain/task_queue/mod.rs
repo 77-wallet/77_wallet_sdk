@@ -92,7 +92,7 @@ pub(crate) enum MqttTask {
     AcctChange(AcctChange),
     Init(Init),
     BulletinMsg(BulletinMsg),
-    RpcChange(RpcChange),
+    // RpcChange(RpcChange),
 }
 
 pub(crate) enum CommonTask {
@@ -275,11 +275,11 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     wallet_utils::serde_func::serde_from_str::<BulletinMsg>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::BulletinMsg(req))))
             }
-            TaskName::RpcChange => {
-                let req =
-                    wallet_utils::serde_func::serde_from_str::<RpcChange>(&value.request_body)?;
-                Ok(Task::Mqtt(Box::new(MqttTask::RpcChange(req))))
-            }
+            // TaskName::RpcChange => {
+            //     let req =
+            //         wallet_utils::serde_func::serde_from_str::<RpcChange>(&value.request_body)?;
+            //     Ok(Task::Mqtt(Box::new(MqttTask::RpcChange(req))))
+            // }
             // common
             TaskName::QueryCoinPrice => {
                 let req = wallet_utils::serde_func::serde_from_str::<TokenQueryPriceReq>(
@@ -333,7 +333,7 @@ impl Task {
                 MqttTask::AcctChange(_) => TaskName::AcctChange,
                 MqttTask::Init(_) => TaskName::Init,
                 MqttTask::BulletinMsg(_) => TaskName::BulletinMsg,
-                MqttTask::RpcChange(_) => TaskName::RpcChange,
+                // MqttTask::RpcChange(_) => TaskName::RpcChange,
             },
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(_) => TaskName::QueryCoinPrice,
@@ -390,10 +390,9 @@ impl Task {
                 MqttTask::Init(init) => Some(wallet_utils::serde_func::serde_to_string(init)?),
                 MqttTask::BulletinMsg(bulletin_msg) => {
                     Some(wallet_utils::serde_func::serde_to_string(bulletin_msg)?)
-                }
-                MqttTask::RpcChange(rpc_change) => {
-                    Some(wallet_utils::serde_func::serde_to_string(rpc_change)?)
-                }
+                } // MqttTask::RpcChange(rpc_change) => {
+                  //     Some(wallet_utils::serde_func::serde_to_string(rpc_change)?)
+                  // }
             },
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(query_coin_price) => {

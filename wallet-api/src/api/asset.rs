@@ -218,8 +218,8 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id: 1,
-            symbol: "WIN".to_string(),
-            wallet_address: "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48".to_string(),
+            symbol: "BNB".to_string(),
+            wallet_address: "0x7d2485c67AD614CE2CE8E6759c24e6e73e3de26f".to_string(),
             chain_code: None,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;
@@ -313,7 +313,7 @@ mod test {
         let chain_code = None;
         // let is_multisig = None;
         let is_multisig = Some(false);
-        let wallet_address = "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48";
+        let wallet_address = "0x7d2485c67AD614CE2CE8E6759c24e6e73e3de26f";
         let res = wallet_manager
             .get_coin_list(wallet_address, Some(1), chain_code, keyword, is_multisig)
             .await;

@@ -234,7 +234,7 @@ impl TaskManager {
                 MqttTask::AcctChange(data) => data.exec(&id).await?,
                 MqttTask::Init(data) => data.exec(&id).await?,
                 MqttTask::BulletinMsg(data) => data.exec(&id).await?,
-                MqttTask::RpcChange(data) => data.exec(&id).await?,
+                // MqttTask::RpcChange(data) => data.exec(&id).await?,
             },
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(data) => {

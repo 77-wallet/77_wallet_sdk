@@ -76,10 +76,15 @@ pub async fn exec_incoming_publish(
                 serde_json::from_slice(&payload)?;
             payload.exec().await?;
         }
+        super::constant::Topic::RpcChange => {
+            let payload: super::payload::incoming::rpc::RpcChange = serde_json::from_slice(payload)?;
+            payload.exec().await?;
+        }
         super::constant::Topic::Order
         | super::constant::Topic::Common
         | super::constant::Topic::BulletinInfo
-        | super::constant::Topic::RpcChange => {
+        // | super::constant::Topic::RpcChange 
+        => {
             let payload: super::payload::incoming::Message = serde_json::from_slice(payload)?;
             let send_msg_confirm_req = BackendApiTask::new(
                 SEND_MSG_CONFIRM,
@@ -239,18 +244,18 @@ pub(crate) async fn exec_payload(
                 .send()
                 .await?;
         }
-        (
-            super::payload::incoming::BizType::RpcAddressChange,
-            super::payload::incoming::Body::RpcChange(data),
-        ) => {
-            crate::domain::task_queue::Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::RpcChange(data))),
-                )
-                .send()
-                .await?;
-        }
+        // (
+        //     super::payload::incoming::BizType::RpcAddressChange,
+        //     super::payload::incoming::Body::RpcChange(data),
+        // ) => {
+        //     crate::domain::task_queue::Tasks::new()
+        //         .push_with_id(
+        //             &payload.msg_id,
+        //             Task::Mqtt(Box::new(MqttTask::RpcChange(data))),
+        //         )
+        //         .send()
+        //         .await?;
+        // }
         (_, _) => {
             return Err(crate::ServiceError::System(
                 crate::SystemError::MessageWrong,

@@ -88,7 +88,7 @@ pub enum TaskName {
     Init,
     OrderMultiSignCreated,
     BulletinMsg,
-    RpcChange,
+    // RpcChange,
     // common
     QueryCoinPrice,
     QueryQueueResult,

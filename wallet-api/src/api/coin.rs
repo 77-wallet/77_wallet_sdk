@@ -151,7 +151,7 @@ mod test {
         let keyword = None;
         // let chain_code = Some("btc");
         let chain_code = None;
-        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
+        let wallet_address = "0x7d2485c67AD614CE2CE8E6759c24e6e73e3de26f";
         let res = wallet_manager
             .get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000)
             .await;
