@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
     let _res = wallet_manager.init_device(req).await;
-    let init_res = wallet_manager.init_data().await;
+    // let init_res = wallet_manager.init_data().await;
     // tracing::info!("init_data res: {init_res:?}");
 
     // tracing::info!("init_device res: {_res:?}");
@@ -155,32 +155,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .unwrap();
     // tracing::info!("create_account res: {_res:?}");
     // let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-    // wallet_manager
-    //     .mqtt_subscribe(vec!["wallet/token/btc/btc".to_string()], None)
-    //     .await;
+    let res = wallet_manager
+        .mqtt_subscribe(
+            vec![
+                // "wallet/token/eth/eth".to_string(),
+                // "wallet/token/eth/link".to_string(),
+                "wallet/token/eth/cake".to_string(),
+                "wallet/token/eth/usdc".to_string(),
+                "wallet/token/tron/usdt".to_string(),
+                "wallet/token/tron/trx".to_string(),
+                "wallet/token/tron/sun".to_string(),
+                "wallet/token/tron/win".to_string(),
+            ],
+            None,
+        )
+        .await;
+    tracing::info!("mqtt_subscribe res: {res:?}");
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-    // tokio::spawn(async move {
-    //     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        // let unsubscribe = wallet_api::service::wallet::WalletService::new(repo)
+        //     .reset()
+        //     .await
+        //     .unwrap();
+        // let unsubscribe = wallet_manager
+        //     .upload_log_file()
+        //     .await;
+        let unsubscribe = wallet_manager
+            .mqtt_unsubscribe(vec![
+                // "wallet/token/eth/eth".to_string(),
+                // "wallet/token/eth/link".to_string(),
+                "wallet/token/eth/cake".to_string(),
+                "wallet/token/eth/usdc".to_string(),
+                "wallet/token/tron/usdt".to_string(),
+                "wallet/token/tron/trx".to_string(),
+                "wallet/token/tron/sun".to_string(),
+                "wallet/token/tron/win".to_string(),
+            ])
+            .await;
+        tracing::info!("unsubscribe: {unsubscribe:?}");
+        // let unsubscribe = wallet_manager
+        //     .mqtt_unsubscribe(vec!["wallet/token/eth/eth".to_string()])
+        //     .await;
+        // tracing::info!("unsubscribe: {unsubscribe:?}");
+    });
 
-    //     let unsubscribe = wallet_api::service::wallet::WalletService::new(repo)
-    //         .reset()
-    //         .await
-    //         .unwrap();
-    //     let unsubscribe = wallet_manager
-    //         .upload_log_file()
-    //         .await;
-    //     let unsubscribe = wallet_manager
-    //         .mqtt_unsubscribe(vec!["wallet/token/eth/eth".to_string()])
-    //         .await;
-    //     tracing::info!("unsubscribe: {unsubscribe:?}");
-    //     let unsubscribe = wallet_manager
-    //         .mqtt_unsubscribe(vec!["wallet/token/eth/eth".to_string()])
-    //         .await;
-    //     tracing::info!("unsubscribe: {unsubscribe:?}");
-    // });
-
-    wallet_manager.set_language("CHINESE_SIMPLIFIED").await;
+    // wallet_manager.set_language("CHINESE_SIMPLIFIED").await;
 
     // let config = wallet_manager.get_config().await;
 

@@ -68,7 +68,7 @@ impl Topics {
                 ))?;
 
         for topic in unique_topics.iter() {
-            match mqtt_processor.client().subscribe(topic, qos).await {
+            match mqtt_processor.client().try_subscribe(topic, qos) {
                 Ok(_) => {
                     tracing::warn!("订阅主题成功: {}", topic);
                     let now = std::time::SystemTime::now();
@@ -120,7 +120,7 @@ impl Topics {
                 ))?;
         tracing::warn!("取消订阅的主题: {}", unique_topics.join(", "));
         for topic in unique_topics.iter() {
-            match mqtt_processor.client().unsubscribe(topic).await {
+            match mqtt_processor.client().try_unsubscribe(topic) {
                 Ok(_) => {
                     tracing::warn!("取消订阅成功: {}", topic);
                     // 移除 HashMap 中的订阅数据
@@ -151,11 +151,7 @@ impl Topics {
 
         // 遍历 HashMap 中的所有主题，重新订阅
         for (topic, topic_data) in self.data.iter() {
-            match mqtt_processor
-                .client()
-                .subscribe(topic, topic_data.qos)
-                .await
-            {
+            match mqtt_processor.client().try_subscribe(topic, topic_data.qos) {
                 Ok(_) => {
                     tracing::info!("重新订阅成功: {}", topic);
                 }
