@@ -1,4 +1,5 @@
 use sqlx::types::chrono::{DateTime, Utc};
+use wallet_types::constant::chain_code;
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct BillEntity {
@@ -242,6 +243,29 @@ impl NewBillEntity {
             multisig_tx: false,
             tx_type: 1,
             tx_kind: BillKind::DeployMultiSign,
+            queue_id: "".to_string(),
+            block_height: "0".to_string(),
+            notes: "".to_string(),
+        }
+    }
+
+    // 构建质押相关的交易
+    pub fn new_stake_bill(hash: String, from: String, tx_kind: BillKind) -> Self {
+        Self {
+            hash,
+            from,
+            to: "".to_string(),
+            token: None,
+            chain_code: chain_code::TRON.to_string(),
+            symbol: "TRX".to_string(),
+            status: 1,
+            value: 0.0,
+            transaction_fee: "0".to_string(),
+            resource_consume: "".to_string(),
+            transaction_time: 0,
+            multisig_tx: false,
+            tx_type: 1,
+            tx_kind,
             queue_id: "".to_string(),
             block_height: "0".to_string(),
             notes: "".to_string(),

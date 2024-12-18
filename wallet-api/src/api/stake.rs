@@ -3,7 +3,10 @@ use crate::{
     request::stake::{DelegateReq, FreezeBalanceReq, UnFreezeBalanceReq},
     response_vo::{
         account::AccountResource,
-        stake::{CanDelegatedResp, EstimatedResourcesResp, FreezeListResp, UnfreezeListResp},
+        stake::{
+            CanDelegatedResp, DelegateResp, EstimatedResourcesResp, FreezeListResp,
+            UnfreezeListResp,
+        },
     },
     service::stake::StackService,
 };
@@ -122,7 +125,7 @@ impl crate::WalletManager {
             .into()
     }
 
-    // ********************** delegate ***************************
+    // ************************************************ delegate *********************************************************
     pub async fn get_can_delegated_max(
         &self,
         account: String,
@@ -138,7 +141,7 @@ impl crate::WalletManager {
         &self,
         req: DelegateReq,
         password: String,
-    ) -> ReturnType<String> {
+    ) -> ReturnType<DelegateResp> {
         StackService::new(self.repo_factory.stake_repo())
             .delegate_resource(req, &password)
             .await?

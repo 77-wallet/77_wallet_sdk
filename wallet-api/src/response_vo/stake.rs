@@ -73,3 +73,27 @@ impl EstimatedResourcesResp {
 pub struct CanDelegatedResp {
     pub amount: f64,
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DelegateResp {
+    pub address: Vec<String>,
+    pub resource_value: f64,
+    pub resource_type: String,
+    pub tx_hash: String,
+}
+impl DelegateResp {
+    pub fn new(
+        address: Vec<String>,
+        resource_value: f64,
+        resocue_type: ResourceType,
+        tx_hash: String,
+    ) -> Self {
+        Self {
+            address,
+            resource_value,
+            resource_type: resocue_type.to_string(),
+            tx_hash,
+        }
+    }
+}

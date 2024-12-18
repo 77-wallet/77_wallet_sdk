@@ -1,6 +1,9 @@
 use super::adapter::TransactionAdapter;
 use crate::request::transaction;
-use wallet_chain_interact::{eth, sol};
+use wallet_chain_interact::{
+    eth, sol,
+    tron::{protocol::account::AccountResourceDetail, TronChain},
+};
 use wallet_database::entities::{
     account::AccountEntity,
     assets::{AssetsEntity, AssetsId},
@@ -249,5 +252,14 @@ impl ChainTransaction {
             ))?;
         }
         Ok(transfer_amount)
+    }
+
+    // 后期加入缓存
+    pub async fn account_resorce(
+        chain: &TronChain,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, crate::ServiceError> {
+        let resource = chain.account_resource(owner_address).await?;
+        Ok(resource)
     }
 }

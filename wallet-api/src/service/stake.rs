@@ -2,9 +2,14 @@ use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
+use crate::notify::event::other::Process;
+use crate::notify::event::other::TransactionProcessFrontend;
+use crate::notify::FrontendNotifyEvent;
+use crate::notify::NotifyEvent;
 use crate::request::stake;
 use crate::response_vo::account::AccountResource;
 use crate::response_vo::stake::CanDelegatedResp;
+use crate::response_vo::stake::DelegateResp;
 use crate::response_vo::stake::EstimatedResourcesResp;
 use crate::response_vo::stake::FreezeListResp;
 use crate::response_vo::stake::UnfreezeListResp;
@@ -15,6 +20,8 @@ use wallet_chain_interact::tron::operations::stake::FreezeBalanceArgs;
 use wallet_chain_interact::tron::operations::stake::ResourceType;
 use wallet_chain_interact::tron::operations::stake::UnFreezeBalanceArgs;
 use wallet_chain_interact::tron::operations::TronTxOperation;
+use wallet_database::entities::bill::BillKind;
+use wallet_database::entities::bill::NewBillEntity;
 use wallet_database::entities::stake::DelegateEntity;
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::stake as db_stake;
@@ -333,9 +340,7 @@ impl StackService {
         &self,
         req: stake::DelegateReq,
         password: &str,
-    ) -> Result<String, crate::error::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_adapter().await?;
-
+    ) -> Result<DelegateResp, crate::error::ServiceError> {
         let key = domain::account::open_account_pk_with_password(
             chain_code::TRON,
             &req.owner_address,
@@ -343,10 +348,39 @@ impl StackService {
         )
         .await?;
 
+        let from = req.owner_address.clone();
+        let to = req.receiver_address.clone();
         let args = DelegateArgs::try_from(req)?;
 
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+
+        // 构建交易事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            BillKind::Delegate.to_i8(),
+            Process::Building,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
+        // 构建交易
         let resp = args.build_raw_transaction(&chain.provider).await?;
-        Ok(chain.exec_transaction_v1(resp, key).await?)
+
+        // 广播交易交易事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            BillKind::Delegate.to_i8(),
+            Process::Broadcast,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
+        let hash = chain.exec_transaction_v1(resp, key).await?;
+
+        // 写入本地事件
+        let entity = NewBillEntity::new_stake_bill(hash.clone(), from, BillKind::Delegate);
+        domain::bill::BillDomain::create_bill(entity).await?;
+
+        Ok(DelegateResp::new(
+            vec![to],
+            10.0,
+            ResourceType::BANDWIDTH,
+            hash,
+        ))
     }
 
     // Reclaim delegated energy
@@ -355,24 +389,6 @@ impl StackService {
         _id: String,
         _password: &str,
     ) -> Result<String, crate::error::ServiceError> {
-        // let chain = ChainAdapterFactory::get_tron_adapter().await?;
-
-        // let key = domain::account::open_account_pk_with_password(
-        //     chain_code::TRON,
-        //     &req.owner_address,
-        //     password,
-        // )
-        // .await?;
-
-        // let args = UnDelegateArgs::new(
-        //     &delegate.owner_address,
-        //     &delegate.receiver_address,
-        //     &delegate.amount.to_string(),
-        //     &delegate.resource_type,
-        // )?;
-
-        // let res = tron_chain.un_delegate_resource(args, key).await?;
-
         Ok("".to_string())
     }
 

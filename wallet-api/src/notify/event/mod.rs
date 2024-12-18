@@ -27,6 +27,9 @@ pub enum NotifyEvent {
     ConnectionError(ConnectionErrorFrontend),
     Debug(DebugFront),
     Err(ErrFront),
+
+    // 执行交易的过程
+    TransactionProcess(TransactionProcessFrontend),
 }
 
 impl NotifyEvent {
@@ -57,6 +60,7 @@ impl NotifyEvent {
             NotifyEvent::ConnectionError(_) => "CONNECTION_ERROR".to_string(),
             NotifyEvent::Debug(_) => "DEBUG".to_string(),
             NotifyEvent::Err(_) => "ERR".to_string(),
+            NotifyEvent::TransactionProcess(_) => "TRANSACTION_PROCESS".to_string(),
         }
     }
 }
