@@ -15,6 +15,18 @@ impl FrontendNotifyEvent {
         }
     }
 
+    pub(crate) async fn send_debug<T: serde::Serialize>(
+        message: T,
+    ) -> Result<(), crate::ServiceError> {
+        let message = wallet_utils::serde_func::serde_to_value(message)?;
+        let data = crate::notify::NotifyEvent::Debug(event::other::DebugFront { message });
+        match crate::notify::FrontendNotifyEvent::new(data).send().await {
+            Ok(_) => tracing::debug!("[mqtt] send debug message ok"),
+            Err(e) => tracing::error!("[mqtt] send debug message error: {e}"),
+        };
+        Ok(())
+    }
+
     pub(crate) async fn send_error<T: serde::Serialize>(
         event: &str,
         message: T,
@@ -25,8 +37,8 @@ impl FrontendNotifyEvent {
             message,
         });
         match crate::notify::FrontendNotifyEvent::new(data).send().await {
-            Ok(_) => tracing::debug!("[mqtt] send debug message ok"),
-            Err(e) => tracing::error!("[mqtt] send debug message error: {e}"),
+            Ok(_) => tracing::debug!("[mqtt] send err message ok"),
+            Err(e) => tracing::error!("[mqtt] send err message error: {e}"),
         };
         Ok(())
     }

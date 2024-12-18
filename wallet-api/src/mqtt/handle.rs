@@ -78,6 +78,9 @@ pub async fn exec_incoming_publish(
         }
         super::constant::Topic::RpcChange => {
             let payload: super::payload::incoming::rpc::RpcChange = serde_json::from_slice(payload)?;
+            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await{
+                tracing::error!("[exec_incoming_publish] send debug error: {e}");
+            };
             payload.exec().await?;
         }
         super::constant::Topic::Order
@@ -86,6 +89,9 @@ pub async fn exec_incoming_publish(
         // | super::constant::Topic::RpcChange 
         => {
             let payload: super::payload::incoming::Message = serde_json::from_slice(payload)?;
+            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await{
+                tracing::error!("[exec_incoming_publish] send debug error: {e}");
+            };
             let send_msg_confirm_req = BackendApiTask::new(
                 SEND_MSG_CONFIRM,
                 &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(&payload.msg_id, "MQTT")]),
