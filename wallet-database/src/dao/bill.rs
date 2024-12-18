@@ -44,6 +44,24 @@ impl BillDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn get_by_hash_and_owner<'a, E>(
+        executor: E,
+        hash: &str,
+        owner: &str,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from bill where hash = $1 and owner = $2";
+
+        sqlx::query_as::<_, BillEntity>(sql)
+            .bind(hash)
+            .bind(owner)
+            .fetch_optional(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn bill_lists<'a, E>(
         pool: &E,
         addr: &[String],

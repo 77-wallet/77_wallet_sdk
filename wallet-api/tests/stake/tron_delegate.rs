@@ -18,7 +18,7 @@ async fn test_delegate() {
 
     let req = DelegateReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        receiver_address: "TZ92GD6UbW8MMk6XD6pxKTGzUGs42No6vn".to_string(),
+        receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         balance: "100".to_string(),
         resource: "energy".to_string(),
         lock: false,

@@ -101,10 +101,10 @@ impl TransactionService {
 
     pub async fn bill_detail(
         tx_hash: &str,
-        transfer_type: i64,
+        owner: &str,
     ) -> Result<BillDetailVo, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let mut bill = BillDao::get_by_hash_and_type(pool.as_ref(), tx_hash, transfer_type)
+        let mut bill = BillDao::get_by_hash_and_owner(pool.as_ref(), tx_hash, owner)
             .await?
             .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
         bill.value = wallet_utils::unit::truncate_to_8_decimals(&bill.value);

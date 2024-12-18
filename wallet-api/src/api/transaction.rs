@@ -39,8 +39,8 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn bill_detail(&self, tx_hash: &str, transfer_type: i64) -> ReturnType<BillDetailVo> {
-        crate::service::transaction::TransactionService::bill_detail(tx_hash, transfer_type)
+    pub async fn bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<BillDetailVo> {
+        crate::service::transaction::TransactionService::bill_detail(tx_hash, owner)
             .await
             .into()
     }

@@ -68,7 +68,7 @@ async fn create_account() {
     let account_name = "账户";
     let root_password = "123456";
 
-    for _i in 0..1 {
+    for _i in 0..2 {
         let resp = wallet_manager
             .create_account(
                 wallet_name,
