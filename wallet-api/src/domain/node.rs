@@ -41,7 +41,10 @@ impl NodeDomain {
 
         for node in default_nodes.iter() {
             let nodes = match backend.chain_rpc_list(&node.chain_code).await {
-                Ok(node) => node,
+                Ok(node) => {
+                    // tracing::warn!("node_create: {:?}", node);
+                    node
+                }
                 Err(e) => {
                     tracing::error!("node_create: {:?}", e);
                     continue;
@@ -49,7 +52,7 @@ impl NodeDomain {
             };
             for node in nodes.list.iter() {
                 let network = if node.test { "testnet" } else { "mainnet" };
-                let node = NodeCreateVo::new(&node.name, &node.chain_code, &node.rpc)
+                let node = NodeCreateVo::new(&node.id, &node.name, &node.chain_code, &node.rpc)
                     .with_network(network);
                 match NodeRepoTrait::add(&mut repo, node).await {
                     Ok(node) => backend_nodes.push(node),
@@ -102,7 +105,7 @@ impl NodeDomain {
             backend_nodes.iter().map(|n| n.rpc_url.clone()).collect();
         for node in filtered_nodes {
             if !backend_node_rpcs.contains(&node.rpc_url) {
-                if let Err(e) = NodeRepoTrait::delete(repo, &node.rpc_url, &node.chain_code).await {
+                if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
                 Self::set_chain_node(repo, backend_nodes, default_nodes, &node.chain_code).await?;

@@ -3,8 +3,9 @@ use sqlx::{Executor, Sqlite};
 use crate::entities::node::{NodeCreateVo, NodeEntity};
 
 impl NodeCreateVo {
-    pub fn new(name: &str, chain_code: &str, rpc_url: &str) -> NodeCreateVo {
+    pub fn new(node_id: &str, name: &str, chain_code: &str, rpc_url: &str) -> NodeCreateVo {
         Self {
+            node_id: node_id.to_string(),
             name: name.to_string(),
             chain_code: chain_code.to_string(),
             rpc_url: rpc_url.to_string(),
@@ -60,11 +61,11 @@ impl NodeEntity {
                     updated_at = excluded.updated_at
                 returning *"#;
 
-        let params = vec![req.name.as_str(), req.chain_code.as_str()];
-        let node_id = wallet_utils::snowflake::gen_hash_uid(params);
+        // let params = vec![req.name.as_str(), req.chain_code.as_str()];
+        // let node_id = wallet_utils::snowflake::gen_hash_uid(params);
 
         let mut rec = sqlx::query_as::<_, NodeEntity>(sql)
-            .bind(node_id)
+            .bind(&req.node_id)
             .bind(&req.name)
             .bind(&req.chain_code)
             .bind(req.status)
@@ -158,22 +159,27 @@ impl NodeEntity {
     //         .map_err(|e| crate::Error::Database(e.into()))
     // }
 
-    pub async fn delete<'a, E>(exec: E, rpc_url: &str, chain_code: &str) -> Result<(), crate::Error>
+    pub async fn delete<'a, E>(
+        exec: E,
+        node_id: &str,
+        // rpc_url: &str,
+        // chain_code: &str,
+    ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
             DELETE FROM node
-            WHERE rpc_url = $1 AND
-            chain_code = $2
+            WHERE node_id = $1
+            RETURNING *
             "#;
 
-        sqlx::query(sql)
-            .bind(rpc_url)
-            .bind(chain_code)
-            .execute(exec)
+        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+            // .bind(rpc_url)
+            // .bind(chain_code)
+            .bind(node_id)
+            .fetch_all(exec)
             .await
-            .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
 }

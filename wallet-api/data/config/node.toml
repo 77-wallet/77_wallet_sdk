@@ -7,12 +7,12 @@ http_url = ""
 network = "mainnet"
 active = true
 
-[[nodes.tron.nodes]]
-node_name = "Platform Node"
-rpc_url = "http://rpc.88ai.fun/tron"
-http_url = ""
-network = "mainnet"
-active = true
+# [[nodes.tron.nodes]]
+# node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/tron"
+# http_url = ""
+# network = "mainnet"
+# active = false
 
 [[nodes.tron.nodes]]
 node_name = "Third-Party Node"
@@ -21,13 +21,13 @@ http_url = ""
 network = "mainnet"
 active = true
 
-[nodes.eth]
-[[nodes.eth.nodes]]
-node_name = "Platform Node"
-rpc_url = "http://rpc.88ai.fun/eth"
-http_url = ""
-network = "mainnet"
-active = true
+# [nodes.eth]
+# [[nodes.eth.nodes]]
+# node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/eth"
+# http_url = ""
+# network = "mainnet"
+# active = false
 
 [[nodes.eth.nodes]]
 node_name = "Third-Party Node"
@@ -43,13 +43,13 @@ http_url = ""
 network = "testnet"
 active = false
 
-[nodes.bnb]
-[[nodes.bnb.nodes]]
-node_name = "Platform Node"
-rpc_url = "http://rpc.88ai.fun/bnb"
-http_url = ""
-network = "mainnet"
-active = true
+# [nodes.bnb]
+# [[nodes.bnb.nodes]]
+# node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/bnb"
+# http_url = ""
+# network = "mainnet"
+# active = false
 
 [[nodes.bnb.nodes]]
 node_name = "Third-Party Node"
@@ -66,13 +66,13 @@ network = "testnet"
 active = false
 
 
-[nodes.sol]
-[[nodes.sol.nodes]]
-node_name = "Platform Node"
-rpc_url = "http://rpc.88ai.fun/sol"
-http_url = ""
-network = "mainnet"
-active = true
+# [nodes.sol]
+# [[nodes.sol.nodes]]
+# node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/sol"
+# http_url = ""
+# network = "mainnet"
+# active = false
 
 [[nodes.sol.nodes]]
 node_name = "Third-Party Node"
@@ -89,13 +89,13 @@ network = "testnet"
 active = false
 
 
-[nodes.btc]
-[[nodes.btc.nodes]]
-node_name = "Platform Node"
-rpc_url = "http://rpc.88ai.fun/btc"
-http_url = "http://rpc.88ai.fun/btc/http/btc_blockbook/api/v2/"
-network = "mainnet"
-active = true
+# [nodes.btc]
+# [[nodes.btc.nodes]]
+# node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/btc"
+# http_url = "http://rpc.88ai.fun/btc/http/btc_blockbook/api/v2/"
+# network = "mainnet"
+# active = false
 
 [[nodes.btc.nodes]]
 node_name = "Third-Party Node"
