@@ -238,7 +238,7 @@ impl TransactionService {
         let assets_id = AssetsId {
             chain_code: transaction.chain_code.clone(),
             symbol: transaction.symbol.clone(),
-            address: transaction.from_addr.clone(),
+            address: transaction.owner.clone(),
         };
 
         // 1. 更新余额
@@ -317,13 +317,11 @@ impl TransactionService {
             return Ok(None);
         };
 
-        let token = transaction.token.as_ref().and_then(|token| {
-            if token.is_empty() {
-                None
-            } else {
-                Some(token.to_string())
-            }
-        });
+        let token = transaction
+            .token
+            .as_ref()
+            .filter(|token| !token.is_empty())
+            .map(|token| token.to_string());
 
         // 查询余额
         let balance = adapter.balance(&transaction.owner, token).await?;

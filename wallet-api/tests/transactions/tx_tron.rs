@@ -7,8 +7,8 @@ async fn test_balance() {
 
     let addr = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
     let chain_code = "tron";
-    let symbol = "TRX";
-    // let symbol = "USDT";
+    // let symbol = "TRX";
+    let symbol = "USDT";
     let balance = wallet_manager
         .chain_balance(addr, chain_code, &symbol)
         .await;

@@ -67,7 +67,7 @@ async fn query_bill_result() {
     let wallet_manager = get_manager().await;
 
     let req = vec![QueryBillReusltReq {
-        tx_hash: "1c0115f491df71f9a34498ea4c512bee964204f04d220657b8a59f4fe78274dc".to_string(),
+        tx_hash: "0x10dfac1d3835dfd850ccdf79ba1f440630f127197d3285b8c30930688b460e0a".to_string(),
         transfer_type: 1,
     }];
 
@@ -81,7 +81,7 @@ async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "eth".to_string();
-    let address = "0xC24FCE9Ae9dEF3d18B926B363EaE25a22Ed71F9f".to_string();
+    let address = "0x1457a81B300cB106187Dd227b0319E2a851BAb24".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
     tracing::warn!("同步结果{:?}", _c);
 }

@@ -244,7 +244,7 @@ impl BillDao {
                 created_at,updated_at
             ) 
                 values {}
-                on conflict (hash,transfer_type)
+                on conflict (hash,transfer_type,owner)
                 do update set
                     status = excluded.status,
                     resource_consume =excluded.resource_consume, 

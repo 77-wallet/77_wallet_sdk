@@ -100,6 +100,24 @@ pub enum BillKind {
     MultiSignTx,
     // 多签交易签名费
     SigningFee,
+    // 质押
+    Freeze,
+    // 解质押
+    UnFeeze,
+    // 全部取消质押
+    CancelAllUnFeeze,
+    // 质押提取
+    WithdrawUnFeeze,
+    // 委派
+    Delegate,
+    // 批量委派
+    BatchDelegate,
+    // 回收
+    UnDelegate,
+    // 批量回收
+    BatchUnDelegate,
+    // 投票
+    Vote,
 }
 impl BillKind {
     pub fn to_i8(&self) -> i8 {
@@ -109,6 +127,15 @@ impl BillKind {
             BillKind::ServiceCharge => 3,
             BillKind::MultiSignTx => 4,
             BillKind::SigningFee => 5,
+            BillKind::Freeze => 6,
+            BillKind::UnFeeze => 7,
+            BillKind::CancelAllUnFeeze => 8,
+            BillKind::WithdrawUnFeeze => 9,
+            BillKind::Delegate => 10,
+            BillKind::BatchDelegate => 11,
+            BillKind::UnDelegate => 12,
+            BillKind::BatchUnDelegate => 13,
+            BillKind::Vote => 14,
         }
     }
 }
@@ -123,6 +150,15 @@ impl TryFrom<i8> for BillKind {
             3 => Ok(BillKind::ServiceCharge),
             4 => Ok(BillKind::MultiSignTx),
             5 => Ok(BillKind::SigningFee),
+            6 => Ok(BillKind::Freeze),
+            7 => Ok(BillKind::UnFeeze),
+            8 => Ok(BillKind::CancelAllUnFeeze),
+            9 => Ok(BillKind::WithdrawUnFeeze),
+            10 => Ok(BillKind::Delegate),
+            11 => Ok(BillKind::BatchDelegate),
+            12 => Ok(BillKind::UnDelegate),
+            13 => Ok(BillKind::BatchUnDelegate),
+            14 => Ok(BillKind::Vote),
             _ => Err(crate::Error::Other(format!(
                 "Invalid value for TxKind : {}",
                 value
