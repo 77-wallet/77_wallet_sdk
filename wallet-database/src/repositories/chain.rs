@@ -78,4 +78,12 @@ pub trait ChainRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, ChainEntity::chain_node_info, chain_code)
     }
+
+    async fn chain_node_info_left_join(
+        &mut self,
+        chain_code: &str,
+    ) -> Result<Option<ChainWithNode>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, ChainEntity::chain_node_info_left_join, chain_code)
+    }
 }

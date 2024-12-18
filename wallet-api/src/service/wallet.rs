@@ -346,12 +346,18 @@ impl WalletService {
 
                 let code: ChainCode = chain_code.as_str().try_into()?;
                 for btc_address_type in btc_address_types {
-                    let Some(chain) = tx.detail_with_node(chain_code).await? else {
+                    let Some(chain) = tx.chain_node_info_left_join(chain_code).await? else {
+                        tracing::warn!("[create_wallet] chain not found: {chain_code}");
                         continue;
                     };
-
+                    // TODO：后续想好的办法
+                    let network = if chain.network.is_empty() {
+                        "mainnet"
+                    } else {
+                        chain.network.as_str()
+                    };
                     let instance: wallet_chain_instance::instance::ChainObject =
-                        (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
+                        (&code, &btc_address_type, network.into()).try_into()?;
 
                     let address = self
                         .account_domain

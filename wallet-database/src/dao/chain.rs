@@ -261,6 +261,25 @@ impl ChainEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn chain_node_info_left_join<'a, E>(
+        exec: E,
+        chain_code: &str,
+    ) -> Result<Option<ChainWithNode>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+                            select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
+                            from chain as q  
+                            left join node a on q.node_id = a.node_id
+                            where q.chain_code = ? and q.status = 1;"#;
+        sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
+            .bind(chain_code)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn get_chain_list_in_chain_code(
         db: std::sync::Arc<sqlx::Pool<sqlx::Sqlite>>,
         chain_codes: Vec<&str>,
