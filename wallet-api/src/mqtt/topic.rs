@@ -137,6 +137,7 @@ impl Topics {
                 }
             }
         }
+        tracing::warn!("取消订阅完成");
         Ok(())
     }
 
