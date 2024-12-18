@@ -16,10 +16,14 @@ impl FrontendNotifyEvent {
     }
 
     pub(crate) async fn send_error<T: serde::Serialize>(
+        event: &str,
         message: T,
     ) -> Result<(), crate::ServiceError> {
-        let message = wallet_utils::serde_func::serde_to_value(message)?;
-        let data = crate::notify::NotifyEvent::Debug(event::other::DebugFront { message });
+        let message = wallet_utils::serde_func::serde_to_string(&message)?;
+        let data = crate::notify::NotifyEvent::Err(event::other::ErrFront {
+            event: event.to_string(),
+            message,
+        });
         match crate::notify::FrontendNotifyEvent::new(data).send().await {
             Ok(_) => tracing::debug!("[mqtt] send debug message ok"),
             Err(e) => tracing::error!("[mqtt] send debug message error: {e}"),

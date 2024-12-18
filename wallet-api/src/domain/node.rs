@@ -102,9 +102,9 @@ impl NodeDomain {
         // 比较filtered_nodes 和 backend_nodes的节点，把backend_nodes中没有，filtered_nodes有的节点，删除
 
         let backend_node_rpcs: HashSet<String> =
-            backend_nodes.iter().map(|n| n.rpc_url.clone()).collect();
+            backend_nodes.iter().map(|n| n.node_id.clone()).collect();
         for node in filtered_nodes {
-            if !backend_node_rpcs.contains(&node.rpc_url) {
+            if !backend_node_rpcs.contains(&node.node_id) {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }

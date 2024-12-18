@@ -99,9 +99,10 @@ pub async fn exec_incoming_publish(
                 .await?
                 .is_none()
             {
+                let event = wallet_utils::serde_func::serde_to_string(&payload.biz_type)?;
                 if let Err(e) = exec_payload(payload).await {
                     tracing::error!("exec_payload error: {}", e);
-                    if let Err(e) = FrontendNotifyEvent::send_error(e.to_string()).await {
+                    if let Err(e) = FrontendNotifyEvent::send_error(&event,e.to_string()).await {
                         tracing::error!("send_error error: {}", e);
                     }
                 };
