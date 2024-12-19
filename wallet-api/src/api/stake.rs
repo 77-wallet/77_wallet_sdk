@@ -1,22 +1,21 @@
 use super::ReturnType;
 use crate::{
-    request::stake::{DelegateReq, FreezeBalanceReq, UnFreezeBalanceReq},
+    request::stake::{DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq},
     response_vo::{
         account::AccountResource,
         stake::{
-            CanDelegatedResp, DelegateResp, EstimatedResourcesResp, FreezeListResp,
-            UnfreezeListResp,
+            CanDelegatedResp, DelegateListResp, DelegateResp, EstimatedResourcesResp,
+            FreezeListResp, FreezeResp, UnfreezeListResp, WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,
 };
-use wallet_database::{entities::stake::DelegateEntity, pagination::Pagination};
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 
 impl crate::WalletManager {
     // account resource
     pub async fn resource_info(&self, account: String) -> ReturnType<AccountResource> {
-        let service = StackService::new(self.repo_factory.stake_repo());
+        let service = StackService::new().await?;
         service.account_resource(&account).await?.into()
     }
 
@@ -25,8 +24,9 @@ impl crate::WalletManager {
         &self,
         req: FreezeBalanceReq,
         password: String,
-    ) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
+    ) -> ReturnType<FreezeResp> {
+        StackService::new()
+            .await?
             .freeze_balance(req, &password)
             .await?
             .into()
@@ -37,8 +37,9 @@ impl crate::WalletManager {
         &self,
         req: UnFreezeBalanceReq,
         password: String,
-    ) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
+    ) -> ReturnType<FreezeResp> {
+        StackService::new()
+            .await?
             .un_freeze_balance(req, &password)
             .await?
             .into()
@@ -46,14 +47,16 @@ impl crate::WalletManager {
 
     // freeze list
     pub async fn freeze_list(&self, owner_address: String) -> ReturnType<Vec<FreezeListResp>> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .freeze_list(&owner_address)
             .await?
             .into()
     }
 
     pub async fn un_freeze_list(&self, owner_address: String) -> ReturnType<Vec<UnfreezeListResp>> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .un_freeze_list(&owner_address)
             .await?
             .into()
@@ -64,7 +67,8 @@ impl crate::WalletManager {
         owner_address: String,
         password: String,
     ) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .cancel_all_unfreeze(&owner_address, &password)
             .await
             .into()
@@ -75,8 +79,9 @@ impl crate::WalletManager {
         &self,
         owner_address: String,
         password: String,
-    ) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
+    ) -> ReturnType<WithdrawUnfreezeResp> {
+        StackService::new()
+            .await?
             .withdraw_unfreeze(&owner_address, &password)
             .await?
             .into()
@@ -105,21 +110,24 @@ impl crate::WalletManager {
         value: i64,
         resource_type: String,
     ) -> ReturnType<EstimatedResourcesResp> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .get_estimated_resources(account, value, resource_type)
             .await?
             .into()
     }
 
     pub async fn system_resource(&self, account: String) -> ReturnType<SystemEnergyResp> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .system_resource(account)
             .await?
             .into()
     }
 
     pub async fn request_energy(&self, account: String, energy: i64) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .request_energy(account, energy)
             .await?
             .into()
@@ -131,7 +139,8 @@ impl crate::WalletManager {
         account: String,
         resource_type: String,
     ) -> ReturnType<CanDelegatedResp> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .can_delegated_max(account, resource_type)
             .await?
             .into()
@@ -142,28 +151,44 @@ impl crate::WalletManager {
         req: DelegateReq,
         password: String,
     ) -> ReturnType<DelegateResp> {
-        StackService::new(self.repo_factory.stake_repo())
+        StackService::new()
+            .await?
             .delegate_resource(req, &password)
             .await?
             .into()
     }
 
-    pub async fn delegate_list(
+    // 回收资源
+    pub async fn un_delegate_resource(
         &self,
-        owner_address: String,
-        resource_type: String,
-        page: i64,
-        page_size: i64,
-    ) -> ReturnType<Pagination<DelegateEntity>> {
-        StackService::new(self.repo_factory.stake_repo())
-            .delegate_list(&owner_address, &resource_type, page, page_size)
+        req: UnDelegateReq,
+        password: String,
+    ) -> ReturnType<DelegateResp> {
+        StackService::new()
+            .await?
+            .un_delegate_resource(req, password)
             .await?
             .into()
     }
 
-    pub async fn un_delegate_resource(&self, id: String, password: String) -> ReturnType<String> {
-        StackService::new(self.repo_factory.stake_repo())
-            .un_delegate_resource(id, &password)
+    pub async fn delegate_to_other(
+        &self,
+        owner_address: String,
+    ) -> ReturnType<Vec<DelegateListResp>> {
+        StackService::new()
+            .await?
+            .delegate_to_other(&owner_address)
+            .await?
+            .into()
+    }
+
+    pub async fn delegate_from_other(
+        &self,
+        owner_address: String,
+    ) -> ReturnType<Vec<DelegateListResp>> {
+        StackService::new()
+            .await?
+            .delegate_from_other(&owner_address)
             .await?
             .into()
     }

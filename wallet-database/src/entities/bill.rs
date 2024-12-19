@@ -89,7 +89,7 @@ impl BillStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum BillKind {
     // 普通交易
     Transfer = 1,
@@ -250,7 +250,7 @@ impl NewBillEntity {
     }
 
     // 构建质押相关的交易
-    pub fn new_stake_bill(hash: String, from: String, tx_kind: BillKind) -> Self {
+    pub fn new_stake_bill(hash: String, from: String, bill_kind: BillKind) -> Self {
         Self {
             hash,
             from,
@@ -265,7 +265,7 @@ impl NewBillEntity {
             transaction_time: 0,
             multisig_tx: false,
             tx_type: 1,
-            tx_kind,
+            tx_kind: bill_kind,
             queue_id: "".to_string(),
             block_height: "0".to_string(),
             notes: "".to_string(),
