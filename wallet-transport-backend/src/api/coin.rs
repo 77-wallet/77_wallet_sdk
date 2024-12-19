@@ -333,6 +333,7 @@ mod test {
             .await
             .unwrap();
 
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         println!("[test_token_list] res: {:?}", res);
     }
 

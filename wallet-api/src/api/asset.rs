@@ -234,10 +234,10 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
 
-        let address = "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF";
+        let address = "0xC24FCE9Ae9dEF3d18B926B363EaE25a22Ed71F9f";
         let account_id = None;
-        let chain_code = "tron";
-        let symbol = "TRX";
+        let chain_code = "bnb";
+        let symbol = "BNB";
         let res = wallet_manager
             .get_assets(address, account_id, chain_code, symbol)
             .await;
