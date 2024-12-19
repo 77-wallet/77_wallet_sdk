@@ -101,7 +101,6 @@ impl AccountDomain {
     }
 
     pub async fn create_account_with_derivation_path(
-        &self,
         repo: &mut ResourcesRepo,
         dirs: &crate::manager::Dirs,
         seed: &[u8],
@@ -115,21 +114,20 @@ impl AccountDomain {
         name: &str,
         is_default_name: bool,
     ) -> Result<CreateAccountRes, crate::ServiceError> {
-        let (address, name) = self
-            .derive_subkey(
-                repo,
-                dirs,
-                seed,
-                account_index_map,
-                &instance,
-                derivation_path,
-                wallet_address,
-                root_password,
-                derive_password,
-                name,
-                is_default_name,
-            )
-            .await?;
+        let (address, name) = Self::derive_subkey(
+            repo,
+            dirs,
+            seed,
+            account_index_map,
+            &instance,
+            derivation_path,
+            wallet_address,
+            root_password,
+            derive_password,
+            name,
+            is_default_name,
+        )
+        .await?;
 
         let res = CreateAccountRes {
             address: address.to_string(),
@@ -182,7 +180,6 @@ impl AccountDomain {
     }
 
     pub async fn create_account_with_account_id(
-        &self,
         repo: &mut ResourcesRepo,
         dirs: &crate::manager::Dirs,
         seed: &[u8],
@@ -195,21 +192,20 @@ impl AccountDomain {
         name: &str,
         is_default_name: bool,
     ) -> Result<CreateAccountRes, crate::ServiceError> {
-        let (address, name) = self
-            .derive_subkey(
-                repo,
-                dirs,
-                seed,
-                account_index_map,
-                &instance,
-                &None,
-                wallet_address,
-                root_password,
-                derive_password,
-                name,
-                is_default_name,
-            )
-            .await?;
+        let (address, name) = Self::derive_subkey(
+            repo,
+            dirs,
+            seed,
+            account_index_map,
+            &instance,
+            &None,
+            wallet_address,
+            root_password,
+            derive_password,
+            name,
+            is_default_name,
+        )
+        .await?;
 
         let res = CreateAccountRes {
             address: address.to_string(),
@@ -228,7 +224,6 @@ impl AccountDomain {
     }
 
     pub(crate) async fn derive_subkey(
-        &self,
         repo: &mut ResourcesRepo,
         dirs: &crate::manager::Dirs,
         seed: &[u8],

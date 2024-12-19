@@ -47,7 +47,6 @@ impl WalletDomain {
     }
 
     pub(crate) fn get_seed_wallet(
-        &self,
         dirs: &crate::manager::Dirs,
         wallet_address: &str,
         wallet_password: &str,

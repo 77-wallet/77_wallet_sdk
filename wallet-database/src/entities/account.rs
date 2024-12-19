@@ -89,3 +89,13 @@ impl QueryReq {
         }
     }
 }
+
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountWalletMapping {
+    pub account_id: u32,
+    #[sqlx(rename = "name")]
+    pub account_name: String,
+    pub wallet_address: String,
+    pub uid: String,
+}
