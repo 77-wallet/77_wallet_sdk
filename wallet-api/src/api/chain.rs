@@ -37,6 +37,20 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn sync_chains(&self) -> ReturnType<bool> {
+        ChainService::new(self.repo_factory.resuource_repo())
+            .sync_chains()
+            .await?
+            .into()
+    }
+
+    pub async fn sync_wallet_chain_data(&self, wallet_password: &str) -> ReturnType<()> {
+        ChainService::new(self.repo_factory.resuource_repo())
+            .sync_wallet_chain_data(wallet_password)
+            .await?
+            .into()
+    }
+
     pub async fn get_hot_chain_list(&self) -> ReturnType<Vec<ChainEntity>> {
         ChainService::new(self.repo_factory.resuource_repo())
             .get_chain_list()
@@ -187,6 +201,34 @@ mod tests {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
         let res = wallet_manager.get_hot_chain_list().await;
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sync_chains() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { wallet_manager, .. } =
+            setup_test_environment(None, None, false, None).await?;
+        let res = wallet_manager.sync_chains().await;
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sync_wallet_chain_data() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData {
+            wallet_manager,
+            wallet_env,
+        } = setup_test_environment(None, None, false, None).await?;
+        let res = wallet_manager
+            .sync_wallet_chain_data(&wallet_env.password)
+            .await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())

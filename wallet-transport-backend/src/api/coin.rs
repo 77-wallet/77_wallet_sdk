@@ -443,10 +443,10 @@ mod test {
         let req = TokenQueryPriceReq(vec![TokenQueryPrice {
             // chain_code: "eth".to_string(),
             // chain_code: "doge".to_string(),
-            chain_code: "tron".to_string(),
+            chain_code: "bnb".to_string(),
             // contract_address_list: vec!["0x111111111117dc0aa78b770fa6a738034120c302".to_string()],
             // contract_address_list: vec!["0x514910771AF9Ca656af840dff83E8264EcF986CA".to_string()],
-            contract_address_list: vec!["".to_string()],
+            contract_address_list: vec!["0x55d398326f99059fF775485246999027B3197955".to_string()],
         }]);
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()

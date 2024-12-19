@@ -1,7 +1,7 @@
 use crate::response_vo;
 use reqwest::Url;
 use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
-use wallet_database::repositories::chain::ChainRepoTrait;
+use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
 use wallet_types::chain::network;
 
 pub mod adapter;
@@ -91,7 +91,7 @@ pub struct ChainDomain;
 impl ChainDomain {
     pub(crate) async fn upsert_multi_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::chain::ChainList,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<bool, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -103,13 +103,24 @@ impl ChainDomain {
         let default_nodes =
             wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(1)).await?;
 
+        let chain_list = ChainRepoTrait::get_chain_list(&mut repo).await?;
+
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
+        let mut has_new_chain = false;
+        let account_list = AccountRepoTrait::list(&mut repo).await?;
         for chain in chains.list {
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
             };
             let status = if chain.enable { 1 } else { 0 };
+
+            if account_list
+                .iter()
+                .all(|acc_chain| acc_chain.chain_code != chain.chain_code && chain.enable)
+            {
+                has_new_chain = true;
+            }
 
             if let Some(node) = local_backend_nodes
                 .iter()
@@ -146,7 +157,7 @@ impl ChainDomain {
         ChainRepoTrait::upsert_multi_chain(&mut repo, input).await?;
         Self::toggle_chains(&mut repo, chain_codes).await?;
 
-        Ok(())
+        Ok(has_new_chain)
     }
 
     pub(crate) async fn toggle_chains(

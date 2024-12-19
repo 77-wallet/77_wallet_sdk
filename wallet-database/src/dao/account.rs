@@ -1,6 +1,6 @@
 use sqlx::{Executor, Sqlite};
 
-use crate::entities::account::{AccountEntity, CreateAccountVo};
+use crate::entities::account::{AccountEntity, AccountWalletMapping, CreateAccountVo};
 
 impl AccountEntity {
     pub async fn upsert_multi_account<'a, E>(
@@ -91,6 +91,31 @@ impl AccountEntity {
         sqlx::query_as::<sqlx::Sqlite, AccountEntity>(sql)
             .bind(wallet_address)
             .fetch_optional(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn account_wallet_mapping<'a, E>(
+        executor: E,
+    ) -> Result<Vec<AccountWalletMapping>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT DISTINCT 
+                account.account_id,
+                account.name,
+                account.wallet_address,
+                wallet.uid
+            FROM 
+                account
+            LEFT JOIN 
+                wallet
+            ON 
+                account.wallet_address = wallet.address;
+            "#;
+        sqlx::query_as::<sqlx::Sqlite, AccountWalletMapping>(sql)
+            .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }

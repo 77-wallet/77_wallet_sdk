@@ -1,4 +1,4 @@
-use crate::entities::account::{AccountEntity, CreateAccountVo};
+use crate::entities::account::{AccountEntity, AccountWalletMapping, CreateAccountVo};
 
 // use super::TransactionTrait;
 
@@ -75,6 +75,11 @@ pub trait AccountRepoTrait: super::TransactionTrait {
             status: Some(1),
         };
         crate::execute_with_executor!(executor, AccountEntity::detail, &req)
+    }
+
+    async fn account_wallet_mapping(&mut self) -> Result<Vec<AccountWalletMapping>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, AccountEntity::account_wallet_mapping,)
     }
 
     async fn edit_account_name(

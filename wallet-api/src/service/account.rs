@@ -24,7 +24,6 @@ use crate::{
 
 pub struct AccountService {
     pub repo: ResourcesRepo,
-    pub account_domain: AccountDomain,
     pub wallet_domain: WalletDomain,
     // keystore: wallet_keystore::Keystore
 }
@@ -33,7 +32,6 @@ impl AccountService {
     pub fn new(repo: ResourcesRepo) -> Self {
         Self {
             repo,
-            account_domain: AccountDomain::new(),
             wallet_domain: WalletDomain::new(),
         }
     }
@@ -112,9 +110,7 @@ impl AccountService {
             .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
 
         // 获取种子
-        let seed_wallet =
-            self.wallet_domain
-                .get_seed_wallet(dirs, &wallet.address, wallet_password)?;
+        let seed_wallet = WalletDomain::get_seed_wallet(dirs, &wallet.address, wallet_password)?;
         // 获取默认链和币
         let default_chain_list = tx.get_chain_list().await?;
         let default_coins_list = tx.default_coin_list().await?;
@@ -181,23 +177,21 @@ impl AccountService {
                 let instance: wallet_chain_instance::instance::ChainObject =
                     (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
 
-                let res = self
-                    .account_domain
-                    .create_account_with_derivation_path(
-                        &mut tx,
-                        dirs,
-                        &seed_wallet.seed,
-                        instance,
-                        &derivation_path,
-                        &account_index_map,
-                        &wallet.uid,
-                        &wallet.address,
-                        wallet_password,
-                        derive_password.clone(),
-                        name,
-                        is_default_name,
-                    )
-                    .await?;
+                let res = AccountDomain::create_account_with_derivation_path(
+                    &mut tx,
+                    dirs,
+                    &seed_wallet.seed,
+                    instance,
+                    &derivation_path,
+                    &account_index_map,
+                    &wallet.uid,
+                    &wallet.address,
+                    wallet_password,
+                    derive_password.clone(),
+                    name,
+                    is_default_name,
+                )
+                .await?;
                 for coin in &default_coins_list {
                     if &coin.chain_code == chain_code {
                         let assets_id = AssetsId::new(&res.address, chain_code, &coin.symbol);

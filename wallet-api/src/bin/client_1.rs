@@ -171,6 +171,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //         ],
     //         None,
     //     )
+    //     .await
+    //     .result
+    //     .unwrap();
+    // tracing::info!("create_wallet res: {_res:?}");
+    // let elapsed_time = start_time.elapsed();
+    // tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
+    // wallet_manager
+    //     .create_account(
+    //         &_res.address,
+    //         &password,
+    //         None,
+    //         None,
+    //         None,
+    //         account_name,
+    //         true,
+    //     )
+    //     .await
+    //     .result
+    //     .unwrap();
+    // tracing::info!("create_account res: {_res:?}");
+    // let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    // tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+    // let res = wallet_manager
+    //     .mqtt_subscribe(
+    //         vec![
+    //             // "wallet/token/eth/eth".to_string(),
+    //             // "wallet/token/eth/link".to_string(),
+    //             "wallet/token/eth/cake".to_string(),
+    //             "wallet/token/eth/usdc".to_string(),
+    //             "wallet/token/tron/usdt".to_string(),
+    //             "wallet/token/tron/trx".to_string(),
+    //             "wallet/token/tron/sun".to_string(),
+    //             "wallet/token/tron/win".to_string(),
+    //         ],
+    //         None,
+    //     )
     //     .await;
     // tracing::info!("mqtt_subscribe res: {res:?}");
     // tokio::spawn(async move {

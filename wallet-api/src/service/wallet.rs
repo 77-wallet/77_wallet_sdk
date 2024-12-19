@@ -44,7 +44,6 @@ struct Export {
 pub struct WalletService {
     pub repo: ResourcesRepo,
     wallet_domain: WalletDomain,
-    account_domain: AccountDomain,
     assets_domain: AssetsDomain,
     coin_domain: CoinDomain,
 }
@@ -54,7 +53,6 @@ impl WalletService {
         Self {
             repo,
             wallet_domain: WalletDomain::new(),
-            account_domain: AccountDomain::new(),
             assets_domain: AssetsDomain::new(),
             coin_domain: CoinDomain::new(),
         }
@@ -183,9 +181,7 @@ impl WalletService {
         wallet_utils::file_func::read(&mut buf, path)?;
 
         let datas: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
-        let seed_wallet =
-            self.wallet_domain
-                .get_seed_wallet(dirs, wallet_address, wallet_password)?;
+        let seed_wallet = WalletDomain::get_seed_wallet(dirs, wallet_address, wallet_password)?;
 
         let wallet = tx
             .wallet_detail_by_address(wallet_address)
@@ -208,23 +204,21 @@ impl WalletService {
                 chain.network.as_str().into(),
             )?;
 
-            let account = self
-                .account_domain
-                .create_account_with_derivation_path(
-                    &mut tx,
-                    dirs,
-                    &seed_wallet.seed,
-                    instance,
-                    &Some(data.derivation_path),
-                    &account_index_map,
-                    &wallet.uid,
-                    wallet_address,
-                    wallet_password,
-                    None,
-                    account_name,
-                    is_default_name,
-                )
-                .await?;
+            let account = AccountDomain::create_account_with_derivation_path(
+                &mut tx,
+                dirs,
+                &seed_wallet.seed,
+                instance,
+                &Some(data.derivation_path),
+                &account_index_map,
+                &wallet.uid,
+                wallet_address,
+                wallet_password,
+                None,
+                account_name,
+                is_default_name,
+            )
+            .await?;
             accounts.push(account.address)
         }
 
@@ -359,22 +353,20 @@ impl WalletService {
                     let instance: wallet_chain_instance::instance::ChainObject =
                         (&code, &btc_address_type, network.into()).try_into()?;
 
-                    let address = self
-                        .account_domain
-                        .create_account_with_account_id(
-                            tx,
-                            dirs,
-                            &seed,
-                            instance,
-                            &account_index_map,
-                            &uid,
-                            address,
-                            wallet_password,
-                            derive_password.clone(),
-                            account_name,
-                            is_default_name,
-                        )
-                        .await?;
+                    let address = AccountDomain::create_account_with_account_id(
+                        tx,
+                        dirs,
+                        &seed,
+                        instance,
+                        &account_index_map,
+                        &uid,
+                        address,
+                        wallet_password,
+                        derive_password.clone(),
+                        account_name,
+                        is_default_name,
+                    )
+                    .await?;
                     for coin in &coins {
                         if chain_code == &coin.chain_code {
                             let assets_id =
