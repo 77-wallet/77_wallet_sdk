@@ -116,7 +116,7 @@ async fn test_resource_to_trx() {
 
     let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let value = 7200;
-    let resource_type = "bandwith".to_string();
+    let resource_type = "bandwidth".to_string();
 
     let res = manager.resource_to_trx(account, value, resource_type).await;
     tracing::info!("response = {}", serde_json::to_string(&res).unwrap());
