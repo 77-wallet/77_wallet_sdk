@@ -1,6 +1,9 @@
 use super::ReturnType;
 use crate::{
-    request::stake::{DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq},
+    request::stake::{
+        DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
+        WithdrawBalanceReq,
+    },
     response_vo::{
         self,
         account::AccountResource,
@@ -215,6 +218,64 @@ impl crate::WalletManager {
         StackService::new()
             .await?
             .delegate_from_other(&owner_address)
+            .await?
+            .into()
+    }
+
+    // ************************************************ vote *********************************************************
+    // pub async fn votes_fee_estimation(&self, account: String) -> ReturnType<VoteFeeResp> {
+    //     StackService::new()
+    //         .await?
+    //         .votes_fee_estimation(account)
+    //         .await?
+    //         .into()
+    // }
+
+    pub async fn votes(&self, req: VoteWitnessReq, password: &str) -> ReturnType<String> {
+        StackService::new()
+            .await?
+            .votes(req, password)
+            .await?
+            .into()
+    }
+
+    pub async fn votes_overview(&self, account: String)
+    // -> ReturnType<VoteOverviewResp>
+    {
+        todo!()
+        // StackService::new()
+        //     .await?
+        //     .vote_overview(account)
+        //     .await?
+        //     .into()
+    }
+
+    pub async fn votes_node_list(&self, account: String)
+    // -> ReturnType<Vec<VoteListResp>>
+    {
+        todo!()
+        // StackService::new().await?.vote_list(account).await?.into()
+    }
+
+    pub async fn votes_top_rewards(&self, account: String)
+    // -> ReturnType<VoteTopRewardsResp>
+    {
+        todo!()
+        // StackService::new()
+        //     .await?
+        //     .vote_top_rewards(account)
+        //     .await?
+        //     .into()
+    }
+
+    pub async fn votes_claim_rewards(
+        &self,
+        req: WithdrawBalanceReq,
+        password: &str,
+    ) -> ReturnType<String> {
+        StackService::new()
+            .await?
+            .votes_claim_rewards(req, password)
             .await?
             .into()
     }
