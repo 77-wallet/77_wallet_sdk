@@ -94,50 +94,47 @@ pub enum BillKind {
     // 普通交易
     Transfer = 1,
     // 部署多签账号手续费
-    DeployMultiSign,
+    DeployMultiSign = 2,
     // 服务费
-    ServiceCharge,
+    ServiceCharge = 3,
     // 多签交易
-    MultiSignTx,
+    MultiSignTx = 4,
     // 多签交易签名费
-    SigningFee,
-    // 质押
-    Freeze,
-    // 解质押
-    UnFeeze,
+    SigningFee = 5,
+    // 质押带宽
+    FreezeBandwidth = 6,
+    // 质押能量
+    FreezeEnergy = 7,
+    // 解质带宽
+    UnFreezeBandwidth = 8,
+    // 解质能量
+    UnFreezeEnergy = 9,
     // 全部取消质押
-    CancelAllUnFeeze,
+    CancelAllUnFreeze = 10,
     // 质押提取
-    WithdrawUnFeeze,
-    // 委派
-    Delegate,
-    // 批量委派
-    BatchDelegate,
-    // 回收
-    UnDelegate,
-    // 批量回收
-    BatchUnDelegate,
+    WithdrawUnFreeze = 11,
+    // 委派带宽
+    DelegateBandwidth = 12,
+    // 委派能量
+    DelegateEnergy = 13,
+    // 批量委派(带宽)
+    BatchDelegateBandwidth = 14,
+    // 批量委派(能量)
+    BatchDelegateEnergy = 15,
+    // 回收带宽
+    UnDelegateBandwidth = 16,
+    // 回收能量
+    UnDelegateEnergy = 17,
+    // 批量回收带宽
+    BatchUnDelegateBandwidth = 18,
+    // 批量回收能量
+    BatchUnDelegateEnergy = 19,
     // 投票
-    Vote,
+    Vote = 20,
 }
 impl BillKind {
     pub fn to_i8(&self) -> i8 {
-        match self {
-            BillKind::Transfer => 1,
-            BillKind::DeployMultiSign => 2,
-            BillKind::ServiceCharge => 3,
-            BillKind::MultiSignTx => 4,
-            BillKind::SigningFee => 5,
-            BillKind::Freeze => 6,
-            BillKind::UnFeeze => 7,
-            BillKind::CancelAllUnFeeze => 8,
-            BillKind::WithdrawUnFeeze => 9,
-            BillKind::Delegate => 10,
-            BillKind::BatchDelegate => 11,
-            BillKind::UnDelegate => 12,
-            BillKind::BatchUnDelegate => 13,
-            BillKind::Vote => 14,
-        }
+        *self as i8
     }
 }
 
@@ -151,15 +148,21 @@ impl TryFrom<i8> for BillKind {
             3 => Ok(BillKind::ServiceCharge),
             4 => Ok(BillKind::MultiSignTx),
             5 => Ok(BillKind::SigningFee),
-            6 => Ok(BillKind::Freeze),
-            7 => Ok(BillKind::UnFeeze),
-            8 => Ok(BillKind::CancelAllUnFeeze),
-            9 => Ok(BillKind::WithdrawUnFeeze),
-            10 => Ok(BillKind::Delegate),
-            11 => Ok(BillKind::BatchDelegate),
-            12 => Ok(BillKind::UnDelegate),
-            13 => Ok(BillKind::BatchUnDelegate),
-            14 => Ok(BillKind::Vote),
+            6 => Ok(BillKind::FreezeBandwidth),
+            7 => Ok(BillKind::FreezeEnergy),
+            8 => Ok(BillKind::UnFreezeBandwidth),
+            9 => Ok(BillKind::UnFreezeEnergy),
+            10 => Ok(BillKind::CancelAllUnFreeze),
+            11 => Ok(BillKind::WithdrawUnFreeze),
+            12 => Ok(BillKind::DelegateBandwidth),
+            13 => Ok(BillKind::DelegateEnergy),
+            14 => Ok(BillKind::BatchDelegateBandwidth),
+            15 => Ok(BillKind::BatchDelegateEnergy),
+            16 => Ok(BillKind::UnDelegateBandwidth),
+            17 => Ok(BillKind::UnDelegateEnergy),
+            18 => Ok(BillKind::BatchUnDelegateBandwidth),
+            19 => Ok(BillKind::BatchUnDelegateEnergy),
+            20 => Ok(BillKind::Vote),
             _ => Err(crate::Error::Other(format!(
                 "Invalid value for TxKind : {}",
                 value

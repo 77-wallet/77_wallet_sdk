@@ -62,6 +62,23 @@ impl BillDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    // 查询某种类型的最后一笔交易
+    pub async fn last_kind_bill<'a, E>(
+        exec: E,
+        owner_address: &str,
+        bill_kind: Vec<i8>,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let kinds = crate::any_in_collection(bill_kind, "','");
+        let sql = format!("select * from bill where owner = '{}' and tx_kind in ('{}') ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1",owner_address,kinds);
+        sqlx::query_as::<_, BillEntity>(&sql)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn bill_lists<'a, E>(
         pool: &E,
         addr: &[String],

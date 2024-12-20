@@ -3,7 +3,7 @@ use wallet_chain_interact::tron::{
     operations::stake::{self, DelegateArgs, UnDelegateArgs, UnFreezeBalanceArgs},
 };
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct FreezeBalanceReq {
     pub owner_address: String,
     pub resource: String,
