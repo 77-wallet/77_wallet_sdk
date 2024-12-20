@@ -344,7 +344,11 @@ impl CoinService {
         protocol: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
-        domain::chain::check_address(token_address, chain_code.try_into()?, net)?;
+        let token_address = token_address.to_lowercase();
+        let token_address = token_address.as_str();
+
+        let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
+        domain::chain::check_address(token_address, chain, net)?;
         let tx = &mut self.repo;
         let Some(_) = tx.detail_with_node(chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
@@ -445,10 +449,16 @@ impl CoinService {
             wallet_transport_backend::consts::endpoint::TOKEN_CUSTOM_TOKEN_INIT,
             &req,
         )?;
+
+        let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
+        req.insert(chain_code, token_address);
+        let task =
+            domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 token_custom_init_task_data,
             )))
+            .push(task)
             .send()
             .await?;
         Ok(())
