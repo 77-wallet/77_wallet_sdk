@@ -28,3 +28,29 @@ pub struct SystemEnergyResp {
     // 领取状态
     pub status: bool,
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListWitnessResp {
+    pub witnesses: Vec<Witness>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Witness {
+    pub address: String,
+    pub vote_count: Option<i64>,
+    pub url: String,
+    pub brokerage: i64,
+}
+
+impl Witness {
+    pub fn new(address: &str, vote_count: Option<i64>, url: &str, brokerage: i64) -> Self {
+        Self {
+            address: wallet_utils::address::bs58_addr_to_hex(address).unwrap(),
+            vote_count,
+            url: url.to_string(),
+            brokerage,
+        }
+    }
+}

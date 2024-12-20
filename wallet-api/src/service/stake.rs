@@ -10,6 +10,8 @@ use crate::notify::FrontendNotifyEvent;
 use crate::notify::NotifyEvent;
 use crate::request::stake;
 use crate::request::stake::UnDelegateReq;
+use crate::request::stake::VoteWitnessReq;
+use crate::request::stake::WithdrawBalanceReq;
 use crate::response_vo::account::AccountResource;
 use crate::response_vo::account::Resource;
 use crate::response_vo::account::TrxResource;
@@ -663,5 +665,97 @@ impl StackService {
         }
 
         Ok(res.order_id)
+    }
+
+    pub async fn votes_fee_estimation(
+        &self,
+        req: VoteWitnessReq,
+        password: &str,
+    ) -> Result<String, crate::error::ServiceError> {
+        // let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
+
+        // let tx_hash = self
+        //     .process_transaction(args, BillKind::Vote, &req.owner_address, password)
+        //     .await?;
+        todo!();
+
+        // Ok(tx_hash)
+    }
+
+    // #[derive(serde::Deserialize, serde::Serialize, Debug)]
+    // pub struct ListWitnessResp {
+    //     pub witnesses: Vec<Witness>,
+    // }
+
+    // #[derive(serde::Deserialize, serde::Serialize, Debug)]
+    // #[serde(rename_all = "camelCase")]
+    // pub struct Witness {
+    //     pub address: String,
+    //     pub vote_count: Option<i64>,
+    //     pub url: String,
+    //     total_produced: Option<i64>,
+    //     total_missed: Option<i64>,
+    //     latest_block_num: Option<i64>,
+    //     latest_slot_num: Option<i64>,
+    //     is_jobs: Option<bool>,
+    // }
+    pub async fn vote_list(
+        &self,
+        req: VoteWitnessReq,
+    ) -> Result<
+        wallet_transport_backend::response_vo::stake::ListWitnessResp,
+        crate::error::ServiceError,
+    > {
+        let list = self.chain.get_provider().list_witnesses().await?;
+
+        //总票数
+        let total_votes = list
+            .witnesses
+            .iter()
+            .map(|w| w.vote_count.unwrap_or(0))
+            .sum::<i64>();
+
+        // let mut result = vec![];
+        // for w in list.witnesses {
+        //     let brokerage = self.chain.get_provider().get_brokerage(&w.address).await?;
+        //     let witness = wallet_transport_backend::response_vo::stake::Witness::new(
+        //         &w.address,
+        //         w.vote_count,
+        //         &w.url,
+        //         brokerage.brokerages,
+        //     );
+        //     result.push(resp::VoteWitnessResp::from_witness(&witness, brokerage));
+        // }
+
+        todo!()
+        // Ok(list)
+    }
+
+    pub async fn votes(
+        &self,
+        req: VoteWitnessReq,
+        password: &str,
+    ) -> Result<String, crate::error::ServiceError> {
+        let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
+
+        let tx_hash = self
+            .process_transaction(args, BillKind::Vote, &req.owner_address, password)
+            .await?;
+
+        Ok(tx_hash)
+    }
+
+    pub async fn votes_claim_rewards(
+        &self,
+        req: WithdrawBalanceReq,
+        password: &str,
+    ) -> Result<String, crate::error::ServiceError> {
+        let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
+
+        let tx_hash = self
+            .process_transaction(args, BillKind::Vote, &req.owner_address, password)
+            .await?;
+
+        Ok(tx_hash)
     }
 }
