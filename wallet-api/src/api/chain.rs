@@ -1,22 +1,17 @@
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
-use crate::{
-    api::ReturnType,
-    response_vo::chain::ChainAssets,
-    service::{chain::ChainService, node::NodeService},
-};
+use crate::{api::ReturnType, response_vo::chain::ChainAssets, service::chain::ChainService};
 
 impl crate::WalletManager {
     pub async fn add_chain(
         &self,
         name: &str,
         chain_code: &str,
+        // TODO: 移除参数
         rpc_url: &str,
+        // TODO: 移除参数
         ws_url: &str,
     ) -> ReturnType<()> {
-        let _node_id = NodeService::new(self.repo_factory.resuource_repo())
-            .add_node(name, chain_code, rpc_url, ws_url)
-            .await?;
         ChainService::new(self.repo_factory.resuource_repo())
             .add(name, chain_code, &[], "")
             .await?

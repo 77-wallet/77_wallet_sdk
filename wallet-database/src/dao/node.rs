@@ -3,14 +3,20 @@ use sqlx::{Executor, Sqlite};
 use crate::entities::node::{NodeCreateVo, NodeEntity};
 
 impl NodeCreateVo {
-    pub fn new(node_id: &str, name: &str, chain_code: &str, rpc_url: &str) -> NodeCreateVo {
+    pub fn new(
+        node_id: &str,
+        name: &str,
+        chain_code: &str,
+        rpc_url: &str,
+        http_url: Option<String>,
+    ) -> NodeCreateVo {
         Self {
             node_id: node_id.to_string(),
             name: name.to_string(),
             chain_code: chain_code.to_string(),
             rpc_url: rpc_url.to_string(),
             ws_url: "".to_string(),
-            http_url: "".to_string(),
+            http_url: http_url.unwrap_or_default(),
             network: "mainnet".to_string(),
             status: 1,
             is_local: 0,

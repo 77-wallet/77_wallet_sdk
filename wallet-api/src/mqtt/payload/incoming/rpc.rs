@@ -41,6 +41,8 @@ pub struct RpcAddressInfoBody {
     pub chain_id: Option<i32>,
     pub name: String,
     pub url: String,
+    #[serde(default)]
+    pub http_url: Option<String>,
 }
 
 impl RpcChange {
@@ -74,7 +76,11 @@ impl RpcChange {
                 };
                 let network = "mainnet";
                 let node = wallet_database::entities::node::NodeCreateVo::new(
-                    id, &node.name, chain_code, &node.url,
+                    id,
+                    &node.name,
+                    chain_code,
+                    &node.url,
+                    node.http_url.clone(),
                 )
                 .with_network(network);
                 match wallet_database::repositories::node::NodeRepoTrait::add(&mut repo, node).await

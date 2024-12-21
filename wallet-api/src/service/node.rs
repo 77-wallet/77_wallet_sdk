@@ -19,10 +19,11 @@ impl NodeService {
         chain_code: &str,
         rpc_url: &str,
         _ws_url: &str,
+        http_url: Option<String>,
     ) -> Result<String, crate::ServiceError> {
         let tx = &mut self.repo;
         let id = NodeDomain::gen_node_id(&name, chain_code);
-        let req = NodeCreateVo::new(&id, name, chain_code, rpc_url);
+        let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
         let res = NodeRepoTrait::add(tx, req)
             .await
             .map_err(crate::SystemError::Database)?;
@@ -53,6 +54,7 @@ impl NodeService {
                     &default_node.node_name,
                     chain_code,
                     &default_node.rpc_url,
+                    Some(default_node.http_url.clone()),
                 )
                 .with_http_url(&default_node.http_url)
                 .with_network(&default_node.network)

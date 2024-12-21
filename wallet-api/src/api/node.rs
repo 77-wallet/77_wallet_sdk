@@ -7,9 +7,10 @@ impl crate::WalletManager {
         chain_code: &str,
         rpc_url: &str,
         ws_url: &str,
+        http_url: Option<String>,
     ) -> ReturnType<String> {
         NodeService::new(self.repo_factory.resuource_repo())
-            .add_node(name, chain_code, rpc_url, ws_url)
+            .add_node(name, chain_code, rpc_url, ws_url, http_url)
             .await
             .into()
     }
@@ -55,7 +56,7 @@ mod tests {
         let ws_url = "https://api.nileex.io/";
 
         let add_node = wallet_manager
-            .add_node(name, chain_code, rpc_url, ws_url)
+            .add_node(name, chain_code, rpc_url, ws_url, None)
             .await;
         tracing::info!("add_node: {add_node:?}");
         Ok(())

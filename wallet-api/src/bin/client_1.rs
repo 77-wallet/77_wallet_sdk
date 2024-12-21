@@ -119,41 +119,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // tracing::info!("start create wallet");
 
-    // let account_name = "账户";
-    // let start_time = std::time::Instant::now();
+    let account_name = "账户";
+    let start_time = std::time::Instant::now();
 
-    // let _res = wallet_manager
-    //     .create_wallet(
-    //         language_code,
-    //         &phrase,
-    //         &salt,
-    //         &wallet_name,
-    //         account_name,
-    //         true,
-    //         &password,
-    //         None,
-    //     )
-    //     .await
-    //     .result
-    //     .unwrap();
-    // tracing::info!("create_wallet res: {_res:?}");
-    // let elapsed_time = start_time.elapsed();
-    // tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
-    // wallet_manager
-    //     .create_account(
-    //         &_res.address,
-    //         &password,
-    //         None,
-    //         None,
-    //         None,
-    //         account_name,
-    //         true,
-    //     )
-    //     .await
-    //     .result
-    //     .unwrap();
-    // tracing::info!("create_account res: {_res:?}");
-    // let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    let _res = wallet_manager
+        .create_wallet(
+            language_code,
+            &phrase,
+            &salt,
+            &wallet_name,
+            account_name,
+            true,
+            &password,
+            None,
+        )
+        .await
+        .result
+        .unwrap();
+    tracing::info!("create_wallet res: {_res:?}");
+    let elapsed_time = start_time.elapsed();
+    tracing::info!("create_wallet elapsed time: {:?}", elapsed_time);
+    wallet_manager
+        .create_account(
+            &_res.address,
+            &password,
+            None,
+            None,
+            None,
+            account_name,
+            true,
+        )
+        .await
+        .result
+        .unwrap();
+    tracing::info!("create_account res: {_res:?}");
+    let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
     // tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
     // let res = wallet_manager
