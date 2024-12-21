@@ -56,8 +56,8 @@ impl TryFrom<&UnFreezeBalanceReq> for UnFreezeBalanceArgs {
 }
 
 #[derive(serde::Serialize, Debug)]
-pub struct CancelAllUnFreeze {
-    owner_address: String,
+pub struct CancelAllUnFreezeReq {
+    pub owner_address: String,
 }
 
 #[derive(serde::Serialize, Debug)]
