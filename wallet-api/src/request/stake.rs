@@ -24,7 +24,7 @@ impl TryFrom<&FreezeBalanceReq> for stake::FreezeBalanceArgs {
     }
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct UnFreezeBalanceReq {
     pub owner_address: String,
     pub resource: String,
@@ -53,6 +53,11 @@ impl TryFrom<&UnFreezeBalanceReq> for UnFreezeBalanceArgs {
         )?;
         Ok(args)
     }
+}
+
+#[derive(serde::Serialize, Debug)]
+pub struct CancelAllUnFreeze {
+    owner_address: String,
 }
 
 #[derive(serde::Serialize, Debug)]

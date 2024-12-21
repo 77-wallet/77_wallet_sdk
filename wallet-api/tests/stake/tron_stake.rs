@@ -43,6 +43,24 @@ async fn test_freeze() {
 }
 
 #[tokio::test]
+async fn test_unfreeze_fee() {
+    let manager = get_manager().await;
+
+    let req = UnFreezeBalanceReq {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        resource: "energy".to_string(),
+        unfreeze_balance: 50,
+    };
+
+    let bill_kind = BillKind::UnFreezeBandwidth.to_i8() as i64;
+    let content = serde_json::to_string(&req).unwrap();
+
+    let res = manager.estimate_stake_fee(bill_kind, content).await;
+
+    tracing::info!("unfreeze  {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
 async fn test_unfreeze() {
     let manager = get_manager().await;
 

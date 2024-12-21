@@ -1,3 +1,4 @@
+use serde::{Serialize, Serializer};
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_types::constant::chain_code;
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
@@ -89,8 +90,7 @@ impl BillStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-#[repr(i8)]
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub enum BillKind {
     // 普通交易
     Transfer = 1,
@@ -133,6 +133,15 @@ pub enum BillKind {
     // 投票
     Vote = 20,
 }
+impl Serialize for BillKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_i8(*self as i8)
+    }
+}
+
 impl BillKind {
     pub fn to_i8(&self) -> i8 {
         *self as i8
