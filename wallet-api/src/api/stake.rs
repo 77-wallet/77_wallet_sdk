@@ -8,8 +8,9 @@ use crate::{
         self,
         account::AccountResource,
         stake::{
-            CanDelegatedResp, DelegateListResp, DelegateResp, FreezeListResp, FreezeResp,
-            ResourceToTrxResp, TrxToResourceResp, UnfreezeListResp, WithdrawUnfreezeResp,
+            CancelAllUnFreezeResp, DelegateListResp, DelegateResp, FreezeListResp, FreezeResp,
+            ResourceResp, ResourceToTrxResp, TrxToResourceResp, UnfreezeListResp,
+            WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,
@@ -82,7 +83,7 @@ impl crate::WalletManager {
         &self,
         req: CancelAllUnFreezeReq,
         password: String,
-    ) -> ReturnType<String> {
+    ) -> ReturnType<CancelAllUnFreezeResp> {
         StackService::new()
             .await?
             .cancel_all_unfreeze(req, password)
@@ -167,7 +168,7 @@ impl crate::WalletManager {
         &self,
         account: String,
         resource_type: String,
-    ) -> ReturnType<CanDelegatedResp> {
+    ) -> ReturnType<ResourceResp> {
         StackService::new()
             .await?
             .can_delegated_max(account, resource_type)

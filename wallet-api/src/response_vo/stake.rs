@@ -72,6 +72,18 @@ impl FreezeResp {
 #[serde(rename_all = "camelCase")]
 pub struct WithdrawUnfreezeResp {
     pub amount: i64,
+    pub owner_address: String,
+    pub tx_hash: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelAllUnFreezeResp {
+    pub owner_address: String,
+    pub votes: i64,
+    pub energy: f64,
+    pub bandwidth: f64,
+    pub amount: i64,
     pub tx_hash: String,
 }
 
@@ -122,49 +134,40 @@ pub struct ResourceToTrxResp {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CanDelegatedResp {
-    pub amount: f64,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DelegateResp {
     pub owner_address: String,
     pub receiver_address: String,
-    pub resource_value: f64,
-    pub resource_type: ResourceType,
-    pub operation_type: &'static str,
+    pub resource: ResourceResp,
+    pub bill_kind: BillKind,
     pub tx_hash: String,
 }
 impl DelegateResp {
-    pub fn new_with_delegate(
+    pub fn new_delegate(
         req: DelegateReq,
-        resource_value: f64,
-        resource_type: ResourceType,
+        resource: ResourceResp,
+        bill_kind: BillKind,
         tx_hash: String,
     ) -> Self {
         Self {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
-            resource_value,
-            resource_type: resource_type,
-            operation_type: "delegate",
+            resource,
+            bill_kind,
             tx_hash,
         }
     }
 
-    pub fn new_with_undegate(
+    pub fn new_undelegate(
         req: UnDelegateReq,
-        resource_value: f64,
-        resource_type: ResourceType,
+        resource: ResourceResp,
+        bill_kind: BillKind,
         tx_hash: String,
     ) -> Self {
         Self {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
-            resource_value,
-            resource_type: resource_type,
-            operation_type: "un_delegate",
+            resource,
+            bill_kind,
             tx_hash,
         }
     }
@@ -175,12 +178,7 @@ impl DelegateResp {
 pub struct DelegateListResp {
     pub from: String,
     pub to: String,
-    // trx 数量
-    pub amount: i64,
-    // 可获得资源数量
-    pub resource_value: f64,
-    // 资源类型
-    pub resource_type: ResourceType,
+    pub resource: ResourceResp,
     pub expire_time: Option<DateTime<Utc>>,
 }
 
@@ -188,9 +186,7 @@ impl DelegateListResp {
     // acount unit is sun
     pub fn new(
         delegate: &DelegateResouce,
-        resource_value: f64,
-        resource_type: ResourceType,
-        amount: i64,
+        resource: ResourceResp,
         expire_time: i64,
     ) -> Result<DelegateListResp, crate::ServiceError> {
         let expire_time = if expire_time > 0 {
@@ -202,9 +198,7 @@ impl DelegateListResp {
         Ok(DelegateListResp {
             from: delegate.from.to_string(),
             to: delegate.to.to_string(),
-            amount,
-            resource_value,
-            resource_type,
+            resource,
             expire_time,
         })
     }

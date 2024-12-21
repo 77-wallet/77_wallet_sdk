@@ -13,6 +13,8 @@ pub enum StakeError {
     DelegateTrxFailed,
     #[error("Failed to delegate energy")]
     DelegateEnergyFailed,
+    #[error("No withdrawable amount available")]
+    NoWithdrawableAmount,
 }
 
 impl StakeError {
@@ -24,6 +26,7 @@ impl StakeError {
             StakeError::EnergySufficient => 3903,
             StakeError::DelegateTrxFailed => 3904,
             StakeError::DelegateEnergyFailed => 3905,
+            StakeError::NoWithdrawableAmount => 3906,
         }
     }
 }
