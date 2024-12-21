@@ -111,7 +111,7 @@ mod test {
         init_test_log();
         let base_url = crate::consts::BASE_URL;
 
-        let chain_code = "tron";
+        let chain_code = "eth";
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .chain_rpc_list(chain_code)

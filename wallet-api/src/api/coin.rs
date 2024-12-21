@@ -244,6 +244,7 @@ mod test {
         // let chain_code = "sol";
         // let chain_code = "btc";
         let chain_code = "bnb";
+        let chain_code = "eth";
         // let symbol = "ATLA";
         // let token_address = Some("0x45e9F834539bC2a0936f184779cED638c9B26459".to_string());
         // let protocol = Some("ERC20".to_string());
@@ -271,6 +272,7 @@ mod test {
         // let token_address = "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd";
         // let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
         let token_address = "0x55d398326f99059fF775485246999027B3197955";
+        let token_address = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
         let res = wallet_manager
@@ -297,7 +299,7 @@ mod test {
         //     "SOL".to_string(),
         //     "BTC".to_string(),
         // ];
-        let symbols = vec!["LTC".to_string()];
+        let symbols = vec!["stETH".to_string()];
 
         let res = wallet_manager.get_token_price(symbols).await;
         let res = serde_json::to_string(&res).unwrap();

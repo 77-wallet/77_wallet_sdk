@@ -3,6 +3,7 @@
 pub struct ChainInfo {
     pub id: String,
     pub rpc: String,
+    pub http_url: Option<String>,
     pub name: String,
     #[serde(rename = "code")]
     pub chain_code: String,

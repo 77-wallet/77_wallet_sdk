@@ -583,7 +583,7 @@ impl AssetsEntity {
         let sql = r#"
         UPDATE assets
         SET status = $4, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE chain_code = $1 AND symbol = $2 AND token_address = $3
+        WHERE chain_code = $1 AND LOWER(symbol) = LOWER($2) AND token_address = $3
             AND EXISTS (
                 SELECT 1
                 FROM chain

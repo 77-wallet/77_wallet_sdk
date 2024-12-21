@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    Executor, Pool, Sqlite,
+    Execute, Executor, Pool, Sqlite,
 };
 
 use crate::{
@@ -61,7 +61,7 @@ impl CoinEntity {
         sql.push_str(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
 
         // 添加 WHERE 子句，指定要更新的记录
-        sql.push_str(" WHERE token_address = ? AND symbol = ? AND chain_code = ?");
+        sql.push_str(" WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ?");
 
         sql.push_str(" RETURNING *");
         // 创建 SQL 查询，并绑定参数
@@ -82,7 +82,8 @@ impl CoinEntity {
             .bind(&coin_id.chain_code);
 
         // 执行查询
-
+        let sql = query.sql();
+        tracing::info!("sql: {}", sql);
         query
             .fetch_all(exec)
             // .execute(exec)
