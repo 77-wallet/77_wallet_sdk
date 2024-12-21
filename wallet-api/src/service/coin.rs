@@ -340,15 +340,20 @@ impl CoinService {
         wallet_address: &str,
         account_id: u32,
         chain_code: &str,
-        token_address: &str,
+        mut token_address: String,
         protocol: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
-        let token_address = token_address.to_lowercase();
-        let token_address = token_address.as_str();
 
         let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
-        domain::chain::check_address(token_address, chain, net)?;
+
+        match chain {
+            wallet_types::chain::chain::ChainCode::Ethereum => {
+                token_address = token_address.to_lowercase();
+            }
+            _ => {}
+        }
+        domain::chain::check_address(&token_address, chain, net)?;
         let tx = &mut self.repo;
         let Some(_) = tx.detail_with_node(chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
@@ -361,7 +366,7 @@ impl CoinService {
                 .await?;
 
         let decimals = chain_instance
-            .decimals(token_address)
+            .decimals(&token_address)
             .await
             .map_err(|e| match e {
                 wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
@@ -377,8 +382,8 @@ impl CoinService {
                 crate::CoinError::InvalidContractAddress(token_address.to_string()),
             )));
         }
-        let symbol = chain_instance.token_symbol(token_address).await?;
-        let name = chain_instance.token_name(token_address).await?;
+        let symbol = chain_instance.token_symbol(&token_address).await?;
+        let name = chain_instance.token_name(&token_address).await?;
 
         let cus_coin = wallet_database::entities::coin::CoinData::new(
             Some(name.clone()),
@@ -451,7 +456,7 @@ impl CoinService {
         )?;
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-        req.insert(chain_code, token_address);
+        req.insert(chain_code, &token_address);
         let task =
             domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
         Tasks::new()

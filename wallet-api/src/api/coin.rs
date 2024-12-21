@@ -89,7 +89,7 @@ impl crate::WalletManager {
                 wallet_address,
                 account_id,
                 chain_code,
-                token_address,
+                token_address.to_string(),
                 protocol,
             )
             .await?
