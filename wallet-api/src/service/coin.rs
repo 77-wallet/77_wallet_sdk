@@ -349,7 +349,7 @@ impl CoinService {
 
         match chain {
             wallet_types::chain::chain::ChainCode::Ethereum => {
-                token_address = token_address.to_lowercase();
+                token_address = wallet_utils::address::to_checksum_address(&token_address);
             }
             _ => {}
         }

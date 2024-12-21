@@ -31,8 +31,8 @@ async fn bill_lists() {
 
     let root_addr: Option<String> = None;
     let account_id: Option<u32> = None;
-    let addr = Some("0x148805B49819371EEF9A822f7F880b42Cf67834D".to_string());
-    let chain_code: Option<String> = Some("eth".to_string());
+    let addr = Some("0xF7d5c082Ce49922913404b56168EBa82Dda4c1F7".to_string());
+    let chain_code: Option<String> = Some("bnb".to_string());
     // let symbol = Some("TRX".to_string());
     let symbol = None;
     let is_multisig = None;
@@ -80,8 +80,8 @@ async fn query_bill_result() {
 async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
-    let chain_code = "eth".to_string();
-    let address = "0x1457a81B300cB106187Dd227b0319E2a851BAb24".to_string();
+    let chain_code = "bnb".to_string();
+    let address = "0x3bAc24b73c7A03C8715697cA1646a6f85B91023a".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
     tracing::warn!("同步结果{:?}", _c);
 }

@@ -30,7 +30,7 @@ impl ResourceResp {
 #[serde(rename_all = "camelCase")]
 pub struct FreezeListResp {
     pub amount: i64,
-    pub resource: String,
+    pub resource: ResourceType,
     pub resource_value: f64,
     pub opration_time: Option<DateTime<Utc>>,
 }
@@ -43,7 +43,7 @@ impl FreezeListResp {
 
         Self {
             amount: amount / consts::TRX_TO_SUN as i64,
-            resource: resource.to_string(),
+            resource,
             resource_value,
             opration_time: None,
         }
@@ -88,7 +88,7 @@ pub struct WithdrawUnfreezeResp {
 #[serde(rename_all = "camelCase")]
 pub struct UnfreezeListResp {
     pub amount: i64,
-    pub resource: String,
+    pub resource: ResourceType,
     pub available_at: DateTime<Utc>,
 }
 impl UnfreezeListResp {
@@ -96,7 +96,7 @@ impl UnfreezeListResp {
         let time = DateTime::from_timestamp_millis(available_at).unwrap_or_default();
         Self {
             amount: amount / consts::TRX_TO_SUN as i64,
-            resource: resource.to_string(),
+            resource,
             available_at: time,
         }
     }
@@ -110,7 +110,7 @@ pub struct EstimatedResourcesResp {
     // 能够得到的投票数量
     pub votes: i64,
     // 资源类型
-    pub resource_type: String,
+    pub resource_type: ResourceType,
     // 预计转账次数
     pub transfer_times: f64,
 }
@@ -121,7 +121,7 @@ impl EstimatedResourcesResp {
         Self {
             resource,
             votes: value,
-            resource_type: resource_type.to_string(),
+            resource_type,
             transfer_times: (resource / consumer).floor(),
         }
     }
@@ -139,7 +139,7 @@ pub struct DelegateResp {
     pub owner_address: String,
     pub receiver_address: String,
     pub resource_value: f64,
-    pub resource_type: String,
+    pub resource_type: ResourceType,
     pub operation_type: &'static str,
     pub tx_hash: String,
 }
@@ -154,7 +154,7 @@ impl DelegateResp {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
             resource_value,
-            resource_type: resource_type.to_string(),
+            resource_type: resource_type,
             operation_type: "delegate",
             tx_hash,
         }
@@ -170,7 +170,7 @@ impl DelegateResp {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
             resource_value,
-            resource_type: resource_type.to_string(),
+            resource_type,
             operation_type: "un_delegate",
             tx_hash,
         }
@@ -187,7 +187,7 @@ pub struct DelegateListResp {
     // 可获得资源数量
     pub resource_value: f64,
     // 资源类型
-    pub resource_type: String,
+    pub resource_type: ResourceType,
     pub expire_time: Option<DateTime<Utc>>,
 }
 
@@ -211,7 +211,7 @@ impl DelegateListResp {
             to: delegate.to.to_string(),
             amount,
             resource_value,
-            resource_type: resource_type.to_string(),
+            resource_type,
             expire_time,
         })
     }
