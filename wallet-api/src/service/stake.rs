@@ -9,6 +9,7 @@ use crate::notify::event::other::TransactionProcessFrontend;
 use crate::notify::FrontendNotifyEvent;
 use crate::notify::NotifyEvent;
 use crate::request::stake;
+use crate::request::stake::CancelAllUnFreezeReq;
 use crate::request::stake::UnDelegateReq;
 use crate::request::stake::VoteWitnessReq;
 use crate::request::stake::WithdrawBalanceReq;
@@ -413,12 +414,18 @@ impl StackService {
     // 取消解锁
     pub async fn cancel_all_unfreeze(
         &self,
-        owner: &str,
-        password: &str,
+        req: CancelAllUnFreezeReq,
+        password: String,
     ) -> Result<String, crate::ServiceError> {
-        let args = ops::stake::CancelAllFreezeBalanceArgs::new(owner)?;
+        let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
+
         let tx_hash = self
-            .process_transaction(args, BillKind::CancelAllUnFreeze, owner, password)
+            .process_transaction(
+                args,
+                BillKind::CancelAllUnFreeze,
+                &req.owner_address,
+                &password,
+            )
             .await?;
 
         // TODO 响应
@@ -428,23 +435,27 @@ impl StackService {
 
     pub async fn withdraw_unfreeze(
         &self,
-        owner_address: &str,
-        password: &str,
+        req: WithdrawBalanceReq,
+        password: String,
     ) -> Result<resp::WithdrawUnfreezeResp, crate::error::ServiceError> {
         let can_widthdraw = self
             .chain
             .provider
-            .can_withdraw_unfreeze_amount(owner_address)
+            .can_withdraw_unfreeze_amount(&req.owner_address)
             .await?;
 
         // TODO check 是否有足够的金额提现
-
         let args = ops::stake::WithdrawUnfreezeArgs {
-            owner_address: owner_address.to_string(),
+            owner_address: req.owner_address.to_string(),
         };
 
         let tx_hash = self
-            .process_transaction(args, BillKind::WithdrawUnFreeze, &owner_address, password)
+            .process_transaction(
+                args,
+                BillKind::WithdrawUnFreeze,
+                &req.owner_address,
+                &password,
+            )
             .await?;
 
         Ok(resp::WithdrawUnfreezeResp {
