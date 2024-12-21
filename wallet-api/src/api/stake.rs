@@ -1,8 +1,8 @@
 use super::ReturnType;
 use crate::{
     request::stake::{
-        DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq,
-        WithdrawBalanceReq,
+        CancelAllUnFreezeReq, DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq,
+        VoteWitnessReq, WithdrawBalanceReq,
     },
     response_vo::{
         self,
@@ -80,12 +80,12 @@ impl crate::WalletManager {
 
     pub async fn cancel_all_unfreeze(
         &self,
-        owner_address: String,
+        req: CancelAllUnFreezeReq,
         password: String,
     ) -> ReturnType<String> {
         StackService::new()
             .await?
-            .cancel_all_unfreeze(&owner_address, &password)
+            .cancel_all_unfreeze(req, password)
             .await
             .into()
     }
@@ -93,12 +93,12 @@ impl crate::WalletManager {
     /// Withdraws any unfrozen balances for the given owner address.
     pub async fn withdraw_unfreeze(
         &self,
-        owner_address: String,
+        req: WithdrawBalanceReq,
         password: String,
     ) -> ReturnType<WithdrawUnfreezeResp> {
         StackService::new()
             .await?
-            .withdraw_unfreeze(&owner_address, &password)
+            .withdraw_unfreeze(req, password)
             .await?
             .into()
     }

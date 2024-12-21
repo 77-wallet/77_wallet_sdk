@@ -1,5 +1,7 @@
 use crate::get_manager;
-use wallet_api::request::stake::{FreezeBalanceReq, UnFreezeBalanceReq};
+use wallet_api::request::stake::{
+    CancelAllUnFreezeReq, FreezeBalanceReq, UnFreezeBalanceReq, WithdrawBalanceReq,
+};
 use wallet_database::entities::bill::BillKind;
 
 #[tokio::test]
@@ -98,10 +100,12 @@ async fn test_un_freeze_list() {
 async fn test_cancel_all_unfreeze() {
     let manager = get_manager().await;
 
-    let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let req = CancelAllUnFreezeReq {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+    };
     let password = "123456".to_string();
 
-    let res = manager.cancel_all_unfreeze(owner, password).await;
+    let res = manager.cancel_all_unfreeze(req, password).await;
     tracing::info!("unfreeze {}", serde_json::to_string(&res).unwrap());
 }
 
@@ -109,10 +113,12 @@ async fn test_cancel_all_unfreeze() {
 async fn test_withdraw() {
     let manager = get_manager().await;
 
-    let owner_address = "TZ92GD6UbW8MMk6XD6pxKTGzUGs42No6vn".to_string();
-    let password = "123456".to_string();
+    let req = WithdrawBalanceReq {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+    };
 
-    let res = manager.withdraw_unfreeze(owner_address, password).await;
+    let password = "123456".to_string();
+    let res = manager.withdraw_unfreeze(req, password).await;
     tracing::info!("withdraw {}", serde_json::to_string(&res).unwrap());
 }
 
