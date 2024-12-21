@@ -231,7 +231,7 @@ impl StackService {
                 .await?;
 
         match bill_kind {
-            BillKind::FreezeBandwidth => {
+            BillKind::FreezeBandwidth | BillKind::FreezeEnergy => {
                 let req =
                     wallet_utils::serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
                 let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
@@ -246,6 +246,23 @@ impl StackService {
                     content,
                 ))
             }
+            BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => {
+                let req = wallet_utils::serde_func::serde_from_str::<stake::UnFreezeBalanceReq>(
+                    &content,
+                )?;
+                let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
+
+                let consumer = self.chain.simple_fee(&req.owner_address, 1, args).await?;
+                let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+                let content = wallet_utils::serde_func::serde_to_string(&res)?;
+
+                Ok(EstimateFeeResp::new(
+                    "TRX".to_string(),
+                    "tron".to_string(),
+                    content,
+                ))
+            }
+
             _ => {
                 panic!("xx");
             }
@@ -345,14 +362,14 @@ impl StackService {
             .unfreeze_v2
             .iter()
             .map(|item| {
-                let resource = if item.types.is_empty() {
+                let resource_type = if item.types.is_empty() {
                     ops::stake::ResourceType::BANDWIDTH
                 } else {
                     ops::stake::ResourceType::ENERGY
                 };
                 resp::UnfreezeListResp::new(
                     item.unfreeze_amount,
-                    resource,
+                    resource_type,
                     item.unfreeze_expire_time,
                 )
             })
@@ -373,8 +390,8 @@ impl StackService {
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
         let bill_kind = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
-            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+            ops::stake::ResourceType::BANDWIDTH => BillKind::UnFreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::UnFreezeEnergy,
         };
 
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
@@ -387,8 +404,10 @@ impl StackService {
             .resource_value(&req.owner_address, req.unfreeze_balance, resource_type)
             .await?;
 
+        let date = wallet_utils::time::now_plus_days(14);
         let resource = resp::ResourceResp::new(req.unfreeze_balance, resource_type, resource_value);
-        Ok(resp::FreezeResp::new(resource, tx_hash, bill_kind))
+
+        Ok(resp::FreezeResp::new(resource, tx_hash, bill_kind).expiration_at(date))
     }
 
     // 取消解锁

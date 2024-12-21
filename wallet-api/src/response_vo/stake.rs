@@ -62,9 +62,8 @@ impl FreezeResp {
         }
     }
 
-    pub fn expiration_at(mut self, timestamp: i64) -> Self {
-        let time = DateTime::from_timestamp_millis(timestamp).unwrap_or_default();
-        self.expiration_at = Some(time);
+    pub fn expiration_at(mut self, date: DateTime<Utc>) -> Self {
+        self.expiration_at = Some(date);
         self
     }
 }
@@ -80,15 +79,15 @@ pub struct WithdrawUnfreezeResp {
 #[serde(rename_all = "camelCase")]
 pub struct UnfreezeListResp {
     pub amount: i64,
-    pub resource: ResourceType,
+    pub resource_type: ResourceType,
     pub available_at: DateTime<Utc>,
 }
 impl UnfreezeListResp {
-    pub fn new(amount: i64, resource: ResourceType, available_at: i64) -> Self {
+    pub fn new(amount: i64, resource_type: ResourceType, available_at: i64) -> Self {
         let time = DateTime::from_timestamp_millis(available_at).unwrap_or_default();
         Self {
             amount: amount / consts::TRX_TO_SUN as i64,
-            resource,
+            resource_type,
             available_at: time,
         }
     }
