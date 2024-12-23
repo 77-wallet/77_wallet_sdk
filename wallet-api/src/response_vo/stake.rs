@@ -134,25 +134,11 @@ pub struct ResourceToTrxResp {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-<<<<<<< HEAD
-pub struct CanDelegatedResp {
-    pub amount: i64,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DelegateResp {
-    pub owner_address: String,
-    pub receiver_address: String,
-    pub resource_value: f64,
-    pub resource_type: ResourceType,
-=======
 pub struct DelegateResp {
     pub owner_address: String,
     pub receiver_address: String,
     pub resource: ResourceResp,
     pub bill_kind: BillKind,
->>>>>>> c7a0064 (feat:tron)
     pub tx_hash: String,
 }
 impl DelegateResp {
@@ -165,13 +151,8 @@ impl DelegateResp {
         Self {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
-<<<<<<< HEAD
-            resource_value,
-            resource_type,
-=======
             resource,
             bill_kind,
->>>>>>> c7a0064 (feat:tron)
             tx_hash,
         }
     }
@@ -185,13 +166,8 @@ impl DelegateResp {
         Self {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
-<<<<<<< HEAD
-            resource_value,
-            resource_type,
-=======
             resource,
             bill_kind,
->>>>>>> c7a0064 (feat:tron)
             tx_hash,
         }
     }
