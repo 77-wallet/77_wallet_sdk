@@ -11,7 +11,7 @@ Currently, Wallet SDK is not hosted on a public package registry.
 To incorporate Wallet SDK into your project, you will need to specify the GitHub repository as the source. This can be achieved by executing the following command in your terminal:
 
 ```sh
-git clone http://git.dxkj1688.com/wallet/client/wallet_sdk.git
+git clone xxxxx
 ```
 
 After incorporating Wallet SDK, you may wish to utilize specific modules of the project. These modules can be imported and used as needed in your project's codebase.
