@@ -74,7 +74,7 @@ impl CoinId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SymbolId {
     pub chain_code: String,
     pub symbol: String,

@@ -288,7 +288,7 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
 
         let res = wallet_manager
-            .remove_multisig_coin("TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK", "SUN")
+            .remove_multisig_coin("0x3bAc24b73c7A03C8715697cA1646a6f85B91023a", "USDT")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())

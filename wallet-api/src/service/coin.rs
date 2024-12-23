@@ -348,7 +348,8 @@ impl CoinService {
         let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
 
         match chain {
-            wallet_types::chain::chain::ChainCode::Ethereum => {
+            wallet_types::chain::chain::ChainCode::Ethereum
+            | wallet_types::chain::chain::ChainCode::BnbSmartChain => {
                 token_address = wallet_utils::address::to_checksum_address(&token_address);
             }
             _ => {}

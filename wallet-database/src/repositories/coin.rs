@@ -101,7 +101,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
 
     async fn drop_multi_custom_coin(
         &mut self,
-        coin_ids: Vec<SymbolId>,
+        coin_ids: std::collections::HashSet<SymbolId>,
     ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinEntity::drop_multi_custom_coin, coin_ids)
