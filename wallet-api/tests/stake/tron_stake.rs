@@ -97,6 +97,21 @@ async fn test_un_freeze_list() {
 }
 
 #[tokio::test]
+async fn test_cancel_all_fee() {
+    let manager = get_manager().await;
+
+    let req = CancelAllUnFreezeReq {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+    };
+
+    let bill_kind = BillKind::CancelAllUnFreeze.to_i8() as i64;
+    let content = serde_json::to_string(&req).unwrap();
+
+    let res = manager.estimate_stake_fee(bill_kind, content).await;
+    tracing::info!("unfreeze {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
 async fn test_cancel_all_unfreeze() {
     let manager = get_manager().await;
 

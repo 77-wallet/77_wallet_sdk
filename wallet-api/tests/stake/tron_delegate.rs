@@ -19,7 +19,7 @@ async fn test_delegate() {
     let req = DelegateReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        balance: 100,
+        balance: 50,
         resource: "energy".to_string(),
         lock: false,
         lock_period: 0,
@@ -62,5 +62,5 @@ async fn test_un_delegate() {
     };
     let password = "123456".to_string();
     let res = manager.un_delegate_resource(req, password).await;
-    tracing::info!("un delegate  {:?}", serde_json::to_string(&res).unwrap());
+    tracing::info!("un delegate  {}", serde_json::to_string(&res).unwrap());
 }

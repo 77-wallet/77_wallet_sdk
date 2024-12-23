@@ -106,11 +106,10 @@ impl StackService {
                 let amount = delegate.value_trx(resource_type);
                 let resource_value = resource.resource_value(resource_type, amount)?;
 
+                let resource = ResourceResp::new(amount, resource_type, resource_value);
                 let r = resp::DelegateListResp::new(
                     &delegate,
-                    resource_value,
-                    resource_type,
-                    amount,
+                    resource,
                     delegate.expire_time_for_energy,
                 )?;
                 result.push(r);
@@ -122,11 +121,10 @@ impl StackService {
                 let amount = delegate.value_trx(resource_type);
                 let resource_value = resource.resource_value(resource_type, amount)?;
 
+                let resource = ResourceResp::new(amount, resource_type, resource_value);
                 let r = resp::DelegateListResp::new(
                     &delegate,
-                    resource_value,
-                    resource_type,
-                    amount,
+                    resource,
                     delegate.expire_time_for_bandwidth,
                 )?;
                 result.push(r);
@@ -263,6 +261,22 @@ impl StackService {
                     content,
                 ))
             }
+            BillKind::CancelAllUnFreeze => {
+                let req = wallet_utils::serde_func::serde_from_str::<stake::CancelAllUnFreezeReq>(
+                    &content,
+                )?;
+                let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
+
+                let consumer = self.chain.simple_fee(&req.owner_address, 1, args).await?;
+                let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+                let content = wallet_utils::serde_func::serde_to_string(&res)?;
+
+                Ok(EstimateFeeResp::new(
+                    "TRX".to_string(),
+                    "tron".to_string(),
+                    content,
+                ))
+            }
 
             _ => {
                 panic!("xx");
@@ -308,7 +322,6 @@ impl StackService {
 
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        // TODO 代码优化
         let mut res = vec![];
         let bandwidth = account.frozen_v2_owner("");
         if bandwidth > 0 {
@@ -416,7 +429,15 @@ impl StackService {
         &self,
         req: CancelAllUnFreezeReq,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<resp::CancelAllUnFreezeResp, crate::ServiceError> {
+        let account = self.chain.account_info(&req.owner_address).await?;
+        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
+
+        // 1可以解质押的带宽
+        let bandwidth = account.can_withdraw_unfreeze_amount("");
+
+        // 2.可以解质押的能量
+        let energy = account.can_withdraw_unfreeze_amount("ENERGY");
         let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
 
         let tx_hash = self
@@ -428,11 +449,18 @@ impl StackService {
             )
             .await?;
 
-        // TODO 响应
-
-        Ok(tx_hash)
+        let res = resp::CancelAllUnFreezeResp {
+            owner_address: req.owner_address.to_string(),
+            votes: bandwidth + energy,
+            energy: resource.resource_value(ops::stake::ResourceType::ENERGY, energy)?,
+            bandwidth: resource.resource_value(ops::stake::ResourceType::BANDWIDTH, bandwidth)?,
+            amount: account.can_withdraw_amount(),
+            tx_hash,
+        };
+        Ok(res)
     }
 
+    // 提取金额
     pub async fn withdraw_unfreeze(
         &self,
         req: WithdrawBalanceReq,
@@ -444,7 +472,12 @@ impl StackService {
             .can_withdraw_unfreeze_amount(&req.owner_address)
             .await?;
 
-        // TODO check 是否有足够的金额提现
+        if can_widthdraw.amount <= 0 {
+            return Err(crate::BusinessError::Stake(
+                crate::StakeError::NoWithdrawableAmount,
+            ))?;
+        }
+
         let args = ops::stake::WithdrawUnfreezeArgs {
             owner_address: req.owner_address.to_string(),
         };
@@ -460,6 +493,7 @@ impl StackService {
 
         Ok(resp::WithdrawUnfreezeResp {
             amount: can_widthdraw.to_sun(),
+            owner_address: req.owner_address.to_string(),
             tx_hash,
         })
     }
@@ -517,7 +551,7 @@ impl StackService {
         &self,
         account: String,
         resource_type: String,
-    ) -> Result<resp::CanDelegatedResp, crate::ServiceError> {
+    ) -> Result<resp::ResourceResp, crate::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
@@ -526,9 +560,10 @@ impl StackService {
             .can_delegate_resource(account.as_str(), resource_type)
             .await?;
 
-        Ok(resp::CanDelegatedResp {
-            amount: res.to_sun(),
-        })
+        let value = res.to_sun();
+        let resource_value = self.resource_value(&account, value, resource_type).await?;
+
+        Ok(ResourceResp::new(value, resource_type, resource_value))
     }
 
     // 委派资源给账号
@@ -554,11 +589,10 @@ impl StackService {
             .resource_value(&req.owner_address, req.balance, resource_type)
             .await?;
 
-        Ok(resp::DelegateResp::new_with_delegate(
-            req,
-            resource_value,
-            resource_type,
-            tx_hash,
+        let resource = ResourceResp::new(req.balance, resource_type, resource_value);
+
+        Ok(resp::DelegateResp::new_delegate(
+            req, resource, bill_kind, tx_hash,
         ))
     }
 
@@ -573,8 +607,8 @@ impl StackService {
         let args = ops::stake::UnDelegateArgs::try_from(&req)?;
 
         let bill_kind = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
-            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+            ops::stake::ResourceType::BANDWIDTH => BillKind::UnDelegateBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::UnDelegateEnergy,
         };
 
         let tx_hash = self
@@ -585,11 +619,9 @@ impl StackService {
             .resource_value(&req.owner_address, req.balance, resource_type)
             .await?;
 
-        Ok(resp::DelegateResp::new_with_undegate(
-            req,
-            resource_value,
-            resource_type,
-            tx_hash,
+        let resource = ResourceResp::new(req.balance, resource_type, resource_value);
+        Ok(resp::DelegateResp::new_undelegate(
+            req, resource, bill_kind, tx_hash,
         ))
     }
 
