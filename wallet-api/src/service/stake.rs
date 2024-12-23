@@ -774,53 +774,14 @@ impl StackService {
         // Ok(tx_hash)
     }
 
-    // #[derive(serde::Deserialize, serde::Serialize, Debug)]
-    // pub struct ListWitnessResp {
-    //     pub witnesses: Vec<Witness>,
-    // }
-
-    // #[derive(serde::Deserialize, serde::Serialize, Debug)]
-    // #[serde(rename_all = "camelCase")]
-    // pub struct Witness {
-    //     pub address: String,
-    //     pub vote_count: Option<i64>,
-    //     pub url: String,
-    //     total_produced: Option<i64>,
-    //     total_missed: Option<i64>,
-    //     latest_block_num: Option<i64>,
-    //     latest_slot_num: Option<i64>,
-    //     is_jobs: Option<bool>,
-    // }
     pub async fn vote_list(
         &self,
-        req: stake::VoteWitnessReq,
-    ) -> Result<
-        wallet_transport_backend::response_vo::stake::ListWitnessResp,
-        crate::error::ServiceError,
-    > {
-        let list = self.chain.get_provider().list_witnesses().await?;
+    ) -> Result<ops::stake::vote_list::VoteWitnessResp, crate::error::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_scan_adapter().await?;
+        let list = chain.get_provider().vote_witnesses().await?;
+        tracing::info!("list witness: {:?}", list);
 
-        //总票数
-        let total_votes = list
-            .witnesses
-            .iter()
-            .map(|w| w.vote_count.unwrap_or(0))
-            .sum::<i64>();
-
-        // let mut result = vec![];
-        // for w in list.witnesses {
-        //     let brokerage = self.chain.get_provider().get_brokerage(&w.address).await?;
-        //     let witness = wallet_transport_backend::response_vo::stake::Witness::new(
-        //         &w.address,
-        //         w.vote_count,
-        //         &w.url,
-        //         brokerage.brokerages,
-        //     );
-        //     result.push(resp::VoteWitnessResp::from_witness(&witness, brokerage));
-        // }
-
-        todo!()
-        // Ok(list)
+        Ok(list)
     }
 
     pub async fn votes(

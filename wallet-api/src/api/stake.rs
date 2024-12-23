@@ -15,7 +15,7 @@ use crate::{
     },
     service::stake::StackService,
 };
-use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
+use wallet_transport_backend::response_vo::stake::{SystemEnergyResp, VoteListResp};
 
 impl crate::WalletManager {
     // account resource
@@ -251,11 +251,11 @@ impl crate::WalletManager {
         //     .into()
     }
 
-    pub async fn votes_node_list(&self, account: String)
-    // -> ReturnType<Vec<VoteListResp>>
+    pub async fn votes_node_list(
+        &self,
+    ) -> ReturnType<wallet_chain_interact::tron::operations::stake::vote_list::VoteWitnessResp>
     {
-        todo!()
-        // StackService::new().await?.vote_list(account).await?.into()
+        StackService::new().await?.vote_list().await?.into()
     }
 
     pub async fn votes_top_rewards(&self, account: String)
@@ -294,5 +294,21 @@ impl crate::WalletManager {
             .build_multisig_stake(bill_kind, content, expiration, password)
             .await?
             .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test::env::{setup_test_environment, TestData};
+
+    #[tokio::test]
+    async fn test_votes_node_list() {
+        wallet_utils::init_test_log();
+        let TestData { wallet_manager, .. } = setup_test_environment(None, None, false, None)
+            .await
+            .unwrap();
+
+        let phrase = wallet_manager.votes_node_list().await;
+        println!("{:#?}", phrase);
     }
 }
