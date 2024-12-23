@@ -30,6 +30,13 @@ pub struct MultiSignTransAccept {
     pub created_at: DateTime<Utc>,
     pub signatures: Vec<NewSignatureEntity>,
     pub account_id: String,
+    pub transfer_type: i8,
+}
+impl MultiSignTransAccept {
+    pub fn with_signature(mut self, signatures: Vec<NewSignatureEntity>) -> Self {
+        self.signatures = signatures;
+        self
+    }
 }
 
 impl From<MultisigQueueEntity> for MultiSignTransAccept {
@@ -51,6 +58,7 @@ impl From<MultisigQueueEntity> for MultiSignTransAccept {
             created_at: value.created_at,
             signatures: vec![],
             account_id: value.account_id,
+            transfer_type: value.transfer_type,
         }
     }
 }

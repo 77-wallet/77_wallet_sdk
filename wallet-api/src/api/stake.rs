@@ -280,4 +280,19 @@ impl crate::WalletManager {
             .await?
             .into()
     }
+
+    // ************************************************ multisig  *********************************************************
+    pub async fn build_multisig_stake(
+        &self,
+        bill_kind: i64,
+        content: String,
+        expiration: i64,
+        password: String,
+    ) -> ReturnType<String> {
+        StackService::new()
+            .await?
+            .build_multisig_stake(bill_kind, content, expiration, password)
+            .await?
+            .into()
+    }
 }

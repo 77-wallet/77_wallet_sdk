@@ -1,5 +1,9 @@
-use super::multisig_signatures::{MultisigSignatureEntities, NewSignatureEntity};
+use super::{
+    bill::BillKind,
+    multisig_signatures::{MultisigSignatureEntities, NewSignatureEntity},
+};
 use sqlx::types::chrono::{DateTime, Utc};
+use wallet_types::constant::chain_code;
 
 pub mod fail_reason {
     pub const SIGN_FAILED: &str = "sign_failed";
@@ -27,6 +31,7 @@ pub struct MultisigQueueEntity {
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
     pub account_id: String,
+    pub transfer_type: i8,
 }
 impl MultisigQueueEntity {
     pub fn token_address(&self) -> Option<String> {
@@ -134,7 +139,42 @@ pub struct NewMultisigQueueEntity {
     pub fail_reason: String,
     pub signatures: Vec<NewSignatureEntity>,
     pub create_at: DateTime<Utc>,
+    pub transfer_type: BillKind,
 }
+impl NewMultisigQueueEntity {
+    pub fn new(
+        account_id: String,
+        from_addr: String,
+        expiration: i64,
+        msg_hash: &str,
+        raw_data: &str,
+        bill_kind: BillKind,
+    ) -> Self {
+        let id = wallet_utils::snowflake::get_uid().unwrap();
+        // TODO trx 字符串以及 unwrap
+        Self {
+            id: id.to_string(),
+            account_id,
+            from_addr,
+            to_addr: String::new(),
+            value: "0".to_string(),
+            symbol: "TRX".to_string(),
+            expiration,
+            chain_code: chain_code::TRON.to_string(),
+            token_addr: None,
+            msg_hash: msg_hash.to_string(),
+            tx_hash: String::new(),
+            raw_data: raw_data.to_string(),
+            status: MultisigQueueStatus::PendingSignature,
+            notes: String::new(),
+            fail_reason: String::new(),
+            signatures: vec![],
+            create_at: wallet_utils::time::now(),
+            transfer_type: bill_kind,
+        }
+    }
+}
+
 impl NewMultisigQueueEntity {
     pub fn with_msg_hash(mut self, msg_hash: &str) -> Self {
         self.msg_hash = msg_hash.to_string();
@@ -259,6 +299,7 @@ impl From<MultisigQueueEntity> for NewMultisigQueueEntity {
             fail_reason: value.fail_reason.to_string(),
             signatures: vec![],
             create_at: value.created_at,
+            transfer_type: BillKind::Transfer,
         }
     }
 }

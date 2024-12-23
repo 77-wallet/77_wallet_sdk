@@ -82,6 +82,7 @@ impl MultisigMemberEntities {
         self.0.iter().all(|item| item.confirmed == 1)
     }
 
+    // 初始化的地址排在前面
     pub fn prioritize_by_address(&mut self, target_address: &str) {
         self.0.sort_by(|a, b| {
             if a.address == target_address {

@@ -129,7 +129,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "209826970702319616".to_string();
+    let id = "209859366462033920".to_string();
 
     let password = "123456".to_string();
     let fee = None;
@@ -157,7 +157,7 @@ async fn test_check_ongoing() {
 async fn test_cancel_queue() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "209830215579471872".to_string();
+    let queue_id = "209856963415248896".to_string();
     let rs = wallet_manager.cancel_queue(queue_id).await;
 
     tracing::info!("res {}", serde_json::to_string(&rs).unwrap());

@@ -7,7 +7,10 @@ use wallet_database::{
         multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1,
         multisig_signatures::MultisigSignatureDaoV1,
     },
-    entities::multisig_queue::{MultisigQueueStatus, NewMultisigQueueEntity},
+    entities::{
+        bill::BillKind,
+        multisig_queue::{MultisigQueueStatus, NewMultisigQueueEntity},
+    },
     factory::RepositoryFactory,
     repositories::multisig_queue::MultisigQueueRepo,
 };
@@ -61,6 +64,7 @@ impl From<&MultiSignTransAccept> for NewMultisigQueueEntity {
             fail_reason: "".to_string(),
             account_id: value.account_id.clone(),
             create_at: value.created_at,
+            transfer_type: BillKind::try_from(value.transfer_type).unwrap(),
         }
     }
 }
@@ -86,6 +90,7 @@ impl MultiSignTransAccept {
             created_at,
             ref signatures,
             ref account_id,
+            transfer_type: _,
         } = self;
         // 新增交易队列数据
         let params: NewMultisigQueueEntity = (&self).into();

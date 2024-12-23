@@ -2,9 +2,12 @@ use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
+use crate::domain::multisig::MultisigDomain;
 use crate::domain::stake::StakeArgs;
+use crate::domain::task_queue::Tasks;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
+use crate::mqtt::payload::incoming::transaction::MultiSignTransAccept;
 use crate::notify::event::other::Process;
 use crate::notify::event::other::TransactionProcessFrontend;
 use crate::notify::FrontendNotifyEvent;
@@ -19,12 +22,20 @@ use crate::response_vo::EstimateFeeResp;
 use crate::response_vo::TronFeeDetails;
 use crate::BusinessError;
 use wallet_chain_interact::tron::operations as ops;
+use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_chain_interact::tron::TronChain;
 use wallet_database::dao::bill::BillDao;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
+use wallet_database::entities::multisig_queue::MultisigQueueEntity;
+use wallet_database::entities::multisig_queue::NewMultisigQueueEntity;
+use wallet_database::entities::multisig_signatures::MultisigSignatureStatus;
+use wallet_database::entities::multisig_signatures::NewSignatureEntity;
+use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
+use wallet_transport_backend::consts::endpoint;
+use wallet_transport_backend::request::SignedTranCreateReq;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 use wallet_types::constant::chain_code;
 use wallet_utils::serde_func;
@@ -838,5 +849,95 @@ impl StackService {
             .await?;
 
         Ok(tx_hash)
+    }
+
+    // 质押相关构建多签交易
+    pub async fn build_multisig_stake(
+        &self,
+        bill_kind: i64,
+        content: String,
+        expiration: i64,
+        password: String,
+    ) -> Result<String, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let queue_repo = MultisigQueueRepo::new(pool.clone());
+
+        let bill_kind = BillKind::try_from(bill_kind as i8)?;
+        // 转换多签的参数
+        let (args, address) = self.convert_stake_args(bill_kind, content)?;
+
+        let account = MultisigDomain::account_by_address(&address, true, &pool).await?;
+        MultisigDomain::validate_queue(&account)?;
+
+        let expiration = expiration * 3600;
+
+        // 构建多签交易
+        let resp = args
+            .build_multisig_tx(&self.chain, expiration as u64)
+            .await?;
+
+        let expiration = (wallet_utils::time::now().timestamp() + expiration) as u64;
+        let mut queue = NewMultisigQueueEntity::new(
+            account.id.to_string(),
+            address.to_string(),
+            expiration as i64,
+            &resp.tx_hash,
+            &resp.raw_data,
+            bill_kind,
+        );
+
+        let mut members = queue_repo.self_member_account_id(&account.id).await?;
+        members.prioritize_by_address(&account.initiator_addr);
+
+        // sign num
+        let sign_num = members.0.len().min(account.threshold as usize);
+        for i in 0..sign_num {
+            let member = members.0.get(i).unwrap();
+            let key = crate::domain::account::open_account_pk_with_password(
+                chain_code::TRON,
+                &member.address,
+                &password,
+            )
+            .await?;
+
+            let sign_result = TransactionOpt::sign_transaction(&resp.raw_data, key)?;
+            let sign = NewSignatureEntity::new(
+                &queue.id,
+                &member.address,
+                &sign_result.signature,
+                MultisigSignatureStatus::Approved,
+            );
+            queue.signatures.push(sign);
+        }
+
+        queue.status =
+            MultisigQueueEntity::compute_status(queue.signatures.len(), account.threshold as usize);
+        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
+
+        // 上报后端
+        let withdraw_id = res.id.clone();
+        let sync_params = MultiSignTransAccept::from(res).with_signature(queue.signatures.clone());
+
+        let raw_data = MultisigQueueRepo::multisig_queue_data(&withdraw_id, pool)
+            .await?
+            .to_string()?;
+        let req = SignedTranCreateReq {
+            withdraw_id,
+            address,
+            chain_code: chain_code::TRON.to_string(),
+            tx_str: wallet_utils::serde_func::serde_to_string(&sync_params)?,
+            raw_data,
+        };
+
+        let task =
+            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
+                domain::task_queue::BackendApiTaskData {
+                    endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
+                    body: serde_func::serde_to_value(&req)?,
+                },
+            ));
+        Tasks::new().push(task).send().await?;
+
+        Ok(resp.tx_hash)
     }
 }
