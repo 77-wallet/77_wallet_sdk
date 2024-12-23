@@ -37,7 +37,6 @@ impl TransactionAdapter {
     pub fn new(
         chain_code: ChainType,
         rpc_url: &str,
-        http_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<TransactionAdapter, chain::Error> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;
@@ -51,7 +50,7 @@ impl TransactionAdapter {
                 let config = chain::btc::provider::ProviderConfig {
                     rpc_url: rpc_url.to_string(),
                     rpc_auth: None,
-                    http_url: http_url.to_string(),
+                    http_url: rpc_url.to_string(),
                     http_api_key: None,
                 };
                 let btc_chain = chain::btc::BtcChain::new(config, network, header_opt, timeout)?;

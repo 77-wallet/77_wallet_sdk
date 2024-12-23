@@ -5,7 +5,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
+    let addr = "bc1qgs3l6uh0atn3ks807anzy8sqhvtc2j9dv8axa7";
     let chain_code = "btc";
     let symbol = "BTC";
 
@@ -21,19 +21,20 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "2N3w6RypEQBGpDLd7Dq57TmYTZLZwoV3ft2";
-    let to = "bcrt1qwmactnqqvl6d3ddxudatqxvvys33275zqls052";
-    let value = "10";
+    let from = "bc1qc7ggkxcdlm4xppjjja5c55acrl8uhfry36pple";
+    let to = "3J2sYwhMJjmjQHe8Ujja9JfySYxu657YGM";
+    let value = "0.00087585";
     let chain_code = "btc";
     let symbol = "BTC";
 
-    let params = transaction::BaseTransferReq::new(
+    let mut params = transaction::BaseTransferReq::new(
         from.to_string(),
         to.to_string(),
         value.to_string(),
         chain_code.to_string(),
         symbol.to_string(),
     );
+    params.with_spend_all(true);
 
     let res = wallet_manager.transaction_fee(params).await;
     tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());

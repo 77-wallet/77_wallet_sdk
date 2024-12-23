@@ -285,17 +285,18 @@ impl MultisigAccountService {
         let mut list = vec![];
         // main symbol
         for item in res.data.iter_mut() {
-            let chain = ChainEntity::detail(&*pool, &item.chain_code).await?.ok_or(
-                crate::BusinessError::ChainNode(crate::ChainNodeError::ChainNotFound),
-            )?;
-            item.address_type_to_category();
-            list.push({
-                MultisigAccountList {
-                    account: item.clone(),
-                    symbol: chain.main_symbol,
-                }
-            });
+            let chain = ChainEntity::detail(&*pool, &item.chain_code).await?;
+            if let Some(chain) = chain {
+                item.address_type_to_category();
+                list.push({
+                    MultisigAccountList {
+                        account: item.clone(),
+                        symbol: chain.main_symbol,
+                    }
+                });
+            }
         }
+
         let resp = Pagination {
             data: list,
             total_count: res.total_count,

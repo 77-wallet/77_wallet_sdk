@@ -6,7 +6,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "0xd2fC4383d6E8A2177Ac93D9f291f6dc98f6895c9";
+    let addr = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3";
     // let addr = "0x5985CE40d3dACf7c1352e464691BC7fb03215928";
     let chain_code = "bnb";
     // let symbol = "STK";
@@ -24,9 +24,9 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "0xd2fC4383d6E8A2177Ac93D9f291f6dc98f6895c9";
-    let to = "0x3EC161C02Cd5a49EE8657947DC99DA58D1259aA1";
-    let value = "0.001";
+    let from = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3";
+    let to = "0xF7d5c082Ce49922913404b56168EBa82Dda4c1F7";
+    let value = "0.0001";
     let chain_code = "bnb";
     let symbol = "BNB";
 
@@ -47,9 +47,9 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455";
-    let to = "0xd2fC4383d6E8A2177Ac93D9f291f6dc98f6895c9";
-    let value = "0.02";
+    let from = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3";
+    let to = "0xF7d5c082Ce49922913404b56168EBa82Dda4c1F7";
+    let value = "0.0001";
     let chain_code = "bnb";
     let symbol = "BNB";
     let password = "123456";
@@ -66,7 +66,7 @@ async fn test_transfer() {
         base,
         password: password.to_string(),
         fee_setting:
-            r#"{"gasLimit":22796,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1500000000"}"#
+            r#"{"gasLimit":23100,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1000000000"}"#
                 .to_string(),
     };
 

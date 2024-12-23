@@ -62,12 +62,7 @@ impl ChainAdapterFactory {
             None
         };
 
-        Ok(TransactionAdapter::new(
-            chain,
-            &node.rpc_url,
-            &node.http_url,
-            header_opt,
-        )?)
+        Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt)?)
     }
 
     pub async fn get_tron_adapter() -> Result<TronChain, crate::ServiceError> {
@@ -89,7 +84,6 @@ impl ChainAdapterFactory {
     pub async fn get_node_transaction_adapter(
         chain_code: &str,
         rpc_url: &str,
-        http_url: &str,
     ) -> Result<TransactionAdapter, crate::ServiceError> {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
 
@@ -99,8 +93,6 @@ impl ChainAdapterFactory {
             None
         };
 
-        Ok(TransactionAdapter::new(
-            chain, rpc_url, http_url, header_opt,
-        )?)
+        Ok(TransactionAdapter::new(chain, rpc_url, header_opt)?)
     }
 }

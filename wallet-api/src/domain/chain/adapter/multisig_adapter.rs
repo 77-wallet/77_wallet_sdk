@@ -49,9 +49,9 @@ impl MultisigAdapter {
                 //     password: "123456".to_string(),
                 // };
                 let config = chain::btc::provider::ProviderConfig {
-                    rpc_url: chian_node.rpc_url,
+                    rpc_url: chian_node.rpc_url.clone(),
                     rpc_auth: None,
-                    http_url: chian_node.http_url,
+                    http_url: chian_node.rpc_url,
                     http_api_key: None,
                 };
 
