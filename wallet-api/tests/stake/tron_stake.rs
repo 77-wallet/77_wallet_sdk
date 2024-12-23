@@ -1,5 +1,6 @@
 use crate::get_manager;
 use wallet_api::request::stake::{FreezeBalanceReq, UnFreezeBalanceReq};
+use wallet_database::entities::bill::BillKind;
 
 #[tokio::test]
 async fn test_account_resource() {
@@ -8,6 +9,23 @@ async fn test_account_resource() {
     let res = manager.resource_info(account).await;
 
     tracing::info!("resource = {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_freeze_fee() {
+    let manager = get_manager().await;
+    let req = FreezeBalanceReq {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        resource: "bandwidth".to_string(),
+        frozen_balance: 50,
+    };
+
+    let bill_kind = BillKind::FreezeBandwidth.to_i8() as i64;
+
+    let content = serde_json::to_string(&req).unwrap();
+    let res = manager.estimate_stake_fee(bill_kind, content).await;
+
+    tracing::info!("fee {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]
@@ -81,17 +99,27 @@ async fn test_withdraw() {
 }
 
 #[tokio::test]
-async fn test_get_estimate_resource() {
+async fn test_trx_to_resource() {
     let manager = get_manager().await;
 
     let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
-    let value = 50;
-    let resource_type = "bandwidth".to_string();
+    let value = 100;
+    let resource_type = "energy".to_string();
 
-    let res = manager
-        .get_estimated_resources(account, value, resource_type)
-        .await;
-    tracing::info!(" response = {}", serde_json::to_string(&res).unwrap());
+    let res = manager.trx_to_resource(account, value, resource_type).await;
+    tracing::info!("response = {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_resource_to_trx() {
+    let manager = get_manager().await;
+
+    let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let value = 7200;
+    let resource_type = "bandwith".to_string();
+
+    let res = manager.resource_to_trx(account, value, resource_type).await;
+    tracing::info!("response = {}", serde_json::to_string(&res).unwrap());
 }
 
 #[tokio::test]

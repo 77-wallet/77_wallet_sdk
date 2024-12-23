@@ -49,60 +49,97 @@ pub struct GetAccountAddress {
 #[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountResource {
-    pub balance: String,
+    // 账户余额
+    pub balance: f64,
+    //  质押获得的票数
+    pub votes: i64,
+    // 解冻中的数量
+    pub unfreeze_num: i64,
+    // 待提取的数量
+    pub pending_withdraw: i64,
+
+    // 带宽能量总质押数据
+    pub total_freeze: BalanceInfo,
+
+    // 能量资源
     pub energy: Resource,
+    // 带宽资源
     pub bandwidth: Resource,
 }
 
 #[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Resource {
+    // 可使用的资源
     pub limit_resource: i64,
+    // 总的资源
     pub total_resource: i64,
     // unit is trx
-    // 总共质押的数量
-    pub total_freeze_amount: f64,
+    // // 总共质押的数量
+    pub total_freeze: TrxResource,
     // 自己质押的数量
-    pub owner_freeze_amount: f64,
+    pub owner_freeze: TrxResource,
     // 委派出去的数量
-    pub delegate_freeze_amount: f64,
+    pub delegate_freeze: TrxResource,
     // 被人给我的数量
-    pub acquire_freeze_amount: f64,
+    pub acquire_freeze: TrxResource,
     // 可以解质押的数量
-    pub can_unfreeze_amount: f64,
-    // 可以提现的数量
-    pub can_withdraw_unfreeze_amount: f64,
-    // 对应资源的价格
-    pub price: f64,
+    pub can_unfreeze: i64,
 }
+
+#[derive(Debug, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TrxResource {
+    pub amount: i64,
+    pub value: f64,
+}
+
+impl TrxResource {
+    pub fn new(amount: i64, price: f64) -> Self {
+        Self {
+            amount,
+            value: (amount as f64 * price * 100.0).round() / 100.0,
+        }
+    }
+}
+
 impl Resource {
-    pub fn set_total_freeeze_amount(&mut self, value: i64) {
-        self.total_freeze_amount = (value / 100_0000) as f64;
+    pub fn calculate_total(&mut self) {
+        let amount =
+            self.owner_freeze.amount + self.acquire_freeze.amount + self.delegate_freeze.amount;
+
+        let value =
+            self.owner_freeze.value + self.acquire_freeze.value + self.delegate_freeze.value;
+
+        self.total_freeze = TrxResource { amount, value }
     }
 
-    pub fn set_owner_freeze_amount(&mut self, value: i64) {
-        self.owner_freeze_amount = (value / 100_0000) as f64;
-    }
+    // pub fn set_total_freeeze_amount(&mut self, value: i64) {
+    //     self.total_freeze_amount = (value / 100_0000) as f64;
+    // }
 
-    pub fn set_delegate_freeze_amount(&mut self, value: i64) {
-        self.delegate_freeze_amount = (value / 100_0000) as f64;
-    }
+    // pub fn set_owner_freeze_amount(&mut self, value: i64) {
+    //     self.owner_freeze_amount = (value / 100_0000) as f64;
+    // }
 
-    pub fn set_acquire_freeze_amount(&mut self, value: i64) {
-        self.acquire_freeze_amount = (value / 100_0000) as f64;
-    }
+    // pub fn set_delegate_freeze_amount(&mut self, value: i64) {
+    //     self.delegate_freeze_amount = (value / 100_0000) as f64;
+    // }
 
-    pub fn set_can_unfreeze_amount(&mut self, value: i64) {
-        self.can_unfreeze_amount = (value / 100_0000) as f64;
-    }
+    // pub fn set_acquire_freeze_amount(&mut self, value: i64) {
+    //     self.acquire_freeze_amount = (value / 100_0000) as f64;
+    // }
 
-    pub fn set_can_withdraw_unfreeze_amount(&mut self, value: i64) {
-        self.can_withdraw_unfreeze_amount = (value / 100_0000) as f64;
-    }
+    // pub fn set_can_unfreeze_amount(&mut self, value: i64) {
+    //     self.can_unfreeze_amount = (value / 100_0000) as f64;
+    // }
 
-    pub fn set_price(&mut self, value: f64) {
-        self.price = value;
-    }
+    // pub fn set_can_withdraw_unfreeze_amount(&mut self, value: i64) {
+    //     self.can_withdraw_unfreeze_amount = (value / 100_0000) as f64;
+    // }
+    // pub fn set_price(&mut self, value: f64) {
+    //     self.price = value;
+    // }
 }
 
 #[derive(Debug, serde::Serialize, Default)]

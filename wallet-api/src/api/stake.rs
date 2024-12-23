@@ -2,10 +2,11 @@ use super::ReturnType;
 use crate::{
     request::stake::{DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq},
     response_vo::{
+        self,
         account::AccountResource,
         stake::{
-            CanDelegatedResp, DelegateListResp, DelegateResp, EstimatedResourcesResp,
-            FreezeListResp, FreezeResp, UnfreezeListResp, WithdrawUnfreezeResp,
+            CanDelegatedResp, DelegateListResp, DelegateResp, FreezeListResp, FreezeResp,
+            ResourceToTrxResp, TrxToResourceResp, UnfreezeListResp, WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,
@@ -17,6 +18,18 @@ impl crate::WalletManager {
     pub async fn resource_info(&self, account: String) -> ReturnType<AccountResource> {
         let service = StackService::new().await?;
         service.account_resource(&account).await?.into()
+    }
+
+    pub async fn estimate_stake_fee(
+        &self,
+        bill_kind: i64,
+        content: String,
+    ) -> ReturnType<response_vo::EstimateFeeResp> {
+        StackService::new()
+            .await?
+            .estimate_stake_fee(bill_kind, content)
+            .await?
+            .into()
     }
 
     // freeze balance
@@ -104,15 +117,28 @@ impl crate::WalletManager {
         "used request_energy to instead".to_string().into()
     }
 
-    pub async fn get_estimated_resources(
+    pub async fn trx_to_resource(
         &self,
         account: String,
         value: i64,
         resource_type: String,
-    ) -> ReturnType<EstimatedResourcesResp> {
+    ) -> ReturnType<TrxToResourceResp> {
         StackService::new()
             .await?
-            .get_estimated_resources(account, value, resource_type)
+            .trx_to_resource(account, value, resource_type)
+            .await?
+            .into()
+    }
+
+    pub async fn resource_to_trx(
+        &self,
+        account: String,
+        value: i64,
+        resource_type: String,
+    ) -> ReturnType<ResourceToTrxResp> {
+        StackService::new()
+            .await?
+            .resource_to_trx(account, value, resource_type)
             .await?
             .into()
     }

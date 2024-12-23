@@ -1,6 +1,7 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
+use crate::domain::coin::TokenCurrencyGetter;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
 use crate::notify::event::other::Process;
@@ -10,11 +11,18 @@ use crate::notify::NotifyEvent;
 use crate::request::stake;
 use crate::request::stake::UnDelegateReq;
 use crate::response_vo::account::AccountResource;
+use crate::response_vo::account::Resource;
+use crate::response_vo::account::TrxResource;
 use crate::response_vo::stake as resp;
+use crate::response_vo::stake::ResourceResp;
+use crate::response_vo::EstimateFeeResp;
+use crate::response_vo::TronFeeDetails;
 use crate::BusinessError;
 use wallet_chain_interact::tron::operations as ops;
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
+use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_chain_interact::tron::TronChain;
+use wallet_database::dao::bill::BillDao;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
@@ -124,31 +132,122 @@ impl StackService {
 
         Ok(result)
     }
+
+    fn fill_resource_info(
+        &self,
+        resource: &mut Resource,
+        account: &TronAccount,
+        resource_type: ops::stake::ResourceType,
+        price: f64,
+    ) {
+        // 代理给别人的
+        let delegate = account.delegate_resource(resource_type);
+        resource.delegate_freeze = TrxResource::new(delegate, price);
+
+        // 别人我给代理的
+        let acquire = account.acquired_resource(resource_type);
+        resource.acquire_freeze = TrxResource::new(acquire, price);
+
+        // 自己质押的
+        let type_str = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => "",
+            ops::stake::ResourceType::ENERGY => "ENERGY",
+        };
+        let owner = account.frozen_v2_owner(&type_str);
+        resource.owner_freeze = TrxResource::new(owner, price);
+
+        resource.can_unfreeze = owner;
+
+        // 计算总的质押
+        resource.calculate_total();
+    }
 }
 
+// 单笔交易需要花费的能量
+pub const NET_CONSUME: f64 = 270.0;
+// 代币转账消耗的能量
+pub const ENERGY_CONSUME: f64 = 70000.0;
+
 impl StackService {
-    // 预估可以获得的资源
-    pub async fn get_estimated_resources(
+    // 输入trx 得到对应的资源
+    pub async fn trx_to_resource(
         &self,
         account: String,
         value: i64,
         resource_type: String,
-    ) -> Result<resp::EstimatedResourcesResp, crate::ServiceError> {
+    ) -> Result<resp::TrxToResourceResp, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
 
-        let resource = self.chain.account_resource(&account).await?;
+        let resource_value = self.resource_value(&account, value, resource_type).await?;
+        let resource = resp::ResourceResp::new(value, resource_type, resource_value);
 
-        let (price, consumer) = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => (resource.net_price(), 268.0),
-            ops::stake::ResourceType::ENERGY => (resource.energy_price(), 70000.0),
+        let consumer = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => NET_CONSUME,
+            ops::stake::ResourceType::ENERGY => ENERGY_CONSUME,
         };
 
-        Ok(resp::EstimatedResourcesResp::new(
-            value,
-            price,
-            resource_type,
-            consumer,
-        ))
+        Ok(resp::TrxToResourceResp::new(resource, consumer))
+    }
+
+    // 输入 resoruce 换算trx
+    pub async fn resource_to_trx(
+        &self,
+        account: String,
+        value: i64,
+        resource_type: String,
+    ) -> Result<resp::ResourceToTrxResp, crate::ServiceError> {
+        let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
+        let resource = ChainTransaction::account_resorce(&self.chain, &account).await?;
+
+        let (price, consumer) = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => (resource.net_price(), NET_CONSUME),
+            ops::stake::ResourceType::ENERGY => (resource.energy_price(), ENERGY_CONSUME),
+        };
+
+        let amount = (value as f64 / price) as i64;
+        let transfer_times = value as f64 / consumer;
+
+        Ok(resp::ResourceToTrxResp {
+            amount,
+            votes: amount,
+            transfer_times,
+        })
+    }
+
+    pub async fn estimate_stake_fee(
+        &self,
+        bill_kind: i64,
+        content: String,
+    ) -> Result<EstimateFeeResp, crate::ServiceError> {
+        let bill_kind = BillKind::try_from(bill_kind as i8)?;
+
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
+
+        let token_currency =
+            domain::coin::token_price::TokenCurrencyGetter::get_currency(currency, "tron", "TRX")
+                .await?;
+
+        match bill_kind {
+            BillKind::FreezeBandwidth => {
+                let req =
+                    wallet_utils::serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
+                let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
+
+                let consumer = self.chain.simple_fee(&req.owner_address, 1, args).await?;
+                let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+                let content = wallet_utils::serde_func::serde_to_string(&res)?;
+
+                Ok(EstimateFeeResp::new(
+                    "TRX".to_string(),
+                    "tron".to_string(),
+                    content,
+                ))
+            }
+            _ => {
+                panic!("xx");
+            }
+        }
     }
 
     // 质押trx
@@ -156,14 +255,19 @@ impl StackService {
         &self,
         req: stake::FreezeBalanceReq,
         password: &str,
-    ) -> Result<resp::FreezeResp, crate::error::ServiceError> {
+    ) -> Result<resp::FreezeResp, crate::ServiceError> {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
         let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+
         let tx_hash = self
-            .process_transaction(args, BillKind::Freeze, &from, password)
+            .process_transaction(args, bill_kind, &from, password)
             .await?;
 
         let resource_value = self
@@ -171,9 +275,10 @@ impl StackService {
             .await?;
 
         let resource = resp::ResourceResp::new(req.frozen_balance, resource_type, resource_value);
-        Ok(resp::FreezeResp::new(resource, tx_hash, BillKind::Freeze))
+        Ok(resp::FreezeResp::new(resource, tx_hash, bill_kind))
     }
 
+    // 质押明细
     pub async fn freeze_list(
         &self,
         owner: &str,
@@ -181,24 +286,49 @@ impl StackService {
         let account = self.chain.account_info(owner).await?;
         let resource = self.chain.account_resource(owner).await?;
 
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        // TODO 代码优化
         let mut res = vec![];
         let bandwidth = account.frozen_v2_owner("");
         if bandwidth > 0 {
-            let price = resource.net_price();
-            let freeze =
-                resp::FreezeListResp::new(bandwidth, price, ops::stake::ResourceType::BANDWIDTH);
+            let resource_type = ops::stake::ResourceType::BANDWIDTH;
+            let resource_value = resource.resource_value(resource_type, bandwidth)?;
+
+            let resource_resp = ResourceResp::new(bandwidth, resource_type, resource_value);
+            let mut freeze = resp::FreezeListResp::new(resource_resp);
+
+            let kinds = vec![
+                BillKind::FreezeBandwidth.to_i8(),
+                BillKind::UnFreezeBandwidth.to_i8(),
+            ];
+            let bill = BillDao::last_kind_bill(pool.as_ref(), owner, kinds).await?;
+            if let Some(bill) = bill {
+                freeze.opration_time = Some(bill.transaction_time)
+            }
+
             res.push(freeze);
         }
 
         let energy = account.frozen_v2_owner("ENERGY");
         if energy > 0 {
-            let energy_price = resource.energy_price();
-            let freeze =
-                resp::FreezeListResp::new(energy, energy_price, ops::stake::ResourceType::ENERGY);
+            let resource_type = ops::stake::ResourceType::ENERGY;
+            let resource_value = resource.resource_value(resource_type, energy)?;
+
+            let resource_resp = ResourceResp::new(energy, resource_type, resource_value);
+            let mut freeze = resp::FreezeListResp::new(resource_resp);
+
+            let kinds = vec![
+                BillKind::FreezeEnergy.to_i8(),
+                BillKind::UnFreezeEnergy.to_i8(),
+            ];
+            let bill = BillDao::last_kind_bill(pool.as_ref(), owner, kinds).await?;
+            if let Some(bill) = bill {
+                freeze.opration_time = Some(bill.transaction_time)
+            }
+
             res.push(freeze);
         }
-
-        // TODO 匹配地址最新的交易记录里面的时间,需要匹配解质押
 
         Ok(res)
     }
@@ -240,10 +370,15 @@ impl StackService {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::UnFeeze, &from, password)
+            .process_transaction(args, bill_kind, &from, password)
             .await?;
 
         let resource_value = self
@@ -251,7 +386,7 @@ impl StackService {
             .await?;
 
         let resource = resp::ResourceResp::new(req.unfreeze_balance, resource_type, resource_value);
-        Ok(resp::FreezeResp::new(resource, tx_hash, BillKind::UnFeeze))
+        Ok(resp::FreezeResp::new(resource, tx_hash, bill_kind))
     }
 
     // 取消解锁
@@ -262,10 +397,10 @@ impl StackService {
     ) -> Result<String, crate::ServiceError> {
         let args = ops::stake::CancelAllFreezeBalanceArgs::new(owner)?;
         let tx_hash = self
-            .process_transaction(args, BillKind::CancelAllUnFeeze, owner, password)
+            .process_transaction(args, BillKind::CancelAllUnFreeze, owner, password)
             .await?;
 
-        // TODO
+        // TODO 响应
 
         Ok(tx_hash)
     }
@@ -288,7 +423,7 @@ impl StackService {
         };
 
         let tx_hash = self
-            .process_transaction(args, BillKind::WithdrawUnFeeze, &owner_address, password)
+            .process_transaction(args, BillKind::WithdrawUnFreeze, &owner_address, password)
             .await?;
 
         Ok(resp::WithdrawUnfreezeResp {
@@ -307,59 +442,40 @@ impl StackService {
         let account = chain.account_info(account).await?;
 
         let mut res: AccountResource = AccountResource {
-            balance: (account.balance / 1_000_000).to_string(),
+            balance: account.balance_to_f64(),
             ..Default::default()
         };
 
-        // net
+        res.votes = resource.tron_power_limit;
+        res.unfreeze_num = account.unfreeze_v2.len() as i64;
+        res.pending_withdraw = account.can_withdraw_num();
+
+        // bandwitdh
         res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
         res.bandwidth.limit_resource = res.bandwidth.total_resource - resource.free_net_used;
 
-        // 给别人质押的
-        res.bandwidth
-            .set_delegate_freeze_amount(account.delegated_bandwidth);
-        // 别人给我的
-        res.bandwidth
-            .set_acquire_freeze_amount(account.acquired_bandwidth);
-        // 自己质押的
-        res.bandwidth
-            .set_owner_freeze_amount(account.frozen_v2_owner(""));
-        // 可解冻
-        res.bandwidth
-            .set_can_unfreeze_amount(account.frozen_v2_owner(""));
-        // 可提现
-        res.bandwidth
-            .set_can_withdraw_unfreeze_amount(account.can_withdraw_unfreeze_amount(""));
-        // 总共
-        res.bandwidth.total_freeze_amount = res.bandwidth.delegate_freeze_amount
-            + res.bandwidth.owner_freeze_amount
-            + res.bandwidth.acquire_freeze_amount;
-        res.bandwidth.price = resource.net_price();
+        self.fill_resource_info(
+            &mut res.bandwidth,
+            &account,
+            ops::stake::ResourceType::BANDWIDTH,
+            resource.net_price(),
+        );
 
         // energy
         res.energy.total_resource = resource.energy_limit;
         res.energy.limit_resource = resource.energy_limit - resource.energy_used;
+        self.fill_resource_info(
+            &mut res.energy,
+            &account,
+            ops::stake::ResourceType::ENERGY,
+            resource.energy_price(),
+        );
 
-        // 给别人质押的
-        res.energy
-            .set_delegate_freeze_amount(account.account_resource.delegated_energy);
-        // 别人给我的
-        res.energy
-            .set_acquire_freeze_amount(account.account_resource.acquired_energy);
-        // 自己质押的
-        res.energy
-            .set_owner_freeze_amount(account.frozen_v2_owner("ENERGY"));
-        // 可解冻
-        res.energy
-            .set_can_unfreeze_amount(account.frozen_v2_owner("ENERGY"));
-        // 可提现
-        res.energy
-            .set_can_withdraw_unfreeze_amount(account.can_withdraw_unfreeze_amount("ENERGY"));
-        // 总共
-        res.energy.total_freeze_amount = res.energy.delegate_freeze_amount
-            + res.energy.owner_freeze_amount
-            + res.energy.acquire_freeze_amount;
-        res.energy.price = resource.energy_price();
+        let amount = res.bandwidth.total_freeze.amount + res.energy.total_freeze.amount;
+
+        let balance =
+            TokenCurrencyGetter::get_balance_info(chain_code::TRON, "TRX", amount as f64).await?;
+        res.total_freeze = balance;
 
         Ok(res)
     }
@@ -392,10 +508,14 @@ impl StackService {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::Delegate, &from, password)
+            .process_transaction(args, bill_kind, &from, password)
             .await?;
 
         let resource_value = self
@@ -420,8 +540,13 @@ impl StackService {
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
         let args = ops::stake::UnDelegateArgs::try_from(&req)?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+
         let tx_hash = self
-            .process_transaction(args, BillKind::UnDelegate, &from, &password)
+            .process_transaction(args, bill_kind, &from, &password)
             .await?;
 
         let resource_value = self
