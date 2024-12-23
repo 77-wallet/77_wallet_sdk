@@ -1,6 +1,9 @@
 use wallet_chain_interact::tron::{
     consts,
-    operations::stake::{self, DelegateArgs, UnDelegateArgs, UnFreezeBalanceArgs},
+    operations::stake::{
+        self, DelegateArgs, UnDelegateArgs, UnFreezeBalanceArgs, VoteWitnessArgs,
+        WithdrawBalanceArgs,
+    },
 };
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
@@ -108,6 +111,47 @@ impl TryFrom<&UnDelegateReq> for UnDelegateArgs {
             balance: value.balance * consts::TRX_VALUE,
             resource: stake::ResourceType::try_from(value.resource.as_str())?,
         };
+        Ok(args)
+    }
+}
+
+#[derive(serde::Serialize, Debug)]
+pub struct VoteWitnessReq {
+    pub owner_address: String,
+    pub votes: Vec<VotesReq>,
+}
+
+#[derive(serde::Serialize, Debug)]
+pub struct VotesReq {
+    pub vote_address: String,
+    pub vote_count: i64,
+}
+
+impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
+    type Error = crate::error::ServiceError;
+    fn try_from(value: &VoteWitnessReq) -> Result<Self, Self::Error> {
+        let mut votes = Vec::new();
+        for v in &value.votes {
+            let vote = stake::Votes::new(&v.vote_address, v.vote_count)?;
+            votes.push(vote);
+        }
+
+        Ok(VoteWitnessArgs::new(&value.owner_address, votes)?)
+    }
+}
+
+#[derive(serde::Serialize, Debug)]
+pub struct WithdrawBalanceReq {
+    pub owner_address: String,
+}
+
+impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {
+    type Error = crate::error::ServiceError;
+    fn try_from(value: &WithdrawBalanceReq) -> Result<Self, Self::Error> {
+        let args = Self {
+            owner_address: wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?,
+        };
+
         Ok(args)
     }
 }
