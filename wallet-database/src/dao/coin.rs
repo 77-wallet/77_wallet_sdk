@@ -133,7 +133,7 @@ impl CoinEntity {
 
     pub async fn list<'a, E>(
         exec: E,
-        symbol_list: Vec<String>,
+        symbol_list: &[String],
         chain_code: Option<String>,
         is_default: Option<u8>,
     ) -> Result<Vec<Self>, crate::Error>
