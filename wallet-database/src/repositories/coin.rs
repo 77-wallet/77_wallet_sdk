@@ -21,12 +21,12 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         } else {
             Vec::new()
         };
-        crate::execute_with_executor!(executor, CoinEntity::list, symbol, chain_code, None)
+        crate::execute_with_executor!(executor, CoinEntity::list, &symbol, chain_code, None)
     }
 
     async fn coin_list_with_symbols(
         &mut self,
-        symbols: Vec<String>,
+        symbols: &[String],
         chain_code: Option<String>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
@@ -35,7 +35,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
 
     async fn default_coin_list(&mut self) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::list, vec![], None, Some(1))
+        crate::execute_with_executor!(executor, CoinEntity::list, &[], None, Some(1))
     }
 
     async fn get_market_chain_list(&mut self) -> Result<Vec<String>, crate::Error> {
@@ -101,7 +101,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
 
     async fn drop_multi_custom_coin(
         &mut self,
-        coin_ids: Vec<SymbolId>,
+        coin_ids: std::collections::HashSet<SymbolId>,
     ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinEntity::drop_multi_custom_coin, coin_ids)

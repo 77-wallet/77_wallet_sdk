@@ -239,11 +239,11 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
 
-        let wallet_address = "0xbD5B36A5Ddc3b93d02d0DD085B8A76508E2d125A";
+        let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
         // let chain_code = "eth";
         // let chain_code = "sol";
         // let chain_code = "btc";
-        let chain_code = "bnb";
+        // let chain_code = "bnb";
         let chain_code = "eth";
         // let symbol = "ATLA";
         // let token_address = Some("0x45e9F834539bC2a0936f184779cED638c9B26459".to_string());
@@ -271,8 +271,9 @@ mod test {
         // let chain_code = "tron";
         // let token_address = "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd";
         // let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
-        let token_address = "0x55d398326f99059fF775485246999027B3197955";
-        let token_address = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
+        // let token_address = "0x55d398326f99059fF775485246999027B3197955";
+        let token_address = "0x55d398326f99059ff775485246999027b3197955";
+        // let token_address = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
         let res = wallet_manager

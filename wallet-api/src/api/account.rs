@@ -289,9 +289,9 @@ mod test {
             ..
         } = setup_test_environment(None, None, false, None).await?;
         // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
-        let wallet_address = "0x1AEc788620fE374A3D1D3CC3860F066b508bC86e";
+        let wallet_address = "0xf689Fac64cF12175Dc0570656B97414d7A8d3BF1";
         let account = wallet_manager
-            .list_derived_addresses(wallet_address, -1, &wallet_env.password, false)
+            .list_derived_addresses(wallet_address, 1, &wallet_env.password, false)
             .await;
         tracing::info!("[test_show_index_address] show_index_address: {account:?}");
         let res = serde_json::to_string(&account).unwrap();

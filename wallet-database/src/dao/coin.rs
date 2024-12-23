@@ -133,7 +133,7 @@ impl CoinEntity {
 
     pub async fn list<'a, E>(
         exec: E,
-        symbol_list: Vec<String>,
+        symbol_list: &[String],
         chain_code: Option<String>,
         is_default: Option<u8>,
     ) -> Result<Vec<Self>, crate::Error>
@@ -364,9 +364,22 @@ impl CoinEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    // 查询coin表中is_custom为1，并且assets表中chain_code、symbol和coin表中chain_code、symbol相同的记录
+    pub async fn get_custom_coin_and_assets<'a, E>(exec: E) -> Result<Vec<CoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM coin WHERE is_custom = 1 AND EXISTS 
+        (SELECT 1 FROM assets WHERE assets.chain_code = coin.chain_code AND assets.symbol = coin.symbol)";
+        sqlx::query_as::<_, CoinEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn drop_multi_custom_coin<'a, E>(
         tx: E,
-        coin_ids: Vec<SymbolId>,
+        coin_ids: HashSet<SymbolId>,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

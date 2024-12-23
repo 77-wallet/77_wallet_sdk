@@ -68,7 +68,7 @@ impl CoinDomain {
     ) -> Result<Vec<TokenPriceChangeRes>, crate::ServiceError> {
         let tx = repo;
         let backend_api = crate::Context::get_global_backend_api()?;
-        let coins = tx.coin_list_with_symbols(symbols, None).await?;
+        let coins = tx.coin_list_with_symbols(&symbols, None).await?;
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
 
@@ -86,18 +86,24 @@ impl CoinDomain {
 
         let mut res = Vec::new();
         if let Some(exchange_rate) = exchange_rate {
-            for token in tokens {
-                let coin_id = CoinId {
-                    chain_code: token.chain_code.clone(),
-                    symbol: token.symbol.clone(),
-                    token_address: token.token_address.clone(),
-                };
-                tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit)
-                    .await?;
-                let data =
-                    TokenCurrencies::calculate_token_price_changes(token, exchange_rate.rate)
+            for mut token in tokens {
+                if let Some(symbol) = symbols
+                    .iter()
+                    .find(|s| s.to_lowercase() == token.symbol.to_lowercase())
+                {
+                    token.symbol = symbol.to_string();
+                    let coin_id = CoinId {
+                        chain_code: token.chain_code.clone(),
+                        symbol: symbol.to_string(),
+                        token_address: token.token_address.clone(),
+                    };
+                    tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit)
                         .await?;
-                res.push(data);
+                    let data =
+                        TokenCurrencies::calculate_token_price_changes(token, exchange_rate.rate)
+                            .await?;
+                    res.push(data);
+                }
             }
         }
 

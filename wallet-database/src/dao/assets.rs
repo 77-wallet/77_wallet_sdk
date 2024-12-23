@@ -229,7 +229,6 @@ impl AssetsEntity {
 
     pub(crate) async fn get_chain_assets_by_address_chain_code_symbol<'a, E>(
         exec: E,
-
         address: Vec<String>,
         chain_code: Option<String>,
         symbol: Option<&str>,

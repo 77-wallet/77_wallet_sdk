@@ -427,15 +427,31 @@ impl AssetsService {
 
         // tracing::info!("remove_coin: {:?}", accounts);
         let mut assets_ids = Vec::new();
-        let mut coin_ids = Vec::new();
+        let mut coin_ids = std::collections::HashSet::new();
         for account in accounts {
             let assets_id = AssetsId::new(&account.address, &account.chain_code, symbol);
             assets_ids.push(assets_id);
             let coin_id = SymbolId::new(&account.chain_code, symbol);
-            coin_ids.push(coin_id);
+            coin_ids.insert(coin_id);
         }
         tx.delete_multi_assets(assets_ids).await?;
-        tx.drop_multi_custom_coin(coin_ids).await?;
+
+        let mut should_drop_coin = std::collections::HashSet::new();
+        for coin in coin_ids {
+            let asset = tx
+                .get_chain_assets_by_address_chain_code_symbol(
+                    Vec::new(),
+                    Some(coin.chain_code.clone()),
+                    Some(&coin.symbol),
+                    None,
+                )
+                .await?;
+            if asset.is_empty() {
+                should_drop_coin.insert(coin);
+            }
+        }
+
+        tx.drop_multi_custom_coin(should_drop_coin).await?;
 
         Ok(())
     }

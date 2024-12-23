@@ -271,7 +271,7 @@ mod test {
 
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         // let wallet_address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
-        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
+        let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
         // let symbol = "LTC";
         // let symbol = "BEANS";
         let symbol = "USDT";
@@ -288,7 +288,7 @@ mod test {
             setup_test_environment(None, None, false, None).await?;
 
         let res = wallet_manager
-            .remove_multisig_coin("TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK", "SUN")
+            .remove_multisig_coin("0x3bAc24b73c7A03C8715697cA1646a6f85B91023a", "USDT")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
