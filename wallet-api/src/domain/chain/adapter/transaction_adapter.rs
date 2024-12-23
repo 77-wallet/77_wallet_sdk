@@ -185,12 +185,12 @@ impl TransactionAdapter {
                     chain.network,
                 )?;
 
-                let tx_hash = chain
+                let tx = chain
                     .transfer(params, private_key)
                     .await
                     .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
 
-                Ok(TransferResp::new(tx_hash, "0".to_string()))
+                Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
             }
             Self::Solana(chain) => {
                 // check balance

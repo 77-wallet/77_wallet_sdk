@@ -595,12 +595,12 @@ impl MultisigTransactionService {
                     &queue.raw_data,
                     &account.address_type,
                 )?;
-                let tx_hash = chain
+                let tx = chain
                     .exec_multisig_tx(params, sign, account.authority_addr)
                     .await
                     .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
 
-                TransferResp::new(tx_hash, "0".to_string())
+                TransferResp::new(tx.tx_hash, tx.fee.to_string())
             }
             MultisigAdapter::Solana(chain) => {
                 let multisig_account = domain::multisig::MultisigDomain::account_by_address(
