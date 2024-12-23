@@ -445,8 +445,8 @@ impl AssetsEntity {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT (symbol, address, chain_code)
         DO UPDATE SET
-            balance = EXCLUDED.balance,
             status = EXCLUDED.status,
+            is_multisig = EXCLUDED.is_multisig,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now');
     "#;
 

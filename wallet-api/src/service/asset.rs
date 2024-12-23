@@ -377,36 +377,33 @@ impl AssetsService {
                 let chain_code = account.chain_code.as_str();
                 // let code: ChainCode = chain_code.try_into()?;
 
-                // 判断资产是否已添加
-                let asset = tx
-                    .assets_by_id(&AssetsId {
-                        address: account.address.to_string(),
-                        chain_code: chain_code.to_string(),
-                        symbol: symbol.to_string(),
-                    })
-                    .await?;
+                let is_multisig = if let Some(is_multisig) = is_multisig
+                    && is_multisig
+                {
+                    1
+                } else {
+                    0
+                };
 
-                if asset.is_none() {
-                    let assets_id = AssetsId::new(&account.address, chain_code, symbol);
+                let assets_id = AssetsId::new(&account.address, chain_code, symbol);
 
-                    let assets = CreateAssetsVo::new(
-                        assets_id,
-                        coin.decimals,
-                        coin.token_address().clone(),
-                        coin.protocol.clone(),
-                        0,
-                    )
-                    .with_name(&coin.name)
-                    .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                let assets = CreateAssetsVo::new(
+                    assets_id,
+                    coin.decimals,
+                    coin.token_address().clone(),
+                    coin.protocol.clone(),
+                    is_multisig,
+                )
+                .with_name(&coin.name)
+                .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
 
-                    if coin.price.is_empty() {
-                        req.insert(
-                            chain_code,
-                            &assets.token_address.clone().unwrap_or_default(),
-                        );
-                    }
-                    tx.upsert_assets(assets).await?;
+                if coin.price.is_empty() {
+                    req.insert(
+                        chain_code,
+                        &assets.token_address.clone().unwrap_or_default(),
+                    );
                 }
+                tx.upsert_assets(assets).await?;
             }
         }
         let task =

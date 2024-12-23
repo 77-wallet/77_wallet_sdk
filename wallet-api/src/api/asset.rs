@@ -228,6 +228,21 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_add_multisig_assets() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let TestData { wallet_manager, .. } =
+            setup_test_environment(None, None, false, None).await?;
+        let add_coin_req = crate::request::coin::AddMultisigCoinReq {
+            symbol: "USDT".to_string(),
+            address: "0x3bAc24b73c7A03C8715697cA1646a6f85B91023a".to_string(),
+        };
+        let res = wallet_manager.add_multisig_coin(add_coin_req).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_get_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
