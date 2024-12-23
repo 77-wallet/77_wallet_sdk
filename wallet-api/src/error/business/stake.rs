@@ -15,6 +15,8 @@ pub enum StakeError {
     DelegateEnergyFailed,
     #[error("No withdrawable amount available")]
     NoWithdrawableAmount,
+    #[error("un support bill kind for estimate fee")]
+    UnSupportBillKind,
 }
 
 impl StakeError {
@@ -27,6 +29,7 @@ impl StakeError {
             StakeError::DelegateTrxFailed => 3904,
             StakeError::DelegateEnergyFailed => 3905,
             StakeError::NoWithdrawableAmount => 3906,
+            StakeError::UnSupportBillKind => 3907,
         }
     }
 }

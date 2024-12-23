@@ -2,6 +2,7 @@ use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
+use crate::domain::stake::StakeArgs;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
 use crate::notify::event::other::Process;
@@ -9,10 +10,6 @@ use crate::notify::event::other::TransactionProcessFrontend;
 use crate::notify::FrontendNotifyEvent;
 use crate::notify::NotifyEvent;
 use crate::request::stake;
-use crate::request::stake::CancelAllUnFreezeReq;
-use crate::request::stake::UnDelegateReq;
-use crate::request::stake::VoteWitnessReq;
-use crate::request::stake::WithdrawBalanceReq;
 use crate::response_vo::account::AccountResource;
 use crate::response_vo::account::Resource;
 use crate::response_vo::account::TrxResource;
@@ -30,6 +27,7 @@ use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 use wallet_types::constant::chain_code;
+use wallet_utils::serde_func;
 
 pub struct StackService {
     chain: TronChain,
@@ -162,6 +160,68 @@ impl StackService {
         // 计算总的质押
         resource.calculate_total();
     }
+
+    fn convert_stake_args(
+        &self,
+        bill_kind: BillKind,
+        content: String,
+    ) -> Result<(StakeArgs, String), crate::ServiceError> {
+        match bill_kind {
+            BillKind::FreezeBandwidth | BillKind::FreezeEnergy => {
+                let req = serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
+                let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
+
+                Ok((StakeArgs::Freeze(args), req.owner_address.clone()))
+            }
+            BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => {
+                let req = serde_func::serde_from_str::<stake::UnFreezeBalanceReq>(&content)?;
+                let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
+
+                Ok((StakeArgs::UnFreeze(args), req.owner_address.clone()))
+            }
+            BillKind::CancelAllUnFreeze => {
+                let req = serde_func::serde_from_str::<stake::CancelAllUnFreezeReq>(&content)?;
+                let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
+
+                Ok((
+                    StakeArgs::CancelAllUnFreeze(args),
+                    req.owner_address.clone(),
+                ))
+            }
+            BillKind::WithdrawUnFreeze => {
+                let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
+                let args = ops::stake::WithdrawBalanceArgs {
+                    owner_address: req.owner_address.clone(),
+                };
+
+                Ok((StakeArgs::Withdraw(args), req.owner_address.clone()))
+            }
+            BillKind::DelegateBandwidth | BillKind::DelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::DelegateReq>(&content)?;
+                let args = ops::stake::DelegateArgs::try_from(&req)?;
+
+                Ok((StakeArgs::Delegate(args), req.owner_address.clone()))
+            }
+            BillKind::UnDelegateBandwidth | BillKind::UnDelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::UnDelegateReq>(&content)?;
+                let args = ops::stake::UnDelegateArgs::try_from(&req)?;
+
+                Ok((StakeArgs::UnDelegate(args), req.owner_address.clone()))
+            }
+            BillKind::Vote => {
+                let req = serde_func::serde_from_str::<stake::VoteWitnessReq>(&content)?;
+                let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
+
+                Ok((StakeArgs::Votes(args), req.owner_address.clone()))
+            }
+
+            _ => {
+                return Err(crate::BusinessError::Stake(
+                    crate::StakeError::UnSupportBillKind,
+                ))?
+            }
+        }
+    }
 }
 
 // 单笔交易需要花费的能量
@@ -229,59 +289,18 @@ impl StackService {
             domain::coin::token_price::TokenCurrencyGetter::get_currency(currency, "tron", "TRX")
                 .await?;
 
-        match bill_kind {
-            BillKind::FreezeBandwidth | BillKind::FreezeEnergy => {
-                let req =
-                    wallet_utils::serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
-                let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
+        let (args, account) = self.convert_stake_args(bill_kind, content)?;
 
-                let consumer = self.chain.simple_fee(&req.owner_address, 1, args).await?;
-                let res = TronFeeDetails::new(consumer, token_currency, currency)?;
-                let content = wallet_utils::serde_func::serde_to_string(&res)?;
+        let consumer = args.exec(&account, &self.chain).await?;
+        let res = TronFeeDetails::new(consumer, token_currency, currency)?;
 
-                Ok(EstimateFeeResp::new(
-                    "TRX".to_string(),
-                    "tron".to_string(),
-                    content,
-                ))
-            }
-            BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => {
-                let req = wallet_utils::serde_func::serde_from_str::<stake::UnFreezeBalanceReq>(
-                    &content,
-                )?;
-                let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
+        let content = wallet_utils::serde_func::serde_to_string(&res)?;
 
-                let consumer = self.chain.simple_fee(&req.owner_address, 1, args).await?;
-                let res = TronFeeDetails::new(consumer, token_currency, currency)?;
-                let content = wallet_utils::serde_func::serde_to_string(&res)?;
-
-                Ok(EstimateFeeResp::new(
-                    "TRX".to_string(),
-                    "tron".to_string(),
-                    content,
-                ))
-            }
-            BillKind::CancelAllUnFreeze => {
-                let req = wallet_utils::serde_func::serde_from_str::<stake::CancelAllUnFreezeReq>(
-                    &content,
-                )?;
-                let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
-
-                let consumer = self.chain.simple_fee(&req.owner_address, 1, args).await?;
-                let res = TronFeeDetails::new(consumer, token_currency, currency)?;
-                let content = wallet_utils::serde_func::serde_to_string(&res)?;
-
-                Ok(EstimateFeeResp::new(
-                    "TRX".to_string(),
-                    "tron".to_string(),
-                    content,
-                ))
-            }
-
-            _ => {
-                panic!("xx");
-            }
-        }
+        Ok(EstimateFeeResp::new(
+            "TRX".to_string(),
+            chain_code::TRON.to_string(),
+            content,
+        ))
     }
 
     // 质押trx
@@ -427,7 +446,7 @@ impl StackService {
     // 取消解锁
     pub async fn cancel_all_unfreeze(
         &self,
-        req: CancelAllUnFreezeReq,
+        req: stake::CancelAllUnFreezeReq,
         password: String,
     ) -> Result<resp::CancelAllUnFreezeResp, crate::ServiceError> {
         let account = self.chain.account_info(&req.owner_address).await?;
@@ -463,7 +482,7 @@ impl StackService {
     // 提取金额
     pub async fn withdraw_unfreeze(
         &self,
-        req: WithdrawBalanceReq,
+        req: stake::WithdrawBalanceReq,
         password: String,
     ) -> Result<resp::WithdrawUnfreezeResp, crate::error::ServiceError> {
         let can_widthdraw = self
@@ -599,7 +618,7 @@ impl StackService {
     // Reclaim delegated energy
     pub async fn un_delegate_resource(
         &self,
-        req: UnDelegateReq,
+        req: stake::UnDelegateReq,
         password: String,
     ) -> Result<resp::DelegateResp, crate::error::ServiceError> {
         let from = req.owner_address.clone();
@@ -731,7 +750,7 @@ impl StackService {
 
     pub async fn votes_fee_estimation(
         &self,
-        req: VoteWitnessReq,
+        req: stake::VoteWitnessReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
         // let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
@@ -763,7 +782,7 @@ impl StackService {
     // }
     pub async fn vote_list(
         &self,
-        req: VoteWitnessReq,
+        req: stake::VoteWitnessReq,
     ) -> Result<
         wallet_transport_backend::response_vo::stake::ListWitnessResp,
         crate::error::ServiceError,
@@ -795,7 +814,7 @@ impl StackService {
 
     pub async fn votes(
         &self,
-        req: VoteWitnessReq,
+        req: stake::VoteWitnessReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
         let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
@@ -809,7 +828,7 @@ impl StackService {
 
     pub async fn votes_claim_rewards(
         &self,
-        req: WithdrawBalanceReq,
+        req: stake::WithdrawBalanceReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
         let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;

@@ -60,7 +60,7 @@ pub struct CancelAllUnFreezeReq {
     pub owner_address: String,
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct DelegateReq {
     pub owner_address: String,
     pub receiver_address: String,
@@ -99,7 +99,7 @@ impl TryFrom<&DelegateReq> for DelegateArgs {
     }
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct UnDelegateReq {
     pub owner_address: String,
     pub resource: String,
@@ -120,13 +120,13 @@ impl TryFrom<&UnDelegateReq> for UnDelegateArgs {
     }
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct VoteWitnessReq {
     pub owner_address: String,
     pub votes: Vec<VotesReq>,
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct VotesReq {
     pub vote_address: String,
     pub vote_count: i64,
@@ -145,7 +145,7 @@ impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
     }
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct WithdrawBalanceReq {
     pub owner_address: String,
 }
