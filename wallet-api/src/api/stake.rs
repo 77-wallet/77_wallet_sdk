@@ -15,7 +15,7 @@ use crate::{
     },
     service::stake::StackService,
 };
-use wallet_transport_backend::response_vo::stake::{SystemEnergyResp, VoteListResp};
+use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 
 impl crate::WalletManager {
     // account resource

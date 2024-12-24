@@ -132,6 +132,8 @@ pub enum BillKind {
     BatchUnDelegateEnergy = 19,
     // 投票
     Vote = 20,
+    // 奖励提取
+    WithdrawReward = 21,
 }
 impl Serialize for BillKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -173,6 +175,7 @@ impl TryFrom<i8> for BillKind {
             18 => Ok(BillKind::BatchUnDelegateBandwidth),
             19 => Ok(BillKind::BatchUnDelegateEnergy),
             20 => Ok(BillKind::Vote),
+            21 => Ok(BillKind::WithdrawReward),
             _ => Err(crate::Error::Other(format!(
                 "Invalid value for TxKind : {}",
                 value

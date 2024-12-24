@@ -126,10 +126,28 @@ pub struct VoteWitnessReq {
     pub votes: Vec<VotesReq>,
 }
 
+impl VoteWitnessReq {
+    pub fn new(owner_address: &str, votes: Vec<VotesReq>) -> Self {
+        Self {
+            owner_address: owner_address.to_string(),
+            votes,
+        }
+    }
+}
+
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct VotesReq {
     pub vote_address: String,
     pub vote_count: i64,
+}
+
+impl VotesReq {
+    pub fn new(vote_address: &str, vote_count: i64) -> Self {
+        Self {
+            vote_address: vote_address.to_string(),
+            vote_count,
+        }
+    }
 }
 
 impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
@@ -148,6 +166,14 @@ impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
 pub struct WithdrawBalanceReq {
     pub owner_address: String,
+}
+
+impl WithdrawBalanceReq {
+    pub fn new(owner_address: &str) -> Self {
+        Self {
+            owner_address: owner_address.to_string(),
+        }
+    }
 }
 
 impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {

@@ -291,7 +291,12 @@ impl StackService {
 
                 Ok((StakeArgs::Votes(args), req.owner_address.clone()))
             }
+            BillKind::WithdrawReward => {
+                let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
+                let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
 
+                Ok((StakeArgs::Withdraw(args), req.owner_address.clone()))
+            }
             _ => {
                 return Err(crate::BusinessError::Stake(
                     crate::StakeError::UnSupportBillKind,
