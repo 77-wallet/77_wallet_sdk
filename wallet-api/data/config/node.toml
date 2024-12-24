@@ -75,8 +75,8 @@ active = false
 # active = false
 
 [[nodes.sol.nodes]]
-node_name = "Third-Party Node"
-rpc_url = "https://rpc.ankr.com/solana/1de0b2109f36eb77145fdd195bcf3fbad10cc878d49e1ade16f550f1b4115c26"
+node_name = "Solana Official Node"
+rpc_url = "https://api.mainnet-beta.solana.com"
 http_url = ""
 network = "mainnet"
 active = true
