@@ -1,15 +1,30 @@
 use wallet_chain_interact::{
-    tron::{operations::stake, params::ResourceConsumer, TronChain},
+    tron::{
+        operations::{stake, TronSimulateOperation},
+        params::ResourceConsumer,
+        TronChain,
+    },
     types::MultisigTxResp,
 };
 
 pub enum StakeArgs {
+    // 质押
     Freeze(stake::FreezeBalanceArgs),
+    // 解冻
     UnFreeze(stake::UnFreezeBalanceArgs),
+    // 取消解锁
     CancelAllUnFreeze(stake::CancelAllFreezeBalanceArgs),
+    // 提取可以
     Withdraw(stake::WithdrawBalanceArgs),
+    // 代理
     Delegate(stake::DelegateArgs),
+    // 批量代理
+    BatchDelegate(Vec<stake::DelegateArgs>),
+    // 取消代理
     UnDelegate(stake::UnDelegateArgs),
+    // 批量取消代理
+    BatchUnDelegate(Vec<stake::UnDelegateArgs>),
+    // 投票
     Votes(stake::VoteWitnessArgs),
 }
 
@@ -27,8 +42,47 @@ impl StakeArgs {
                 chain.simple_fee(account, signature_num, params).await?
             }
             Self::Withdraw(params) => chain.simple_fee(account, signature_num, params).await?,
-            Self::Delegate(params) => chain.simple_fee(account, signature_num, params).await?,
-            Self::UnDelegate(params) => chain.simple_fee(account, signature_num, params).await?,
+            Self::Delegate(params) => {
+                chain
+                    .simulate_simple_fee(account, "", signature_num, params)
+                    .await?
+            }
+            Self::UnDelegate(params) => {
+                chain
+                    .simulate_simple_fee(account, "", signature_num, params)
+                    .await?
+            }
+            Self::BatchDelegate(mut params) => {
+                let item = params.remove(0);
+
+                let mut consumer = chain
+                    .simulate_simple_fee(account, "", signature_num, item)
+                    .await?;
+
+                for item in params {
+                    let raw_data_hex = item.simulate_raw_transaction()?;
+
+                    let size = chain.provider.calc_bandwidth(&raw_data_hex, signature_num);
+                    consumer.bandwidth.consumer += size;
+                }
+                consumer
+            }
+            Self::BatchUnDelegate(mut params) => {
+                let item = params.remove(0);
+
+                let mut consumer = chain
+                    .simulate_simple_fee(account, "", signature_num, item)
+                    .await?;
+
+                for item in params {
+                    let raw_data_hex = item.simulate_raw_transaction()?;
+
+                    let size = chain.provider.calc_bandwidth(&raw_data_hex, signature_num);
+                    consumer.bandwidth.consumer += size;
+                }
+                consumer
+            }
+
             Self::Votes(params) => chain.simple_fee(account, signature_num, params).await?,
         };
         Ok(res)
@@ -52,6 +106,11 @@ impl StakeArgs {
                 chain.build_multisig_transaction(params, expiration).await?
             }
             Self::Votes(params) => chain.build_multisig_transaction(params, expiration).await?,
+            _ => {
+                return Err(crate::BusinessError::Stake(
+                    crate::StakeError::MultisigUnSupportBillKind,
+                ))?
+            }
         };
         Ok(res)
     }

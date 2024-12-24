@@ -189,16 +189,23 @@ impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
 // 批量取消代理
-pub struct BulkDelegate {
+pub struct BatchDelegate {
     pub owner_address: String,
     pub resource_type: String,
     pub lock: bool,
     pub lock_period: i64,
-    pub list: Vec<BulkList>,
+    pub list: Vec<BatchList>,
 }
-impl TryFrom<&BulkDelegate> for Vec<DelegateArgs> {
+
+impl BatchDelegate {
+    pub fn total(&self) -> i64 {
+        self.list.iter().map(|t| t.value).sum()
+    }
+}
+
+impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
     type Error = crate::error::ServiceError;
-    fn try_from(value: &BulkDelegate) -> Result<Self, Self::Error> {
+    fn try_from(value: &BatchDelegate) -> Result<Self, Self::Error> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
 
@@ -223,15 +230,20 @@ impl TryFrom<&BulkDelegate> for Vec<DelegateArgs> {
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
 // 批量取消代理
-pub struct BulkUnDelegate {
+pub struct BatchUnDelegate {
     pub owner_address: String,
     pub resource_type: String,
-    pub list: Vec<BulkList>,
+    pub list: Vec<BatchList>,
+}
+impl BatchUnDelegate {
+    pub fn total(&self) -> i64 {
+        self.list.iter().map(|t| t.value).sum()
+    }
 }
 
-impl TryFrom<&BulkUnDelegate> for Vec<UnDelegateArgs> {
+impl TryFrom<&BatchUnDelegate> for Vec<UnDelegateArgs> {
     type Error = crate::error::ServiceError;
-    fn try_from(value: &BulkUnDelegate) -> Result<Self, Self::Error> {
+    fn try_from(value: &BatchUnDelegate) -> Result<Self, Self::Error> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
 
@@ -253,7 +265,7 @@ impl TryFrom<&BulkUnDelegate> for Vec<UnDelegateArgs> {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
-pub struct BulkList {
+pub struct BatchList {
     pub revevie_address: String,
     pub value: i64,
 }

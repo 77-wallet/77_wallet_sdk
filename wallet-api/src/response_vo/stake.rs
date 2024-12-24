@@ -203,3 +203,37 @@ impl DelegateListResp {
         })
     }
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchDelegateResp {
+    pub owner_address: String,
+    pub result: Vec<BatchRes>,
+    pub resource: ResourceResp,
+    pub bill_kind: BillKind,
+    pub hashs: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchRes {
+    pub address: String,
+    pub status: bool,
+}
+
+impl BatchDelegateResp {
+    pub fn new(
+        owner_address: String,
+        res: (Vec<BatchRes>, Vec<String>),
+        resource: ResourceResp,
+        bill_kind: BillKind,
+    ) -> Self {
+        Self {
+            owner_address,
+            result: res.0,
+            resource,
+            bill_kind,
+            hashs: res.1,
+        }
+    }
+}

@@ -19,6 +19,9 @@ use crate::response_vo::account::TrxResource;
 use crate::response_vo::account::ENERGY_CONSUME;
 use crate::response_vo::account::NET_CONSUME;
 use crate::response_vo::stake as resp;
+use crate::response_vo::stake::BatchDelegateResp;
+use crate::response_vo::stake::BatchRes;
+use crate::response_vo::stake::ResourceResp;
 use crate::response_vo::EstimateFeeResp;
 use crate::response_vo::TronFeeDetails;
 use crate::BusinessError;
@@ -94,7 +97,7 @@ impl StackService {
         &self,
         args: Vec<impl ops::TronTxOperation<T>>,
         bill_kind: BillKind,
-    ) -> Result<Vec<RawTransactionParams>, crate::ServiceError> {
+    ) -> Result<Vec<(RawTransactionParams, String)>, crate::ServiceError> {
         let mut result = vec![];
 
         for (i, item) in args.into_iter().enumerate() {
@@ -106,20 +109,21 @@ impl StackService {
             FrontendNotifyEvent::new(data).send().await?;
 
             let res = item.build_raw_transaction(&self.chain.provider).await?;
-            result.push(res);
+            result.push((res, item.get_to()));
         }
 
         Ok(result)
     }
 
-    async fn batch_exec<T>(
+    async fn batch_exec(
         &self,
         from: String,
         key: ChainPrivateKey,
         bill_kind: BillKind,
-        txs: Vec<RawTransactionParams>,
-    ) -> Result<Vec<String>, crate::ServiceError> {
+        txs: Vec<(RawTransactionParams, String)>,
+    ) -> Result<(Vec<BatchRes>, Vec<String>), crate::ServiceError> {
         let mut exce_res = vec![];
+        let mut tx_hash = vec![];
 
         for (i, item) in txs.into_iter().enumerate() {
             let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
@@ -129,18 +133,30 @@ impl StackService {
             ));
             FrontendNotifyEvent::new(data).send().await?;
 
-            exce_res.push("".to_string());
-            // let result = self.chain.exec_transaction_v1(item, key.clone()).await;
-            // match result {
-            //     Ok(hash) => {
-            //         let entity =
-            //             NewBillEntity::new_stake_bill(hash.clone(), from.clone(), bill_kind);
-            //         domain::bill::BillDomain::create_bill(entity).await?;
-            //     }
-            //     Err(e) => {}
-            // }
+            let result = self.chain.exec_transaction_v1(item.0, key.clone()).await;
+            match result {
+                Ok(hash) => {
+                    let entity =
+                        NewBillEntity::new_stake_bill(hash.clone(), from.clone(), bill_kind);
+                    domain::bill::BillDomain::create_bill(entity).await?;
+
+                    let ra = BatchRes {
+                        address: item.1,
+                        status: true,
+                    };
+                    exce_res.push(ra);
+                    tx_hash.push(hash);
+                }
+                Err(_e) => {
+                    let ra = BatchRes {
+                        address: item.1,
+                        status: false,
+                    };
+                    exce_res.push(ra);
+                }
+            }
         }
-        Ok(exce_res)
+        Ok((exce_res, tx_hash))
     }
 
     async fn resource_value(
@@ -284,6 +300,18 @@ impl StackService {
                 let args = ops::stake::UnDelegateArgs::try_from(&req)?;
 
                 Ok((StakeArgs::UnDelegate(args), req.owner_address.clone()))
+            }
+            BillKind::BatchDelegateBandwidth | BillKind::BatchDelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::BatchDelegate>(&content)?;
+
+                let args: Vec<DelegateArgs> = (&req).try_into()?;
+                Ok((StakeArgs::BatchDelegate(args), req.owner_address.clone()))
+            }
+            BillKind::BatchUnDelegateBandwidth | BillKind::BatchUnDelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::BatchUnDelegate>(&content)?;
+
+                let args: Vec<UnDelegateArgs> = (&req).try_into()?;
+                Ok((StakeArgs::BatchUnDelegate(args), req.owner_address.clone()))
             }
             BillKind::Vote => {
                 let req = serde_func::serde_from_str::<stake::VoteWitnessReq>(&content)?;
@@ -699,44 +727,74 @@ impl StackService {
 
     pub async fn batch_delegate(
         &self,
-        req: stake::BulkDelegate,
+        req: stake::BatchDelegate,
         password: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<BatchDelegateResp, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
+
+        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
         let bill_kind = match resource_type {
             ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
             ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
         };
-        let bill_kind = BillKind::BatchDelegateBandwidth;
+
+        let amount = req.total();
 
         // 批量构建交易
         let args: Vec<DelegateArgs> = (&req).try_into()?;
         let txs = self.batch_build_transaction(args, bill_kind).await?;
 
-        // let res = self
-        //     .batch_exec(req.owner_address, key, bill_kind, txs)
-        //     .await;
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            &password,
+        )
+        .await?;
+        let res = self
+            .batch_exec(req.owner_address.clone(), key, bill_kind, txs)
+            .await?;
 
-        Ok(())
+        let resource_value = resource.resource_value(resource_type, amount)?;
+        let resource = ResourceResp::new(amount, resource_type, resource_value);
+
+        let res = BatchDelegateResp::new(req.owner_address, res, resource, bill_kind);
+        Ok(res)
     }
 
     pub async fn batch_un_delegate(
         &self,
-        req: stake::BulkUnDelegate,
+        req: stake::BatchUnDelegate,
         password: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<BatchDelegateResp, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
+
+        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
         let bill_kind = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
-            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+            ops::stake::ResourceType::BANDWIDTH => BillKind::BatchUnDelegateBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::BatchUnDelegateEnergy,
         };
-        let bill_kind = BillKind::BatchDelegateBandwidth;
+
+        let amount = req.total();
 
         // 批量构建交易
         let args: Vec<UnDelegateArgs> = (&req).try_into()?;
         let txs = self.batch_build_transaction(args, bill_kind).await?;
 
-        Ok(())
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            &password,
+        )
+        .await?;
+        let res = self
+            .batch_exec(req.owner_address.clone(), key, bill_kind, txs)
+            .await?;
+
+        let resource_value = resource.resource_value(resource_type, amount)?;
+        let resource = ResourceResp::new(amount, resource_type, resource_value);
+
+        let res = BatchDelegateResp::new(req.owner_address, res, resource, bill_kind);
+        Ok(res)
     }
 
     // Reclaim delegated energy

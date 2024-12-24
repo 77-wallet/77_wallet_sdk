@@ -1,16 +1,16 @@
 use super::ReturnType;
 use crate::{
     request::stake::{
-        CancelAllUnFreezeReq, DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq,
-        VoteWitnessReq, WithdrawBalanceReq,
+        BatchDelegate, BatchUnDelegate, CancelAllUnFreezeReq, DelegateReq, FreezeBalanceReq,
+        UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq,
     },
     response_vo::{
         self,
         account::AccountResource,
         stake::{
-            CancelAllUnFreezeResp, DelegateListResp, DelegateResp, FreezeListResp, FreezeResp,
-            ResourceResp, ResourceToTrxResp, TrxToResourceResp, UnfreezeListResp,
-            WithdrawUnfreezeResp,
+            BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp, DelegateResp,
+            FreezeListResp, FreezeResp, ResourceResp, ResourceToTrxResp, TrxToResourceResp,
+            UnfreezeListResp, WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,
@@ -188,6 +188,18 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn batch_delegate(
+        &self,
+        req: BatchDelegate,
+        password: String,
+    ) -> ReturnType<BatchDelegateResp> {
+        StackService::new()
+            .await?
+            .batch_delegate(req, password)
+            .await?
+            .into()
+    }
+
     // 回收资源
     pub async fn un_delegate_resource(
         &self,
@@ -197,6 +209,18 @@ impl crate::WalletManager {
         StackService::new()
             .await?
             .un_delegate_resource(req, password)
+            .await?
+            .into()
+    }
+
+    pub async fn batch_un_deleate(
+        &self,
+        req: BatchUnDelegate,
+        password: String,
+    ) -> ReturnType<BatchDelegateResp> {
+        StackService::new()
+            .await?
+            .batch_un_delegate(req, password)
             .await?
             .into()
     }
