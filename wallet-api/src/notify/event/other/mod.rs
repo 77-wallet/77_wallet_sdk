@@ -29,7 +29,7 @@ pub struct TransactionProcessFrontend {
     // 交易的类型,对比账单的交易类型
     pub bill_kind: BillKind,
     // 第几笔交易,默认不需要在批量执行的时候需要
-    pub tx_num: Option<i32>,
+    pub tx_num: Option<i64>,
     pub process: Process,
 }
 impl TransactionProcessFrontend {
@@ -40,7 +40,7 @@ impl TransactionProcessFrontend {
             process,
         }
     }
-    pub fn new_with_num(bill_kind: BillKind, tx_num: i32, process: Process) -> Self {
+    pub fn new_with_num(bill_kind: BillKind, tx_num: i64, process: Process) -> Self {
         Self {
             bill_kind,
             tx_num: Some(tx_num),

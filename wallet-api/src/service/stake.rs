@@ -16,16 +16,21 @@ use crate::request::stake;
 use crate::response_vo::account::AccountResource;
 use crate::response_vo::account::Resource;
 use crate::response_vo::account::TrxResource;
+use crate::response_vo::account::ENERGY_CONSUME;
+use crate::response_vo::account::NET_CONSUME;
 use crate::response_vo::stake as resp;
-use crate::response_vo::stake::ResourceResp;
 use crate::response_vo::EstimateFeeResp;
 use crate::response_vo::TronFeeDetails;
 use crate::BusinessError;
 use wallet_chain_interact::tron::operations as ops;
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
+use wallet_chain_interact::tron::operations::stake::DelegateArgs;
+use wallet_chain_interact::tron::operations::stake::UnDelegateArgs;
+use wallet_chain_interact::tron::operations::RawTransactionParams;
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_chain_interact::tron::TronChain;
+use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::dao::bill::BillDao;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
@@ -84,6 +89,60 @@ impl StackService {
         Ok(hash)
     }
 
+    // 批量构建交易并发送通知到前端
+    async fn batch_build_transaction<T>(
+        &self,
+        args: Vec<impl ops::TronTxOperation<T>>,
+        bill_kind: BillKind,
+    ) -> Result<Vec<RawTransactionParams>, crate::ServiceError> {
+        let mut result = vec![];
+
+        for (i, item) in args.into_iter().enumerate() {
+            let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
+                bill_kind,
+                (i + 1) as i64,
+                Process::Building,
+            ));
+            FrontendNotifyEvent::new(data).send().await?;
+
+            let res = item.build_raw_transaction(&self.chain.provider).await?;
+            result.push(res);
+        }
+
+        Ok(result)
+    }
+
+    async fn batch_exec<T>(
+        &self,
+        from: String,
+        key: ChainPrivateKey,
+        bill_kind: BillKind,
+        txs: Vec<RawTransactionParams>,
+    ) -> Result<Vec<String>, crate::ServiceError> {
+        let mut exce_res = vec![];
+
+        for (i, item) in txs.into_iter().enumerate() {
+            let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
+                bill_kind,
+                (i + 1) as i64,
+                Process::Building,
+            ));
+            FrontendNotifyEvent::new(data).send().await?;
+
+            exce_res.push("".to_string());
+            // let result = self.chain.exec_transaction_v1(item, key.clone()).await;
+            // match result {
+            //     Ok(hash) => {
+            //         let entity =
+            //             NewBillEntity::new_stake_bill(hash.clone(), from.clone(), bill_kind);
+            //         domain::bill::BillDomain::create_bill(entity).await?;
+            //     }
+            //     Err(e) => {}
+            // }
+        }
+        Ok(exce_res)
+    }
+
     async fn resource_value(
         &self,
         owner_address: &str,
@@ -115,7 +174,7 @@ impl StackService {
                 let amount = delegate.value_trx(resource_type);
                 let resource_value = resource.resource_value(resource_type, amount)?;
 
-                let resource = ResourceResp::new(amount, resource_type, resource_value);
+                let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
                 let r = resp::DelegateListResp::new(
                     &delegate,
                     resource,
@@ -130,7 +189,7 @@ impl StackService {
                 let amount = delegate.value_trx(resource_type);
                 let resource_value = resource.resource_value(resource_type, amount)?;
 
-                let resource = ResourceResp::new(amount, resource_type, resource_value);
+                let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
                 let r = resp::DelegateListResp::new(
                     &delegate,
                     resource,
@@ -167,6 +226,13 @@ impl StackService {
         resource.owner_freeze = TrxResource::new(owner, price);
 
         resource.can_unfreeze = owner;
+
+        // 可提取的
+        let can_withdraw = account.can_withdraw_unfreeze_amount(&type_str);
+        resource.pending_withdraw = TrxResource::new(can_withdraw, price);
+
+        // 计算可转账次数
+        resource.calculate_transfer_times(resource_type);
 
         // 计算总的质押
         resource.calculate_total();
@@ -234,11 +300,6 @@ impl StackService {
         }
     }
 }
-
-// 单笔交易需要花费的能量
-pub const NET_CONSUME: f64 = 270.0;
-// 代币转账消耗的能量
-pub const ENERGY_CONSUME: f64 = 70000.0;
 
 impl StackService {
     // 输入trx 得到对应的资源
@@ -358,7 +419,7 @@ impl StackService {
             let resource_type = ops::stake::ResourceType::BANDWIDTH;
             let resource_value = resource.resource_value(resource_type, bandwidth)?;
 
-            let resource_resp = ResourceResp::new(bandwidth, resource_type, resource_value);
+            let resource_resp = resp::ResourceResp::new(bandwidth, resource_type, resource_value);
             let mut freeze = resp::FreezeListResp::new(resource_resp);
 
             let kinds = vec![
@@ -378,7 +439,7 @@ impl StackService {
             let resource_type = ops::stake::ResourceType::ENERGY;
             let resource_value = resource.resource_value(resource_type, energy)?;
 
-            let resource_resp = ResourceResp::new(energy, resource_type, resource_value);
+            let resource_resp = resp::ResourceResp::new(energy, resource_type, resource_value);
             let mut freeze = resp::FreezeListResp::new(resource_resp);
 
             let kinds = vec![
@@ -543,6 +604,7 @@ impl StackService {
         };
 
         res.votes = resource.tron_power_limit;
+        res.freeze_num = account.frozen_v2.len() as i64 - 1;
         res.unfreeze_num = account.unfreeze_v2.len() as i64;
         res.pending_withdraw = account.can_withdraw_num();
 
@@ -593,7 +655,11 @@ impl StackService {
         let value = res.to_sun();
         let resource_value = self.resource_value(&account, value, resource_type).await?;
 
-        Ok(ResourceResp::new(value, resource_type, resource_value))
+        Ok(resp::ResourceResp::new(
+            value,
+            resource_type,
+            resource_value,
+        ))
     }
 
     // 委派资源给账号
@@ -601,7 +667,7 @@ impl StackService {
         &self,
         req: stake::DelegateReq,
         password: &str,
-    ) -> Result<resp::DelegateResp, crate::error::ServiceError> {
+    ) -> Result<resp::DelegateResp, crate::ServiceError> {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
@@ -619,11 +685,53 @@ impl StackService {
             .resource_value(&req.owner_address, req.balance, resource_type)
             .await?;
 
-        let resource = ResourceResp::new(req.balance, resource_type, resource_value);
+        let resource = resp::ResourceResp::new(req.balance, resource_type, resource_value);
 
         Ok(resp::DelegateResp::new_delegate(
             req, resource, bill_kind, tx_hash,
         ))
+    }
+
+    pub async fn batch_delegate(
+        &self,
+        req: stake::BulkDelegate,
+        password: String,
+    ) -> Result<(), crate::ServiceError> {
+        let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+        let bill_kind = BillKind::BatchDelegateBandwidth;
+
+        // 批量构建交易
+        let args: Vec<DelegateArgs> = (&req).try_into()?;
+        let txs = self.batch_build_transaction(args, bill_kind).await?;
+
+        // let res = self
+        //     .batch_exec(req.owner_address, key, bill_kind, txs)
+        //     .await;
+
+        Ok(())
+    }
+
+    pub async fn batch_un_delegate(
+        &self,
+        req: stake::BulkUnDelegate,
+        password: String,
+    ) -> Result<(), crate::ServiceError> {
+        let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+        let bill_kind = BillKind::BatchDelegateBandwidth;
+
+        // 批量构建交易
+        let args: Vec<UnDelegateArgs> = (&req).try_into()?;
+        let txs = self.batch_build_transaction(args, bill_kind).await?;
+
+        Ok(())
     }
 
     // Reclaim delegated energy
@@ -649,7 +757,7 @@ impl StackService {
             .resource_value(&req.owner_address, req.balance, resource_type)
             .await?;
 
-        let resource = ResourceResp::new(req.balance, resource_type, resource_value);
+        let resource = resp::ResourceResp::new(req.balance, resource_type, resource_value);
         Ok(resp::DelegateResp::new_undelegate(
             req, resource, bill_kind, tx_hash,
         ))
@@ -757,21 +865,6 @@ impl StackService {
         }
 
         Ok(res.order_id)
-    }
-
-    pub async fn votes_fee_estimation(
-        &self,
-        req: stake::VoteWitnessReq,
-        password: &str,
-    ) -> Result<String, crate::error::ServiceError> {
-        // let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
-
-        // let tx_hash = self
-        //     .process_transaction(args, BillKind::Vote, &req.owner_address, password)
-        //     .await?;
-        todo!();
-
-        // Ok(tx_hash)
     }
 
     pub async fn vote_list(

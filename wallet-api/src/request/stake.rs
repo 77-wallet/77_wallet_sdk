@@ -160,3 +160,74 @@ impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {
         Ok(args)
     }
 }
+
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
+// 批量取消代理
+pub struct BulkDelegate {
+    pub owner_address: String,
+    pub resource_type: String,
+    pub lock: bool,
+    pub lock_period: i64,
+    pub list: Vec<BulkList>,
+}
+impl TryFrom<&BulkDelegate> for Vec<DelegateArgs> {
+    type Error = crate::error::ServiceError;
+    fn try_from(value: &BulkDelegate) -> Result<Self, Self::Error> {
+        let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
+        let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
+
+        value
+            .list
+            .iter()
+            .map(|item| {
+                Ok(DelegateArgs {
+                    owner_address: owner_address.clone(),
+                    receiver_address: wallet_utils::address::bs58_addr_to_hex(
+                        &item.revevie_address,
+                    )?,
+                    balance: item.value * consts::TRX_VALUE,
+                    resource: resource_type,
+                    lock: value.lock,
+                    lock_period: value.lock_period,
+                })
+            })
+            .collect()
+    }
+}
+
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
+// 批量取消代理
+pub struct BulkUnDelegate {
+    pub owner_address: String,
+    pub resource_type: String,
+    pub list: Vec<BulkList>,
+}
+
+impl TryFrom<&BulkUnDelegate> for Vec<UnDelegateArgs> {
+    type Error = crate::error::ServiceError;
+    fn try_from(value: &BulkUnDelegate) -> Result<Self, Self::Error> {
+        let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
+        let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
+
+        value
+            .list
+            .iter()
+            .map(|item| {
+                Ok(UnDelegateArgs {
+                    owner_address: owner_address.clone(),
+                    receiver_address: wallet_utils::address::bs58_addr_to_hex(
+                        &item.revevie_address,
+                    )?,
+                    balance: item.value * consts::TRX_VALUE,
+                    resource: resource_type,
+                })
+            })
+            .collect()
+    }
+}
+
+#[derive(serde::Serialize, Debug, serde::Deserialize)]
+pub struct BulkList {
+    pub revevie_address: String,
+    pub value: i64,
+}
