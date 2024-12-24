@@ -196,7 +196,7 @@ impl MultisigAdapter {
                 let provider = chain.get_provider();
                 let tx = params.build_raw_transaction(provider).await?;
                 let mut consumer = provider
-                    .transfer_fee(&account.initiator_addr, None, &tx, 1)
+                    .transfer_fee(&account.initiator_addr, None, &tx.raw_data_hex, 1)
                     .await?;
 
                 let chain_parameter = chain.provider.chain_params().await?;

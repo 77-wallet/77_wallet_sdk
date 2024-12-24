@@ -687,7 +687,7 @@ impl MultisigTransactionService {
                         .transfer_fee(
                             &queue.from_addr,
                             Some(&queue.to_addr),
-                            &params,
+                            &params.raw_data_hex,
                             signs_list.len() as u8,
                         )
                         .await?

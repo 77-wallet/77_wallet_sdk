@@ -877,6 +877,26 @@ impl StackService {
         Ok(list)
     }
 
+    pub async fn voter_info(
+        &self,
+        owner: &str,
+    ) -> Result<ops::stake::VoteRewardResp, crate::error::ServiceError> {
+        // let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let reward = self.chain.get_provider().get_reward(owner).await?;
+
+        let account_info = self.chain.account_info(owner).await?;
+        tracing::info!("account_info: {:#?}", account_info);
+
+        let resource = self.chain.account_resource(owner).await?;
+        let res = ops::stake::VoteRewardResp::new(
+            account_info.balance_to_f64(),
+            reward.to_sun(),
+            resource.tron_power_limit,
+            resource.tron_power_used,
+        );
+        Ok(res)
+    }
+
     pub async fn vote_top_rewards(
         &self,
     ) -> Result<Option<ops::stake::vote_list::Witness>, crate::error::ServiceError> {
