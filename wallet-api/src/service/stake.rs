@@ -877,6 +877,22 @@ impl StackService {
         Ok(list)
     }
 
+    pub async fn vote_top_rewards(
+        &self,
+    ) -> Result<Option<ops::stake::vote_list::Witness>, crate::error::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_scan_adapter().await?;
+        let witness = chain
+            .get_provider()
+            .vote_witnesses()
+            .await?
+            .data
+            .first()
+            .cloned();
+        tracing::info!("witness: {:?}", witness);
+
+        Ok(witness)
+    }
+
     pub async fn votes(
         &self,
         req: stake::VoteWitnessReq,

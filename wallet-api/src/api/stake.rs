@@ -258,15 +258,11 @@ impl crate::WalletManager {
         StackService::new().await?.vote_list().await?.into()
     }
 
-    pub async fn votes_top_rewards(&self, account: String)
-    // -> ReturnType<VoteTopRewardsResp>
+    pub async fn votes_top_rewards(
+        &self,
+    ) -> ReturnType<Option<wallet_chain_interact::tron::operations::stake::vote_list::Witness>>
     {
-        todo!()
-        // StackService::new()
-        //     .await?
-        //     .vote_top_rewards(account)
-        //     .await?
-        //     .into()
+        StackService::new().await?.vote_top_rewards().await?.into()
     }
 
     pub async fn votes_claim_rewards(
@@ -309,6 +305,17 @@ mod tests {
             .unwrap();
 
         let phrase = wallet_manager.votes_node_list().await;
+        println!("{:#?}", phrase);
+    }
+
+    #[tokio::test]
+    async fn test_votes_top_rewards() {
+        wallet_utils::init_test_log();
+        let TestData { wallet_manager, .. } = setup_test_environment(None, None, false, None)
+            .await
+            .unwrap();
+
+        let phrase = wallet_manager.votes_top_rewards().await;
         println!("{:#?}", phrase);
     }
 }
