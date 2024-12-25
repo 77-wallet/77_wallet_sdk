@@ -1,26 +1,27 @@
 pub struct UserProperty {
     #[allow(dead_code)]
-    pub(crate) package_id: String,
     pub(crate) content: String,
     pub(crate) client_id: String,
-    pub(crate) sn: String,
+    pub(crate) username: String,
+    pub(crate) password: String,
 }
 
 impl UserProperty {
-    pub fn new(package_id: &str, content: &str, client_id: &str, sn: &str) -> Self {
+    pub fn new(content: &str, client_id: &str, username: &str, password: &str) -> Self {
         Self {
-            package_id: package_id.to_string(),
             content: content.to_string(),
             client_id: client_id.to_string(),
-            sn: sn.to_string(),
+            username: username.to_string(),
+            password: password.to_string(),
         }
     }
 
     pub fn to_vec(&self) -> Vec<(String, String)> {
         let up = vec![
-            ("content".to_string(), self.content.clone()),
-            ("clientId".to_string(), self.client_id.clone()),
-            ("username".to_string(), self.sn.clone()),
+            // ("content".to_string(), self.content.clone()),
+            // ("clientId".to_string(), self.client_id.clone()),
+            ("username".to_string(), self.username.clone()),
+            ("password".to_string(), self.password.clone()),
         ];
 
         up

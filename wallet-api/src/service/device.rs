@@ -34,7 +34,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
     pub async fn init_device(self, req: InitDeviceReq) -> Result<Option<()>, crate::ServiceError> {
         let mut tx = self.repo;
 
-        let package_id = req.package_id.clone();
+        // let package_id = req.package_id.clone();
         let upsert_req = (&req).into();
         tx.upsert(upsert_req).await?;
 
@@ -65,10 +65,8 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
                 &device.sn,
                 APP_ID,
                 crate::mqtt::user_property::UserProperty::new(
-                    &package_id.unwrap_or("77wallet".to_string()),
-                    &content,
-                    &client_id,
-                    &md5_sn,
+                    // &package_id.unwrap_or("77wallet".to_string()),
+                    &content, &client_id, &device.sn, &md5_sn,
                 ),
                 crate::mqtt::wrap_handle_eventloop,
             )
