@@ -15,7 +15,7 @@ pub enum WalletError {
 }
 
 impl WalletError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             WalletError::AlreadyExist => 3100,
             WalletError::NotFound => 3101,

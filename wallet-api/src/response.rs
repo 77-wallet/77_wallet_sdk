@@ -1,6 +1,6 @@
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq, Clone)]
 pub struct Response<T> {
-    pub code: u32,
+    pub code: i64,
     pub message: String,
     pub result: Option<T>,
 }
@@ -38,7 +38,7 @@ where
     }
 }
 
-impl From<crate::ServiceError> for (u32, String) {
+impl From<crate::ServiceError> for (i64, String) {
     fn from(err: crate::ServiceError) -> Self {
         // record log to upload to aliyun
         tracing::error!(?err, "api_error");
@@ -55,7 +55,7 @@ impl From<crate::ServiceError> for (u32, String) {
             crate::ServiceError::Utils(_) => (520, err.to_string()),
             crate::ServiceError::TransportBackend(bakend_err) => map_backend_error(bakend_err),
             crate::ServiceError::Transport(_) => (531, err.to_string()),
-            crate::ServiceError::ChainInteract(_) => (540, err.to_string()),
+            crate::ServiceError::ChainInteract(err) => map_chain_interact_error(err),
             crate::ServiceError::ChainInstance(_) => (550, err.to_string()),
             crate::ServiceError::Core(_) => (610, err.to_string()),
             crate::ServiceError::Types(_) => (620, err.to_string()),
@@ -68,7 +68,7 @@ impl From<crate::ServiceError> for (u32, String) {
 }
 
 // 后端的某些错误映射
-fn map_backend_error(err: wallet_transport_backend::Error) -> (u32, String) {
+fn map_backend_error(err: wallet_transport_backend::Error) -> (i64, String) {
     match err {
         wallet_transport_backend::Error::BackendServiceError(service_err) => match service_err {
             wallet_transport_backend::error::BackendServiceError::NotPlatformAddress => (
@@ -77,6 +77,19 @@ fn map_backend_error(err: wallet_transport_backend::Error) -> (u32, String) {
             ),
         },
         _ => (530, err.to_string()),
+    }
+}
+
+fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) {
+    let msg = err.to_string();
+    match err {
+        wallet_chain_interact::Error::TransportError(transport_error) => match transport_error {
+            wallet_transport::TransportError::NodeResponseError(node_response_error) => {
+                (node_response_error.code, node_response_error.to_string())
+            }
+            _ => (540, msg),
+        },
+        _ => (540, msg),
     }
 }
 
@@ -116,7 +129,7 @@ where
     }
 }
 
-impl From<crate::Errors> for (u32, String) {
+impl From<crate::Errors> for (i64, String) {
     fn from(err: crate::Errors) -> Self {
         let (code, message) = match err {
             crate::Errors::Service(e) => e.into(),

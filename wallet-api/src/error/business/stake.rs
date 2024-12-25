@@ -16,7 +16,7 @@ pub enum StakeError {
 }
 
 impl StakeError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             StakeError::SwitchClose => 3900,
             StakeError::ResourceSufficient => 3901,

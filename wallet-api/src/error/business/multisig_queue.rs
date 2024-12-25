@@ -17,7 +17,7 @@ pub enum MultisigQueueError {
 }
 
 impl MultisigQueueError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             MultisigQueueError::AlreadyExist => 3700,
             MultisigQueueError::NotFound => 3701,

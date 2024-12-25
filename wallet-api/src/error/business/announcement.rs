@@ -7,7 +7,7 @@ pub enum AnnouncementError {
 }
 
 impl AnnouncementError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             AnnouncementError::AlreadyExist => 3800,
             AnnouncementError::NotFound => 3801,
