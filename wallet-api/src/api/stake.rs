@@ -343,3 +343,56 @@ mod tests {
         println!("{:#?}", phrase);
     }
 }
+
+#[cfg(test)]
+mod cal_tests {
+
+    // Function to calculate the voter reward
+    fn calculate_voter_reward(
+        total_reward: f64,
+        voter_votes: f64,
+        sr_votes: f64,
+        total_sr_votes: f64,
+        voter_share: f64,
+    ) -> f64 {
+        total_reward * (sr_votes / total_sr_votes) * voter_share * (voter_votes / sr_votes)
+    }
+
+    // Function to calculate APR
+    fn calculate_apr(voter_reward: f64, voter_votes: f64) -> f64 {
+        if voter_votes == 0.0 {
+            return 0.0;
+        }
+        (voter_reward / voter_votes) * 100.0 * 365.0
+    }
+
+    #[test]
+    fn test_calculate_apr() {
+        // Parameters for the test case
+        let total_reward = 4_608_000.0; // Total reward pool
+        let total_sr_votes = 39797663721.0; // Total votes of all SR and SRP
+        let sr_votes = 3069539068.0; // Votes obtained by the SR
+        let voter_votes = 10_000_000.0; // Voter's votes
+        let voter_share = 1.0; // Voter share (80%)
+
+        // Calculate voter reward
+        let voter_reward = calculate_voter_reward(
+            total_reward,
+            voter_votes,
+            sr_votes,
+            total_sr_votes,
+            voter_share,
+        );
+
+        // Calculate APR
+        let apr = calculate_apr(voter_reward, voter_votes);
+
+        // Debug output
+        println!("Voter Reward: {:.2}", voter_reward);
+        println!("Voter APR: {:.2}", apr);
+
+        // Assert results (expected values based on the example)
+        assert!((voter_reward - 1272.10).abs() < 1e-2); // Reward should be close to 1272.10 TRX
+        assert!((apr - 12.72).abs() < 1e-2); // APR should be close to 12.72%
+    }
+}
