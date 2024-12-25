@@ -247,6 +247,9 @@ impl StackService {
         let can_withdraw = account.can_withdraw_unfreeze_amount(&type_str);
         resource.pending_withdraw = TrxResource::new(can_withdraw, price);
 
+        // 价格
+        resource.price = price;
+
         // 计算可转账次数
         resource.calculate_transfer_times(resource_type);
 

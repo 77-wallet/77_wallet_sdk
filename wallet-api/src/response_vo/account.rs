@@ -95,6 +95,10 @@ pub struct Resource {
     pub can_unfreeze: i64,
     // 可执行的转账次数
     pub transfer_times: f64,
+    // 价格
+    pub price: f64,
+    // consumer 每笔交易对应的数量
+    pub consumer: f64,
 }
 
 #[derive(Debug, serde::Serialize, Default)]
@@ -131,6 +135,7 @@ impl Resource {
             ResourceType::ENERGY => ENERGY_CONSUME,
         };
 
+        self.consumer = consumer;
         let rs = (self.owner_freeze.value + self.acquire_freeze.value) / consumer;
 
         self.transfer_times = (rs * 100.0).round() / 100.0;

@@ -248,14 +248,6 @@ impl crate::WalletManager {
     }
 
     // ************************************************ vote *********************************************************
-    // pub async fn votes_fee_estimation(&self, account: String) -> ReturnType<VoteFeeResp> {
-    //     StackService::new()
-    //         .await?
-    //         .votes_fee_estimation(account)
-    //         .await?
-    //         .into()
-    // }
-
     pub async fn votes(&self, req: VoteWitnessReq, password: &str) -> ReturnType<String> {
         StackService::new()
             .await?

@@ -1,5 +1,7 @@
 use crate::get_manager;
-use wallet_api::request::stake::{BatchDelegate, BatchList, DelegateReq, UnDelegateReq};
+use wallet_api::request::stake::{
+    BatchDelegate, BatchList, BatchUnDelegate, DelegateReq, UnDelegateReq,
+};
 use wallet_database::entities::bill::BillKind;
 
 #[tokio::test]
@@ -54,18 +56,18 @@ async fn test_delegate() {
 #[tokio::test]
 async fn test_batch_delegate_fee() {
     let rerevice1 = BatchList {
-        revevie_address: "xxx".to_string(),
-        value: 10,
+        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        value: 100,
     };
 
     let rerevice2 = BatchList {
-        revevie_address: "xxx".to_string(),
-        value: 10,
+        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        value: 100,
     };
 
     let req = BatchDelegate {
-        owner_address: "".to_string(),
-        resource_type: "".to_string(),
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        resource_type: "energy".to_string(),
         list: vec![rerevice1, rerevice2],
         lock: false,
         lock_period: 0,
@@ -76,6 +78,85 @@ async fn test_batch_delegate_fee() {
 
     let manager = get_manager().await;
     let res = manager.estimate_stake_fee(bill_kind, content).await;
+
+    tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_batch_delegate() {
+    let rerevice1 = BatchList {
+        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        value: 100,
+    };
+
+    let rerevice2 = BatchList {
+        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        value: 100,
+    };
+
+    let req = BatchDelegate {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        resource_type: "energy".to_string(),
+        list: vec![rerevice1, rerevice2],
+        lock: false,
+        lock_period: 0,
+    };
+
+    let manager = get_manager().await;
+    let password = "123456".to_string();
+    let res = manager.batch_delegate(req, password).await;
+
+    tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_batch_un_delegate_fee() {
+    let rerevice1 = BatchList {
+        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        value: 100,
+    };
+
+    let rerevice2 = BatchList {
+        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        value: 100,
+    };
+
+    let req = BatchUnDelegate {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        resource_type: "energy".to_string(),
+        list: vec![rerevice1, rerevice2],
+    };
+
+    let bill_kind = BillKind::BatchUnDelegateEnergy.to_i8() as i64;
+    let content = serde_json::to_string(&req).unwrap();
+
+    let manager = get_manager().await;
+    let res = manager.estimate_stake_fee(bill_kind, content).await;
+
+    tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_batch_un_delegate() {
+    let rerevice1 = BatchList {
+        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        value: 100,
+    };
+
+    let rerevice2 = BatchList {
+        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        value: 100,
+    };
+
+    let req = BatchUnDelegate {
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        resource_type: "energy".to_string(),
+        list: vec![rerevice1, rerevice2],
+    };
+
+    let manager = get_manager().await;
+    let password = "123456".to_string();
+    let res = manager.batch_un_deleate(req, password).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
