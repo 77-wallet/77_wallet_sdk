@@ -63,7 +63,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
             let md5_sn = domain::app::DeviceDomain::md5_sn(&device.sn);
             crate::mqtt::init_mqtt_processor(
                 &device.sn,
-                APP_ID,
+                &md5_sn,
                 crate::mqtt::user_property::UserProperty::new(
                     // &package_id.unwrap_or("77wallet".to_string()),
                     &content, &client_id, &device.sn, &md5_sn,
