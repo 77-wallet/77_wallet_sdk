@@ -92,7 +92,8 @@ cfg_if::cfg_if! {
     // 测试环境
     } else if #[cfg(feature = "test")] {
         pub const BASE_URL: &str = "https://test-api.puke668.top";
-        pub const MQTT_URL: &str = "mqtt://126.214.108.58:21883";
+        // pub const MQTT_URL: &str = "mqtt://126.214.108.58:21883";
+        pub const MQTT_URL: &str = "mqtt://47.250.11.112:21883";
     // 生产环境
     } else if #[cfg(feature = "prod")] {
         pub const BASE_URL: &str = "https://api.77wallet.org";
