@@ -309,7 +309,7 @@ impl TransactionAdapter {
 
                     let tx = params.build_raw_transaction(provider).await?;
                     let consumer = provider
-                        .transfer_fee(&params.from, Some(&params.to), &tx, 1)
+                        .transfer_fee(&params.from, Some(&params.to), &tx.raw_data_hex, 1)
                         .await?;
 
                     if account.balance < consumer.transaction_fee_i64() + value_i64 {
