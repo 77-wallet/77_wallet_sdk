@@ -60,6 +60,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         tokio::spawn(async move {
             let content = domain::app::DeviceDomain::device_content(&device).unwrap();
             let client_id = domain::app::DeviceDomain::client_id_by_device(&device).unwrap();
+            let md5_sn = domain::app::DeviceDomain::md5_sn(&device.sn);
             crate::mqtt::init_mqtt_processor(
                 &device.sn,
                 APP_ID,
@@ -67,6 +68,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
                     &package_id.unwrap_or("77wallet".to_string()),
                     &content,
                     &client_id,
+                    &md5_sn,
                 ),
                 crate::mqtt::wrap_handle_eventloop,
             )

@@ -3,14 +3,16 @@ pub struct UserProperty {
     pub(crate) package_id: String,
     pub(crate) content: String,
     pub(crate) client_id: String,
+    pub(crate) sn: String,
 }
 
 impl UserProperty {
-    pub fn new(package_id: &str, content: &str, client_id: &str) -> Self {
+    pub fn new(package_id: &str, content: &str, client_id: &str, sn: &str) -> Self {
         Self {
             package_id: package_id.to_string(),
             content: content.to_string(),
             client_id: client_id.to_string(),
+            sn: sn.to_string(),
         }
     }
 
@@ -18,6 +20,7 @@ impl UserProperty {
         let up = vec![
             ("content".to_string(), self.content.clone()),
             ("clientId".to_string(), self.client_id.clone()),
+            ("username".to_string(), self.sn.clone()),
         ];
 
         up
