@@ -86,7 +86,7 @@ pub const BASE_RPC_URL: &str = "rpc.88ai.fun";
 
 cfg_if::cfg_if! {
     // 默认使用开发环境 (dev)
-    if #[cfg(feature = "dev")] {
+    if #[cfg(any(feature = "dev", not(any(feature = "test", feature = "prod"))))] {
         pub const BASE_URL: &str = "https://walletapi.puke668.top";
         pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
     // 测试环境
