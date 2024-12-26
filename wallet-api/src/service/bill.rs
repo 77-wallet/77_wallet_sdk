@@ -86,6 +86,17 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         Ok(lists)
     }
 
+    pub async fn list_by_hashs(
+        &self,
+        owner: String,
+        hashs: Vec<String>,
+    ) -> Result<Vec<BillEntity>, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let res = BillDao::lists_by_hashs(pool.as_ref(), &owner, hashs).await?;
+
+        Ok(res)
+    }
+
     pub async fn sync_bill_by_address(
         &self,
         chain_code: &str,

@@ -9,8 +9,7 @@ use crate::{
         account::AccountResource,
         stake::{
             BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp, DelegateResp,
-            FreezeListResp, FreezeResp, ResourceResp, ResourceToTrxResp, TrxToResourceResp,
-            UnfreezeListResp, WithdrawUnfreezeResp,
+            FreezeListResp, FreezeResp, ResourceResp, UnfreezeListResp, WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,

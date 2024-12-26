@@ -45,6 +45,17 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn list_by_hashs(
+        &self,
+        owner: String,
+        hashs: Vec<String>,
+    ) -> ReturnType<Vec<BillEntity>> {
+        BillService::new(self.repo_factory.resuource_repo())
+            .list_by_hashs(owner, hashs)
+            .await?
+            .into()
+    }
+
     pub async fn bill_lists(
         &self,
         root_addr: Option<String>,
