@@ -85,7 +85,14 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
     match err {
         wallet_chain_interact::Error::TransportError(transport_error) => match transport_error {
             wallet_transport::TransportError::NodeResponseError(node_response_error) => {
-                (node_response_error.code, node_response_error.to_string())
+                match node_response_error.code {
+                    // sol链错误码,转账金额小于租金
+                    -32002 => (
+                        crate::ChainError::InsufficientFundsRent.get_status_code(),
+                        node_response_error.to_string(),
+                    ),
+                    _ => (node_response_error.code, node_response_error.to_string()),
+                }
             }
             _ => (540, msg),
         },
