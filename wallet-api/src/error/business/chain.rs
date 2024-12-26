@@ -23,7 +23,7 @@ pub enum ChainError {
 }
 
 impl ChainError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             ChainError::NotFound(_) => 3501,
             ChainError::InsufficientBalance => 3502,

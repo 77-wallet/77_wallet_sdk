@@ -33,6 +33,10 @@ impl DeviceDomain {
             .unwrap())
     }
 
+    pub fn md5_sn(sn: &str) -> String {
+        wallet_utils::md5(sn)
+    }
+
     pub fn client_device_by_sn(sn: &str, device_type: &str) -> String {
         let identifier = DeviceDomain::device_identifier(sn, device_type);
         DeviceDomain::client_id_by_identifier(&identifier)

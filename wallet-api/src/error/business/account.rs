@@ -13,7 +13,7 @@ pub enum AccountError {
 }
 
 impl AccountError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             AccountError::AlreadyExist => 3200,
             AccountError::NotFound => 3201,

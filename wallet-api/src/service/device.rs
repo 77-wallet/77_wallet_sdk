@@ -34,7 +34,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
     pub async fn init_device(self, req: InitDeviceReq) -> Result<Option<()>, crate::ServiceError> {
         let mut tx = self.repo;
 
-        let package_id = req.package_id.clone();
+        // let package_id = req.package_id.clone();
         let upsert_req = (&req).into();
         tx.upsert(upsert_req).await?;
 
@@ -60,13 +60,13 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         tokio::spawn(async move {
             let content = domain::app::DeviceDomain::device_content(&device).unwrap();
             let client_id = domain::app::DeviceDomain::client_id_by_device(&device).unwrap();
+            let md5_sn = domain::app::DeviceDomain::md5_sn(&device.sn);
             crate::mqtt::init_mqtt_processor(
                 &device.sn,
-                APP_ID,
+                &md5_sn,
                 crate::mqtt::user_property::UserProperty::new(
-                    &package_id.unwrap_or("77wallet".to_string()),
-                    &content,
-                    &client_id,
+                    // &package_id.unwrap_or("77wallet".to_string()),
+                    &content, &client_id, &device.sn, &md5_sn,
                 ),
                 crate::mqtt::wrap_handle_eventloop,
             )

@@ -43,7 +43,7 @@ pub enum BusinessError {
 }
 
 impl BusinessError {
-    pub fn get_status_code(&self) -> u32 {
+    pub fn get_status_code(&self) -> i64 {
         match self {
             BusinessError::Device(msg) => msg.get_status_code(),
             BusinessError::Wallet(msg) => msg.get_status_code(),

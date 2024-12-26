@@ -110,6 +110,8 @@ impl ConfigDomain {
             let config = MqttUrl {
                 url: mqtt_url.clone(),
             };
+
+            tracing::info!("set mqtt url: {}", mqtt_url);
             ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
             let mut config = crate::app_state::APP_STATE.write().await;
             config.set_mqtt_url(Some(mqtt_url));

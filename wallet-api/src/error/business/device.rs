@@ -5,7 +5,7 @@ pub enum DeviceError {
 }
 
 impl DeviceError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             DeviceError::Uninitialized => 3000,
         }

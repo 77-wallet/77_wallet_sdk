@@ -456,7 +456,7 @@ mod test {
         let TestData { wallet_manager, .. } =
             setup_test_environment(None, None, false, None).await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
+        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         // let chain_code = Some("bnb");
         // let chain_code = Some("btc");
         // let chain_code = Some("eth".to_string());

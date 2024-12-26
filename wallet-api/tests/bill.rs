@@ -18,8 +18,8 @@ async fn get_manager() -> WalletManager {
 async fn bill_detail() {
     let wallet_manager = get_manager().await;
 
-    let hash = "64a923c3ebf0d13be8cab729e632e0fa48a4bc1a6640c5cdb50cffb143ed11e9";
-    let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
+    let hash = "aaaaaaaaaaabbbbbbbbbbb";
+    let owner = "bc1qlhmzrl93pnrfdwtxr4edcse73jkk2xwuleu94u";
     let detail = wallet_manager.bill_detail(&hash, &owner).await;
 
     tracing::info!("result {}", serde_json::to_string(&detail).unwrap());

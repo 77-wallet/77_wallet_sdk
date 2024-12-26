@@ -25,7 +25,7 @@ pub enum MultisigAccountError {
 }
 
 impl MultisigAccountError {
-    pub fn get_status_code(&self) -> u32 {
+    pub fn get_status_code(&self) -> i64 {
         match self {
             MultisigAccountError::AlreadyExist => 3600,
             MultisigAccountError::NotFound => 3601,

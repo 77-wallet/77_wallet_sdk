@@ -5,7 +5,7 @@ pub enum BillError {
 }
 
 impl BillError {
-    pub(crate) fn get_status_code(&self) -> u32 {
+    pub(crate) fn get_status_code(&self) -> i64 {
         match self {
             BillError::NotFound => 3301,
         }

@@ -6,7 +6,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "oQPnhXAbLbMuKHESaGrbXT17CyvWCpLyERSJA9HCYd7";
+    let addr = "DYegyqLvJqW45zkDMiJGmghMemcaybe8BWDDNaTVNech";
     let chain_code = "sol";
     let symbol = "SOL";
     // let symbol = "STK";
@@ -23,9 +23,9 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "4tyeH6KgV2ZHsE7D4ctxT2wpfqYqe5aMM7VJABqaQ3H9";
-    let to = "8mod4aqksHLqPsxuXADZSrv4kpAbDiw3CPGPYeFgjMQJ";
-    let value = "0.1";
+    let from = "DYegyqLvJqW45zkDMiJGmghMemcaybe8BWDDNaTVNech";
+    let to = "HVWfJZUBx4Vxn8TgQivP4p3j5gm5pXzBDPeq3JUqZSW";
+    let value = "0.01";
     let chain_code = "sol";
     let symbol = "SOL";
 
@@ -45,9 +45,9 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "4tyeH6KgV2ZHsE7D4ctxT2wpfqYqe5aMM7VJABqaQ3H9";
-    let to = "8mod4aqksHLqPsxuXADZSrv4kpAbDiw3CPGPYeFgjMQJ";
-    let value = "0.1";
+    let from = "DYegyqLvJqW45zkDMiJGmghMemcaybe8BWDDNaTVNech";
+    let to = "HVWfJZUBx4Vxn8TgQivP4p3j5gm5pXzBDPeq3JUqZSW";
+    let value = "0.001";
     let chain_code = "sol";
     let symbol = "SOL";
     // let symbol = "STK";
