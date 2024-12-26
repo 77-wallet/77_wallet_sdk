@@ -7,6 +7,7 @@ use wallet_chain_interact::tron::{
 };
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FreezeBalanceReq {
     pub owner_address: String,
     pub resource: String,
@@ -25,6 +26,7 @@ impl TryFrom<&FreezeBalanceReq> for stake::FreezeBalanceArgs {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnFreezeBalanceReq {
     pub owner_address: String,
     pub resource: String,
@@ -56,11 +58,13 @@ impl TryFrom<&UnFreezeBalanceReq> for UnFreezeBalanceArgs {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CancelAllUnFreezeReq {
     pub owner_address: String,
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DelegateReq {
     pub owner_address: String,
     pub receiver_address: String,
@@ -100,6 +104,7 @@ impl TryFrom<&DelegateReq> for DelegateArgs {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnDelegateReq {
     pub owner_address: String,
     pub resource: String,
@@ -121,6 +126,7 @@ impl TryFrom<&UnDelegateReq> for UnDelegateArgs {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VoteWitnessReq {
     pub owner_address: String,
     pub votes: Vec<VotesReq>,
@@ -136,6 +142,7 @@ impl VoteWitnessReq {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VotesReq {
     pub vote_address: String,
     pub vote_count: i64,
@@ -164,6 +171,7 @@ impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WithdrawBalanceReq {
     pub owner_address: String,
 }
@@ -188,6 +196,7 @@ impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 // 批量取消代理
 pub struct BatchDelegate {
     pub owner_address: String,
@@ -229,6 +238,7 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 // 批量取消代理
 pub struct BatchUnDelegate {
     pub owner_address: String,
@@ -265,6 +275,7 @@ impl TryFrom<&BatchUnDelegate> for Vec<UnDelegateArgs> {
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BatchList {
     pub revevie_address: String,
     pub value: i64,
