@@ -973,9 +973,7 @@ impl StackService {
         Ok(res)
     }
 
-    pub async fn vote_top_rewards(
-        &self,
-    ) -> Result<Option<resp::Witness>, crate::error::ServiceError> {
+    pub async fn top_witness(&self) -> Result<Option<resp::Witness>, crate::error::ServiceError> {
         let chain = self.chain.get_provider();
         let list = StakeDomain::vote_list(chain).await?.data;
         // 获取最大投票数的witness

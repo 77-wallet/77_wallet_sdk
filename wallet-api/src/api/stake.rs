@@ -266,11 +266,11 @@ impl crate::WalletManager {
         StackService::new().await?.vote_list().await?.into()
     }
 
-    pub async fn votes_top_rewards(&self) -> ReturnType<Option<response_vo::stake::Witness>> {
-        StackService::new().await?.vote_top_rewards().await?.into()
+    pub async fn top_witness(&self) -> ReturnType<Option<response_vo::stake::Witness>> {
+        StackService::new().await?.top_witness().await?.into()
     }
 
-    pub async fn votes_claim_rewards(
+    pub async fn claim_votes_rewards(
         &self,
         req: WithdrawBalanceReq,
         password: &str,
@@ -320,7 +320,7 @@ mod tests {
             .await
             .unwrap();
 
-        let phrase = wallet_manager.votes_top_rewards().await;
+        let phrase = wallet_manager.top_witness().await;
         println!("{:#?}", phrase);
     }
 
