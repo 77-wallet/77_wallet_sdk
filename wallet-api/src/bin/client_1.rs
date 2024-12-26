@@ -1,3 +1,5 @@
+use std::{env, fs, path::PathBuf};
+
 use tokio_stream::StreamExt as _;
 use wallet_api::{
     notify::FrontendNotifyEvent,
@@ -9,6 +11,10 @@ use wallet_api::{
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 获取项目根目录
+    let example_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join("example");
+    let config_data = fs::read_to_string(example_dir)?;
+
     // std::env::set_var("RUST_BACKTRACE", "1");
     wallet_utils::init_test_log();
 
