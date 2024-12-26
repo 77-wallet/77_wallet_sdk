@@ -310,6 +310,8 @@ mod tests {
             .unwrap();
 
         let res = wallet_manager.votes_node_list().await;
+        println!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
         tracing::info!("{:#?}", res);
     }
 
@@ -320,8 +322,10 @@ mod tests {
             .await
             .unwrap();
 
-        let phrase = wallet_manager.top_witness().await;
-        println!("{:#?}", phrase);
+        let res = wallet_manager.top_witness().await;
+        println!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
+        tracing::info!("{:#?}", res);
     }
 
     #[tokio::test]
@@ -332,8 +336,10 @@ mod tests {
             .unwrap();
 
         let owner = "TWzCs2Mou5Z1GTGUvaCuofAHTV1Wi6VQ3p";
-        let phrase = wallet_manager.voter_info(owner).await;
-        println!("{:#?}", phrase);
+        let res = wallet_manager.voter_info(owner).await;
+        tracing::info!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
+        tracing::info!("{:#?}", res);
     }
 }
 
