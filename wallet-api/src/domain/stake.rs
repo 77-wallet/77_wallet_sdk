@@ -15,7 +15,7 @@ pub enum StakeArgs {
     // 取消解锁
     CancelAllUnFreeze(stake::CancelAllFreezeBalanceArgs),
     // 提取可以
-    Withdraw(stake::WithdrawBalanceArgs),
+    Withdraw(stake::WithdrawUnfreezeArgs),
     // 代理
     Delegate(stake::DelegateArgs),
     // 批量代理
@@ -26,6 +26,8 @@ pub enum StakeArgs {
     BatchUnDelegate(Vec<stake::UnDelegateArgs>),
     // 投票
     Votes(stake::VoteWitnessArgs),
+    // 提币
+    WithdrawReward(stake::WithdrawBalanceArgs),
 }
 
 impl StakeArgs {
@@ -84,6 +86,9 @@ impl StakeArgs {
             }
 
             Self::Votes(params) => chain.simple_fee(account, signature_num, params).await?,
+            Self::WithdrawReward(params) => {
+                chain.simple_fee(account, signature_num, params).await?
+            }
         };
         Ok(res)
     }
@@ -106,6 +111,9 @@ impl StakeArgs {
                 chain.build_multisig_transaction(params, expiration).await?
             }
             Self::Votes(params) => chain.build_multisig_transaction(params, expiration).await?,
+            Self::WithdrawReward(params) => {
+                chain.build_multisig_transaction(params, expiration).await?
+            }
             _ => {
                 return Err(crate::BusinessError::Stake(
                     crate::StakeError::MultisigUnSupportBillKind,
@@ -113,5 +121,34 @@ impl StakeArgs {
             }
         };
         Ok(res)
+    }
+}
+
+pub struct EstimateTxComsumer {
+    pub bandwidth: f64,
+    pub energy: f64,
+}
+impl EstimateTxComsumer {
+    // 获取交易需要消耗的资源，TODO: 根据不同的网络来获取对应的代币地址
+    pub async fn new(_chain: &TronChain) -> Result<Self, crate::ServiceError> {
+        // let contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+        // let from = "TFrszR3Bz1HUaEjL9ES1m424e5NJDsFsfT";
+        // let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
+        // let value = unit::convert_to_u256("1", 6)?;
+
+        Ok(Self {
+            bandwidth: 268.0,
+            energy: 64285.0,
+        })
+
+        // let params =
+        //     operations::transfer::ContractTransferOpt::new(&contract, from, to, value, None)?;
+
+        // let res = params.constant_contract(chain.get_provider()).await?;
+
+        // Ok(Self {
+        //     bandwidth: 268.0,
+        //     energy: res.energy_used as f64,
+        // })
     }
 }

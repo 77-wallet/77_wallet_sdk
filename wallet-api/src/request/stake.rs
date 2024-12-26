@@ -225,7 +225,7 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
                 Ok(DelegateArgs {
                     owner_address: owner_address.clone(),
                     receiver_address: wallet_utils::address::bs58_addr_to_hex(
-                        &item.revevie_address,
+                        &item.receive_address,
                     )?,
                     balance: item.value * consts::TRX_VALUE,
                     resource: resource_type,
@@ -264,7 +264,7 @@ impl TryFrom<&BatchUnDelegate> for Vec<UnDelegateArgs> {
                 Ok(UnDelegateArgs {
                     owner_address: owner_address.clone(),
                     receiver_address: wallet_utils::address::bs58_addr_to_hex(
-                        &item.revevie_address,
+                        &item.receive_address,
                     )?,
                     balance: item.value * consts::TRX_VALUE,
                     resource: resource_type,
@@ -277,6 +277,6 @@ impl TryFrom<&BatchUnDelegate> for Vec<UnDelegateArgs> {
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchList {
-    pub revevie_address: String,
+    pub receive_address: String,
     pub value: i64,
 }

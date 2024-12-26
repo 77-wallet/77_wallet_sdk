@@ -56,12 +56,12 @@ async fn test_delegate() {
 #[tokio::test]
 async fn test_batch_delegate_fee() {
     let rerevice1 = BatchList {
-        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         value: 100,
     };
 
     let rerevice2 = BatchList {
-        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         value: 100,
     };
 
@@ -85,12 +85,12 @@ async fn test_batch_delegate_fee() {
 #[tokio::test]
 async fn test_batch_delegate() {
     let rerevice1 = BatchList {
-        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         value: 100,
     };
 
     let rerevice2 = BatchList {
-        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         value: 100,
     };
 
@@ -112,12 +112,12 @@ async fn test_batch_delegate() {
 #[tokio::test]
 async fn test_batch_un_delegate_fee() {
     let rerevice1 = BatchList {
-        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         value: 100,
     };
 
     let rerevice2 = BatchList {
-        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         value: 100,
     };
 
@@ -139,12 +139,12 @@ async fn test_batch_un_delegate_fee() {
 #[tokio::test]
 async fn test_batch_un_delegate() {
     let rerevice1 = BatchList {
-        revevie_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         value: 100,
     };
 
     let rerevice2 = BatchList {
-        revevie_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         value: 100,
     };
 

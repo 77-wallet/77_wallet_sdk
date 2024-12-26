@@ -1,4 +1,3 @@
-use wallet_chain_interact::tron::operations::stake::ResourceType;
 use wallet_types::chain::address::{category::AddressCategory, r#type::AddressType};
 
 // 单笔交易需要花费的能量
@@ -129,14 +128,8 @@ impl Resource {
     }
 
     // 计算可以转账的交易次数
-    pub fn calculate_transfer_times(&mut self, resource_type: ResourceType) {
-        let consumer = match resource_type {
-            ResourceType::BANDWIDTH => NET_CONSUME,
-            ResourceType::ENERGY => ENERGY_CONSUME,
-        };
-
-        self.consumer = consumer;
-        let rs = (self.owner_freeze.value + self.acquire_freeze.value) / consumer;
+    pub fn calculate_transfer_times(&mut self) {
+        let rs = (self.owner_freeze.value + self.acquire_freeze.value) / self.consumer;
 
         self.transfer_times = (rs * 100.0).round() / 100.0;
     }

@@ -3,6 +3,7 @@ use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
 use crate::domain::multisig::MultisigDomain;
+use crate::domain::stake::EstimateTxComsumer;
 use crate::domain::stake::StakeArgs;
 use crate::domain::task_queue::Tasks;
 use crate::error::business::stake::StakeError;
@@ -249,7 +250,7 @@ impl StackService {
         resource.price = price;
 
         // 计算可转账次数
-        resource.calculate_transfer_times(resource_type);
+        resource.calculate_transfer_times();
 
         // 计算总的质押
         resource.calculate_total();
@@ -284,7 +285,7 @@ impl StackService {
             }
             BillKind::WithdrawUnFreeze => {
                 let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
-                let args = ops::stake::WithdrawBalanceArgs {
+                let args = ops::stake::WithdrawUnfreezeArgs {
                     owner_address: req.owner_address.clone(),
                 };
 
@@ -324,7 +325,7 @@ impl StackService {
                 let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
                 let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
 
-                Ok((StakeArgs::Withdraw(args), req.owner_address.clone()))
+                Ok((StakeArgs::WithdrawReward(args), req.owner_address.clone()))
             }
             _ => {
                 return Err(crate::BusinessError::Stake(
@@ -653,6 +654,11 @@ impl StackService {
         // bandwitdh
         res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
         res.bandwidth.limit_resource = res.bandwidth.total_resource - resource.free_net_used;
+
+        // 一笔交易的资源消耗
+        let consumer = EstimateTxComsumer::new(&chain).await?;
+        res.bandwidth.consumer = consumer.bandwidth;
+        res.energy.consumer = consumer.energy;
 
         self.fill_resource_info(
             &mut res.bandwidth,
