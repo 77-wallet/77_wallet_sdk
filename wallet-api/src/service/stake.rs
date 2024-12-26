@@ -16,8 +16,6 @@ use crate::request::stake;
 use crate::response_vo::account::AccountResource;
 use crate::response_vo::account::Resource;
 use crate::response_vo::account::TrxResource;
-use crate::response_vo::account::ENERGY_CONSUME;
-use crate::response_vo::account::NET_CONSUME;
 use crate::response_vo::stake as resp;
 use crate::response_vo::stake::BatchDelegateResp;
 use crate::response_vo::stake::BatchRes;
@@ -338,50 +336,50 @@ impl StackService {
 }
 
 impl StackService {
-    // 输入trx 得到对应的资源
-    pub async fn trx_to_resource(
-        &self,
-        account: String,
-        value: i64,
-        resource_type: String,
-    ) -> Result<resp::TrxToResourceResp, crate::ServiceError> {
-        let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
+    // // 输入trx 得到对应的资源
+    // pub async fn trx_to_resource(
+    //     &self,
+    //     account: String,
+    //     value: i64,
+    //     resource_type: String,
+    // ) -> Result<resp::TrxToResourceResp, crate::ServiceError> {
+    //     let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
 
-        let resource_value = self.resource_value(&account, value, resource_type).await?;
-        let resource = resp::ResourceResp::new(value, resource_type, resource_value);
+    //     let resource_value = self.resource_value(&account, value, resource_type).await?;
+    //     let resource = resp::ResourceResp::new(value, resource_type, resource_value);
 
-        let consumer = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => NET_CONSUME,
-            ops::stake::ResourceType::ENERGY => ENERGY_CONSUME,
-        };
+    //     let consumer = match resource_type {
+    //         ops::stake::ResourceType::BANDWIDTH => NET_CONSUME,
+    //         ops::stake::ResourceType::ENERGY => ENERGY_CONSUME,
+    //     };
 
-        Ok(resp::TrxToResourceResp::new(resource, consumer))
-    }
+    //     Ok(resp::TrxToResourceResp::new(resource, consumer))
+    // }
 
-    // 输入 resoruce 换算trx
-    pub async fn resource_to_trx(
-        &self,
-        account: String,
-        value: i64,
-        resource_type: String,
-    ) -> Result<resp::ResourceToTrxResp, crate::ServiceError> {
-        let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
-        let resource = ChainTransaction::account_resorce(&self.chain, &account).await?;
+    // // 输入 resoruce 换算trx
+    // pub async fn resource_to_trx(
+    //     &self,
+    //     account: String,
+    //     value: i64,
+    //     resource_type: String,
+    // ) -> Result<resp::ResourceToTrxResp, crate::ServiceError> {
+    //     let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
+    //     let resource = ChainTransaction::account_resorce(&self.chain, &account).await?;
 
-        let (price, consumer) = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => (resource.net_price(), NET_CONSUME),
-            ops::stake::ResourceType::ENERGY => (resource.energy_price(), ENERGY_CONSUME),
-        };
+    //     let (price, consumer) = match resource_type {
+    //         ops::stake::ResourceType::BANDWIDTH => (resource.net_price(), NET_CONSUME),
+    //         ops::stake::ResourceType::ENERGY => (resource.energy_price(), ENERGY_CONSUME),
+    //     };
 
-        let amount = (value as f64 / price) as i64;
-        let transfer_times = value as f64 / consumer;
+    //     let amount = (value as f64 / price) as i64;
+    //     let transfer_times = value as f64 / consumer;
 
-        Ok(resp::ResourceToTrxResp {
-            amount,
-            votes: amount,
-            transfer_times,
-        })
-    }
+    //     Ok(resp::ResourceToTrxResp {
+    //         amount,
+    //         votes: amount,
+    //         transfer_times,
+    //     })
+    // }
 
     pub async fn estimate_stake_fee(
         &self,
@@ -436,7 +434,12 @@ impl StackService {
             .await?;
 
         let resource = resp::ResourceResp::new(req.frozen_balance, resource_type, resource_value);
-        Ok(resp::FreezeResp::new(resource, tx_hash, bill_kind))
+        Ok(resp::FreezeResp::new(
+            req.owner_address.clone(),
+            resource,
+            tx_hash,
+            bill_kind,
+        ))
     }
 
     // 质押明细
@@ -548,7 +551,10 @@ impl StackService {
         let date = wallet_utils::time::now_plus_days(14);
         let resource = resp::ResourceResp::new(req.unfreeze_balance, resource_type, resource_value);
 
-        Ok(resp::FreezeResp::new(resource, tx_hash, bill_kind).expiration_at(date))
+        Ok(
+            resp::FreezeResp::new(req.owner_address, resource, tx_hash, bill_kind)
+                .expiration_at(date),
+        )
     }
 
     // 取消解锁

@@ -45,6 +45,7 @@ impl FreezeListResp {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FreezeResp {
+    pub owner_address: String,
     pub resource: ResourceResp,
     pub votes: i64,
     pub bill_kind: BillKind,
@@ -52,8 +53,14 @@ pub struct FreezeResp {
     pub expiration_at: Option<DateTime<Utc>>,
 }
 impl FreezeResp {
-    pub fn new(resource: ResourceResp, tx_hash: String, bill_kind: BillKind) -> Self {
+    pub fn new(
+        owner_address: String,
+        resource: ResourceResp,
+        tx_hash: String,
+        bill_kind: BillKind,
+    ) -> Self {
         Self {
+            owner_address,
             votes: resource.amount,
             resource,
             tx_hash,
