@@ -262,17 +262,11 @@ impl crate::WalletManager {
         StackService::new().await?.voter_info(owner).await?.into()
     }
 
-    pub async fn votes_node_list(
-        &self,
-    ) -> ReturnType<wallet_chain_interact::tron::operations::stake::vote_list::VoteWitnessResp>
-    {
+    pub async fn votes_node_list(&self) -> ReturnType<response_vo::stake::VoteListResp> {
         StackService::new().await?.vote_list().await?.into()
     }
 
-    pub async fn votes_top_rewards(
-        &self,
-    ) -> ReturnType<Option<wallet_chain_interact::tron::operations::stake::vote_list::Witness>>
-    {
+    pub async fn votes_top_rewards(&self) -> ReturnType<Option<response_vo::stake::Witness>> {
         StackService::new().await?.vote_top_rewards().await?.into()
     }
 
@@ -315,8 +309,8 @@ mod tests {
             .await
             .unwrap();
 
-        let phrase = wallet_manager.votes_node_list().await;
-        println!("{:#?}", phrase);
+        let res = wallet_manager.votes_node_list().await;
+        tracing::info!("{:#?}", res);
     }
 
     #[tokio::test]
@@ -357,22 +351,31 @@ mod cal_tests {
         total_reward * (sr_votes / total_sr_votes) * voter_share * (voter_votes / sr_votes)
     }
 
+    fn calculate_block_reward(voter_share: f64, voter_votes: f64, sr_votes: f64) -> f64 {
+        460800.0 / 27.0 * voter_share * voter_votes / sr_votes
+    }
+
     // Function to calculate APR
-    fn calculate_apr(voter_reward: f64, voter_votes: f64) -> f64 {
+    fn calculate_apr(voter_reward: f64, block_reward: f64, voter_votes: f64) -> f64 {
         if voter_votes == 0.0 {
             return 0.0;
         }
-        (voter_reward / voter_votes) * 100.0 * 365.0
+        ((voter_reward + block_reward) / voter_votes) * 100.0 * 365.0
     }
 
     #[test]
     fn test_calculate_apr() {
         // Parameters for the test case
         let total_reward = 4_608_000.0; // Total reward pool
+
         let total_sr_votes = 39797663721.0; // Total votes of all SR and SRP
-        let sr_votes = 3069539068.0; // Votes obtained by the SR
+
+        // let sr_votes = 3069539068.0; // Votes obtained by the SR
+        let sr_votes = 1248080337.0; // Votes obtained by the SR
+
         let voter_votes = 10_000_000.0; // Voter's votes
         let voter_share = 1.0; // Voter share (80%)
+                               // let voter_share = 0.90; // Voter share (80%)
 
         // Calculate voter reward
         let voter_reward = calculate_voter_reward(
@@ -383,8 +386,10 @@ mod cal_tests {
             voter_share,
         );
 
+        let block_reward = calculate_block_reward(voter_share, voter_votes, sr_votes);
+        println!("block reward: {}", block_reward);
         // Calculate APR
-        let apr = calculate_apr(voter_reward, voter_votes);
+        let apr = calculate_apr(voter_reward, block_reward, voter_votes);
 
         // Debug output
         println!("Voter Reward: {:.2}", voter_reward);

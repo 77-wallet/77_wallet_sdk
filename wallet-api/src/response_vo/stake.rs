@@ -244,3 +244,33 @@ impl BatchDelegateResp {
         }
     }
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoteListResp {
+    pub total: u16,
+    pub total_votes: i64,
+    pub data: Vec<Witness>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Witness {
+    pub address: String,
+    pub vote_count: i64,
+    pub url: String,
+    pub brokerage: f64,
+    pub apr: f64,
+}
+
+impl Witness {
+    pub fn new(address: &str, vote_count: i64, url: &str, brokerage: f64, apr: f64) -> Self {
+        Self {
+            address: address.to_string(),
+            vote_count,
+            url: url.to_string(),
+            brokerage,
+            apr,
+        }
+    }
+}

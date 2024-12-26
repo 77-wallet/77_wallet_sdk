@@ -5,6 +5,7 @@ use crate::domain::coin::TokenCurrencyGetter;
 use crate::domain::multisig::MultisigDomain;
 use crate::domain::stake::EstimateTxComsumer;
 use crate::domain::stake::StakeArgs;
+use crate::domain::stake::StakeDomain;
 use crate::domain::task_queue::Tasks;
 use crate::error::business::stake::StakeError;
 use crate::manager::Context;
@@ -945,14 +946,11 @@ impl StackService {
         Ok(res.order_id)
     }
 
-    pub async fn vote_list(
-        &self,
-    ) -> Result<ops::stake::vote_list::VoteWitnessResp, crate::error::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_scan_adapter().await?;
-        let list = chain.get_provider().vote_witnesses().await?;
-        tracing::info!("list witness: {:?}", list);
+    pub async fn vote_list(&self) -> Result<resp::VoteListResp, crate::error::ServiceError> {
+        let chain = self.chain.get_provider();
+        let res = StakeDomain::vote_list(chain).await?;
 
-        Ok(list)
+        Ok(res)
     }
 
     pub async fn voter_info(
@@ -977,18 +975,20 @@ impl StackService {
 
     pub async fn vote_top_rewards(
         &self,
-    ) -> Result<Option<ops::stake::vote_list::Witness>, crate::error::ServiceError> {
-        let chain = ChainAdapterFactory::get_tron_scan_adapter().await?;
-        let witness = chain
-            .get_provider()
-            .vote_witnesses()
-            .await?
-            .data
-            .first()
-            .cloned();
-        tracing::info!("witness: {:?}", witness);
+    ) -> Result<Option<resp::Witness>, crate::error::ServiceError> {
+        let chain = self.chain.get_provider();
+        let list = StakeDomain::vote_list(chain).await?.data;
+        // 获取最大投票数的witness
+        let mut max_apr = 0.0f64;
+        let mut max_witness = None;
+        for witness in list.iter() {
+            if witness.apr > max_apr {
+                max_apr = witness.apr;
+                max_witness = Some(witness);
+            }
+        }
 
-        Ok(witness)
+        Ok(max_witness.cloned())
     }
 
     pub async fn votes(

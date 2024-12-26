@@ -9,7 +9,6 @@ pub use multisig_adapter::*;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 const TIME_OUT: u64 = 30;
-const TRON_SCAN_API_RPC_URL: &str = "https://apilist.tronscanapi.com/api";
 
 #[macro_export]
 macro_rules! dispatch {
@@ -78,14 +77,6 @@ impl ChainAdapterFactory {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
 
         let http_client = HttpClient::new(&node.rpc_url, header_opt, timeout)?;
-        let provider = tron::Provider::new(http_client)?;
-
-        Ok(tron::TronChain::new(provider)?)
-    }
-
-    pub async fn get_tron_scan_adapter() -> Result<TronChain, crate::ServiceError> {
-        let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
-        let http_client = HttpClient::new(TRON_SCAN_API_RPC_URL, None, timeout)?;
         let provider = tron::Provider::new(http_client)?;
 
         Ok(tron::TronChain::new(provider)?)

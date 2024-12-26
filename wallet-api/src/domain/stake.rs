@@ -1,11 +1,16 @@
 use wallet_chain_interact::{
     tron::{
-        operations::{stake, TronSimulateOperation},
+        operations::{
+            stake::{self, Witness},
+            TronSimulateOperation,
+        },
         params::ResourceConsumer,
         TronChain,
     },
     types::MultisigTxResp,
 };
+
+use crate::response_vo::stake::VoteListResp;
 
 pub enum StakeArgs {
     // 质押
@@ -121,6 +126,145 @@ impl StakeArgs {
             }
         };
         Ok(res)
+    }
+}
+
+pub(crate) struct StakeDomain;
+
+const SR_ONE_DAY_TOTAL_REWARD: f64 = 460_800.0;
+const VOTE_ONE_DAY_TOTAL_REWARD: f64 = 4_608_000.0;
+const VOTER_VOTES: f64 = 10_000_000.0;
+
+impl StakeDomain {
+    // Function to calculate the voter reward
+    pub(crate) fn calculate_vote_reward(sr_votes: f64, total_sr_votes: f64, brokerage: f64) -> f64 {
+        VOTE_ONE_DAY_TOTAL_REWARD
+            * (sr_votes / total_sr_votes)
+            * brokerage
+            * (VOTER_VOTES / sr_votes)
+    }
+
+    pub(crate) fn calculate_block_reward(brokerage: f64, sr_votes: f64) -> f64 {
+        SR_ONE_DAY_TOTAL_REWARD / 27.0 * brokerage * VOTER_VOTES / sr_votes
+    }
+
+    // Function to calculate APR
+    pub(crate) fn calculate_apr(voter_reward: f64, block_reward: f64) -> f64 {
+        // if voter_votes == 0.0 {
+        //     return 0.0;
+        // }
+        ((voter_reward + block_reward) / VOTER_VOTES) * 100.0 * 365.0
+    }
+
+    pub(crate) async fn vote_list(
+        chain: &wallet_chain_interact::tron::Provider,
+    ) -> Result<VoteListResp, crate::error::ServiceError> {
+        let mut witness_list = chain.list_witnesses().await?.witnesses;
+        witness_list.sort_by(|a, b| {
+            let a_vote_count = a.vote_count;
+            let b_vote_count = b.vote_count;
+            b_vote_count.cmp(&a_vote_count)
+        });
+        let total = witness_list.len() as u16;
+        let total_sr_votes = witness_list.iter().map(|w| w.vote_count).sum::<i64>();
+
+        let mut data = Vec::new();
+        for (i, witness) in witness_list.into_iter().enumerate() {
+            tracing::info!("i: {}", i);
+            if i == 26 {
+                break;
+            }
+            let wallet_chain_interact::tron::operations::stake::Witness {
+                address,
+                vote_count,
+                url,
+                ..
+            } = witness;
+
+            let brokerage = (100.0 - chain.get_brokerage(&address).await?.brokerage as f64) / 100.0;
+
+            // tracing::info!("brokerage: {}", brokerage);
+            let block_reward = StakeDomain::calculate_block_reward(brokerage, vote_count as f64);
+            // tracing::info!("block_reward: {}", block_reward);
+            let vote_reward = StakeDomain::calculate_vote_reward(
+                vote_count as f64,
+                total_sr_votes as f64,
+                brokerage,
+            );
+            // tracing::info!("vote_reward: {}", vote_reward);
+            let apr = StakeDomain::calculate_apr(vote_reward, block_reward);
+            // tracing::info!("apr: {}", apr);
+            data.push(crate::response_vo::stake::Witness::new(
+                &address, vote_count, &url, brokerage, apr,
+            ));
+        }
+        let res = VoteListResp {
+            total,
+            total_votes: total_sr_votes,
+            data,
+        };
+        Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod cal_tests {
+    use crate::domain::stake::StakeDomain;
+
+    // Function to calculate the voter reward
+    // fn calculate_voter_reward(
+    //     total_reward: f64,
+    //     voter_votes: f64,
+    //     sr_votes: f64,
+    //     total_sr_votes: f64,
+    //     voter_share: f64,
+    // ) -> f64 {
+    //     total_reward * (sr_votes / total_sr_votes) * voter_share * (voter_votes / sr_votes)
+    // }
+
+    // fn calculate_block_reward(voter_share: f64, voter_votes: f64, sr_votes: f64) -> f64 {
+    //     460800.0 / 27.0 * voter_share * voter_votes / sr_votes
+    // }
+
+    // Function to calculate APR
+    // fn calculate_apr(voter_reward: f64, block_reward: f64, voter_votes: f64) -> f64 {
+    //     if voter_votes == 0.0 {
+    //         return 0.0;
+    //     }
+    //     ((voter_reward + block_reward) / voter_votes) * 100.0 * 365.0
+    // }
+
+    #[test]
+    fn test_calculate_apr() {
+        // Parameters for the test case
+        let total_reward = 4_608_000.0; // Total reward pool
+
+        let total_sr_votes = 39806518656.0; // Total votes of all SR and SRP
+
+        // let sr_votes = 3069539068.0; // Votes obtained by the SR
+        let sr_votes = 1248080337.0; // Votes obtained by the SR
+        let sr_votes = 3071535822.0; // Votes obtained by the SR
+
+        let voter_votes = 10_000_000.0; // Voter's votes
+        let voter_share = 1.0; // Voter share (80%)
+                               // let voter_share = 0.90; // Voter share (80%)
+
+        // Calculate voter reward
+        let voter_reward =
+            StakeDomain::calculate_vote_reward(sr_votes, total_sr_votes, voter_share);
+
+        let block_reward = StakeDomain::calculate_block_reward(voter_share, sr_votes);
+        println!("block reward: {}", block_reward);
+        // Calculate APR
+        let apr = StakeDomain::calculate_apr(voter_reward, block_reward);
+
+        // Debug output
+        println!("Voter Reward: {:.2}", voter_reward);
+        println!("Voter APR: {:.2}", apr);
+
+        // Assert results (expected values based on the example)
+        assert!((voter_reward - 1272.10).abs() < 1e-2); // Reward should be close to 1272.10 TRX
+        assert!((apr - 12.72).abs() < 1e-2); // APR should be close to 12.72%
     }
 }
 
