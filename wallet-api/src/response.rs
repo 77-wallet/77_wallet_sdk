@@ -94,7 +94,8 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
                     -32602 => {
                         let err_msg = node_response_error.message.unwrap_or_default();
                         (
-                            crate::ChainNodeError::InvalidParams(err_msg.clone()).get_status_code(),
+                            crate::CoinError::InvalidContractAddress(err_msg.clone())
+                                .get_status_code(),
                             err_msg,
                         )
                     }
