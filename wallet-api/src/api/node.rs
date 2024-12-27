@@ -39,15 +39,14 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
     use anyhow::Result;
 
     #[tokio::test]
     async fn test_add_node() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let chain_code = "tron";
         let name = "tron";
@@ -66,8 +65,7 @@ mod tests {
     async fn test_get_node_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let chain_code = "eth";
         let get_node_list = wallet_manager.get_node_list(chain_code).await;
@@ -80,8 +78,7 @@ mod tests {
     async fn test_get_node_speed() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let res = wallet_manager.get_node_dynamic_data("tron").await;
 

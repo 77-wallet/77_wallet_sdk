@@ -45,18 +45,17 @@ async fn create_wallet() {
     let wallet_name = "my_wallet";
     let account_name = "账户";
     let password = "123456";
-    let res = wallet_manager
-        .create_wallet(
-            1,
-            phrase,
-            salt,
-            wallet_name,
-            account_name,
-            true,
-            password,
-            None,
-        )
-        .await;
+    let req = wallet_api::CreateWalletReq::new(
+        1,
+        phrase,
+        salt,
+        wallet_name,
+        account_name,
+        true,
+        password,
+        None,
+    );
+    let res = wallet_manager.create_wallet(req).await;
 
     println!("创建的钱包{:?}", res);
 }
@@ -67,19 +66,18 @@ async fn create_account() {
     let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
     let account_name = "账户";
     let root_password = "123456";
+    let req = wallet_api::CreateAccountReq::new(
+        wallet_name,
+        root_password,
+        None,
+        None,
+        None,
+        account_name,
+        true,
+    );
 
     for _i in 0..2 {
-        let resp = wallet_manager
-            .create_account(
-                wallet_name,
-                root_password,
-                None,
-                None,
-                None,
-                account_name,
-                true,
-            )
-            .await;
+        let resp = wallet_manager.create_account(req.clone()).await;
         tracing::info!("create_account {:?}", resp);
     }
 }

@@ -47,15 +47,14 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
     use anyhow::Result;
     use wallet_database::entities::announcement::CreateAnnouncementVo;
 
     #[tokio::test]
     async fn test_init_some_announcement() -> Result<()> {
         wallet_utils::init_test_log();
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let an = CreateAnnouncementVo {
             id: "1".to_string(),
@@ -76,8 +75,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_announcement_list() -> Result<()> {
         wallet_utils::init_test_log();
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let announcement_list = wallet_manager.get_announcement_list(0, 10).await;
         tracing::info!("get_announcement_list: {announcement_list:?}");
@@ -89,8 +87,7 @@ mod tests {
     #[tokio::test]
     async fn test_pull_announcement() -> Result<()> {
         wallet_utils::init_test_log();
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let announcement_list = wallet_manager.pull_announcement().await;
         tracing::info!("pull_announcement: {announcement_list:?}");
@@ -102,8 +99,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_announcement_by_id() -> Result<()> {
         wallet_utils::init_test_log();
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let id = "66fd0176b038070e17edd202";
         let announcement = wallet_manager.get_announcement_by_id(id).await;
@@ -116,8 +112,7 @@ mod tests {
     #[tokio::test]
     async fn test_read_announcement() -> Result<()> {
         wallet_utils::init_test_log();
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let id = None;
         let read_announcement = wallet_manager.read_announcement(id).await;

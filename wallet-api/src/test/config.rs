@@ -2,6 +2,8 @@ use std::fs;
 
 use serde::Deserialize;
 
+use crate::{CreateAccountReq, CreateWalletReq, InitDeviceReq};
+
 #[derive(Deserialize, Debug)]
 pub struct Config {
     // pub database_path: String,
@@ -23,3 +25,10 @@ pub fn load_config(config_path: &str) -> Result<Config, anyhow::Error> {
 
 //     Ok(())
 // }
+
+#[derive(Deserialize, Debug)]
+pub struct TestParams {
+    pub device_req: InitDeviceReq,
+    pub create_wallet_req: CreateWalletReq,
+    pub create_account_req: CreateAccountReq,
+}

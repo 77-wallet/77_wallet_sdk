@@ -99,13 +99,13 @@ impl OrderMultiSignCreated {
 
 #[cfg(test)]
 mod test {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
 
     #[tokio::test]
     async fn update_multisig_address() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { .. } = setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
         // 准备测试数据

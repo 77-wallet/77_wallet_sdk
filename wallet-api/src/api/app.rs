@@ -118,15 +118,14 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
     use anyhow::Result;
 
     #[tokio::test]
     async fn test_set_language() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let res = wallet_manager.set_language("ENGLISH").await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -137,8 +136,7 @@ mod test {
     async fn test_get_official_website() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let res = wallet_manager.get_official_website().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -149,8 +147,7 @@ mod test {
     async fn test_get_config() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let res = wallet_manager.get_config().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
@@ -162,8 +159,7 @@ mod test {
     async fn test_get_unread_status() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let res = wallet_manager.get_unread_status().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
@@ -175,8 +171,7 @@ mod test {
     pub async fn check_version() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         // let r#type = Some("android_google_shop".to_string());
         let r#type = "android_google_shop";
         let res = wallet_manager.check_version(r#type).await;
@@ -189,8 +184,7 @@ mod test {
     pub async fn set_currency() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let currency = "CNY";
         let res = wallet_manager.set_currency(currency).await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
@@ -202,8 +196,7 @@ mod test {
     async fn test_delegate_swidth() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let res = wallet_manager.delegate_witch().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
@@ -215,8 +208,7 @@ mod test {
     async fn test_upload_log_file() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let res = wallet_manager.upload_log_file().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -227,8 +219,7 @@ mod test {
     async fn test_set_app_id() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let res = wallet_manager.set_app_id("aaa").await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

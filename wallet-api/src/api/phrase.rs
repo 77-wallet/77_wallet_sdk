@@ -88,20 +88,19 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
+    use anyhow::Result;
 
     #[tokio::test]
-    async fn generate_phrase() {
-        let TestData { wallet_manager, .. } = setup_test_environment(None, None, false, None)
-            .await
-            .unwrap();
-
+    async fn generate_phrase() -> Result<()> {
+        let (wallet_manager, test_params) = get_manager().await?;
         let phrase = wallet_manager.generate_phrase(1, 12);
         println!("{:?}", phrase);
+        Ok(())
     }
 
     #[test]
-    fn query_phrase() -> Result<(), Box<dyn std::error::Error>> {
+    fn query_phrase() -> Result<()> {
         let language_code = 1;
         let keyword = "ap";
         let mode = wallet_core::language::QueryMode::StartsWith;
@@ -122,8 +121,7 @@ mod tests {
     async fn query_phrase_exact() -> Result<(), Box<dyn std::error::Error>> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let language_code = 1;
         // let phrases = vec![
         //     "abandon", "ability", "able", "about", "above", "absent", "absorb", "ad",

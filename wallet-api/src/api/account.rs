@@ -11,25 +11,16 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn create_account(
-        &self,
-        wallet_address: &str,
-        root_password: &str,
-        derive_password: Option<String>,
-        derivation_path: Option<String>,
-        index: Option<i32>,
-        name: &str,
-        is_default_name: bool,
-    ) -> ReturnType<()> {
+    pub async fn create_account(&self, req: crate::CreateAccountReq) -> ReturnType<()> {
         AccountService::new(self.repo_factory.resuource_repo())
             .create_account(
-                wallet_address,
-                root_password,
-                derive_password,
-                derivation_path,
-                index,
-                name,
-                is_default_name,
+                &req.wallet_address,
+                &req.root_password,
+                req.derive_password,
+                req.derivation_path,
+                req.index,
+                &req.name,
+                req.is_default_name,
             )
             .await?
             .into()
@@ -169,15 +160,14 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
     use anyhow::Result;
 
     #[tokio::test]
     async fn test_switch_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let account = wallet_manager
             .switch_account("0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F", 2)
             .await;
@@ -192,8 +182,7 @@ mod test {
     async fn test_account_detail() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let account = wallet_manager
             .account_detail("TLzteCJi4jSGor5EDRYZcdQ4hsZRQQZ4XR")
             .await;
@@ -209,16 +198,12 @@ mod test {
     async fn test_get_account_private_key() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData {
-            wallet_manager,
-            wallet_env,
-            ..
-        } = setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         // let account_name = "account_name1";
         // let derivation_path = Some("m/44'/60'/0'/0/1".to_string());
         // let derivation_path = Some("m/44'/501'/1'/0".to_string());
-        let password = &wallet_env.password;
+        let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
         let account = wallet_manager
             .get_account_private_key(password, "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26", 1)
@@ -235,43 +220,16 @@ mod test {
     async fn test_create_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData {
-            wallet_manager,
-            wallet_env: _,
-            ..
-        } = setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
-        // let chain_code = "trx";
-        // let account_name = "account_name1";
-        // let derivation_path = Some("m/44'/60'/0'/0/1".to_string());
-        // let derivation_path = Some("m/44'/501'/1'/0".to_string());
-        let derivation_path = None;
-        // let index = Some(2147478971);
-        // let index = Some(2);
-        let index = Some(0);
-        // let index = Some(i32::MIN);
-        // let address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
-        // let address = "0x2b3f8269917dE02b02f5ac22fe1B4291Ed94D10a";
-        let address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
-
-        // let password = wallet_env.password;
-        let password = "123456";
+        let address = test_params.create_account_req.wallet_address.clone();
         let account = wallet_manager
-            .create_account(
-                address,
-                &password,
-                Some(password.to_string()),
-                derivation_path,
-                index,
-                "牛逼",
-                true,
-            )
+            .create_account(test_params.create_account_req)
             .await
             .message;
         tracing::info!("[test_] account: {account:?}");
-        // let address = "0xfc6A4Ed634335cde2701553B7dbB2C362510FBd9";
         let list = wallet_manager
-            .get_account_list(Some(address), None)
+            .get_account_list(Some(&address), None)
             .await
             .result;
         tracing::info!("[test_create_account] list: {list:?}");
@@ -283,15 +241,16 @@ mod test {
     async fn test_show_index_address() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData {
-            wallet_manager,
-            wallet_env,
-            ..
-        } = setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
         let wallet_address = "0xf689Fac64cF12175Dc0570656B97414d7A8d3BF1";
         let account = wallet_manager
-            .list_derived_addresses(wallet_address, 1, &wallet_env.password, false)
+            .list_derived_addresses(
+                wallet_address,
+                1,
+                &test_params.create_wallet_req.wallet_password,
+                false,
+            )
             .await;
         tracing::info!("[test_show_index_address] show_index_address: {account:?}");
         let res = serde_json::to_string(&account).unwrap();
@@ -303,8 +262,7 @@ mod test {
     async fn test_physical_delete_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let account_id = 1;
         let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
@@ -320,8 +278,7 @@ mod test {
     async fn test_edit_account_name() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
         let account = wallet_manager
@@ -338,8 +295,7 @@ mod test {
     async fn test_account_details() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
         let account_id = 1;

@@ -6,16 +6,12 @@ use wallet_utils::init_test_log;
 use wallet_api::{
     domain,
     service::device::{DeviceService, APP_ID},
-    test::env::{setup_test_environment, TestData},
+    test::env::get_manager,
 };
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let TestData {
-        wallet_manager: _, ..
-    } = setup_test_environment(None, None, false, None)
-        .await
-        .unwrap();
+    let (wallet_manager, test_params) = get_manager().await.unwrap();
 
     init_test_log();
 

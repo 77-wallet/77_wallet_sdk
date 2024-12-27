@@ -45,7 +45,7 @@ mod test {
     use crate::system_notification::{
         AccountType, Notification, NotificationType, TransactionStatus,
     };
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
     use anyhow::Result;
     // 添加这个引用
 
@@ -53,9 +53,7 @@ mod test {
     async fn test_add_system_notification() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
-
+        let (wallet_manager, test_params) = get_manager().await?;
         //670e5b356b58cd4047fdf46f	1	{"txHash":"0d9c3c1b9a959b6a240612e2fe885e9a6598b0161e5bb2c9dca70c7c41bb23ae","walletName":"asdasd","accountName":"账户2","uid":"cd2ac48fa33ba24a8bc0d89e7658a2cd","transferType":0,"status":2}	1	1728994157	2024-10-15T12:09:38.106672222+00:00
 
         {
@@ -174,9 +172,7 @@ mod test {
     async fn test_get_system_notification_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
-
+        let (wallet_manager, test_params) = get_manager().await?;
         // let status = 0;
         let res = wallet_manager.get_system_notification_list(0, 10).await;
         tracing::info!("res: {res:?}");
@@ -189,9 +185,7 @@ mod test {
     async fn test_update_system_notification_status() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
-
+        let (wallet_manager, test_params) = get_manager().await?;
         let status = 1;
         let res = wallet_manager
             .update_system_notification_status(None, status)

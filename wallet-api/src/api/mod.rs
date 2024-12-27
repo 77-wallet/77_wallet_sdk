@@ -70,13 +70,12 @@ impl super::WalletManager {
 mod test {
     use anyhow::Result;
 
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
 
     #[tokio::test]
     async fn test_process_jpush_message() -> Result<()> {
         wallet_utils::init_test_log();
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         // let chain_code = "trx";
         // let account_name = "account_name1";

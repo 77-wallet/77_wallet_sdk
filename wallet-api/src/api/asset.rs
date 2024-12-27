@@ -207,15 +207,14 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::test::env::get_manager;
     use anyhow::Result;
 
     #[tokio::test]
     async fn test_add_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id: 1,
             symbol: "BNB".to_string(),
@@ -231,8 +230,7 @@ mod test {
     async fn test_add_multisig_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let add_coin_req = crate::request::coin::AddMultisigCoinReq {
             symbol: "USDT".to_string(),
             address: "0x3bAc24b73c7A03C8715697cA1646a6f85B91023a".to_string(),
@@ -246,8 +244,7 @@ mod test {
     async fn test_get_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let address = "0xC24FCE9Ae9dEF3d18B926B363EaE25a22Ed71F9f";
         let account_id = None;
@@ -266,8 +263,7 @@ mod test {
     async fn test_remove_coin() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         // let wallet_address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
@@ -284,8 +280,7 @@ mod test {
     async fn test_remove_multisig_coin() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let res = wallet_manager
             .remove_multisig_coin("0x3bAc24b73c7A03C8715697cA1646a6f85B91023a", "USDT")
@@ -298,8 +293,7 @@ mod test {
     async fn test_get_account_assets_by_symbol_and_chain_code() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let symbol = "TRX";
         let chain_code = "tron";
@@ -319,8 +313,7 @@ mod test {
     async fn test_get_coin_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         // let keyword = Some("t");
         let keyword = None;
@@ -342,8 +335,7 @@ mod test {
     async fn test_get_multisig_coin_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         // let keyword = Some("t");
         let keyword = None;
@@ -366,18 +358,18 @@ mod test {
     async fn test_open_account_pk() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData {
-            wallet_manager,
-            wallet_env,
-            ..
-        } = setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "A9gBqKMQDWUYNiHHpHakSEsztKuxxN838EWGuG2WKc6F";
         let address = "0x0FDDDc2C86547328a0125468380d592d63625ba2";
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
         let account_id = 1;
         let res = wallet_manager
-            .get_account_private_key(&wallet_env.password, address, account_id)
+            .get_account_private_key(
+                &test_params.create_wallet_req.wallet_password,
+                address,
+                account_id,
+            )
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -387,8 +379,7 @@ mod test {
     async fn test_get_chain_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "A9gBqKMQDWUYNiHHpHakSEsztKuxxN838EWGuG2WKc6F";
         let address = "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB";
@@ -404,8 +395,7 @@ mod test {
     async fn test_get_all_account_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         let address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
@@ -421,8 +411,7 @@ mod test {
     async fn test_get_account_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         wallet_manager.set_currency("USD").await;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
@@ -439,8 +428,7 @@ mod test {
     async fn test_get_multisig_account_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let address = "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK";
         let account_asset = wallet_manager.get_multisig_account_assets(address).await;
@@ -453,8 +441,7 @@ mod test {
     async fn test_get_assets_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
         let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         // let chain_code = Some("bnb");
@@ -479,8 +466,7 @@ mod test {
     async fn test_get_multisig_assets_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { wallet_manager, .. } =
-            setup_test_environment(None, None, false, None).await?;
+        let (wallet_manager, test_params) = get_manager().await?;
         let address = "TBk86hq1e8C1gNX6RDXhk1wLamwzKnotmo";
         // let chain_code = None;
         let chain_code = Some("tron".to_string());

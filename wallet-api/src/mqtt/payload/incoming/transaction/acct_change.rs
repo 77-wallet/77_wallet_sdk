@@ -394,7 +394,7 @@ impl AcctChange {
 mod test {
     use crate::{
         mqtt::payload::incoming::{transaction::AcctChange, Message},
-        test::env::{setup_test_environment, TestData},
+        test::env::get_manager,
     };
 
     #[test]
@@ -508,17 +508,16 @@ mod test {
     }
 
     #[tokio::test]
-    async fn acct_change() {
+    async fn acct_change() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let TestData { .. } = setup_test_environment(None, None, false, None)
-            .await
-            .unwrap();
+        let (wallet_manager, test_params) = get_manager().await?;
 
         let str = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"0x1457a81B300cB106187Dd227b0319E2a851BAb24","isMultisig":0,"status":true,"symbol":"eth","toAddr":"0x7B3123AA8Cf1137Da498f3d581aD3B16a9DC55a9","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":0,"txHash":"0xb8fb5be8584735a0fbb2a9fd8e3a1b7fd1f003203c719d23561c5e679bb5490d","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
         let changet = serde_json::from_str::<AcctChange>(&str).unwrap();
 
         let res = changet.exec("1").await;
         println!("{:?}", res);
+        Ok(())
     }
 }

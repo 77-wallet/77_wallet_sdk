@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf};
 use tokio_stream::StreamExt as _;
-use wallet_api::{notify::FrontendNotifyEvent, InitDeviceReq, WalletManager};
+use wallet_api::{notify::FrontendNotifyEvent, CreateWalletReq, InitDeviceReq, WalletManager};
 use wallet_utils::init_test_log;
 
 const SN: &str = "guangxiang";
@@ -48,9 +48,8 @@ async fn create_wallet(manager: &WalletManager, create: bool) {
             "will match face problem tongue fortune rebuild stool moon assist virtual lounge";
 
         let salt = "12345678";
-        manager
-            .create_wallet(1, phrase, salt, "test", "账户", true, "123456", None)
-            .await;
+        let req = CreateWalletReq::new(1, phrase, salt, "test", "账户", true, "123456", None);
+        manager.create_wallet(req).await;
     }
 }
 
