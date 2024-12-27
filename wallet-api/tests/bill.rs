@@ -102,8 +102,8 @@ async fn test_sync_bill_by_address() {
 async fn recent_bill() {
     let wallet_manager = get_manager().await;
 
-    let symbol = "WIN".to_string();
-    let addr = "TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn".to_string();
+    let symbol = "TRX".to_string();
+    let addr = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let chain_code = "tron".to_string();
     let page = 0;
     let page_size = 10;

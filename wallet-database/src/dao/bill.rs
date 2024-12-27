@@ -133,6 +133,7 @@ impl BillDao {
                 WHERE owner = '{}'
                 AND chain_code = '{}'
                 AND to_addr <> '{}'
+                AND to_addr <>  ""
                 AND symbol = '{}'
                 {}
                 AND transfer_type = 1
