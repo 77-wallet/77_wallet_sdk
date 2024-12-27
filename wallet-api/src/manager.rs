@@ -1,5 +1,5 @@
-use crate::cache::SharedCache;
 use crate::domain::task_queue::{BackendApiTask, InitializationTask, Task};
+use crate::infrastructure::SharedCache;
 use crate::notify::FrontendNotifyEvent;
 use crate::service::coin::CoinService;
 use crate::service::node::NodeService;

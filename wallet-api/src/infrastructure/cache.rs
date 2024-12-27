@@ -84,3 +84,49 @@ impl CacheEntry {
             .map_or(false, |instant| instant <= std::time::Instant::now())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tokio::time::sleep;
+
+    #[tokio::test]
+    async fn test_cache() {
+        let cache = SharedCache::new();
+
+        let _rs = cache.set_ex("hello", "world", 10).await;
+        let rs = cache.get("hello").await;
+
+        println!("{:?}", rs);
+    }
+
+    #[tokio::test]
+    async fn test_cached() {
+        let cache = SharedCache::new();
+
+        let _rs = cache.set_ex("hello", "world", 10).await;
+
+        let rs = cache.get("hello").await;
+        println!("{:?}", rs);
+
+        println!("睡眠5秒");
+        sleep(std::time::Duration::from_secs(5)).await;
+
+        let rs = cache.get("hello").await;
+        println!(
+            "再次获取 {:?},是否过期 {}",
+            rs.clone(),
+            rs.unwrap().is_expired()
+        );
+
+        println!("睡眠6秒");
+        sleep(std::time::Duration::from_secs(5)).await;
+
+        let rs = cache.get("hello").await;
+        println!(
+            "再次获取 {:?},是否过期 {}",
+            rs.clone(),
+            rs.unwrap().is_expired()
+        );
+    }
+}
