@@ -1,3 +1,4 @@
+use crate::cache::SharedCache;
 use crate::domain::task_queue::{BackendApiTask, InitializationTask, Task};
 use crate::notify::FrontendNotifyEvent;
 use crate::service::coin::CoinService;
@@ -118,6 +119,7 @@ pub struct Context {
     pub(crate) mqtt_topics: Arc<RwLock<crate::mqtt::topic::Topics>>,
     pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
     pub(crate) device: Arc<DeviceInfo>,
+    pub(crate) cache: Arc<SharedCache>,
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +182,7 @@ impl Context {
             mqtt_topics: Arc::new(RwLock::new(crate::mqtt::topic::Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
+            cache: Arc::new(SharedCache::new()),
         })
     }
 
@@ -223,6 +226,10 @@ impl Context {
     ) -> Result<&'static crate::domain::task_queue::task_manager::TaskManager, crate::SystemError>
     {
         Ok(&Context::get_context()?.task_manager)
+    }
+
+    pub(crate) fn get_global_cache() -> Result<Arc<SharedCache>, crate::SystemError> {
+        Ok(Context::get_context()?.cache.clone())
     }
 
     pub(crate) fn get_global_mqtt_topics(

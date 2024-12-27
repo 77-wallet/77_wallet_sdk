@@ -3,6 +3,7 @@
 #![allow(clippy::too_many_arguments)]
 pub mod api;
 pub mod app_state;
+pub(crate) mod cache;
 pub mod config;
 pub(crate) mod default_data;
 pub mod domain;
