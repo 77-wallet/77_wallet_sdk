@@ -46,7 +46,7 @@ mod tests {
     async fn test_add_node() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let chain_code = "tron";
         let name = "tron";
@@ -65,7 +65,7 @@ mod tests {
     async fn test_get_node_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let chain_code = "eth";
         let get_node_list = wallet_manager.get_node_list(chain_code).await;
@@ -78,7 +78,7 @@ mod tests {
     async fn test_get_node_speed() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let res = wallet_manager.get_node_dynamic_data("tron").await;
 

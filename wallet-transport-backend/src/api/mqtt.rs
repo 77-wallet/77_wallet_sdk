@@ -66,7 +66,7 @@ mod test {
         init_test_log();
         // let method = "POST";
         let base_url = crate::consts::BASE_URL;
-        let client_id = "86d70879ca5ace5474313fd309e68f37".to_string();
+        let client_id = "b205d2716d87d73af508ff2375149487".to_string();
         // let client_id = "5cab3d9aeacd8e4996245806da44fd37".to_string();
         let req = crate::request::SendMsgQueryUnconfirmMsgReq { client_id };
         let res = BackendApi::new(Some(base_url.to_string()), None)

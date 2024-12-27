@@ -93,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     async fn generate_phrase() -> Result<()> {
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let phrase = wallet_manager.generate_phrase(1, 12);
         println!("{:?}", phrase);
         Ok(())
@@ -121,7 +121,7 @@ mod tests {
     async fn query_phrase_exact() -> Result<(), Box<dyn std::error::Error>> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let language_code = 1;
         // let phrases = vec![
         //     "abandon", "ability", "able", "about", "above", "absent", "absorb", "ad",

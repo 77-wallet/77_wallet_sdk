@@ -25,7 +25,9 @@ impl JPushService {
                 .await?
                 .is_none()
             {
-                crate::mqtt::handle::exec_payload(payload).await?;
+                if let Err(e) = crate::mqtt::handle::exec_payload(payload).await {
+                    tracing::error!("[jpush_multi] exec_payload error: {}", e);
+                };
             };
             ids.push(wallet_transport_backend::request::SendMsgConfirm::new(
                 &id, source,

@@ -322,7 +322,7 @@ mod tests {
     async fn test_multi_signature_transfer_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -384,7 +384,7 @@ mod tests {
     async fn test_multi_signature_transfer_receive_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -446,7 +446,7 @@ mod tests {
     async fn test_multi_signature_transfer_to_partner_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -509,7 +509,7 @@ mod tests {
     {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -571,7 +571,7 @@ mod tests {
     async fn test_common_transfer_to_multi_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -633,7 +633,7 @@ mod tests {
     async fn test_common_transfer_to_multi_receive_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -695,7 +695,7 @@ mod tests {
     async fn test_common_transfer_to_common_token_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -755,7 +755,7 @@ mod tests {
     async fn test_common_transfer_to_common_fees_is_successful() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -815,7 +815,7 @@ mod tests {
     async fn test_eth() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -874,7 +874,7 @@ mod tests {
     async fn test_eth2() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -936,7 +936,7 @@ mod tests {
     async fn test_eth3() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -998,7 +998,7 @@ mod tests {
     async fn test_eth4() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;
@@ -1060,7 +1060,7 @@ mod tests {
     async fn test_acct_change_bug() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         use rumqttc::v5::mqttbytes::v5::Publish;
         use serde_json::json;

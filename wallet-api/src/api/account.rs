@@ -167,7 +167,7 @@ mod test {
     async fn test_switch_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let account = wallet_manager
             .switch_account("0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F", 2)
             .await;
@@ -182,7 +182,7 @@ mod test {
     async fn test_account_detail() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let account = wallet_manager
             .account_detail("TLzteCJi4jSGor5EDRYZcdQ4hsZRQQZ4XR")
             .await;
@@ -262,7 +262,7 @@ mod test {
     async fn test_physical_delete_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let account_id = 1;
         let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
@@ -278,7 +278,7 @@ mod test {
     async fn test_edit_account_name() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
         let account = wallet_manager
@@ -295,7 +295,7 @@ mod test {
     async fn test_account_details() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
         let account_id = 1;

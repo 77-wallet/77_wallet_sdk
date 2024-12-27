@@ -12,7 +12,6 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 use crate::mqtt::payload::incoming::{
     announcement::BulletinMsg,
     init::Init,
-    rpc::RpcChange,
     signature::{
         OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
         OrderMultiSignCreated, OrderMultiSignServiceComplete,

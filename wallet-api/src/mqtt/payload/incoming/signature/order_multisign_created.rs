@@ -105,7 +105,7 @@ mod test {
     async fn update_multisig_address() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
         // 准备测试数据

@@ -11,7 +11,7 @@ use wallet_api::{
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let (wallet_manager, test_params) = get_manager().await.unwrap();
+    let (_, _) = get_manager().await.unwrap();
 
     init_test_log();
 

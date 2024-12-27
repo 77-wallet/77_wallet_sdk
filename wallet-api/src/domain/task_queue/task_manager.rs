@@ -188,12 +188,13 @@ impl TaskManager {
                     let data = backend_api
                         .send_msg_query_unconfirm_msg(
                             &wallet_transport_backend::request::SendMsgQueryUnconfirmMsgReq {
-                                client_id,
+                                client_id: client_id.clone(),
                             },
                         )
                         .await?
                         .list;
                     // tracing::info!("[ProcessUnconfirmMsg] data: {:#?}", data);
+                    tracing::info!("[ProcessUnconfirmMsg] client_id: {}", client_id);
                     crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
                 }
                 InitializationTask::SetBlockBrowserUrl => {

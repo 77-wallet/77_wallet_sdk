@@ -144,7 +144,7 @@ mod test {
     async fn test_get_hot_coin_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // let keyword = Some("StR");
         let keyword = None;
@@ -163,7 +163,7 @@ mod test {
     async fn test_get_multisig_hot_coin_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // let keyword = Some("StR");
         let keyword = None;
@@ -186,7 +186,7 @@ mod test {
     async fn test_pull_hot_coins() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let res = wallet_manager.pull_hot_coins().await;
         tracing::info!("res: {res:?}");
@@ -197,7 +197,7 @@ mod test {
     async fn test_query_token_info() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // let chain_code = "tron";
         // let chain_code = "btc";
@@ -234,7 +234,7 @@ mod test {
     async fn test_customize_coin() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
         // let chain_code = "eth";
@@ -284,7 +284,7 @@ mod test {
     async fn test_get_token_price() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // let symbols = vec![
         //     "TRX".to_string(),
@@ -308,7 +308,7 @@ mod test {
     async fn test_query_history_price() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // [24小时：DAY，7天：WEEK，月：MONTH，年：YEAR，2年：YEAR2]
         let req = TokenQueryHistoryPrice {
@@ -332,7 +332,7 @@ mod test {
     async fn test_query_popular_by_page() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         // let keyword = Some("b".to_string());
         let keyword = None;
         // let chain_code = Some("tron".to_string());

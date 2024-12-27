@@ -38,11 +38,10 @@ pub struct RpcChangeBody {
 pub struct RpcAddressInfoBody {
     #[serde(default)]
     pub id: Option<String>,
+    #[serde(default)]
     pub chain_id: Option<i32>,
     pub name: String,
     pub url: String,
-    #[serde(default)]
-    pub http_url: Option<String>,
 }
 
 impl RpcChange {
@@ -76,11 +75,7 @@ impl RpcChange {
                 };
                 let network = "mainnet";
                 let node = wallet_database::entities::node::NodeCreateVo::new(
-                    id,
-                    &node.name,
-                    chain_code,
-                    &node.url,
-                    node.http_url.clone(),
+                    id, &node.name, chain_code, &node.url, None,
                 )
                 .with_network(network);
                 match wallet_database::repositories::node::NodeRepoTrait::add(&mut repo, node).await
@@ -107,27 +102,57 @@ impl RpcChange {
 mod test {
     use std::str::FromStr;
 
-    use crate::mqtt::payload::incoming::init::Init;
+    use crate::mqtt::payload::incoming::Message;
 
     #[test]
     fn test_() {
         let raw = r#"
         {
-            "bizType": "INIT",
-            "body": [
-                {
-                    "address": "TCVt2AYPjUZdSvLgUy8x2xhT7uj1FrQRZs",
-                    "balance": 2000000000,
-                    "chainCode": "tron",
-                    "code": "trx"
-                }
-            ],
-            "clientId": "wenjing",
+            "appId": "13065ffa4e8f6958bd6",
+            "bizType": "RPC_ADDRESS_CHANGE",
+            "body": [{
+                "chainCode": "sol",
+                "rpcAddressInfoBodyList": [{
+                    "chainId": 1,
+                    "id": "66c597d2c4aa1c8385046116",
+                    "name": "sol",
+                    "url": "http://rpc.88ai.fun/sol"
+                }]
+            }, {
+                "chainCode": "eth",
+                "rpcAddressInfoBodyList": [{
+                    "chainId": 1,
+                    "id": "675c02a8f4d96273e8cd9653",
+                    "name": "eth8",
+                    "url": "http://rpc.88ai.fun/eth"
+                }, {
+                    "id": "675c02a8f4d96273e8cd9654",
+                    "name": "eth022",
+                    "url": "http://rpc.88ai.fun/eth"
+                }]
+            }, {
+                "chainCode": "tron",
+                "rpcAddressInfoBodyList": [{
+                    "id": "676162e51350347bf4774d1b",
+                    "name": "tron2",
+                    "url": "http://www.222.com"
+                }, {
+                    "id": "676162e51350347bf4774d1a",
+                    "name": "tron1",
+                    "url": "http://www.1111.com"
+                }, {
+                    "id": "676162fe1350347bf4774d1c",
+                    "name": "tron3",
+                    "url": "http://www.333.com"
+                }]
+            }],
+            "clientId": "b205d2716d87d73af508ff2375149487",
             "deviceType": "ANDROID",
-            "sn": "wenjing"
+            "sn": "ebe42b137abb313f0d0012f588080395c3742e7eac77e60f43fac0afb363e67c",
+            "msgId": "6761634c9020540c37dc343f"
         }
         "#;
-        let res = serde_json::from_str::<Init>(&raw);
+        let res = serde_json::from_str::<Message>(&raw);
         println!("res: {res:?}");
     }
 

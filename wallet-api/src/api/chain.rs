@@ -3,15 +3,7 @@ use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 use crate::{api::ReturnType, response_vo::chain::ChainAssets, service::chain::ChainService};
 
 impl crate::WalletManager {
-    pub async fn add_chain(
-        &self,
-        name: &str,
-        chain_code: &str,
-        // TODO: 移除参数
-        rpc_url: &str,
-        // TODO: 移除参数
-        ws_url: &str,
-    ) -> ReturnType<()> {
+    pub async fn add_chain(&self, name: &str, chain_code: &str) -> ReturnType<()> {
         ChainService::new(self.repo_factory.resuource_repo())
             .add(name, chain_code, &[], "")
             .await?
@@ -105,7 +97,7 @@ mod tests {
     async fn test_get_chain_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
         let address = "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48";
         let symbol = "TRX";
@@ -119,7 +111,7 @@ mod tests {
     async fn test_get_market_chain_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let res = wallet_manager.get_market_chain_list().await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -131,7 +123,7 @@ mod tests {
     async fn test_get_multisig_chain_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
         let address = "TBk86hq1e8C1gNX6RDXhk1wLamwzKnotmo";
         let symbol = "TRX";
@@ -147,7 +139,7 @@ mod tests {
     async fn test_get_setting_chain_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let get_config_chain_list = wallet_manager.get_setting_chain_list().await;
         let get_config_chain_list =
@@ -161,7 +153,7 @@ mod tests {
     async fn test_set_chain_node() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let chain_code = "tron";
         let node_id = "test";
         let set_chain_node = wallet_manager.set_chain_node(chain_code, node_id).await;
@@ -173,7 +165,7 @@ mod tests {
     async fn test_get_protocol_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let chain_code = "tron";
         let set_chain_node = wallet_manager.get_protocol_list(chain_code).await;
         tracing::info!("get_protocol_list: {set_chain_node:?}");
@@ -187,7 +179,7 @@ mod tests {
     async fn test_get_hot_chain_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let res = wallet_manager.get_hot_chain_list().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -198,7 +190,7 @@ mod tests {
     async fn test_sync_chains() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let res = wallet_manager.sync_chains().await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

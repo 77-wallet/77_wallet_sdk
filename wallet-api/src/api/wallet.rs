@@ -202,7 +202,7 @@ mod test {
     async fn test_encrypt_password() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
         let password = "123456";
@@ -215,7 +215,7 @@ mod test {
     async fn test_logic_delete_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
         let wallet_address = "0x25d438EF0C15FbA678B73C9D0b943cF7Fe581730";
@@ -229,7 +229,7 @@ mod test {
     async fn test_physical_del_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x2b3f8269917dE02b02f5ac22fe1B4291Ed94D10a";
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
@@ -242,7 +242,7 @@ mod test {
     #[tokio::test]
     async fn test_recover_multisig_data() -> Result<()> {
         wallet_utils::init_test_log();
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         // 前端的uid
         let wallet_address = "0x3d669d78532F763118561b55daa431956ede4155";
@@ -256,7 +256,7 @@ mod test {
     #[tokio::test]
     async fn test_recover_uid_multisig_data() -> Result<()> {
         wallet_utils::init_test_log();
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         // 前端的uid
         let uid = "70fa6314e8e12d8e7450b4996206c30e1444e2657abd607ad20c1c46693831aa";
@@ -275,7 +275,7 @@ mod test {
     #[tokio::test]
     async fn test_recover_queue_data() -> Result<()> {
         wallet_utils::init_test_log();
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (_, _) = get_manager().await?;
 
         let uid = "137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358";
         let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data(uid).await;
@@ -288,7 +288,7 @@ mod test {
     async fn test_edit_wallet_name() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
         let res = wallet_manager
@@ -302,7 +302,7 @@ mod test {
     #[tokio::test]
     async fn test_reset() -> Result<()> {
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let _address = wallet_manager.logic_reset().await.result.unwrap();
         tracing::info!("res: {_address:?}");
@@ -313,7 +313,7 @@ mod test {
     async fn test_physical_reset() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let _address = wallet_manager.physical_reset().await;
         tracing::info!("res: {_address:?}");
@@ -324,7 +324,7 @@ mod test {
     async fn test_switch_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
         let res = wallet_manager.switch_wallet(wallet_address).await;
@@ -336,7 +336,7 @@ mod test {
     async fn test_export_derivation_path() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
         let res = wallet_manager.export_derivation_path(wallet_address).await;
@@ -375,7 +375,7 @@ mod test {
     async fn test_get_wallet_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let list = wallet_manager.get_wallet_list(None, None).await;
         let res = serde_json::to_string(&list).unwrap();
@@ -406,7 +406,7 @@ mod test {
     async fn test_set_all_password() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
 
         let old_passwd = "123456";
         // let old_passwd = "new_passwd";
