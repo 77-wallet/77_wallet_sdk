@@ -635,12 +635,12 @@ impl StackService {
 
     pub async fn account_resource(
         &self,
-        account: &str,
+        owner: &str,
     ) -> Result<AccountResource, crate::error::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let resource = chain.account_resource(account).await?;
-        let account = chain.account_info(account).await?;
+        let resource = chain.account_resource(owner).await?;
+        let account = chain.account_info(owner).await?;
 
         let mut res: AccountResource = AccountResource {
             balance: account.balance_to_f64(),
@@ -651,6 +651,12 @@ impl StackService {
         res.freeze_num = account.frozen_v2.len() as i64 - 1;
         res.unfreeze_num = account.unfreeze_v2.len() as i64;
         res.pending_withdraw = account.can_withdraw_num();
+        res.delegate_num = chain
+            .provider
+            .delegate_others_list(owner)
+            .await?
+            .to_accounts
+            .len() as i64;
 
         // bandwitdh
         res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;

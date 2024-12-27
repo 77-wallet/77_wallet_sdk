@@ -269,8 +269,8 @@ mod cal_tests {
 }
 
 pub struct EstimateTxComsumer {
-    pub bandwidth: f64,
-    pub energy: f64,
+    pub bandwidth: i64,
+    pub energy: i64,
 }
 impl EstimateTxComsumer {
     // 获取交易需要消耗的资源，TODO: 根据不同的网络来获取对应的代币地址
@@ -281,8 +281,8 @@ impl EstimateTxComsumer {
         // let value = unit::convert_to_u256("1", 6)?;
 
         Ok(Self {
-            bandwidth: 268.0,
-            energy: 64285.0,
+            bandwidth: 268,
+            energy: 64285,
         })
 
         // let params =

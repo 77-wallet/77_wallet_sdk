@@ -64,6 +64,8 @@ pub struct AccountResource {
     pub unfreeze_num: i64,
     // 待提取的数量
     pub pending_withdraw: i64,
+    // 代理数量
+    pub delegate_num: i64,
     // 带宽能量总质押数据
     pub total_freeze: BalanceInfo,
     // 能量资源
@@ -97,7 +99,7 @@ pub struct Resource {
     // 价格
     pub price: f64,
     // consumer 每笔交易对应的数量
-    pub consumer: f64,
+    pub consumer: i64,
 }
 
 #[derive(Debug, serde::Serialize, Default)]
@@ -129,7 +131,7 @@ impl Resource {
 
     // 计算可以转账的交易次数
     pub fn calculate_transfer_times(&mut self) {
-        let rs = (self.owner_freeze.value + self.acquire_freeze.value) / self.consumer;
+        let rs = (self.owner_freeze.value + self.acquire_freeze.value) / self.consumer as f64;
 
         self.transfer_times = (rs * 100.0).round() / 100.0;
     }
