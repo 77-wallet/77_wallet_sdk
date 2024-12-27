@@ -273,14 +273,14 @@ impl TransactionAdapter {
                         ))?;
                     }
 
-                    // 将需要的额外资源先写入订单表
-                    let bandwidth = consumer.need_extra_bandwidth() as u64;
-                    let energy = consumer.need_extra_energy() as u64;
+                    // 需要实际消耗的资源
+                    let net_used = consumer.act_bandwidth() as u64;
+                    let energy_used = consumer.act_energy() as u64;
 
                     let fee = consumer.transaction_fee();
                     transfer_params.set_fee_limit(consumer);
 
-                    let bill_consumer = BillResourceConsume::new_tron(bandwidth, energy);
+                    let bill_consumer = BillResourceConsume::new_tron(net_used, energy_used);
                     let tx_hash = chain.exec_transaction(transfer_params, private_key).await?;
 
                     let mut resp = TransferResp::new(tx_hash, fee);
@@ -319,7 +319,7 @@ impl TransactionAdapter {
                     }
 
                     let bill_consumer =
-                        BillResourceConsume::new_tron(consumer.bandwidth.consumer as u64, 0);
+                        BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
 
                     let tx_hash = chain.exec_transaction_v1(tx, private_key).await?;
 
