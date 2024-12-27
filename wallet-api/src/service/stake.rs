@@ -660,7 +660,8 @@ impl StackService {
 
         // bandwitdh
         res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
-        res.bandwidth.limit_resource = res.bandwidth.total_resource - resource.free_net_used;
+        res.bandwidth.limit_resource =
+            (res.bandwidth.total_resource - resource.free_net_used - resource.net_used).max(0);
 
         // 一笔交易的资源消耗
         let consumer = EstimateTxComsumer::new(&chain).await?;
