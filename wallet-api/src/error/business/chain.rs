@@ -20,6 +20,8 @@ pub enum ChainError {
     NotSupportChain,
     #[error("get node token err pelase change node!")]
     NodeToken(String),
+    #[error("sol transfer balance less rent")]
+    InsufficientFundsRent,
 }
 
 impl ChainError {
@@ -35,6 +37,7 @@ impl ChainError {
             ChainError::AddressNotInit => 3508,
             ChainError::NotSupportChain => 3509,
             ChainError::NodeToken(_) => 3510,
+            ChainError::InsufficientFundsRent => 3511,
         }
     }
 }
