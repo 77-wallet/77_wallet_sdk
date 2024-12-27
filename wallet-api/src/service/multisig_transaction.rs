@@ -749,18 +749,22 @@ impl MultisigTransactionService {
         };
 
         // TODO 当前调试用,最终删除
-        tracing::error!("exec multisig tx = {}", tx_resp.tx_hash);
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData {
-                    endpoint: endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH.to_string(),
-                    body: serde_func::serde_to_value(&req)?,
-                },
-            ));
-        Tasks::new().push(task).send().await?;
+        // tracing::error!("exec multisig tx = {}", tx_resp.tx_hash);
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        if let Err(e) = backend.signed_tran_update_trans_hash(&req).await {
+            tracing::error!("report signed tran update  add to task{}", e);
+            let task = domain::task_queue::Task::BackendApi(
+                domain::task_queue::BackendApiTask::BackendApi(
+                    domain::task_queue::BackendApiTaskData {
+                        endpoint: endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH.to_string(),
+                        body: serde_func::serde_to_value(&req)?,
+                    },
+                ),
+            );
+            Tasks::new().push(task).send().await?;
+        }
 
         // 回收资源
-        let backend = crate::manager::Context::get_global_backend_api()?;
         if let Some(request_id) = request_resource_id {
             let _rs = backend.delegate_complete(&request_id).await;
         }
