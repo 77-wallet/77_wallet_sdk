@@ -89,3 +89,5 @@ async-trait = { workspace = true }
 reqwest = { workspace = true }
 
 urlencoding = { workspace = true }
+
+dashmap = { workspace = true }

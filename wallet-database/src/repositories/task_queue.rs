@@ -50,8 +50,18 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, TaskQueueEntity::update_status, id, 3)
     }
 
+    async fn increase_retry_times(&mut self, id: &str) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::increase_retry_times, id)
+    }
+
     async fn delete_task(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::delete, id)
+    }
+
+    async fn delete_old(&mut self, day: u16) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::delete_old, day)
     }
 }

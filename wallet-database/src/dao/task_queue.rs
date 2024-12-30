@@ -60,9 +60,26 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "UPDATE task_queue SET status = ? WHERE id = ?";
+        let sql = "UPDATE task_queue SET status = ?,
+                            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') 
+                        WHERE id = ?";
         sqlx::query(sql)
             .bind(status)
+            .bind(id)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn increase_retry_times<'a, E>(exec: E, id: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "UPDATE task_queue SET retry_times = retry_times + 1,
+                            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                        WHERE id = ?";
+        sqlx::query(sql)
             .bind(id)
             .execute(exec)
             .await
@@ -78,6 +95,21 @@ impl TaskQueueEntity {
 
         sqlx::query(sql)
             .bind(id)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn delete_old<'a, E>(exec: E, day: u16) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // 删除超过7天的数据
+        let sql = "DELETE FROM task_queue WHERE julianday('now') - julianday(created_at) > ?";
+
+        sqlx::query(sql)
+            .bind(day)
             .execute(exec)
             .await
             .map(|_| ())

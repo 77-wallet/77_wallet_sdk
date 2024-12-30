@@ -6,14 +6,14 @@ use crate::{
     domain::{self, multisig::MultisigQueueDomain},
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
+use dashmap::DashSet;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio_stream::StreamExt as _;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
 
 /// 定义共享的 running_tasks 类型
-type RunningTasks = Arc<Mutex<std::collections::HashSet<String>>>;
+type RunningTasks = Arc<DashSet<String>>;
 
 #[derive(Debug, Clone)]
 pub struct TaskManager {
@@ -24,7 +24,7 @@ pub struct TaskManager {
 impl TaskManager {
     /// 创建一个新的 TaskManager 实例
     pub fn new() -> Self {
-        let running_tasks: RunningTasks = Arc::new(Mutex::new(std::collections::HashSet::new()));
+        let running_tasks: RunningTasks = Arc::new(DashSet::new());
         let task_sender = Self::task_process(Arc::clone(&running_tasks));
         Self {
             running_tasks,
@@ -50,16 +50,16 @@ impl TaskManager {
         // 在 TaskManager 的方法中启动
         tokio::spawn(async move {
             let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
-            let mut first = true;
-            loop {
-                interval.tick().await;
-                let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+            // let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            // let mut first = true;
+            // loop {
+            // interval.tick().await;
+            let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-                if let Err(e) = Self::check_handle(repo, &mut first, &running_tasks).await {
-                    tracing::error!("task check error: {}", e);
-                    continue;
-                }
+            if let Err(e) = Self::check_handle(repo, &running_tasks).await {
+                tracing::error!("task check error: {}", e);
+                // continue;
+                // }
             }
         });
     }
@@ -67,29 +67,28 @@ impl TaskManager {
     /// 检查并发送任务的处理函数
     async fn check_handle(
         mut repo: wallet_database::repositories::ResourcesRepo,
-        first: &mut bool,
+        // first: &mut bool,
         running_tasks: &RunningTasks,
     ) -> Result<(), crate::ServiceError> {
         let manager = crate::manager::Context::get_global_task_manager()?;
+
+        repo.delete_old(30).await?;
         let mut failed_queue = repo.failed_task_queue().await?;
         let pending_queue = repo.pending_task_queue().await?;
-        if *first {
-            let running_queue = repo.running_task_queue().await?;
-            failed_queue.extend(running_queue);
-            *first = false;
-        }
+        // if *first {
+        let running_queue = repo.running_task_queue().await?;
+        failed_queue.extend(running_queue);
+        // *first = false;
+        // }
         failed_queue.extend(pending_queue);
         let mut tasks = Vec::new();
 
         // 获取当前正在运行的任务
-        let running = running_tasks.lock().await;
-
         for task in failed_queue {
-            if !running.contains(&task.id) {
+            if !running_tasks.contains(&task.id) {
                 tasks.push(task);
             }
         }
-        drop(running);
 
         if let Err(e) = manager.get_task_sender().send(tasks) {
             tracing::error!("send task queue error: {}", e);
@@ -111,35 +110,51 @@ impl TaskManager {
                     let task_id = task.id.clone();
 
                     // 检查并更新 running_tasks
-                    {
-                        let mut running = running_tasks.lock().await;
-                        if running.contains(&task_id) {
-                            continue;
-                        }
-                        running.insert(task_id.clone());
-                    } // 释放锁
-
-                    let running_tasks_clone = Arc::clone(&running_tasks);
-
-                    tokio::spawn(async move {
-                        if let Err(e) = Self::once_handle(&task).await {
-                            if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
-                                let mut repo =
-                                    wallet_database::factory::RepositoryFactory::repo(pool.clone());
-                                let _ = repo.task_failed(&task_id).await;
-                            };
-                            tracing::error!(?task, "[task_process] error: {}", e)
-                        }
-                        let mut running = running_tasks_clone.lock().await;
-                        running.remove(&task_id);
-                    });
+                    if running_tasks.insert(task_id.clone()) {
+                        let running_tasks_clone = Arc::clone(&running_tasks);
+                        tokio::spawn(Self::process_single_task(task, running_tasks_clone));
+                    }
                 }
             }
         });
         tx
     }
 
-    async fn once_handle(task_entity: &TaskQueueEntity) -> Result<(), crate::ServiceError> {
+    async fn process_single_task(task: TaskQueueEntity, running_tasks: RunningTasks) {
+        let task_id = task.id.clone();
+
+        let mut retry_count = 0;
+        let mut delay = 200;
+
+        while retry_count <= 10 {
+            if let Err(e) = Self::handle_task(&task, retry_count).await {
+                tracing::error!(?task, "[task_process] error: {}", e);
+                if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                    let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                    let _ = repo.task_failed(&task_id).await;
+                };
+                // 计算指数退避的延迟时间
+                delay = std::cmp::min(delay * 2, 60_000);
+                retry_count += 1;
+                tracing::warn!("[process_single_task] delay: {delay}, retry_count: {retry_count}");
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                continue;
+            }
+            // 成功处理任务
+            break;
+        }
+
+        if retry_count >= 10 {
+            tracing::error!("Task {} failed after max retries", task_id);
+        }
+
+        running_tasks.remove(&task_id);
+    }
+
+    async fn handle_task(
+        task_entity: &TaskQueueEntity,
+        retry_count: i32,
+    ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -148,109 +163,146 @@ impl TaskManager {
         let backend_api = crate::manager::Context::get_global_backend_api()?;
 
         // update task running status
+        if retry_count > 0 {
+            repo.increase_retry_times(&id).await?;
+        }
         repo.task_running(&id).await?;
 
         match task {
-            Task::Initialization(initialization_task) => match initialization_task {
-                InitializationTask::PullAnnouncement => {
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let announcement_service = AnnouncementService::new(repo);
-                    let res = announcement_service.pull_announcement().await;
-
-                    res?;
-                }
-                InitializationTask::PullHotCoins => {
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let mut coin_service = CoinService::new(repo);
-                    coin_service.pull_hot_coins().await?;
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let coin_service = CoinService::new(repo);
-                    coin_service.init_token_price().await?;
-                }
-                InitializationTask::InitTokenPrice => {
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let coin_service = CoinService::new(repo);
-
-                    coin_service.init_token_price().await?;
-                }
-                InitializationTask::ProcessUnconfirmMsg => {
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let device_service = DeviceService::new(repo);
-                    let Some(device) = device_service.get_device_info().await? else {
-                        tracing::error!("get device info failed");
-                        return Ok(());
-                    };
-                    let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-                    // tracing::info!("[ProcessUnconfirmMsg] client_id: {}", client_id);
-                    let data = backend_api
-                        .send_msg_query_unconfirm_msg(
-                            &wallet_transport_backend::request::SendMsgQueryUnconfirmMsgReq {
-                                client_id: client_id.clone(),
-                            },
-                        )
-                        .await?
-                        .list;
-                    // tracing::info!("[ProcessUnconfirmMsg] data: {:#?}", data);
-                    tracing::info!("[ProcessUnconfirmMsg] client_id: {}", client_id);
-                    crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
-                }
-                InitializationTask::SetBlockBrowserUrl => {
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let mut app_service = crate::service::app::AppService::new(repo);
-                    app_service.set_block_browser_url().await?;
-                }
-                InitializationTask::SetFiat => {
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let device_service = DeviceService::new(repo);
-                    let res = device_service.get_device_info().await;
-
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let mut app_service = crate::service::app::AppService::new(repo);
-                    if let Ok(Some(device_info)) = res {
-                        let _ = app_service.set_fiat(&device_info.currency).await;
-                    }
-                }
-
-                InitializationTask::RecoverQueueData => {
-                    MultisigQueueDomain::recover_all_uid_queue_data().await?;
-                }
-            },
-            Task::BackendApi(backend_api_task) => match backend_api_task {
-                BackendApiTask::BackendApi(data) => {
-                    BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api).await?;
-                }
-            },
-            Task::Mqtt(mqtt_task) => match *mqtt_task {
-                MqttTask::OrderMultiSignAccept(data) => data.exec(&id).await?,
-                MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(&id).await?,
-                MqttTask::OrderMultiSignServiceComplete(data) => data.exec(&id).await?,
-                MqttTask::OrderMultiSignCreated(data) => data.exec(&id).await?,
-                MqttTask::OrderMultiSignCancel(data) => data.exec(&id).await?,
-                MqttTask::MultiSignTransAccept(data) => data.exec(&id).await?,
-                MqttTask::MultiSignTransCancel(data) => data.exec(&id).await?,
-                MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(&id).await?,
-                MqttTask::AcctChange(data) => data.exec(&id).await?,
-                MqttTask::Init(data) => data.exec(&id).await?,
-                MqttTask::BulletinMsg(data) => data.exec(&id).await?,
-                // MqttTask::RpcChange(data) => data.exec(&id).await?,
-            },
-            Task::Common(common_task) => match common_task {
-                CommonTask::QueryCoinPrice(data) => {
-                    let repo = RepositoryFactory::repo(pool.clone());
-                    let coin_service = CoinService::new(repo);
-                    coin_service.query_token_price(data).await?;
-                }
-                CommonTask::QueryQueueResult(data) => {
-                    domain::multisig::MultisigQueueDomain::sync_queue_status(&data.id).await?
-                }
-                CommonTask::RecoverMultisigAccountData(uid) => {
-                    domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid).await?;
-                    MultisigQueueDomain::recover_all_queue_data(&uid).await?;
-                }
-            },
-        }
+            Task::Initialization(initialization_task) => {
+                handle_initialization_task(initialization_task, pool, backend_api).await
+            }
+            Task::BackendApi(backend_api_task) => {
+                handle_backend_api_task(backend_api_task, backend_api).await
+            }
+            Task::Mqtt(mqtt_task) => handle_mqtt_task(mqtt_task, &id).await,
+            Task::Common(common_task) => handle_common_task(common_task, pool).await,
+        }?;
         repo.task_done(&id).await?;
 
         Ok(())
     }
+}
+
+async fn handle_initialization_task(
+    task: InitializationTask,
+    pool: Arc<sqlx::Pool<sqlx::Sqlite>>,
+    backend_api: &wallet_transport_backend::api::BackendApi,
+) -> Result<(), crate::ServiceError> {
+    match task {
+        InitializationTask::PullAnnouncement => {
+            let repo = RepositoryFactory::repo(pool.clone());
+            let announcement_service = AnnouncementService::new(repo);
+            let res = announcement_service.pull_announcement().await;
+
+            res?;
+        }
+        InitializationTask::PullHotCoins => {
+            let repo = RepositoryFactory::repo(pool.clone());
+            let mut coin_service = CoinService::new(repo);
+            coin_service.pull_hot_coins().await?;
+            let repo = RepositoryFactory::repo(pool.clone());
+            let coin_service = CoinService::new(repo);
+            coin_service.init_token_price().await?;
+        }
+        InitializationTask::InitTokenPrice => {
+            let repo = RepositoryFactory::repo(pool.clone());
+            let coin_service = CoinService::new(repo);
+
+            coin_service.init_token_price().await?;
+        }
+        InitializationTask::ProcessUnconfirmMsg => {
+            let repo = RepositoryFactory::repo(pool.clone());
+            let device_service = DeviceService::new(repo);
+            let Some(device) = device_service.get_device_info().await? else {
+                tracing::error!("get device info failed");
+                return Ok(());
+            };
+            let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
+            // tracing::info!("[ProcessUnconfirmMsg] client_id: {}", client_id);
+            let data = backend_api
+                .send_msg_query_unconfirm_msg(
+                    &wallet_transport_backend::request::SendMsgQueryUnconfirmMsgReq {
+                        client_id: client_id.clone(),
+                    },
+                )
+                .await?
+                .list;
+            // tracing::info!("[ProcessUnconfirmMsg] data: {:#?}", data);
+            tracing::info!("[ProcessUnconfirmMsg] client_id: {}", client_id);
+            crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
+        }
+        InitializationTask::SetBlockBrowserUrl => {
+            let repo = RepositoryFactory::repo(pool.clone());
+            let mut app_service = crate::service::app::AppService::new(repo);
+            app_service.set_block_browser_url().await?;
+        }
+        InitializationTask::SetFiat => {
+            let repo = RepositoryFactory::repo(pool.clone());
+            let device_service = DeviceService::new(repo);
+            let res = device_service.get_device_info().await;
+
+            let repo = RepositoryFactory::repo(pool.clone());
+            let mut app_service = crate::service::app::AppService::new(repo);
+            if let Ok(Some(device_info)) = res {
+                let _ = app_service.set_fiat(&device_info.currency).await;
+            }
+        }
+
+        InitializationTask::RecoverQueueData => {
+            MultisigQueueDomain::recover_all_uid_queue_data().await?;
+        }
+    }
+    Ok(())
+}
+
+async fn handle_backend_api_task(
+    task: BackendApiTask,
+    backend_api: &wallet_transport_backend::api::BackendApi,
+) -> Result<(), crate::ServiceError> {
+    match task {
+        BackendApiTask::BackendApi(data) => {
+            BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn handle_mqtt_task(task: Box<MqttTask>, id: &str) -> Result<(), crate::ServiceError> {
+    match *task {
+        MqttTask::OrderMultiSignAccept(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignCreated(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignCancel(data) => data.exec(&id).await?,
+        MqttTask::MultiSignTransAccept(data) => data.exec(&id).await?,
+        MqttTask::MultiSignTransCancel(data) => data.exec(&id).await?,
+        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(&id).await?,
+        MqttTask::AcctChange(data) => data.exec(&id).await?,
+        MqttTask::Init(data) => data.exec(&id).await?,
+        MqttTask::BulletinMsg(data) => data.exec(&id).await?,
+        // MqttTask::RpcChange(data) => data.exec(&id).await?,
+    }
+    Ok(())
+}
+
+async fn handle_common_task(
+    task: CommonTask,
+    pool: Arc<sqlx::Pool<sqlx::Sqlite>>,
+) -> Result<(), crate::ServiceError> {
+    match task {
+        CommonTask::QueryCoinPrice(data) => {
+            let repo = RepositoryFactory::repo(pool.clone());
+            let coin_service = CoinService::new(repo);
+            coin_service.query_token_price(data).await?;
+        }
+        CommonTask::QueryQueueResult(data) => {
+            domain::multisig::MultisigQueueDomain::sync_queue_status(&data.id).await?
+        }
+        CommonTask::RecoverMultisigAccountData(uid) => {
+            domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid).await?;
+            MultisigQueueDomain::recover_all_queue_data(&uid).await?;
+        }
+    }
+    Ok(())
 }
