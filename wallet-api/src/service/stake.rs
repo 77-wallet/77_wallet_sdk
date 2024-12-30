@@ -129,7 +129,7 @@ impl StackService {
             let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
                 bill_kind,
                 (i + 1) as i64,
-                Process::Building,
+                Process::Broadcast,
             ));
             FrontendNotifyEvent::new(data).send().await?;
 
