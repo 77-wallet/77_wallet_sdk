@@ -4,7 +4,7 @@ use wallet_database::{
 use wallet_transport_backend::request::{TokenQueryByContractAddressReq, TokenQueryPriceReq};
 
 use crate::{
-    domain::{self, task_queue::Tasks},
+    infrastructure::task_queue::{CommonTask, Task, Tasks},
     service::asset::AssetsService,
 };
 
@@ -79,8 +79,10 @@ impl Init {
                 .await?;
 
             let chain_instance =
-                domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
-                    .await?;
+                crate::domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(
+                    chain_code,
+                )
+                .await?;
 
             let decimals = if let Some(token_addr) = token_address
                 && !token_addr.is_empty()
@@ -137,9 +139,7 @@ impl Init {
                             chain_code,
                             &assets.token_address.clone().unwrap_or_default(),
                         );
-                        let task = domain::task_queue::Task::Common(
-                            domain::task_queue::CommonTask::QueryCoinPrice(req),
-                        );
+                        let task = Task::Common(CommonTask::QueryCoinPrice(req));
                         Tasks::new().push(task).send().await?;
                     }
 

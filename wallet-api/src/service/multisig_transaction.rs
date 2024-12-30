@@ -1,6 +1,8 @@
 use crate::domain::chain::adapter::MultisigAdapter;
 use crate::domain::chain::TransferResp;
-use crate::domain::task_queue::{CommonTask, Task, Tasks};
+use crate::infrastructure::task_queue::{
+    BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
+};
 use crate::mqtt::payload::incoming::transaction::{
     MultiSignTransAccept, MultiSignTransAcceptCompleteMsgBody,
 };
@@ -171,13 +173,10 @@ impl MultisigTransactionService {
             raw_data,
         };
 
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData {
-                    endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
-                    body: serde_func::serde_to_value(&req)?,
-                },
-            ));
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
+            body: serde_func::serde_to_value(&req)?,
+        }));
         Tasks::new().push(task).send().await?;
 
         Ok(rs.tx_hash)
@@ -348,13 +347,10 @@ impl MultisigTransactionService {
             raw_data,
         };
 
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData {
-                    endpoint: endpoint::multisig::SIGNED_TRAN_ACCEPT.to_string(),
-                    body: serde_func::serde_to_value(&req)?,
-                },
-            ));
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_TRAN_ACCEPT.to_string(),
+            body: serde_func::serde_to_value(&req)?,
+        }));
         Tasks::new().push(task).send().await?;
 
         Ok(())
@@ -753,14 +749,10 @@ impl MultisigTransactionService {
         let backend = crate::manager::Context::get_global_backend_api()?;
         if let Err(e) = backend.signed_tran_update_trans_hash(&req).await {
             tracing::error!("report signed tran update  add to task{}", e);
-            let task = domain::task_queue::Task::BackendApi(
-                domain::task_queue::BackendApiTask::BackendApi(
-                    domain::task_queue::BackendApiTaskData {
-                        endpoint: endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH.to_string(),
-                        body: serde_func::serde_to_value(&req)?,
-                    },
-                ),
-            );
+            let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+                endpoint: endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH.to_string(),
+                body: serde_func::serde_to_value(&req)?,
+            }));
             Tasks::new().push(task).send().await?;
         }
 

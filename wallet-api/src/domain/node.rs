@@ -6,6 +6,8 @@ use wallet_database::{
 };
 use wallet_types::valueobject::NodeData;
 
+use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
+
 pub struct NodeDomain;
 
 impl NodeDomain {
@@ -74,14 +76,10 @@ impl NodeDomain {
         //         tracing::error!("toggle_chains error: {:?}", e);
         //     }
         // });
-        let chain_list_req = crate::domain::task_queue::BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
-            &(),
-        )?;
-        super::task_queue::Tasks::new()
-            .push(super::task_queue::Task::BackendApi(
-                super::task_queue::BackendApiTask::BackendApi(chain_list_req),
-            ))
+        let chain_list_req =
+            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::CHAIN_LIST, &())?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(chain_list_req)))
             .send()
             .await?;
 

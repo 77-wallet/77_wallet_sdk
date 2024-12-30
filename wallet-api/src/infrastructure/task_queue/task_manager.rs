@@ -1,12 +1,9 @@
-use super::{BackendApiTask, CommonTask, InitializationTask, MqttTask, Task};
+use super::{
+    task_handle::backend_handle::BackendTaskHandle, BackendApiTask, CommonTask, InitializationTask,
+    MqttTask, Task,
+};
 use crate::{
-    domain::{
-        self,
-        {
-            multisig::MultisigQueueDomain,
-            task_queue::task_handle::backend_handle::BackendTaskHandle,
-        },
-    },
+    domain::{self, multisig::MultisigQueueDomain},
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
 use std::sync::Arc;

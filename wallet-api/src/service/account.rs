@@ -13,12 +13,8 @@ use wallet_types::chain::{
 };
 
 use crate::{
-    domain::{
-        self,
-        account::AccountDomain,
-        task_queue::{BackendApiTask, CommonTask, Task, Tasks},
-        wallet::WalletDomain,
-    },
+    domain::{self, account::AccountDomain, wallet::WalletDomain},
+    infrastructure::task_queue::{BackendApiTask, CommonTask, Task, Tasks},
     response_vo::account::DerivedAddressesList,
 };
 
@@ -232,8 +228,7 @@ impl AccountService {
         //     &device_bind_address_req,
         // )?;
         let uid = wallet.uid;
-        let task =
-            domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
+        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new()
             .push(task)
             .push(Task::BackendApi(BackendApiTask::BackendApi(
@@ -391,13 +386,9 @@ impl AccountService {
             )
             .await?;
 
-        let device_unbind_address_task = domain::task_queue::Task::BackendApi(
-            domain::task_queue::BackendApiTask::BackendApi(device_unbind_address_task),
-        );
-        domain::task_queue::Tasks::new()
-            .push(device_unbind_address_task)
-            .send()
-            .await?;
+        let device_unbind_address_task =
+            Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
+        Tasks::new().push(device_unbind_address_task).send().await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let mut wallet_tree =
             wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;

@@ -1,4 +1,7 @@
-use crate::domain;
+use crate::{
+    domain,
+    infrastructure::task_queue::{CommonTask, Task, Tasks},
+};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use wallet_database::{
@@ -58,9 +61,8 @@ impl AssetsDomain {
                 chain_code,
                 &assets.token_address.clone().unwrap_or_default(),
             );
-            let task =
-                super::task_queue::Task::Common(super::task_queue::CommonTask::QueryCoinPrice(req));
-            super::task_queue::Tasks::new().push(task).send().await?;
+            let task = Task::Common(CommonTask::QueryCoinPrice(req));
+            Tasks::new().push(task).send().await?;
         }
         tx.upsert_assets(assets).await?;
         Ok(())

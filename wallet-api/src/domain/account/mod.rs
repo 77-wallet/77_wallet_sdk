@@ -6,9 +6,11 @@ use wallet_database::{
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
-use crate::{response_vo::account::CreateAccountRes, service::asset::AddressChainCode};
-
-use super::task_queue::{BackendApiTask, Task};
+use crate::{
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    response_vo::account::CreateAccountRes,
+    service::asset::AddressChainCode,
+};
 
 pub struct AccountDomain {}
 
@@ -165,12 +167,12 @@ impl AccountDomain {
             vec!["".to_string()],
             name,
         );
-        let address_init_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+        let address_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::ADDRESS_INIT,
             &address_init_req,
         )?;
 
-        super::task_queue::Tasks::new()
+        Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 address_init_task_data,
             )))

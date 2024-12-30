@@ -1,11 +1,8 @@
 use crate::{
     domain::{
-        self,
-        account::AccountDomain,
-        chain::ChainDomain,
-        coin::CoinDomain,
-        task_queue::{BackendApiTask, Task, Tasks},
+        self, account::AccountDomain, app::DeviceDomain, chain::ChainDomain, coin::CoinDomain,
     },
+    infrastructure::task_queue::{BackendApiTask, CommonTask, Task, Tasks},
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{
@@ -154,10 +151,9 @@ impl ChainService {
             }
         }
         let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
+            DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
-        let task =
-            domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
+        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new()
             .push(task)
             .push(Task::BackendApi(BackendApiTask::BackendApi(

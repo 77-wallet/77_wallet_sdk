@@ -8,10 +8,8 @@ use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
 pub const APP_ID: &str = "ada7d9308190fe45";
 
 use crate::{
-    domain::{
-        self,
-        task_queue::{BackendApiTask, Task, Tasks},
-    },
+    domain::{self},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
     request::devices::InitDeviceReq,
 };
 
@@ -40,7 +38,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
 
         let req: DeviceInitReq = (&req).into();
         // let tasks = vec![Task::BackendApi(BackendApiTask::DeviceInit(req))];
-        let task_data = domain::task_queue::BackendApiTaskData {
+        let task_data = BackendApiTaskData {
             endpoint: endpoint::DEVICE_INIT.to_string(),
             body: wallet_utils::serde_func::serde_to_value(&req)?,
         };

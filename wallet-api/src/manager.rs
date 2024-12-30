@@ -1,4 +1,7 @@
-use crate::domain::task_queue::{BackendApiTask, InitializationTask, Task};
+use crate::infrastructure::task_queue::task_manager::TaskManager;
+use crate::infrastructure::task_queue::{
+    BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
+};
 use crate::infrastructure::SharedCache;
 use crate::notify::FrontendNotifyEvent;
 use crate::service::coin::CoinService;
@@ -43,27 +46,25 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
             .collect();
     coin_service.upsert_hot_coin_list(list, 1, 1).await?;
 
-    let token_query_rates_req = crate::domain::task_queue::BackendApiTaskData::new(
+    let token_query_rates_req = BackendApiTaskData::new(
         wallet_transport_backend::consts::endpoint::TOKEN_QUERY_RATES,
         &(),
     )?;
 
-    let set_official_website_req = crate::domain::task_queue::BackendApiTaskData::new(
+    let set_official_website_req = BackendApiTaskData::new(
         wallet_transport_backend::consts::endpoint::SYS_CONFIG_FIND_CONFIG_BY_KEY,
         &wallet_transport_backend::request::FindConfigByKey::new("OFFICIAL:WEBSITE"),
     )?;
 
-    let set_app_install_download_req = crate::domain::task_queue::BackendApiTaskData::new(
+    let set_app_install_download_req = BackendApiTaskData::new(
         wallet_transport_backend::consts::endpoint::APP_INSTALL_DOWNLOAD,
         &(),
     )?;
 
-    let mqtt_init_req = crate::domain::task_queue::BackendApiTaskData::new(
-        wallet_transport_backend::consts::endpoint::MQTT_INIT,
-        &(),
-    )?;
+    let mqtt_init_req =
+        BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-    crate::domain::task_queue::Tasks::new()
+    Tasks::new()
         .push(Task::Initialization(InitializationTask::PullAnnouncement))
         .push(Task::Initialization(InitializationTask::PullHotCoins))
         .push(Task::Initialization(
@@ -115,7 +116,7 @@ pub struct Context {
     pub(crate) sqlite_context: wallet_database::SqliteContext,
     pub(crate) oss_client: wallet_oss::oss_client::OssClient,
     pub(crate) frontend_notify: Arc<RwLock<FrontendNotifySender>>,
-    pub(crate) task_manager: crate::domain::task_queue::task_manager::TaskManager,
+    pub(crate) task_manager: TaskManager,
     pub(crate) mqtt_topics: Arc<RwLock<crate::mqtt::topic::Topics>>,
     pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
     pub(crate) device: Arc<DeviceInfo>,
@@ -169,7 +170,7 @@ impl Context {
         );
 
         // 创建 TaskManager 实例
-        let task_manager = crate::domain::task_queue::task_manager::TaskManager::new();
+        let task_manager = TaskManager::new();
 
         Ok(Context {
             dirs,
@@ -222,9 +223,7 @@ impl Context {
         Ok(&Context::get_context()?.oss_client)
     }
 
-    pub(crate) fn get_global_task_manager(
-    ) -> Result<&'static crate::domain::task_queue::task_manager::TaskManager, crate::SystemError>
-    {
+    pub(crate) fn get_global_task_manager() -> Result<&'static TaskManager, crate::SystemError> {
         Ok(&Context::get_context()?.task_manager)
     }
 

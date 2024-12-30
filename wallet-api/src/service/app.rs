@@ -15,9 +15,9 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::{
-        app::config::ConfigDomain,
-        task_queue::{BackendApiTask, InitializationTask, Task, Tasks},
+    domain::app::config::ConfigDomain,
+    infrastructure::task_queue::{
+        BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
     },
     response_vo::app::GetConfigRes,
 };
@@ -108,7 +108,7 @@ impl<
                 client_id,
                 lan: language.to_string(),
             };
-            let language_init_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+            let language_init_task_data = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
                 &language_req,
             )?;
@@ -193,7 +193,7 @@ impl<
                     Some(device.device_type.clone()),
                     &wallet.name,
                 );
-                let keys_init_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+                let keys_init_task_data = BackendApiTaskData::new(
                     wallet_transport_backend::consts::endpoint::KEYS_INIT,
                     &keys_init_req,
                 )?;

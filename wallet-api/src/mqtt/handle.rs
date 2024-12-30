@@ -6,7 +6,7 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::task_queue::{BackendApiTask, MqttTask, Task},
+    infrastructure::task_queue::{BackendApiTask, MqttTask, Task, Tasks},
     notify::FrontendNotifyEvent,
     service::{app::AppService, device::DeviceService},
 };
@@ -96,7 +96,7 @@ pub async fn exec_incoming_publish(
                 SEND_MSG_CONFIRM,
                 &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(&payload.msg_id, "MQTT")]),
             )?;
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push(Task::BackendApi(send_msg_confirm_req))
                 .send()
                 .await?;
@@ -129,7 +129,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::OrderMultiSignAccept,
             super::payload::incoming::Body::OrderMultiSignAccept(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(data))),
@@ -141,7 +141,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::OrderMultiSignAcceptCompleteMsg,
             super::payload::incoming::Body::OrderMultiSignAcceptCompleteMsg(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::OrderMultiSignAcceptCompleteMsg(data))),
@@ -153,7 +153,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::OrderMultiSignServiceComplete,
             super::payload::incoming::Body::OrderMultiSignServiceComplete(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::OrderMultiSignServiceComplete(data))),
@@ -165,7 +165,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::OrderMultiSignCancel,
             super::payload::incoming::Body::OrderMultiSignCancel(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::OrderMultiSignCancel(data))),
@@ -177,7 +177,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::MultiSignTransAccept,
             super::payload::incoming::Body::MultiSignTransAccept(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::MultiSignTransAccept(data))),
@@ -189,7 +189,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::MultiSignTransAcceptCompleteMsg,
             super::payload::incoming::Body::MultiSignTransAcceptCompleteMsg(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::MultiSignTransAcceptCompleteMsg(data))),
@@ -201,7 +201,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::AcctChange,
             super::payload::incoming::Body::AcctChange(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::AcctChange(data))),
@@ -210,7 +210,7 @@ pub(crate) async fn exec_payload(
                 .await?;
         }
         (super::payload::incoming::BizType::Init, super::payload::incoming::Body::Init(data)) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(&payload.msg_id, Task::Mqtt(Box::new(MqttTask::Init(data))))
                 .send()
                 .await?;
@@ -219,7 +219,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::OrderMultiSignCreated,
             super::payload::incoming::Body::OrderMultiSignCreated(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::OrderMultiSignCreated(data))),
@@ -231,7 +231,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::BulletinMsg,
             super::payload::incoming::Body::BulletinMsg(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::BulletinMsg(data))),
@@ -243,7 +243,7 @@ pub(crate) async fn exec_payload(
             super::payload::incoming::BizType::MultiSignTransCancel,
             super::payload::incoming::Body::MultiSignTransCancel(data),
         ) => {
-            crate::domain::task_queue::Tasks::new()
+            Tasks::new()
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(data))),
@@ -255,7 +255,7 @@ pub(crate) async fn exec_payload(
         //     super::payload::incoming::BizType::RpcAddressChange,
         //     super::payload::incoming::Body::RpcChange(data),
         // ) => {
-        //     crate::domain::task_queue::Tasks::new()
+        //     Tasks::new()
         //         .push_with_id(
         //             &payload.msg_id,
         //             Task::Mqtt(Box::new(MqttTask::RpcChange(data))),

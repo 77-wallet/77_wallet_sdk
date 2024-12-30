@@ -1,7 +1,7 @@
 pub mod config;
 use wallet_database::entities::account::AccountEntity;
 
-use crate::service::device::APP_ID;
+use crate::{infrastructure::task_queue::BackendApiTaskData, service::device::APP_ID};
 
 pub struct AppDomain<T> {
     phantom: std::marker::PhantomData<T>,
@@ -62,7 +62,7 @@ impl DeviceDomain {
 
     pub(crate) async fn gen_device_bind_address_task_data(
         sn: &str,
-    ) -> Result<super::task_queue::BackendApiTaskData, crate::ServiceError> {
+    ) -> Result<BackendApiTaskData, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let mut device_bind_address_req =
@@ -80,7 +80,7 @@ impl DeviceDomain {
         for multisig_account in multisig_accounts {
             device_bind_address_req.push(&multisig_account.chain_code, &multisig_account.address);
         }
-        let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+        let device_bind_address_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
             &device_bind_address_req,
         )?;
@@ -91,7 +91,7 @@ impl DeviceDomain {
         accounts: &[wallet_database::entities::account::AccountEntity],
         multisig_accounts: Vec<wallet_database::entities::multisig_account::MultisigAccountEntity>,
         sn: &str,
-    ) -> Result<super::task_queue::BackendApiTaskData, crate::ServiceError> {
+    ) -> Result<BackendApiTaskData, crate::ServiceError> {
         let mut device_unbind_address_req =
             wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
         for account in accounts {
@@ -100,7 +100,7 @@ impl DeviceDomain {
         for multisig_account in multisig_accounts {
             device_unbind_address_req.push(&multisig_account.chain_code, &multisig_account.address);
         }
-        let device_unbind_address_task = crate::domain::task_queue::BackendApiTaskData::new(
+        let device_unbind_address_task = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::DEVICE_UNBIND_ADDRESS,
             &device_unbind_address_req,
         )?;

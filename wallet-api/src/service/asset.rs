@@ -1,7 +1,8 @@
 use crate::{
     domain::{
-        self, account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, task_queue::Tasks,
+        account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
+    infrastructure::task_queue::{CommonTask, Task, Tasks},
     request::assets::GetChain,
     response_vo::assets::{
         AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
@@ -53,8 +54,7 @@ impl AssetsService {
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let multisig =
-            domain::multisig::MultisigDomain::account_by_address(address, true, &pool).await?;
+        let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
         let mut data = tx.get_coin_assets_in_address(address).await?;
@@ -406,8 +406,7 @@ impl AssetsService {
                 tx.upsert_assets(assets).await?;
             }
         }
-        let task =
-            domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
+        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new().push(task).send().await?;
         Ok(())
     }

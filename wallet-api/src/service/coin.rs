@@ -17,12 +17,8 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::{
-        self,
-        account::AccountDomain,
-        coin::CoinDomain,
-        task_queue::{BackendApiTask, Task, Tasks},
-    },
+    domain::{self, account::AccountDomain, coin::CoinDomain},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
     response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
 };
 
@@ -451,15 +447,14 @@ impl CoinService {
             master: false,
             unit: decimals,
         };
-        let token_custom_init_task_data = crate::domain::task_queue::BackendApiTaskData::new(
+        let token_custom_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::TOKEN_CUSTOM_TOKEN_INIT,
             &req,
         )?;
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         req.insert(chain_code, &token_address);
-        let task =
-            domain::task_queue::Task::Common(domain::task_queue::CommonTask::QueryCoinPrice(req));
+        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 token_custom_init_task_data,

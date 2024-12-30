@@ -1,7 +1,6 @@
-use crate::domain::{
-    self,
-    chain::adapter::ChainAdapterFactory,
-    task_queue::{BackendApiTask, Task},
+use crate::{
+    domain::{self, chain::adapter::ChainAdapterFactory},
+    infrastructure::task_queue::{BackendApiTask, Task, Tasks},
 };
 use sqlx::{Pool, Sqlite};
 use wallet_database::{
@@ -87,7 +86,7 @@ impl MultisigDomain {
 
         let device_bind_address_task_data =
             domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
-        domain::task_queue::Tasks::new()
+        Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 device_bind_address_task_data,
             )))
@@ -505,13 +504,9 @@ impl MultisigDomain {
             )
             .await?;
 
-        let device_unbind_address_task = domain::task_queue::Task::BackendApi(
-            domain::task_queue::BackendApiTask::BackendApi(device_unbind_address_task),
-        );
-        domain::task_queue::Tasks::new()
-            .push(device_unbind_address_task)
-            .send()
-            .await?;
+        let device_unbind_address_task =
+            Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
+        Tasks::new().push(device_unbind_address_task).send().await?;
         Ok(())
     }
 }

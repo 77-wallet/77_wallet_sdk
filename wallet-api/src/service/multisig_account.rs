@@ -1,5 +1,5 @@
 use crate::domain;
-use crate::domain::task_queue::Tasks;
+use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
 use crate::mqtt::payload::incoming::signature::OrderMultiSignAccept;
 use crate::request::transaction;
 use crate::response_vo;
@@ -256,13 +256,10 @@ impl MultisigAccountService {
             order_id: account.id.clone(),
             raw_data,
         };
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData::new(
-                    endpoint::multisig::SIGNED_ORDER_CANCEL,
-                    &req,
-                )?,
-            ));
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData::new(
+            endpoint::multisig::SIGNED_ORDER_CANCEL,
+            &req,
+        )?));
         Tasks::new().push(task).send().await?;
 
         Ok(())
@@ -417,13 +414,10 @@ impl MultisigAccountService {
             status: 1,
             raw_data,
         };
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData {
-                    endpoint: endpoint::multisig::SIGNED_ORDER_ACCEPT.to_string(),
-                    body: serde_func::serde_to_value(&req)?,
-                },
-            ));
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_ORDER_ACCEPT.to_string(),
+            body: serde_func::serde_to_value(&req)?,
+        }));
         Tasks::new().push(task).send().await?;
 
         Ok(())
@@ -612,13 +606,10 @@ impl MultisigAccountService {
             receive_address: to.to_string(),
             raw_data: raw_data.to_string()?,
         };
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData {
-                    endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_RECHARGE_HASH.to_string(),
-                    body: serde_func::serde_to_value(&req)?,
-                },
-            ));
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_RECHARGE_HASH.to_string(),
+            body: serde_func::serde_to_value(&req)?,
+        }));
         Tasks::new().push(task).send().await?;
 
         Ok(tx_hash)
@@ -680,13 +671,10 @@ impl MultisigAccountService {
             multisig_args.to_json_str()?,
             raw_data.to_string()?,
         );
-        let task =
-            domain::task_queue::Task::BackendApi(domain::task_queue::BackendApiTask::BackendApi(
-                domain::task_queue::BackendApiTaskData {
-                    endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_SIGNED_HASH.to_string(),
-                    body: serde_func::serde_to_value(&req)?,
-                },
-            ));
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_SIGNED_HASH.to_string(),
+            body: serde_func::serde_to_value(&req)?,
+        }));
         Tasks::new().push(task).send().await?;
 
         Ok(hash)
