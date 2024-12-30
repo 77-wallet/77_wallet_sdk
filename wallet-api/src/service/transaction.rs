@@ -190,7 +190,7 @@ impl TransactionService {
         pool: wallet_database::DbPool,
     ) -> Result<BillEntity, crate::ServiceError> {
         let transaction =
-            BillDao::get_by_hash_and_type(pool.as_ref(), &query_rx.tx_hash, query_rx.transfer_type)
+            BillDao::get_by_hash_and_owner(pool.as_ref(), &query_rx.tx_hash, &query_rx.owner)
                 .await?
                 .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
 

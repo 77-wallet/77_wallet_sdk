@@ -68,7 +68,7 @@ async fn query_bill_result() {
 
     let req = vec![QueryBillReusltReq {
         tx_hash: "0x10dfac1d3835dfd850ccdf79ba1f440630f127197d3285b8c30930688b460e0a".to_string(),
-        transfer_type: 1,
+        owner: "".to_string(),
     }];
 
     let c = wallet_manager.query_tx_result(req).await;

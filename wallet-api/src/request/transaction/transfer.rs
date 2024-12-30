@@ -113,5 +113,5 @@ impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
 #[derive(Debug)]
 pub struct QueryBillReusltReq {
     pub tx_hash: String,
-    pub transfer_type: i64,
+    pub owner: String,
 }
