@@ -22,7 +22,7 @@ use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::{
     api::BackendApi,
     request::{SignedFeeListReq, SignedFindAddressReq},
-    DepositAddress, SignedOrderAcceptReq, SignedSaveAddressReq, SignedUpdateRechargeHashReq,
+    SignedOrderAcceptReq, SignedSaveAddressReq, SignedUpdateRechargeHashReq,
     SignedUpdateSignedHashReq,
 };
 use wallet_transport_backend::{ConfirmedAddress, OrderMultisigUpdateArg, SingedOrderCancelReq};
@@ -307,12 +307,15 @@ impl MultisigAccountService {
     pub async fn fetch_deposit_address(
         &self,
         chain_code: &str,
-    ) -> Result<DepositAddress, crate::ServiceError> {
+    ) -> Result<String, crate::ServiceError> {
         let req = SignedFindAddressReq::new(chain_code);
-        self.backend
+        let res = self
+            .backend
             .signed_find_address(req)
             .await
-            .map_err(crate::ServiceError::TransportBackend)
+            .map_err(crate::ServiceError::TransportBackend)?;
+
+        Ok(res.address)
     }
 
     pub async fn get_multisig_service_fee(
@@ -331,13 +334,13 @@ impl MultisigAccountService {
 
         let fee = res.list.first().unwrap();
         // address
-        let req = SignedFindAddressReq::new(chain_code);
-        let res = self.backend.signed_find_address(req).await?;
+        // let req = SignedFindAddressReq::new(chain_code);
+        // let res = self.backend.signed_find_address(req).await?;
 
         let fee = MultisigFeeVo {
             symbol: "USDT".to_string(),
             fee: fee.price.to_string(),
-            address: res.address,
+            // address: res.address,
         };
         Ok(fee)
     }

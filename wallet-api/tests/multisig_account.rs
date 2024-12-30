@@ -22,9 +22,19 @@ async fn get_manager() -> WalletManager {
 #[tokio::test]
 async fn test_fetch_deposit_address() {
     let wallet_manager = get_manager().await;
-    let chain_code = "btc".to_string();
+    let chain_code = "tron".to_string();
     let fee = wallet_manager.fetch_deposit_address(chain_code).await;
-    tracing::info!("{:?}", fee);
+    tracing::info!("{}", serde_json::to_string(&fee).unwrap());
+}
+
+#[tokio::test]
+async fn test_get_service_fee() {
+    let wallet_manager = get_manager().await;
+
+    let chain_code = "tron".to_string();
+    let info = wallet_manager.get_multisig_service_fee(chain_code).await;
+
+    tracing::info!("{}", serde_json::to_string(&info).unwrap());
 }
 
 #[tokio::test]
@@ -132,16 +142,6 @@ async fn test_update_multisig_name() {
     let info = wallet_manager.update_multisig_name(id, name).await;
 
     tracing::info!("{:?}", serde_json::to_string(&info).unwrap());
-}
-
-#[tokio::test]
-async fn test_get_service_fee() {
-    let wallet_manager = get_manager().await;
-
-    let chain_code = "tron".to_string();
-    let info = wallet_manager.get_multisig_service_fee(chain_code).await;
-
-    tracing::info!("{}", serde_json::to_string(&info).unwrap());
 }
 
 #[tokio::test]

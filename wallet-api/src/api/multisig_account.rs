@@ -10,7 +10,6 @@ use crate::{
     service::multisig_account::MultisigAccountService,
 };
 use wallet_database::{entities::multisig_member::MemberVo, pagination::Pagination};
-use wallet_transport_backend::DepositAddress;
 
 impl crate::WalletManager {
     pub async fn create_multisig_account(
@@ -134,7 +133,7 @@ impl crate::WalletManager {
     }
 
     /// Fetch the deposit address of the specified chain code.
-    pub async fn fetch_deposit_address(&self, chain_code: String) -> ReturnType<DepositAddress> {
+    pub async fn fetch_deposit_address(&self, chain_code: String) -> ReturnType<String> {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .fetch_deposit_address(&chain_code)
             .await

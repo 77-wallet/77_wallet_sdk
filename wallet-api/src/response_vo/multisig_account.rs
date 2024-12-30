@@ -25,7 +25,7 @@ pub struct MultisigAccountList {
 pub struct MultisigFeeVo {
     pub symbol: String,
     pub fee: String,
-    pub address: String,
+    // pub address: String,
 }
 
 #[derive(Serialize, Debug)]
