@@ -651,12 +651,6 @@ impl StackService {
         res.freeze_num = account.frozen_v2.len() as i64 - 1;
         res.unfreeze_num = account.unfreeze_v2.len() as i64;
         res.pending_withdraw = account.can_withdraw_num();
-        res.delegate_num = chain
-            .provider
-            .delegate_others_list(owner)
-            .await?
-            .to_accounts
-            .len() as i64;
 
         // bandwitdh
         res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
@@ -690,6 +684,8 @@ impl StackService {
         let balance =
             TokenCurrencyGetter::get_balance_info(chain_code::TRON, "TRX", amount as f64).await?;
         res.total_freeze = balance;
+
+        res.delegate_num = res.bandwidth.delegate_freeze.amount + res.energy.delegate_freeze.amount;
 
         Ok(res)
     }
