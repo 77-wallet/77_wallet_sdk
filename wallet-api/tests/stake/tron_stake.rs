@@ -7,7 +7,7 @@ use wallet_database::entities::bill::BillKind;
 #[tokio::test]
 async fn test_account_resource() {
     let manager = get_manager().await;
-    let account = "TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY".to_string();
+    let account = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2".to_string();
     let res = manager.resource_info(account).await;
 
     tracing::info!("resource = {}", serde_json::to_string(&res).unwrap());
