@@ -24,6 +24,20 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, CoinEntity::list, &symbol, chain_code, None)
     }
 
+    async fn get_coin_by_chain_code_token_address(
+        &mut self,
+        chain_code: &str,
+        token_address: &str,
+    ) -> Result<Option<CoinEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(
+            executor,
+            CoinEntity::get_coin_by_chain_code_token_address,
+            chain_code,
+            token_address
+        )
+    }
+
     async fn coin_list_with_symbols(
         &mut self,
         symbols: &[String],

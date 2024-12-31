@@ -54,6 +54,15 @@
     "default": true
   },
   {
+    "name": "Wrapped SOL",
+    "symbol": "wSOL",
+    "chain_code": "sol",
+    "decimals": 9,
+    "token_address": "So11111111111111111111111111111111111111112",
+    "protocol": "",
+    "default": true
+  },
+  {
     "name": "Tether USD",
     "symbol": "USDT",
     "chain_code": "sol",

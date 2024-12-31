@@ -245,7 +245,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // 前端的uid
-        let wallet_address = "0x3d669d78532F763118561b55daa431956ede4155";
+        let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
 
         let res = wallet_manager.recover_multisig_data(wallet_address).await;
 

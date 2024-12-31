@@ -283,52 +283,66 @@ impl CoinService {
     }
 
     pub async fn query_token_info(
-        &self,
+        self,
         chain_code: &str,
         token_address: &str,
     ) -> Result<crate::response_vo::coin::TokenInfo, crate::ServiceError> {
+        let mut tx = self.repo;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
         domain::chain::check_address(token_address, chain_code.try_into()?, net)?;
 
-        // let chain_instance = service.get_transaction_adapter(chain_code).await?;
-        let chain_instance =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
+        let coin =
+            CoinRepoTrait::get_coin_by_chain_code_token_address(&mut tx, chain_code, token_address)
                 .await?;
+        let res = if let Some(coin) = coin {
+            crate::response_vo::coin::TokenInfo {
+                symbol: Some(coin.symbol),
+                name: Some(coin.name),
+                decimals: coin.decimals,
+            }
+        } else {
+            let chain_instance =
+                domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
+                    .await?;
 
-        let decimals = chain_instance
-            .decimals(token_address)
-            .await
-            .map_err(|e| match e {
-                wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
-                | wallet_chain_interact::Error::RpcError(_) => {
-                    crate::ServiceError::Business(crate::BusinessError::Coin(
-                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
-                    ))
-                }
-                _ => crate::ServiceError::ChainInteract(e),
-            })?;
-        if decimals == 0 {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                crate::CoinError::InvalidContractAddress(token_address.to_string()),
-            )));
-        }
-        let symbol = chain_instance.token_symbol(token_address).await?;
-        if symbol.is_empty() {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                crate::CoinError::InvalidContractAddress(token_address.to_string()),
-            )));
-        }
-        let name = chain_instance.token_name(token_address).await?;
-        if name.is_empty() {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                crate::CoinError::InvalidContractAddress(token_address.to_string()),
-            )));
-        }
-        Ok(crate::response_vo::coin::TokenInfo {
-            symbol: Some(symbol),
-            name: Some(name),
-            decimals,
-        })
+            let decimals = chain_instance
+                .decimals(token_address)
+                .await
+                .map_err(|e| match e {
+                    wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
+                    | wallet_chain_interact::Error::RpcError(_) => {
+                        crate::ServiceError::Business(crate::BusinessError::Coin(
+                            crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                        ))
+                    }
+                    _ => crate::ServiceError::ChainInteract(e),
+                })?;
+            if decimals == 0 {
+                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
+                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                )));
+            }
+            let symbol = chain_instance.token_symbol(token_address).await?;
+            if symbol.is_empty() {
+                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
+                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                )));
+            }
+            let name = chain_instance.token_name(token_address).await?;
+            if name.is_empty() {
+                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
+                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                )));
+            }
+
+            crate::response_vo::coin::TokenInfo {
+                symbol: Some(symbol),
+                name: Some(name),
+                decimals,
+            }
+        };
+
+        Ok(res)
     }
 
     pub async fn customize_coin(
@@ -357,30 +371,37 @@ impl CoinService {
                 crate::ChainError::NotFound(chain_code.to_string()),
             )));
         };
-
         let chain_instance =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;
 
-        let decimals = chain_instance
-            .decimals(&token_address)
-            .await
-            .map_err(|e| match e {
-                wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
-                | wallet_chain_interact::Error::RpcError(_) => {
-                    crate::ServiceError::Business(crate::BusinessError::Coin(
-                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
-                    ))
-                }
-                _ => crate::ServiceError::ChainInteract(e),
-            })?;
-        if decimals == 0 {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                crate::CoinError::InvalidContractAddress(token_address.to_string()),
-            )));
-        }
-        let symbol = chain_instance.token_symbol(&token_address).await?;
-        let name = chain_instance.token_name(&token_address).await?;
+        let coin =
+            CoinRepoTrait::get_coin_by_chain_code_token_address(tx, chain_code, &token_address)
+                .await?;
+        let (decimals, symbol, name) = if let Some(coin) = coin {
+            (coin.decimals, coin.symbol, coin.name)
+        } else {
+            let decimals = chain_instance
+                .decimals(&token_address)
+                .await
+                .map_err(|e| match e {
+                    wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
+                    | wallet_chain_interact::Error::RpcError(_) => {
+                        crate::ServiceError::Business(crate::BusinessError::Coin(
+                            crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                        ))
+                    }
+                    _ => crate::ServiceError::ChainInteract(e),
+                })?;
+            if decimals == 0 {
+                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
+                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                )));
+            }
+            let symbol = chain_instance.token_symbol(&token_address).await?;
+            let name = chain_instance.token_name(&token_address).await?;
+            (decimals, symbol, name)
+        };
 
         let cus_coin = wallet_database::entities::coin::CoinData::new(
             Some(name.clone()),
