@@ -10,7 +10,6 @@ CREATE TABLE
         iccid VARCHAR(32) NULL,
         mem VARCHAR(32) NULL,
         app_id VARCHAR(32) NULL,
-        currency VARCHAR(32) DEFAULT 'USD' NOT NULL,
         uid VARCHAR(64) NULL,
         is_init INTEGER NOT NULL,
         language_init INTEGER NOT NULL,

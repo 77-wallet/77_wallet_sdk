@@ -2,10 +2,10 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, APP_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, LANGUAGE,
+            APP_DOWNLOAD_QR_CODE_URL, APP_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, LANGUAGE,
             MIN_VALUE_SWITCH, MQTT_URL, OFFICIAL_WEBSITE,
         },
-        MinValueSwitchConfig, MqttUrl, OfficialWebsite,
+        Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
 use wallet_transport_backend::{
@@ -105,6 +105,21 @@ impl ConfigDomain {
         Ok(())
     }
 
+    pub async fn set_currency(currency: Option<Currency>) -> Result<(), crate::ServiceError> {
+        let mut config = crate::app_state::APP_STATE.write().await;
+        let currency = if let Some(currency) = currency
+            && &currency.currency != config.currency()
+        {
+            config.set_fiat_from_str(&currency.currency);
+            currency
+        } else {
+            Currency::default()
+        };
+        ConfigDomain::set_config(CURRENCY, &currency.to_json_str()?).await?;
+
+        Ok(())
+    }
+
     pub async fn set_mqtt_url(mqtt_url: Option<String>) -> Result<(), crate::ServiceError> {
         if let Some(mqtt_url) = mqtt_url {
             let config = MqttUrl {
@@ -169,6 +184,19 @@ impl ConfigDomain {
             let mut config = crate::app_state::APP_STATE.write().await;
             config.set_official_website(Some(official_website.url));
         }
+        Ok(())
+    }
+
+    pub async fn init_currency() -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let currency = ConfigDao::find_by_key(CURRENCY, pool.as_ref()).await?;
+        let mut config = crate::app_state::APP_STATE.write().await;
+        if let Some(currency) = currency {
+            let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
+            config.set_fiat_from_str(&currency.currency);
+        } else {
+            ConfigDomain::set_currency(None).await?;
+        };
         Ok(())
     }
 

@@ -141,38 +141,10 @@ impl<
 
     // fiat  = CNY
     pub async fn set_fiat(&mut self, fiat: &str) -> Result<(), crate::ServiceError> {
-        let tx = &mut self.repo;
-        let mut config = crate::app_state::APP_STATE.write().await;
-        config.set_fiat_from_str(fiat);
-
-        tx.update_currency(fiat).await?;
-
-        // // whether config bill min value filter
-        // let pool = crate::Context::get_global_sqlite_pool()?;
-        // let min_config = ConfigDao::find_by_key(MIN_VALUE_SWITCH, pool.as_ref()).await?;
-        // if let Some(min_config) = min_config {
-        //     let config = MinValueSwitchConfig::try_from(min_config.value)?;
-        //     if config.currency != fiat {
-        //         // old config usd value
-        //         let req = QueryReq {
-        //             target_currency: Some(config.currency),
-        //         };
-        //         let exchange_rate = ExchangeRateEntity::detail(pool.as_ref(), &req).await?;
-
-        //         let rate = exchange_rate.map(|entity| entity.rate).unwrap_or(1.0);
-        //         let u_value = config.value / rate;
-
-        //         // target value
-
-        //         let req = QueryReq {
-        //             target_currency: Some(fiat.to_string()),
-        //         };
-        //         let exchange_rate = ExchangeRateEntity::detail(pool.as_ref(), &req).await?;
-        //         let rate = exchange_rate.map(|entity| entity.rate).unwrap_or(1.0);
-
-        //         let value = u_value * rate;
-        //     }
-        // }
+        let config = wallet_database::entities::config::Currency {
+            currency: fiat.to_string(),
+        };
+        ConfigDomain::set_currency(Some(config)).await?;
 
         Ok(())
     }

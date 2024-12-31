@@ -70,19 +70,6 @@ impl DeviceEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn update_currency<'a, E>(exec: E, currency: &str) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = "UPDATE device SET currency = ?";
-        sqlx::query(sql)
-            .bind(currency)
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
     pub async fn update_uid<'a, E>(exec: E, uid: Option<&str>) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

@@ -8,7 +8,10 @@ pub mod config_key {
     pub const APP_DOWNLOAD_URL: &str = "app_download_url";
     pub const LANGUAGE: &str = "language";
     pub const MQTT_URL: &str = "mqtt_url";
+    pub const CURRENCY: &str = "currency";
 }
+
+pub(crate) const USD: &str = "USD";
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -138,6 +141,32 @@ impl MinValueSwitchConfig {
 }
 
 impl TryFrom<String> for MinValueSwitchConfig {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct Currency {
+    pub currency: String,
+}
+
+impl Default for Currency {
+    fn default() -> Self {
+        Self {
+            currency: USD.to_string(),
+        }
+    }
+}
+
+impl Currency {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for Currency {
     type Error = crate::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_str(&value)?)

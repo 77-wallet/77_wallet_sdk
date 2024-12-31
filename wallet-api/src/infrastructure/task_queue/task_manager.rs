@@ -3,7 +3,7 @@ use super::{
     MqttTask, Task,
 };
 use crate::{
-    domain::{self, multisig::MultisigQueueDomain},
+    domain::{self, app::config::ConfigDomain, multisig::MultisigQueueDomain},
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
 use dashmap::DashSet;
@@ -243,17 +243,8 @@ async fn handle_initialization_task(
             app_service.set_block_browser_url().await?;
         }
         InitializationTask::SetFiat => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let device_service = DeviceService::new(repo);
-            let res = device_service.get_device_info().await;
-
-            let repo = RepositoryFactory::repo(pool.clone());
-            let mut app_service = crate::service::app::AppService::new(repo);
-            if let Ok(Some(device_info)) = res {
-                let _ = app_service.set_fiat(&device_info.currency).await;
-            }
+            ConfigDomain::init_currency().await?;
         }
-
         InitializationTask::RecoverQueueData => {
             MultisigQueueDomain::recover_all_uid_queue_data().await?;
         }

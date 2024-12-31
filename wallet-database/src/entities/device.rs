@@ -10,7 +10,7 @@ pub struct DeviceEntity {
     pub mem: Option<String>,
     pub app_id: Option<String>,
     pub uid: Option<String>,
-    pub currency: String,
+    // pub currency: String,
     pub is_init: u16,
     pub language_init: u16,
     pub password: Option<String>,
