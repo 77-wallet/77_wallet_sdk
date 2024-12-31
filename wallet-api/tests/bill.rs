@@ -18,8 +18,8 @@ async fn get_manager() -> WalletManager {
 async fn bill_detail() {
     let wallet_manager = get_manager().await;
 
-    let hash = "aaaaaaaaaaabbbbbbbbbbb";
-    let owner = "bc1qlhmzrl93pnrfdwtxr4edcse73jkk2xwuleu94u";
+    let hash = "ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a";
+    let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
     let detail = wallet_manager.bill_detail(&hash, &owner).await;
 
     tracing::info!("result {}", serde_json::to_string(&detail).unwrap());
@@ -31,8 +31,8 @@ async fn bill_lists() {
 
     let root_addr: Option<String> = None;
     let account_id: Option<u32> = None;
-    let addr = Some("0xF7d5c082Ce49922913404b56168EBa82Dda4c1F7".to_string());
-    let chain_code: Option<String> = Some("bnb".to_string());
+    let addr = Some("TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string());
+    let chain_code: Option<String> = Some("tron".to_string());
     // let symbol = Some("TRX".to_string());
     let symbol = None;
     let is_multisig = None;
@@ -67,8 +67,8 @@ async fn query_bill_result() {
     let wallet_manager = get_manager().await;
 
     let req = vec![QueryBillReusltReq {
-        tx_hash: "0x10dfac1d3835dfd850ccdf79ba1f440630f127197d3285b8c30930688b460e0a".to_string(),
-        owner: "".to_string(),
+        tx_hash: "ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a".to_string(),
+        owner: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
     }];
 
     let c = wallet_manager.query_tx_result(req).await;

@@ -9,6 +9,7 @@ CREATE TABLE
         http_url VARCHAR(256) NOT NULL,
         status INTEGER NOT NULL,
         network VARCHAR(16) NUll DEFAULT "mainnet",
+        is_local INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP NOT NULL,
         updated_at TIMESTAMP,
         PRIMARY KEY (node_id)

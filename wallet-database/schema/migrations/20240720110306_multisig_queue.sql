@@ -14,6 +14,7 @@ CREATE TABLE multisig_queue(
     raw_data TEXT,
     status INTEGER NOT NULL,
     fail_reason VARCHAR(256) DEFAULT "",
+    transfer_type INTEGER NOT NULL DEFAULT 1,
     notes TEXT NOT NULL,
     is_del integer NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL,

@@ -1,6 +1,7 @@
 -- Add migration script here
 CREATE TABLE
     bill (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         hash VARCHAR(128) NOT NULL, --交易哈希
         chain_code VARCHAR(32) NOT NULL, --链码
         symbol VARCHAR(32) NOT NULL, --币种符号
@@ -21,7 +22,7 @@ CREATE TABLE
         notes TEXT NOT NULL, --备注
         created_at TIMESTAMP NOT NULL,
         updated_at TIMESTAMP,
-        PRIMARY KEY (hash,transfer_type)
+        UNIQUE (hash, transfer_type, owner)
     );
 
 CREATE INDEX bill_hash_idx ON bill (hash);
