@@ -190,8 +190,8 @@ impl ConfigDomain {
     pub async fn init_currency() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let currency = ConfigDao::find_by_key(CURRENCY, pool.as_ref()).await?;
-        let mut config = crate::app_state::APP_STATE.write().await;
         if let Some(currency) = currency {
+            let mut config = crate::app_state::APP_STATE.write().await;
             let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
             config.set_fiat_from_str(&currency.currency);
         } else {

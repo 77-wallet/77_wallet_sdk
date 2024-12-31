@@ -270,7 +270,6 @@ impl WalletService {
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-
         let encrypted_pw = WalletDomain::encrypt_password(wallet_password, &device.sn)?;
         // 如果有密码，就校验，否则更新密码
         if let Some(password) = &device.password {
@@ -396,12 +395,12 @@ impl WalletService {
         Tasks::new().push(task).send().await?;
         tx.update_uid(Some(&uid)).await?;
 
-        let config = crate::app_state::APP_STATE.read().await;
-        let language = config.language();
-
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
 
-        let language_req = LanguageInitReq::new(&client_id, language);
+        let language_req = {
+            let config = crate::app_state::APP_STATE.read().await;
+            LanguageInitReq::new(&client_id, config.language())
+        };
 
         let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
             &uid,
