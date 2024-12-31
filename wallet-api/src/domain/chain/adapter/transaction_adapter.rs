@@ -14,7 +14,7 @@ use wallet_chain_interact::{
     self as chain,
     btc::{self},
     eth,
-    sol::{self, operations::SolInstructionOperation},
+    sol::{self, operations::SolInstructionOperation, SolFeeSetting},
     tron::{
         self,
         operations::{TronConstantOperation as _, TronTxOperation},
@@ -204,6 +204,24 @@ impl TransactionAdapter {
                     )
                     .await?;
 
+                let fee_setting = if let Some(token) = &params.base.token_address {
+                    let priority = chain
+                        .get_provider()
+                        .get_recent_prioritization(Some(token.clone()))
+                        .await?
+                        .get_avg();
+
+                    if priority > 0 {
+                        let mut fee_setting = SolFeeSetting::new(0, 0);
+                        fee_setting.priority_fee_per_compute_unit = Some(priority);
+                        Some(fee_setting)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let params = sol::operations::transfer::TransferOpt::new(
                     &params.base.from,
                     &params.base.to,
@@ -221,7 +239,7 @@ impl TransactionAdapter {
                 )?;
 
                 let tx_hash = chain
-                    .exec_transaction(params, private_key, None, instructions, 0)
+                    .exec_transaction(params, private_key, fee_setting, instructions, 0)
                     .await?;
 
                 Ok(TransferResp::new(
