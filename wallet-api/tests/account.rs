@@ -116,14 +116,14 @@ async fn test_show_key() {
         .to_string();
     let (_key, seed) = wallet_core::xpriv::phrase_to_master_key(1, &parse, "1234qwer").unwrap();
 
-    let chain_code = "tron";
+    let chain_code = "sol";
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
     let address_type = Some("p2wpkh".to_string());
     let object = ChainObject::new(chain_code, address_type, network).unwrap();
 
     let keypair = object
-        .gen_keypair_with_index_address_type(&seed, 0)
+        .gen_keypair_with_index_address_type(&seed, 10)
         .unwrap();
 
     tracing::info!("address = {}", keypair.address());
