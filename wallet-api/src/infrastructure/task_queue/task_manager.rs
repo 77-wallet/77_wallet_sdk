@@ -7,6 +7,7 @@ use crate::{
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
 use dashmap::DashSet;
+use rand::Rng as _;
 use std::sync::Arc;
 use tokio_stream::StreamExt as _;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
@@ -124,9 +125,10 @@ impl TaskManager {
         let task_id = task.id.clone();
 
         let mut retry_count = 0;
-        let mut delay = 200;
+        let mut delay = 10;
 
-        while retry_count <= 10 {
+        // while retry_count <= 10 {
+        loop {
             if let Err(e) = Self::handle_task(&task, retry_count).await {
                 tracing::error!(?task, "[task_process] error: {}", e);
                 if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
@@ -134,19 +136,22 @@ impl TaskManager {
                     let _ = repo.task_failed(&task_id).await;
                 };
                 // 计算指数退避的延迟时间
-                delay = std::cmp::min(delay * 2, 60_000);
+                delay = std::cmp::min(delay * 2, 120);
+                let jitter =
+                    std::time::Duration::from_secs(rand::thread_rng().gen_range(0..(delay / 2)));
+                delay = delay + jitter.as_secs();
                 retry_count += 1;
-                tracing::warn!("[process_single_task] delay: {delay}, retry_count: {retry_count}");
-                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                tracing::warn!("[process_single_task] delay: {delay}, retry_count: {retry_count}, jitter: {jitter:?}");
+                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                 continue;
             }
             // 成功处理任务
             break;
         }
 
-        if retry_count >= 10 {
-            tracing::error!("Task {} failed after max retries", task_id);
-        }
+        // if retry_count >= 10 {
+        //     tracing::error!("Task {} failed after max retries", task_id);
+        // }
 
         running_tasks.remove(&task_id);
     }
