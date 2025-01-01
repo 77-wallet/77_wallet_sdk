@@ -4,7 +4,7 @@ use wallet_api::request::stake::{FreezeBalanceReq, UnFreezeBalanceReq};
 #[tokio::test]
 async fn test_account_resource() {
     let manager = get_manager().await;
-    let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let account = "TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn".to_string();
     let res = manager.resource_info(account).await;
 
     tracing::info!("resource = {}", serde_json::to_string(&res).unwrap());

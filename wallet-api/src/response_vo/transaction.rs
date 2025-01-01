@@ -187,15 +187,15 @@ impl FeeStructure<EthereumFeeDetails> {
         types: &str,
     ) -> Result<Self, crate::ServiceError> {
         let max_fee_per_gas = base_fee + priority_fee;
-        // // max fee add 1.5
-        // let multiplier = U256::from(15);
-        // let divisor = U256::from(10);
+        // max fee add 1.3
+        let multiplier = U256::from(13);
+        let divisor = U256::from(10);
 
-        // let max_fee_per_gas = max_fee_per_gas * multiplier / divisor;
+        let max_fee_per_gas = max_fee_per_gas * multiplier / divisor;
 
-        // 截断了8位
-        let scale = U256::from(10).pow(U256::from(8));
-        let max_fee_per_gas = (max_fee_per_gas / scale).max(U256::from(1)) * scale;
+        // 截断8位
+        // let scale = U256::from(10).pow(U256::from(8));
+        // let max_fee_per_gas = (max_fee_per_gas / scale).max(U256::from(1)) * scale;
 
         let fee_setting = EthereumFeeDetails::new(
             gas_limit,
