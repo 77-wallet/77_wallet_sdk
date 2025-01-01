@@ -60,7 +60,7 @@
     "decimals": 9,
     "token_address": "So11111111111111111111111111111111111111112",
     "protocol": "",
-    "default": true
+    "default": false
   },
   {
     "name": "Tether USD",
