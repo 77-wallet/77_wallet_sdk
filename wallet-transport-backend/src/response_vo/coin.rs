@@ -14,6 +14,12 @@ pub struct CoinInfo {
     pub protocol: Option<String>,
     #[serde(rename = "unit")]
     pub decimals: Option<u8>,
+    #[serde(
+        default,
+        deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
+    )]
+    pub default_token: bool,
+    pub popular_token: bool,
 }
 impl CoinInfo {
     pub fn token_address(&self) -> Option<String> {

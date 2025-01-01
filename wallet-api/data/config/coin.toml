@@ -1,0 +1,153 @@
+[[coins]]
+name = "Tron"
+chain_code = "tron"
+symbol = "TRX"
+decimals = 6
+token_address = ""
+protocol = "TRC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Tether USD"
+chain_code = "tron"
+symbol = "USDT"
+decimals = 6
+token_address = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+protocol = "TRC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "WINkLink"
+chain_code = "tron"
+symbol = "WIN"
+decimals = 6
+token_address = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
+protocol = "TRC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "SUN"
+chain_code = "tron"
+symbol = "SUN"
+decimals = 18
+token_address = "TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S"
+protocol = "TRC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "BNB-Test"
+chain_code = "bnb"
+symbol = "BNB"
+decimals = 18
+token_address = ""
+protocol = "BEP20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "SOl-Test"
+chain_code = "sol"
+symbol = "SOL"
+decimals = 9
+token_address = ""
+protocol = ""
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Wrapped SOL"
+chain_code = "sol"
+symbol = "wSOL"
+decimals = 9
+token_address = "So11111111111111111111111111111111111111112"
+protocol = ""
+default = false
+popular = false
+active = false
+
+[[coins]]
+name = "Tether USD"
+chain_code = "sol"
+symbol = "USDT"
+decimals = 6
+token_address = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+protocol = "SRC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "BTC-Test"
+chain_code = "btc"
+symbol = "BTC"
+decimals = 8
+token_address = ""
+protocol = ""
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "ETH"
+chain_code = "eth"
+symbol = "ETH"
+decimals = 18
+token_address = ""
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Chainlink"
+chain_code = "eth"
+symbol = "LINK"
+decimals = 18
+token_address = "0x514910771af9ca656af840dff83e8264ecf986ca"
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Tether USD"
+chain_code = "eth"
+symbol = "USDT"
+decimals = 6
+token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7"
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "USDC"
+chain_code = "eth"
+symbol = "USDC"
+decimals = 6
+token_address = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+protocol = "ERC20"
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "PancakeSwap Token"
+chain_code = "eth"
+symbol = "CAKE"
+decimals = 18
+token_address = "0x152649ea73beab28c5b49b26eb48f7ead6d4c898"
+protocol = "ERC20"
+default = true
+popular = true
+active = true

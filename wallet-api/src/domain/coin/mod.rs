@@ -2,7 +2,7 @@ pub mod token_price;
 use crate::response_vo::coin::{TokenCurrencies, TokenCurrencyId, TokenPriceChangeRes};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
-    entities::coin::CoinId,
+    entities::coin::{CoinData, CoinId},
     repositories::{coin::CoinRepoTrait, exchange_rate::ExchangeRateRepoTrait, ResourcesRepo},
 };
 use wallet_transport_backend::{request::TokenQueryPriceReq, response_vo::coin::TokenCurrency};
@@ -108,5 +108,118 @@ impl CoinDomain {
         }
 
         Ok(res)
+    }
+
+    pub(crate) async fn upsert_hot_coin_list(
+        repo: &mut ResourcesRepo,
+        coins: Vec<UpsertCoinVo>,
+    ) -> Result<(), crate::ServiceError> {
+        let tx = repo;
+        let mut coin_datas = Vec::new();
+        for coin in coins {
+            let Some(symbol) = &coin.symbol else { continue };
+            let Some(chain_code) = &coin.chain_code else {
+                continue;
+            };
+            let token_address = coin.token_address();
+
+            // 检查该币种是否已在 coin_datas 中存在
+            if coin_datas.iter().any(|c: &CoinData| {
+                c.symbol == *symbol
+                    && c.chain_code == *chain_code
+                    && c.token_address() == token_address
+            }) {
+                continue;
+            }
+
+            // 如果不存在，新增 CoinData
+            coin_datas.push(
+                CoinData::new(
+                    coin.name.clone(),
+                    symbol,
+                    chain_code,
+                    token_address,
+                    None,
+                    coin.protocol.clone(),
+                    coin.decimals.unwrap_or_default(),
+                    coin.is_default,
+                    coin.is_popular,
+                )
+                .with_status(coin.status),
+            );
+        }
+
+        tx.upsert_multi_coin(coin_datas).await?;
+        Ok(())
+    }
+
+    pub async fn init_coins(repo: &mut ResourcesRepo) -> Result<(), crate::ServiceError> {
+        let list: Vec<UpsertCoinVo> = crate::default_data::coin::init_default_coins_list()?
+            .coins
+            .iter()
+            .map(|coin| coin.to_owned().into())
+            .collect();
+        Self::upsert_hot_coin_list(repo, list).await?;
+
+        Ok(())
+    }
+}
+
+impl From<crate::default_data::coin::DefaultCoin> for UpsertCoinVo {
+    fn from(coin: crate::default_data::coin::DefaultCoin) -> Self {
+        Self {
+            chain_code: Some(coin.chain_code),
+            symbol: Some(coin.symbol),
+            name: Some(coin.name),
+            token_address: coin.token_address,
+            decimals: Some(coin.decimals),
+            protocol: coin.protocol,
+            is_default: if coin.default { 1 } else { 0 },
+            is_popular: if coin.popular { 1 } else { 0 },
+            status: if coin.active { 1 } else { 0 },
+        }
+    }
+}
+
+pub(crate) struct UpsertCoinVo {
+    chain_code: Option<String>,
+    symbol: Option<String>,
+    name: Option<String>,
+    token_address: Option<String>,
+    decimals: Option<u8>,
+    protocol: Option<String>,
+    is_default: u8,
+    is_popular: u8,
+    status: u8,
+}
+
+impl UpsertCoinVo {
+    pub(crate) fn token_address(&self) -> Option<String> {
+        match &self.token_address {
+            Some(token_address) => {
+                if token_address.is_empty() {
+                    None
+                } else {
+                    Some(token_address.clone())
+                }
+            }
+            None => None,
+        }
+    }
+}
+
+impl From<wallet_transport_backend::CoinInfo> for UpsertCoinVo {
+    fn from(coin: wallet_transport_backend::CoinInfo) -> Self {
+        Self {
+            chain_code: coin.chain_code,
+            symbol: coin.symbol,
+            name: coin.name,
+            token_address: coin.token_address,
+            decimals: coin.decimals,
+            protocol: coin.protocol,
+            is_default: if coin.default_token { 1 } else { 0 },
+            is_popular: if coin.popular_token { 1 } else { 0 },
+            status: 1,
+        }
     }
 }
