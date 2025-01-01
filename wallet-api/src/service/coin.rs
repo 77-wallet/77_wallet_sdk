@@ -208,7 +208,10 @@ impl CoinService {
             data.append(&mut list.list);
         }
 
-        self.upsert_hot_coin_list(data, 0, 1).await?;
+        let data = data.into_iter().map(|d| d.into()).collect();
+
+        CoinDomain::upsert_hot_coin_list(tx, data).await?;
+        // self.upsert_hot_coin_list(data, 0, 1).await?;
 
         Ok(())
     }
@@ -555,48 +558,5 @@ impl CoinService {
             data,
         };
         Ok(res)
-    }
-
-    pub async fn upsert_hot_coin_list(
-        &mut self,
-        // address: &str,
-        coins: Vec<wallet_transport_backend::CoinInfo>,
-        is_default: u8,
-        is_popular: u8,
-    ) -> Result<(), crate::ServiceError> {
-        let tx = &mut self.repo;
-        let mut coin_datas = Vec::new();
-        for coin in coins {
-            let Some(symbol) = &coin.symbol else { continue };
-            let Some(chain_code) = &coin.chain_code else {
-                continue;
-            };
-            let token_address = coin.token_address();
-
-            // 检查该币种是否已在 coin_datas 中存在
-            if coin_datas.iter().any(|c: &CoinData| {
-                c.symbol == *symbol
-                    && c.chain_code == *chain_code
-                    && c.token_address() == token_address
-            }) {
-                continue;
-            }
-
-            // 如果不存在，新增 CoinData
-            coin_datas.push(CoinData::new(
-                coin.name.clone(),
-                symbol,
-                chain_code,
-                token_address,
-                None,
-                coin.protocol.clone(),
-                coin.decimals.unwrap_or_default(),
-                is_default,
-                is_popular,
-            ));
-        }
-
-        tx.upsert_multi_coin(coin_datas).await?;
-        Ok(())
     }
 }

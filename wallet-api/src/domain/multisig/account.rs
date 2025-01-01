@@ -274,6 +274,18 @@ impl MultisigDomain {
         Ok(account)
     }
 
+    pub async fn done_account_by_address(
+        address: &str,
+        chain_code: &str,
+        pool: &std::sync::Arc<Pool<Sqlite>>,
+    ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
+        Ok(
+            MultisigAccountDaoV1::find_done_account(address, chain_code, &**pool)
+                .await
+                .map_err(|e| crate::SystemError::Database(e.into()))?,
+        )
+    }
+
     pub async fn list(
         pool: &std::sync::Arc<Pool<Sqlite>>,
     ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {

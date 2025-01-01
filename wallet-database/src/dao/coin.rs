@@ -276,7 +276,7 @@ impl CoinEntity {
                 .push_bind(coin.is_default)
                 .push_bind(coin.is_popular)
                 .push_bind(coin.is_custom)
-                .push_bind(1)
+                .push_bind(coin.status)
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
         });
@@ -344,7 +344,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 and chain_code = $1 and token_address = $2";
+        let sql = "SELECT * FROM coin WHERE is_del = 0 AND chain_code = $1 and token_address = $2";
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)

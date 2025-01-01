@@ -4,7 +4,6 @@ use crate::infrastructure::task_queue::{
 };
 use crate::infrastructure::SharedCache;
 use crate::notify::FrontendNotifyEvent;
-use crate::service::coin::CoinService;
 use crate::service::node::NodeService;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -37,14 +36,8 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     node_service.init_node_info().await?;
 
     crate::domain::app::config::ConfigDomain::init_url().await?;
-    let repo = RepositoryFactory::repo(pool.clone());
-    let mut coin_service = CoinService::new(repo);
-    let list: Vec<wallet_transport_backend::CoinInfo> =
-        crate::default_data::coin::init_default_coins_list()?
-            .iter()
-            .map(|coin| coin.to_owned().into())
-            .collect();
-    coin_service.upsert_hot_coin_list(list, 1, 1).await?;
+    let mut repo = RepositoryFactory::repo(pool.clone());
+    crate::domain::coin::CoinDomain::init_coins(&mut repo).await?;
 
     let token_query_rates_req = BackendApiTaskData::new(
         wallet_transport_backend::consts::endpoint::TOKEN_QUERY_RATES,

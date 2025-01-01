@@ -10,6 +10,7 @@ pub struct CoinData {
     pub is_default: u8,
     pub is_popular: u8,
     pub is_custom: u8,
+    pub status: u8,
 }
 
 impl CoinData {
@@ -35,11 +36,17 @@ impl CoinData {
             is_default,
             is_popular,
             is_custom: 0,
+            status: 1,
         }
     }
 
     pub fn with_custom(mut self, is_custom: u8) -> Self {
         self.is_custom = is_custom;
+        self
+    }
+
+    pub fn with_status(mut self, status: u8) -> Self {
+        self.status = status;
         self
     }
 
