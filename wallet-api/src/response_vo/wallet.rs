@@ -63,6 +63,7 @@ pub struct ChainInfo {
     pub chain_code: String,
     pub name: Option<String>,
     pub address_type: AddressCategory,
+    pub is_multisig: u8,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }

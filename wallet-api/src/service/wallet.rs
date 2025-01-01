@@ -537,6 +537,7 @@ impl WalletService {
         &mut self,
         wallet_address: Option<String>,
         chain_code: Option<String>,
+        account_id: Option<u32>,
     ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
         let tx = &mut self.repo;
         let chains: ChainCodeAndName = tx.get_chain_list().await?.into();
@@ -557,6 +558,7 @@ impl WalletService {
                 .account_list_by_wallet_address_and_chain_code(
                     Some(&wallet_info.address),
                     chain_code.clone(),
+                    account_id,
                 )
                 .await?;
             let mut account_list = token_currencies

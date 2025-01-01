@@ -1,7 +1,8 @@
 use super::multisig_member::MultisigMemberDaoV1;
 use crate::{
     entities::multisig_account::{
-        MultisigAccountEntity, MultisigAccountStatus, NewMultisigAccountEntity,
+        MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
+        NewMultisigAccountEntity,
     },
     pagination::Pagination,
 };
@@ -395,6 +396,27 @@ impl MultisigAccountDaoV1 {
             .bind(chain_code)
             .bind(MultisigAccountStatus::Confirmed.to_i8())
             .bind(MultisigAccountStatus::Pending.to_i8())
+            .fetch_optional(exec)
+            .await?;
+
+        Ok(result)
+    }
+
+    pub async fn find_done_account<'a, E>(
+        address: &str,
+        chain_code: &str,
+        exec: E,
+    ) -> Result<Option<MultisigAccountEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from multisig_account where address = ? and chain_code = ? and is_del = 0 and status = ? and pay_status = ? limit 1";
+
+        let result = sqlx::query_as(sql)
+            .bind(address)
+            .bind(chain_code)
+            .bind(MultisigAccountStatus::OnChain.to_i8())
+            .bind(MultisigAccountPayStatus::Paid.to_i8())
             .fetch_optional(exec)
             .await?;
 

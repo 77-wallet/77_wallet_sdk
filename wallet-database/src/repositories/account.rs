@@ -213,6 +213,7 @@ pub trait AccountRepoTrait: super::TransactionTrait {
         &mut self,
         wallet_address: Option<&str>,
         chain_code: Option<String>,
+        account_id: Option<u32>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         let chain_code = if let Some(chain_code) = chain_code {
@@ -227,7 +228,7 @@ pub trait AccountRepoTrait: super::TransactionTrait {
             None,
             None,
             chain_code,
-            None
+            account_id
         )
     }
 

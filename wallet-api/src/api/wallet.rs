@@ -113,9 +113,10 @@ impl crate::WalletManager {
         &self,
         wallet_address: Option<String>,
         chain_code: Option<String>,
+        account_id: Option<u32>,
     ) -> ReturnType<Vec<crate::response_vo::wallet::WalletInfo>> {
         WalletService::new(self.repo_factory.resuource_repo())
-            .get_wallet_list(wallet_address, chain_code)
+            .get_wallet_list(wallet_address, chain_code, account_id)
             .await?
             .into()
     }
@@ -377,7 +378,9 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let list = wallet_manager.get_wallet_list(None, None).await;
+        let list = wallet_manager
+            .get_wallet_list(None, Some("tron".to_string()), Some(1))
+            .await;
         let res = serde_json::to_string(&list).unwrap();
         tracing::info!("res: {res:?}");
         tracing::info!("list: {list:?}");
