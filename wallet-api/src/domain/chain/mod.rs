@@ -1,5 +1,4 @@
 use crate::response_vo;
-use reqwest::Url;
 use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
 use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
 use wallet_types::chain::network;
@@ -40,10 +39,10 @@ pub fn pare_fee_setting(fee_setting: &str) -> Result<FeeSetting, crate::ServiceE
         .and_then(|s: response_vo::EthereumFeeDetails| FeeSetting::try_from(s))
 }
 
-pub fn rpc_need_header(url: &str) -> Result<bool, crate::ServiceError> {
-    let url = Url::parse(url).expect("Invalid URL");
-
-    Ok(url.host_str() == Some(wallet_transport_backend::consts::BASE_RPC_URL))
+pub fn rpc_need_header(_url: &str) -> Result<bool, crate::ServiceError> {
+    // let url = Url::parse(url).expect("Invalid URL");
+    // Ok(url.host_str() == Some(wallet_transport_backend::consts::BASE_RPC_URL))
+    Ok(true)
 }
 
 pub fn check_address(

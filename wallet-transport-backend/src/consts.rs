@@ -64,7 +64,7 @@ pub mod endpoint {
 // pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
 
 // 代理的全局rpc节点
-pub const BASE_RPC_URL: &str = "rpc.88ai.fun";
+pub const BASE_RPC_URL: &str = "apprpc.88ai.fun";
 
 // // 开发环境
 // #[cfg(feature = "dev")]
