@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
-        account::AccountEntity,
         assets::AssetsId,
         coin::{CoinData, CoinId},
     },
@@ -350,11 +349,12 @@ impl CoinService {
 
     pub async fn customize_coin(
         &mut self,
-        wallet_address: &str,
-        account_id: u32,
+        address: &str,
+        account_id: Option<u32>,
         chain_code: &str,
         mut token_address: String,
         protocol: Option<String>,
+        is_multisig: bool,
     ) -> Result<(), crate::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
@@ -421,34 +421,37 @@ impl CoinService {
         let coin = vec![cus_coin];
         tx.upsert_multi_coin(coin).await?;
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
-        let req = wallet_database::entities::account::QueryReq {
-            wallet_address: Some(wallet_address.to_string()),
-            address: None,
-            chain_code: Some(chain_code.to_string()),
-            account_id: Some(account_id),
-            status: Some(1),
-        };
-        let account = AccountEntity::detail(pool.as_ref(), &req).await?.ok_or(
-            crate::ServiceError::Business(crate::BusinessError::Account(
-                crate::AccountError::NotFound,
-            )),
-        )?;
+        let account_addresses = self
+            .account_domain
+            .get_addresses(
+                tx,
+                address,
+                account_id,
+                Some(chain_code.to_string()),
+                Some(is_multisig),
+            )
+            .await?
+            .pop()
+            .ok_or(crate::ServiceError::Business(
+                crate::BusinessError::Account(crate::AccountError::NotFound),
+            ))?;
+
+        let is_multisig = if is_multisig { 1 } else { 0 };
 
         // 查询余额
         let balance = chain_instance
-            .balance(&account.address, Some(token_address.to_string()))
+            .balance(&account_addresses.address, Some(token_address.to_string()))
             .await?;
         let balance = wallet_utils::unit::format_to_string(balance, decimals)
             .unwrap_or_else(|_| "0".to_string());
 
-        let assets_id = AssetsId::new(&account.address, chain_code, &symbol);
+        let assets_id = AssetsId::new(&account_addresses.address, chain_code, &symbol);
         let assets = CreateAssetsVo::new(
             assets_id,
             decimals,
             Some(token_address.to_string()),
             None,
-            0,
+            is_multisig,
         )
         .with_name(&name)
         .with_balance(&balance)

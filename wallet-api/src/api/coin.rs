@@ -78,19 +78,40 @@ impl crate::WalletManager {
     }
     pub async fn customize_coin(
         &self,
-        wallet_address: &str,
-        account_id: u32,
+        address: &str,
+        account_id: Option<u32>,
         chain_code: &str,
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
         CoinService::new(self.repo_factory.resuource_repo())
             .customize_coin(
-                wallet_address,
+                address,
                 account_id,
                 chain_code,
                 token_address.to_string(),
                 protocol,
+                false,
+            )
+            .await?
+            .into()
+    }
+
+    pub async fn customize_multisig_coin(
+        &self,
+        address: &str,
+        chain_code: &str,
+        token_address: &str,
+        protocol: Option<String>,
+    ) -> ReturnType<()> {
+        CoinService::new(self.repo_factory.resuource_repo())
+            .customize_coin(
+                address,
+                None,
+                chain_code,
+                token_address.to_string(),
+                protocol,
+                true,
             )
             .await?
             .into()
@@ -201,13 +222,16 @@ mod test {
 
         // let chain_code = "tron";
         // let chain_code = "btc";
-        let chain_code = "sol";
+        // let chain_code = "sol";
+        let chain_code = "bnb";
         // let token_address = "0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24";
         // let token_address = "0xB8c77482e45F1F44dE1745F52C74426C631bDD52";
         // let token_address = "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB";
         // let token_address = "bc1qgw4dunlmtvdy4vc8zauma4qjqtmrktjf8mw6le";
         // let token_address = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
-        let token_address = "So11111111111111111111111111111111111111112";
+        // let token_address = "So11111111111111111111111111111111111111112";
+        let token_address = "0x55d398326f99059fF775485246999027B3197955";
+
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
         // let chain_code = "tron";
@@ -278,7 +302,23 @@ mod test {
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
         let res = wallet_manager
-            .customize_coin(wallet_address, 1, chain_code, token_address, protocol)
+            .customize_coin(wallet_address, Some(1), chain_code, token_address, protocol)
+            .await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_customize_multisig_coin() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let address = "0xa01e0ee36c61B7C667F741094603290E5a2182C1";
+        let chain_code = "bnb";
+        let protocol = None;
+        let token_address = "0x55d398326f99059fF775485246999027B3197955";
+
+        let res = wallet_manager
+            .customize_multisig_coin(address, chain_code, token_address, protocol)
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
