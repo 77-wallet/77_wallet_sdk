@@ -153,3 +153,19 @@ async fn test_create_bill() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn test_create() {
+    let value = wallet_utils::unit::convert_to_u256("0.00330888", 18).unwrap();
+
+    // let b_fee = wallet_utils::unit::u256_from_str("35054491035").unwrap();
+    // let p_fee = wallet_utils::unit::u256_from_str("15597128697").unwrap();
+    let m_fee = wallet_utils::unit::u256_from_str("65847105651").unwrap();
+
+    let gas_limit = wallet_utils::unit::u256_from_str("23100").unwrap();
+
+    let cost = gas_limit * m_fee;
+
+    let aa = value + cost;
+    println!("cost {},aa = {}", cost, aa)
+}

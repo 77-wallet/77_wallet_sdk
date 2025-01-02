@@ -193,9 +193,9 @@ impl FeeStructure<EthereumFeeDetails> {
 
         let max_fee_per_gas = max_fee_per_gas * multiplier / divisor;
 
-        // 截断8位
-        // let scale = U256::from(10).pow(U256::from(8));
-        // let max_fee_per_gas = (max_fee_per_gas / scale).max(U256::from(1)) * scale;
+        // 截断8位()
+        let scale = U256::from(10).pow(U256::from(8));
+        let max_fee_per_gas = (max_fee_per_gas / scale).max(U256::from(1)) * scale;
 
         let fee_setting = EthereumFeeDetails::new(
             gas_limit,
