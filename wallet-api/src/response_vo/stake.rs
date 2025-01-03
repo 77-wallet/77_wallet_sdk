@@ -258,6 +258,7 @@ pub struct VoteListResp {
 pub struct Witness {
     pub address: String,
     pub vote_count: i64,
+    pub vote_count_by_owner: Option<i64>,
     pub url: String,
     pub brokerage: f64,
     pub apr: f64,
@@ -271,7 +272,13 @@ impl Witness {
             url: url.to_string(),
             brokerage,
             apr,
+            vote_count_by_owner: None,
         }
+    }
+
+    pub fn with_vote_count_by_owner(mut self, vote_count_by_owner: i64) -> Self {
+        self.vote_count_by_owner = Some(vote_count_by_owner);
+        self
     }
 }
 
@@ -282,7 +289,7 @@ pub struct VoterInfoResp {
     pub reward: f64,
     pub tron_power_limit: i64,
     pub tron_power_used: i64,
-    pub votes: Votes,
+    // pub votes: Votes,
     pub comprehensive_apr: f64,
 }
 
@@ -317,7 +324,7 @@ impl VoterInfoResp {
         reward: f64,
         tron_power_limit: i64,
         tron_power_used: i64,
-        votes: Votes,
+        // votes: Votes,
         comprehensive_apr: f64,
     ) -> Self {
         Self {
@@ -325,7 +332,7 @@ impl VoterInfoResp {
             reward,
             tron_power_limit,
             tron_power_used,
-            votes,
+            // votes,
             comprehensive_apr,
         }
     }

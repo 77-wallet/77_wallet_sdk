@@ -259,8 +259,15 @@ impl crate::WalletManager {
         StackService::new().await?.voter_info(owner).await?.into()
     }
 
-    pub async fn votes_node_list(&self) -> ReturnType<response_vo::stake::VoteListResp> {
-        StackService::new().await?.vote_list().await?.into()
+    pub async fn votes_node_list(
+        &self,
+        owner_address: Option<&str>,
+    ) -> ReturnType<response_vo::stake::VoteListResp> {
+        StackService::new()
+            .await?
+            .vote_list(owner_address)
+            .await?
+            .into()
     }
 
     pub async fn top_witness(&self) -> ReturnType<Option<response_vo::stake::Witness>> {
@@ -306,7 +313,8 @@ mod tests {
             .await
             .unwrap();
 
-        let res = wallet_manager.votes_node_list().await;
+        let owner_address = Some("TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ");
+        let res = wallet_manager.votes_node_list(owner_address).await;
         println!("{:#?}", res);
         let res = wallet_utils::serde_func::serde_to_string(&res);
         tracing::info!("{:#?}", res);

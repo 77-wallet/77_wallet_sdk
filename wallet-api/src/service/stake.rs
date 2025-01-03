@@ -949,9 +949,24 @@ impl StackService {
         Ok(res.order_id)
     }
 
-    pub async fn vote_list(&self) -> Result<resp::VoteListResp, crate::error::ServiceError> {
+    pub async fn vote_list(
+        &self,
+        owner_address: Option<&str>,
+    ) -> Result<resp::VoteListResp, crate::error::ServiceError> {
         let chain = self.chain.get_provider();
-        let res = StakeDomain::vote_list(chain).await?;
+        // 所有的超级节点列表
+        let mut res = StakeDomain::vote_list(chain).await?;
+        if let Some(owner_address) = owner_address {
+            let account_info = self.chain.account_info(owner_address).await?;
+            // 投票人投票列表
+            let votes = account_info.votes;
+            // 遍历超级节点列表，判断投票人是否已经给该超级节点投票，然后设置Witness的vote_count字段
+            res.data.iter_mut().for_each(|witness| {
+                if let Some(vote) = votes.iter().find(|v| v.vote_address == witness.address) {
+                    witness.vote_count_by_owner = Some(vote.vote_count);
+                }
+            });
+        }
 
         Ok(res)
     }
@@ -994,7 +1009,7 @@ impl StackService {
             reward.to_sun(),
             resource.tron_power_limit,
             resource.tron_power_used,
-            votes.into(),
+            // votes.into(),
             comprehensive_apr,
         );
         Ok(res)
