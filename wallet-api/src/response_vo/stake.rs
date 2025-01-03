@@ -274,3 +274,59 @@ impl Witness {
         }
     }
 }
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct VoterInfoResp {
+    pub balance: f64,
+    pub reward: f64,
+    pub tron_power_limit: i64,
+    pub tron_power_used: i64,
+    pub votes: Votes,
+    pub comprehensive_apr: f64,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct Votes(Vec<Vote>);
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Vote {
+    pub vote_address: String,
+    pub vote_count: i64,
+}
+
+impl From<wallet_chain_interact::tron::protocol::account::Vote> for Vote {
+    fn from(vote: wallet_chain_interact::tron::protocol::account::Vote) -> Self {
+        Self {
+            vote_address: vote.vote_address,
+            vote_count: vote.vote_count,
+        }
+    }
+}
+
+impl From<Vec<wallet_chain_interact::tron::protocol::account::Vote>> for Votes {
+    fn from(votes: Vec<wallet_chain_interact::tron::protocol::account::Vote>) -> Self {
+        Self(votes.into_iter().map(Vote::from).collect())
+    }
+}
+
+impl VoterInfoResp {
+    pub fn new(
+        balance: f64,
+        reward: f64,
+        tron_power_limit: i64,
+        tron_power_used: i64,
+        votes: Votes,
+        comprehensive_apr: f64,
+    ) -> Self {
+        Self {
+            balance,
+            reward,
+            tron_power_limit,
+            tron_power_used,
+            votes,
+            comprehensive_apr,
+        }
+    }
+}

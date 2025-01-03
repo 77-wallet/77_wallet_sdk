@@ -255,10 +255,7 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn voter_info(
-        &self,
-        owner: &str,
-    ) -> ReturnType<wallet_chain_interact::tron::operations::stake::VoteRewardResp> {
+    pub async fn voter_info(&self, owner: &str) -> ReturnType<response_vo::stake::VoterInfoResp> {
         StackService::new().await?.voter_info(owner).await?.into()
     }
 
@@ -335,7 +332,7 @@ mod tests {
             .await
             .unwrap();
 
-        let owner = "TWzCs2Mou5Z1GTGUvaCuofAHTV1Wi6VQ3p";
+        let owner = "TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ";
         let res = wallet_manager.voter_info(owner).await;
         tracing::info!("{:#?}", res);
         let res = wallet_utils::serde_func::serde_to_string(&res);

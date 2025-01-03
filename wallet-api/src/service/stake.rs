@@ -959,19 +959,43 @@ impl StackService {
     pub async fn voter_info(
         &self,
         owner: &str,
-    ) -> Result<ops::stake::VoteRewardResp, crate::error::ServiceError> {
+    ) -> Result<resp::VoterInfoResp, crate::error::ServiceError> {
         // let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = self.chain.get_provider();
+        let vote_list = StakeDomain::vote_list(chain).await?;
         let reward = self.chain.get_provider().get_reward(owner).await?;
 
         let account_info = self.chain.account_info(owner).await?;
-        tracing::info!("account_info: {:#?}", account_info);
+        // tracing::info!("account_info: {:#?}", account_info);
+
+        let balance = account_info.balance_to_f64();
+        let votes = account_info.votes;
+
+        let mut representatives = Vec::new();
+        for vote in votes.iter() {
+            let vote_info = vote_list
+                .data
+                .iter()
+                .find(|x| x.address == *vote.vote_address);
+            if let Some(vote_info) = vote_info {
+                representatives.push(domain::stake::Representative::new(
+                    vote.vote_count as f64,
+                    vote_info.apr,
+                ));
+                // tracing::info!("vote_info: {:#?}", vote_info);
+            }
+        }
+        // tracing::info!("representatives: {:#?}", representatives);
+        let comprehensive_apr = StakeDomain::calculate_comprehensive_apr(representatives);
 
         let resource = self.chain.account_resource(owner).await?;
-        let res = ops::stake::VoteRewardResp::new(
-            account_info.balance_to_f64(),
+        let res = resp::VoterInfoResp::new(
+            balance,
             reward.to_sun(),
             resource.tron_power_limit,
             resource.tron_power_used,
+            votes.into(),
+            comprehensive_apr,
         );
         Ok(res)
     }

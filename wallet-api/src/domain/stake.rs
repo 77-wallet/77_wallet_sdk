@@ -1,7 +1,7 @@
 use wallet_chain_interact::{
     tron::{
         operations::{
-            stake::{self, Witness},
+            stake::{self},
             TronSimulateOperation,
         },
         params::ResourceConsumer,
@@ -131,6 +131,18 @@ impl StakeArgs {
 
 pub(crate) struct StakeDomain;
 
+#[derive(Debug)]
+pub(crate) struct Representative {
+    votes: f64, // 投票数量
+    apr: f64,   // 年化收益率（APR）
+}
+
+impl Representative {
+    pub(crate) fn new(votes: f64, apr: f64) -> Self {
+        Self { votes, apr }
+    }
+}
+
 const SR_ONE_DAY_TOTAL_REWARD: f64 = 460_800.0;
 const VOTE_ONE_DAY_TOTAL_REWARD: f64 = 4_608_000.0;
 const VOTER_VOTES: f64 = 10_000_000.0;
@@ -156,6 +168,26 @@ impl StakeDomain {
         ((voter_reward + block_reward) / VOTER_VOTES) * 100.0 * 365.0
     }
 
+    pub(crate) fn calculate_comprehensive_apr(representatives: Vec<Representative>) -> f64 {
+        // 如果没有代表，返回 0
+        if representatives.is_empty() {
+            return 0.0;
+        }
+
+        // 使用迭代器计算加权总和和总投票数
+        let (weighted_sum, total_votes): (f64, f64) =
+            representatives.iter().fold((0.0, 0.0), |acc, rep| {
+                (acc.0 + rep.votes * rep.apr, acc.1 + rep.votes)
+            });
+
+        // 防止除以 0 的情况
+        if total_votes == 0.0 {
+            0.0
+        } else {
+            weighted_sum / total_votes
+        }
+    }
+
     pub(crate) async fn vote_list(
         chain: &wallet_chain_interact::tron::Provider,
     ) -> Result<VoteListResp, crate::error::ServiceError> {
@@ -170,7 +202,7 @@ impl StakeDomain {
 
         let mut data = Vec::new();
         for (i, witness) in witness_list.into_iter().enumerate() {
-            tracing::info!("i: {}", i);
+            // tracing::info!("i: {}", i);
             if i == 26 {
                 break;
             }
@@ -180,7 +212,6 @@ impl StakeDomain {
                 url,
                 ..
             } = witness;
-
             let brokerage = (100.0 - chain.get_brokerage(&address).await?.brokerage as f64) / 100.0;
 
             // tracing::info!("brokerage: {}", brokerage);
@@ -195,7 +226,11 @@ impl StakeDomain {
             let apr = StakeDomain::calculate_apr(vote_reward, block_reward);
             // tracing::info!("apr: {}", apr);
             data.push(crate::response_vo::stake::Witness::new(
-                &address, vote_count, &url, brokerage, apr,
+                &wallet_utils::address::hex_to_bs58_addr(&address)?,
+                vote_count,
+                &url,
+                brokerage,
+                apr,
             ));
         }
         let res = VoteListResp {
@@ -237,15 +272,15 @@ mod cal_tests {
     #[test]
     fn test_calculate_apr() {
         // Parameters for the test case
-        let total_reward = 4_608_000.0; // Total reward pool
+        let _total_reward = 4_608_000.0; // Total reward pool
 
         let total_sr_votes = 39806518656.0; // Total votes of all SR and SRP
 
         // let sr_votes = 3069539068.0; // Votes obtained by the SR
-        let sr_votes = 1248080337.0; // Votes obtained by the SR
+        let _sr_votes = 1248080337.0; // Votes obtained by the SR
         let sr_votes = 3071535822.0; // Votes obtained by the SR
 
-        let voter_votes = 10_000_000.0; // Voter's votes
+        let _voter_votes = 10_000_000.0; // Voter's votes
         let voter_share = 1.0; // Voter share (80%)
                                // let voter_share = 0.90; // Voter share (80%)
 
