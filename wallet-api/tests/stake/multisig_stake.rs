@@ -8,11 +8,11 @@ async fn test_build_freeze() {
 
     let req = FreezeBalanceReq {
         owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        resource: "bandwidth".to_string(),
+        resource: "energy".to_string(),
         frozen_balance: 100,
     };
 
-    let bill_kind = BillKind::FreezeBandwidth.to_i8() as i64;
+    let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();

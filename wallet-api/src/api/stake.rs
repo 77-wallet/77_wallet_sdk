@@ -8,8 +8,9 @@ use crate::{
         self,
         account::AccountResource,
         stake::{
-            BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp, DelegateResp,
-            FreezeListResp, FreezeResp, ResourceResp, UnfreezeListResp, WithdrawUnfreezeResp,
+            AddressExists, BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp,
+            DelegateResp, FreezeListResp, FreezeResp, ResourceResp, UnfreezeListResp,
+            WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,
@@ -120,31 +121,13 @@ impl crate::WalletManager {
         "used request_energy to instead".to_string().into()
     }
 
-    // pub async fn trx_to_resource(
-    //     &self,
-    //     account: String,
-    //     value: i64,
-    //     resource_type: String,
-    // ) -> ReturnType<TrxToResourceResp> {
-    //     StackService::new()
-    //         .await?
-    //         .trx_to_resource(account, value, resource_type)
-    //         .await?
-    //         .into()
-    // }
-
-    // pub async fn resource_to_trx(
-    //     &self,
-    //     account: String,
-    //     value: i64,
-    //     resource_type: String,
-    // ) -> ReturnType<ResourceToTrxResp> {
-    //     StackService::new()
-    //         .await?
-    //         .resource_to_trx(account, value, resource_type)
-    //         .await?
-    //         .into()
-    // }
+    pub async fn address_exists(&self, accounts: Vec<String>) -> ReturnType<Vec<AddressExists>> {
+        StackService::new()
+            .await?
+            .account_exists(accounts)
+            .await?
+            .into()
+    }
 
     pub async fn system_resource(&self, account: String) -> ReturnType<SystemEnergyResp> {
         StackService::new()

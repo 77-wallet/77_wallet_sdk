@@ -82,7 +82,7 @@ async fn test_queue_list() {
     let manager = get_manager().await;
 
     // 列表
-    let res = manager.multisig_queue_list(None, None, 3, 0, 10).await;
+    let res = manager.multisig_queue_list(None, None, 2, 0, 10).await;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("queue list = {}", res);
 }
@@ -92,7 +92,7 @@ async fn test_queue_info() {
     let manager = get_manager().await;
 
     // 队列详情
-    let id = "187019359078715392".to_string();
+    let id = "213831908549857280".to_string();
     let res = manager.multisig_queue_info(id).await;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("queue info = {}", res);
@@ -117,7 +117,7 @@ async fn test_sign_transaction() {
 async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "194563240280330240".to_owned();
+    let queue_id = "213839824367521792".to_owned();
     let fee = wallet_manager
         .estimate_multisig_transfer_fee(queue_id)
         .await;
@@ -129,7 +129,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "209859366462033920".to_string();
+    let id = "213839824367521792".to_string();
 
     let password = "123456".to_string();
     let fee = None;

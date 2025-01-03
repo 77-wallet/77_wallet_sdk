@@ -337,3 +337,10 @@ impl VoterInfoResp {
         }
     }
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressExists {
+    pub address: String,
+    pub exists: bool,
+}

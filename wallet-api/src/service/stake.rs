@@ -19,6 +19,7 @@ use crate::response_vo::account::AccountResource;
 use crate::response_vo::account::Resource;
 use crate::response_vo::account::TrxResource;
 use crate::response_vo::stake as resp;
+use crate::response_vo::stake::AddressExists;
 use crate::response_vo::stake::BatchDelegateResp;
 use crate::response_vo::stake::BatchRes;
 use crate::response_vo::stake::ResourceResp;
@@ -691,6 +692,26 @@ impl StackService {
     }
 
     //******************************************************delegate **************************************************/
+    // 验证地址是否在初始化过
+    pub async fn account_exists(
+        &self,
+        accounts: Vec<String>,
+    ) -> Result<Vec<resp::AddressExists>, crate::ServiceError> {
+        let mut res = vec![];
+
+        for account in accounts {
+            let account_info = self.chain.account_info(&account).await?;
+            let exists = !account_info.address.is_empty();
+
+            res.push(AddressExists {
+                address: account,
+                exists,
+            });
+        }
+
+        Ok(res)
+    }
+
     pub async fn can_delegated_max(
         &self,
         account: String,

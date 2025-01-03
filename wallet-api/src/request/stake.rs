@@ -91,13 +91,19 @@ impl From<&DelegateReq> for wallet_database::entities::stake::NewDelegateEntity 
 impl TryFrom<&DelegateReq> for DelegateArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: &DelegateReq) -> Result<Self, Self::Error> {
+        let lock = if value.lock_period > 0 {
+            (value.lock_period * 28800, true)
+        } else {
+            (0, false)
+        };
+
         let args = Self {
             owner_address: wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?,
             receiver_address: wallet_utils::address::bs58_addr_to_hex(&value.receiver_address)?,
             balance: value.balance * consts::TRX_VALUE,
             resource: stake::ResourceType::try_from(value.resource.as_str())?,
-            lock: value.lock,
-            lock_period: value.lock_period,
+            lock: lock.1,
+            lock_period: lock.0,
         };
         Ok(args)
     }

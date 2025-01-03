@@ -5,6 +5,20 @@ use wallet_api::request::stake::{
 use wallet_database::entities::bill::BillKind;
 
 #[tokio::test]
+async fn test_account_exists() {
+    let manager = get_manager().await;
+
+    let accounts = vec![
+        "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        "TN29BP8SyHNtU8f2o2odF7hBGrVuFEELLL".to_string(),
+    ];
+
+    let res = manager.address_exists(accounts).await;
+
+    tracing::info!("account exsits {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
 async fn test_query_available_max() {
     let manager = get_manager().await;
 
@@ -44,8 +58,8 @@ async fn test_delegate() {
         receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         balance: 50,
         resource: "energy".to_string(),
-        lock: false,
-        lock_period: 0,
+        lock: true,
+        lock_period: 4,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;

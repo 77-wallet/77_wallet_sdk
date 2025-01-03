@@ -683,10 +683,12 @@ impl MultisigTransactionService {
                         )
                         .await?
                 } else {
+                    let to = (!queue.to_addr.is_empty()).then(|| queue.to_addr.as_str());
+
                     provider
                         .transfer_fee(
                             &queue.from_addr,
-                            Some(&queue.to_addr),
+                            to,
                             &params.raw_data_hex,
                             signs_list.len() as u8,
                         )

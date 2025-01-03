@@ -113,6 +113,7 @@ pub struct MultisigQueueWithAccountEntity {
     pub symbol: String,
     pub chain_code: String,
     pub fail_reason: String,
+    pub transfer_type: i8,
     pub msg_hash: String,
     pub tx_hash: String,
     pub status: i8,
