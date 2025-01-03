@@ -421,7 +421,7 @@ impl CoinService {
         let coin = vec![cus_coin];
         tx.upsert_multi_coin(coin).await?;
 
-        let account_addresses = self
+        let mut account_addresses = self
             .account_domain
             .get_addresses(
                 tx,
@@ -430,12 +430,22 @@ impl CoinService {
                 Some(chain_code.to_string()),
                 Some(is_multisig),
             )
-            .await?
+            .await?;
+
+        tracing::warn!(
+            "[customize_coin] account_addresses: {:?}",
+            account_addresses
+        );
+        let account_addresses = account_addresses
             .pop()
             .ok_or(crate::ServiceError::Business(
                 crate::BusinessError::Account(crate::AccountError::NotFound),
             ))?;
-        tracing::warn!("account_addresses: {:?}", account_addresses);
+
+        tracing::warn!(
+            "[customize_coin] account_addresses pop: {:?}",
+            account_addresses
+        );
         let is_multisig = if is_multisig { 1 } else { 0 };
 
         // 查询余额
