@@ -59,7 +59,7 @@ impl TransactionAdapter {
             ChainType::Ethereum | ChainType::BnbSmartChain => {
                 let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
-                let eth_chain = chain::eth::EthChain::new(provider, network)?;
+                let eth_chain = chain::eth::EthChain::new(provider, network, chain_code)?;
                 Ok(TransactionAdapter::Ethereum(eth_chain))
             }
             ChainType::Solana => {

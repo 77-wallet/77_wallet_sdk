@@ -62,7 +62,7 @@ impl MultisigAdapter {
                 let rpc_client = RpcClient::new(&chian_node.rpc_url, header_opt, timeout)?;
                 let provider = eth::Provider::new(rpc_client)?;
 
-                let eth_chain = chain::eth::EthChain::new(provider, network)?;
+                let eth_chain = chain::eth::EthChain::new(provider, network, chain_code)?;
                 Ok(MultisigAdapter::Ethereum(eth_chain))
             }
             ChainType::Solana => {
