@@ -10,3 +10,7 @@ rustc-ice*
 wallet-api/wallet_data/
 wallet-api/test_data_back/
 data_**
+
+config.toml
+account.toml
+wallet.toml
