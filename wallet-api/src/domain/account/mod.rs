@@ -44,10 +44,15 @@ impl AccountDomain {
 
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
+                tracing::error!("开始查询多签账户 is_multisig: {is_multisig}");
+                tracing::error!("多签账户地址 address: {address}");
+
+                
                 // 查询多签账户下的资产
                 let account =
                     super::multisig::MultisigDomain::account_by_address(address, true, &pool)
                         .await?;
+                tracing::error!("查询成功 account: {account:?}");
                 account_addresses.push(AddressChainCode {
                     address: account.address,
                     chain_code: account.chain_code,

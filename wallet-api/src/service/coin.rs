@@ -435,7 +435,7 @@ impl CoinService {
             .ok_or(crate::ServiceError::Business(
                 crate::BusinessError::Account(crate::AccountError::NotFound),
             ))?;
-
+        tracing::warn!("account_addresses: {:?}", account_addresses);
         let is_multisig = if is_multisig { 1 } else { 0 };
 
         // 查询余额
