@@ -22,6 +22,8 @@ pub enum ChainError {
     NodeToken(String),
     #[error("sol transfer balance less rent")]
     InsufficientFundsRent,
+    #[error("btc exceeds max fee")]
+    ExceedsMaximum,
 }
 
 impl ChainError {
@@ -38,6 +40,7 @@ impl ChainError {
             ChainError::NotSupportChain => 3509,
             ChainError::NodeToken(_) => 3510,
             ChainError::InsufficientFundsRent => 3511,
+            ChainError::ExceedsMaximum => 3512,
         }
     }
 }

@@ -5,7 +5,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "bc1qgs3l6uh0atn3ks807anzy8sqhvtc2j9dv8axa7";
+    let addr = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
     let chain_code = "btc";
     let symbol = "BTC";
 
@@ -21,8 +21,8 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "bc1qc7ggkxcdlm4xppjjja5c55acrl8uhfry36pple";
-    let to = "3J2sYwhMJjmjQHe8Ujja9JfySYxu657YGM";
+    let from = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
+    let to = "3L4PXQqgsh4j6yoGvXLdaHJWPJQumG1yA4";
     let value = "0.00087585";
     let chain_code = "btc";
     let symbol = "BTC";
@@ -45,21 +45,22 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "bc1qlhmzrl93pnrfdwtxr4edcse73jkk2xwuleu94u";
-    let to = "bcrt1qwmactnqqvl6d3ddxudatqxvvys33275zqls052";
-    let value = "0.0003";
+    let from = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
+    let to = "3L4PXQqgsh4j6yoGvXLdaHJWPJQumG1yA4";
+    let value = "0.00010676";
     let chain_code = "btc";
     let symbol = "BTC";
     let password = "123456";
     // let notes = "test";
 
-    let base = transaction::BaseTransferReq::new(
+    let mut base = transaction::BaseTransferReq::new(
         from.to_string(),
         to.to_string(),
         value.to_string(),
         chain_code.to_string(),
         symbol.to_string(),
     );
+    base.with_spend_all(true);
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),

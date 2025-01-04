@@ -27,10 +27,13 @@ impl BackendApi {
     ) -> Result<Self, crate::Error> {
         let url = backend_url.unwrap_or(crate::consts::BASE_URL.to_string());
 
+        let mut headers_opt = headers_opt.unwrap_or_default();
+        headers_opt.insert("Accept-Encoding".to_string(), "identity".to_string());
+
         let timeout = Some(std::time::Duration::from_secs(15));
         Ok(Self {
             base_url: url.to_string(),
-            client: wallet_transport::client::HttpClient::new(&url, headers_opt, timeout)?,
+            client: wallet_transport::client::HttpClient::new(&url, Some(headers_opt), timeout)?,
         })
     }
 

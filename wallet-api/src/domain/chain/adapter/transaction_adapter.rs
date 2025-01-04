@@ -182,7 +182,8 @@ impl TransactionAdapter {
                     &params.base.value,
                     account.address_type(),
                     chain.network,
-                )?;
+                )?
+                .with_spend_all(params.base.spend_all);
 
                 let tx = chain
                     .transfer(params, private_key)
