@@ -6,10 +6,10 @@ use crate::get_manager;
 #[tokio::test]
 async fn test_votes_fee() {
     let manager = get_manager().await;
-    let vote_address = "TCZvvbn4SCVyNhCAt1L8Kp1qk5rtMiKdBB";
+    let vote_address = "TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX";
     let vote_count = 1;
     let votes = VotesReq::new(vote_address, vote_count);
-    let owner_address = "TY9sP3Nd7ceRheRHBUESgkPmzLkaasuAz9";
+    let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
     let req = VoteWitnessReq::new(owner_address, vec![votes]);
 
     let bill_kind = BillKind::Vote.to_i8() as i64;

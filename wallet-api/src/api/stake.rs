@@ -299,9 +299,11 @@ mod tests {
             .await
             .unwrap();
 
-        let owner_address = "TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ";
-        let vote_witness_req =
-            VoteWitnessReq::new(owner_address, vec![VotesReq::new("vote_address", 10)]); // You may need to import this struct
+        let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
+        let vote_witness_req = VoteWitnessReq::new(
+            owner_address,
+            vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1)],
+        ); // You may need to import this struct
         let password = "123456"; // Replace with the actual password
         tracing::warn!(
             "{:#?}",

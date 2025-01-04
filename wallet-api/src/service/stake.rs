@@ -320,7 +320,6 @@ impl StackService {
             BillKind::Vote => {
                 let req = serde_func::serde_from_str::<stake::VoteWitnessReq>(&content)?;
                 let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
-
                 Ok((StakeArgs::Votes(args), req.owner_address.clone()))
             }
             BillKind::WithdrawReward => {
