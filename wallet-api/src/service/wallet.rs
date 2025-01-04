@@ -306,7 +306,6 @@ impl WalletService {
             .wallet_domain
             .restart_existing_wallet(tx, address)
             .await?;
-
         let storage_path = dirs.get_root_dir(address)?;
         wallet_utils::file_func::recreate_dir_all(&storage_path)?;
 

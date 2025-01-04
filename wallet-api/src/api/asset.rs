@@ -119,7 +119,6 @@ impl crate::WalletManager {
             .into()
     }
 
-    // TODO:
     /// 获取普通账户总资产
     pub async fn get_account_assets(
         &self,
@@ -321,7 +320,7 @@ mod test {
         let chain_code = None;
         // let is_multisig = None;
         let is_multisig = Some(false);
-        let wallet_address = "0xbD5B36A5Ddc3b93d02d0DD085B8A76508E2d125A";
+        let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
         let res = wallet_manager
             .get_coin_list(wallet_address, Some(1), chain_code, keyword, is_multisig)
             .await;

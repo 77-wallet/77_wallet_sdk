@@ -102,8 +102,6 @@ impl ChainDomain {
         let default_nodes =
             wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(1)).await?;
 
-        let chain_list = ChainRepoTrait::get_chain_list(&mut repo).await?;
-
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
         let mut has_new_chain = false;
@@ -121,9 +119,10 @@ impl ChainDomain {
                 has_new_chain = true;
             }
 
-            if let Some(node) = local_backend_nodes
+            if local_backend_nodes
                 .iter()
                 .find(|node| node.chain_code == chain.chain_code)
+                .is_some()
             {
                 input.push(
                     wallet_database::entities::chain::ChainCreateVo::new(
@@ -134,9 +133,10 @@ impl ChainDomain {
                     )
                     .with_status(status),
                 );
-            } else if let Some(node) = default_nodes
+            } else if default_nodes
                 .iter()
                 .find(|node| node.chain_code == chain.chain_code)
+                .is_some()
             {
                 input.push(
                     wallet_database::entities::chain::ChainCreateVo::new(

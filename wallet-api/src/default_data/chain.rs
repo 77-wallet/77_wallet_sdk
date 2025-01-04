@@ -4,7 +4,7 @@ use std::collections::HashMap;
 pub(crate) struct DefaultChain {
     pub(crate) name: String,
     pub(crate) chain_code: String,
-    pub(crate) node_name: String,
+    // pub(crate) node_name: String,
     // pub(crate) rpc_url: String,
     // pub(crate) http_url: String,
     pub(crate) protocols: Vec<String>,

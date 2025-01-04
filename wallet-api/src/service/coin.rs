@@ -1,10 +1,7 @@
 use std::collections::HashSet;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{
-        assets::AssetsId,
-        coin::{CoinData, CoinId},
-    },
+    entities::{assets::AssetsId, coin::CoinId},
     repositories::{
         assets::AssetsRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
         exchange_rate::ExchangeRateRepoTrait, ResourcesRepo,
@@ -241,8 +238,8 @@ impl CoinService {
             };
             tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit)
                 .await?;
-            tx.update_status(&token.chain_code, &token.symbol, token.token_address, 1)
-                .await?;
+            // tx.update_status(&token.chain_code, &token.symbol, token.token_address, 1)
+            //     .await?;
         }
 
         Ok(())
@@ -466,15 +463,7 @@ impl CoinService {
         .with_name(&name)
         .with_balance(&balance)
         .with_u256(alloy::primitives::U256::default(), decimals)?;
-        // TODO:
-        // if !coin.price.is_empty() {
-        //     assets = assets.with_status(1);
-        // } else {
-        //     req.insert(
-        //         chain_code,
-        //         &assets.token_address.clone().unwrap_or_default(),
-        //     );
-        // }
+
         tx.upsert_assets(assets).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
             chain_code: chain_code.to_string(),

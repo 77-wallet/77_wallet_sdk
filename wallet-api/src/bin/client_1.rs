@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .create_wallet(test_params.create_wallet_req)
         .await
         .result;
-    // tracing::warn!("wallet: {wallet:#?}");
+    tracing::warn!("wallet: {wallet:#?}");
     let wallet = wallet.unwrap();
     test_params.create_account_req.wallet_address = wallet.address;
     wallet_manager

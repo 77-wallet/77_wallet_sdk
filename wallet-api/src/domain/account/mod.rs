@@ -47,7 +47,6 @@ impl AccountDomain {
                 tracing::error!("开始查询多签账户 is_multisig: {is_multisig}");
                 tracing::error!("多签账户地址 address: {address}");
 
-
                 // 查询多签账户下的资产
                 let account =
                     super::multisig::MultisigDomain::account_by_address(address, true, &pool)
