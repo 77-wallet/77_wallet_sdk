@@ -4,6 +4,21 @@ use wallet_database::entities::bill::BillKind;
 use crate::get_manager;
 
 #[tokio::test]
+async fn test_vote() {
+    let manager = get_manager().await;
+    let owner_address = "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF";
+    let vote_witness_req = VoteWitnessReq::new(
+        owner_address,
+        vec![VotesReq::new("TEp1ru7opCexkbFM9ChK6DFfL2XFSfUo2N", 100)],
+    );
+    let password = "123456"; // Replace with the actual password
+
+    let res = manager.votes(vote_witness_req, password).await;
+
+    tracing::info!("votes {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
 async fn test_votes_fee() {
     let manager = get_manager().await;
     let vote_address = "TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX";

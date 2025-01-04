@@ -34,9 +34,9 @@ async fn test_freeze_fee() {
 async fn test_freeze() {
     let manager = get_manager().await;
     let req = FreezeBalanceReq {
-        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        owner_address: "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF".to_string(),
         resource: "energy".to_string(),
-        frozen_balance: 200,
+        frozen_balance: 2000,
     };
     let password = "123456".to_string();
 
