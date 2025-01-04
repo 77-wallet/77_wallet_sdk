@@ -868,6 +868,8 @@ impl StackService {
     pub async fn delegate_to_other(
         &self,
         owner_address: &str,
+        page: i64,
+        page_size: i64,
     ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
@@ -890,6 +892,8 @@ impl StackService {
     pub async fn delegate_from_other(
         &self,
         to: &str,
+        page: i64,
+        page_size: i64,
     ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;

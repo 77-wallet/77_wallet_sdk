@@ -180,7 +180,7 @@ async fn test_delegate_to_other() {
     let manager = get_manager().await;
 
     let owner_address = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
-    let res = manager.delegate_to_other(owner_address).await;
+    let res = manager.delegate_to_other(owner_address, 0, 10).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
@@ -190,7 +190,7 @@ async fn test_delegate_from_other() {
     let manager = get_manager().await;
 
     let owner_address = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
-    let res = manager.delegate_from_other(owner_address).await;
+    let res = manager.delegate_from_other(owner_address, 0, 10).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
