@@ -46,8 +46,8 @@ async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
     let from = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
-    let to = "3L4PXQqgsh4j6yoGvXLdaHJWPJQumG1yA4";
-    let value = "0.00010676";
+    let to = "1Jv4gmzbgfJW9zFYLV3rDrd7GroUEuqBTz";
+    let value = "0.0000005";
     let chain_code = "btc";
     let symbol = "BTC";
     let password = "123456";
@@ -60,7 +60,7 @@ async fn test_transfer() {
         chain_code.to_string(),
         symbol.to_string(),
     );
-    base.with_spend_all(true);
+    base.with_spend_all(false);
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
