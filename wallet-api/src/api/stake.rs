@@ -287,8 +287,31 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::test::env::{setup_test_environment, TestData};
+    use crate::{
+        request::stake::{VoteWitnessReq, VotesReq},
+        test::env::{setup_test_environment, TestData},
+    };
 
+    #[tokio::test]
+    async fn test_votes() {
+        wallet_utils::init_test_log();
+        let TestData { wallet_manager, .. } = setup_test_environment(None, None, false, None)
+            .await
+            .unwrap();
+
+        let owner_address = "TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ";
+        let vote_witness_req =
+            VoteWitnessReq::new(owner_address, vec![VotesReq::new("vote_address", 10)]); // You may need to import this struct
+        let password = "123456"; // Replace with the actual password
+        tracing::warn!(
+            "{:#?}",
+            wallet_utils::serde_func::serde_to_string(&vote_witness_req)
+        );
+        let res = wallet_manager.votes(vote_witness_req, password).await;
+        println!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
+        tracing::info!("{:#?}", res);
+    }
     #[tokio::test]
     async fn test_votes_node_list() {
         wallet_utils::init_test_log();
