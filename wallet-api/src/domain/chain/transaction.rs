@@ -234,6 +234,9 @@ impl ChainTransaction {
             wallet_chain_interact::Error::UtxoError(
                 wallet_chain_interact::UtxoError::InsufficientFee,
             ) => crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance).into(),
+            wallet_chain_interact::Error::UtxoError(
+                wallet_chain_interact::UtxoError::ExceedsMaximum,
+            ) => crate::BusinessError::Chain(crate::ChainError::ExceedsMaximum).into(),
             _ => err.into(),
         }
     }
