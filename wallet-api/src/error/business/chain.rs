@@ -24,6 +24,8 @@ pub enum ChainError {
     InsufficientFundsRent,
     #[error("btc exceeds max fee")]
     ExceedsMaximum,
+    #[error("Dust transaction")]
+    DustTransaction,
 }
 
 impl ChainError {
@@ -41,6 +43,7 @@ impl ChainError {
             ChainError::NodeToken(_) => 3510,
             ChainError::InsufficientFundsRent => 3511,
             ChainError::ExceedsMaximum => 3512,
+            ChainError::DustTransaction => 3513,
         }
     }
 }
