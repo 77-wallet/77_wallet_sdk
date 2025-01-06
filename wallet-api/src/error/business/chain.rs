@@ -26,6 +26,8 @@ pub enum ChainError {
     ExceedsMaximum,
     #[error("Dust transaction")]
     DustTransaction,
+    #[error("Exceeds Max Fee")]
+    ExceedsMaxFeerate,
 }
 
 impl ChainError {
@@ -44,6 +46,7 @@ impl ChainError {
             ChainError::InsufficientFundsRent => 3511,
             ChainError::ExceedsMaximum => 3512,
             ChainError::DustTransaction => 3513,
+            ChainError::ExceedsMaxFeerate => 3514,
         }
     }
 }

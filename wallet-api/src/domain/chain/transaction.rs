@@ -240,6 +240,9 @@ impl ChainTransaction {
             wallet_chain_interact::Error::UtxoError(wallet_chain_interact::UtxoError::DustTx) => {
                 crate::BusinessError::Chain(crate::ChainError::DustTransaction).into()
             }
+            wallet_chain_interact::Error::UtxoError(
+                wallet_chain_interact::UtxoError::ExceedsMaxFeeRate,
+            ) => crate::BusinessError::Chain(crate::ChainError::ExceedsMaxFeerate).into(),
             _ => err.into(),
         }
     }
