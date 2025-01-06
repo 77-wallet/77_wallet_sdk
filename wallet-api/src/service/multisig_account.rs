@@ -441,18 +441,15 @@ impl MultisigAccountService {
         if multisig_account.pay_status != MultisigAccountPayStatus::Paid.to_i8() {
             if let Some(payer) = payer {
                 let fee_chain = payer.chain_code.clone();
-                let fee_hash = self
+                let fee_res = self
                     ._transfer_service_fee(&multisig_account, payer, password)
                     .await?;
 
                 // 同步多签账户里面的fee_hash,以及费用是部署在那个链上的
                 let params = HashMap::from([
-                    ("fee_hash".to_string(), fee_hash),
+                    ("fee_hash".to_string(), fee_res.0),
                     ("fee_chain".to_string(), fee_chain),
-                    (
-                        "pay_status".to_string(),
-                        MultisigAccountPayStatus::PaidPending.to_i8().to_string(),
-                    ),
+                    ("pay_status".to_string(), fee_res.1),
                 ]);
                 let _ = self.repo.update_by_id(account_id, params).await?;
             } else {
@@ -548,7 +545,7 @@ impl MultisigAccountService {
         multisig_account: &MultisigAccountEntity,
         payer: transaction::ServiceFeePayer,
         password: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<(String, String), crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
 
         // fetch address
@@ -585,7 +582,15 @@ impl MultisigAccountService {
             if let Some(tx) = tx {
                 if tx.status != 3 {
                     // 交易成功或者在确认中不在进行交易，只有失败才再次转账
-                    return Ok(multisig_account.fee_hash.clone());
+                    let pay_status = if tx.status == 2 {
+                        MultisigAccountPayStatus::Paid
+                    } else {
+                        MultisigAccountPayStatus::PaidPending
+                    };
+                    return Ok((
+                        multisig_account.fee_hash.clone(),
+                        pay_status.to_i8().to_string(),
+                    ));
                 }
             }
         }
@@ -615,7 +620,10 @@ impl MultisigAccountService {
         }));
         Tasks::new().push(task).send().await?;
 
-        Ok(tx_hash)
+        Ok((
+            tx_hash,
+            MultisigAccountPayStatus::PaidPending.to_i8().to_string(),
+        ))
     }
 
     async fn _deploy_account(
