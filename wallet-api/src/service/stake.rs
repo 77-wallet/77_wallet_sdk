@@ -22,6 +22,7 @@ use crate::response_vo::stake as resp;
 use crate::response_vo::stake::AddressExists;
 use crate::response_vo::stake::BatchDelegateResp;
 use crate::response_vo::stake::BatchRes;
+use crate::response_vo::stake::DelegateListResp;
 use crate::response_vo::stake::ResourceResp;
 use crate::response_vo::EstimateFeeResp;
 use crate::response_vo::TronFeeDetails;
@@ -42,6 +43,7 @@ use wallet_database::entities::multisig_queue::MultisigQueueEntity;
 use wallet_database::entities::multisig_queue::NewMultisigQueueEntity;
 use wallet_database::entities::multisig_signatures::MultisigSignatureStatus;
 use wallet_database::entities::multisig_signatures::NewSignatureEntity;
+use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::request::SignedTranCreateReq;
@@ -870,7 +872,7 @@ impl StackService {
         owner_address: &str,
         page: i64,
         page_size: i64,
-    ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
+    ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
@@ -878,15 +880,46 @@ impl StackService {
 
         let resource = ChainTransaction::account_resorce(&chain, owner_address).await?;
 
-        let mut result = vec![];
-        for to in delegate_other.to_accounts {
+        let len = delegate_other.to_accounts.len();
+        let total_page = len / page_size as usize;
+
+        if page as usize > total_page {
+            let res = Pagination {
+                page,
+                page_size,
+                total_count: len as i64,
+                data: vec![],
+            };
+            return Ok(res);
+        }
+
+        let mut data = vec![];
+        let accounts = self.page_address(page, page_size, &delegate_other.to_accounts);
+        for to in accounts {
             let res = self
                 .process_delegate(&chain, &owner_address, &to, &resource)
                 .await?;
-            result.extend(res);
+            data.extend(res);
         }
 
-        Ok(result)
+        let res = Pagination {
+            page,
+            page_size,
+            total_count: len as i64,
+            data,
+        };
+
+        Ok(res)
+    }
+
+    fn page_address(&self, page: i64, page_size: i64, accounts: &Vec<String>) -> Vec<String> {
+        let start = (page) * page_size;
+        let end = ((page + 1) * page_size) as usize;
+
+        let len = accounts.len();
+        let end = if end > len { len } else { end };
+
+        accounts[start as usize..end].to_vec()
     }
 
     pub async fn delegate_from_other(
@@ -894,23 +927,42 @@ impl StackService {
         to: &str,
         page: i64,
         page_size: i64,
-    ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
+    ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let delegate_other = chain.provider.delegate_others_list(to).await?;
 
+        let len = delegate_other.from_accounts.len();
+        let total_page = len / page_size as usize;
+        if page as usize > total_page {
+            let res = Pagination {
+                page,
+                page_size,
+                total_count: len as i64,
+                data: vec![],
+            };
+            return Ok(res);
+        }
+
         let resource = ChainTransaction::account_resorce(&chain, to).await?;
 
-        let mut result = vec![];
-        for owner_address in delegate_other.from_accounts {
+        let mut data = vec![];
+        for owner_address in self.page_address(page, page_size, &delegate_other.from_accounts) {
             let res = self
                 .process_delegate(&chain, &owner_address, to, &resource)
                 .await?;
-            result.extend(res);
+            data.extend(res);
         }
 
-        Ok(result)
+        let res = Pagination {
+            page,
+            page_size,
+            total_count: len as i64,
+            data,
+        };
+
+        Ok(res)
     }
 
     pub async fn system_resource(

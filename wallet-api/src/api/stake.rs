@@ -15,6 +15,7 @@ use crate::{
     },
     service::stake::StackService,
 };
+use wallet_database::pagination::Pagination;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 
 impl crate::WalletManager {
@@ -212,7 +213,7 @@ impl crate::WalletManager {
         owner_address: String,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<Vec<DelegateListResp>> {
+    ) -> ReturnType<Pagination<DelegateListResp>> {
         StackService::new()
             .await?
             .delegate_to_other(&owner_address, page, page_size)
@@ -225,7 +226,7 @@ impl crate::WalletManager {
         owner_address: String,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<Vec<DelegateListResp>> {
+    ) -> ReturnType<Pagination<DelegateListResp>> {
         StackService::new()
             .await?
             .delegate_from_other(&owner_address, page, page_size)
