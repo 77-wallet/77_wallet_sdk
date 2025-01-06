@@ -33,6 +33,7 @@ pub struct TransferParams {
     pub symbol: String,
     pub password: String,
     pub notes: Option<String>,
+    pub spend_all: bool,
 }
 
 impl From<&TransferParams> for NewMultisigQueueEntity {

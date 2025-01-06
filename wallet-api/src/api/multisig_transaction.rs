@@ -9,6 +9,7 @@ use crate::{
 use wallet_database::pagination::Pagination;
 
 impl crate::WalletManager {
+    // only solana has create fee
     pub async fn create_queue_fee(
         &self,
         params: MultisigQueueFeeParams,

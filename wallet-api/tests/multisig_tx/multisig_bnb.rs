@@ -67,6 +67,7 @@ async fn test_create_transfer() {
         symbol: "ETH".to_owned(),
         password,
         notes: Some("salary".to_string()),
+        spend_all: false,
     };
 
     // 创建交易

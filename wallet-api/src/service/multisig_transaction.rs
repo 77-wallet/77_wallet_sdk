@@ -1,4 +1,4 @@
-use crate::domain::chain::adapter::MultisigAdapter;
+use crate::domain::chain::adapter::{ChainAdapterFactory, MultisigAdapter};
 use crate::domain::chain::TransferResp;
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
@@ -97,9 +97,7 @@ impl MultisigTransactionService {
             &req_params.password,
         )
         .await?;
-        let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(&account.chain_code)
-                .await?;
+        let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
         let rs = adapter
             .build_multisig_tx(
                 &req_params,

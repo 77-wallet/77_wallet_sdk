@@ -405,7 +405,8 @@ impl MultisigAdapter {
                     &req.value,
                     account.address_type(),
                     chain.network,
-                )?;
+                )?
+                .with_spend_all(req.spend_all);
 
                 Ok(chain
                     .build_multisig_tx(params)
