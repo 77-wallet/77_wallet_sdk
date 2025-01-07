@@ -37,6 +37,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "drum planet ugly present absorb chair simple shiver honey object captain unable"
             .to_string(),
     );
+    let phrase = Some(
+        "attack notable tonight bomb divide this share dirt proof program disagree before"
+            .to_string(),
+    );
     // let phrase = Some(
     //     "loan tiny planet lucky rigid clip coil recall praise obvious debris dilemma".to_string(),
     // );

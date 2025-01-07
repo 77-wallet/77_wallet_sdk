@@ -221,7 +221,8 @@ pub async fn setup_test_environment(
     // let salt = "12345678".to_string();
     // let salt = "1234qwer".to_string();
     // let salt = "12345qwe".to_string();
-    let salt = "qwer1234".to_string();
+    // let salt = "qwer1234".to_string();
+    let salt = "a123456.".to_string();
     // let salt = "123".to_string();
     // let salt = "".to_string();
     if temp {
