@@ -134,7 +134,6 @@ impl AccountDomain {
             is_default_name,
         )
         .await?;
-
         let res = CreateAccountRes {
             address: address.to_string(),
         };

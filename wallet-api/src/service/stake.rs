@@ -1,24 +1,58 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
+use crate::domain::coin::TokenCurrencyGetter;
+use crate::domain::multisig::MultisigDomain;
+use crate::domain::stake::EstimateTxComsumer;
+use crate::domain::stake::StakeArgs;
+use crate::domain::stake::StakeDomain;
 use crate::error::business::stake::StakeError;
+use crate::infrastructure::task_queue::BackendApiTask;
+use crate::infrastructure::task_queue::BackendApiTaskData;
+use crate::infrastructure::task_queue::Task;
+use crate::infrastructure::task_queue::Tasks;
 use crate::manager::Context;
+use crate::mqtt::payload::incoming::transaction::MultiSignTransAccept;
 use crate::notify::event::other::Process;
 use crate::notify::event::other::TransactionProcessFrontend;
 use crate::notify::FrontendNotifyEvent;
 use crate::notify::NotifyEvent;
 use crate::request::stake;
-use crate::request::stake::UnDelegateReq;
 use crate::response_vo::account::AccountResource;
+use crate::response_vo::account::Resource;
+use crate::response_vo::account::TrxResource;
 use crate::response_vo::stake as resp;
+use crate::response_vo::stake::AddressExists;
+use crate::response_vo::stake::BatchDelegateResp;
+use crate::response_vo::stake::BatchRes;
+use crate::response_vo::stake::DelegateListResp;
+use crate::response_vo::stake::ResourceResp;
+use crate::response_vo::EstimateFeeResp;
+use crate::response_vo::TronFeeDetails;
 use crate::BusinessError;
 use wallet_chain_interact::tron::operations as ops;
+use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
+use wallet_chain_interact::tron::operations::stake::DelegateArgs;
+use wallet_chain_interact::tron::operations::stake::UnDelegateArgs;
+use wallet_chain_interact::tron::operations::RawTransactionParams;
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
+use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_chain_interact::tron::TronChain;
+use wallet_chain_interact::types::ChainPrivateKey;
+use wallet_database::dao::bill::BillDao;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
+use wallet_database::entities::multisig_queue::MultisigQueueEntity;
+use wallet_database::entities::multisig_queue::NewMultisigQueueEntity;
+use wallet_database::entities::multisig_signatures::MultisigSignatureStatus;
+use wallet_database::entities::multisig_signatures::NewSignatureEntity;
+use wallet_database::pagination::Pagination;
+use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
+use wallet_transport_backend::consts::endpoint;
+use wallet_transport_backend::request::SignedTranCreateReq;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 use wallet_types::constant::chain_code;
+use wallet_utils::serde_func;
 
 pub struct StackService {
     chain: TronChain,
@@ -64,6 +98,73 @@ impl StackService {
         Ok(hash)
     }
 
+    // 批量构建交易并发送通知到前端
+    async fn batch_build_transaction<T>(
+        &self,
+        args: Vec<impl ops::TronTxOperation<T>>,
+        bill_kind: BillKind,
+    ) -> Result<Vec<(RawTransactionParams, String)>, crate::ServiceError> {
+        let mut result = vec![];
+
+        for (i, item) in args.into_iter().enumerate() {
+            let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
+                bill_kind,
+                (i + 1) as i64,
+                Process::Building,
+            ));
+            FrontendNotifyEvent::new(data).send().await?;
+
+            let res = item.build_raw_transaction(&self.chain.provider).await?;
+            result.push((res, item.get_to()));
+        }
+
+        Ok(result)
+    }
+
+    async fn batch_exec(
+        &self,
+        from: String,
+        key: ChainPrivateKey,
+        bill_kind: BillKind,
+        txs: Vec<(RawTransactionParams, String)>,
+    ) -> Result<(Vec<BatchRes>, Vec<String>), crate::ServiceError> {
+        let mut exce_res = vec![];
+        let mut tx_hash = vec![];
+
+        for (i, item) in txs.into_iter().enumerate() {
+            let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new_with_num(
+                bill_kind,
+                (i + 1) as i64,
+                Process::Broadcast,
+            ));
+            FrontendNotifyEvent::new(data).send().await?;
+
+            let result = self.chain.exec_transaction_v1(item.0, key.clone()).await;
+            match result {
+                Ok(hash) => {
+                    let entity =
+                        NewBillEntity::new_stake_bill(hash.clone(), from.clone(), bill_kind);
+                    domain::bill::BillDomain::create_bill(entity).await?;
+
+                    let ra = BatchRes {
+                        address: item.1,
+                        status: true,
+                    };
+                    exce_res.push(ra);
+                    tx_hash.push(hash);
+                }
+                Err(_e) => {
+                    let ra = BatchRes {
+                        address: item.1,
+                        status: false,
+                    };
+                    exce_res.push(ra);
+                }
+            }
+        }
+        Ok((exce_res, tx_hash))
+    }
+
     async fn resource_value(
         &self,
         owner_address: &str,
@@ -77,6 +178,7 @@ impl StackService {
     async fn process_delegate(
         &self,
         chain: &TronChain,
+        resource_type: &Option<String>,
         owner_address: &str,
         to: &str,
         resource: &AccountResourceDetail,
@@ -89,65 +191,262 @@ impl StackService {
             .await?;
 
         for delegate in res.delegated_resource {
-            // 处理能源类型
-            if delegate.frozen_balance_for_energy > 0 {
-                let resource_type = ops::stake::ResourceType::ENERGY;
-                let amount = delegate.value_trx(resource_type);
-                let resource_value = resource.resource_value(resource_type, amount)?;
+            if let Some(types) = &resource_type {
+                if types.to_ascii_lowercase() == "bandwidth"
+                    && delegate.frozen_balance_for_bandwidth > 0
+                {
+                    let resource_type = ops::stake::ResourceType::ENERGY;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
 
-                let r = resp::DelegateListResp::new(
-                    &delegate,
-                    resource_value,
-                    resource_type,
-                    amount,
-                    delegate.expire_time_for_energy,
-                )?;
-                result.push(r);
-            }
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_energy,
+                    )?;
+                    result.push(r);
+                }
 
-            // 处理带宽类型
-            if delegate.frozen_balance_for_bandwidth > 0 {
-                let resource_type = ops::stake::ResourceType::BANDWIDTH;
-                let amount = delegate.value_trx(resource_type);
-                let resource_value = resource.resource_value(resource_type, amount)?;
+                if types.to_ascii_lowercase() == "energy" && delegate.frozen_balance_for_energy > 0
+                {
+                    let resource_type = ops::stake::ResourceType::ENERGY;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
 
-                let r = resp::DelegateListResp::new(
-                    &delegate,
-                    resource_value,
-                    resource_type,
-                    amount,
-                    delegate.expire_time_for_bandwidth,
-                )?;
-                result.push(r);
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_energy,
+                    )?;
+                    result.push(r);
+                }
+            } else {
+                // 处理能源类型
+                if delegate.frozen_balance_for_energy > 0 {
+                    let resource_type = ops::stake::ResourceType::ENERGY;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
+
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_energy,
+                    )?;
+                    result.push(r);
+                }
+
+                // 处理带宽类型
+                if delegate.frozen_balance_for_bandwidth > 0 {
+                    let resource_type = ops::stake::ResourceType::BANDWIDTH;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
+
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_bandwidth,
+                    )?;
+                    result.push(r);
+                }
             }
         }
 
         Ok(result)
     }
+
+    fn fill_resource_info(
+        &self,
+        resource: &mut Resource,
+        account: &TronAccount,
+        resource_type: ops::stake::ResourceType,
+        price: f64,
+    ) {
+        // 代理给别人的
+        let delegate = account.delegate_resource(resource_type);
+        resource.delegate_freeze = TrxResource::new(delegate, price);
+
+        // 别人我给代理的
+        let acquire = account.acquired_resource(resource_type);
+        resource.acquire_freeze = TrxResource::new(acquire, price);
+
+        // 自己质押的
+        let type_str = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => "",
+            ops::stake::ResourceType::ENERGY => "ENERGY",
+        };
+        let owner = account.frozen_v2_owner(&type_str);
+        resource.owner_freeze = TrxResource::new(owner, price);
+
+        resource.can_unfreeze = owner;
+
+        // 可提取的
+        let can_withdraw = account.can_withdraw_unfreeze_amount(&type_str);
+        resource.pending_withdraw = TrxResource::new(can_withdraw, price);
+
+        // 价格
+        resource.price = price;
+
+        // 计算可转账次数
+        resource.calculate_transfer_times();
+
+        // 计算总的质押
+        resource.calculate_total();
+    }
+
+    fn convert_stake_args(
+        &self,
+        bill_kind: BillKind,
+        content: String,
+    ) -> Result<(StakeArgs, String), crate::ServiceError> {
+        match bill_kind {
+            BillKind::FreezeBandwidth | BillKind::FreezeEnergy => {
+                let req = serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
+                let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
+
+                Ok((StakeArgs::Freeze(args), req.owner_address.clone()))
+            }
+            BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => {
+                let req = serde_func::serde_from_str::<stake::UnFreezeBalanceReq>(&content)?;
+                let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
+
+                Ok((StakeArgs::UnFreeze(args), req.owner_address.clone()))
+            }
+            BillKind::CancelAllUnFreeze => {
+                let req = serde_func::serde_from_str::<stake::CancelAllUnFreezeReq>(&content)?;
+                let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
+
+                Ok((
+                    StakeArgs::CancelAllUnFreeze(args),
+                    req.owner_address.clone(),
+                ))
+            }
+            BillKind::WithdrawUnFreeze => {
+                let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
+                let args = ops::stake::WithdrawUnfreezeArgs {
+                    owner_address: req.owner_address.clone(),
+                };
+
+                Ok((StakeArgs::Withdraw(args), req.owner_address.clone()))
+            }
+            BillKind::DelegateBandwidth | BillKind::DelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::DelegateReq>(&content)?;
+                let args = ops::stake::DelegateArgs::try_from(&req)?;
+
+                Ok((StakeArgs::Delegate(args), req.owner_address.clone()))
+            }
+            BillKind::UnDelegateBandwidth | BillKind::UnDelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::UnDelegateReq>(&content)?;
+                let args = ops::stake::UnDelegateArgs::try_from(&req)?;
+
+                Ok((StakeArgs::UnDelegate(args), req.owner_address.clone()))
+            }
+            BillKind::BatchDelegateBandwidth | BillKind::BatchDelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::BatchDelegate>(&content)?;
+
+                let args: Vec<DelegateArgs> = (&req).try_into()?;
+                Ok((StakeArgs::BatchDelegate(args), req.owner_address.clone()))
+            }
+            BillKind::BatchUnDelegateBandwidth | BillKind::BatchUnDelegateEnergy => {
+                let req = serde_func::serde_from_str::<stake::BatchUnDelegate>(&content)?;
+
+                let args: Vec<UnDelegateArgs> = (&req).try_into()?;
+                Ok((StakeArgs::BatchUnDelegate(args), req.owner_address.clone()))
+            }
+            BillKind::Vote => {
+                let req = serde_func::serde_from_str::<stake::VoteWitnessReq>(&content)?;
+                let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
+                Ok((StakeArgs::Votes(args), req.owner_address.clone()))
+            }
+            BillKind::WithdrawReward => {
+                let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
+                let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
+
+                Ok((StakeArgs::WithdrawReward(args), req.owner_address.clone()))
+            }
+            _ => {
+                return Err(crate::BusinessError::Stake(
+                    crate::StakeError::UnSupportBillKind,
+                ))?
+            }
+        }
+    }
 }
 
 impl StackService {
-    // 预估可以获得的资源
-    pub async fn get_estimated_resources(
+    // // 输入trx 得到对应的资源
+    // pub async fn trx_to_resource(
+    //     &self,
+    //     account: String,
+    //     value: i64,
+    //     resource_type: String,
+    // ) -> Result<resp::TrxToResourceResp, crate::ServiceError> {
+    //     let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
+
+    //     let resource_value = self.resource_value(&account, value, resource_type).await?;
+    //     let resource = resp::ResourceResp::new(value, resource_type, resource_value);
+
+    //     let consumer = match resource_type {
+    //         ops::stake::ResourceType::BANDWIDTH => NET_CONSUME,
+    //         ops::stake::ResourceType::ENERGY => ENERGY_CONSUME,
+    //     };
+
+    //     Ok(resp::TrxToResourceResp::new(resource, consumer))
+    // }
+
+    // // 输入 resoruce 换算trx
+    // pub async fn resource_to_trx(
+    //     &self,
+    //     account: String,
+    //     value: i64,
+    //     resource_type: String,
+    // ) -> Result<resp::ResourceToTrxResp, crate::ServiceError> {
+    //     let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
+    //     let resource = ChainTransaction::account_resorce(&self.chain, &account).await?;
+
+    //     let (price, consumer) = match resource_type {
+    //         ops::stake::ResourceType::BANDWIDTH => (resource.net_price(), NET_CONSUME),
+    //         ops::stake::ResourceType::ENERGY => (resource.energy_price(), ENERGY_CONSUME),
+    //     };
+
+    //     let amount = (value as f64 / price) as i64;
+    //     let transfer_times = value as f64 / consumer;
+
+    //     Ok(resp::ResourceToTrxResp {
+    //         amount,
+    //         votes: amount,
+    //         transfer_times,
+    //     })
+    // }
+
+    pub async fn estimate_stake_fee(
         &self,
-        account: String,
-        value: i64,
-        resource_type: String,
-    ) -> Result<resp::EstimatedResourcesResp, crate::ServiceError> {
-        let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
+        bill_kind: i64,
+        content: String,
+    ) -> Result<EstimateFeeResp, crate::ServiceError> {
+        let bill_kind = BillKind::try_from(bill_kind as i8)?;
 
-        let resource = self.chain.account_resource(&account).await?;
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
 
-        let (price, consumer) = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => (resource.net_price(), 268.0),
-            ops::stake::ResourceType::ENERGY => (resource.energy_price(), 70000.0),
-        };
+        let token_currency =
+            domain::coin::token_price::TokenCurrencyGetter::get_currency(currency, "tron", "TRX")
+                .await?;
 
-        Ok(resp::EstimatedResourcesResp::new(
-            value,
-            price,
-            resource_type,
-            consumer,
+        let (args, account) = self.convert_stake_args(bill_kind, content)?;
+
+        let consumer = args.exec(&account, &self.chain).await?;
+        let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+
+        let content = wallet_utils::serde_func::serde_to_string(&res)?;
+
+        Ok(EstimateFeeResp::new(
+            "TRX".to_string(),
+            chain_code::TRON.to_string(),
+            content,
         ))
     }
 
@@ -156,14 +455,19 @@ impl StackService {
         &self,
         req: stake::FreezeBalanceReq,
         password: &str,
-    ) -> Result<resp::FreezeResp, crate::error::ServiceError> {
+    ) -> Result<resp::FreezeResp, crate::ServiceError> {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
         let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+
         let tx_hash = self
-            .process_transaction(args, BillKind::Freeze, &from, password)
+            .process_transaction(args, bill_kind, &from, password)
             .await?;
 
         let resource_value = self
@@ -171,9 +475,15 @@ impl StackService {
             .await?;
 
         let resource = resp::ResourceResp::new(req.frozen_balance, resource_type, resource_value);
-        Ok(resp::FreezeResp::new(resource, tx_hash, BillKind::Freeze))
+        Ok(resp::FreezeResp::new(
+            req.owner_address.clone(),
+            resource,
+            tx_hash,
+            bill_kind,
+        ))
     }
 
+    // 质押明细
     pub async fn freeze_list(
         &self,
         owner: &str,
@@ -181,24 +491,48 @@ impl StackService {
         let account = self.chain.account_info(owner).await?;
         let resource = self.chain.account_resource(owner).await?;
 
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
         let mut res = vec![];
         let bandwidth = account.frozen_v2_owner("");
         if bandwidth > 0 {
-            let price = resource.net_price();
-            let freeze =
-                resp::FreezeListResp::new(bandwidth, price, ops::stake::ResourceType::BANDWIDTH);
+            let resource_type = ops::stake::ResourceType::BANDWIDTH;
+            let resource_value = resource.resource_value(resource_type, bandwidth)?;
+
+            let resource_resp = resp::ResourceResp::new(bandwidth, resource_type, resource_value);
+            let mut freeze = resp::FreezeListResp::new(resource_resp);
+
+            let kinds = vec![
+                BillKind::FreezeBandwidth.to_i8(),
+                BillKind::UnFreezeBandwidth.to_i8(),
+            ];
+            let bill = BillDao::last_kind_bill(pool.as_ref(), owner, kinds).await?;
+            if let Some(bill) = bill {
+                freeze.opration_time = Some(bill.transaction_time)
+            }
+
             res.push(freeze);
         }
 
         let energy = account.frozen_v2_owner("ENERGY");
         if energy > 0 {
-            let energy_price = resource.energy_price();
-            let freeze =
-                resp::FreezeListResp::new(energy, energy_price, ops::stake::ResourceType::ENERGY);
+            let resource_type = ops::stake::ResourceType::ENERGY;
+            let resource_value = resource.resource_value(resource_type, energy)?;
+
+            let resource_resp = resp::ResourceResp::new(energy, resource_type, resource_value);
+            let mut freeze = resp::FreezeListResp::new(resource_resp);
+
+            let kinds = vec![
+                BillKind::FreezeEnergy.to_i8(),
+                BillKind::UnFreezeEnergy.to_i8(),
+            ];
+            let bill = BillDao::last_kind_bill(pool.as_ref(), owner, kinds).await?;
+            if let Some(bill) = bill {
+                freeze.opration_time = Some(bill.transaction_time)
+            }
+
             res.push(freeze);
         }
-
-        // TODO 匹配地址最新的交易记录里面的时间,需要匹配解质押
 
         Ok(res)
     }
@@ -213,14 +547,14 @@ impl StackService {
             .unfreeze_v2
             .iter()
             .map(|item| {
-                let resource = if item.types.is_empty() {
+                let resource_type = if item.types.is_empty() {
                     ops::stake::ResourceType::BANDWIDTH
                 } else {
                     ops::stake::ResourceType::ENERGY
                 };
                 resp::UnfreezeListResp::new(
                     item.unfreeze_amount,
-                    resource,
+                    resource_type,
                     item.unfreeze_expire_time,
                 )
             })
@@ -240,136 +574,187 @@ impl StackService {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::UnFreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::UnFreezeEnergy,
+        };
+
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::UnFeeze, &from, password)
+            .process_transaction(args, bill_kind, &from, password)
             .await?;
 
         let resource_value = self
             .resource_value(&req.owner_address, req.unfreeze_balance, resource_type)
             .await?;
 
+        let date = wallet_utils::time::now_plus_days(14);
         let resource = resp::ResourceResp::new(req.unfreeze_balance, resource_type, resource_value);
-        Ok(resp::FreezeResp::new(resource, tx_hash, BillKind::UnFeeze))
+
+        Ok(
+            resp::FreezeResp::new(req.owner_address, resource, tx_hash, bill_kind)
+                .expiration_at(date),
+        )
     }
 
     // 取消解锁
     pub async fn cancel_all_unfreeze(
         &self,
-        owner: &str,
-        password: &str,
-    ) -> Result<String, crate::ServiceError> {
-        let args = ops::stake::CancelAllFreezeBalanceArgs::new(owner)?;
+        req: stake::CancelAllUnFreezeReq,
+        password: String,
+    ) -> Result<resp::CancelAllUnFreezeResp, crate::ServiceError> {
+        let account = self.chain.account_info(&req.owner_address).await?;
+        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
+
+        // 1可以解质押的带宽
+        let bandwidth = account.can_withdraw_unfreeze_amount("");
+
+        // 2.可以解质押的能量
+        let energy = account.can_withdraw_unfreeze_amount("ENERGY");
+        let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
+
         let tx_hash = self
-            .process_transaction(args, BillKind::CancelAllUnFeeze, owner, password)
+            .process_transaction(
+                args,
+                BillKind::CancelAllUnFreeze,
+                &req.owner_address,
+                &password,
+            )
             .await?;
 
-        // TODO
-
-        Ok(tx_hash)
+        let res = resp::CancelAllUnFreezeResp {
+            owner_address: req.owner_address.to_string(),
+            votes: bandwidth + energy,
+            energy: resource.resource_value(ops::stake::ResourceType::ENERGY, energy)?,
+            bandwidth: resource.resource_value(ops::stake::ResourceType::BANDWIDTH, bandwidth)?,
+            amount: account.can_withdraw_amount(),
+            tx_hash,
+        };
+        Ok(res)
     }
 
+    // 提取金额
     pub async fn withdraw_unfreeze(
         &self,
-        owner_address: &str,
-        password: &str,
+        req: stake::WithdrawBalanceReq,
+        password: String,
     ) -> Result<resp::WithdrawUnfreezeResp, crate::error::ServiceError> {
         let can_widthdraw = self
             .chain
             .provider
-            .can_withdraw_unfreeze_amount(owner_address)
+            .can_withdraw_unfreeze_amount(&req.owner_address)
             .await?;
 
-        // TODO check 是否有足够的金额提现
+        if can_widthdraw.amount <= 0 {
+            return Err(crate::BusinessError::Stake(
+                crate::StakeError::NoWithdrawableAmount,
+            ))?;
+        }
 
         let args = ops::stake::WithdrawUnfreezeArgs {
-            owner_address: owner_address.to_string(),
+            owner_address: req.owner_address.to_string(),
         };
 
         let tx_hash = self
-            .process_transaction(args, BillKind::WithdrawUnFeeze, &owner_address, password)
+            .process_transaction(
+                args,
+                BillKind::WithdrawUnFreeze,
+                &req.owner_address,
+                &password,
+            )
             .await?;
 
         Ok(resp::WithdrawUnfreezeResp {
             amount: can_widthdraw.to_sun(),
+            owner_address: req.owner_address.to_string(),
             tx_hash,
         })
     }
 
     pub async fn account_resource(
         &self,
-        account: &str,
+        owner: &str,
     ) -> Result<AccountResource, crate::error::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let resource = chain.account_resource(account).await?;
-        let account = chain.account_info(account).await?;
+        let resource = chain.account_resource(owner).await?;
+        let account = chain.account_info(owner).await?;
 
         let mut res: AccountResource = AccountResource {
-            balance: (account.balance / 1_000_000).to_string(),
+            balance: account.balance_to_f64(),
             ..Default::default()
         };
 
-        // net
-        res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
-        res.bandwidth.limit_resource = res.bandwidth.total_resource - resource.free_net_used;
+        res.votes = resource.tron_power_limit;
+        res.freeze_num = account.frozen_v2.len() as i64 - 1;
+        res.unfreeze_num = account.unfreeze_v2.len() as i64;
+        res.pending_withdraw = account.can_withdraw_num();
 
-        // 给别人质押的
-        res.bandwidth
-            .set_delegate_freeze_amount(account.delegated_bandwidth);
-        // 别人给我的
-        res.bandwidth
-            .set_acquire_freeze_amount(account.acquired_bandwidth);
-        // 自己质押的
-        res.bandwidth
-            .set_owner_freeze_amount(account.frozen_v2_owner(""));
-        // 可解冻
-        res.bandwidth
-            .set_can_unfreeze_amount(account.frozen_v2_owner(""));
-        // 可提现
-        res.bandwidth
-            .set_can_withdraw_unfreeze_amount(account.can_withdraw_unfreeze_amount(""));
-        // 总共
-        res.bandwidth.total_freeze_amount = res.bandwidth.delegate_freeze_amount
-            + res.bandwidth.owner_freeze_amount
-            + res.bandwidth.acquire_freeze_amount;
-        res.bandwidth.price = resource.net_price();
+        // bandwitdh
+        res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
+        res.bandwidth.limit_resource =
+            (res.bandwidth.total_resource - resource.free_net_used - resource.net_used).max(0);
+
+        // 一笔交易的资源消耗
+        let consumer = EstimateTxComsumer::new(&chain).await?;
+        res.bandwidth.consumer = consumer.bandwidth;
+        res.energy.consumer = consumer.energy;
+
+        self.fill_resource_info(
+            &mut res.bandwidth,
+            &account,
+            ops::stake::ResourceType::BANDWIDTH,
+            resource.net_price(),
+        );
 
         // energy
         res.energy.total_resource = resource.energy_limit;
         res.energy.limit_resource = resource.energy_limit - resource.energy_used;
+        self.fill_resource_info(
+            &mut res.energy,
+            &account,
+            ops::stake::ResourceType::ENERGY,
+            resource.energy_price(),
+        );
 
-        // 给别人质押的
-        res.energy
-            .set_delegate_freeze_amount(account.account_resource.delegated_energy);
-        // 别人给我的
-        res.energy
-            .set_acquire_freeze_amount(account.account_resource.acquired_energy);
-        // 自己质押的
-        res.energy
-            .set_owner_freeze_amount(account.frozen_v2_owner("ENERGY"));
-        // 可解冻
-        res.energy
-            .set_can_unfreeze_amount(account.frozen_v2_owner("ENERGY"));
-        // 可提现
-        res.energy
-            .set_can_withdraw_unfreeze_amount(account.can_withdraw_unfreeze_amount("ENERGY"));
-        // 总共
-        res.energy.total_freeze_amount = res.energy.delegate_freeze_amount
-            + res.energy.owner_freeze_amount
-            + res.energy.acquire_freeze_amount;
-        res.energy.price = resource.energy_price();
+        let amount = res.bandwidth.total_freeze.amount + res.energy.total_freeze.amount;
+
+        let balance =
+            TokenCurrencyGetter::get_balance_info(chain_code::TRON, "TRX", amount as f64).await?;
+        res.total_freeze = balance;
+
+        res.delegate_num = res.bandwidth.delegate_freeze.amount + res.energy.delegate_freeze.amount;
 
         Ok(res)
     }
 
     //******************************************************delegate **************************************************/
+    // 验证地址是否在初始化过
+    pub async fn account_exists(
+        &self,
+        accounts: Vec<String>,
+    ) -> Result<Vec<resp::AddressExists>, crate::ServiceError> {
+        let mut res = vec![];
+
+        for account in accounts {
+            let account_info = self.chain.account_info(&account).await?;
+            let exists = !account_info.address.is_empty();
+
+            res.push(AddressExists {
+                address: account,
+                exists,
+            });
+        }
+
+        Ok(res)
+    }
+
     pub async fn can_delegated_max(
         &self,
         account: String,
         resource_type: String,
-    ) -> Result<resp::CanDelegatedResp, crate::ServiceError> {
+    ) -> Result<resp::ResourceResp, crate::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
@@ -378,9 +763,14 @@ impl StackService {
             .can_delegate_resource(account.as_str(), resource_type)
             .await?;
 
-        Ok(resp::CanDelegatedResp {
-            amount: res.to_sun(),
-        })
+        let value = res.to_sun();
+        let resource_value = self.resource_value(&account, value, resource_type).await?;
+
+        Ok(resp::ResourceResp::new(
+            value,
+            resource_type,
+            resource_value,
+        ))
     }
 
     // 委派资源给账号
@@ -388,58 +778,139 @@ impl StackService {
         &self,
         req: stake::DelegateReq,
         password: &str,
-    ) -> Result<resp::DelegateResp, crate::error::ServiceError> {
+    ) -> Result<resp::DelegateResp, crate::ServiceError> {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::Delegate, &from, password)
+            .process_transaction(args, bill_kind, &from, password)
             .await?;
 
         let resource_value = self
             .resource_value(&req.owner_address, req.balance, resource_type)
             .await?;
 
-        Ok(resp::DelegateResp::new_with_delegate(
-            req,
-            resource_value,
-            resource_type,
-            tx_hash,
+        let resource = resp::ResourceResp::new(req.balance, resource_type, resource_value);
+
+        Ok(resp::DelegateResp::new_delegate(
+            req, resource, bill_kind, tx_hash,
         ))
+    }
+
+    pub async fn batch_delegate(
+        &self,
+        req: stake::BatchDelegate,
+        password: String,
+    ) -> Result<BatchDelegateResp, crate::ServiceError> {
+        let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
+
+        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+        };
+
+        let amount = req.total();
+
+        // 批量构建交易
+        let args: Vec<DelegateArgs> = (&req).try_into()?;
+        let txs = self.batch_build_transaction(args, bill_kind).await?;
+
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            &password,
+        )
+        .await?;
+        let res = self
+            .batch_exec(req.owner_address.clone(), key, bill_kind, txs)
+            .await?;
+
+        let resource_value = resource.resource_value(resource_type, amount)?;
+        let resource = ResourceResp::new(amount, resource_type, resource_value);
+
+        let res = BatchDelegateResp::new(req.owner_address, res, resource, bill_kind);
+        Ok(res)
+    }
+
+    pub async fn batch_un_delegate(
+        &self,
+        req: stake::BatchUnDelegate,
+        password: String,
+    ) -> Result<BatchDelegateResp, crate::ServiceError> {
+        let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
+
+        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::BatchUnDelegateBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::BatchUnDelegateEnergy,
+        };
+
+        let amount = req.total();
+
+        // 批量构建交易
+        let args: Vec<UnDelegateArgs> = (&req).try_into()?;
+        let txs = self.batch_build_transaction(args, bill_kind).await?;
+
+        let key = domain::account::open_account_pk_with_password(
+            chain_code::TRON,
+            &req.owner_address,
+            &password,
+        )
+        .await?;
+        let res = self
+            .batch_exec(req.owner_address.clone(), key, bill_kind, txs)
+            .await?;
+
+        let resource_value = resource.resource_value(resource_type, amount)?;
+        let resource = ResourceResp::new(amount, resource_type, resource_value);
+
+        let res = BatchDelegateResp::new(req.owner_address, res, resource, bill_kind);
+        Ok(res)
     }
 
     // Reclaim delegated energy
     pub async fn un_delegate_resource(
         &self,
-        req: UnDelegateReq,
+        req: stake::UnDelegateReq,
         password: String,
     ) -> Result<resp::DelegateResp, crate::error::ServiceError> {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
         let args = ops::stake::UnDelegateArgs::try_from(&req)?;
 
+        let bill_kind = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => BillKind::UnDelegateBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::UnDelegateEnergy,
+        };
+
         let tx_hash = self
-            .process_transaction(args, BillKind::UnDelegate, &from, &password)
+            .process_transaction(args, bill_kind, &from, &password)
             .await?;
 
         let resource_value = self
             .resource_value(&req.owner_address, req.balance, resource_type)
             .await?;
 
-        Ok(resp::DelegateResp::new_with_undegate(
-            req,
-            resource_value,
-            resource_type,
-            tx_hash,
+        let resource = resp::ResourceResp::new(req.balance, resource_type, resource_value);
+        Ok(resp::DelegateResp::new_undelegate(
+            req, resource, bill_kind, tx_hash,
         ))
     }
 
     pub async fn delegate_to_other(
         &self,
         owner_address: &str,
-    ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
+        resource_type: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
@@ -447,37 +918,90 @@ impl StackService {
 
         let resource = ChainTransaction::account_resorce(&chain, owner_address).await?;
 
-        let mut result = vec![];
-        for to in delegate_other.to_accounts {
-            let res = self
-                .process_delegate(&chain, &owner_address, &to, &resource)
-                .await?;
-            result.extend(res);
+        let len = delegate_other.to_accounts.len();
+        let total_page = len / page_size as usize;
+
+        if page as usize > total_page {
+            let res = Pagination {
+                page,
+                page_size,
+                total_count: len as i64,
+                data: vec![],
+            };
+            return Ok(res);
         }
 
-        Ok(result)
+        let mut data = vec![];
+        let accounts = self.page_address(page, page_size, &delegate_other.to_accounts);
+        for to in accounts {
+            let res = self
+                .process_delegate(&chain, &resource_type, &owner_address, &to, &resource)
+                .await?;
+            data.extend(res);
+        }
+
+        let res = Pagination {
+            page,
+            page_size,
+            total_count: len as i64,
+            data,
+        };
+
+        Ok(res)
+    }
+
+    fn page_address(&self, page: i64, page_size: i64, accounts: &Vec<String>) -> Vec<String> {
+        let start = (page) * page_size;
+        let end = ((page + 1) * page_size) as usize;
+
+        let len = accounts.len();
+        let end = if end > len { len } else { end };
+
+        accounts[start as usize..end].to_vec()
     }
 
     pub async fn delegate_from_other(
         &self,
         to: &str,
-    ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
+        resource_type: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let delegate_other = chain.provider.delegate_others_list(to).await?;
 
-        let resource = ChainTransaction::account_resorce(&chain, to).await?;
-
-        let mut result = vec![];
-        for owner_address in delegate_other.from_accounts {
-            let res = self
-                .process_delegate(&chain, &owner_address, to, &resource)
-                .await?;
-            result.extend(res);
+        let len = delegate_other.from_accounts.len();
+        let total_page = len / page_size as usize;
+        if page as usize > total_page {
+            let res = Pagination {
+                page,
+                page_size,
+                total_count: len as i64,
+                data: vec![],
+            };
+            return Ok(res);
         }
 
-        Ok(result)
+        let resource = ChainTransaction::account_resorce(&chain, to).await?;
+
+        let mut data = vec![];
+        for owner_address in self.page_address(page, page_size, &delegate_other.from_accounts) {
+            let res = self
+                .process_delegate(&chain, &resource_type, &owner_address, to, &resource)
+                .await?;
+            data.extend(res);
+        }
+
+        let res = Pagination {
+            page,
+            page_size,
+            total_count: len as i64,
+            data,
+        };
+
+        Ok(res)
     }
 
     pub async fn system_resource(
@@ -538,5 +1062,202 @@ impl StackService {
         }
 
         Ok(res.order_id)
+    }
+
+    pub async fn vote_list(
+        &self,
+        owner_address: Option<&str>,
+    ) -> Result<resp::VoteListResp, crate::error::ServiceError> {
+        let chain = self.chain.get_provider();
+        // 所有的超级节点列表
+        let mut res = StakeDomain::vote_list(chain).await?;
+        if let Some(owner_address) = owner_address {
+            let account_info = self.chain.account_info(owner_address).await?;
+            // 投票人投票列表
+            let votes = account_info.votes;
+            // 遍历超级节点列表，判断投票人是否已经给该超级节点投票，然后设置Witness的vote_count字段
+            res.data.iter_mut().for_each(|witness| {
+                if let Some(vote) = votes.iter().find(|v| v.vote_address == witness.address) {
+                    witness.vote_count_by_owner = Some(vote.vote_count);
+                }
+            });
+        }
+
+        Ok(res)
+    }
+
+    pub async fn voter_info(
+        &self,
+        owner: &str,
+    ) -> Result<resp::VoterInfoResp, crate::error::ServiceError> {
+        // let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let chain = self.chain.get_provider();
+        let vote_list = StakeDomain::vote_list(chain).await?;
+        let reward = self.chain.get_provider().get_reward(owner).await?;
+
+        let account_info = self.chain.account_info(owner).await?;
+        // tracing::info!("account_info: {:#?}", account_info);
+
+        let balance = account_info.balance_to_f64();
+        let votes = account_info.votes;
+
+        let mut representatives = Vec::new();
+        for vote in votes.iter() {
+            let vote_info = vote_list
+                .data
+                .iter()
+                .find(|x| x.address == *vote.vote_address);
+            if let Some(vote_info) = vote_info {
+                representatives.push(domain::stake::Representative::new(
+                    vote.vote_count as f64,
+                    vote_info.apr,
+                ));
+                // tracing::info!("vote_info: {:#?}", vote_info);
+            }
+        }
+        // tracing::info!("representatives: {:#?}", representatives);
+        let comprehensive_apr = StakeDomain::calculate_comprehensive_apr(representatives);
+
+        let resource = self.chain.account_resource(owner).await?;
+        let res = resp::VoterInfoResp::new(
+            balance,
+            reward.to_sun(),
+            resource.tron_power_limit,
+            resource.tron_power_used,
+            // votes.into(),
+            comprehensive_apr,
+        );
+        Ok(res)
+    }
+
+    pub async fn top_witness(&self) -> Result<Option<resp::Witness>, crate::error::ServiceError> {
+        let chain = self.chain.get_provider();
+        let list = StakeDomain::vote_list(chain).await?.data;
+        // 获取最大投票数的witness
+        let mut max_apr = 0.0f64;
+        let mut max_witness = None;
+        for witness in list.iter() {
+            if witness.apr > max_apr {
+                max_apr = witness.apr;
+                max_witness = Some(witness);
+            }
+        }
+
+        Ok(max_witness.cloned())
+    }
+
+    pub async fn votes(
+        &self,
+        req: stake::VoteWitnessReq,
+        password: &str,
+    ) -> Result<String, crate::error::ServiceError> {
+        let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
+
+        let tx_hash = self
+            .process_transaction(args, BillKind::Vote, &req.owner_address, password)
+            .await?;
+
+        Ok(tx_hash)
+    }
+
+    pub async fn votes_claim_rewards(
+        &self,
+        req: stake::WithdrawBalanceReq,
+        password: &str,
+    ) -> Result<String, crate::error::ServiceError> {
+        let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
+
+        let tx_hash = self
+            .process_transaction(args, BillKind::Vote, &req.owner_address, password)
+            .await?;
+
+        Ok(tx_hash)
+    }
+
+    // 质押相关构建多签交易
+    pub async fn build_multisig_stake(
+        &self,
+        bill_kind: i64,
+        content: String,
+        expiration: i64,
+        password: String,
+    ) -> Result<String, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let queue_repo = MultisigQueueRepo::new(pool.clone());
+
+        let bill_kind = BillKind::try_from(bill_kind as i8)?;
+        // 转换多签的参数
+        let (args, address) = self.convert_stake_args(bill_kind, content)?;
+
+        let account = MultisigDomain::account_by_address(&address, true, &pool).await?;
+        MultisigDomain::validate_queue(&account)?;
+
+        let expiration = expiration * 3600;
+
+        // 构建多签交易
+        let resp = args
+            .build_multisig_tx(&self.chain, expiration as u64)
+            .await?;
+
+        let expiration = (wallet_utils::time::now().timestamp() + expiration) as u64;
+        let mut queue = NewMultisigQueueEntity::new(
+            account.id.to_string(),
+            address.to_string(),
+            expiration as i64,
+            &resp.tx_hash,
+            &resp.raw_data,
+            bill_kind,
+        );
+
+        let mut members = queue_repo.self_member_account_id(&account.id).await?;
+        members.prioritize_by_address(&account.initiator_addr);
+
+        // sign num
+        let sign_num = members.0.len().min(account.threshold as usize);
+        for i in 0..sign_num {
+            let member = members.0.get(i).unwrap();
+            let key = crate::domain::account::open_account_pk_with_password(
+                chain_code::TRON,
+                &member.address,
+                &password,
+            )
+            .await?;
+
+            let sign_result = TransactionOpt::sign_transaction(&resp.raw_data, key)?;
+            let sign = NewSignatureEntity::new(
+                &queue.id,
+                &member.address,
+                &sign_result.signature,
+                MultisigSignatureStatus::Approved,
+            );
+            queue.signatures.push(sign);
+        }
+
+        queue.status =
+            MultisigQueueEntity::compute_status(queue.signatures.len(), account.threshold as usize);
+        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
+
+        // 上报后端
+        let withdraw_id = res.id.clone();
+        let sync_params = MultiSignTransAccept::from(res).with_signature(queue.signatures.clone());
+
+        let raw_data = MultisigQueueRepo::multisig_queue_data(&withdraw_id, pool)
+            .await?
+            .to_string()?;
+        let req = SignedTranCreateReq {
+            withdraw_id,
+            address,
+            chain_code: chain_code::TRON.to_string(),
+            tx_str: wallet_utils::serde_func::serde_to_string(&sync_params)?,
+            raw_data,
+        };
+
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
+            body: serde_func::serde_to_value(&req)?,
+        }));
+        Tasks::new().push(task).send().await?;
+
+        Ok(resp.tx_hash)
     }
 }

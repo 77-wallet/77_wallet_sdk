@@ -5,6 +5,8 @@ use wallet_database::entities::{
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
 use wallet_utils::unit;
 
+use crate::response_vo::account::BalanceInfo;
+
 pub struct TokenCurrencyGetter;
 
 impl TokenCurrencyGetter {
@@ -47,5 +49,22 @@ impl TokenCurrencyGetter {
             currency_price,
             rate: exchange.rate,
         })
+    }
+
+    pub async fn get_balance_info(
+        chain_code: &str,
+        symbol: &str,
+        amount: f64,
+    ) -> Result<BalanceInfo, crate::ServiceError> {
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
+
+        let token_price = TokenCurrencyGetter::get_currency(currency, chain_code, symbol).await?;
+
+        Ok(BalanceInfo::new(
+            amount,
+            token_price.get_price(currency),
+            currency,
+        ))
     }
 }

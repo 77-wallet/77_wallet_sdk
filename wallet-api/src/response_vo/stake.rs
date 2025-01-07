@@ -29,22 +29,14 @@ impl ResourceResp {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FreezeListResp {
-    pub amount: i64,
-    pub resource: ResourceType,
-    pub resource_value: f64,
+    pub resource: ResourceResp,
     pub opration_time: Option<DateTime<Utc>>,
 }
 
 impl FreezeListResp {
-    // parameter unit is sun
-    pub fn new(amount: i64, price: f64, resource: ResourceType) -> Self {
-        let resource_value = (amount as f64 * price) / consts::TRX_TO_SUN as f64;
-        let resource_value = (resource_value * 100.0).round() / 100.0;
-
+    pub fn new(resource: ResourceResp) -> Self {
         Self {
-            amount: amount / consts::TRX_TO_SUN as i64,
             resource,
-            resource_value,
             opration_time: None,
         }
     }
@@ -53,6 +45,7 @@ impl FreezeListResp {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FreezeResp {
+    pub owner_address: String,
     pub resource: ResourceResp,
     pub votes: i64,
     pub bill_kind: BillKind,
@@ -60,8 +53,14 @@ pub struct FreezeResp {
     pub expiration_at: Option<DateTime<Utc>>,
 }
 impl FreezeResp {
-    pub fn new(resource: ResourceResp, tx_hash: String, bill_kind: BillKind) -> Self {
+    pub fn new(
+        owner_address: String,
+        resource: ResourceResp,
+        tx_hash: String,
+        bill_kind: BillKind,
+    ) -> Self {
         Self {
+            owner_address,
             votes: resource.amount,
             resource,
             tx_hash,
@@ -70,9 +69,8 @@ impl FreezeResp {
         }
     }
 
-    pub fn expiration_at(mut self, timestamp: i64) -> Self {
-        let time = DateTime::from_timestamp_millis(timestamp).unwrap_or_default();
-        self.expiration_at = Some(time);
+    pub fn expiration_at(mut self, date: DateTime<Utc>) -> Self {
+        self.expiration_at = Some(date);
         self
     }
 }
@@ -81,6 +79,18 @@ impl FreezeResp {
 #[serde(rename_all = "camelCase")]
 pub struct WithdrawUnfreezeResp {
     pub amount: i64,
+    pub owner_address: String,
+    pub tx_hash: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelAllUnFreezeResp {
+    pub owner_address: String,
+    pub votes: i64,
+    pub energy: f64,
+    pub bandwidth: f64,
+    pub amount: i64,
     pub tx_hash: String,
 }
 
@@ -88,15 +98,15 @@ pub struct WithdrawUnfreezeResp {
 #[serde(rename_all = "camelCase")]
 pub struct UnfreezeListResp {
     pub amount: i64,
-    pub resource: ResourceType,
+    pub resource_type: ResourceType,
     pub available_at: DateTime<Utc>,
 }
 impl UnfreezeListResp {
-    pub fn new(amount: i64, resource: ResourceType, available_at: i64) -> Self {
+    pub fn new(amount: i64, resource_type: ResourceType, available_at: i64) -> Self {
         let time = DateTime::from_timestamp_millis(available_at).unwrap_or_default();
         Self {
             amount: amount / consts::TRX_TO_SUN as i64,
-            resource,
+            resource_type,
             available_at: time,
         }
     }
@@ -104,33 +114,29 @@ impl UnfreezeListResp {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EstimatedResourcesResp {
-    // 能够获取到的资源
-    pub resource: f64,
+pub struct TrxToResourceResp {
+    pub resource: ResourceResp,
     // 能够得到的投票数量
     pub votes: i64,
-    // 资源类型
-    pub resource_type: ResourceType,
     // 预计转账次数
     pub transfer_times: f64,
 }
-impl EstimatedResourcesResp {
-    pub fn new(value: i64, price: f64, resource_type: ResourceType, consumer: f64) -> Self {
-        let resource = (value as f64 * price * 100.0).round() / 100.0;
-
+impl TrxToResourceResp {
+    pub fn new(resource: ResourceResp, consumer: f64) -> Self {
         Self {
+            transfer_times: (resource.amount as f64 / consumer).floor(),
+            votes: resource.amount,
             resource,
-            votes: value,
-            resource_type,
-            transfer_times: (resource / consumer).floor(),
         }
     }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CanDelegatedResp {
+pub struct ResourceToTrxResp {
     pub amount: i64,
+    pub votes: i64,
+    pub transfer_times: f64,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -138,40 +144,37 @@ pub struct CanDelegatedResp {
 pub struct DelegateResp {
     pub owner_address: String,
     pub receiver_address: String,
-    pub resource_value: f64,
-    pub resource_type: ResourceType,
-    pub operation_type: &'static str,
+    pub resource: ResourceResp,
+    pub bill_kind: BillKind,
     pub tx_hash: String,
 }
 impl DelegateResp {
-    pub fn new_with_delegate(
+    pub fn new_delegate(
         req: DelegateReq,
-        resource_value: f64,
-        resource_type: ResourceType,
+        resource: ResourceResp,
+        bill_kind: BillKind,
         tx_hash: String,
     ) -> Self {
         Self {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
-            resource_value,
-            resource_type: resource_type,
-            operation_type: "delegate",
+            resource,
+            bill_kind,
             tx_hash,
         }
     }
 
-    pub fn new_with_undegate(
+    pub fn new_undelegate(
         req: UnDelegateReq,
-        resource_value: f64,
-        resource_type: ResourceType,
+        resource: ResourceResp,
+        bill_kind: BillKind,
         tx_hash: String,
     ) -> Self {
         Self {
             owner_address: req.owner_address.to_string(),
             receiver_address: req.receiver_address.to_string(),
-            resource_value,
-            resource_type,
-            operation_type: "un_delegate",
+            resource,
+            bill_kind,
             tx_hash,
         }
     }
@@ -182,12 +185,7 @@ impl DelegateResp {
 pub struct DelegateListResp {
     pub from: String,
     pub to: String,
-    // trx 数量
-    pub amount: i64,
-    // 可获得资源数量
-    pub resource_value: f64,
-    // 资源类型
-    pub resource_type: ResourceType,
+    pub resource: ResourceResp,
     pub expire_time: Option<DateTime<Utc>>,
 }
 
@@ -195,9 +193,7 @@ impl DelegateListResp {
     // acount unit is sun
     pub fn new(
         delegate: &DelegateResouce,
-        resource_value: f64,
-        resource_type: ResourceType,
-        amount: i64,
+        resource: ResourceResp,
         expire_time: i64,
     ) -> Result<DelegateListResp, crate::ServiceError> {
         let expire_time = if expire_time > 0 {
@@ -209,10 +205,142 @@ impl DelegateListResp {
         Ok(DelegateListResp {
             from: delegate.from.to_string(),
             to: delegate.to.to_string(),
-            amount,
-            resource_value,
-            resource_type,
+            resource,
             expire_time,
         })
     }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchDelegateResp {
+    pub owner_address: String,
+    pub result: Vec<BatchRes>,
+    pub resource: ResourceResp,
+    pub bill_kind: BillKind,
+    pub hashs: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchRes {
+    pub address: String,
+    pub status: bool,
+}
+
+impl BatchDelegateResp {
+    pub fn new(
+        owner_address: String,
+        res: (Vec<BatchRes>, Vec<String>),
+        resource: ResourceResp,
+        bill_kind: BillKind,
+    ) -> Self {
+        Self {
+            owner_address,
+            result: res.0,
+            resource,
+            bill_kind,
+            hashs: res.1,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoteListResp {
+    pub total: u16,
+    pub total_votes: i64,
+    pub data: Vec<Witness>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Witness {
+    pub address: String,
+    pub vote_count: i64,
+    pub vote_count_by_owner: Option<i64>,
+    pub url: String,
+    pub brokerage: f64,
+    pub apr: f64,
+}
+
+impl Witness {
+    pub fn new(address: &str, vote_count: i64, url: &str, brokerage: f64, apr: f64) -> Self {
+        Self {
+            address: address.to_string(),
+            vote_count,
+            url: url.to_string(),
+            brokerage,
+            apr,
+            vote_count_by_owner: None,
+        }
+    }
+
+    pub fn with_vote_count_by_owner(mut self, vote_count_by_owner: i64) -> Self {
+        self.vote_count_by_owner = Some(vote_count_by_owner);
+        self
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct VoterInfoResp {
+    pub balance: f64,
+    pub reward: f64,
+    pub tron_power_limit: i64,
+    pub tron_power_used: i64,
+    // pub votes: Votes,
+    pub comprehensive_apr: f64,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct Votes(Vec<Vote>);
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Vote {
+    pub vote_address: String,
+    pub vote_count: i64,
+}
+
+impl From<wallet_chain_interact::tron::protocol::account::Vote> for Vote {
+    fn from(vote: wallet_chain_interact::tron::protocol::account::Vote) -> Self {
+        Self {
+            vote_address: vote.vote_address,
+            vote_count: vote.vote_count,
+        }
+    }
+}
+
+impl From<Vec<wallet_chain_interact::tron::protocol::account::Vote>> for Votes {
+    fn from(votes: Vec<wallet_chain_interact::tron::protocol::account::Vote>) -> Self {
+        Self(votes.into_iter().map(Vote::from).collect())
+    }
+}
+
+impl VoterInfoResp {
+    pub fn new(
+        balance: f64,
+        reward: f64,
+        tron_power_limit: i64,
+        tron_power_used: i64,
+        // votes: Votes,
+        comprehensive_apr: f64,
+    ) -> Self {
+        Self {
+            balance,
+            reward,
+            tron_power_limit,
+            tron_power_used,
+            // votes,
+            comprehensive_apr,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressExists {
+    pub address: String,
+    pub exists: bool,
 }

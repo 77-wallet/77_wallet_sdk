@@ -10,4 +10,5 @@ pub mod exchange_rate;
 pub mod log;
 pub mod multisig;
 pub mod node;
+pub mod stake;
 pub mod wallet;

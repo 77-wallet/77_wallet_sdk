@@ -1,15 +1,21 @@
 use super::ReturnType;
 use crate::{
-    request::stake::{DelegateReq, FreezeBalanceReq, UnDelegateReq, UnFreezeBalanceReq},
+    request::stake::{
+        BatchDelegate, BatchUnDelegate, CancelAllUnFreezeReq, DelegateReq, FreezeBalanceReq,
+        UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq,
+    },
     response_vo::{
+        self,
         account::AccountResource,
         stake::{
-            CanDelegatedResp, DelegateListResp, DelegateResp, EstimatedResourcesResp,
-            FreezeListResp, FreezeResp, UnfreezeListResp, WithdrawUnfreezeResp,
+            AddressExists, BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp,
+            DelegateResp, FreezeListResp, FreezeResp, ResourceResp, UnfreezeListResp,
+            WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,
 };
+use wallet_database::pagination::Pagination;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 
 impl crate::WalletManager {
@@ -17,6 +23,18 @@ impl crate::WalletManager {
     pub async fn resource_info(&self, account: String) -> ReturnType<AccountResource> {
         let service = StackService::new().await?;
         service.account_resource(&account).await?.into()
+    }
+
+    pub async fn estimate_stake_fee(
+        &self,
+        bill_kind: i64,
+        content: String,
+    ) -> ReturnType<response_vo::EstimateFeeResp> {
+        StackService::new()
+            .await?
+            .estimate_stake_fee(bill_kind, content)
+            .await?
+            .into()
     }
 
     // freeze balance
@@ -64,12 +82,12 @@ impl crate::WalletManager {
 
     pub async fn cancel_all_unfreeze(
         &self,
-        owner_address: String,
+        req: CancelAllUnFreezeReq,
         password: String,
-    ) -> ReturnType<String> {
+    ) -> ReturnType<CancelAllUnFreezeResp> {
         StackService::new()
             .await?
-            .cancel_all_unfreeze(&owner_address, &password)
+            .cancel_all_unfreeze(req, password)
             .await
             .into()
     }
@@ -77,12 +95,12 @@ impl crate::WalletManager {
     /// Withdraws any unfrozen balances for the given owner address.
     pub async fn withdraw_unfreeze(
         &self,
-        owner_address: String,
+        req: WithdrawBalanceReq,
         password: String,
     ) -> ReturnType<WithdrawUnfreezeResp> {
         StackService::new()
             .await?
-            .withdraw_unfreeze(&owner_address, &password)
+            .withdraw_unfreeze(req, password)
             .await?
             .into()
     }
@@ -104,15 +122,10 @@ impl crate::WalletManager {
         "used request_energy to instead".to_string().into()
     }
 
-    pub async fn get_estimated_resources(
-        &self,
-        account: String,
-        value: i64,
-        resource_type: String,
-    ) -> ReturnType<EstimatedResourcesResp> {
+    pub async fn address_exists(&self, accounts: Vec<String>) -> ReturnType<Vec<AddressExists>> {
         StackService::new()
             .await?
-            .get_estimated_resources(account, value, resource_type)
+            .account_exists(accounts)
             .await?
             .into()
     }
@@ -138,7 +151,7 @@ impl crate::WalletManager {
         &self,
         account: String,
         resource_type: String,
-    ) -> ReturnType<CanDelegatedResp> {
+    ) -> ReturnType<ResourceResp> {
         StackService::new()
             .await?
             .can_delegated_max(account, resource_type)
@@ -158,6 +171,18 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn batch_delegate(
+        &self,
+        req: BatchDelegate,
+        password: String,
+    ) -> ReturnType<BatchDelegateResp> {
+        StackService::new()
+            .await?
+            .batch_delegate(req, password)
+            .await?
+            .into()
+    }
+
     // 回收资源
     pub async fn un_delegate_resource(
         &self,
@@ -171,13 +196,28 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn batch_un_deleate(
+        &self,
+        req: BatchUnDelegate,
+        password: String,
+    ) -> ReturnType<BatchDelegateResp> {
+        StackService::new()
+            .await?
+            .batch_un_delegate(req, password)
+            .await?
+            .into()
+    }
+
     pub async fn delegate_to_other(
         &self,
         owner_address: String,
-    ) -> ReturnType<Vec<DelegateListResp>> {
+        resource_type: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> ReturnType<Pagination<DelegateListResp>> {
         StackService::new()
             .await?
-            .delegate_to_other(&owner_address)
+            .delegate_to_other(&owner_address, resource_type, page, page_size)
             .await?
             .into()
     }
@@ -185,11 +225,200 @@ impl crate::WalletManager {
     pub async fn delegate_from_other(
         &self,
         owner_address: String,
-    ) -> ReturnType<Vec<DelegateListResp>> {
+        resource_type: Option<String>,
+        page: i64,
+        page_size: i64,
+    ) -> ReturnType<Pagination<DelegateListResp>> {
         StackService::new()
             .await?
-            .delegate_from_other(&owner_address)
+            .delegate_from_other(&owner_address, resource_type, page, page_size)
             .await?
             .into()
+    }
+
+    // ************************************************ vote *********************************************************
+    pub async fn votes(&self, req: VoteWitnessReq, password: &str) -> ReturnType<String> {
+        StackService::new()
+            .await?
+            .votes(req, password)
+            .await?
+            .into()
+    }
+
+    pub async fn voter_info(&self, owner: &str) -> ReturnType<response_vo::stake::VoterInfoResp> {
+        StackService::new().await?.voter_info(owner).await?.into()
+    }
+
+    pub async fn votes_node_list(
+        &self,
+        owner_address: Option<&str>,
+    ) -> ReturnType<response_vo::stake::VoteListResp> {
+        StackService::new()
+            .await?
+            .vote_list(owner_address)
+            .await?
+            .into()
+    }
+
+    pub async fn top_witness(&self) -> ReturnType<Option<response_vo::stake::Witness>> {
+        StackService::new().await?.top_witness().await?.into()
+    }
+
+    pub async fn claim_votes_rewards(
+        &self,
+        req: WithdrawBalanceReq,
+        password: &str,
+    ) -> ReturnType<String> {
+        StackService::new()
+            .await?
+            .votes_claim_rewards(req, password)
+            .await?
+            .into()
+    }
+
+    // ************************************************ multisig  *********************************************************
+    pub async fn build_multisig_stake(
+        &self,
+        bill_kind: i64,
+        content: String,
+        expiration: i64,
+        password: String,
+    ) -> ReturnType<String> {
+        StackService::new()
+            .await?
+            .build_multisig_stake(bill_kind, content, expiration, password)
+            .await?
+            .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        request::stake::{VoteWitnessReq, VotesReq},
+        test::env::get_manager,
+    };
+
+    #[tokio::test]
+    async fn test_votes() {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, test_params) = get_manager().await.unwrap();
+
+        let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
+        let vote_witness_req = VoteWitnessReq::new(
+            owner_address,
+            vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1)],
+        ); // You may need to import this struct
+        let password = "123456"; // Replace with the actual password
+        tracing::warn!(
+            "{:#?}",
+            wallet_utils::serde_func::serde_to_string(&vote_witness_req)
+        );
+        let res = wallet_manager.votes(vote_witness_req, password).await;
+        println!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
+        tracing::info!("{:#?}", res);
+    }
+    #[tokio::test]
+    async fn test_votes_node_list() {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, test_params) = get_manager().await.unwrap();
+
+        let owner_address = Some("TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ");
+        let res = wallet_manager.votes_node_list(owner_address).await;
+        println!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
+        tracing::info!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    async fn test_votes_top_rewards() {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, test_params) = get_manager().await.unwrap();
+
+        let res = wallet_manager.top_witness().await;
+        println!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
+        tracing::info!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    async fn test_voter_info() {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, test_params) = get_manager().await.unwrap();
+
+        let owner = "TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ";
+        let res = wallet_manager.voter_info(owner).await;
+        tracing::info!("{:#?}", res);
+        let res = wallet_utils::serde_func::serde_to_string(&res);
+        tracing::info!("{:#?}", res);
+    }
+}
+
+#[cfg(test)]
+mod cal_tests {
+
+    // Function to calculate the voter reward
+    fn calculate_voter_reward(
+        total_reward: f64,
+        voter_votes: f64,
+        sr_votes: f64,
+        total_sr_votes: f64,
+        voter_share: f64,
+    ) -> f64 {
+        total_reward * (sr_votes / total_sr_votes) * voter_share * (voter_votes / sr_votes)
+    }
+
+    fn calculate_block_reward(voter_share: f64, voter_votes: f64, sr_votes: f64) -> f64 {
+        460800.0 / 27.0 * voter_share * voter_votes / sr_votes
+    }
+
+    // Function to calculate APR
+    fn calculate_apr(voter_reward: f64, block_reward: f64, voter_votes: f64) -> f64 {
+        if voter_votes == 0.0 {
+            return 0.0;
+        }
+        ((voter_reward + block_reward) / voter_votes) * 100.0 * 365.0
+    }
+
+    #[test]
+    fn test_calculate_apr() {
+        // Parameters for the test case
+        let total_reward = 4_608_000.0; // Total reward pool
+
+        let total_sr_votes = 39797663721.0; // Total votes of all SR and SRP
+
+        // let sr_votes = 3069539068.0; // Votes obtained by the SR
+        let sr_votes = 1248080337.0; // Votes obtained by the SR
+
+        let voter_votes = 10_000_000.0; // Voter's votes
+        let voter_share = 1.0; // Voter share (80%)
+                               // let voter_share = 0.90; // Voter share (80%)
+
+        // Calculate voter reward
+        let voter_reward = calculate_voter_reward(
+            total_reward,
+            voter_votes,
+            sr_votes,
+            total_sr_votes,
+            voter_share,
+        );
+
+        let block_reward = calculate_block_reward(voter_share, voter_votes, sr_votes);
+        println!("block reward: {}", block_reward);
+        // Calculate APR
+        let apr = calculate_apr(voter_reward, block_reward, voter_votes);
+
+        // Debug output
+        println!("Voter Reward: {:.2}", voter_reward);
+        println!("Voter APR: {:.2}", apr);
+
+        // Assert results (expected values based on the example)
+        assert!((voter_reward - 1272.10).abs() < 1e-2); // Reward should be close to 1272.10 TRX
+        assert!((apr - 12.72).abs() < 1e-2); // APR should be close to 12.72%
     }
 }

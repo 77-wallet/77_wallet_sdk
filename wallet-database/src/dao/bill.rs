@@ -1,4 +1,5 @@
 use crate::{
+    any_in_collection,
     entities::bill::{
         BillEntity, BillKind, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo,
     },
@@ -62,6 +63,46 @@ impl BillDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    // 查询某种类型的最后一笔交易
+    pub async fn last_kind_bill<'a, E>(
+        exec: E,
+        owner_address: &str,
+        bill_kind: Vec<i8>,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let kinds = crate::any_in_collection(bill_kind, "','");
+        let sql = format!("select * from bill where owner = '{}' and tx_kind in ('{}') ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1",owner_address,kinds);
+        sqlx::query_as::<_, BillEntity>(&sql)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn lists_by_hashs<'a, E>(
+        pool: E,
+        owner: &str,
+        hashs: Vec<String>,
+    ) -> Result<Vec<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let hashs_str = any_in_collection(hashs, "','");
+
+        let sql = format!(
+            "select * from bill where owner = '{}' and hash in ('{}')",
+            owner, hashs_str
+        );
+
+        let res = sqlx::query_as::<_, BillEntity>(&sql)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(res)
+    }
+
     pub async fn bill_lists<'a, E>(
         pool: &E,
         addr: &[String],
@@ -104,7 +145,6 @@ impl BillDao {
         }
 
         sql.push_str(" ORDER BY datetime(transaction_time, 'unixepoch') DESC");
-        tracing::warn!("{}", sql);
 
         let paginate = Pagination::<BillEntity>::init(page, page_size);
         Ok(paginate.page(pool, &sql).await?)

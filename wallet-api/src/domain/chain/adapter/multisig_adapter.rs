@@ -705,26 +705,14 @@ impl MultisigAdapter {
                         .contract_fee(&queue.from_addr, signature_num, params)
                         .await?
                 } else {
-                    let memo = if queue.notes.is_empty() {
-                        None
-                    } else {
-                        Some(queue.notes.clone())
-                    };
+                    let params =
+                        tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;
 
-                    let params = tron::operations::transfer::TransferOpt::new(
-                        &queue.from_addr,
-                        &queue.to_addr,
-                        value,
-                        memo,
-                    )?;
+                    let to = (!queue.to_addr.is_empty()).then(|| queue.to_addr.as_str());
 
                     chain
-                        .simulate_simple_fee(
-                            &queue.from_addr,
-                            &queue.to_addr,
-                            signature_num,
-                            params,
-                        )
+                        .provider
+                        .transfer_fee(&queue.from_addr, to, &params.raw_data_hex, signature_num)
                         .await?
                 };
 

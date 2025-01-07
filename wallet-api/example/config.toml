@@ -1,0 +1,24 @@
+[device_req]
+device_type = "ANDROID"
+sn = "xxxxxxxxxxx"
+code = "xxxxxxxxxxx"
+system_ver = "xxxxxxxxxxx"
+app_id = "xxxxxxxxxxx"
+
+[create_wallet_req]
+language_code = 1
+phrase = "xxxxxxxxxxx"
+salt = "xxxxxxxxxxx"
+wallet_name = "xxxxxxxxxxx"
+account_name = "xxxxxxxxxxx"
+is_default_name = true
+wallet_password = "xxxxxxxxxxx"
+
+[create_account_req]
+wallet_address = "xxxxxxxxxxx"
+root_password = "xxxxxxxxxxx"
+# derive_password = ""
+# derivation_path = ""
+# index = 1
+name = "xxxxxxxxxxx"
+is_default_name = true

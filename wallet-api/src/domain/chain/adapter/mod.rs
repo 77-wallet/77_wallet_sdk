@@ -9,6 +9,7 @@ pub use multisig_adapter::*;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 const TIME_OUT: u64 = 30;
+
 #[macro_export]
 macro_rules! dispatch {
     ($self:expr, $method:ident, $($arg:expr),*) => {

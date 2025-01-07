@@ -26,6 +26,20 @@ async fn bill_detail() {
 }
 
 #[tokio::test]
+async fn bill_list_by_hashs() {
+    let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let hashs = vec![
+        "8428e5eab37eab44a477bd252a1e08025dd7f0ca725ff469475865e981d36554".to_string(),
+        "ff3cc86c69983e774469aa3cc309b51aedb83dae9a4053427e35b88d20397ffb".to_string(),
+    ];
+
+    let wallet_manager = get_manager().await;
+
+    let res = wallet_manager.list_by_hashs(owner, hashs).await;
+    tracing::info!("result {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
 async fn bill_lists() {
     let wallet_manager = get_manager().await;
 
@@ -80,8 +94,8 @@ async fn query_bill_result() {
 async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
-    let chain_code = "tron".to_string();
-    let address = "TPXyJpsdSzuxp5XQ7nKWAwLBb28AuuPzGA".to_string();
+    let chain_code = "bnb".to_string();
+    let address = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
     tracing::warn!("同步结果{:?}", _c);
 }
