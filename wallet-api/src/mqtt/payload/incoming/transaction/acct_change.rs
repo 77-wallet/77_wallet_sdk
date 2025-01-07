@@ -53,8 +53,6 @@ use super::AcctChange;
 impl AcctChange {
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = RepositoryFactory::repo(pool.clone());
-        let mut assets_service = AssetsService::new(repo);
 
         let AcctChange {
             ref tx_hash,
@@ -137,32 +135,8 @@ impl AcctChange {
         }
 
         // 添加或更新资产余额
-        {
-            let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
-
-            tracing::warn!("[AcctChange] asset_list:{asset_list:?}");
-            if !asset_list.is_empty() {
-                let pool = crate::manager::Context::get_global_sqlite_pool()?;
-                let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-                AssetsService::new(repo)
-                    .sync_assets_by_addr(asset_list, None, vec![])
-                    .await?;
-            }
-            // 如果是多签交易
-            if multisig_tx {
-                let assets_id = AssetsId {
-                    address: address.to_string(),
-                    chain_code: chain_code.to_string(),
-                    symbol: symbol.to_string(),
-                };
-                wallet_database::repositories::assets::AssetsRepoTrait::update_is_multisig(
-                    &mut assets_service.repo,
-                    &assets_id,
-                )
-                .await?;
-            }
-        }
+        upsert_than_sync_assets(from_addr, to_addr, address, chain_code, symbol, multisig_tx)
+            .await?;
 
         create_system_notification(
             msg_id,
@@ -202,6 +176,45 @@ impl AcctChange {
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
+}
+
+async fn upsert_than_sync_assets(
+    from_addr: &str,
+    to_addr: &str,
+    address: &str,
+    chain_code: &str,
+    symbol: &str,
+    multisig_tx: bool,
+) -> Result<(), crate::ServiceError> {
+    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    let repo = RepositoryFactory::repo(pool.clone());
+    let mut assets_service = AssetsService::new(repo);
+
+    let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
+
+    tracing::warn!("[AcctChange] asset_list:{asset_list:?}");
+    if !asset_list.is_empty() {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+        AssetsService::new(repo)
+            .sync_assets_by_addr(asset_list, None, vec![])
+            .await?;
+    }
+    // 如果是多签交易
+    if multisig_tx {
+        let assets_id = AssetsId {
+            address: address.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
+        };
+        wallet_database::repositories::assets::AssetsRepoTrait::update_is_multisig(
+            &mut assets_service.repo,
+            &assets_id,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn create_system_notification(
