@@ -87,7 +87,7 @@ impl AcctChange {
         match domain::bill::BillDomain::get_onchain_bill(tx_hash, chain_code).await {
             Ok(res) => {
                 if let Some(res) = res {
-                    _status = res.status;
+                    // _status = res.status;
                     consumer = res.resource_consume;
                     transaction_fee = res.transaction_fee;
                 }
