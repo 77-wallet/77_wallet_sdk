@@ -49,31 +49,6 @@ use super::AcctChange;
     "sn": "dec32245ec791966f00e56281100f7e1ab1fc23e819c906d39d0b22400e9a7b5"
     }
 
-    转出
-    {
-    "appId": "",
-    "bizType": "ACCT_CHANGE",
-    "body": {
-        "blockHeight": 65590176,
-        "chainCode": "tron",
-        "fromAddr": "TLzteCJi4jSGor5EDRYZcdQ4hsZRQQZ4XR",
-        "isMultisig": 0,
-        "status": true,
-        "symbol": "trx",
-        "toAddr": "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1",
-        "token": "",
-        "transactionFee": 0,
-        "transactionTime": "2024-09-27 14:34:42",
-        "transferType": 1,
-        "txHash": "fed8f3933cfd972f69c9a2c8b322fac853dc1b377b19c40c4c1c5bb5a2c5fa81",
-        "txKind": 1,
-        "value": 1
-    },
-    "clientId": "dec32245ec791966f00e56281100f7e1ab1fc23e819c906d39d0b22400e9a7b5",
-    "deviceType": "ANDROID",
-    "sn": "dec32245ec791966f00e56281100f7e1ab1fc23e819c906d39d0b22400e9a7b5"
-    }
-
 */
 impl AcctChange {
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
@@ -168,11 +143,6 @@ impl AcctChange {
             let mut asset_list = Vec::new();
 
             asset_list.push(address.to_string());
-            // if transfer_type == 0 {
-            //     asset_list.push(address.to_string());
-            // } else if transfer_type == 1 && multisig_tx {
-            //     asset_list.push(from_addr.to_string());
-            // }
 
             tracing::warn!("[AcctChange] asset_list:{asset_list:?}");
             if !asset_list.is_empty() {
@@ -266,29 +236,6 @@ impl AcctChange {
                     )?;
                     reqs.push(req);
                 }
-
-                // 判断转入方是多签账户还是普通账户
-                // if let Some(multisig_account) =
-                //     MultisigAccountDaoV1::find_by_address(&address, pool.as_ref()).await?
-                // {
-                //     let notif = Notification::new_transaction_notification(
-                //         AccountType::Multisig,
-                //         &multisig_account.name,
-                //         to_addr,
-                //         value,
-                //         symbol,
-                //         &transaction_status,
-                //         tx_hash,
-                //         &notification_type,
-                //     );
-                //     let req = notif.gen_create_system_notification_entity(
-                //         msg_id,
-                //         0,
-                //         Some("tx_hash".to_string()),
-                //         Some(tx_hash.to_string()),
-                //     )?;
-                //     reqs.push(req);
-                // }
 
                 reqs
             }
@@ -392,120 +339,7 @@ impl AcctChange {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        mqtt::payload::incoming::{transaction::AcctChange, Message},
-        test::env::get_manager,
-    };
-
-    #[test]
-    fn test_() {
-        let _raw = r#"
-        {
-            "blockHeight": 62049144,
-            "chainCode": "tron",
-            "fromAddr": "THVw2EVXPNPQbLQUiyNxKoYFS8JEfHeXPb",
-            "isMultisig": 1,
-            "status": true,
-            "symbol": "TRX",
-            "toAddr": "THVw2EVXPNPQbLQUiyNxKoYFS8JEfHeXPb",
-            "token": "",
-            "transactionFee": 0,
-            "transferType": 0,
-            "txHash": "dc91c064567fa7276d5888c7973e44f74c64a9b89b9517346ca677f550929cf1",
-            "txKind": 3,
-            "value": 219
-        }
-        "#;
-
-        let _raw = r#"
-        {
-            "blockHeight": 49248038,
-            "chainCode": "tron",
-            "fromAddr": "000000000",
-            "isMultisig": 0,
-            "status": true,
-            "symbol": "trx",
-            "toAddr": "000000000",
-            "token": "",
-            "transactionFee": 0,
-            "transactionTime": "2024-08-09 15:31:55.788",
-            "txHash": "000000_971892959dc34ef48f58a2df7c78c1cb",
-            "txKind": 1,
-            "value": 0
-        }
-        "#;
-        let _raw = r#"
-        {
-            "blockHeight": 64184562,
-            "chainCode": "tron",
-            "fromAddr": "TWW73Gu1jzPoCaPzH3sfqcAUr7C2T1b4WN",
-            "isMultisig": 1,
-            "status": true,
-            "symbol": "TRX",
-            "token": "",
-            "transactionFee": 100.481,
-            "transactionTime": "2024-08-09 18:33:18",
-            "transferType": 1,
-            "txHash": "4855974c0766408efff380eb27465651db4dcc1a54a7b3720dd896d1b2b5f872",
-            "txKind": 2
-        }
-        "#;
-        let raw = r#"
-        {
-            "txHash": "0x1234567890abcdef",
-            "chainCode": "ETH",
-            "symbol": "ETH",
-            "transferType": 0,
-            "txKind": 1,
-            "fromAddr": "0xabcdef1234567890",
-            "toAddr": "0x1234567890abcdef",
-            "token": "0xabcdef1234567890abcdef1234567890abcdef",
-            "value": 1000000000000000000,
-            "transactionFee": 21000,
-            "transactionTime": "2024-07-30T12:34:56Z",
-            "status": false,
-            "isMultisig": 1,
-            "queueId": "queue123",
-            "blockHeight": 12345678,
-            "notes": "Payment for services"
-        }
-        "#;
-        let res = serde_json::from_str::<AcctChange>(&raw);
-        println!("res: {res:?}");
-    }
-
-    #[test]
-    fn test_data() {
-        let raw = r#"
-        {
-            "clientId": "104.2.0.125C00",
-            "sn": "104.2.0.125C00",
-            "deviceType": "typeE",
-            "bizType": "ACCT_CHANGE",
-            "body": {
-                "txHash": "0x1234567890abcdef",
-                "chainCode": "ETH",
-                "symbol": "ETH",
-                "transferType": 0,
-                "txKind": 1,
-                "fromAddr": "0xabcdef1234567890",
-                "toAddr": "0x1234567890abcdef",
-                "token": "0xabcdef1234567890abcdef1234567890abcdef",
-                "value": 1000000000000000000,
-                "transactionFee": 21000,
-                "transactionTime": "2024-07-30T12:34:56Z",
-                "status": false,
-                "isMultisig": 1,
-                "queueId": "queue123",
-                "blockHeight": 12345678,
-                "notes": "Payment for services"
-            }
-        }
-        "#;
-
-        let res = serde_json::from_str::<Message>(&raw);
-        println!("res: {res:?}");
-    }
+    use crate::{mqtt::payload::incoming::transaction::AcctChange, test::env::get_manager};
 
     #[tokio::test]
     async fn acct_change() -> anyhow::Result<()> {
