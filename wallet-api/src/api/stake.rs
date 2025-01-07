@@ -211,12 +211,13 @@ impl crate::WalletManager {
     pub async fn delegate_to_other(
         &self,
         owner_address: String,
+        resource_type: Option<String>,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<DelegateListResp>> {
         StackService::new()
             .await?
-            .delegate_to_other(&owner_address, page, page_size)
+            .delegate_to_other(&owner_address, resource_type, page, page_size)
             .await?
             .into()
     }
@@ -224,12 +225,13 @@ impl crate::WalletManager {
     pub async fn delegate_from_other(
         &self,
         owner_address: String,
+        resource_type: Option<String>,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<DelegateListResp>> {
         StackService::new()
             .await?
-            .delegate_from_other(&owner_address, page, page_size)
+            .delegate_from_other(&owner_address, resource_type, page, page_size)
             .await?
             .into()
     }

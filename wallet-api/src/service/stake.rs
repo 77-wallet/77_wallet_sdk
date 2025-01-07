@@ -175,6 +175,7 @@ impl StackService {
     async fn process_delegate(
         &self,
         chain: &TronChain,
+        resource_type: &Option<String>,
         owner_address: &str,
         to: &str,
         resource: &AccountResourceDetail,
@@ -187,34 +188,67 @@ impl StackService {
             .await?;
 
         for delegate in res.delegated_resource {
-            // 处理能源类型
-            if delegate.frozen_balance_for_energy > 0 {
-                let resource_type = ops::stake::ResourceType::ENERGY;
-                let amount = delegate.value_trx(resource_type);
-                let resource_value = resource.resource_value(resource_type, amount)?;
+            if let Some(types) = &resource_type {
+                if types.to_ascii_lowercase() == "bandwidth"
+                    && delegate.frozen_balance_for_bandwidth > 0
+                {
+                    let resource_type = ops::stake::ResourceType::ENERGY;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
 
-                let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
-                let r = resp::DelegateListResp::new(
-                    &delegate,
-                    resource,
-                    delegate.expire_time_for_energy,
-                )?;
-                result.push(r);
-            }
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_energy,
+                    )?;
+                    result.push(r);
+                }
 
-            // 处理带宽类型
-            if delegate.frozen_balance_for_bandwidth > 0 {
-                let resource_type = ops::stake::ResourceType::BANDWIDTH;
-                let amount = delegate.value_trx(resource_type);
-                let resource_value = resource.resource_value(resource_type, amount)?;
+                if types.to_ascii_lowercase() == "energy" && delegate.frozen_balance_for_energy > 0
+                {
+                    let resource_type = ops::stake::ResourceType::ENERGY;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
 
-                let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
-                let r = resp::DelegateListResp::new(
-                    &delegate,
-                    resource,
-                    delegate.expire_time_for_bandwidth,
-                )?;
-                result.push(r);
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_energy,
+                    )?;
+                    result.push(r);
+                }
+            } else {
+                // 处理能源类型
+                if delegate.frozen_balance_for_energy > 0 {
+                    let resource_type = ops::stake::ResourceType::ENERGY;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
+
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_energy,
+                    )?;
+                    result.push(r);
+                }
+
+                // 处理带宽类型
+                if delegate.frozen_balance_for_bandwidth > 0 {
+                    let resource_type = ops::stake::ResourceType::BANDWIDTH;
+                    let amount = delegate.value_trx(resource_type);
+                    let resource_value = resource.resource_value(resource_type, amount)?;
+
+                    let resource = resp::ResourceResp::new(amount, resource_type, resource_value);
+                    let r = resp::DelegateListResp::new(
+                        &delegate,
+                        resource,
+                        delegate.expire_time_for_bandwidth,
+                    )?;
+                    result.push(r);
+                }
             }
         }
 
@@ -870,6 +904,7 @@ impl StackService {
     pub async fn delegate_to_other(
         &self,
         owner_address: &str,
+        resource_type: Option<String>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
@@ -897,7 +932,7 @@ impl StackService {
         let accounts = self.page_address(page, page_size, &delegate_other.to_accounts);
         for to in accounts {
             let res = self
-                .process_delegate(&chain, &owner_address, &to, &resource)
+                .process_delegate(&chain, &resource_type, &owner_address, &to, &resource)
                 .await?;
             data.extend(res);
         }
@@ -925,6 +960,7 @@ impl StackService {
     pub async fn delegate_from_other(
         &self,
         to: &str,
+        resource_type: Option<String>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
@@ -950,7 +986,7 @@ impl StackService {
         let mut data = vec![];
         for owner_address in self.page_address(page, page_size, &delegate_other.from_accounts) {
             let res = self
-                .process_delegate(&chain, &owner_address, to, &resource)
+                .process_delegate(&chain, &resource_type, &owner_address, to, &resource)
                 .await?;
             data.extend(res);
         }
