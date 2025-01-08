@@ -35,6 +35,7 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         filter_min_value: Option<bool>,
         start: Option<i64>,
         end: Option<i64>,
+        transfer_type: Option<i64>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::ServiceError> {
@@ -72,6 +73,7 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
                 min_value,
                 start,
                 end,
+                transfer_type,
                 page,
                 page_size,
             )

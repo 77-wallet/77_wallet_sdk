@@ -7,7 +7,7 @@ use wallet_database::entities::bill::BillKind;
 #[tokio::test]
 async fn test_account_resource() {
     let manager = get_manager().await;
-    let account = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2".to_string();
+    let account = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let res = manager.resource_info(account).await;
 
     tracing::info!("resource = {}", serde_json::to_string(&res).unwrap());
@@ -34,9 +34,9 @@ async fn test_freeze_fee() {
 async fn test_freeze() {
     let manager = get_manager().await;
     let req = FreezeBalanceReq {
-        owner_address: "TUDrRQ6zvwXhW3ScTxwGv8nwicLShVVWoF".to_string(),
+        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         resource: "energy".to_string(),
-        frozen_balance: 2000,
+        frozen_balance: 100,
     };
     let password = "123456".to_string();
 

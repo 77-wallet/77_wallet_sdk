@@ -67,6 +67,7 @@ impl crate::WalletManager {
         filter_min_value: Option<bool>,
         start: Option<i64>,
         end: Option<i64>,
+        transfer_type: Option<i64>,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<BillEntity>> {
@@ -81,6 +82,7 @@ impl crate::WalletManager {
                 filter_min_value,
                 start,
                 end,
+                transfer_type,
                 page,
                 page_size,
             )

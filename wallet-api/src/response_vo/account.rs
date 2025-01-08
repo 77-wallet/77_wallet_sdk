@@ -131,7 +131,7 @@ impl Resource {
 
     // 计算可以转账的交易次数
     pub fn calculate_transfer_times(&mut self) {
-        let rs = (self.owner_freeze.value + self.acquire_freeze.value) / self.consumer as f64;
+        let rs = self.limit_resource as f64 / self.consumer as f64;
 
         self.transfer_times = (rs * 100.0).round() / 100.0;
     }

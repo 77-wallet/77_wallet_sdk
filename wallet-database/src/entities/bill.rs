@@ -148,6 +148,46 @@ impl BillKind {
     pub fn to_i8(&self) -> i8 {
         *self as i8
     }
+
+    // 订单类型进行转换
+    pub fn get_kinds(&self) -> Vec<i8> {
+        match self {
+            BillKind::Transfer => vec![BillKind::Transfer.to_i8()],
+            BillKind::ServiceCharge => vec![BillKind::ServiceCharge.to_i8()],
+            BillKind::MultiSignTx => vec![BillKind::MultiSignTx.to_i8()],
+            BillKind::SigningFee => vec![BillKind::SigningFee.to_i8()],
+            BillKind::DeployMultiSign => vec![BillKind::DeployMultiSign.to_i8()],
+            BillKind::FreezeBandwidth | BillKind::FreezeEnergy => vec![
+                BillKind::FreezeBandwidth.to_i8(),
+                BillKind::FreezeEnergy.to_i8(),
+            ],
+            BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => vec![
+                BillKind::UnFreezeBandwidth.to_i8(),
+                BillKind::UnFreezeEnergy.to_i8(),
+            ],
+            BillKind::CancelAllUnFreeze => vec![BillKind::CancelAllUnFreeze.to_i8()],
+            BillKind::WithdrawUnFreeze => vec![BillKind::WithdrawUnFreeze.to_i8()],
+            BillKind::DelegateBandwidth | BillKind::DelegateEnergy => vec![
+                BillKind::DelegateBandwidth.to_i8(),
+                BillKind::DelegateEnergy.to_i8(),
+            ],
+            BillKind::BatchDelegateBandwidth | BillKind::BatchDelegateEnergy => vec![
+                BillKind::BatchDelegateBandwidth.to_i8(),
+                BillKind::BatchDelegateEnergy.to_i8(),
+            ],
+
+            BillKind::UnDelegateBandwidth | BillKind::UnDelegateEnergy => vec![
+                BillKind::UnDelegateBandwidth.to_i8(),
+                BillKind::UnDelegateEnergy.to_i8(),
+            ],
+            BillKind::BatchUnDelegateBandwidth | BillKind::BatchUnDelegateEnergy => vec![
+                BillKind::BatchUnDelegateBandwidth.to_i8(),
+                BillKind::BatchUnDelegateEnergy.to_i8(),
+            ],
+            BillKind::Vote => vec![BillKind::Vote.to_i8()],
+            BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
+        }
+    }
 }
 
 impl TryFrom<i8> for BillKind {

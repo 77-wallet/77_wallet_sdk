@@ -303,7 +303,7 @@ mod tests {
     async fn test_votes() {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await.unwrap();
+        let (wallet_manager, _test_params) = get_manager().await.unwrap();
 
         let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
         let vote_witness_req = VoteWitnessReq::new(
@@ -324,7 +324,7 @@ mod tests {
     async fn test_votes_node_list() {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await.unwrap();
+        let (wallet_manager, _test_params) = get_manager().await.unwrap();
 
         let owner_address = Some("TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ");
         let res = wallet_manager.votes_node_list(owner_address).await;
@@ -337,7 +337,7 @@ mod tests {
     async fn test_votes_top_rewards() {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await.unwrap();
+        let (wallet_manager, _test_params) = get_manager().await.unwrap();
 
         let res = wallet_manager.top_witness().await;
         println!("{:#?}", res);
@@ -349,7 +349,7 @@ mod tests {
     async fn test_voter_info() {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await.unwrap();
+        let (wallet_manager, _test_params) = get_manager().await.unwrap();
 
         let owner = "TC5LVLjiMXkPhmNDJaHf4N2nuXr4V6foaZ";
         let res = wallet_manager.voter_info(owner).await;

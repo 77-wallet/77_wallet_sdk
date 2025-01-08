@@ -112,6 +112,7 @@ impl BillDao {
         min_value: Option<f64>,
         start: Option<i64>,
         end: Option<i64>,
+        transfer_type: Option<i64>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::Error>
@@ -122,6 +123,12 @@ impl BillDao {
         let placeholders: Vec<String> = addr.iter().map(|item| format!("'{}'", item)).collect();
         sql.push_str(&placeholders.join(","));
         sql.push(')');
+
+        if let Some(types) = transfer_type {
+            let kind = BillKind::try_from(types as i8)?.get_kinds();
+            let kinds_str = any_in_collection(kind, "','");
+            sql.push_str(format!(" AND tx_kind  in ('{}')", kinds_str).as_str());
+        }
 
         if let Some(chain_code) = chain_code {
             sql.push_str(format!(" AND chain_code = '{}'", chain_code).as_str());

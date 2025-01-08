@@ -34,6 +34,7 @@ pub trait BillRepoTrait: super::TransactionTrait {
         min_value: Option<f64>,
         start: Option<i64>,
         end: Option<i64>,
+        transfer_type: Option<i64>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::Error> {
@@ -47,6 +48,7 @@ pub trait BillRepoTrait: super::TransactionTrait {
             min_value,
             start,
             end,
+            transfer_type,
             page,
             page_size,
         )

@@ -54,6 +54,8 @@ async fn bill_lists() {
     let start_time = None;
     let end_time = None;
 
+    let transfer_type = Some(6);
+
     let page = 0;
     let page_size = 5;
 
@@ -68,6 +70,7 @@ async fn bill_lists() {
             filter_min_value,
             start_time,
             end_time,
+            transfer_type,
             page,
             page_size,
         )
