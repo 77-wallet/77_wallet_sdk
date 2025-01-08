@@ -68,6 +68,10 @@ pub struct AccountResource {
     pub delegate_num: i64,
     // 带宽能量总质押数据
     pub total_freeze: BalanceInfo,
+    // 总的解锁中的trx
+    pub total_un_freeze: BalanceInfo,
+    // 总的待提取trx
+    pub total_pending_widthdraw: BalanceInfo,
     // 能量资源
     pub energy: Resource,
     // 带宽资源
@@ -86,9 +90,11 @@ pub struct Resource {
     pub total_freeze: TrxResource,
     // 自己质押的数量
     pub owner_freeze: TrxResource,
+    // 解锁中的
+    pub un_freeze: TrxResource,
     // 委派出去的数量
     pub delegate_freeze: TrxResource,
-    // 被人给我的数量
+    // 别人给我的
     pub acquire_freeze: TrxResource,
     // 可提取的
     pub pending_withdraw: TrxResource,

@@ -19,6 +19,7 @@ use crate::notify::FrontendNotifyEvent;
 use crate::notify::NotifyEvent;
 use crate::request::stake;
 use crate::response_vo::account::AccountResource;
+use crate::response_vo::account::BalanceInfo;
 use crate::response_vo::account::Resource;
 use crate::response_vo::account::TrxResource;
 use crate::response_vo::stake as resp;
@@ -282,6 +283,10 @@ impl StackService {
         resource.owner_freeze = TrxResource::new(owner, price);
 
         resource.can_unfreeze = owner;
+
+        // 解冻中的金额
+        let un_freeze = account.un_freeze_amount(&type_str);
+        resource.un_freeze = TrxResource::new(un_freeze, price);
 
         // 可提取的
         let can_withdraw = account.can_withdraw_unfreeze_amount(&type_str);
@@ -718,11 +723,29 @@ impl StackService {
             resource.energy_price(),
         );
 
-        let amount = res.bandwidth.total_freeze.amount + res.energy.total_freeze.amount;
+        // 当前用户的法币
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
 
-        let balance =
-            TokenCurrencyGetter::get_balance_info(chain_code::TRON, "TRX", amount as f64).await?;
+        // 当前的币价
+        let token_price =
+            TokenCurrencyGetter::get_currency(currency, chain_code::TRON, "TRX").await?;
+        let unit_price = token_price.get_price(currency);
+
+        // 总质押
+        let amount = res.bandwidth.total_freeze.amount + res.energy.total_freeze.amount;
+        let balance = BalanceInfo::new(amount as f64, unit_price, currency);
         res.total_freeze = balance;
+
+        // 总的解冻中的
+        let amount = res.bandwidth.un_freeze.amount + res.energy.un_freeze.amount;
+        let balance = BalanceInfo::new(amount as f64, unit_price, currency);
+        res.total_un_freeze = balance;
+
+        // res.total_un_freeze = balance;
+        // 总的待提取
+        let amount = res.bandwidth.pending_withdraw.amount + res.energy.pending_withdraw.amount;
+        res.total_pending_widthdraw = BalanceInfo::new(amount as f64, unit_price, currency);
 
         res.delegate_num = res.bandwidth.delegate_freeze.amount + res.energy.delegate_freeze.amount;
 
