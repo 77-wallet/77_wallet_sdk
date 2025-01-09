@@ -40,7 +40,7 @@ impl crate::WalletManager {
 
     pub async fn get_hot_chain_list(&self) -> ReturnType<Vec<ChainEntity>> {
         ChainService::new(self.repo_factory.resuource_repo())
-            .get_chain_list()
+            .get_hot_chain_list()
             .await?
             .into()
     }
@@ -66,12 +66,7 @@ impl crate::WalletManager {
         symbol: &str,
     ) -> ReturnType<Vec<ChainAssets>> {
         ChainService::new(self.repo_factory.resuource_repo())
-            .get_chain_list_by_address_account_id_symbol(
-                wallet_address,
-                Some(account_id),
-                symbol,
-                None,
-            )
+            .get_chain_assets_list(wallet_address, Some(account_id), symbol, None)
             .await?
             .into()
     }
@@ -82,7 +77,7 @@ impl crate::WalletManager {
         symbol: &str,
     ) -> ReturnType<Vec<ChainAssets>> {
         ChainService::new(self.repo_factory.resuource_repo())
-            .get_chain_list_by_address_account_id_symbol(address, None, symbol, Some(true))
+            .get_chain_assets_list(address, None, symbol, Some(true))
             .await?
             .into()
     }
@@ -99,8 +94,8 @@ mod tests {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
-        let address = "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48";
-        let symbol = "TRX";
+        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        let symbol = "SOL";
         let res = wallet_manager.get_chain_list(address, 1, symbol).await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");

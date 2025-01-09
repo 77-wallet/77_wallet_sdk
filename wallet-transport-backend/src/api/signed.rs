@@ -212,7 +212,7 @@ mod test {
         // let uid = "de896a784586944bb22f0498d0574d6f";
         // let uid = "598e4144d26d871676e266036af660b3b38d38ea670a0abbfb75effab60890ad";
         // let uid = "6992180198ff51ca0922c0f8c96b1f073974537a050aebee27f24267c03d6b67";
-        let uid = "e44d9a305c77401c6c39fcb9d5bfc2088540eaa6e6d8e59c183ea7958a978897";
+        let uid = "f2282214954907af50f9a7b5fa636db8669e9300bb46891577ff04614049efcd";
         // let uid = "894f24c0d49a0ac1061c683bde3b8e72";
 
         // let typ = Some("multisig".to_string());

@@ -565,7 +565,6 @@ impl WalletService {
                 .await?;
 
             // let mut account_cal_list = std::collections::HashMap::new();
-
             let mut wallet_assets = BalanceInfo::new_without_amount().await?;
             for account in account_list.iter_mut() {
                 let mut account_assets_entity = self

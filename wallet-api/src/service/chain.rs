@@ -165,7 +165,7 @@ impl ChainService {
         Ok(())
     }
 
-    pub async fn get_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::ServiceError> {
+    pub async fn get_hot_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         let res = tx.get_chain_list().await?;
@@ -203,7 +203,7 @@ impl ChainService {
         Ok(res)
     }
 
-    pub async fn get_chain_list_by_address_account_id_symbol(
+    pub async fn get_chain_assets_list(
         mut self,
         address: &str,
         account_id: Option<u32>,
