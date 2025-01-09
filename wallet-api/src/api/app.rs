@@ -108,12 +108,12 @@ impl crate::WalletManager {
             .into()
     }
 
-    // pub async fn set_config(&self, key: String, value: String) -> ReturnType<ConfigEntity> {
-    //     AppService::new(self.repo_factory.resuource_repo())
-    //         .set_config(key, value)
-    //         .await?
-    //         .into()
-    // }
+    pub async fn set_config(&self, key: String, value: String) -> ReturnType<ConfigEntity> {
+        AppService::new(self.repo_factory.resuource_repo())
+            .set_config(key, value)
+            .await?
+            .into()
+    }
 
     pub async fn set_min_value_config(
         &self,
