@@ -43,12 +43,9 @@ impl NodeDomain {
 
         for node in default_nodes.iter() {
             let nodes = match backend.chain_rpc_list(&node.chain_code).await {
-                Ok(node) => {
-                    // tracing::warn!("node_create: {:?}", node);
-                    node
-                }
+                Ok(node) => node,
                 Err(e) => {
-                    tracing::error!("node_create: {:?}", e);
+                    tracing::error!("backend get chain rpc list error: {:?}", e);
                     continue;
                 }
             };
@@ -65,17 +62,13 @@ impl NodeDomain {
                 match NodeRepoTrait::add(&mut repo, node).await {
                     Ok(node) => backend_nodes.push(node),
                     Err(e) => {
-                        tracing::error!("node_create: {:?}", e);
+                        tracing::error!("node_create error: {:?}", e);
                         continue;
                     }
                 };
             }
         }
-        // tokio::spawn(async move {
-        //     if let Err(e) = Self::toggle_chains().await {
-        //         tracing::error!("toggle_chains error: {:?}", e);
-        //     }
-        // });
+
         let chain_list_req =
             BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::CHAIN_LIST, &())?;
         Tasks::new()

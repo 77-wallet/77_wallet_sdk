@@ -96,12 +96,10 @@ impl MultisigAccountDaoV1 {
         }
 
         query.push_str(" ORDER BY created_at DESC LIMIT 1");
-        tracing::error!("find_by_conditions: {}", query);
 
         let res = sqlx::query_as::<_, MultisigAccountEntity>(&query)
             .fetch_optional(exec)
             .await?;
-        tracing::error!("查询结果: {:?}", res);
 
         Ok(res)
     }

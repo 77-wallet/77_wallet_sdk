@@ -232,7 +232,6 @@ impl MultisigMemberDaoV1 {
             account_ids, addresses
         );
 
-        tracing::warn!("sql: {}", sql);
         let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql)
             .fetch_all(exec)
             .await?;

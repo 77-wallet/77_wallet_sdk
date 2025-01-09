@@ -42,8 +42,6 @@ impl AccountEntity {
 
         let query = query_builder.build();
 
-        // tracing::warn!("sql: {}", query.sql());
-
         query
             .execute(exec)
             .await

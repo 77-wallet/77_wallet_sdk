@@ -83,7 +83,6 @@ impl CoinEntity {
 
         // 执行查询
         let sql = query.sql();
-        tracing::info!("sql: {}", sql);
         query
             .fetch_all(exec)
             // .execute(exec)

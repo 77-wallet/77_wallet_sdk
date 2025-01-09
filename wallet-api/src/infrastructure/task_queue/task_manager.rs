@@ -37,7 +37,7 @@ impl TaskManager {
     pub fn start_task_check_loop(&self) {
         let running_tasks = Arc::clone(&self.running_tasks);
         tokio::spawn(async move {
-            Self::task_check_loop(running_tasks).await;
+            Self::task_check(running_tasks).await;
         });
     }
 
@@ -46,8 +46,8 @@ impl TaskManager {
         self.task_sender.clone()
     }
 
-    /// 任务检查循环函数
-    async fn task_check_loop(running_tasks: RunningTasks) {
+    /// 任务检查函数
+    async fn task_check(running_tasks: RunningTasks) {
         // 在 TaskManager 的方法中启动
         tokio::spawn(async move {
             let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
@@ -141,7 +141,7 @@ impl TaskManager {
                     std::time::Duration::from_secs(rand::thread_rng().gen_range(0..(delay / 2)));
                 delay = delay + jitter.as_secs();
                 retry_count += 1;
-                tracing::warn!("[process_single_task] delay: {delay}, retry_count: {retry_count}, jitter: {jitter:?}");
+                tracing::debug!("[process_single_task] delay: {delay}, retry_count: {retry_count}, jitter: {jitter:?}");
                 tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
                 continue;
             }

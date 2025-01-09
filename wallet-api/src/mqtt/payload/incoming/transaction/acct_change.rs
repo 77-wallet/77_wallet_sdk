@@ -192,7 +192,6 @@ async fn upsert_than_sync_assets(
 
     let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
 
-    tracing::warn!("[AcctChange] asset_list:{asset_list:?}");
     if !asset_list.is_empty() {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -367,8 +366,6 @@ async fn create_system_notification(
     };
 
     let pool = crate::Context::get_global_sqlite_pool()?;
-    let list = wallet_database::entities::assets::AssetsEntity::list(&*pool).await?;
-    tracing::warn!("[AcctChange] list: {:?}", list);
     let repo = RepositoryFactory::repo(pool.clone());
     let system_notification_service = SystemNotificationService::new(repo);
 

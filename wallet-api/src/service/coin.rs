@@ -100,22 +100,8 @@ impl CoinService {
                 .map(|chain| chain.chain_code)
                 .collect()
         };
-        // tracing::error!("[get_hot_coin_list] chain_codes: {chain_codes:?}");
-        // 排除掉已有的资产，查询出剩下的热门币
 
-        // // 遍历剩下的热门币，获取所有的币种符号
-        // let symbol_list = query_coins
-        //     .data
-        //     .into_iter()
-        //     .map(|coin| coin.symbol)
-        //     .collect();
-
-        // let list = service
-        //     .coin_service
-        //     ._get_hot_coin_list(&chain_codes, keyword, &symbol_list, page, page_size)
-        //     .await?;
-
-        tracing::warn!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
+        tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
         let list = tx
             .hot_coin_list_symbol_not_in(&chain_codes, keyword, &symbol_list, page, page_size)
             .await?;
@@ -429,7 +415,7 @@ impl CoinService {
             )
             .await?;
 
-        tracing::warn!(
+        tracing::debug!(
             "[customize_coin] account_addresses: {:?}",
             account_addresses
         );
@@ -439,7 +425,7 @@ impl CoinService {
                 crate::BusinessError::Account(crate::AccountError::NotFound),
             ))?;
 
-        tracing::warn!(
+        tracing::debug!(
             "[customize_coin] account_addresses pop: {:?}",
             account_addresses
         );

@@ -44,20 +44,19 @@ impl AccountDomain {
 
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
-                tracing::error!("开始查询多签账户 is_multisig: {is_multisig}");
-                tracing::error!("多签账户地址 address: {address}");
+                tracing::debug!("开始查询多签账户 is_multisig: {is_multisig}");
+                tracing::debug!("多签账户地址 address: {address}");
 
                 // 查询多签账户下的资产
                 let account =
                     super::multisig::MultisigDomain::account_by_address(address, true, &pool)
                         .await?;
-                tracing::error!("查询成功 account: {account:?}");
+                tracing::debug!("查询成功 account: {account:?}");
                 account_addresses.push(AddressChainCode {
                     address: account.address,
                     chain_code: account.chain_code,
                 });
             } else {
-                tracing::warn!("chain_codes: {chain_codes:?}");
                 // 获取钱包下的这个账户的所有地址
                 let accounts = repo
                     .account_list_by_wallet_address_and_account_id_and_chain_codes(
@@ -66,10 +65,7 @@ impl AccountDomain {
                         chain_codes,
                     )
                     .await?;
-                let mut condition = Vec::new();
-                if let Some(chain_code) = &chain_code {
-                    condition.push(("chain_code", chain_code.as_str()));
-                }
+
                 for account in accounts {
                     if !account_addresses.iter().any(|address| {
                         address.address == account.address
@@ -102,7 +98,7 @@ impl AccountDomain {
                 }
             }
         }
-        tracing::warn!("[get addresses] account_addresses: {account_addresses:?}");
+        tracing::debug!("[get addresses] account_addresses: {account_addresses:?}");
         Ok(account_addresses)
     }
 

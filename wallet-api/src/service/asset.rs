@@ -318,7 +318,6 @@ impl AssetsService {
                     } else {
                         asset.chain_code
                     };
-                    // tracing::warn!("[获取资产列表] 链码: {:?}", chain_code);
                     res.push(AccountChainAsset {
                         chain_code,
                         symbol: asset.symbol,

@@ -76,7 +76,7 @@ impl MultisigDomain {
                 continue;
             };
             if let Err(e) = Self::handle_one_mutlisg_data(&raw_data, pool.clone(), uid_list).await {
-                tracing::warn!("recover multisig data error :{}", e);
+                tracing::error!("recover multisig data error :{}", e);
             }
         }
 
