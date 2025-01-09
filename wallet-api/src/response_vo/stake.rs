@@ -253,6 +253,18 @@ pub struct VoteListResp {
     pub data: Vec<Witness>,
 }
 
+impl VoteListResp {
+    pub fn sort_data(&mut self) {
+        self.data.sort_by(|a, b| {
+            // 先按 brokerage 倒序排序
+            b.brokerage
+                .partial_cmp(&a.brokerage)
+                .unwrap()
+                .then_with(|| b.apr.partial_cmp(&a.apr).unwrap()) // 再按 apr 倒序排序
+        });
+    }
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Witness {

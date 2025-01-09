@@ -33,8 +33,6 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
 
     let repo = RepositoryFactory::repo(pool.clone());
 
-
-    
     let mut node_service = NodeService::new(repo);
     node_service.init_node_info().await?;
 

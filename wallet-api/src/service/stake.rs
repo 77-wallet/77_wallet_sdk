@@ -1141,6 +1141,7 @@ impl StackService {
                     witness.vote_count_by_owner = Some(vote.vote_count);
                 }
             });
+            res.sort_data();
         }
 
         Ok(res)
