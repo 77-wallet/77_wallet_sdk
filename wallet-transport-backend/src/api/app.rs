@@ -5,7 +5,7 @@ impl BackendApi {
     pub async fn app_install_save(
         &self,
         req: crate::request::AppInstallSaveReq,
-    ) -> Result<std::collections::HashMap<String, serde_json::Value>, crate::Error> {
+    ) -> Result<serde_json::Value, crate::Error> {
         let res = self
             .client
             .post("/app/install/save")
@@ -100,8 +100,8 @@ mod test {
         let base_url = crate::consts::BASE_URL;
 
         let req = AppInstallSaveReq {
-            sn: "ebe42b137abb313f0d0012f588080395c3742e7eac77e60f43fac0afb363e67c".to_string(),
-            channel: "official_website".to_string(),
+            sn: "2275b5608dbae9a49ddd7257e98ef657f2013040c70176cbf938d8c1ffaa0afc".to_string(),
+            channel: "android_google_shop".to_string(),
             device_type: "ANDROID".to_string(),
         };
         let res = BackendApi::new(Some(base_url.to_string()), None)
