@@ -334,7 +334,7 @@ impl MultisigAdapter {
                     &req.from,
                     &req.to,
                     &req.value,
-                    token,
+                    token.clone(),
                     decimal,
                     solana_chain.get_provider(),
                 )?;
@@ -352,9 +352,11 @@ impl MultisigAdapter {
 
                 // create transaction fee
                 let base_fee = solana_chain.estimate_fee_v1(&instructions, &params).await?;
-                let fee = params
+                let mut fee_setting = params
                     .create_transaction_fee(&args.transaction_message, base_fee)
                     .await?;
+
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref());
 
                 let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
                     currency,
@@ -363,7 +365,8 @@ impl MultisigAdapter {
                 )
                 .await?;
 
-                let fee = CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency);
+                let fee =
+                    CommonFeeDetails::new(fee_setting.transaction_fee(), token_currency, currency);
                 Ok(serde_func::serde_to_string(&fee)?)
             }
             _ => Ok("".to_string()),

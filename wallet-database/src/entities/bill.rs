@@ -59,7 +59,7 @@ impl BillEntity {
                 self.transaction_time.timestamp() < Utc::now().timestamp() - 86400
             }
             wallet_types::chain::chain::ChainCode::Solana => {
-                self.transaction_time.timestamp() < Utc::now().timestamp() - (20 * 60)
+                self.transaction_time.timestamp() < Utc::now().timestamp() - (10 * 60)
             }
             wallet_types::chain::chain::ChainCode::Ethereum => {
                 self.transaction_time.timestamp() < Utc::now().timestamp() - (40 * 60)

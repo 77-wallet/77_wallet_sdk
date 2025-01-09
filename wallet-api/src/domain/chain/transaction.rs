@@ -1,7 +1,8 @@
 use super::adapter::TransactionAdapter;
 use crate::request::transaction;
 use wallet_chain_interact::{
-    eth, sol,
+    eth,
+    sol::{self, SolFeeSetting},
     tron::{protocol::account::AccountResourceDetail, TronChain},
 };
 use wallet_database::entities::{
@@ -178,6 +179,13 @@ impl ChainTransaction {
             }
         };
         Ok(cost_main)
+    }
+
+    // 针对sol 是否需要给优先费计算,目前给到usdt的优先费位 2倍基础费
+    pub fn sol_priority_fee(fee_setting: &mut SolFeeSetting, token: Option<&String>) {
+        if let Some(_token) = token {
+            fee_setting.priority_fee_per_compute_unit = Some(fee_setting.base_fee * 10);
+        }
     }
 
     /// if main coin transfer return reduce transfer amount remain balance

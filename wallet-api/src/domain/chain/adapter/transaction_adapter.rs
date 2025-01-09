@@ -14,7 +14,7 @@ use wallet_chain_interact::{
     self as chain,
     btc::{self},
     eth,
-    sol::{self, operations::SolInstructionOperation, SolFeeSetting},
+    sol::{self, operations::SolInstructionOperation},
     tron::{
         self,
         operations::{TronConstantOperation as _, TronTxOperation},
@@ -188,41 +188,23 @@ impl TransactionAdapter {
                 let tx = chain
                     .transfer(params, private_key)
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(ChainTransaction::handle_btc_fee_error)?;
 
                 Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
             }
             Self::Solana(chain) => {
                 // check balance
                 let balance = chain.balance(&params.base.from, None).await?;
-                let remain_balance =
-                    domain::chain::transaction::ChainTransaction::check_sol_balance(
-                        &params.base.from,
-                        balance,
-                        params.base.token_address.as_deref(),
-                        chain,
-                        transfer_amount,
-                    )
-                    .await?;
+                let remain_balance = ChainTransaction::check_sol_balance(
+                    &params.base.from,
+                    balance,
+                    params.base.token_address.as_deref(),
+                    chain,
+                    transfer_amount,
+                )
+                .await?;
 
-                let fee_setting = if let Some(token) = &params.base.token_address {
-                    let priority = chain
-                        .get_provider()
-                        .get_recent_prioritization(Some(token.clone()))
-                        .await?
-                        .get_avg();
-
-                    if priority > 0 {
-                        let mut fee_setting = SolFeeSetting::new(0, 0);
-                        fee_setting.priority_fee_per_compute_unit = Some(priority);
-                        Some(fee_setting)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
+                let token = params.base.token_address.clone();
                 let params = sol::operations::transfer::TransferOpt::new(
                     &params.base.from,
                     &params.base.to,
@@ -233,20 +215,20 @@ impl TransactionAdapter {
                 )?;
 
                 let instructions = params.instructions().await?;
-                let fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                domain::chain::transaction::ChainTransaction::check_sol_transaction_fee(
+                let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref());
+
+                ChainTransaction::check_sol_transaction_fee(
                     remain_balance,
-                    fee.original_fee(),
+                    fee_setting.original_fee(),
                 )?;
+                let fee = fee_setting.transaction_fee().to_string();
 
                 let tx_hash = chain
-                    .exec_transaction(params, private_key, fee_setting, instructions, 0)
+                    .exec_transaction(params, private_key, Some(fee_setting), instructions, 0)
                     .await?;
 
-                Ok(TransferResp::new(
-                    tx_hash,
-                    fee.transaction_fee().to_string(),
-                ))
+                Ok(TransferResp::new(tx_hash, fee))
             }
             Self::Tron(chain) => {
                 if let Some(contract) = &params.base.token_address {
@@ -425,6 +407,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Solana(chain) => {
+                let token = req.token_address.clone();
                 let params = sol::operations::transfer::TransferOpt::new(
                     &req.from,
                     &req.to,
@@ -435,12 +418,15 @@ impl TransactionAdapter {
                 )?;
 
                 let instructions = params.instructions().await?;
-                let fee = chain
-                    .estimate_fee_v1(&instructions, &params)
-                    .await?
-                    .transaction_fee();
+                let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
 
-                let res = response_vo::CommonFeeDetails::new(fee, token_currency, currency);
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref());
+
+                let res = response_vo::CommonFeeDetails::new(
+                    fee_setting.transaction_fee(),
+                    token_currency,
+                    currency,
+                );
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Tron(chain) => {

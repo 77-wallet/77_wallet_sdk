@@ -20,6 +20,7 @@ pub enum ChainError {
     NotSupportChain,
     #[error("get node token err pelase change node!")]
     NodeToken(String),
+    // 不满足最小租金from地址或者to地址。
     #[error("sol transfer balance less rent")]
     InsufficientFundsRent,
     #[error("btc exceeds max fee")]
