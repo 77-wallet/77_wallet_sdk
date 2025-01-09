@@ -427,6 +427,18 @@ impl CoinEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn clean_table<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "DELETE FROM coin";
+        sqlx::query(sql)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     // pub fn get_main_coin(chain_code: &str) -> MainCoin {
     //     // TODO 主币获取逻辑
     //     match chain_code {

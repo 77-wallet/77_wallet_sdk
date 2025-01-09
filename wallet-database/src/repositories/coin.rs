@@ -120,4 +120,9 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinEntity::drop_multi_custom_coin, coin_ids)
     }
+
+    async fn clean_table(&mut self) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, CoinEntity::clean_table,)
+    }
 }
