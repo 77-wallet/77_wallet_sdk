@@ -27,14 +27,14 @@ async fn test_config_list() {
 async fn test_set_min_value_config() {
     let wallet_manager = get_manager().await;
 
-    let symbol = "dai".to_string();
-    let value = 0.111113232;
-    let switch = false;
+    let symbol = "TRx".to_string();
+    let value = 49.0;
+    let switch = true;
 
     let configs = wallet_manager
         .set_min_value_config(symbol, value, switch)
         .await;
-    tracing::info!("{:?}", serde_json::to_string(&configs).unwrap());
+    tracing::info!("{}", serde_json::to_string(&configs).unwrap());
 }
 
 #[tokio::test]

@@ -75,3 +75,19 @@ pub struct SaveSendMsgAccount {
     pub sn: String,
     pub is_open: bool,
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinValueConfigResp {
+    pub list: Vec<MinValueConfigList>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinValueConfigList {
+    pub id: String,
+    pub token_code: String,
+    pub sn: String,
+    pub min_amount: f64,
+    pub is_open: bool,
+}

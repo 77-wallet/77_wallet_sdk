@@ -18,7 +18,6 @@ impl ConfigDomain {
 
         let cx = crate::Context::get_context()?;
         let sn = cx.device.sn.clone();
-
         let key = MinValueSwitchConfig::get_key(symbol, &sn);
 
         if let Some(config) = ConfigDao::find_by_key(&key, pool.as_ref()).await? {
@@ -50,36 +49,24 @@ impl ConfigDomain {
         Ok(None)
     }
 
-    /// Report the minimum filtering amount configuration to the backend each time a wallet is created.
-    pub async fn report_backend(sn: &str) -> Result<(), crate::ServiceError> {
+    /// fetch the minimum filtering amount configuration to the backend each time a wallet is created.
+    pub async fn fetch_min_config(sn: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let config = ConfigDao::find_by_key(
-            wallet_database::entities::config::config_key::MIN_VALUE_SWITCH,
-            pool.as_ref(),
-        )
-        .await?;
+        let backend = crate::Context::get_global_backend_api()?;
+        let res = backend.fetch_min_config(sn.to_string()).await?;
 
-        // let req = if let Some(config) = config {
-        //     let min_config =
-        //         wallet_database::entities::config::MinValueSwitchConfig::try_from(config.value)?;
-        //     SaveSendMsgAccount {
-        //         amount: min_config.value,
-        //         sn: sn.to_string(),
-        //         is_open: min_config.switch,
-        //     }
-        // } else {
-        //     SaveSendMsgAccount {
-        //         amount: 0.0,
-        //         sn: sn.to_string(),
-        //         is_open: false,
-        //     }
-        // };
+        for item in res.list {
+            let key = MinValueSwitchConfig::get_key(&item.token_code.to_uppercase(), sn);
+            let value = MinValueSwitchConfig::new(item.is_open, item.min_amount);
 
-        // let backend = crate::Context::get_global_backend_api()?;
-        // if let Err(e) = backend.save_send_msg_account(req).await {
-        //     tracing::error!(sn = sn, "report min value error:{} ", e);
-        // }
+            if let Err(e) =
+                ConfigDao::upsert(&key, &value.to_json_str()?, Some(1), pool.as_ref()).await
+            {
+                tracing::error!("从后端同步过滤最小金额失败{}", e)
+            }
+        }
+
         Ok(())
     }
 

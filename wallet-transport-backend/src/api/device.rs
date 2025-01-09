@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::BackendApi;
-use crate::response::BackendResponse;
+use crate::{response::BackendResponse, response_vo::app::MinValueConfigResp};
 
 impl BackendApi {
     pub async fn device_init(
@@ -89,6 +89,20 @@ impl BackendApi {
             .await?
             .process()
     }
+
+    // fetch min config
+    pub async fn fetch_min_config(&self, sn: String) -> Result<MinValueConfigResp, crate::Error> {
+        let req = json!({
+            "sn":sn
+        });
+
+        self.client
+            .post("device/querySendMsgAmount")
+            .json(req)
+            .send::<BackendResponse>()
+            .await?
+            .process()
+    }
 }
 
 #[cfg(test)]
@@ -120,6 +134,19 @@ mod test {
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .device_init(&req)
+            .await;
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_min_config() {
+        // let method = "POST";
+        let base_url = crate::consts::BASE_URL;
+
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .fetch_min_config("guangxiang".to_string())
             .await;
 
         println!("[test_chain_default_list] res: {res:?}");

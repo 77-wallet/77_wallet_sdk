@@ -1,3 +1,4 @@
+use crate::domain;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
@@ -57,6 +58,9 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
 
     let mqtt_init_req =
         BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
+
+    let sn = Context::get_context()?.device.sn.clone();
+    let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
     Tasks::new()
         .push(Task::Initialization(InitializationTask::PullAnnouncement))

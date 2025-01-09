@@ -9,7 +9,7 @@ async fn get_manager() -> WalletManager {
         .to_string_lossy()
         .to_string();
 
-    WalletManager::new("sn", "ANDROID", &path, None)
+    WalletManager::new("guangxiang", "ANDROID", &path, None)
         .await
         .unwrap()
 }
@@ -48,13 +48,13 @@ async fn bill_lists() {
     let addr = Some("TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string());
     let chain_code: Option<String> = Some("tron".to_string());
     // let symbol = Some("TRX".to_string());
-    let symbol = None;
+    let symbol = Some("TRX".to_string());
     let is_multisig = None;
     let filter_min_value = Some(false);
     let start_time = None;
     let end_time = None;
 
-    let transfer_type = Some(6);
+    let transfer_type = None;
 
     let page = 0;
     let page_size = 5;
