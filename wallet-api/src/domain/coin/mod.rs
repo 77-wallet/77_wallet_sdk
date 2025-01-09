@@ -154,6 +154,8 @@ impl CoinDomain {
     }
 
     pub async fn init_coins(repo: &mut ResourcesRepo) -> Result<(), crate::ServiceError> {
+        // TODO: 下版本后，需要将该方法移除
+        repo.clean_table().await?;
         let list: Vec<UpsertCoinVo> = crate::default_data::coin::init_default_coins_list()?
             .coins
             .iter()

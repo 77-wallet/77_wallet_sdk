@@ -210,6 +210,16 @@ mod test {
     use anyhow::Result;
 
     #[tokio::test]
+    async fn test_sync_assets() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let res = wallet_manager.sync_assets(vec![], None, vec![]).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_add_assets() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>

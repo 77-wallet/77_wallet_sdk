@@ -246,7 +246,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // 前端的uid
-        let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
+        let wallet_address = "0x7dCF66c1947F46928Fa9dB9A95d2005a2761dC0a";
 
         let res = wallet_manager.recover_multisig_data(wallet_address).await;
 
@@ -260,7 +260,7 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "70fa6314e8e12d8e7450b4996206c30e1444e2657abd607ad20c1c46693831aa";
+        let uid = "f2282214954907af50f9a7b5fa636db8669e9300bb46891577ff04614049efcd";
         let start_time = std::time::Instant::now();
 
         let res = crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid).await;
@@ -378,9 +378,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let list = wallet_manager
-            .get_wallet_list(None, Some("tron".to_string()), Some(1))
-            .await;
+        let list = wallet_manager.get_wallet_list(None, None, None).await;
         let res = serde_json::to_string(&list).unwrap();
         tracing::info!("res: {res:?}");
         tracing::info!("list: {list:?}");

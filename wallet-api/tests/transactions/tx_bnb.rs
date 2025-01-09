@@ -6,11 +6,11 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3";
+    let addr = "0x0Bb5c82158760F1C1c73722e4aD51EE24f1559c3";
     // let addr = "0x5985CE40d3dACf7c1352e464691BC7fb03215928";
     let chain_code = "bnb";
     // let symbol = "STK";
-    let symbol = "BNB";
+    let symbol = "USDT";
 
     let balance = wallet_manager
         .chain_balance(addr, chain_code, &symbol)
