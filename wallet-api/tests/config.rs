@@ -1,6 +1,5 @@
 use std::{env, path::PathBuf};
 use wallet_api::WalletManager;
-use wallet_database::entities::config::{config_key::MIN_VALUE_SWITCH, MinValueSwitchConfig};
 use wallet_utils::init_test_log;
 
 async fn get_manager() -> WalletManager {
@@ -28,18 +27,24 @@ async fn test_config_list() {
 async fn test_set_min_value_config() {
     let wallet_manager = get_manager().await;
 
-    let config = MinValueSwitchConfig {
-        switch: true,
-        value: 2.0,
-        currency: "USD".to_string(),
-    };
-
-    let key = MIN_VALUE_SWITCH.to_string();
+    let symbol = "dai".to_string();
+    let value = 0.111113232;
+    let switch = false;
 
     let configs = wallet_manager
-        .set_config(key, config.to_json_str().unwrap())
+        .set_min_value_config(symbol, value, switch)
         .await;
     tracing::info!("{:?}", serde_json::to_string(&configs).unwrap());
+}
+
+#[tokio::test]
+async fn test_get_min_value_config() {
+    let wallet_manager = get_manager().await;
+
+    let symbol = "dai".to_string();
+
+    let configs = wallet_manager.get_min_value_config(symbol).await;
+    tracing::info!("{}", serde_json::to_string(&configs).unwrap());
 }
 
 // #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

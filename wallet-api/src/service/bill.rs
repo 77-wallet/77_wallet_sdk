@@ -56,10 +56,8 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         };
 
         // 过滤最小金额
-        let min_value = match (chain_code, symbol, filter_min_value) {
-            (Some(chain_code), Some(symbol), Some(true)) => {
-                ConfigDomain::get_config_min_value(chain_code, symbol).await?
-            }
+        let min_value = match (symbol, filter_min_value) {
+            (Some(symbol), Some(true)) => ConfigDomain::get_config_min_value(symbol).await?,
             _ => None,
         };
 

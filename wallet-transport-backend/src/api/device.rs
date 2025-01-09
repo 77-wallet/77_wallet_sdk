@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use super::BackendApi;
 use crate::response::BackendResponse;
 
@@ -74,11 +76,15 @@ impl BackendApi {
     // report filter min value config
     pub async fn save_send_msg_account(
         &self,
-        req: crate::response_vo::app::SaveSendMsgAccount,
+        req: Vec<crate::response_vo::app::SaveSendMsgAccount>,
     ) -> Result<(), crate::Error> {
+        let req = json!({
+            "tokenAmountInfo":req,
+        });
+
         self.client
             .post("device/saveSendMsgAmount")
-            .json(serde_json::json!(req))
+            .json(req)
             .send::<BackendResponse>()
             .await?
             .process()

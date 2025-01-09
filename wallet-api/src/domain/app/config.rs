@@ -3,49 +3,48 @@ use wallet_database::{
     entities::config::{
         config_key::{
             APP_DOWNLOAD_QR_CODE_URL, APP_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, LANGUAGE,
-            MIN_VALUE_SWITCH, MQTT_URL, OFFICIAL_WEBSITE,
+            MQTT_URL, OFFICIAL_WEBSITE,
         },
         Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
-use wallet_transport_backend::{
-    consts::{endpoint::VERSION_DOWNLOAD, BASE_URL},
-    response_vo::app::SaveSendMsgAccount,
-};
+use wallet_transport_backend::consts::{endpoint::VERSION_DOWNLOAD, BASE_URL};
 
 pub struct ConfigDomain;
 
 impl ConfigDomain {
-    // 获取配置过滤的最小币
-    //    U的价值  = 配置的法币值  / 汇率
-    //    币的数量  = U的价值     / 币的单价(币)
-    pub async fn get_config_min_value(
-        chain_code: &str,
-        symbol: &str,
-    ) -> Result<Option<f64>, crate::ServiceError> {
+    pub async fn get_config_min_value(symbol: &str) -> Result<Option<f64>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        if let Some(config) = ConfigDao::find_by_key(MIN_VALUE_SWITCH, pool.as_ref()).await? {
+
+        let cx = crate::Context::get_context()?;
+        let sn = cx.device.sn.clone();
+
+        let key = MinValueSwitchConfig::get_key(symbol, &sn);
+
+        if let Some(config) = ConfigDao::find_by_key(&key, pool.as_ref()).await? {
             let min_config = MinValueSwitchConfig::try_from(config.value)?;
             if !min_config.switch {
                 return Ok(None);
             }
-            // 币价格
-            let token_currency = super::super::coin::TokenCurrencyGetter::get_currency(
-                &min_config.currency,
-                chain_code,
-                symbol,
-            )
-            .await?;
 
-            if let Some(price) = token_currency.price {
-                if token_currency.rate == 0.0 || price == 0.0 {
-                    return Ok(None);
-                }
+            return Ok(Some(min_config.value));
+            // // 币价格
+            // let token_currency = super::super::coin::TokenCurrencyGetter::get_currency(
+            //     &min_config.currency,
+            //     chain_code,
+            //     symbol,
+            // )
+            // .await?;
 
-                return Ok(Some(min_config.value / token_currency.rate / price));
-            } else {
-                return Ok(Some(0.0));
-            }
+            // if let Some(price) = token_currency.price {
+            //     if token_currency.rate == 0.0 || price == 0.0 {
+            //         return Ok(None);
+            //     }
+
+            //     return Ok(Some(min_config.value / token_currency.rate / price));
+            // } else {
+            //     return Ok(Some(0.0));
+            // }
         };
 
         Ok(None)
@@ -61,33 +60,33 @@ impl ConfigDomain {
         )
         .await?;
 
-        let req = if let Some(config) = config {
-            let min_config =
-                wallet_database::entities::config::MinValueSwitchConfig::try_from(config.value)?;
-            SaveSendMsgAccount {
-                amount: min_config.value,
-                sn: sn.to_string(),
-                is_open: min_config.switch,
-            }
-        } else {
-            SaveSendMsgAccount {
-                amount: 0.0,
-                sn: sn.to_string(),
-                is_open: false,
-            }
-        };
+        // let req = if let Some(config) = config {
+        //     let min_config =
+        //         wallet_database::entities::config::MinValueSwitchConfig::try_from(config.value)?;
+        //     SaveSendMsgAccount {
+        //         amount: min_config.value,
+        //         sn: sn.to_string(),
+        //         is_open: min_config.switch,
+        //     }
+        // } else {
+        //     SaveSendMsgAccount {
+        //         amount: 0.0,
+        //         sn: sn.to_string(),
+        //         is_open: false,
+        //     }
+        // };
 
-        let backend = crate::Context::get_global_backend_api()?;
-        if let Err(e) = backend.save_send_msg_account(req).await {
-            tracing::error!(sn = sn, "report min value error:{} ", e);
-        }
+        // let backend = crate::Context::get_global_backend_api()?;
+        // if let Err(e) = backend.save_send_msg_account(req).await {
+        //     tracing::error!(sn = sn, "report min value error:{} ", e);
+        // }
         Ok(())
     }
 
     pub async fn set_config(key: &str, value: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        ConfigDao::upsert(key, value, pool.as_ref()).await?;
+        ConfigDao::upsert(key, value, None, pool.as_ref()).await?;
 
         Ok(())
     }

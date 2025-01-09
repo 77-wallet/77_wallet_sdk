@@ -1,5 +1,5 @@
 use crate::{api::ReturnType, response_vo::app::GetConfigRes, service::app::AppService};
-use wallet_database::entities::config::ConfigEntity;
+use wallet_database::entities::config::{ConfigEntity, MinValueSwitchConfig};
 use wallet_transport_backend::response_vo::app::{
     AppVersionRes, GetFiatRes, GetOfficialWebsiteRes,
 };
@@ -108,9 +108,31 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn set_config(&self, key: String, value: String) -> ReturnType<ConfigEntity> {
+    // pub async fn set_config(&self, key: String, value: String) -> ReturnType<ConfigEntity> {
+    //     AppService::new(self.repo_factory.resuource_repo())
+    //         .set_config(key, value)
+    //         .await?
+    //         .into()
+    // }
+
+    pub async fn set_min_value_config(
+        &self,
+        symbol: String,
+        amount: f64,
+        switch: bool,
+    ) -> ReturnType<MinValueSwitchConfig> {
         AppService::new(self.repo_factory.resuource_repo())
-            .set_config(key, value)
+            .set_min_value_config(symbol, amount, switch)
+            .await?
+            .into()
+    }
+
+    pub async fn get_min_value_config(
+        &self,
+        symbol: String,
+    ) -> ReturnType<Option<MinValueSwitchConfig>> {
+        AppService::new(self.repo_factory.resuource_repo())
+            .get_min_value_config(symbol)
             .await?
             .into()
     }

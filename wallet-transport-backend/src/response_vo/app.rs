@@ -71,6 +71,7 @@ pub struct AppRpcToken {
 #[serde(rename_all = "camelCase")]
 pub struct SaveSendMsgAccount {
     pub amount: f64,
+    pub symbol: String,
     pub sn: String,
     pub is_open: bool,
 }

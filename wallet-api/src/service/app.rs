@@ -2,7 +2,7 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE},
-        ConfigEntity,
+        ConfigEntity, MinValueSwitchConfig,
     },
     repositories::{
         announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
@@ -259,35 +259,84 @@ impl<
         Ok(res)
     }
 
-    pub async fn set_config(
+    // pub async fn set_config(
+    //     &self,
+    //     key: String,
+    //     value: String,
+    // ) -> Result<ConfigEntity, crate::ServiceError> {
+    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+    // let min_config =
+    //     wallet_database::entities::config::MinValueSwitchConfig::try_from(value.clone())?;
+
+    // let res = ConfigDao::upsert(&key, &value, pool.as_ref()).await?;
+
+    // // Report to the backend
+    // let cx = crate::Context::get_context()?;
+
+    // let sn = cx.device.sn.clone();
+    // tracing::warn!("report sn = {}", sn);
+    // let req = wallet_transport_backend::response_vo::app::SaveSendMsgAccount {
+    //     sn: sn.clone(),
+    //     amount: min_config.value,
+    //     is_open: min_config.switch,
+    // };
+
+    // let backend = crate::Context::get_global_backend_api()?;
+    // if let Err(e) = backend.save_send_msg_account(req).await {
+    //     tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
+    // }
+
+    // Ok(res)
+    // }
+
+    pub async fn set_min_value_config(
         &self,
-        key: String,
-        value: String,
-    ) -> Result<ConfigEntity, crate::ServiceError> {
+        symbol: String,
+        amount: f64,
+        switch: bool,
+    ) -> Result<MinValueSwitchConfig, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let min_config =
-            wallet_database::entities::config::MinValueSwitchConfig::try_from(value.clone())?;
-
-        let res = ConfigDao::upsert(&key, &value, pool.as_ref()).await?;
-
-        // Report to the backend
         let cx = crate::Context::get_context()?;
-
         let sn = cx.device.sn.clone();
-        tracing::warn!("report sn = {}", sn);
+
+        let symbol = symbol.to_ascii_uppercase();
+        let key = MinValueSwitchConfig::get_key(&symbol, &sn);
+        let config = MinValueSwitchConfig::new(switch, amount);
+
+        ConfigDao::upsert(&key, &config.to_json_str()?, Some(1), pool.as_ref()).await?;
+
         let req = wallet_transport_backend::response_vo::app::SaveSendMsgAccount {
             sn: sn.clone(),
-            amount: min_config.value,
-            is_open: min_config.switch,
+            amount,
+            symbol,
+            is_open: switch,
         };
-
         let backend = crate::Context::get_global_backend_api()?;
-        if let Err(e) = backend.save_send_msg_account(req).await {
+        if let Err(e) = backend.save_send_msg_account(vec![req]).await {
             tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
         }
 
-        Ok(res)
+        Ok(config)
+    }
+
+    pub async fn get_min_value_config(
+        &self,
+        symbol: String,
+    ) -> Result<Option<MinValueSwitchConfig>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let symbol = symbol.to_uppercase();
+        let cx = crate::Context::get_context()?;
+        let sn = cx.device.sn.clone();
+
+        let key = MinValueSwitchConfig::get_key(&symbol, &sn);
+
+        match ConfigDao::find_by_key(&key, pool.as_ref()).await? {
+            Some(r) => Ok(Some(MinValueSwitchConfig::try_from(r.value)?)),
+            None => Ok(None),
+        }
     }
 
     pub async fn app_install_save(

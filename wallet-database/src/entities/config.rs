@@ -131,10 +131,16 @@ pub struct MinValueSwitchConfig {
     pub switch: bool,
     // 配置的金额
     pub value: f64,
-    // 金额对应的法币符号
-    pub currency: String,
 }
 impl MinValueSwitchConfig {
+    pub fn new(switch: bool, value: f64) -> Self {
+        Self { switch, value }
+    }
+
+    pub fn get_key(symbol: &str, sn: &str) -> String {
+        format!("{}_{}", sn, symbol)
+    }
+
     pub fn to_json_str(&self) -> Result<String, crate::Error> {
         Ok(wallet_utils::serde_func::serde_to_string(self)?)
     }
