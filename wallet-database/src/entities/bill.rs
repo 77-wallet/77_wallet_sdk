@@ -306,18 +306,25 @@ impl NewBillEntity {
     }
 
     // 构建质押相关的交易
-    pub fn new_stake_bill(hash: String, from: String, bill_kind: BillKind) -> Self {
+    pub fn new_stake_bill(
+        hash: String,
+        from: String,
+        to: String,
+        value: i64,
+        bill_kind: BillKind,
+        bill_consumer: String,
+    ) -> Self {
         Self {
             hash,
             from,
-            to: "".to_string(),
+            to,
             token: None,
             chain_code: chain_code::TRON.to_string(),
             symbol: "TRX".to_string(),
             status: 1,
-            value: 0.0,
+            value: value as f64,
             transaction_fee: "0".to_string(),
-            resource_consume: "".to_string(),
+            resource_consume: bill_consumer,
             transaction_time: 0,
             multisig_tx: false,
             tx_type: 1,

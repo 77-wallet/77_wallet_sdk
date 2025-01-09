@@ -59,7 +59,7 @@ async fn test_delegate() {
         balance: 50,
         resource: "energy".to_string(),
         lock: true,
-        lock_period: 4,
+        lock_period: 0,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;
@@ -100,12 +100,12 @@ async fn test_batch_delegate_fee() {
 async fn test_batch_delegate() {
     let rerevice1 = BatchList {
         receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        value: 100,
+        value: 50,
     };
 
     let rerevice2 = BatchList {
         receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        value: 100,
+        value: 50,
     };
 
     let req = BatchDelegate {
@@ -154,12 +154,12 @@ async fn test_batch_un_delegate_fee() {
 async fn test_batch_un_delegate() {
     let rerevice1 = BatchList {
         receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        value: 100,
+        value: 50,
     };
 
     let rerevice2 = BatchList {
         receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        value: 100,
+        value: 50,
     };
 
     let req = BatchUnDelegate {

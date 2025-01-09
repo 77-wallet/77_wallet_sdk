@@ -1,4 +1,5 @@
 use crate::domain;
+use crate::domain::account::open_account_pk_with_password;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
@@ -7,10 +8,7 @@ use crate::domain::stake::EstimateTxComsumer;
 use crate::domain::stake::StakeArgs;
 use crate::domain::stake::StakeDomain;
 use crate::error::business::stake::StakeError;
-use crate::infrastructure::task_queue::BackendApiTask;
-use crate::infrastructure::task_queue::BackendApiTaskData;
-use crate::infrastructure::task_queue::Task;
-use crate::infrastructure::task_queue::Tasks;
+use crate::infrastructure::task_queue;
 use crate::manager::Context;
 use crate::mqtt::payload::incoming::transaction::MultiSignTransAccept;
 use crate::notify::event::other::Process;
@@ -31,15 +29,19 @@ use crate::response_vo::stake::ResourceResp;
 use crate::response_vo::EstimateFeeResp;
 use crate::response_vo::TronFeeDetails;
 use crate::BusinessError;
+use wallet_chain_interact::tron;
 use wallet_chain_interact::tron::operations as ops;
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_chain_interact::tron::operations::stake::DelegateArgs;
 use wallet_chain_interact::tron::operations::stake::UnDelegateArgs;
 use wallet_chain_interact::tron::operations::RawTransactionParams;
+use wallet_chain_interact::tron::params::ResourceConsumer;
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::tron::protocol::account::TronAccount;
+use wallet_chain_interact::tron::protocol::ChainParameter;
 use wallet_chain_interact::tron::TronChain;
 use wallet_chain_interact::types::ChainPrivateKey;
+use wallet_chain_interact::BillResourceConsume;
 use wallet_database::dao::bill::BillDao;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
@@ -54,6 +56,13 @@ use wallet_transport_backend::request::SignedTranCreateReq;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 use wallet_types::constant::chain_code;
 use wallet_utils::serde_func;
+
+struct TempBuildTransaction {
+    to: String,
+    value: i64,
+    conusmer: tron::params::ResourceConsumer,
+    raw_data: RawTransactionParams,
+}
 
 pub struct StackService {
     chain: TronChain,
@@ -81,6 +90,20 @@ impl StackService {
 
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
 
+        // 验证余额
+        let balance = self.chain.balance(from, None).await?;
+        let consumer = self
+            .chain
+            .get_provider()
+            .transfer_fee(from, None, &resp.raw_data_hex, 1)
+            .await?;
+
+        if balance.to::<i64>() < consumer.transaction_fee_i64() {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::InsufficientFeeBalance,
+            ))?;
+        }
+
         // 广播交易交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             bill_kind,
@@ -88,23 +111,32 @@ impl StackService {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let key = domain::account::open_account_pk_with_password(chain_code::TRON, from, password)
-            .await?;
+        let key = open_account_pk_with_password(chain_code::TRON, from, password).await?;
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
         // 写入本地交易数据
-        let entity = NewBillEntity::new_stake_bill(hash.clone(), from.to_string(), bill_kind);
+        let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
+        let entity = NewBillEntity::new_stake_bill(
+            hash.clone(),
+            from.to_string(),
+            args.get_to(),
+            args.get_value(),
+            bill_kind,
+            bill_consumer.to_json_str()?,
+        );
         domain::bill::BillDomain::create_bill(entity).await?;
 
         Ok(hash)
     }
 
-    // 批量构建交易并发送通知到前端
+    // 批量构建交易并发送通知到前端(return:raw_transactin and to_address)
     async fn batch_build_transaction<T>(
         &self,
         args: Vec<impl ops::TronTxOperation<T>>,
         bill_kind: BillKind,
-    ) -> Result<Vec<(RawTransactionParams, String)>, crate::ServiceError> {
+        chain_param: &ChainParameter,
+        resource: &AccountResourceDetail,
+    ) -> Result<Vec<TempBuildTransaction>, crate::ServiceError> {
         let mut result = vec![];
 
         for (i, item) in args.into_iter().enumerate() {
@@ -116,7 +148,24 @@ impl StackService {
             FrontendNotifyEvent::new(data).send().await?;
 
             let res = item.build_raw_transaction(&self.chain.provider).await?;
-            result.push((res, item.get_to()));
+
+            // 计算费用
+            let bandwidth = self.chain.provider.calc_bandwidth(&res.raw_data_hex, 1);
+            let bandwidth = tron::params::Resource::new(
+                resource.available_bandwidth(),
+                bandwidth,
+                chain_param.get_transaction_fee(),
+                "bandwidth",
+            );
+
+            let temp = TempBuildTransaction {
+                raw_data: res,
+                to: item.get_to(),
+                value: item.get_value(),
+                conusmer: ResourceConsumer::new(bandwidth, None),
+            };
+
+            result.push(temp);
         }
 
         Ok(result)
@@ -124,10 +173,10 @@ impl StackService {
 
     async fn batch_exec(
         &self,
-        from: String,
+        from: &str,
         key: ChainPrivateKey,
         bill_kind: BillKind,
-        txs: Vec<(RawTransactionParams, String)>,
+        txs: Vec<TempBuildTransaction>,
     ) -> Result<(Vec<BatchRes>, Vec<String>), crate::ServiceError> {
         let mut exce_res = vec![];
         let mut tx_hash = vec![];
@@ -140,15 +189,24 @@ impl StackService {
             ));
             FrontendNotifyEvent::new(data).send().await?;
 
-            let result = self.chain.exec_transaction_v1(item.0, key.clone()).await;
+            let result = self
+                .chain
+                .exec_transaction_v1(item.raw_data, key.clone())
+                .await;
             match result {
                 Ok(hash) => {
-                    let entity =
-                        NewBillEntity::new_stake_bill(hash.clone(), from.clone(), bill_kind);
+                    let entity = NewBillEntity::new_stake_bill(
+                        hash.clone(),
+                        from.to_string(),
+                        item.to.clone(),
+                        item.value,
+                        bill_kind,
+                        "".to_string(),
+                    );
                     domain::bill::BillDomain::create_bill(entity).await?;
 
                     let ra = BatchRes {
-                        address: item.1,
+                        address: item.to.clone(),
                         status: true,
                     };
                     exce_res.push(ra);
@@ -156,7 +214,7 @@ impl StackService {
                 }
                 Err(_e) => {
                     let ra = BatchRes {
-                        address: item.1,
+                        address: item.to,
                         status: false,
                     };
                     exce_res.push(ra);
@@ -382,51 +440,6 @@ impl StackService {
 }
 
 impl StackService {
-    // // 输入trx 得到对应的资源
-    // pub async fn trx_to_resource(
-    //     &self,
-    //     account: String,
-    //     value: i64,
-    //     resource_type: String,
-    // ) -> Result<resp::TrxToResourceResp, crate::ServiceError> {
-    //     let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
-
-    //     let resource_value = self.resource_value(&account, value, resource_type).await?;
-    //     let resource = resp::ResourceResp::new(value, resource_type, resource_value);
-
-    //     let consumer = match resource_type {
-    //         ops::stake::ResourceType::BANDWIDTH => NET_CONSUME,
-    //         ops::stake::ResourceType::ENERGY => ENERGY_CONSUME,
-    //     };
-
-    //     Ok(resp::TrxToResourceResp::new(resource, consumer))
-    // }
-
-    // // 输入 resoruce 换算trx
-    // pub async fn resource_to_trx(
-    //     &self,
-    //     account: String,
-    //     value: i64,
-    //     resource_type: String,
-    // ) -> Result<resp::ResourceToTrxResp, crate::ServiceError> {
-    //     let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
-    //     let resource = ChainTransaction::account_resorce(&self.chain, &account).await?;
-
-    //     let (price, consumer) = match resource_type {
-    //         ops::stake::ResourceType::BANDWIDTH => (resource.net_price(), NET_CONSUME),
-    //         ops::stake::ResourceType::ENERGY => (resource.energy_price(), ENERGY_CONSUME),
-    //     };
-
-    //     let amount = (value as f64 / price) as i64;
-    //     let transfer_times = value as f64 / consumer;
-
-    //     Ok(resp::ResourceToTrxResp {
-    //         amount,
-    //         votes: amount,
-    //         transfer_times,
-    //     })
-    // }
-
     pub async fn estimate_stake_fee(
         &self,
         bill_kind: i64,
@@ -806,8 +819,8 @@ impl StackService {
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
         let bill_kind = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
-            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+            ops::stake::ResourceType::BANDWIDTH => BillKind::DelegateBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::DelegateEnergy,
         };
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
@@ -826,6 +839,50 @@ impl StackService {
         ))
     }
 
+    async fn process_batch<T>(
+        &self,
+        resource_type: ops::stake::ResourceType,
+        owner_address: &str,
+        bill_kind: BillKind,
+        password: &str,
+        args: Vec<impl ops::TronTxOperation<T>>,
+        amount: i64,
+    ) -> Result<BatchDelegateResp, crate::ServiceError> {
+        let resource = ChainTransaction::account_resorce(&self.chain, owner_address).await?;
+        let chain_param = self.chain.get_provider().chain_params().await?;
+
+        // 批量构建交易
+        let txs = self
+            .batch_build_transaction(args, bill_kind, &chain_param, &resource)
+            .await?;
+
+        // check balance
+        let balance = self.chain.balance(&owner_address, None).await?;
+        let fee = txs
+            .iter()
+            .map(|item| item.conusmer.transaction_fee_i64())
+            .sum::<i64>();
+
+        if balance.to::<i64>() < fee {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::InsufficientFeeBalance,
+            ))?;
+        }
+
+        let key = open_account_pk_with_password(chain_code::TRON, owner_address, &password).await?;
+        let res = self.batch_exec(owner_address, key, bill_kind, txs).await?;
+
+        let resource_value = resource.resource_value(resource_type, amount)?;
+        let resource = ResourceResp::new(amount, resource_type, resource_value);
+
+        Ok(BatchDelegateResp::new(
+            owner_address.to_string(),
+            res,
+            resource,
+            bill_kind,
+        ))
+    }
+
     pub async fn batch_delegate(
         &self,
         req: stake::BatchDelegate,
@@ -833,33 +890,23 @@ impl StackService {
     ) -> Result<BatchDelegateResp, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
 
-        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
         let bill_kind = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => BillKind::FreezeBandwidth,
-            ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
+            ops::stake::ResourceType::BANDWIDTH => BillKind::BatchDelegateBandwidth,
+            ops::stake::ResourceType::ENERGY => BillKind::BatchDelegateEnergy,
         };
 
+        let args: Vec<DelegateArgs> = (&req).try_into()?;
         let amount = req.total();
 
-        // 批量构建交易
-        let args: Vec<DelegateArgs> = (&req).try_into()?;
-        let txs = self.batch_build_transaction(args, bill_kind).await?;
-
-        let key = domain::account::open_account_pk_with_password(
-            chain_code::TRON,
+        self.process_batch(
+            resource_type,
             &req.owner_address,
+            bill_kind,
             &password,
+            args,
+            amount,
         )
-        .await?;
-        let res = self
-            .batch_exec(req.owner_address.clone(), key, bill_kind, txs)
-            .await?;
-
-        let resource_value = resource.resource_value(resource_type, amount)?;
-        let resource = ResourceResp::new(amount, resource_type, resource_value);
-
-        let res = BatchDelegateResp::new(req.owner_address, res, resource, bill_kind);
-        Ok(res)
+        .await
     }
 
     pub async fn batch_un_delegate(
@@ -869,33 +916,23 @@ impl StackService {
     ) -> Result<BatchDelegateResp, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
 
-        let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
         let bill_kind = match resource_type {
             ops::stake::ResourceType::BANDWIDTH => BillKind::BatchUnDelegateBandwidth,
             ops::stake::ResourceType::ENERGY => BillKind::BatchUnDelegateEnergy,
         };
 
+        let args: Vec<UnDelegateArgs> = (&req).try_into()?;
         let amount = req.total();
 
-        // 批量构建交易
-        let args: Vec<UnDelegateArgs> = (&req).try_into()?;
-        let txs = self.batch_build_transaction(args, bill_kind).await?;
-
-        let key = domain::account::open_account_pk_with_password(
-            chain_code::TRON,
+        self.process_batch(
+            resource_type,
             &req.owner_address,
+            bill_kind,
             &password,
+            args,
+            amount,
         )
-        .await?;
-        let res = self
-            .batch_exec(req.owner_address.clone(), key, bill_kind, txs)
-            .await?;
-
-        let resource_value = resource.resource_value(resource_type, amount)?;
-        let resource = ResourceResp::new(amount, resource_type, resource_value);
-
-        let res = BatchDelegateResp::new(req.owner_address, res, resource, bill_kind);
-        Ok(res)
+        .await
     }
 
     // Reclaim delegated energy
@@ -1191,7 +1228,7 @@ impl StackService {
         let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::Vote, &req.owner_address, password)
+            .process_transaction(args, BillKind::WithdrawReward, &req.owner_address, password)
             .await?;
 
         Ok(tx_hash)
@@ -1275,11 +1312,13 @@ impl StackService {
             raw_data,
         };
 
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
-            endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
-            body: serde_func::serde_to_value(&req)?,
-        }));
-        Tasks::new().push(task).send().await?;
+        let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+            task_queue::BackendApiTaskData {
+                endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
+                body: serde_func::serde_to_value(&req)?,
+            },
+        ));
+        task_queue::Tasks::new().push(task).send().await?;
 
         Ok(resp.tx_hash)
     }
