@@ -390,23 +390,9 @@ impl TokenCurrencies {
         chains: &ChainCodeAndName,
     ) -> Result<AccountInfos, crate::ServiceError> {
         let mut account_list = Vec::<crate::response_vo::wallet::AccountInfo>::new();
-        let pool = crate::Context::get_global_sqlite_pool()?;
         for account in data {
             let btc_address_type_opt: AddressType = account.address_type().try_into()?;
             let address_type = btc_address_type_opt.into();
-
-            let is_multisig = if crate::domain::multisig::MultisigDomain::done_account_by_address(
-                &account.address,
-                &account.chain_code,
-                &pool,
-            )
-            .await?
-            .is_some()
-            {
-                1
-            } else {
-                0
-            };
 
             if let Some(info) = account_list
                 .iter_mut()
@@ -420,7 +406,6 @@ impl TokenCurrencies {
                     chain_code: account.chain_code,
                     name: name.cloned(),
                     address_type,
-                    is_multisig,
                     created_at: account.created_at,
                     updated_at: account.updated_at,
                 })
@@ -440,7 +425,6 @@ impl TokenCurrencies {
                         chain_code: account.chain_code,
                         name: name.cloned(),
                         address_type,
-                        is_multisig,
                         created_at: account.created_at,
                         updated_at: account.updated_at,
                     }],
