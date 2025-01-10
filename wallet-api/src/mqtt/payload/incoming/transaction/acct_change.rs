@@ -64,7 +64,7 @@ impl AcctChange {
             ref to_addr,
             ref token,
             value,
-            mut transaction_fee,
+            transaction_fee,
             ref transaction_time,
             status,
             is_multisig,
@@ -89,7 +89,7 @@ impl AcctChange {
                 if let Some(res) = res {
                     // _status = res.status;
                     consumer = res.resource_consume;
-                    transaction_fee = res.transaction_fee;
+                    // transaction_fee = res.transaction_fee;
                 }
             }
             Err(e) => {
