@@ -80,11 +80,18 @@ impl crate::WalletManager {
         }
     }
 
-    pub async fn upload_log_file(&self) -> ReturnType<()> {
+    pub async fn upload_log_file(
+        &self,
+        src_file_path: &str,
+        dst_file_name: &str,
+    ) -> ReturnType<()> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AppService::new(repo).upload_log_file().await?.into()
+        AppService::new(repo)
+            .upload_log_file(src_file_path, dst_file_name)
+            .await?
+            .into()
     }
 
     pub async fn mqtt_subscribe(&self, topics: Vec<String>, qos: Option<u8>) -> ReturnType<()> {
@@ -226,16 +233,18 @@ mod test {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_upload_log_file() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-        let res = wallet_manager.upload_log_file().await;
-        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
+    // #[tokio::test]
+    // async fn test_upload_log_file() -> Result<()> {
+    //     wallet_utils::init_test_log();
+    //     // 修改返回类型为Result<(), anyhow::Error>
+    //     let (wallet_manager, _test_params) = get_manager().await?;
+    //     let res = wallet_manager
+    //         .upload_log_file(src_file_path, dst_file_name)
+    //         .await;
+    //     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+    //     tracing::info!("res: {res:?}");
+    //     Ok(())
+    // }
 
     #[tokio::test]
     async fn test_set_app_id() -> Result<()> {

@@ -15,9 +15,7 @@ rev = "dad00cb00e92baa7e28a542eb94bc2a78762f583"
 
 
 [workspace.dependencies]
-wallet-api = { version = "0.1.0", default-features = false, path = "wallet-api", features = [
-    "test_net",
-] }
+wallet-api = { version = "0.1.0", default-features = false, path = "wallet-api" }
 wallet-oss = { version = "0.1.0", default-features = false, path = "wallet-oss" }
 wallet-database = { version = "0.1.0", default-features = false, path = "wallet-database" }
 wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
