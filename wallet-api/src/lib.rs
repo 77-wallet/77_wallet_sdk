@@ -31,7 +31,10 @@ pub use error::{
 
 pub use manager::{Context, WalletManager};
 pub use request::assets::GetChain;
-pub use request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq};
+pub use request::{
+    account::CreateAccountReq, app::UploadLogFileReq, devices::InitDeviceReq,
+    wallet::CreateWalletReq,
+};
 pub use test::net_api;
 pub use wallet_database::entities::multisig_member::MemberVo;
 pub use wallet_transport_backend::request::{
