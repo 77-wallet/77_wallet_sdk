@@ -1,4 +1,5 @@
 pub mod account;
+pub mod app;
 pub mod assets;
 pub mod coin;
 pub mod config;

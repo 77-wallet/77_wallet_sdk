@@ -214,13 +214,15 @@ impl<
 
     pub async fn upload_log_file(
         self,
-        src_file_path: &str,
-        dst_file_name: &str,
+        req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> Result<(), crate::ServiceError> {
         let oss_client = crate::manager::Context::get_global_oss_client()?;
-        oss_client
-            .upload_local_file(&src_file_path, &dst_file_name)
-            .await?;
+        for req in req.into_iter() {
+            oss_client
+                .upload_local_file(&req.src_file_path, &req.dst_file_name)
+                .await?;
+        }
+
         Ok(())
     }
 

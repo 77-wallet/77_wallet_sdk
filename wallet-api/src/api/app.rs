@@ -82,14 +82,13 @@ impl crate::WalletManager {
 
     pub async fn upload_log_file(
         &self,
-        src_file_path: &str,
-        dst_file_name: &str,
+        req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> ReturnType<()> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AppService::new(repo)
-            .upload_log_file(src_file_path, dst_file_name)
+            .upload_log_file(req)
             .await?
             .into()
     }
