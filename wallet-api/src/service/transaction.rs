@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::request::transaction::{self, QueryBillReusltReq};
@@ -6,6 +8,7 @@ use crate::response_vo::{
     account::Balance,
     transaction::{BillDetailVo, TransactionResult},
 };
+use sqlx::{Pool, Sqlite};
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::dao::bill::BillDao;
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
@@ -19,7 +22,7 @@ use wallet_database::entities::coin::CoinEntity;
 use wallet_database::entities::multisig_account::{
     MultisigAccountPayStatus, MultisigAccountStatus,
 };
-use wallet_database::entities::multisig_queue::MultisigQueueStatus;
+use wallet_database::entities::multisig_queue::{MemberSignedResult, MultisigQueueStatus};
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_utils::unit;
@@ -99,6 +102,33 @@ impl TransactionService {
         Ok(TransactionResult { tx_hash })
     }
 
+    async fn handle_queue_memeber(
+        bill: &BillEntity,
+        pool: Arc<Pool<Sqlite>>,
+    ) -> Option<Vec<MemberSignedResult>> {
+        if bill.transfer_type != 1 || bill.queue_id.is_empty() {
+            return None;
+        }
+
+        // 获取队列信息
+        let queue = match domain::multisig::MultisigDomain::queue_by_id(&bill.queue_id, &pool).await
+        {
+            Ok(queue) => queue,
+            Err(_) => return None,
+        };
+
+        match MultisigQueueRepo::member_signed_result(
+            &queue.account_id,
+            &bill.queue_id,
+            pool.clone(),
+        )
+        .await
+        {
+            Ok(signature) => Some(signature),
+            Err(_) => None,
+        }
+    }
+
     pub async fn bill_detail(
         tx_hash: &str,
         owner: &str,
@@ -109,23 +139,7 @@ impl TransactionService {
             .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
         bill.value = wallet_utils::unit::truncate_to_8_decimals(&bill.value);
 
-        let sign = if bill.transfer_type == 1 && !bill.queue_id.is_empty() {
-            let queue =
-                domain::multisig::MultisigDomain::queue_by_id(&bill.queue_id, &pool).await?;
-
-            // 如果是多签的转账,需要获取多签的信息
-            let signature = MultisigQueueRepo::member_signed_result(
-                &queue.account_id,
-                &bill.queue_id,
-                pool.clone(),
-            )
-            .await?;
-            Some(signature)
-        } else {
-            None
-        };
-
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let sign = Self::handle_queue_memeber(&bill, pool.clone()).await;
 
         let main_coin = CoinEntity::main_coin(&bill.chain_code, pool.as_ref())
             .await?
