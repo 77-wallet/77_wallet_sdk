@@ -31,18 +31,18 @@ impl MultisigAccountRepo {
 }
 
 impl MultisigAccountRepo {
-    pub async fn account_count(&self, chain_code: &str) -> i64 {
+    pub async fn account_count(&mut self, chain_code: &str) -> i64 {
         let account = MultisigAccountDaoV1::account_count(chain_code, self.repo.pool()).await;
         account.unwrap_or_default()
     }
 
-    pub async fn update_name(&self, id: &str, name: &str) -> Result<(), crate::Error> {
+    pub async fn update_name(&mut self, id: &str, name: &str) -> Result<(), crate::Error> {
         let pool = self.repo.pool();
         Ok(MultisigAccountDaoV1::update_name(id, name, &*pool).await?)
     }
 
     pub async fn cancel_multisig(
-        &self,
+        &mut self,
         account: &MultisigAccountEntity,
     ) -> Result<(), crate::Error> {
         let mut tx = self
@@ -74,7 +74,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn found_by_id(
-        &self,
+        &mut self,
         id: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
         let pool = self.repo.pool();
@@ -83,7 +83,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn found_by_address(
-        &self,
+        &mut self,
         address: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
         let pool = self.repo.pool();
@@ -92,7 +92,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn member_by_account_id(
-        &self,
+        &mut self,
         id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
         let pool = self.repo.pool();
@@ -100,7 +100,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn self_address_by_id(
-        &self,
+        &mut self,
         id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
         let pool = self.repo.pool_ref();
@@ -108,7 +108,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn update_confirm_status(
-        &self,
+        &mut self,
         account_id: &str,
         chain_code: &str,
         self_address: &mut MultisigMemberEntities,
@@ -161,7 +161,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn create_with_member(
-        &self,
+        &mut self,
         params: &NewMultisigAccountEntity,
     ) -> Result<(), crate::Error> {
         let mut tx = self
@@ -192,7 +192,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn account_list(
-        &self,
+        &mut self,
         owner: bool,
         chain_code: Option<&str>,
         page: i64,
@@ -206,7 +206,7 @@ impl MultisigAccountRepo {
 
     // 钱包账户
     pub async fn wallet_account(
-        &self,
+        &mut self,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AccountEntity>, crate::Error> {
@@ -217,7 +217,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn update_by_id(
-        &self,
+        &mut self,
         id: &str,
         params: std::collections::HashMap<String, String>,
     ) -> Result<MultisigAccountEntity, crate::Error> {
@@ -226,7 +226,7 @@ impl MultisigAccountRepo {
 
     // get multisig account(include cancel account) and member information
     pub async fn multisig_data(
-        &self,
+        &mut self,
         account_id: &str,
     ) -> Result<MultisigAccountData, crate::Error> {
         // get account
@@ -259,7 +259,7 @@ impl MultisigAccountRepo {
     }
 
     pub async fn find_doing_account(
-        &self,
+        &mut self,
         chain_code: &str,
         address: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
@@ -268,7 +268,7 @@ impl MultisigAccountRepo {
         Ok(a)
     }
 
-    pub async fn logic_delete(&self, id: &str) -> Result<(), crate::Error> {
+    pub async fn logic_delete(&mut self, id: &str) -> Result<(), crate::Error> {
         MultisigAccountDaoV1::logic_del_multisig_account(id, &*self.repo.db_pool).await?;
         Ok(())
     }

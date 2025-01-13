@@ -366,10 +366,10 @@ mod test {
 
         let req = TokenQueryHistoryPrice {
             chain_code: "tron".to_string(),
-            symbol: "USDT".to_string(),
+            // symbol: "USDT".to_string(),
             date_type: "DAY".to_string(),
-            currency: "usd".to_string(),
-            contract_address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+            currency: "USD".to_string(),
+            contract_address: "TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S".to_string(),
         };
 
         let res = BackendApi::new(Some(base_url.to_string()), None)

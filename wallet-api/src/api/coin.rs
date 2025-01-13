@@ -356,7 +356,7 @@ mod test {
 
         // [24小时：DAY，7天：WEEK，月：MONTH，年：YEAR，2年：YEAR2]
         let req = TokenQueryHistoryPrice {
-            symbol: "USDT".to_string(),
+            // symbol: "USDT".to_string(),
             chain_code: "tron".to_string(),
             // date_type: "DAY".to_string(),
             // date_type: "WEEK".to_string(),

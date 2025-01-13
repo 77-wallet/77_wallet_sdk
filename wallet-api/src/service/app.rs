@@ -181,7 +181,7 @@ impl<
         Ok(())
     }
 
-    pub async fn get_fiat(&self) -> Result<GetFiatRes, crate::ServiceError> {
+    pub async fn get_fiat(self) -> Result<GetFiatRes, crate::ServiceError> {
         let config = crate::app_state::APP_STATE.read().await;
 
         Ok(GetFiatRes {
@@ -227,7 +227,7 @@ impl<
     }
 
     pub async fn mqtt_subscribe(
-        &self,
+        self,
         topics: Vec<String>,
         qos: Option<u8>,
     ) -> Result<(), crate::ServiceError> {
@@ -241,7 +241,7 @@ impl<
     }
 
     pub async fn mqtt_unsubscribe_unsubscribe(
-        &mut self,
+        self,
         topics: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
         // 获取全局已订阅的主题
@@ -263,14 +263,14 @@ impl<
         Ok(())
     }
 
-    pub async fn get_configs(&self) -> Result<Vec<ConfigEntity>, crate::ServiceError> {
+    pub async fn get_configs(self) -> Result<Vec<ConfigEntity>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let res = ConfigDao::lists(pool.as_ref()).await?;
         Ok(res)
     }
 
     pub async fn set_config(
-        &self,
+        self,
         key: String,
         value: String,
     ) -> Result<ConfigEntity, crate::ServiceError> {
@@ -301,7 +301,7 @@ impl<
     }
 
     pub async fn set_min_value_config(
-        &self,
+        self,
         symbol: String,
         amount: f64,
         switch: bool,
@@ -332,7 +332,7 @@ impl<
     }
 
     pub async fn get_min_value_config(
-        &self,
+        self,
         symbol: String,
     ) -> Result<Option<MinValueSwitchConfig>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;

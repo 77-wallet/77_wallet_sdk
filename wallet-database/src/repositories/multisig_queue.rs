@@ -83,14 +83,14 @@ impl MultisigQueueRepo {
     }
 
     pub async fn find_by_id_with_account(
-        &self,
+        &mut self,
         id: &str,
     ) -> Result<Option<MultisigQueueWithAccountEntity>, crate::Error> {
         Ok(MultisigQueueDaoV1::find_by_id_with_account(id, &*self.repo.db_pool).await?)
     }
 
     pub async fn queue_list(
-        &self,
+        &mut self,
         from: Option<&str>,
         chain_code: Option<&str>,
         status: i32,
@@ -168,7 +168,7 @@ impl MultisigQueueRepo {
     }
 
     pub async fn create_or_update_sign(
-        &self,
+        &mut self,
         params: &NewSignatureEntity,
     ) -> Result<(), crate::Error> {
         Ok(
@@ -225,14 +225,14 @@ impl MultisigQueueRepo {
     }
 
     pub async fn self_member_account_id(
-        &self,
+        &mut self,
         id: &str,
     ) -> Result<MultisigMemberEntities, crate::Error> {
         Ok(MultisigMemberDaoV1::get_self_by_id(id, &*self.repo.db_pool).await?)
     }
 
     pub async fn get_signed_list(
-        &self,
+        &mut self,
         queue_id: &str,
     ) -> Result<MultisigSignatureEntities, crate::Error> {
         Ok(MultisigSignatureDaoV1::get_signed_list(queue_id, &*self.repo.db_pool).await?)
@@ -247,7 +247,7 @@ impl MultisigQueueRepo {
     }
 
     pub async fn update_status_and_hash(
-        &self,
+        &mut self,
         queue_id: &str,
         status: MultisigQueueStatus,
         tx_hash: &str,
@@ -278,7 +278,7 @@ impl MultisigQueueRepo {
     }
 
     pub async fn ongoing_queue(
-        &self,
+        &mut self,
         chain_code: &str,
         address: &str,
     ) -> Result<Option<MultisigQueueEntity>, crate::Error> {

@@ -493,7 +493,7 @@ impl CoinService {
     //   "currency": "usd"
     // }
     pub async fn query_history_price(
-        &self,
+        self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> Result<TokenHistoryPrices, crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;

@@ -190,11 +190,11 @@ pub struct TokenQueryByContractAddressReq {
 pub struct TokenQueryHistoryPrice {
     #[serde(serialize_with = "wallet_utils::serde_func::serialize_lowercase")]
     pub chain_code: String,
-    #[serde(
-        rename = "code",
-        serialize_with = "wallet_utils::serde_func::serialize_lowercase"
-    )]
-    pub symbol: String,
+    // #[serde(
+    //     rename = "code",
+    //     serialize_with = "wallet_utils::serde_func::serialize_lowercase"
+    // )]
+    // pub symbol: String,
     pub contract_address: String,
     pub date_type: String,
     #[serde(serialize_with = "wallet_utils::serde_func::serialize_lowercase")]

@@ -19,7 +19,7 @@ impl AddressBookRepo {
 
 impl AddressBookRepo {
     pub async fn insert(
-        &self,
+        &mut self,
         name: &str,
         address: &str,
         chain_code: &str,
@@ -28,7 +28,7 @@ impl AddressBookRepo {
     }
 
     pub async fn update(
-        &self,
+        &mut self,
         id: u32,
         name: &str,
         address: &str,
@@ -39,14 +39,14 @@ impl AddressBookRepo {
     }
 
     pub async fn find_by_conditions(
-        &self,
+        &mut self,
         conditions: Vec<(&str, &str)>,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
         Ok(AddressBookDao::find_condition(self.repo.pool().as_ref(), conditions).await?)
     }
 
     pub async fn check_not_self(
-        &self,
+        &mut self,
         id: u32,
         address: &str,
         chain_code: &str,
@@ -57,12 +57,12 @@ impl AddressBookRepo {
         )
     }
 
-    pub async fn delete(&self, id: i32) -> Result<(), crate::Error> {
+    pub async fn delete(&mut self, id: i32) -> Result<(), crate::Error> {
         Ok(AddressBookDao::delete(self.repo.pool().as_ref(), id).await?)
     }
 
     pub async fn list(
-        &self,
+        &mut self,
         chain_code: Option<&str>,
         page: i64,
         page_size: i64,
@@ -71,7 +71,7 @@ impl AddressBookRepo {
     }
 
     pub async fn find_by_address(
-        &self,
+        &mut self,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {

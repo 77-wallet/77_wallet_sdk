@@ -456,7 +456,7 @@ impl WalletService {
     }
 
     pub async fn get_phrase(
-        &self,
+        &mut self,
         wallet_address: &str,
         password: &str,
     ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::ServiceError> {

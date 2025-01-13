@@ -77,7 +77,7 @@ impl MultisigTransactionService {
         req_params: TransferParams,
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let queue_repo = MultisigQueueRepo::new(pool.clone());
+        let mut queue_repo = MultisigQueueRepo::new(pool.clone());
 
         let account =
             domain::multisig::MultisigDomain::account_by_address(&req_params.from, true, &pool)
@@ -188,7 +188,7 @@ impl MultisigTransactionService {
         page_size: i64,
     ) -> Result<Pagination<MultisigQueueInfoVo>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let queue_repo = MultisigQueueRepo::new(pool.clone());
+        let mut queue_repo = MultisigQueueRepo::new(pool.clone());
 
         // 先处理过期的交易
         let _ = MultisigQueueDaoV1::update_expired_queue(pool.as_ref()).await;
@@ -244,7 +244,7 @@ impl MultisigTransactionService {
         queue_id: &str,
     ) -> Result<MultisigQueueInfoVo, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let queue_repo = MultisigQueueRepo::new(pool.clone());
+        let mut queue_repo = MultisigQueueRepo::new(pool.clone());
 
         let mut queue = queue_repo.find_by_id_with_account(queue_id).await?.ok_or(
             crate::BusinessError::MultisigQueue(crate::MultisigQueueError::NotFound),
@@ -304,7 +304,7 @@ impl MultisigTransactionService {
             .map_err(|e| crate::ServiceError::Parameter(e.to_string()))?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = MultisigQueueRepo::new(pool.clone());
+        let mut repo = MultisigQueueRepo::new(pool.clone());
 
         let queue = domain::multisig::MultisigDomain::queue_by_id(queue_id, &pool).await?;
         domain::multisig::MultisigQueueDomain::validate_queue(&queue, false)?;
@@ -314,9 +314,15 @@ impl MultisigTransactionService {
                 .await?;
 
         // 1.签名
-        let signed_res =
-            Self::_sign_transaction(&queue, status, &multisig_account, &repo, password, address)
-                .await?;
+        let signed_res = Self::_sign_transaction(
+            &queue,
+            status,
+            &multisig_account,
+            &mut repo,
+            password,
+            address,
+        )
+        .await?;
         let accept_address = signed_res.iter().map(|v| v.address.clone()).collect();
 
         // 同步签名的结果状态
@@ -358,7 +364,7 @@ impl MultisigTransactionService {
         queue_id: &str,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = MultisigQueueRepo::new(pool.clone());
+        let mut repo = MultisigQueueRepo::new(pool.clone());
 
         let queue = domain::multisig::MultisigDomain::queue_by_id(queue_id, &pool).await?;
 
@@ -400,7 +406,7 @@ impl MultisigTransactionService {
         queue: &MultisigQueueEntity,
         status: MultisigSignatureStatus,
         multisig_account: &MultisigAccountEntity,
-        repo: &MultisigQueueRepo,
+        repo: &mut MultisigQueueRepo,
         password: &str,
         address: Option<String>,
     ) -> Result<Vec<NewSignatureEntity>, crate::ServiceError> {
@@ -493,7 +499,7 @@ impl MultisigTransactionService {
         let queue = domain::multisig::MultisigDomain::queue_by_id(queue_id, &pool).await?;
         domain::multisig::MultisigQueueDomain::validate_queue(&queue, true)?;
 
-        let repo = MultisigQueueRepo::new(pool.clone());
+        let mut repo = MultisigQueueRepo::new(pool.clone());
 
         let signs = repo.get_signed_list(queue_id).await?;
         let signs_list = signs.get_order_sign_str();
@@ -769,7 +775,7 @@ impl MultisigTransactionService {
         address: String,
     ) -> Result<Option<QueueInfo>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let queue_repo = MultisigQueueRepo::new(pool.clone());
+        let mut queue_repo = MultisigQueueRepo::new(pool.clone());
 
         let rs = queue_repo
             .ongoing_queue(&chain_code, &address)

@@ -1237,14 +1237,14 @@ impl StackService {
 
     // 质押相关构建多签交易
     pub async fn build_multisig_stake(
-        &self,
+        &mut self,
         bill_kind: i64,
         content: String,
         expiration: i64,
         password: String,
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let queue_repo = MultisigQueueRepo::new(pool.clone());
+        let mut queue_repo = MultisigQueueRepo::new(pool.clone());
 
         let bill_kind = BillKind::try_from(bill_kind as i8)?;
         // 转换多签的参数

@@ -1,4 +1,7 @@
-use crate::{domain, response_vo::address_book::AddressBookResp};
+use crate::{
+    domain::{self, address_book::AddressBookDomain},
+    response_vo::address_book::AddressBookResp,
+};
 use wallet_database::{
     dao::bill::BillDao, entities::address_book::AddressBookEntity, pagination::Pagination,
     repositories::address_book::AddressBookRepo,
@@ -10,13 +13,12 @@ pub struct AddressBookService {
 
 impl AddressBookService {
     pub async fn create(
-        self,
+        mut self,
         name: &str,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::ServiceError> {
-        self.check_address(address.to_string(), chain_code.to_string())
-            .await?;
+        AddressBookDomain::check_address(address.to_string(), chain_code.to_string()).await?;
 
         let condition = vec![("address", address), ("chain_code", chain_code)];
         let res = self.repo.find_by_conditions(condition).await?;
@@ -30,14 +32,13 @@ impl AddressBookService {
     }
 
     pub async fn update(
-        self,
+        mut self,
         id: u32,
         name: &str,
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::ServiceError> {
-        self.check_address(address.to_string(), chain_code.to_string())
-            .await?;
+        AddressBookDomain::check_address(address.to_string(), chain_code.to_string()).await?;
 
         let res = self.repo.check_not_self(id, address, chain_code).await?;
         if res.is_some() {
@@ -49,12 +50,12 @@ impl AddressBookService {
         Ok(self.repo.update(id, name, address, chain_code).await?)
     }
 
-    pub async fn delete(self, id: i32) -> Result<(), crate::ServiceError> {
+    pub async fn delete(mut self, id: i32) -> Result<(), crate::ServiceError> {
         Ok(self.repo.delete(id).await?)
     }
 
     pub async fn lists(
-        self,
+        mut self,
         chain_code: Option<&str>,
         page: i64,
         page_size: i64,
@@ -63,7 +64,7 @@ impl AddressBookService {
     }
 
     pub async fn check_address(
-        &self,
+        self,
         address: String,
         chain_code: String,
     ) -> Result<(), crate::ServiceError> {
@@ -78,7 +79,7 @@ impl AddressBookService {
     }
 
     pub async fn find_by_address(
-        &self,
+        mut self,
         address: String,
         chain_code: String,
     ) -> Result<AddressBookResp, crate::ServiceError> {
@@ -99,7 +100,7 @@ impl AddressBookService {
 
     // 查询地址的动态状态 0 正常的状态 1冻结
     pub async fn address_status(
-        &self,
+        self,
         address: String,
         chain_code: String,
     ) -> Result<i64, crate::ServiceError> {

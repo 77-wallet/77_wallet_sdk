@@ -87,10 +87,7 @@ impl crate::WalletManager {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AppService::new(repo)
-            .upload_log_file(req)
-            .await?
-            .into()
+        AppService::new(repo).upload_log_file(req).await?.into()
     }
 
     pub async fn mqtt_subscribe(&self, topics: Vec<String>, qos: Option<u8>) -> ReturnType<()> {

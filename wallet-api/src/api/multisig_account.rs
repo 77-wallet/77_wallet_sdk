@@ -62,8 +62,7 @@ impl crate::WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<MultisigAccountList>> {
-        let service = MultisigAccountService::new(self.repo_factory.multisig_account_repo())?;
-        service
+        MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .account_list(owner, chain_code.as_deref(), page, page_size)
             .await
             .into()
