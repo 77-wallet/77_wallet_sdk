@@ -227,7 +227,7 @@ impl AssetsEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub(crate) async fn get_chain_assets_by_address_chain_code_symbol<'a, E>(
+    pub async fn get_chain_assets_by_address_chain_code_symbol<'a, E>(
         exec: E,
         address: Vec<String>,
         chain_code: Option<String>,
@@ -334,34 +334,6 @@ impl AssetsEntity {
             Err(_e) => Err(crate::Error::Database(DatabaseError::QueryFailed)),
         }
     }
-
-    // // 用户的主要资产(链的主币)
-    // pub(crate) async fn main_assets<'a, E>(
-    //     exec: E,
-    //     addr: &str,
-    //     chain_code: &str,
-    // ) -> Result<AssetsEntity, crate::Error>
-    // where
-    //     E: Executor<'a, Database = Sqlite>,
-    // {
-    //     let sql = r#"
-    //         SELECT
-    //             name, symbol,decimals, address, chain_code, token_address, protocol, status, balance,is_multisig,created_at, updated_at
-    //         FROM
-    //             assets
-    //         WHERE status = 1 AND address =$1 AND chain_code = $2 AND token_address = "";"#;
-
-    //     let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
-    //         .bind(addr)
-    //         .bind(chain_code)
-    //         .fetch_one(exec)
-    //         .await;
-
-    //     match rs {
-    //         Ok(rs) => Ok(rs),
-    //         Err(_e) => Err(crate::Error::Database(DatabaseError::QueryFailed)),
-    //     }
-    // }
 
     // 更新余额
     pub async fn update_balance<'a, E>(

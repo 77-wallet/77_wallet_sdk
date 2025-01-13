@@ -1,4 +1,7 @@
-use crate::{response::BackendResponse, response_vo::address::AddressDetailsList};
+use crate::{
+    response::BackendResponse,
+    response_vo::address::{AddressDetailsList, AssertResp},
+};
 
 use super::BackendApi;
 
@@ -25,6 +28,27 @@ impl BackendApi {
             .client
             .post("/address/findMultiSignedDetails")
             .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process()
+    }
+
+    // 地址的资产 uid--> 钱包uid,
+    pub async fn wallet_assets_list(
+        &self,
+        uid: String,
+        address: Option<String>,
+    ) -> Result<AssertResp, crate::Error> {
+        let req = serde_json::json!({
+            "uid":uid,
+            "address":address,
+        });
+
+        let res = self
+            .client
+            .post("wallet/assets/list")
+            .json(req)
             .send::<BackendResponse>()
             .await?;
 
@@ -83,5 +107,21 @@ mod test {
             .unwrap();
 
         println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_assests_list() {
+        init_test_log();
+        let base_url = "https://test-api.puke668.top";
+
+        let uid = "074209f318e1079c7910c336df5745c57d31da251ebecd7cfda6d13206b71699".to_string();
+        let address = None;
+
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .wallet_assets_list(uid, address)
+            .await;
+
+        println!(" res: {res:?}");
     }
 }

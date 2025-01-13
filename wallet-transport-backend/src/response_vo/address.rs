@@ -37,3 +37,19 @@ pub struct AddressUid {
 pub struct AddressUidList {
     pub list: Vec<AddressUid>,
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssertResp {
+    pub list: Vec<AssertList>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssertList {
+    pub address: String,
+    pub amount: String,
+    pub symbol: String,
+    pub chain_code: String,
+    pub contract_address: Option<String>,
+}

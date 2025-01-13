@@ -169,7 +169,7 @@ impl crate::WalletManager {
             .into()
     }
 
-    // 同步资产
+    // 根据资产地址、链以及符号来同步余额(直接重链上同步余额)。
     pub async fn sync_assets(
         &self,
         addr: Vec<String>,
@@ -178,6 +178,18 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         let res = AssetsService::new(self.repo_factory.resuource_repo())
             .sync_assets_by_addr(addr, chain_code, symbol)
+            .await;
+        if let Err(e) = res {
+            tracing::error!("sync_assets error: {}", e);
+        }
+
+        ().into()
+    }
+
+    // 单个地址某个币的资产
+    pub async fn sync_single_assets(&self, address: &str, symbol: &str) -> ReturnType<()> {
+        let res = AssetsService::new(self.repo_factory.resuource_repo())
+            .sync_single_assets(address, symbol)
             .await;
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);

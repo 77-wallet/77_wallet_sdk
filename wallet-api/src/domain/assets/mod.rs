@@ -164,7 +164,9 @@ impl AssetsDomain {
         }
 
         // 2. 同步资产余额
-        domain::assets::AssetsDomain::sync_address_balance(assets).await
+        let _rs = domain::assets::AssetsDomain::sync_address_balance(&assets).await;
+
+        Ok(())
     }
 
     // 根据钱包地址来同步资产余额
@@ -192,12 +194,13 @@ impl AssetsDomain {
         }
 
         // 2. 同步资产余额
-        domain::assets::AssetsDomain::sync_address_balance(assets).await
+        let _rs = domain::assets::AssetsDomain::sync_address_balance(&assets).await;
+        Ok(())
     }
 
     pub async fn sync_address_balance(
-        assets: Vec<AssetsEntity>,
-    ) -> Result<(), crate::ServiceError> {
+        assets: &Vec<AssetsEntity>,
+    ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let semaphore = Arc::new(Semaphore::new(10));
@@ -257,7 +260,7 @@ impl AssetsDomain {
 
         // 在单个事务中批量更新数据库
         let mut tx = pool.begin().await.expect("开启事务失败");
-        for (assets_id, balance) in results {
+        for (assets_id, balance) in results.iter() {
             if let Err(e) = AssetsEntity::update_balance(tx.as_mut(), &assets_id, &balance).await {
                 tracing::error!("更新余额出错: {}", e);
             }
@@ -266,7 +269,8 @@ impl AssetsDomain {
         if let Err(e) = tx.commit().await {
             tracing::error!("提交事务失败: {}", e);
         }
-        Ok(())
+
+        Ok(results)
     }
 
     // 根据地址和链初始化多签账号里面的资产

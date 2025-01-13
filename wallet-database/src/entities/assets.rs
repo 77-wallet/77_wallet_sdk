@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AssetsId {
     pub address: String,
     pub chain_code: String,
@@ -32,6 +32,15 @@ pub struct AssetsEntity {
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}
+impl AssetsEntity {
+    pub fn get_assets_id(&self) -> AssetsId {
+        AssetsId {
+            address: self.address.clone(),
+            symbol: self.symbol.clone(),
+            chain_code: self.chain_code.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
