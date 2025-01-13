@@ -341,7 +341,7 @@ impl MultisigAdapter {
 
                 let params = sol::operations::multisig::transfer::BuildTransactionOpt::new(
                     &account.authority_addr,
-                    account.threshold as u8,
+                    account.member_num as usize,
                     &account.initiator_addr,
                     base,
                 )?;
@@ -435,7 +435,7 @@ impl MultisigAdapter {
 
                 let params = sol::operations::multisig::transfer::BuildTransactionOpt::new(
                     &account.authority_addr,
-                    account.threshold as u8,
+                    account.member_num as usize,
                     &account.initiator_addr,
                     base,
                 )?;
