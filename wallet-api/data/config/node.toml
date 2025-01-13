@@ -88,12 +88,12 @@ http_url = ""
 network = "mainnet"
 active = true
 
-# [[nodes.sol.nodes]]
-# node_name = "Third-Party Node"
-# rpc_url = "https://rpc.ankr.com/solana/2554129db2045e61c3b8584ad6ee32b7b7808916d160e3e16b51dfee6d17d56c"
-# http_url = ""
-# network = "mainnet"
-# active = true
+[[nodes.sol.nodes]]
+node_name = "Third-Party Node"
+rpc_url = "https://solana-mainnet.g.alchemy.com/v2/I6EHAmjDJfTGik1rvtt6TRTGwARrBFtg"
+http_url = ""
+network = "mainnet"
+active = true
 
 # [nodes.btc]
 # [[nodes.btc.nodes]]
