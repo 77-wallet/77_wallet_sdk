@@ -68,9 +68,9 @@ async fn test_create_queue_fee() {
     let manager = get_manager().await;
 
     let params = MultisigQueueFeeParams {
-        from: "2t2bb63CcxSE6gWZHvAHc6q24ub9vyoWFEKuxqALkyfX".to_owned(),
+        from: "E14TXognDNooKg4NsWjYnEj6FP9HmDFPFokP2QZwY3CG".to_owned(),
         to: "GE93MHXVvnsbhxu7Ttpp7zTiipJeCX3QFXueSK2dCJe6".to_owned(),
-        value: "0.01".to_owned(),
+        value: "0.001".to_owned(),
         chain_code: "sol".to_owned(),
         symbol: "SOL".to_owned(),
     };
