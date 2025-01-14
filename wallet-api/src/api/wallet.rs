@@ -246,7 +246,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // 前端的uid
-        let wallet_address = "0x7dCF66c1947F46928Fa9dB9A95d2005a2761dC0a";
+        let wallet_address = "cfc23b3becf75d9ae8517be466d6ea027f81e0e0899a583b29a7c643ac613363";
 
         let res = wallet_manager.recover_multisig_data(wallet_address).await;
 
@@ -260,7 +260,7 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "f2282214954907af50f9a7b5fa636db8669e9300bb46891577ff04614049efcd";
+        let uid = "cfc23b3becf75d9ae8517be466d6ea027f81e0e0899a583b29a7c643ac613363";
         let start_time = std::time::Instant::now();
 
         let res = crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid).await;

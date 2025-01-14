@@ -23,6 +23,7 @@ use wallet_database::{
     DbPool,
 };
 use wallet_transport_backend::request::FindAddressRawDataReq;
+use wallet_types::constant::chain_code;
 
 pub struct MultisigDomain;
 
@@ -137,11 +138,26 @@ impl MultisigDomain {
         let adapter =
             ChainAdapterFactory::get_transaction_adapter(&data.account.chain_code).await?;
 
-        if let Some(tx_result) = adapter.query_tx_res(&data.account.deploy_hash).await? {
-            data.account.status = if tx_result.status == 2 {
-                MultisigAccountStatus::OnChain.to_i8()
-            } else {
-                MultisigAccountStatus::OnChainFail.to_i8()
+        match data.account.chain_code.as_str() {
+            chain_code::SOLANA => match adapter {
+                domain::chain::adapter::TransactionAdapter::Solana(solana_chain) => {
+                    let addr =
+                        wallet_utils::address::parse_sol_address(&data.account.authority_addr)?;
+                    let account = solana_chain.get_provider().account_info(addr).await?;
+                    if account.value.is_some() {
+                        data.account.status = MultisigAccountStatus::OnChain.to_i8();
+                    }
+                }
+                _ => {}
+            },
+            _ => {
+                if let Some(tx_result) = adapter.query_tx_res(&data.account.deploy_hash).await? {
+                    data.account.status = if tx_result.status == 2 {
+                        MultisigAccountStatus::OnChain.to_i8()
+                    } else {
+                        MultisigAccountStatus::OnChainFail.to_i8()
+                    }
+                }
             }
         }
 
