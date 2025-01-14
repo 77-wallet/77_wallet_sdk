@@ -60,10 +60,16 @@ impl MultisigAccountEntity {
 
     // 是否过期验证(使用了最后的更新时间)
     pub fn expiration_check(&self) -> bool {
-        let chain_code =
-            wallet_types::chain::chain::ChainCode::try_from(self.chain_code.as_str()).unwrap();
+        let chain_code = if !self.fee_chain.is_empty() {
+            wallet_types::chain::chain::ChainCode::try_from(self.fee_chain.as_str()).unwrap()
+        } else {
+            wallet_types::chain::chain::ChainCode::try_from(self.chain_code.as_str()).unwrap()
+        };
 
-        let timestamp = self.updated_at.unwrap_or_default().timestamp();
+        let timestamp = self
+            .updated_at
+            .unwrap_or(wallet_utils::time::now())
+            .timestamp();
 
         has_expiration(timestamp, chain_code)
     }

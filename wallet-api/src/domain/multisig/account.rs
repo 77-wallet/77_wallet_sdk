@@ -174,24 +174,22 @@ impl MultisigDomain {
             .map_err(|e| crate::SystemError::Database(e.into()))?;
 
         for account in pending_account.iter_mut() {
-            let mut staus_update = false;
-            let mut pay_status_up = false;
+            let staus_update = account.status;
+            let pay_status_up = account.pay_status;
 
             if account.status == MultisigAccountStatus::OnChianPending.to_i8() {
                 if let Err(e) = Self::handel_deploy_status(account, true).await {
                     tracing::error!("multisig status sync faild {}", e);
                 }
-                staus_update = true;
             }
 
             if account.pay_status == MultisigAccountPayStatus::PaidPending.to_i8() {
                 if let Err(e) = Self::hanle_pay_status(account, true).await {
                     tracing::error!("multisig pay status sync faild {}", e);
                 }
-                pay_status_up = true
             }
 
-            if pay_status_up || staus_update {
+            if pay_status_up != account.pay_status || staus_update != account.status {
                 let rs = MultisigAccountDaoV1::update_status(
                     &account.id,
                     Some(account.status),
