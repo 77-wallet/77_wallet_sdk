@@ -110,7 +110,7 @@ mod test {
         let pool = crate::Context::get_global_sqlite_pool()?;
         // 准备测试数据
         // let multisig_account_id = uuid::Uuid::new_v4(); // 生成一个新的 UUID 作为测试用的账户 ID
-        let multisig_account_id = "192767737116889088";
+        let multisig_account_id = "216422221999116288";
         let multisig_account_address = "test_multisig_address".to_string();
         let salt = "random_salt".to_string();
         let authority_addr = "我是一个地址".to_string();

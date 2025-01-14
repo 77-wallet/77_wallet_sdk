@@ -429,6 +429,7 @@ impl MultisigAccountService {
             crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound),
         )?;
 
+        let time = wallet_utils::time::now_utc_format_time();
         // service fee
         if multisig_account.pay_status != MultisigAccountPayStatus::Paid.to_i8() {
             if let Some(payer) = payer {
@@ -442,6 +443,7 @@ impl MultisigAccountService {
                     ("fee_hash".to_string(), fee_res.0),
                     ("fee_chain".to_string(), fee_chain),
                     ("pay_status".to_string(), fee_res.1),
+                    ("updated_at".to_string(), time.clone()),
                 ]);
                 let _ = self.repo.update_by_id(account_id, params).await?;
             } else {
@@ -488,6 +490,7 @@ impl MultisigAccountService {
                 ("address".to_string(), resp.multisig_address.clone()),
                 ("salt".to_string(), resp.salt.clone()),
                 ("authority_addr".to_string(), resp.authority_address.clone()),
+                ("updated_at".to_string(), time.clone()),
             ]);
             let multisig_account = self
                 .repo
@@ -526,6 +529,7 @@ impl MultisigAccountService {
             let params = HashMap::from([
                 ("deploy_hash".to_string(), hash),
                 ("status".to_string(), status),
+                ("updated_at".to_string(), time.clone()),
             ]);
             let _ = self.repo.update_by_id(account_id, params).await?;
         }
@@ -597,6 +601,8 @@ impl MultisigAccountService {
         // sync to backend
         let mut raw_data = self.repo.multisig_data(&multisig_account.id).await?;
         raw_data.account.fee_chain = payer.chain_code.clone();
+        // 新的更新时间
+        raw_data.account.updated_at = Some(wallet_utils::time::now());
 
         let req = SignedUpdateRechargeHashReq {
             order_id: multisig_account.id.to_string(),

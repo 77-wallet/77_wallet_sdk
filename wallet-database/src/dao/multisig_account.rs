@@ -171,7 +171,7 @@ impl MultisigAccountDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT count(*) FROM multisig_account WHERE status = ? or pay_status = ?";
+        let sql = "SELECT * FROM multisig_account WHERE status = ? or pay_status = ?";
 
         let result = sqlx::query_as(sql)
             .bind(MultisigAccountStatus::OnChianPending.to_i8())
@@ -213,6 +213,7 @@ impl MultisigAccountDaoV1 {
         let sql = r#"
                 UPDATE multisig_account 
                 SET address = $2, salt = $3,authority_addr = $4, address_type = $5, status = 3, pay_status = 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
                 deploy_hash = case when deploy_hash != $6 then $6 else deploy_hash end,
                 fee_hash = case when fee_hash != $7 then $7 else fee_hash end
                 WHERE id = $1"#;

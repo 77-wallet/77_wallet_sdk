@@ -109,7 +109,7 @@ impl MultisigDomain {
             && data.account.status != MultisigAccountStatus::OnChain.to_i8()
             && data.account.status != MultisigAccountStatus::OnChainFail.to_i8()
         {
-            Self::handel_deploy_status(&mut data.account).await?;
+            Self::handel_deploy_status(&mut data.account, false).await?;
             flag = true;
         }
 
@@ -118,7 +118,7 @@ impl MultisigDomain {
             && data.account.pay_status != MultisigAccountPayStatus::Paid.to_i8()
             && data.account.pay_status != MultisigAccountPayStatus::PaidFail.to_i8()
         {
-            Self::hanle_pay_status(&mut data.account).await?;
+            Self::hanle_pay_status(&mut data.account, false).await?;
             flag = true;
         }
 
@@ -134,6 +134,7 @@ impl MultisigDomain {
 
     pub async fn handel_deploy_status(
         data: &mut MultisigAccountEntity,
+        check_expiration: bool,
     ) -> Result<(), crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
 
@@ -145,7 +146,7 @@ impl MultisigDomain {
                     if account.value.is_some() {
                         data.status = MultisigAccountStatus::OnChain.to_i8();
                     } else {
-                        if data.expiration_check() {
+                        if check_expiration && data.expiration_check() {
                             data.status = MultisigAccountStatus::OnChainFail.to_i8();
                         }
                     }
@@ -177,14 +178,14 @@ impl MultisigDomain {
             let mut pay_status_up = false;
 
             if account.status == MultisigAccountStatus::OnChianPending.to_i8() {
-                if let Err(e) = Self::handel_deploy_status(account).await {
+                if let Err(e) = Self::handel_deploy_status(account, true).await {
                     tracing::error!("multisig status sync faild {}", e);
                 }
                 staus_update = true;
             }
 
             if account.pay_status == MultisigAccountPayStatus::PaidPending.to_i8() {
-                if let Err(e) = Self::hanle_pay_status(account).await {
+                if let Err(e) = Self::hanle_pay_status(account, true).await {
                     tracing::error!("multisig pay status sync faild {}", e);
                 }
                 pay_status_up = true
@@ -209,6 +210,7 @@ impl MultisigDomain {
 
     pub async fn hanle_pay_status(
         data: &mut MultisigAccountEntity,
+        check_expiration: bool,
     ) -> Result<(), crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
 
@@ -219,7 +221,7 @@ impl MultisigDomain {
                 MultisigAccountPayStatus::PaidFail.to_i8()
             }
         } else {
-            if data.expiration_check() {
+            if check_expiration && data.expiration_check() {
                 data.pay_status = MultisigAccountPayStatus::PaidFail.to_i8();
             }
         }
