@@ -1,6 +1,8 @@
 use serde::{Serialize, Serializer};
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_types::constant::chain_code;
+
+use super::has_expiration;
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct BillEntity {
@@ -54,23 +56,7 @@ impl BillEntity {
         let chain_code =
             wallet_types::chain::chain::ChainCode::try_from(self.chain_code.as_str()).unwrap();
 
-        match chain_code {
-            wallet_types::chain::chain::ChainCode::Bitcoin => {
-                self.transaction_time.timestamp() < Utc::now().timestamp() - 86400
-            }
-            wallet_types::chain::chain::ChainCode::Solana => {
-                self.transaction_time.timestamp() < Utc::now().timestamp() - (10 * 60)
-            }
-            wallet_types::chain::chain::ChainCode::Ethereum => {
-                self.transaction_time.timestamp() < Utc::now().timestamp() - (40 * 60)
-            }
-            wallet_types::chain::chain::ChainCode::Tron => {
-                self.transaction_time.timestamp() < Utc::now().timestamp() - (40 * 60)
-            }
-            wallet_types::chain::chain::ChainCode::BnbSmartChain => {
-                self.transaction_time.timestamp() < Utc::now().timestamp() - (30 * 60)
-            }
-        }
+        has_expiration(self.transaction_time.timestamp(), chain_code)
     }
 }
 

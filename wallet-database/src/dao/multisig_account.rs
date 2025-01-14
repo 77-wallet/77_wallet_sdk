@@ -48,6 +48,8 @@ impl MultisigAccountDaoV1 {
             ON CONFLICT (id)
             DO UPDATE SET
                 is_del = EXCLUDED.is_del,
+                status = EXCLUDED.status,
+                pay_status = EXCLUDED.pay_status,
                 owner = EXCLUDED.owner,
                 updated_at = EXCLUDED.updated_at
         "#;
@@ -163,6 +165,23 @@ impl MultisigAccountDaoV1 {
         Ok(res)
     }
 
+    pub async fn pending_account<'a, E>(
+        pool: E,
+    ) -> Result<Vec<MultisigAccountEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT count(*) FROM multisig_account WHERE status = ? or pay_status = ?";
+
+        let result = sqlx::query_as(sql)
+            .bind(MultisigAccountStatus::OnChianPending.to_i8())
+            .bind(MultisigAccountPayStatus::PaidPending.to_i8())
+            .fetch_all(pool)
+            .await?;
+
+        Ok(result)
+    }
+
     pub async fn account_count(
         chain_code: &str,
         pool: Arc<Pool<Sqlite>>,
@@ -274,33 +293,6 @@ impl MultisigAccountDaoV1 {
 
         Ok(())
     }
-
-    // pub async fn init_multisig_assets(
-    //     chain_code: &str,
-    //     address: &str,
-    //     pool: Arc<Pool<Sqlite>>,
-    // ) -> Result<(), crate::Error> {
-    //     let main_code = CoinEntity::main_coin(chain_code, &*pool)
-    //         .await?
-    //         .ok_or(crate::Error::Other("coin not found".to_string()))?;
-
-    //     // 资产创建或者更新
-    //     let assets_id =
-    //         crate::entities::assets::AssetsId::new(address, chain_code, &main_code.symbol);
-    //     let assets =
-    //         crate::dao::assets::CreateAssetsVo::new(assets_id, main_code.decimals, None, None, 1)
-    //             .with_name(&main_code.name)
-    //             .with_u256(alloy::primitives::U256::default(), main_code.decimals)?;
-
-    //     // TODO: 应该请求后端查询币价
-    //     AssetsEntity::upsert_assets(&*pool, assets).await?;
-
-    //     // 波场可能涉及到多种资产一次更新
-    //     if chain_code == "tron" {
-    //         AssetsEntity::update_tron_multisig_assets(address, chain_code, 1, &*pool).await?;
-    //     };
-    //     Ok(())
-    // }
 
     // make sure is_del = 0
     pub async fn find_by_address<'a, E>(

@@ -65,17 +65,6 @@ impl MultisigAccountService {
             _ => String::new(),
         };
 
-        // check whether has not complete account.
-        // if self
-        //     .repo
-        //     .find_doing_account(&chain_code, &address)
-        //     .await?
-        //     .is_some()
-        // {
-        //     return Err(crate::BusinessError::MultisigAccount(
-        //         crate::MultisigAccountError::HasUncompletedAccount,
-        //     ))?;
-        // }
         let member_address = member_list
             .iter()
             .map(|m| m.address.clone())
@@ -272,17 +261,20 @@ impl MultisigAccountService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigAccountList>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        // 同步多签张阿红的状态
+        let _r = domain::multisig::MultisigDomain::sync_multisg_status(pool.clone()).await;
+
         let mut res = self
             .repo
             .account_list(owner, chain_code, page, page_size)
             .await?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
         let mut list = vec![];
         // main symbol
         for item in res.data.iter_mut() {
-            let chain = ChainEntity::detail(&*pool, &item.chain_code).await?;
+            let chain = ChainEntity::detail(pool.as_ref(), &item.chain_code).await?;
             if let Some(chain) = chain {
                 item.address_type_to_category();
                 list.push({

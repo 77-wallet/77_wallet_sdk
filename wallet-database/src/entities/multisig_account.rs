@@ -1,5 +1,6 @@
-use super::multisig_member::{
-    MemberVo, MultisigMemberEntities, MultisigMemberEntity, NewMemberEntity,
+use super::{
+    has_expiration,
+    multisig_member::{MemberVo, MultisigMemberEntities, MultisigMemberEntity, NewMemberEntity},
 };
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_types::chain::address::{category::BtcAddressCategory, r#type::BtcAddressType};
@@ -55,6 +56,16 @@ impl MultisigAccountEntity {
             let category = BtcAddressCategory::from(address_type);
             self.address_type = category.to_string();
         }
+    }
+
+    // 是否过期验证(使用了最后的更新时间)
+    pub fn expiration_check(&self) -> bool {
+        let chain_code =
+            wallet_types::chain::chain::ChainCode::try_from(self.chain_code.as_str()).unwrap();
+
+        let timestamp = self.updated_at.unwrap_or_default().timestamp();
+
+        has_expiration(timestamp, chain_code)
     }
 }
 

@@ -109,7 +109,7 @@ impl MultisigDomain {
             && data.account.status != MultisigAccountStatus::OnChain.to_i8()
             && data.account.status != MultisigAccountStatus::OnChainFail.to_i8()
         {
-            Self::handel_deploy_status(&mut data).await?;
+            Self::handel_deploy_status(&mut data.account).await?;
             flag = true;
         }
 
@@ -118,7 +118,7 @@ impl MultisigDomain {
             && data.account.pay_status != MultisigAccountPayStatus::Paid.to_i8()
             && data.account.pay_status != MultisigAccountPayStatus::PaidFail.to_i8()
         {
-            Self::hanle_pay_status(&mut data).await?;
+            Self::hanle_pay_status(&mut data.account).await?;
             flag = true;
         }
 
@@ -133,26 +133,28 @@ impl MultisigDomain {
     }
 
     pub async fn handel_deploy_status(
-        data: &mut MultisigAccountData,
+        data: &mut MultisigAccountEntity,
     ) -> Result<(), crate::ServiceError> {
-        let adapter =
-            ChainAdapterFactory::get_transaction_adapter(&data.account.chain_code).await?;
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
 
-        match data.account.chain_code.as_str() {
+        match data.chain_code.as_str() {
             chain_code::SOLANA => match adapter {
                 domain::chain::adapter::TransactionAdapter::Solana(solana_chain) => {
-                    let addr =
-                        wallet_utils::address::parse_sol_address(&data.account.authority_addr)?;
+                    let addr = wallet_utils::address::parse_sol_address(&data.authority_addr)?;
                     let account = solana_chain.get_provider().account_info(addr).await?;
                     if account.value.is_some() {
-                        data.account.status = MultisigAccountStatus::OnChain.to_i8();
+                        data.status = MultisigAccountStatus::OnChain.to_i8();
+                    } else {
+                        if data.expiration_check() {
+                            data.status = MultisigAccountStatus::OnChainFail.to_i8();
+                        }
                     }
                 }
                 _ => {}
             },
             _ => {
-                if let Some(tx_result) = adapter.query_tx_res(&data.account.deploy_hash).await? {
-                    data.account.status = if tx_result.status == 2 {
+                if let Some(tx_result) = adapter.query_tx_res(&data.deploy_hash).await? {
+                    data.status = if tx_result.status == 2 {
                         MultisigAccountStatus::OnChain.to_i8()
                     } else {
                         MultisigAccountStatus::OnChainFail.to_i8()
@@ -164,17 +166,61 @@ impl MultisigDomain {
         Ok(())
     }
 
-    pub async fn hanle_pay_status(
-        data: &mut MultisigAccountData,
-    ) -> Result<(), crate::ServiceError> {
-        let adapter =
-            ChainAdapterFactory::get_transaction_adapter(&data.account.chain_code).await?;
+    pub async fn sync_multisg_status(pool: DbPool) -> Result<(), crate::ServiceError> {
+        // 查询 部署中或者支付中的多签账号
+        let mut pending_account = MultisigAccountDaoV1::pending_account(pool.as_ref())
+            .await
+            .map_err(|e| crate::SystemError::Database(e.into()))?;
 
-        if let Some(tx_result) = adapter.query_tx_res(&data.account.deploy_hash).await? {
-            data.account.pay_status = if tx_result.status == 2 {
+        for account in pending_account.iter_mut() {
+            let mut staus_update = false;
+            let mut pay_status_up = false;
+
+            if account.status == MultisigAccountStatus::OnChianPending.to_i8() {
+                if let Err(e) = Self::handel_deploy_status(account).await {
+                    tracing::error!("multisig status sync faild {}", e);
+                }
+                staus_update = true;
+            }
+
+            if account.pay_status == MultisigAccountPayStatus::PaidPending.to_i8() {
+                if let Err(e) = Self::hanle_pay_status(account).await {
+                    tracing::error!("multisig pay status sync faild {}", e);
+                }
+                pay_status_up = true
+            }
+
+            if pay_status_up || staus_update {
+                let rs = MultisigAccountDaoV1::update_status(
+                    &account.id,
+                    Some(account.status),
+                    Some(account.pay_status),
+                    pool.as_ref(),
+                )
+                .await;
+                if let Err(e) = rs {
+                    tracing::error!("update staus fail {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn hanle_pay_status(
+        data: &mut MultisigAccountEntity,
+    ) -> Result<(), crate::ServiceError> {
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
+
+        if let Some(tx_result) = adapter.query_tx_res(&data.deploy_hash).await? {
+            data.pay_status = if tx_result.status == 2 {
                 MultisigAccountPayStatus::Paid.to_i8()
             } else {
                 MultisigAccountPayStatus::PaidFail.to_i8()
+            }
+        } else {
+            if data.expiration_check() {
+                data.pay_status = MultisigAccountPayStatus::PaidFail.to_i8();
             }
         }
         Ok(())

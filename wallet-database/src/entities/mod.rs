@@ -17,3 +17,29 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
+
+// 是否过期
+fn has_expiration(timestamp: i64, chain_code: wallet_types::chain::chain::ChainCode) -> bool {
+    match chain_code {
+        // 1天
+        wallet_types::chain::chain::ChainCode::Bitcoin => {
+            timestamp < chrono::Utc::now().timestamp() - 86400
+        }
+        // 10分钟
+        wallet_types::chain::chain::ChainCode::Solana => {
+            timestamp < chrono::Utc::now().timestamp() - (10 * 60)
+        }
+        // 30分钟
+        wallet_types::chain::chain::ChainCode::Ethereum => {
+            timestamp < chrono::Utc::now().timestamp() - (30 * 60)
+        }
+        // 30分钟
+        wallet_types::chain::chain::ChainCode::Tron => {
+            timestamp < chrono::Utc::now().timestamp() - (30 * 60)
+        }
+        // 30分钟
+        wallet_types::chain::chain::ChainCode::BnbSmartChain => {
+            timestamp < chrono::Utc::now().timestamp() - (30 * 60)
+        }
+    }
+}
