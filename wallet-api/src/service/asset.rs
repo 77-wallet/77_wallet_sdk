@@ -145,44 +145,6 @@ impl AssetsService {
         })
     }
 
-    #[deprecated]
-    pub async fn get_chain_assets(
-        &mut self,
-        address: &str,
-        get_chain: GetChain,
-    ) -> Result<GetChainAssetsRes, crate::ServiceError> {
-        let tx = &mut self.repo;
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
-
-        let assets = match get_chain {
-            GetChain::All => {
-                // 查询该账户下的全部资产
-                tx.get_coin_assets_in_address(vec![address.to_string()])
-                    .await?
-            }
-            GetChain::One(ref chain_code, symbol) => {
-                // 查这个链的特定币种
-                tx.get_chain_assets_by_address_chain_code_symbol(
-                    vec![address.to_string()],
-                    Some(chain_code.to_string()),
-                    Some(&symbol),
-                    None,
-                )
-                .await?
-            }
-        };
-
-        let mut chain_assets = Vec::<CoinAssets>::new();
-
-        for asset in assets {
-            let balance = token_currencies.calculate_assets_entity(&asset).await?;
-            let data: CoinAssets = (balance, asset).into();
-            chain_assets.push(data);
-        }
-
-        Ok(GetChainAssetsRes { chain_assets })
-    }
-
     // 指定账户下的链的资产列表，需要去重
     // pub async fn get_account_chain_assets(
     //     &self,
@@ -484,75 +446,6 @@ impl AssetsService {
             .await?;
         res.mark_multichain_assets();
         Ok(res)
-    }
-
-    #[deprecated]
-    pub async fn get_account_assets_by_symbol_and_chain_code(
-        mut self,
-        account_address: &str,
-        chain_code: &str,
-        symbol: &str,
-    ) -> Result<AccountChainAsset, crate::ServiceError> {
-        let mut tx = self.repo;
-        let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
-
-        let Some(account) = AccountRepoTrait::detail(&mut tx, account_address).await? else {
-            return Err(crate::ServiceError::Business(
-                crate::BusinessError::Account(crate::AccountError::NotFound),
-            ));
-        };
-
-        let wallet_address = account.wallet_address;
-        let account_id = account.account_id;
-
-        // 获取钱包下的这个账户的所有地址
-        let accounts = tx
-            .get_account_list_by_wallet_address_and_account_id(
-                Some(&wallet_address),
-                Some(account_id),
-            )
-            .await?;
-
-        let mut account_addresses = Vec::<String>::new();
-        for account in accounts {
-            if !account_addresses
-                .iter()
-                .any(|address| address == &account.address)
-            {
-                account_addresses.push(account.address);
-            }
-        }
-
-        let assets = tx
-            .get_chain_assets_by_address_chain_code_symbol(
-                account_addresses,
-                None,
-                Some(symbol),
-                None,
-            )
-            .await?;
-        let is_multichain = assets.len() > 1;
-        let asset = tx
-            .assets_by_id(&AssetsId {
-                address: account.address.to_string(),
-                chain_code: chain_code.to_string(),
-                symbol: symbol.to_string(),
-            })
-            .await?
-            .ok_or(crate::ServiceError::Business(
-                crate::AssetsError::NotFound.into(),
-            ))?;
-
-        let balance = token_currencies.calculate_assets_entity(&asset).await?;
-
-        Ok(AccountChainAsset {
-            chain_code: asset.chain_code,
-            symbol: asset.symbol,
-            name: asset.name,
-            balance,
-            is_multichain,
-            is_multisig: asset.is_multisig,
-        })
     }
 
     // 根据地址来同步余额()

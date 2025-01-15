@@ -95,19 +95,6 @@ impl crate::WalletManager {
             .into()
     }
 
-    #[deprecated]
-    pub async fn get_account_assets_by_symbol_and_chain_code(
-        &self,
-        account_address: &str,
-        chain_code: &str,
-        symbol: &str,
-    ) -> ReturnType<AccountChainAsset> {
-        AssetsService::new(self.repo_factory.resuource_repo())
-            .get_account_assets_by_symbol_and_chain_code(account_address, chain_code, symbol)
-            .await?
-            .into()
-    }
-
     pub async fn get_all_account_assets(
         &self,
         account_id: u32,
@@ -138,20 +125,6 @@ impl crate::WalletManager {
     ) -> ReturnType<GetAccountAssetsRes> {
         AssetsService::new(self.repo_factory.resuource_repo())
             .get_multisig_account_assets(address)
-            .await?
-            .into()
-    }
-
-    /// 获取网络资产
-    #[deprecated]
-    pub async fn get_chain_assets(
-        &self,
-        // wallet_name: &str,
-        address: &str,
-        get_chain: crate::request::assets::GetChain,
-    ) -> ReturnType<GetChainAssetsRes> {
-        AssetsService::new(self.repo_factory.resuource_repo())
-            .get_chain_assets(address, get_chain)
             .await?
             .into()
     }
@@ -311,26 +284,6 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_get_account_assets_by_symbol_and_chain_code() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-
-        let symbol = "TRX";
-        let chain_code = "tron";
-        let res = wallet_manager
-            .get_account_assets_by_symbol_and_chain_code(
-                "TLbFepwLNd372mSQGhPCPxqZBRQ8zsCLav",
-                chain_code,
-                symbol,
-            )
-            .await;
-        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_get_coin_list() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -391,22 +344,6 @@ mod test {
                 address,
                 account_id,
             )
-            .await;
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_get_chain_assets() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-        // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
-        // let address = "A9gBqKMQDWUYNiHHpHakSEsztKuxxN838EWGuG2WKc6F";
-        let address = "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB";
-        // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
-        let res = wallet_manager
-            .get_chain_assets(address, crate::request::assets::GetChain::All)
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
