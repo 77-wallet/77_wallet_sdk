@@ -340,7 +340,7 @@ mod test {
         //     "SOL".to_string(),
         //     "BTC".to_string(),
         // ];
-        let symbols = vec!["stETH".to_string()];
+        let symbols = vec!["USDT".to_string()];
 
         let res = wallet_manager.get_token_price(symbols).await;
         let res = serde_json::to_string(&res).unwrap();

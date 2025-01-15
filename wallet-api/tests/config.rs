@@ -9,9 +9,15 @@ async fn get_manager() -> WalletManager {
         .to_string_lossy()
         .to_string();
 
-    WalletManager::new("guangxiang", "ANDROID", &path, None)
-        .await
-        .unwrap()
+    WalletManager::new(
+        "guangxiang",
+        "ANDROID",
+        &path,
+        None,
+        "https://test-api.puke668.top",
+    )
+    .await
+    .unwrap()
 }
 
 #[tokio::test]

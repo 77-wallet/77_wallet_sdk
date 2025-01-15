@@ -37,7 +37,7 @@ async fn get_manager() -> WalletManager {
         .join("test_data")
         .to_string_lossy()
         .to_string();
-    WalletManager::new(SN, DEVICE_TYPE, &path, None)
+    WalletManager::new(SN, DEVICE_TYPE, &path, None, "https://test-api.puke668.top")
         .await
         .unwrap()
 }

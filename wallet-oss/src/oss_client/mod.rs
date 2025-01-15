@@ -96,8 +96,8 @@ impl OssClient {
 mod tests {
     use super::*;
 
-    pub const ACCESS_KEY_ID: &str = "";
-    pub const ACCESS_KEY_SECRET: &str = "";
+    pub const ACCESS_KEY_ID: &str = "LTAI5tFE2vXoF27vcHaJiyyd";
+    pub const ACCESS_KEY_SECRET: &str = "6GDaBRqk9nmAQV46BgHnSWAml88tRX";
     pub const BUCKET_NAME: &str = "ossbuk23";
     pub const ENDPOINT: &str = "https://oss-cn-hongkong.aliyuncs.com/";
 
@@ -128,8 +128,8 @@ mod tests {
     async fn test_get_object() {
         let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET_NAME, ENDPOINT);
         let _file_name = "test.txt";
-        let file_name = "sdk:2024-10-07 10:36:00.txt";
-        let result = oss_client.get_object(file_name).await.unwrap();
+        // let _file_name = "sdk:2024-10-07 10:36:00.txt";
+        let result = oss_client.get_object(_file_name).await.unwrap();
         println!(
             "file content: {}",
             String::from_utf8_lossy(result.as_slice())

@@ -16,6 +16,9 @@ dev = ["wallet-transport-backend/dev"]
 test = ["wallet-transport-backend/test"]
 prod = ["wallet-transport-backend/prod"]
 
+[build-dependencies]
+dotenv = "0.15"
+
 [dependencies]
 
 wallet-database = { workspace = true }

@@ -43,6 +43,7 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
         &test_params.device_req.device_type,
         &storage_dir.to_string_lossy(),
         None,
+        "https://test-api.puke668.top",
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();

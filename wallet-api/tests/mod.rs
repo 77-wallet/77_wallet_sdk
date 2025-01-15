@@ -25,7 +25,13 @@ async fn get_manager() -> WalletManager {
         }
     });
 
-    WalletManager::new("sn", "ANDROID", &path, Some(tx))
-        .await
-        .unwrap()
+    WalletManager::new(
+        "sn",
+        "ANDROID",
+        &path,
+        Some(tx),
+        "https://test-api.puke668.top",
+    )
+    .await
+    .unwrap()
 }
