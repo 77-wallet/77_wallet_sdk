@@ -3,12 +3,16 @@ use tokio_stream::StreamExt;
 use wallet_api::{notify::FrontendNotifyEvent, WalletManager};
 use wallet_utils::init_test_log;
 
+mod account;
+mod address_book;
+mod bill;
 mod config;
+mod multisig_account;
 mod multisig_tx;
 mod phrase;
 mod stake;
 
-async fn get_manager() -> WalletManager {
+pub async fn get_manager() -> WalletManager {
     init_test_log();
     let path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("test_data")
@@ -25,13 +29,8 @@ async fn get_manager() -> WalletManager {
         }
     });
 
-    WalletManager::new(
-        "sn",
-        "ANDROID",
-        &path,
-        Some(tx),
-        "https://test-api.puke668.top",
-    )
-    .await
-    .unwrap()
+    let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+    WalletManager::new("guangxiang", "ANDROID", &path, Some(tx), config)
+        .await
+        .unwrap()
 }

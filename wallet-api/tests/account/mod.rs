@@ -1,4 +1,3 @@
-mod transactions;
 use std::{env, path::PathBuf};
 use wallet_api::{InitDeviceReq, WalletManager};
 use wallet_chain_instance::instance::ChainObject;
@@ -10,16 +9,11 @@ async fn get_manager() -> WalletManager {
         .join("test_data")
         .to_string_lossy()
         .to_string();
+    let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
 
-    WalletManager::new(
-        "guangxiang",
-        "ANDROID",
-        &path,
-        None,
-        "https://test-api.puke668.top",
-    )
-    .await
-    .unwrap()
+    WalletManager::new("guangxiang", "ANDROID", &path, None, config)
+        .await
+        .unwrap()
 }
 
 #[tokio::test]

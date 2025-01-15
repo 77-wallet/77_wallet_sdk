@@ -38,15 +38,24 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
     // }
 
     info!("[setup_test_environment] storage_dir: {:?}", storage_dir);
+
+    let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
     let wallet_manager = WalletManager::new(
         &test_params.device_req.sn,
         &test_params.device_req.device_type,
         &storage_dir.to_string_lossy(),
         None,
-        "https://test-api.puke668.top",
+        config,
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();
 
     Ok((wallet_manager, test_params))
+}
+
+pub fn get_config() -> Result<String> {
+    let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    let config_dir = dir.join("example").join("config.toml");
+    let config_data = std::fs::read_to_string(config_dir)?;
+    Ok(config_data)
 }

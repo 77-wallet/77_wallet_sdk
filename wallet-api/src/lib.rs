@@ -29,6 +29,8 @@ pub use error::{
     Errors, ServiceError,
 };
 
+pub use config::*;
+
 pub use manager::{Context, WalletManager};
 pub use request::assets::GetChain;
 pub use request::{

@@ -1,23 +1,11 @@
 use sqlx::types::chrono::{TimeZone, Utc};
-use std::{env, path::PathBuf};
-use wallet_api::{request::transaction::ServiceFeePayer, WalletManager};
+use wallet_api::request::transaction::ServiceFeePayer;
 use wallet_database::entities::{
     multisig_account::{MultisigAccountData, MultisigAccountEntity},
     multisig_member::{MultisigMemberEntities, MultisigMemberEntity},
 };
-use wallet_utils::init_test_log;
 
-async fn get_manager() -> WalletManager {
-    init_test_log();
-    let path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("test_data")
-        .to_string_lossy()
-        .to_string();
-
-    WalletManager::new("sn", "ANDROID", &path, None, "https://test-api.puke668.top")
-        .await
-        .unwrap()
-}
+use crate::get_manager;
 
 #[tokio::test]
 async fn test_fetch_deposit_address() {

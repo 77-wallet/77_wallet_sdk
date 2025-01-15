@@ -1,24 +1,6 @@
-use std::{env, path::PathBuf};
-use wallet_api::{request::transaction::QueryBillReusltReq, WalletManager};
-use wallet_utils::init_test_log;
+use wallet_api::request::transaction::QueryBillReusltReq;
 
-async fn get_manager() -> WalletManager {
-    init_test_log();
-    let path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("test_data")
-        .to_string_lossy()
-        .to_string();
-
-    WalletManager::new(
-        "guangxiang",
-        "ANDROID",
-        &path,
-        None,
-        "https://test-api.puke668.top",
-    )
-    .await
-    .unwrap()
-}
+use crate::get_manager;
 
 #[tokio::test]
 async fn bill_detail() {

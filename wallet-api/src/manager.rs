@@ -96,12 +96,12 @@ pub(crate) async fn init_context<'a>(
     dirs: Dirs,
     mqtt_url: &str,
     frontend_notify: Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>,
-    api_url: &str,
+    config: crate::Config,
 ) -> Result<&'a Context, crate::ServiceError> {
     let context = CONTEXT
         .get_or_try_init::<crate::ServiceError, _, _>(async || {
             let context =
-                Context::new(sn, device_type, dirs, mqtt_url, frontend_notify, api_url).await?;
+                Context::new(sn, device_type, dirs, mqtt_url, frontend_notify, config).await?;
             Ok(context)
         })
         .await?;
@@ -147,12 +147,19 @@ impl Context {
         dirs: Dirs,
         mqtt_url: &str,
         frontend_notify: FrontendNotifySender,
-        api_url: &str,
+        config: crate::Config,
     ) -> Result<Context, crate::ServiceError> {
         let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
         let header_opt = Some(HashMap::from([("clientId".to_string(), client_id.clone())]));
+        #[cfg(feature = "dev")]
+        let api_url = config.backend_api.dev_url;
+        #[cfg(feature = "test")]
+        let api_url = config.backend_api.test_url;
+        #[cfg(feature = "prod")]
+        let api_url = config.backend_api.prod_url;
+
         let backend_api =
             wallet_transport_backend::api::BackendApi::new(Some(api_url.to_string()), header_opt)?;
 
@@ -324,12 +331,11 @@ impl WalletManager {
         device_type: &str,
         root_dir: &str,
         sender: Option<UnboundedSender<FrontendNotifyEvent>>,
-        api_url: &str,
+        config: crate::Config,
     ) -> Result<WalletManager, crate::ServiceError> {
         let dir = Dirs::new(root_dir)?;
-
         let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
-        let context = init_context(sn, device_type, dir, &mqtt_url, sender, api_url).await?;
+        let context = init_context(sn, device_type, dir, &mqtt_url, sender, config).await?;
 
         let pool = context.sqlite_context.get_pool().unwrap();
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
@@ -501,8 +507,8 @@ mod tests {
 
         let dir = &root_dir.to_string_lossy().to_string();
 
-        let api_url = "xxx";
-        let _manager = crate::WalletManager::new("sn", "ANDROID", dir, None, api_url)
+        let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
+        let _manager = crate::WalletManager::new("sn", "ANDROID", dir, None, config)
             .await
             .unwrap();
         let dirs = crate::manager::Context::get_global_dirs()?;

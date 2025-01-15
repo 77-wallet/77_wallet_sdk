@@ -4,23 +4,28 @@ use serde_yaml;
 use std::{fs, path::Path};
 
 #[derive(Deserialize, Debug)]
-struct Config {
-    oss: OssConfig,
+pub struct Config {
+    pub oss: OssConfig,
+    pub backend_api: BackendApiConfig,
 }
 
 #[derive(Deserialize, Debug)]
-struct OssConfig {
-    access_key_id: String,
-    access_key_secret: String,
-    bucket_name: String,
-    endpoint: String,
+pub struct BackendApiConfig {
+    pub dev_url: String,
+    pub test_url: String,
+    pub prod_url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct OssConfig {
+    pub access_key_id: String,
+    pub access_key_secret: String,
+    pub bucket_name: String,
+    pub endpoint: String,
 }
 
 impl Config {
-    pub fn new<S: AsRef<Path>>(config_path: S) -> Result<Self, crate::ServiceError> {
-        let mut config_content = String::new();
-        wallet_utils::file_func::read(&mut config_content, config_path)?;
-
+    pub fn new(config_content: &str) -> Result<Self, crate::ServiceError> {
         let config: Config = serde_yaml::from_str(&config_content)
             .map_err(|e| e.to_string())
             .unwrap();

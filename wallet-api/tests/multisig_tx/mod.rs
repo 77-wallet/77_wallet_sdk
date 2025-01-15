@@ -13,7 +13,8 @@ async fn get_manager() -> WalletManager {
         .join("test_data")
         .to_string_lossy()
         .to_string();
-    WalletManager::new("sn", "ANDROID", &path, None, "https://test-api.puke668.top")
+    let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+    WalletManager::new("sn", "ANDROID", &path, None, config)
         .await
         .unwrap()
 }

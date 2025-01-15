@@ -1,10 +1,10 @@
 pub mod account;
+pub mod address_book;
 pub mod announcement;
 pub mod app;
 pub mod assets;
 pub mod bill;
 pub mod cache;
-pub mod address_book;
 pub mod chain;
 pub mod coin;
 pub mod exchange_rate;

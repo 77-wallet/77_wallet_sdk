@@ -71,6 +71,7 @@ uuid.workspace = true
 futures = "0.3"
 regex = "1.10.4"
 crossbeam = "0.8.4"
+cfg-if = { workspace = true }
 
 # log
 tracing.workspace = true
