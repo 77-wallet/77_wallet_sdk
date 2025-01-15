@@ -55,7 +55,7 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
 
 pub fn get_config() -> Result<String> {
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
-    let config_dir = dir.join("example").join("config.toml");
+    let config_dir = dir.join("example").join("config.yaml");
     let config_data = std::fs::read_to_string(config_dir)?;
     Ok(config_data)
 }

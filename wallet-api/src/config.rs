@@ -26,9 +26,7 @@ pub struct OssConfig {
 
 impl Config {
     pub fn new(config_content: &str) -> Result<Self, crate::ServiceError> {
-        let config: Config = serde_yaml::from_str(&config_content)
-            .map_err(|e| e.to_string())
-            .unwrap();
+        let config: Config = wallet_utils::serde_func::serde_yaml_from_str(&config_content)?;
         Ok(config)
     }
 }
