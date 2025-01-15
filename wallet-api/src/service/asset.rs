@@ -4,10 +4,8 @@ use crate::{
         multisig::MultisigDomain,
     },
     infrastructure::task_queue::{CommonTask, Task, Tasks},
-    request::assets::GetChain,
     response_vo::assets::{
         AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
-        GetChainAssetsRes,
     },
 };
 use wallet_database::{

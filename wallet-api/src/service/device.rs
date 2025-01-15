@@ -8,8 +8,9 @@ use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
 pub const APP_ID: &str = "ada7d9308190fe45";
 
 use crate::{
-    domain::{self},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{
+        BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
+    },
     request::devices::InitDeviceReq,
 };
 
@@ -45,32 +46,33 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
 
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .push(Task::Initialization(InitializationTask::InitMqtt))
             .send()
             .await?;
 
-        let device = tx
-            .get_device_info()
-            .await?
-            .ok_or(crate::BusinessError::Device(
-                crate::DeviceError::Uninitialized,
-            ))?;
+        // let device = tx
+        //     .get_device_info()
+        //     .await?
+        //     .ok_or(crate::BusinessError::Device(
+        //         crate::DeviceError::Uninitialized,
+        //     ))?;
 
-        tokio::spawn(async move {
-            let content = domain::app::DeviceDomain::device_content(&device).unwrap();
-            let client_id = domain::app::DeviceDomain::client_id_by_device(&device).unwrap();
-            let md5_sn = domain::app::DeviceDomain::md5_sn(&device.sn);
-            crate::mqtt::init_mqtt_processor(
-                &device.sn,
-                &md5_sn,
-                crate::mqtt::user_property::UserProperty::new(
-                    // &package_id.unwrap_or("77wallet".to_string()),
-                    &content, &client_id, &device.sn, &md5_sn,
-                ),
-                crate::mqtt::wrap_handle_eventloop,
-            )
-            .await
-            .unwrap();
-        });
+        // tokio::spawn(async move {
+        //     let content = domain::app::DeviceDomain::device_content(&device).unwrap();
+        //     let client_id = domain::app::DeviceDomain::client_id_by_device(&device).unwrap();
+        //     let md5_sn = domain::app::DeviceDomain::md5_sn(&device.sn);
+        //     crate::mqtt::init_mqtt_processor(
+        //         &device.sn,
+        //         &md5_sn,
+        //         crate::mqtt::user_property::UserProperty::new(
+        //             // &package_id.unwrap_or("77wallet".to_string()),
+        //             &content, &client_id, &device.sn, &md5_sn,
+        //         ),
+        //         crate::mqtt::wrap_handle_eventloop,
+        //     )
+        //     .await
+        //     .unwrap();
+        // });
 
         Ok(None)
     }

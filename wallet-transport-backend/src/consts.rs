@@ -89,16 +89,17 @@ cfg_if::cfg_if! {
     if #[cfg(any(feature = "dev", not(any(feature = "test", feature = "prod"))))] {
         pub const BASE_URL: &str = "https://walletapi.puke668.top";
         // pub const BASE_URL: &str = env!("BASE_URL");
-        pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
+        // pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
     // 测试环境
     } else if #[cfg(feature = "test")] {
         pub const BASE_URL: &str = "https://test-api.puke668.top";
-        pub const MQTT_URL: &str = "mqtt://126.214.108.58:21883";
+        // pub const MQTT_URL: &str = "mqtt://126.214.108.58:21883";
+
         // pub const MQTT_URL: &str = "mqtt://47.250.11.112:21883";
     // 生产环境
     } else if #[cfg(feature = "prod")] {
         pub const BASE_URL: &str = "https://api.77wallet.org";
-        pub const MQTT_URL: &str = "mqtt://8.210.206.245:10883";
+        // pub const MQTT_URL: &str = "mqtt://8.210.206.245:10883";
     } else {
         // 如果没有匹配任何环境，报错
         compile_error!("No valid feature selected! Use 'dev', 'test', or 'prod'.");

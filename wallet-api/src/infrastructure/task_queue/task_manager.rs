@@ -248,6 +248,10 @@ async fn handle_initialization_task(
         InitializationTask::RecoverQueueData => {
             MultisigQueueDomain::recover_all_uid_queue_data().await?;
         }
+        InitializationTask::InitMqtt => {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            domain::app::mqtt::MqttDomain::init(&mut repo).await?;
+        }
     }
     Ok(())
 }

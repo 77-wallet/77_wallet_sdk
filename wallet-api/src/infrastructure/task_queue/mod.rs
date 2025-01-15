@@ -45,6 +45,7 @@ pub(crate) enum InitializationTask {
     SetBlockBrowserUrl,
     SetFiat,
     RecoverQueueData,
+    InitMqtt,
 }
 
 pub(crate) enum BackendApiTask {
@@ -206,6 +207,7 @@ impl TryFrom<&TaskQueueEntity> for Task {
             TaskName::RecoverQueueData => {
                 Ok(Task::Initialization(InitializationTask::RecoverQueueData))
             }
+            TaskName::InitMqtt => Ok(Task::Initialization(InitializationTask::InitMqtt)),
             TaskName::OrderMultiSignAccept => {
                 let req = wallet_utils::serde_func::serde_from_str::<OrderMultiSignAccept>(
                     &value.request_body,
@@ -310,6 +312,7 @@ impl Task {
                 InitializationTask::SetBlockBrowserUrl => TaskName::SetBlockBrowserUrl,
                 InitializationTask::SetFiat => TaskName::SetFiat,
                 InitializationTask::RecoverQueueData => TaskName::RecoverQueueData,
+                InitializationTask::InitMqtt => TaskName::InitMqtt,
             },
             Task::BackendApi(backend_api_task) => match backend_api_task {
                 BackendApiTask::BackendApi(_) => TaskName::BackendApi,
@@ -352,6 +355,7 @@ impl Task {
                 InitializationTask::SetBlockBrowserUrl => None,
                 InitializationTask::SetFiat => None,
                 InitializationTask::RecoverQueueData => None,
+                InitializationTask::InitMqtt => None,
             },
             Task::BackendApi(backend_api_task) => match backend_api_task {
                 BackendApiTask::BackendApi(api_data) => {

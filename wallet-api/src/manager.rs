@@ -94,14 +94,12 @@ pub(crate) async fn init_context<'a>(
     sn: &str,
     device_type: &str,
     dirs: Dirs,
-    mqtt_url: &str,
     frontend_notify: Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>,
     config: crate::Config,
 ) -> Result<&'a Context, crate::ServiceError> {
     let context = CONTEXT
         .get_or_try_init::<crate::ServiceError, _, _>(async || {
-            let context =
-                Context::new(sn, device_type, dirs, mqtt_url, frontend_notify, config).await?;
+            let context = Context::new(sn, device_type, dirs, frontend_notify, config).await?;
             Ok(context)
         })
         .await?;
@@ -111,7 +109,7 @@ pub(crate) async fn init_context<'a>(
 #[derive(Debug, Clone)]
 pub struct Context {
     pub(crate) dirs: Dirs,
-    pub(crate) mqtt_url: String,
+    pub(crate) mqtt_url: Arc<RwLock<Option<String>>>,
     pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
     pub(crate) sqlite_context: wallet_database::SqliteContext,
     pub(crate) oss_client: wallet_oss::oss_client::OssClient,
@@ -145,7 +143,6 @@ impl Context {
         sn: &str,
         device_type: &str,
         dirs: Dirs,
-        mqtt_url: &str,
         frontend_notify: FrontendNotifySender,
         config: crate::Config,
     ) -> Result<Context, crate::ServiceError> {
@@ -168,8 +165,8 @@ impl Context {
         {
             let mut app_state = crate::app_state::APP_STATE.write().await;
             app_state.set_backend_url(Some(backend_api.base_url.clone()));
-            app_state.set_mqtt_url(Some(mqtt_url.to_string()));
         }
+        let mqtt_url = Arc::new(RwLock::new(None));
 
         let oss_client = wallet_oss::oss_client::OssClient::new(
             ACCESS_KEY_ID,
@@ -183,7 +180,7 @@ impl Context {
 
         Ok(Context {
             dirs,
-            mqtt_url: mqtt_url.to_string(),
+            mqtt_url,
             backend_api,
             sqlite_context,
             frontend_notify,
@@ -223,8 +220,21 @@ impl Context {
         Ok(&Context::get_context()?.dirs)
     }
 
-    pub(crate) fn get_global_mqtt_url() -> Result<&'static String, crate::SystemError> {
+    pub(crate) fn get_global_mqtt_url(
+    ) -> Result<&'static std::sync::Arc<RwLock<Option<String>>>, crate::SystemError> {
         Ok(&Context::get_context()?.mqtt_url)
+    }
+
+    pub(crate) async fn set_global_mqtt_url(mqtt_url: &str) -> Result<(), crate::ServiceError> {
+        let mqtt_url = if !mqtt_url.starts_with("mqtt://") {
+            format!("mqtt://{}", mqtt_url)
+        } else {
+            mqtt_url.to_string()
+        };
+        let cx = Context::get_context()?;
+        let mut lock = cx.mqtt_url.write().await;
+        *lock = Some(mqtt_url);
+        Ok(())
     }
 
     pub(crate) fn get_global_oss_client(
@@ -334,8 +344,8 @@ impl WalletManager {
         config: crate::Config,
     ) -> Result<WalletManager, crate::ServiceError> {
         let dir = Dirs::new(root_dir)?;
-        let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
-        let context = init_context(sn, device_type, dir, &mqtt_url, sender, config).await?;
+        // let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
+        let context = init_context(sn, device_type, dir, sender, config).await?;
 
         let pool = context.sqlite_context.get_pool().unwrap();
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);

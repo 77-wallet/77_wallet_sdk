@@ -37,11 +37,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .create_account(test_params.create_account_req)
         .await
         .result;
-    let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    // let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
     // wallet_manager.recover_multisig_data(&wallet.address).await;
     // wallet_manager.set_language("CHINESE_SIMPLIFIED").await;
-    // let config = wallet_manager.get_config().await;
-    // tracing::info!("config result: {config:#?}");
+    let config = wallet_manager.get_config().await;
+    tracing::info!("config result: {config:#?}");
     while let Some(_data) = rx.next().await {
         tracing::info!("data: {_data:?}");
     }

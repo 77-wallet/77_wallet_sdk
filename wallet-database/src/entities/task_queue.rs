@@ -75,6 +75,7 @@ pub enum TaskName {
     SetBlockBrowserUrl,
     SetFiat,
     RecoverQueueData,
+    InitMqtt,
     BackendApi,
     // mqtt
     OrderMultiSignAccept,

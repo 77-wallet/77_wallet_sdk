@@ -1,4 +1,5 @@
 pub mod config;
+pub mod mqtt;
 use wallet_database::entities::account::AccountEntity;
 
 use crate::{infrastructure::task_queue::BackendApiTaskData, service::device::APP_ID};

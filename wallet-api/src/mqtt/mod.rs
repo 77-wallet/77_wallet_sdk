@@ -10,9 +10,8 @@ use std::{future::Future, pin::Pin};
 use tokio_stream::StreamExt as _;
 use wallet_transport::client::mqtt_client::{MqttAsyncClient, MqttClientBuilder};
 
-pub(crate) static MQTT_PROCESSOR: once_cell::sync::Lazy<
-    once_cell::sync::OnceCell<MqttAsyncClient>,
-> = once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
+pub(crate) static MQTT_PROCESSOR: once_cell::sync::Lazy<tokio::sync::OnceCell<MqttAsyncClient>> =
+    once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
 pub async fn init_mqtt_processor<'a>(
     username: &str,
@@ -20,26 +19,35 @@ pub async fn init_mqtt_processor<'a>(
     user_property: user_property::UserProperty,
     handle_eventloop: EventLoopHandler,
 ) -> Result<&'a MqttAsyncClient, crate::ServiceError> {
-    MQTT_PROCESSOR.get_or_try_init(|| {
-        let url = crate::manager::Context::get_global_mqtt_url()?;
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
+    MQTT_PROCESSOR
+        .get_or_try_init(async || {
+            let url = crate::manager::Context::get_global_mqtt_url()?;
+            let url = url.read().await;
 
-        let up = user_property.to_vec();
-        tracing::info!("[init_mqtt_processor] url: {url}");
-        let (client, eventloop) =
-            MqttClientBuilder::new(&user_property.client_id, url, username, password, up)
-                .build()?;
+            let Some(url) = url.as_ref() else {
+                return Err(crate::ServiceError::System(
+                    crate::SystemError::MqttClientNotInit,
+                ));
+            };
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
 
-        let cli = client.client();
-        let eventloop = MqttEventLoop::new(eventloop);
-        tokio::spawn(async move { eventloop.process(tx, cli, handle_eventloop).await });
+            let up = user_property.to_vec();
+            tracing::info!("[init_mqtt_processor] url: {url}");
+            let (client, eventloop) =
+                MqttClientBuilder::new(&user_property.client_id, url, username, password, up)
+                    .build()?;
 
-        let cli = client.client();
-        tokio::spawn(async move { exec_event(rx, cli).await });
+            let cli = client.client();
+            let eventloop = MqttEventLoop::new(eventloop);
+            tokio::spawn(async move { eventloop.process(tx, cli, handle_eventloop).await });
 
-        Ok(client)
-    })
+            let cli = client.client();
+            tokio::spawn(async move { exec_event(rx, cli).await });
+
+            Ok(client)
+        })
+        .await
 }
 
 pub fn wrap_handle_eventloop(
