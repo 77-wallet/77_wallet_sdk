@@ -1,4 +1,6 @@
 use crate::domain;
+use crate::domain::chain::adapter::ChainAdapterFactory;
+use crate::domain::chain::transaction::ChainTransaction;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
 use crate::mqtt::payload::incoming::signature::OrderMultiSignAccept;
 use crate::request::transaction;
@@ -438,7 +440,7 @@ impl MultisigAccountService {
                     ._transfer_service_fee(&multisig_account, payer, password)
                     .await?;
 
-                // 同步多签账户里面的fee_hash,以及费用是部署在那个链上的
+                // 服务费完成后更新本地数据
                 let params = HashMap::from([
                     ("fee_hash".to_string(), fee_res.0),
                     ("fee_chain".to_string(), fee_chain),
@@ -458,10 +460,7 @@ impl MultisigAccountService {
             let member = self.repo.member_by_account_id(&multisig_account.id).await?;
 
             let multisig_adapter =
-                domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(
-                    &multisig_account.chain_code,
-                )
-                .await?;
+                ChainAdapterFactory::get_multisig_adapter(&multisig_account.chain_code).await?;
 
             // 有交易hash验证是否成功，如果已经成功了不在重复部署
             if !multisig_account.deploy_hash.is_empty() {
@@ -475,6 +474,7 @@ impl MultisigAccountService {
                 }
             }
 
+            // fetch multisig account address
             let resp = multisig_adapter
                 .multisig_address(&multisig_account, &member)
                 .await?;
@@ -569,9 +569,7 @@ impl MultisigAccountService {
             fee_setting: payer.fee_setting.unwrap_or_default(),
         };
 
-        let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(&payer.chain_code)
-                .await?;
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&payer.chain_code).await?;
         // 如果交易hash存在，验证交易是否成功了避免重复
         if !multisig_account.fee_hash.is_empty() {
             let tx = adapter.query_tx_res(&multisig_account.fee_hash).await?;
@@ -591,18 +589,13 @@ impl MultisigAccountService {
             }
         }
 
-        let tx_hash = domain::chain::transaction::ChainTransaction::transfer(
-            params,
-            BillKind::ServiceCharge,
-            &adapter,
-        )
-        .await?;
+        let tx_hash = ChainTransaction::transfer(params, BillKind::ServiceCharge, &adapter).await?;
 
         // sync to backend
         let mut raw_data = self.repo.multisig_data(&multisig_account.id).await?;
         raw_data.account.fee_chain = payer.chain_code.clone();
-        // 新的更新时间
         raw_data.account.updated_at = Some(wallet_utils::time::now());
+        raw_data.account.fee_hash = tx_hash.clone();
 
         let req = SignedUpdateRechargeHashReq {
             order_id: multisig_account.id.to_string(),

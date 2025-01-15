@@ -260,7 +260,7 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "cfc23b3becf75d9ae8517be466d6ea027f81e0e0899a583b29a7c643ac613363";
+        let uid = "f2ff333804bb67cfbc57ea0f00a38593e053347ab4b0e7e4f230c3b814e76cc8";
         let start_time = std::time::Instant::now();
 
         let res = crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid).await;

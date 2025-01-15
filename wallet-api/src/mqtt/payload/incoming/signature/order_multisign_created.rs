@@ -36,6 +36,7 @@ impl OrderMultiSignCreated {
             authority_addr,
             deploy_hash,
             fee_hash,
+            fee_chain,
         } = &self;
 
         // update multisig account data
@@ -47,6 +48,7 @@ impl OrderMultiSignCreated {
             address_type,
             deploy_hash,
             fee_hash,
+            fee_chain.clone(),
             pool.as_ref(),
         )
         .await
@@ -117,6 +119,7 @@ mod test {
         let address_type = 1; // 假设 address_type 是一个整数
         let deploy_hash = "xxx".to_string();
         let fee_hash = "bb".to_string();
+        let fee_chain = None;
 
         wallet_database::dao::multisig_account::MultisigAccountDaoV1::update_multisig_address(
             &multisig_account_id.to_string(),
@@ -126,6 +129,7 @@ mod test {
             &address_type.to_string(),
             &deploy_hash,
             &fee_hash,
+            fee_chain,
             pool.as_ref(),
         )
         .await?;

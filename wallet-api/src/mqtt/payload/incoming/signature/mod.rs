@@ -65,6 +65,7 @@ pub struct OrderMultiSignCreated {
     pub deploy_hash: String,
     /// 服务费hash
     pub fee_hash: String,
+    pub fee_chain: Option<String>,
 }
 
 impl OrderMultiSignAcceptCompleteMsg {

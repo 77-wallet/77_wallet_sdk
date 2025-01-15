@@ -22,21 +22,6 @@ impl OrderMultiSignCancel {
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-            // let r#type = SystemNotificationType::MultisigCanceled;
-            // let content = Content::MultisigCanceled {
-            //     multisig_account_id: multisig_account.id.clone(),
-            //     multisig_account_address: multisig_account.address.clone(),
-            //     multisig_account_name: multisig_account.name.clone(),
-            // };
-
-            // let mut system_notification_service = SystemNotificationService::new(repo);
-            // use wallet_database::repositories::system_notification::SystemNotificationRepoTrait as _;
-
-            // system_notification_service
-            //     .repo
-            //     .upsert(msg_id, r#type.to_i8(), content.serialize()?, 0)
-            //     .await?;
-
             let data = crate::notify::NotifyEvent::OrderMultisignCanceled(
                 OrderMultisignCanceledFrontend {
                     multisig_account_id: multisig_account.id,

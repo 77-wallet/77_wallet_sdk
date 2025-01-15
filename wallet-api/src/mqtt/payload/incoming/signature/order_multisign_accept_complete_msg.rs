@@ -72,31 +72,6 @@ impl OrderMultiSignAcceptCompleteMsg {
             }
         }
 
-        // 确认状态(0,未确认,1,已确认)
-        // if status == 1 {
-        //     let notification = Notification::new_multisig_notification(
-        //         &account.name,
-        //         &account.address,
-        //         multisig_account_id,
-        //         NotificationType::Invite,
-        //     );
-        //     let r#type = SystemNotificationType::MultisigAcceptJoin;
-        //     // let content = Content::MultisigAcceptJoin {
-        //     //     multisig_account_id: multisig_account_id.to_string(),
-        //     //     multisig_account_address: account.address.clone(),
-        //     //     multisig_account_name: account.name,
-        //     //     accept_address_list,
-        //     // };
-
-        //     let mut system_notification_service = SystemNotificationService::new(repo);
-        //     use wallet_database::repositories::system_notification::SystemNotificationRepoTrait as _;
-
-        //     system_notification_service
-        //         .repo
-        //         .upsert(msg_id, r#type.to_i8(), notification.serialize()?, 0)
-        //         .await?;
-        // }
-
         let data = crate::notify::NotifyEvent::OrderMultiSignAcceptCompleteMsg(
             OrderMultiSignAcceptCompleteMsgFrontend {
                 status: status as i8,

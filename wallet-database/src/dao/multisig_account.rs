@@ -205,29 +205,39 @@ impl MultisigAccountDaoV1 {
         address_type: &str,
         deploy_hash: &str,
         fee_hash: &str,
+        fee_chain: Option<String>,
         exec: E,
     ) -> Result<(), crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-                UPDATE multisig_account 
-                SET address = $2, salt = $3,authority_addr = $4, address_type = $5, status = 3, pay_status = 1,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-                deploy_hash = case when deploy_hash != $6 then $6 else deploy_hash end,
-                fee_hash = case when fee_hash != $7 then $7 else fee_hash end
-                WHERE id = $1"#;
+        let mut sql = r#"
+        UPDATE multisig_account 
+        SET address = $2, salt = $3, authority_addr = $4, address_type = $5, status = 3, pay_status = 1,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+        deploy_hash = case when deploy_hash != $6 then $6 else deploy_hash end,
+        fee_hash = case when fee_hash != $7 then $7 else fee_hash end"#.to_string();
 
-        sqlx::query(sql)
+        if fee_chain.is_some() {
+            sql.push_str(", fee_chain = $8");
+        }
+
+        sql.push_str(" WHERE id = $1");
+
+        let mut query = sqlx::query(&sql)
             .bind(account_id)
             .bind(address)
             .bind(salt)
             .bind(authority_addr)
             .bind(address_type)
             .bind(deploy_hash)
-            .bind(fee_hash)
-            .execute(exec)
-            .await?;
+            .bind(fee_hash);
+
+        if let Some(fee_chain_value) = fee_chain {
+            query = query.bind(fee_chain_value);
+        }
+
+        query.execute(exec).await?;
 
         Ok(())
     }

@@ -278,6 +278,7 @@ impl MultisigDomain {
         };
         params.owner = owner;
         params.create_at = account.created_at;
+        params.fee_chain = account.fee_chain;
 
         if pay_status == MultisigAccountPayStatus::Paid && status == MultisigAccountStatus::OnChain
         {
