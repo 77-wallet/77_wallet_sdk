@@ -14,7 +14,7 @@ pub mod wallet;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BusinessError {
-    #[error("Wallet error: {0}")]
+    #[error("Device error: {0}")]
     Device(#[from] device::DeviceError),
     #[error("Wallet error: {0}")]
     Wallet(#[from] wallet::WalletError),
@@ -22,7 +22,7 @@ pub enum BusinessError {
     Account(#[from] account::AccountError),
     #[error("Bill error: {0}")]
     Bill(#[from] bill::BillError),
-    #[error("Bill error: {0}")]
+    #[error("Assets error: {0}")]
     Assets(#[from] assets::AssetsError),
     #[error("Chain error: {0}")]
     Chain(#[from] chain::ChainError),
@@ -32,13 +32,13 @@ pub enum BusinessError {
     MultisigQueue(#[from] multisig_queue::MultisigQueueError),
     #[error("Announcement error: {0}")]
     Announcement(#[from] announcement::AnnouncementError),
-    #[error("stake error:{0}")]
+    #[error("stake error: {0}")]
     Stake(#[from] stake::StakeError),
-    #[error("coin error:{0}")]
+    #[error("coin error: {0}")]
     Coin(#[from] coin::CoinError),
-    #[error("exchange error:{0}")]
+    #[error("exchange error: {0}")]
     ExchangeRate(#[from] exchange_rate::ExchangeRate),
-    #[error("chain node")]
+    #[error("chain node: error: {0}")]
     ChainNode(#[from] chain_node::ChainNodeError),
 }
 

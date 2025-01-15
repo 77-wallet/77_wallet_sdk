@@ -1,7 +1,5 @@
 use crate::api::ReturnType;
-use crate::response_vo::assets::{
-    AccountChainAsset, AccountChainAssetList, GetAccountAssetsRes, GetChainAssetsRes,
-};
+use crate::response_vo::assets::{AccountChainAssetList, GetAccountAssetsRes};
 use crate::service::asset::AssetsService;
 
 impl crate::WalletManager {
