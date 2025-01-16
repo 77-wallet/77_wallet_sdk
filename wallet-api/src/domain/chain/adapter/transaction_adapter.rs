@@ -3,7 +3,11 @@ use crate::{
     dispatch,
     domain::{
         self,
-        chain::{pare_fee_setting, transaction::ChainTransaction, TransferResp},
+        chain::{
+            pare_fee_setting,
+            transaction::{ChainTransaction, DEFALUT_UNITS},
+            TransferResp,
+        },
     },
     request::transaction::{self},
     response_vo::{self, FeeDetails, TronFeeDetails},
@@ -216,7 +220,7 @@ impl TransactionAdapter {
 
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref());
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFALUT_UNITS);
 
                 ChainTransaction::check_sol_transaction_fee(
                     remain_balance,
@@ -420,7 +424,7 @@ impl TransactionAdapter {
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
 
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref());
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFALUT_UNITS);
 
                 let res = response_vo::CommonFeeDetails::new(
                     fee_setting.transaction_fee(),

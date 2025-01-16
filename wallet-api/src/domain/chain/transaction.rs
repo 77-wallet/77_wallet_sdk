@@ -14,6 +14,9 @@ use wallet_database::entities::{
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_utils::unit;
 
+// sol 默认计算单元
+pub const DEFALUT_UNITS: u64 = 100_000;
+
 pub struct ChainTransaction;
 
 impl ChainTransaction {
@@ -182,9 +185,9 @@ impl ChainTransaction {
     }
 
     // 针对sol 是否需要给优先费计算,目前给到usdt的优先费位 2倍基础费
-    pub fn sol_priority_fee(fee_setting: &mut SolFeeSetting, token: Option<&String>) {
+    pub fn sol_priority_fee(fee_setting: &mut SolFeeSetting, token: Option<&String>, units: u64) {
         if let Some(_token) = token {
-            fee_setting.compute_units_consumed = 100_000;
+            fee_setting.compute_units_consumed = units;
             fee_setting.priority_fee_per_compute_unit = Some(fee_setting.base_fee * 20);
         }
     }

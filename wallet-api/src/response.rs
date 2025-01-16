@@ -87,10 +87,17 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
             wallet_transport::TransportError::NodeResponseError(node_response_error) => {
                 match node_response_error.code {
                     // sol链错误码,转账金额小于租金
-                    -32002 => (
-                        crate::ChainError::InsufficientFundsRent.get_status_code(),
-                        node_response_error.message.unwrap_or_default(),
-                    ),
+                    -32002 => {
+                        let msg = node_response_error.message.unwrap_or_default();
+                        if msg.contains("insufficient funds for rent") {
+                            (
+                                crate::ChainError::InsufficientFundsRent.get_status_code(),
+                                msg,
+                            )
+                        } else {
+                            (node_response_error.code, msg)
+                        }
+                    }
                     -32602 => {
                         let err_msg = node_response_error.message.unwrap_or_default();
                         (

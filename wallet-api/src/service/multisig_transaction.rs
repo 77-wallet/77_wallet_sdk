@@ -1,4 +1,5 @@
 use crate::domain::chain::adapter::{ChainAdapterFactory, MultisigAdapter};
+use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::chain::TransferResp;
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
@@ -626,19 +627,21 @@ impl MultisigTransactionService {
                 let instructions = params.instructions().await?;
 
                 // check transaction_fee
-                let fee = chain.estimate_fee_v1(&instructions, &params).await?;
+                let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
+                ChainTransaction::sol_priority_fee(&mut fee, Some(&queue.to_addr), 200_000);
+
                 let balance = chain
                     .balance(&multisig_account.initiator_addr, None)
                     .await?;
-                domain::chain::transaction::ChainTransaction::check_sol_transaction_fee(
-                    balance,
-                    fee.original_fee(),
-                )?;
+                ChainTransaction::check_sol_transaction_fee(balance, fee.original_fee())?;
+
+                let fees = fee.transaction_fee().to_string();
 
                 let tx_hash = chain
-                    .exec_transaction(params, key, None, instructions, 0)
+                    .exec_transaction(params, key, Some(fee), instructions, 0)
                     .await?;
-                TransferResp::new(tx_hash, fee.transaction_fee().to_string())
+
+                TransferResp::new(tx_hash, fees)
             }
             MultisigAdapter::Tron(chain) => {
                 // check balance

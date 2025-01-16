@@ -45,11 +45,11 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "HVWfJZUBx4Vxn8TgQivP4p3j5gm5pXzBDPeq3JUqZSW";
-    let to = "E3LwNpfHFWKnzqdBjmEbjBdYYByfrQCgeDYoemxs3yLu";
-    let value = "0.001";
+    let from = "5RNZx2qZsEUDtW8xShiKGStKsjWMtma19sp6yYuvojS4";
+    let to = "GE93MHXVvnsbhxu7Ttpp7zTiipJeCX3QFXueSK2dCJe6";
+    let value = "0.000000001";
     let chain_code = "sol";
-    let symbol = "USDT";
+    let symbol = "SOL";
     // let symbol = "STK";
     let password = "123456";
     // let notes = "test";

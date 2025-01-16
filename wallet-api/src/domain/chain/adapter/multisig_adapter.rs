@@ -1,7 +1,10 @@
 use super::TIME_OUT;
 use crate::{
     dispatch,
-    domain::{self, chain::transaction::ChainTransaction},
+    domain::{
+        self,
+        chain::transaction::{ChainTransaction, DEFALUT_UNITS},
+    },
     response_vo::{
         self, CommonFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams, TronFeeDetails,
     },
@@ -357,7 +360,7 @@ impl MultisigAdapter {
                     .create_transaction_fee(&args.transaction_message, base_fee)
                     .await?;
 
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref());
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFALUT_UNITS);
 
                 let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
                     currency,
@@ -695,11 +698,10 @@ impl MultisigAdapter {
                 )?;
 
                 let instructions = params.instructions().await?;
-                let fee = chain
-                    .estimate_fee_v1(&instructions, &params)
-                    .await?
-                    .transaction_fee();
-                CommonFeeDetails::new(fee, token_currency, currency).to_json_str()
+                let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
+                ChainTransaction::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
+
+                CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency).to_json_str()
             }
             Self::Tron(chain) => {
                 let signature_num = sign_list.len() as u8;
