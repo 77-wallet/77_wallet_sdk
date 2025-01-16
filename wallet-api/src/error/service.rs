@@ -20,9 +20,9 @@ pub enum ServiceError {
     ChainInstance(#[from] wallet_chain_instance::Error),
     #[error("Chain interact error: `{0}`")]
     ChainInteract(#[from] wallet_chain_interact::Error),
-    #[error("Server error: {0}")]
+    #[error("System error: {0}")]
     System(#[from] crate::error::system::SystemError),
-    #[error("Server error: {0}")]
+    #[error("Database error: {0}")]
     Database(#[from] wallet_database::Error),
     // 业务错误
     #[error("Business error: {0}")]

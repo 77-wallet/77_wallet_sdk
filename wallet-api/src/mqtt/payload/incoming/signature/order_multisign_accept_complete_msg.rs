@@ -23,7 +23,7 @@ impl OrderMultiSignAcceptCompleteMsg {
 
         let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?
+            .map_err(crate::ServiceError::Database)?
         else {
             tracing::error!("[order multisig accept complete msg] multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
@@ -68,7 +68,7 @@ impl OrderMultiSignAcceptCompleteMsg {
                     pool.as_ref(),
                 )
                 .await
-                .map_err(crate::SystemError::Database)?;
+                .map_err(crate::ServiceError::Database)?;
             }
         }
 

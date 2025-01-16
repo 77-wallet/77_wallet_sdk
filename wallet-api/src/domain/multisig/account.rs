@@ -171,7 +171,7 @@ impl MultisigDomain {
         // 查询 部署中或者支付中的多签账号
         let mut pending_account = MultisigAccountDaoV1::pending_account(pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?;
+            .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
         for account in pending_account.iter_mut() {
             let staus_update = account.status;
@@ -312,7 +312,7 @@ impl MultisigDomain {
     ) -> Result<MultisigAccountEntity, crate::ServiceError> {
         let account = MultisigAccountDaoV1::find_by_conditions(vec![("id", id)], pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?
+            .map_err(|e| crate::ServiceError::Database(e.into()))?
             .ok_or(crate::BusinessError::MultisigAccount(
                 crate::MultisigAccountError::NotFound,
             ))?;
@@ -330,7 +330,7 @@ impl MultisigDomain {
 
         let account = MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?
+            .map_err(|e| crate::ServiceError::Database(e.into()))?
             .ok_or(crate::BusinessError::MultisigAccount(
                 crate::MultisigAccountError::NotFound,
             ))?;
@@ -345,7 +345,7 @@ impl MultisigDomain {
         Ok(
             MultisigAccountDaoV1::find_done_account(address, chain_code, &**pool)
                 .await
-                .map_err(|e| crate::SystemError::Database(e.into()))?,
+                .map_err(|e| crate::ServiceError::Database(e.into()))?,
         )
     }
 
@@ -354,7 +354,7 @@ impl MultisigDomain {
     ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
         let accounts = MultisigAccountDaoV1::list(vec![], pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?;
+            .map_err(|e| crate::ServiceError::Database(e.into()))?;
         Ok(accounts)
     }
 
@@ -364,7 +364,7 @@ impl MultisigDomain {
     ) -> Result<MultisigQueueEntity, crate::ServiceError> {
         let res = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?
+            .map_err(|e| crate::ServiceError::Database(e.into()))?
             .ok_or(crate::BusinessError::MultisigQueue(
                 crate::MultisigQueueError::NotFound,
             ))?;

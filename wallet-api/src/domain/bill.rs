@@ -115,7 +115,7 @@ impl BillDomain {
 
         let bill = BillDao::last_bill(chain_code, address, pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?;
+            .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
         let adjusted_time = |bill: Option<BillEntity>| {
             bill.map(|bill| {
@@ -147,7 +147,7 @@ impl BillDomain {
         ];
         let account = MultisigAccountDaoV1::find_by_conditions(condition, pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?;
+            .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
         if let Some(account) = account {
             if account.owner == MultiAccountOwner::Participant.to_i8() {

@@ -296,7 +296,7 @@ impl TransactionService {
                     let status = MultisigAccountStatus::OnChain.to_i8();
                     MultisigAccountDaoV1::update_status(&account.id, Some(status), None, &*pool)
                         .await
-                        .map_err(crate::SystemError::Database)?;
+                        .map_err(crate::ServiceError::Database)?;
                 }
             }
             // transfer multisig service fee
@@ -310,7 +310,7 @@ impl TransactionService {
                     let status = MultisigAccountPayStatus::Paid.to_i8();
                     MultisigAccountDaoV1::update_status(&account.id, None, Some(status), &*pool)
                         .await
-                        .map_err(crate::SystemError::Database)?;
+                        .map_err(crate::ServiceError::Database)?;
                 }
             }
             _ => {}

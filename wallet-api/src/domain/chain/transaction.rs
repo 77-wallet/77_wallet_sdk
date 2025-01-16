@@ -64,7 +64,7 @@ impl ChainTransaction {
 
         Ok(AssetsEntity::update_balance(&*pool, &assets_id, balance)
             .await
-            .map_err(crate::SystemError::Database)?)
+            .map_err(crate::ServiceError::Database)?)
     }
 
     pub async fn main_coin(chain_code: &str) -> Result<CoinEntity, crate::ServiceError> {

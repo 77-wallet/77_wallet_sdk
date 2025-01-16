@@ -70,7 +70,7 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
                 page_size,
             )
             .await
-            .map_err(crate::SystemError::Database)?;
+            .map_err(crate::ServiceError::Database)?;
 
         lists
             .data

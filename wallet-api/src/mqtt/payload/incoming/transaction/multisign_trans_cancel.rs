@@ -11,7 +11,7 @@ impl MultiSignTransCancel {
 
         MultisigQueueDaoV1::update_fail(&self.withdraw_id, fail_reason::CANCEL, pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?;
+            .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
         Ok(())
     }

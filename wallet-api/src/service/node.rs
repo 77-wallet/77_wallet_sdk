@@ -26,7 +26,7 @@ impl NodeService {
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
         let res = NodeRepoTrait::add(tx, req)
             .await
-            .map_err(crate::SystemError::Database)?;
+            .map_err(crate::ServiceError::Database)?;
         Ok(res.node_id)
     }
 

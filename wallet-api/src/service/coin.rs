@@ -83,7 +83,7 @@ impl CoinService {
                 _is_multisig,
             )
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
 
         // tracing::info!("[get_hot_coin_list] symbol_list: {symbol_list:#?}");
         let symbol_list: std::collections::HashSet<String> =

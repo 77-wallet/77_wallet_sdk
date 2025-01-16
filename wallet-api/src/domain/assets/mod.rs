@@ -121,7 +121,7 @@ impl AssetsDomain {
         let coin_list = tx
             .lists(addresses, chain_code, keyword, _is_multisig)
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
         let mut res = crate::response_vo::coin::CoinInfoList::default();
         for coin in coin_list {
             if let Some(info) = res.iter_mut().find(|info| info.symbol == coin.symbol) {

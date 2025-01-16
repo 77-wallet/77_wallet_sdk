@@ -56,7 +56,7 @@ impl OrderMultiSignCreated {
 
         let account = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
 
         if let Some(account) = account {
             // 初始化资产

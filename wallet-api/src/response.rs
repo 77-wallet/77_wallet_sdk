@@ -50,7 +50,6 @@ impl From<crate::ServiceError> for (i64, String) {
         let (code, message) = match err {
             crate::ServiceError::Business(msg) => (msg.get_status_code(), msg.to_string()),
             crate::ServiceError::Parameter(_) => (422, err.to_string()),
-            crate::ServiceError::System(_) => (500, err.to_string()),
             crate::ServiceError::Keystore(_) => (510, err.to_string()),
             crate::ServiceError::Utils(_) => (520, err.to_string()),
             crate::ServiceError::TransportBackend(bakend_err) => map_backend_error(bakend_err),
@@ -62,6 +61,7 @@ impl From<crate::ServiceError> for (i64, String) {
             crate::ServiceError::Database(_) => (630, err.to_string()),
             crate::ServiceError::Tree(_) => (640, err.to_string()),
             crate::ServiceError::Oss(_) => (650, err.to_string()),
+            crate::ServiceError::System(_) => (660, err.to_string()),
         };
         (code, message)
     }

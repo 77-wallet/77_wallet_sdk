@@ -45,7 +45,7 @@ impl OrderMultiSignServiceComplete {
         } = self;
         let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?
+            .map_err(crate::ServiceError::Database)?
         else {
             tracing::error!("[order multisig service complete] multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
@@ -77,7 +77,7 @@ impl OrderMultiSignServiceComplete {
                 pool.as_ref(),
             )
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
         }
         // 更新多签账户服务费状态
         else if r#type == 2 {
@@ -93,7 +93,7 @@ impl OrderMultiSignServiceComplete {
                 pool.as_ref(),
             )
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
         }
 
         let _r =

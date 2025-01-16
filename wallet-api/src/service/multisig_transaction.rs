@@ -812,7 +812,7 @@ impl MultisigTransactionService {
         // update status to fail
         MultisigQueueDaoV1::update_fail(&queue_id, fail_reason::CANCEL, pool.as_ref())
             .await
-            .map_err(|e| crate::SystemError::Database(e.into()))?;
+            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
         // report to backend ,if error rollback status
         let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone())
@@ -822,7 +822,7 @@ impl MultisigTransactionService {
         if let Err(_e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
             MultisigQueueDaoV1::rollback_update_fail(&queue_id, queue.status, pool.as_ref())
                 .await
-                .map_err(|e| crate::SystemError::Database(e.into()))?;
+                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
         }
 
         Ok(())

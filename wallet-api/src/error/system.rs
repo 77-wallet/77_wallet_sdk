@@ -1,7 +1,7 @@
 #[derive(Debug, thiserror::Error)]
 pub enum SystemError {
-    #[error("Database error: {0}")]
-    Database(#[from] wallet_database::Error),
+    // #[error("Database error: {0}")]
+    // Database(#[from] wallet_database::Error),
     #[error("Service error: {0}")]
     Service(String),
     #[error("Context not init")]

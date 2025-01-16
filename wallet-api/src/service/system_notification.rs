@@ -24,7 +24,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let content = notification.serialize()?;
         tx.upsert(id, &r#type, content, status)
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
 
         Ok(())
     }
@@ -42,7 +42,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let content = notification.serialize()?;
         tx.upsert_with_key_value(id, &r#type, content, status, key, value)
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
         Ok(())
     }
 
@@ -53,7 +53,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let mut tx = self.repo;
         tx.upsert_multi_with_key_value(reqs)
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
         Ok(())
     }
 
@@ -65,7 +65,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let mut tx = self.repo;
         tx.update_status(id, status)
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
 
         Ok(())
     }
@@ -85,7 +85,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let list = tx
             .list(page, page_size)
             .await
-            .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?;
+            .map_err(crate::ServiceError::Database)?;
 
         let data = list.data;
         let mut res = Vec::new();

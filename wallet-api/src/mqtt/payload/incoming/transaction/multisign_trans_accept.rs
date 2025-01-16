@@ -108,7 +108,7 @@ impl MultiSignTransAccept {
         if let Some(multisig_account) =
             MultisigAccountDaoV1::find_by_address(from_addr, pool.as_ref())
                 .await
-                .map_err(|e| crate::ServiceError::System(crate::SystemError::Database(e)))?
+                .map_err(crate::ServiceError::Database)?
         {
             // 同步签名的状态
             MultisigQueueRepo::sync_sign_status(id, account_id, multisig_account.threshold, pool)
