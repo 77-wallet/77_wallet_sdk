@@ -595,6 +595,7 @@ impl MultisigTransactionService {
                     &queue.raw_data,
                     &account.address_type,
                 )?;
+
                 let tx = chain
                     .exec_multisig_tx(params, sign, account.authority_addr)
                     .await

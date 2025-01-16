@@ -5,7 +5,7 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
+    let addr = "3AE2C8ETf9iCJZbUX3qhzSDHfw2QBB5sXx";
     let chain_code = "btc";
     let symbol = "BTC";
 

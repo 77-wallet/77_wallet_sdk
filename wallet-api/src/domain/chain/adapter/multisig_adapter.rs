@@ -8,7 +8,8 @@ use crate::{
 };
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    self as chain, btc,
+    self as chain,
+    btc::{self, MultisigSignParams},
     eth::{self, operations},
     sol::{self, operations::SolInstructionOperation},
     tron::{
@@ -411,8 +412,15 @@ impl MultisigAdapter {
                 )?
                 .with_spend_all(req.spend_all);
 
+                let multisig_parmas = MultisigSignParams::new(
+                    account.threshold as i8,
+                    account.member_num as i8,
+                    account.salt.clone(),
+                )
+                .with_inner_key(account.authority_addr.clone());
+
                 Ok(chain
-                    .build_multisig_tx(params)
+                    .build_multisig_tx(params, multisig_parmas)
                     .await
                     .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?)
             }
@@ -661,21 +669,24 @@ impl MultisigAdapter {
                     domain::multisig::MultisigDomain::account_by_id(&queue.account_id, pool)
                         .await?;
 
-                let params = btc::operations::transfer::TransferArg::new(
-                    &queue.from_addr,
-                    &queue.to_addr,
-                    &queue.value,
-                    multisig_account.address_type(),
-                    chain.network,
-                )?;
+                let multisig_parmas = MultisigSignParams::new(
+                    multisig_account.threshold as i8,
+                    multisig_account.member_num as i8,
+                    multisig_account.salt.clone(),
+                )
+                .with_inner_key(multisig_account.authority_addr.clone());
 
                 let fee = chain
-                    .estimate_fee(params)
+                    .estimate_multisig_fee(
+                        &queue.raw_data,
+                        multisig_parmas,
+                        &multisig_account.address_type,
+                    )
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?
-                    .transaction_fee_f64();
+                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
 
-                CommonFeeDetails::new(fee, token_currency, currency).to_json_str()
+                CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)
+                    .to_json_str()
             }
             Self::Solana(chain) => {
                 let params = sol::operations::multisig::transfer::ExecMultisigOpt::new(

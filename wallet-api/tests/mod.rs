@@ -11,6 +11,7 @@ mod multisig_account;
 mod multisig_tx;
 mod phrase;
 mod stake;
+mod transactions;
 
 pub async fn get_manager() -> WalletManager {
     init_test_log();

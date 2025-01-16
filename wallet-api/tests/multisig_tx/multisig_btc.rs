@@ -120,12 +120,12 @@ async fn test_sign_transaction() {
 async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "182268594225287168".to_owned();
+    let queue_id = "218391739994607616".to_owned();
     let fee = wallet_manager
         .estimate_multisig_transfer_fee(queue_id)
         .await;
 
-    tracing::info!("transfer fee = {:?}", serde_json::to_string(&fee));
+    tracing::info!("transfer fee = {}", serde_json::to_string(&fee).unwrap());
 }
 
 // 执行交易
@@ -133,7 +133,7 @@ async fn test_multisig_transfer_fee() {
 async fn test_execute() {
     let wallet_manager = get_manager().await;
 
-    let id = "182269407622467584".to_string();
+    let id = "218391739994607616".to_string();
     let pass = "123456".to_string();
     let fee_setting = None;
     let request_resource_id = None;
