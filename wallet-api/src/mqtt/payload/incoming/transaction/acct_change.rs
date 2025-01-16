@@ -3,7 +3,6 @@ use wallet_database::{
         bill::BillDao, multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1,
     },
     entities::{
-        assets::AssetsId,
         bill::{BillKind, NewBillEntity},
         chain::ChainEntity,
         multisig_queue::MultisigQueueStatus,
@@ -135,8 +134,16 @@ impl AcctChange {
         }
 
         // 添加或更新资产余额
-        upsert_than_sync_assets(from_addr, to_addr, address, chain_code, symbol, multisig_tx)
-            .await?;
+        upsert_than_sync_assets(
+            from_addr,
+            to_addr,
+            // address,
+            // chain_code,
+            // symbol,
+            // multisig_tx,
+            // tx_kind_enum,
+        )
+        .await?;
 
         create_system_notification(
             msg_id,
@@ -181,14 +188,14 @@ impl AcctChange {
 async fn upsert_than_sync_assets(
     from_addr: &str,
     to_addr: &str,
-    address: &str,
-    chain_code: &str,
-    symbol: &str,
-    multisig_tx: bool,
+    // address: &str,
+    // chain_code: &str,
+    // symbol: &str,
+    // multisig_tx: bool,
+    // tx_kind_enum: BillKind,
 ) -> Result<(), crate::ServiceError> {
-    let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    let repo = RepositoryFactory::repo(pool.clone());
-    let mut assets_service = AssetsService::new(repo);
+    // let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    // let repo = RepositoryFactory::repo(pool.clone());
 
     let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
 
@@ -200,19 +207,19 @@ async fn upsert_than_sync_assets(
             .sync_assets_by_addr(asset_list, None, vec![])
             .await?;
     }
-    // 如果是多签交易
-    if multisig_tx {
-        let assets_id = AssetsId {
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
-        };
-        wallet_database::repositories::assets::AssetsRepoTrait::update_is_multisig(
-            &mut assets_service.repo,
-            &assets_id,
-        )
-        .await?;
-    }
+    // // 如果是多签交易
+    // if multisig_tx {
+    //     let assets_id = AssetsId {
+    //         address: address.to_string(),
+    //         chain_code: chain_code.to_string(),
+    //         symbol: symbol.to_string(),
+    //     };
+    //     wallet_database::repositories::assets::AssetsRepoTrait::update_is_multisig(
+    //         &mut repo,
+    //         &assets_id,
+    //     )
+    //     .await?;
+    // }
     Ok(())
 }
 
@@ -304,12 +311,12 @@ async fn create_system_notification(
             reqs
         }
         // 部署多签账号手续费
-        (0, BillKind::DeployMultiSign) => {
+        (_, BillKind::DeployMultiSign) => {
             tracing::warn!("deploy multisig account fee");
             return Ok(());
         }
         // 服务费
-        (0, BillKind::ServiceCharge) => {
+        (_, BillKind::ServiceCharge) => {
             tracing::warn!("service charge");
             return Ok(());
         }

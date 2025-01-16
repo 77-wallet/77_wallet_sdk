@@ -56,8 +56,8 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         &(),
     )?;
 
-    let mqtt_init_req =
-        BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
+    // let mqtt_init_req =
+    //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
     let sn = Context::get_context()?.device.sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
@@ -80,7 +80,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             set_app_install_download_req,
         )))
-        .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
+        // .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
         .send()
         .await?;
 
@@ -361,6 +361,7 @@ impl WalletManager {
         manager.start_task_check_loop();
 
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+        self.init_mqtt().await?;
 
         tokio::spawn(async move {
             if let Err(e) = do_some_init().await {
@@ -371,6 +372,16 @@ impl WalletManager {
         Ok(())
     }
 
+    async fn init_mqtt(&self) -> Result<(), crate::ServiceError> {
+        let mqtt_init_req =
+            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
+
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
+            .send()
+            .await?;
+        Ok(())
+    }
     pub async fn init_log(level: Option<&str>) -> Result<(), crate::ServiceError> {
         let context = Context::get_context()?;
 
