@@ -48,7 +48,7 @@ impl RpcChange {
     pub(crate) async fn exec(self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let list = crate::default_data::node::init_default_node_list()?;
+        let list = crate::default_data::node::get_default_node_list()?;
 
         let mut default_nodes = Vec::new();
         for (chain_code, nodes) in list.nodes.iter() {

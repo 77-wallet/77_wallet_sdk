@@ -1,6 +1,9 @@
 use crate::response_vo;
 use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
-use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
+use wallet_database::{
+    entities::chain::ChainWithNode,
+    repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, node::NodeRepoTrait},
+};
 use wallet_types::chain::network;
 
 pub mod adapter;
@@ -170,4 +173,32 @@ impl ChainDomain {
         .await?;
         Ok(())
     }
+
+    // pub(crate) async fn chain_node_info_left_join(
+    //     repo: &mut wallet_database::repositories::ResourcesRepo,
+    //     chain_code: &str,
+    // ) -> Result<Option<ChainWithNode>, crate::ServiceError> {
+    //     let chain = repo.chain_node_info_left_join(chain_code).await?;
+    //     if let Some(chain) = chain {
+    //         if chain.node_id.is_empty() {
+    //             let existing_nodes = NodeRepoTrait::list(repo, Some(1)).await?;
+    //             let existing_node = existing_nodes
+    //                 .into_iter()
+    //                 .find(|node| node.chain_code == chain_code);
+
+    //             let chain = ChainRepoTrait::detail(repo, chain_code).await?;
+    //             if let Some(chain) = chain
+    //                 && let Some(existing_node) = existing_node
+    //             {
+    //                 Ok(Some((chain, existing_node).into()))
+    //             } else {
+    //                 Ok(None)
+    //             }
+    //         } else {
+    //             Ok(Some(chain))
+    //         }
+    //     } else {
+    //         Ok(None)
+    //     }
+    // }
 }

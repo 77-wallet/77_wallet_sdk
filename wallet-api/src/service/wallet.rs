@@ -22,6 +22,7 @@ use crate::{
         account::AccountDomain,
         app::DeviceDomain,
         assets::AssetsDomain,
+        chain::ChainDomain,
         coin::CoinDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
         wallet::WalletDomain,
@@ -338,7 +339,10 @@ impl WalletService {
 
                 let code: ChainCode = chain_code.as_str().try_into()?;
                 for btc_address_type in btc_address_types {
-                    let Some(chain) = tx.chain_node_info_left_join(chain_code).await? else {
+                    let Some(chain) =
+                        // ChainDomain::chain_node_info_left_join(tx, chain_code).await?
+                    tx.chain_node_info_left_join(chain_code).await?
+                    else {
                         tracing::warn!("[create_wallet] chain not found: {chain_code}");
                         continue;
                     };
