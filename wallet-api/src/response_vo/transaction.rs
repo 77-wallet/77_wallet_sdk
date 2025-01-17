@@ -22,6 +22,7 @@ pub struct MultisigQueueFeeParams {
     pub value: String,
     pub chain_code: String,
     pub symbol: String,
+    pub spend_all: Option<bool>,
 }
 
 #[derive(Debug, serde::Serialize)]

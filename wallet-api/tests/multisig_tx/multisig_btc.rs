@@ -1,5 +1,8 @@
 use crate::multisig_tx::get_manager;
-use wallet_api::{response_vo::transaction::TransferParams, MemberVo};
+use wallet_api::{
+    response_vo::{transaction::TransferParams, MultisigQueueFeeParams},
+    MemberVo,
+};
 
 #[tokio::test]
 async fn test_create_multisig_account() {
@@ -58,6 +61,25 @@ async fn test_balance() {
 }
 
 #[tokio::test]
+async fn test_create_queue_fee() {
+    let manager = get_manager().await;
+
+    let params = MultisigQueueFeeParams {
+        from: "38oNcLwirxkiZZbx99BLFQxnawrpQ5GaUf".to_owned(),
+        to: "bc1qx7j2a0qce322xusret0upxpg2dgd4unmcf9ec0rgc7kwf5zsmjsqagsk7e".to_owned(),
+        value: "0.0001".to_owned(),
+        chain_code: "btc".to_owned(),
+        symbol: "BTC".to_owned(),
+        spend_all: Some(true),
+    };
+
+    // 创建交易
+    let res = manager.create_queue_fee(params).await;
+    let res = serde_json::to_string(&res).unwrap();
+    tracing::info!("transaction fee = {}", res);
+}
+
+#[tokio::test]
 async fn test_create_transfer() {
     let manager = get_manager().await;
 
@@ -65,13 +87,13 @@ async fn test_create_transfer() {
     let params = TransferParams {
         from: "38oNcLwirxkiZZbx99BLFQxnawrpQ5GaUf".to_owned(),
         to: "bc1qx7j2a0qce322xusret0upxpg2dgd4unmcf9ec0rgc7kwf5zsmjsqagsk7e".to_owned(),
-        value: "0.00009123".to_owned(),
+        value: "0.00009133".to_owned(),
         expiration: Some(1),
         chain_code: "btc".to_owned(),
         symbol: "BTC".to_owned(),
         password,
         notes: Some("salary".to_string()),
-        spend_all: false,
+        spend_all: true,
     };
 
     // 创建交易
@@ -106,7 +128,7 @@ async fn test_queue_info() {
 async fn test_sign_transaction() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "182268594225287168".to_owned();
+    let queue_id = "218846320662810624".to_owned();
     let status = 1;
     let password = "123456".to_string();
     let sign = wallet_manager

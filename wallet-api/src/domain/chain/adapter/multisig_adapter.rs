@@ -332,6 +332,10 @@ impl MultisigAdapter {
     ) -> Result<String, crate::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
+
+        let token_currency =
+            domain::coin::TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol)
+                .await?;
         match self {
             MultisigAdapter::Solana(solana_chain) => {
                 let base = sol::operations::transfer::TransferOpt::new(
@@ -362,15 +366,31 @@ impl MultisigAdapter {
 
                 ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFALUT_UNITS);
 
-                let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
-                    currency,
-                    &req.chain_code,
-                    main_symbol,
-                )
-                .await?;
-
                 let fee =
                     CommonFeeDetails::new(fee_setting.transaction_fee(), token_currency, currency);
+                Ok(serde_func::serde_to_string(&fee)?)
+            }
+            MultisigAdapter::BitCoin(chain) => {
+                let params = btc::operations::transfer::TransferArg::new(
+                    &req.from,
+                    &req.to,
+                    &req.value,
+                    account.address_type(),
+                    chain.network,
+                )?
+                .with_spend_all(req.spend_all.unwrap_or(false));
+
+                let multisig_parmas = MultisigSignParams::new(
+                    account.threshold as i8,
+                    account.member_num as i8,
+                    account.salt.clone(),
+                )
+                .with_inner_key(account.authority_addr.clone());
+
+                let fee = chain.estimate_fee(params, Some(multisig_parmas)).await?;
+
+                let fee =
+                    CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency);
                 Ok(serde_func::serde_to_string(&fee)?)
             }
             _ => Ok("".to_string()),

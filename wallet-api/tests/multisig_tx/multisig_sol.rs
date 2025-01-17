@@ -73,6 +73,7 @@ async fn test_create_queue_fee() {
         value: "0.001".to_owned(),
         chain_code: "sol".to_owned(),
         symbol: "SOL".to_owned(),
+        spend_all: None,
     };
 
     // 创建交易

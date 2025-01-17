@@ -399,7 +399,7 @@ impl TransactionAdapter {
                 .with_spend_all(req.spend_all);
 
                 let fee = chain
-                    .estimate_fee(params)
+                    .estimate_fee(params, None)
                     .await
                     .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
 
