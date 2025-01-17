@@ -21,7 +21,7 @@ pub(crate) struct DefaultChainList {
 static INIT_CHAINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultChainList>> =
     once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
 
-pub(crate) fn init_default_chains_list() -> Result<&'static DefaultChainList, crate::ServiceError> {
+pub(crate) fn get_default_chains_list() -> Result<&'static DefaultChainList, crate::ServiceError> {
     INIT_CHAINS_INFO.get_or_try_init(|| {
         // let mut res = std::collections::HashMap::new();
         // let rpc_json = include_str!("../../data/default_chain_list/rpc.json");

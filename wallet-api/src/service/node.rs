@@ -30,17 +30,13 @@ impl NodeService {
         Ok(res.node_id)
     }
 
-    pub async fn init_node_info(&mut self) -> Result<(), crate::ServiceError> {
-        let list = crate::default_data::chain::init_default_chains_list()?;
-
-        let node_list = crate::default_data::node::init_default_node_list()?;
-        let tx = &mut self.repo;
-
+    async fn init_default_nodes(
+        repo: &mut ResourcesRepo,
+        chains_set: &mut std::collections::HashSet<(String, String)>,
+    ) -> Result<Vec<wallet_types::valueobject::NodeData>, crate::ServiceError> {
+        let tx = repo;
+        let node_list = crate::default_data::node::get_default_node_list()?;
         let mut default_nodes = Vec::new();
-
-        let existing_nodes = NodeRepoTrait::list(tx, Some(1)).await?;
-
-        let mut chains_set = std::collections::HashSet::new();
         for (chain_code, nodes) in &node_list.nodes {
             for default_node in nodes.nodes.iter() {
                 let key = (default_node.node_name.clone(), chain_code.clone());
@@ -75,7 +71,16 @@ impl NodeService {
                 ));
             }
         }
+        Ok(default_nodes)
+    }
 
+    /// 从表中移除不在给定链集合中的节点，并在删除节点时处理相关链的设置
+    async fn prune_nodes(
+        repo: &mut ResourcesRepo,
+        chains_set: &mut std::collections::HashSet<(String, String)>,
+    ) -> Result<(), crate::ServiceError> {
+        let tx = repo;
+        let existing_nodes = NodeRepoTrait::list(tx, Some(1)).await?;
         for node in existing_nodes {
             let key = (node.name.clone(), node.chain_code.clone());
             if !chains_set.contains(&key) {
@@ -86,11 +91,16 @@ impl NodeService {
                         continue;
                     }
                 };
-                // 将链表中有设置改节点的行的node_id设置为空
+                // 将链表中有设置该节点的行的node_id设置为空
                 ChainRepoTrait::set_chain_node_id_empty(tx, &node.node_id).await?;
             }
         }
+        Ok(())
+    }
 
+    pub async fn init_chain_info(&mut self) -> Result<(), crate::ServiceError> {
+        let tx = &mut self.repo;
+        let list = crate::default_data::chain::get_default_chains_list()?;
         for (_, default_chain) in &list.chains {
             let status = if default_chain.active { 1 } else { 0 };
             // let node_id =
@@ -108,6 +118,18 @@ impl NodeService {
                 continue;
             }
         }
+
+        Ok(())
+    }
+
+    // 首先在没有请求后端接口的情况下，只需要初始化默认的链信息和节点信息
+    // 然后请求后端接口，获取后端默认的链信息和节点信息，然后更新到数据库中
+    pub async fn init_node_info(&mut self) -> Result<(), crate::ServiceError> {
+        let tx = &mut self.repo;
+
+        let mut chains_set = std::collections::HashSet::new();
+        let default_nodes = Self::init_default_nodes(tx, &mut chains_set).await?;
+        Self::prune_nodes(tx, &mut chains_set).await?;
 
         tokio::spawn(async move {
             if let Err(e) = NodeDomain::process_backend_nodes(default_nodes).await {

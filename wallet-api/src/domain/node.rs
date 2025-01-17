@@ -85,22 +85,12 @@ impl NodeDomain {
         backend_nodes: &[NodeEntity],
         default_nodes: &[NodeData],
     ) -> Result<(), crate::ServiceError> {
-        let filtered_nodes = NodeRepoTrait::list(repo, Some(0)).await?;
-        // // node_list 排除chains_c中的rpc_url一致的节点
-        // let rpc_urls: Vec<String> = default_nodes
-        //     .iter()
-        //     .map(|node| node.rpc_url.clone())
-        //     .collect();
-        // let filtered_nodes: Vec<_> = node_list
-        //     .into_iter()
-        //     .filter(|node| !rpc_urls.contains(&node.rpc_url))
-        //     .collect();
-
-        // 比较filtered_nodes 和 backend_nodes的节点，把backend_nodes中没有，filtered_nodes有的节点，删除
+        // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
+        let local_backend_nodes = NodeRepoTrait::list(repo, Some(0)).await?;
 
         let backend_node_rpcs: HashSet<String> =
             backend_nodes.iter().map(|n| n.node_id.clone()).collect();
-        for node in filtered_nodes {
+        for node in local_backend_nodes {
             if !backend_node_rpcs.contains(&node.node_id) {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
@@ -125,6 +115,7 @@ impl NodeDomain {
         Ok(())
     }
 
+    /// 设置链使用的节点
     pub(crate) async fn set_chain_node(
         repo: &mut ResourcesRepo,
         backend_nodes: &[NodeEntity],
