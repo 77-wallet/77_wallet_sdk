@@ -545,6 +545,90 @@ pub struct TokenPriceChange {
 
   
 
+#### 链变动
+
+> CHAIN_CHANGE(,"链变动"),
+
+```rust
+// biz_type = CHAIN_CHANGE
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainChange(Vec<ChainUrlInfo>);
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainUrlInfo {
+    /// 查看链上地址URL
+    pub address_url: Option<String>,
+    /// 查看链上hash URL
+    pub hash_url: Option<String>,
+    #[serde(rename = "code")]
+    pub chain_code: String,
+    pub enable: bool,
+    pub name: String,
+    pub master_token_code: Option<String>,
+}
+
+```
+
+- 示例
+
+  ```json
+  {
+      "clientId": "wenjing",
+      "sn": "wenjing",
+      "deviceType": "ANDROID",
+      "bizType": "CHAIN_CHANGE",
+      "body": [{
+        "chainCode": "btc",
+        "rpcAddressInfoBodyList": [{
+          "id": "676b6e486e07fa2e51a746ca",
+          "name": "app_btc",
+          "url": "https://apprpc.safew.cc/btc"
+        }]
+      }, {
+        "chainCode": "sol",
+        "rpcAddressInfoBodyList": [{
+          "id": "676b6e816e07fa2e51a746cc",
+          "name": "APP_SOL",
+          "url": "https://apprpc.safew.cc/sol"
+        }]
+      }, {
+        "chainCode": "bnb",
+        "rpcAddressInfoBodyList": [{
+          "id": "676b6e366e07fa2e51a746c9",
+          "name": "app_bnb",
+          "url": "https://apprpc.safew.cc/bnb"
+        }]
+      }, {
+        "chainCode": "eth",
+        "rpcAddressInfoBodyList": [{
+          "id": "676b6e906e07fa2e51a746cd",
+          "name": "app_eth",
+          "url": "https://apprpc.safew.cc/eth"
+        }]
+      }, {
+        "chainCode": "ltc",
+        "rpcAddressInfoBodyList": [{
+          "id": "677e7e80230d86ab7c0851f8",
+          "name": "app_ltc",
+          "url": "https://apprpc.safew.cc/ltc"
+        }]
+      }, {
+        "chainCode": "tron",
+        "rpcAddressInfoBodyList": [{
+          "id": "676b6e566e07fa2e51a746cb",
+          "name": "app_tron",
+          "url": "https://apprpc.safew.cc/tron"
+        }]
+      }]
+  }
+  ```
+
+  
+
+
+
 
 
 

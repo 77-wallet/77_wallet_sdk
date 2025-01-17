@@ -21,13 +21,12 @@ use crate::domain::app::config::ConfigDomain;
 }
 */
 
-// biz_type = RPC_ADDRESS_CHANGE
+// biz_type = CHAIN_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainChange(Vec<ChainUrlInfo>);
 
-// biz_type = RPC_ADDRESS_CHANGE
-
+// biz_type = CHAIN_CHANGE
 impl ChainChange {
     pub(crate) async fn exec(self) -> Result<(), crate::ServiceError> {
         let ChainChange(body) = &self;
