@@ -63,9 +63,9 @@ async fn test_create_transfer() {
 
     let password = "123456".to_string();
     let params = TransferParams {
-        from: "bcrt1qrdx3vk9shh7yshszmss0qrdyd8mqxs4muldel0fnrd64wm4zsh8q87d3y5".to_owned(),
-        to: "bcrt1qwmactnqqvl6d3ddxudatqxvvys33275zqls052".to_owned(),
-        value: "10".to_owned(),
+        from: "38oNcLwirxkiZZbx99BLFQxnawrpQ5GaUf".to_owned(),
+        to: "bc1qx7j2a0qce322xusret0upxpg2dgd4unmcf9ec0rgc7kwf5zsmjsqagsk7e".to_owned(),
+        value: "0.00009123".to_owned(),
         expiration: Some(1),
         chain_code: "btc".to_owned(),
         symbol: "BTC".to_owned(),
@@ -120,7 +120,7 @@ async fn test_sign_transaction() {
 async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "218391739994607616".to_owned();
+    let queue_id = "218846320662810624".to_owned();
     let fee = wallet_manager
         .estimate_multisig_transfer_fee(queue_id)
         .await;
@@ -133,7 +133,7 @@ async fn test_multisig_transfer_fee() {
 async fn test_execute() {
     let wallet_manager = get_manager().await;
 
-    let id = "218391739994607616".to_string();
+    let id = "218846320662810624".to_string();
     let pass = "123456".to_string();
     let fee_setting = None;
     let request_resource_id = None;

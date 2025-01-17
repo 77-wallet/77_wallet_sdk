@@ -679,32 +679,43 @@ impl MultisigTransactionService {
                     )?;
                     let constant = transfer_params.constant_contract(provider).await?;
 
-                    provider
+                    let consumer = provider
                         .contract_fee(
                             constant,
                             signs_list.len() as u8,
                             &transfer_params.owner_address,
                         )
-                        .await?
+                        .await?;
+                    // check transaction fee
+                    if account.balance < consumer.transaction_fee_i64() {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+
+                    consumer
                 } else {
                     let to = (!queue.to_addr.is_empty()).then(|| queue.to_addr.as_str());
 
-                    provider
+                    let consumer = provider
                         .transfer_fee(
                             &queue.from_addr,
                             to,
                             &params.raw_data_hex,
                             signs_list.len() as u8,
                         )
-                        .await?
+                        .await?;
+
+                    let value = transfer_amcount.to::<i64>();
+                    if account.balance < consumer.transaction_fee_i64() + value {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+
+                    consumer
                 };
 
-                // check transaction fee
-                if account.balance < consumer.transaction_fee_i64() {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientFeeBalance,
-                    ))?;
-                }
                 let bill_consumer = BillResourceConsume::new_tron(
                     consumer.bandwidth.consumer as u64,
                     consumer.get_energy(),
