@@ -30,6 +30,7 @@ pub enum NotifyEvent {
 
     // 执行交易的过程
     TransactionProcess(TransactionProcessFrontend),
+    ChainChange(crate::mqtt::payload::incoming::chain::ChainChange),
 }
 
 impl NotifyEvent {
@@ -52,6 +53,8 @@ impl NotifyEvent {
             NotifyEvent::TokenPriceChange(_) => "TOKEN_PRICE_CHANGE".to_string(),
             NotifyEvent::Init(_) => "INIT".to_string(),
             NotifyEvent::BulletinMsg(_) => "BULLETIN_MSG".to_string(),
+
+            NotifyEvent::ChainChange(_) => "CHAIN_CHANGE".to_string(),
 
             NotifyEvent::FetchBulletinMsg => "FETCH_BULLETIN_MSG".to_string(),
             NotifyEvent::MqttConnected => "MQTT_CONNECTED".to_string(),

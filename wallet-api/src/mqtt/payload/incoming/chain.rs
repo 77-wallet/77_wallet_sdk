@@ -30,8 +30,11 @@ pub struct ChainChange(Vec<ChainUrlInfo>);
 
 impl ChainChange {
     pub(crate) async fn exec(self) -> Result<(), crate::ServiceError> {
-        let ChainChange(body) = self;
+        let ChainChange(body) = &self;
         ConfigDomain::set_block_browser_url(body).await?;
+
+        let data = crate::notify::NotifyEvent::ChainChange(self);
+        crate::notify::FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

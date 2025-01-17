@@ -221,15 +221,15 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn set_block_browser_url(
-        list: Vec<ChainUrlInfo>,
+        list: &[ChainUrlInfo],
     ) -> Result<(), crate::ServiceError> {
         let block_browser_url_list = list
             .into_iter()
             .map(|info| {
                 crate::request::init::BlockBrowserUrl::new(
-                    info.chain_code,
-                    info.address_url,
-                    info.hash_url,
+                    info.chain_code.clone(),
+                    info.address_url.clone(),
+                    info.hash_url.clone(),
                 )
             })
             .collect();

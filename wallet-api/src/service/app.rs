@@ -190,7 +190,7 @@ impl<
         // let tx = &mut self.repo;
         let backend_api = crate::manager::Context::get_global_backend_api()?;
         let list = backend_api.chain_list().await?.list;
-        ConfigDomain::set_block_browser_url(list).await?;
+        ConfigDomain::set_block_browser_url(&list).await?;
         Ok(())
     }
 
