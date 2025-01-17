@@ -1,9 +1,6 @@
 use crate::response_vo;
 use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
-use wallet_database::{
-    entities::chain::ChainWithNode,
-    repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, node::NodeRepoTrait},
-};
+use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
 use wallet_types::chain::network;
 
 pub mod adapter;

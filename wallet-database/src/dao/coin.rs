@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    Execute, Executor, Pool, Sqlite,
+    Executor, Pool, Sqlite,
 };
 
 use crate::{
@@ -82,7 +82,6 @@ impl CoinEntity {
             .bind(&coin_id.chain_code);
 
         // 执行查询
-        let sql = query.sql();
         query
             .fetch_all(exec)
             // .execute(exec)

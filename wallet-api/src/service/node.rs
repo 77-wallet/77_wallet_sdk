@@ -1,4 +1,7 @@
-use crate::domain::{self, node::NodeDomain};
+use crate::{
+    domain::{self, chain::ChainDomain, node::NodeDomain},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+};
 use wallet_database::{
     entities::node::NodeCreateVo,
     repositories::{chain::ChainRepoTrait, node::NodeRepoTrait, ResourcesRepo},
@@ -33,10 +36,10 @@ impl NodeService {
     async fn init_default_nodes(
         repo: &mut ResourcesRepo,
         chains_set: &mut std::collections::HashSet<(String, String)>,
-    ) -> Result<Vec<wallet_types::valueobject::NodeData>, crate::ServiceError> {
+    ) -> Result<(), crate::ServiceError> {
         let tx = repo;
         let node_list = crate::default_data::node::get_default_node_list()?;
-        let mut default_nodes = Vec::new();
+        // let mut default_nodes = Vec::new();
         for (chain_code, nodes) in &node_list.nodes {
             for default_node in nodes.nodes.iter() {
                 let key = (default_node.node_name.clone(), chain_code.clone());
@@ -56,7 +59,7 @@ impl NodeService {
                 .with_network(&default_node.network)
                 .with_status(status)
                 .with_is_local(1);
-                let node = match NodeRepoTrait::add(tx, node).await {
+                let _ = match NodeRepoTrait::add(tx, node).await {
                     Ok(node) => node,
                     Err(e) => {
                         tracing::error!("Failed to create default node: {:?}", e);
@@ -64,35 +67,11 @@ impl NodeService {
                     }
                 };
 
-                default_nodes.push(wallet_types::valueobject::NodeData::new(
-                    &node.node_id,
-                    &node.rpc_url,
-                    &node.chain_code,
-                ));
-            }
-        }
-        Ok(default_nodes)
-    }
-
-    /// 从表中移除不在给定链集合中的节点，并在删除节点时处理相关链的设置
-    async fn prune_nodes(
-        repo: &mut ResourcesRepo,
-        chains_set: &mut std::collections::HashSet<(String, String)>,
-    ) -> Result<(), crate::ServiceError> {
-        let tx = repo;
-        let existing_nodes = NodeRepoTrait::list(tx, Some(1)).await?;
-        for node in existing_nodes {
-            let key = (node.name.clone(), node.chain_code.clone());
-            if !chains_set.contains(&key) {
-                match NodeRepoTrait::delete(tx, &node.node_id).await {
-                    Ok(node) => node,
-                    Err(e) => {
-                        tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
-                        continue;
-                    }
-                };
-                // 将链表中有设置该节点的行的node_id设置为空
-                ChainRepoTrait::set_chain_node_id_empty(tx, &node.node_id).await?;
+                // default_nodes.push(wallet_types::valueobject::NodeData::new(
+                //     &node.node_id,
+                //     &node.rpc_url,
+                //     &node.chain_code,
+                // ));
             }
         }
         Ok(())
@@ -101,7 +80,8 @@ impl NodeService {
     pub async fn init_chain_info(&mut self) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
         let list = crate::default_data::chain::get_default_chains_list()?;
-        for (_, default_chain) in &list.chains {
+        let mut chain_codes = Vec::new();
+        for (chain_code, default_chain) in &list.chains {
             let status = if default_chain.active { 1 } else { 0 };
             // let node_id =
             //     NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
@@ -117,8 +97,17 @@ impl NodeService {
                 tracing::error!("Failed to create default chain: {:?}", e);
                 continue;
             }
+            if status == 1 {
+                chain_codes.push(chain_code.to_string());
+            }
         }
-
+        ChainDomain::toggle_chains(tx, chain_codes).await?;
+        let chain_list_req =
+            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::CHAIN_LIST, &())?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(chain_list_req)))
+            .send()
+            .await?;
         Ok(())
     }
 
@@ -128,11 +117,11 @@ impl NodeService {
         let tx = &mut self.repo;
 
         let mut chains_set = std::collections::HashSet::new();
-        let default_nodes = Self::init_default_nodes(tx, &mut chains_set).await?;
-        Self::prune_nodes(tx, &mut chains_set).await?;
+        Self::init_default_nodes(tx, &mut chains_set).await?;
+        NodeDomain::prune_nodes(tx, &mut chains_set, Some(1)).await?;
 
         tokio::spawn(async move {
-            if let Err(e) = NodeDomain::process_backend_nodes(default_nodes).await {
+            if let Err(e) = NodeDomain::process_backend_nodes().await {
                 tracing::error!("Failed to process default nodes: {:?}", e);
             }
         });

@@ -22,7 +22,6 @@ use crate::{
         account::AccountDomain,
         app::DeviceDomain,
         assets::AssetsDomain,
-        chain::ChainDomain,
         coin::CoinDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
         wallet::WalletDomain,

@@ -623,3 +623,17 @@ impl SendMsgConfirm {
 pub struct SendMsgQueryUnconfirmMsgReq {
     pub client_id: String,
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainRpcListReq {
+    pub chain_code: String,
+}
+
+impl ChainRpcListReq {
+    pub fn new(chain_code: &str) -> Self {
+        Self {
+            chain_code: chain_code.to_string(),
+        }
+    }
+}

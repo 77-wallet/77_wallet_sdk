@@ -8,7 +8,7 @@ use wallet_transport_backend::{
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
 
-use crate::domain::{app::config::ConfigDomain, chain::ChainDomain};
+use crate::domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain};
 pub struct BackendTaskHandle;
 
 static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
@@ -185,6 +185,17 @@ impl EndpointHandler for SpecialHandler {
 
                 //先插入再过滤
                 ChainDomain::upsert_multi_chain_than_toggle(input).await?;
+            }
+            endpoint::CHAIN_RPC_LIST => {
+                let input = backend
+                    .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
+                        endpoint, &body,
+                    )
+                    .await?;
+                tracing::warn!("chain rpc list: {:#?}", input);
+                let mut backend_nodes = Vec::new();
+                NodeDomain::upsert_chain_rpc(&mut repo, input, &mut backend_nodes).await?;
+                NodeDomain::process_filtered_nodes(&mut repo, &backend_nodes).await?;
             }
             endpoint::MQTT_INIT => {
                 let mqtt_url = backend.post_req_str::<String>(endpoint, &body).await?;

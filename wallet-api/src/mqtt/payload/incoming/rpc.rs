@@ -48,21 +48,11 @@ impl RpcChange {
     pub(crate) async fn exec(self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let list = crate::default_data::node::get_default_node_list()?;
+        // let list = crate::default_data::node::get_default_node_list()?;
 
-        let mut default_nodes = Vec::new();
-        for (chain_code, nodes) in list.nodes.iter() {
-            for default_node in nodes.nodes.iter() {
-                let node_id = NodeDomain::gen_node_id(&default_node.node_name, &chain_code);
-                default_nodes.push(wallet_types::valueobject::NodeData::new(
-                    &node_id,
-                    &default_node.rpc_url,
-                    chain_code,
-                ));
-            }
-        }
         let RpcChange(body) = &self;
         let mut backend_nodes = Vec::new();
+        let mut chains_set = std::collections::HashSet::new();
         for rpc_change_body in body {
             let RpcChangeBody {
                 chain_code,
@@ -73,6 +63,9 @@ impl RpcChange {
                 let Some(id) = &node.id else {
                     continue;
                 };
+                let key = (node.name.clone(), chain_code.clone());
+                chains_set.insert(key);
+
                 let network = "mainnet";
                 let node = wallet_database::entities::node::NodeCreateVo::new(
                     id, &node.name, chain_code, &node.url, None,
@@ -89,7 +82,8 @@ impl RpcChange {
             }
         }
 
-        NodeDomain::process_filtered_nodes(&mut repo, &backend_nodes, &default_nodes).await?;
+        NodeDomain::prune_nodes(&mut repo, &mut chains_set, Some(0)).await?;
+        NodeDomain::process_filtered_nodes(&mut repo, &backend_nodes).await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;

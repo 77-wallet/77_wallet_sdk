@@ -1,4 +1,5 @@
 use crate::{
+    request::ChainRpcListReq,
     response::BackendResponse,
     response_vo::chain::{ChainInfos, ChainList},
 };
@@ -36,13 +37,11 @@ impl BackendApi {
         res.process()
     }
 
-    pub async fn chain_rpc_list(&self, chain_code: &str) -> Result<ChainInfos, crate::Error> {
+    pub async fn chain_rpc_list(&self, req: ChainRpcListReq) -> Result<ChainInfos, crate::Error> {
         let res = self
             .client
             .post("chain/rpcList")
-            .json(serde_json::json!({
-                "chainCode": chain_code
-            }))
+            .json(req)
             .send::<BackendResponse>()
             .await?;
 
@@ -55,7 +54,7 @@ mod test {
 
     use wallet_utils::init_test_log;
 
-    use crate::api::BackendApi;
+    use crate::{api::BackendApi, request::ChainRpcListReq};
 
     #[tokio::test]
     async fn test_chain_default_list() {
@@ -112,9 +111,12 @@ mod test {
         let base_url = crate::consts::BASE_URL;
 
         let chain_code = "eth";
+        let req = ChainRpcListReq {
+            chain_code: chain_code.to_string(),
+        };
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
-            .chain_rpc_list(chain_code)
+            .chain_rpc_list(req)
             .await
             .unwrap();
 

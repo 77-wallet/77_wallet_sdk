@@ -4,7 +4,7 @@ use wallet_database::{
     entities::node::{NodeCreateVo, NodeEntity},
     repositories::{chain::ChainRepoTrait, node::NodeRepoTrait, ResourcesRepo, TransactionTrait},
 };
-use wallet_types::valueobject::NodeData;
+use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
 
@@ -32,58 +32,114 @@ impl NodeDomain {
         wallet_utils::snowflake::gen_hash_uid(params)
     }
 
-    pub(crate) async fn process_backend_nodes(
-        default_nodes: Vec<NodeData>,
+    pub(crate) async fn upsert_chain_rpc(
+        repo: &mut ResourcesRepo,
+        nodes: ChainInfos,
+        backend_nodes: &mut Vec<NodeEntity>,
     ) -> Result<(), crate::ServiceError> {
+        for node in nodes.list.iter() {
+            let network = if node.test { "testnet" } else { "mainnet" };
+            let node = NodeCreateVo::new(
+                &node.id,
+                &node.name,
+                &node.chain_code,
+                &node.rpc,
+                node.http_url.clone(),
+            )
+            .with_network(network);
+            tracing::debug!("创建节点: {:?}", node);
+            match NodeRepoTrait::add(repo, node).await {
+                Ok(node) => backend_nodes.push(node),
+                Err(e) => {
+                    tracing::error!("node_create error: {:?}", e);
+                    continue;
+                }
+            };
+        }
+
+        Ok(())
+    }
+
+    // 本地默认的链和后端请求的链两边分开去处理
+    // 1.遍历本地默认的链，如去后端请求获取每个链的节点，如果请求成功，则更新节点表的节点，
+    // 如果请求失败，将这个链的请求发送到任务队列去重试，任务队列重复执行该请求，直到成功，并更新节点表的节点
+    // 2.请求后端获取链列表，同样的，请求成功则更新链表的链数据，请求失败则发送到任务队列去重试，直到成功，并更新链表的信息
+    // 请求成功的话，遍历链列表，执行1的操作
+    pub(crate) async fn process_backend_nodes() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let backend = crate::manager::Context::get_global_backend_api()?;
 
+        let local_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo).await?;
         let mut backend_nodes = Vec::new();
 
-        for node in default_nodes.iter() {
-            let nodes = match backend.chain_rpc_list(&node.chain_code).await {
+        for chain in local_chains.iter() {
+            let nodes = match backend
+                .chain_rpc_list(ChainRpcListReq::new(&chain.chain_code))
+                .await
+            {
                 Ok(node) => node,
                 Err(e) => {
                     tracing::error!("backend get chain rpc list error: {:?}", e);
+                    let chain_rpc_list_req = BackendApiTaskData::new(
+                        wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+                        &ChainRpcListReq::new(&chain.chain_code),
+                    )?;
+                    Tasks::new()
+                        .push(Task::BackendApi(BackendApiTask::BackendApi(
+                            chain_rpc_list_req,
+                        )))
+                        .send()
+                        .await?;
                     continue;
                 }
             };
-            for node in nodes.list.iter() {
-                let network = if node.test { "testnet" } else { "mainnet" };
-                let node = NodeCreateVo::new(
-                    &node.id,
-                    &node.name,
-                    &node.chain_code,
-                    &node.rpc,
-                    node.http_url.clone(),
-                )
-                .with_network(network);
-                match NodeRepoTrait::add(&mut repo, node).await {
-                    Ok(node) => backend_nodes.push(node),
+            // let chain_rpc_list_req = BackendApiTaskData::new(
+            //     wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+            //     &ChainRpcListReq::new(&chain.chain_code),
+            // )?;
+            // Tasks::new()
+            //     .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //         chain_rpc_list_req,
+            //     )))
+            //     .send()
+            //     .await?;
+            Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
+        }
+
+        Self::process_filtered_nodes(&mut repo, &backend_nodes).await?;
+        Ok(())
+    }
+
+    /// 从表中移除不在给定链集合中的节点，并在删除节点时处理相关链的设置
+    pub(crate) async fn prune_nodes(
+        repo: &mut ResourcesRepo,
+        chains_set: &mut std::collections::HashSet<(String, String)>,
+        is_local: Option<u8>,
+    ) -> Result<(), crate::ServiceError> {
+        let tx = repo;
+        let existing_nodes = NodeRepoTrait::list(tx, is_local).await?;
+
+        for node in existing_nodes {
+            let key = (node.name.clone(), node.chain_code.clone());
+            if !chains_set.contains(&key) {
+                match NodeRepoTrait::delete(tx, &node.node_id).await {
+                    Ok(node) => node,
                     Err(e) => {
-                        tracing::error!("node_create error: {:?}", e);
+                        tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                         continue;
                     }
                 };
+                // 将链表中有设置该节点的行的node_id设置为空
+                ChainRepoTrait::set_chain_node_id_empty(tx, &node.node_id).await?;
             }
         }
-
-        let chain_list_req =
-            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::CHAIN_LIST, &())?;
-        Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(chain_list_req)))
-            .send()
-            .await?;
-
-        Self::process_filtered_nodes(&mut repo, &backend_nodes, &default_nodes).await?;
         Ok(())
     }
 
     pub(crate) async fn process_filtered_nodes(
         repo: &mut ResourcesRepo,
         backend_nodes: &[NodeEntity],
-        default_nodes: &[NodeData],
     ) -> Result<(), crate::ServiceError> {
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
         let local_backend_nodes = NodeRepoTrait::list(repo, Some(0)).await?;
@@ -95,7 +151,7 @@ impl NodeDomain {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
-                Self::set_chain_node(repo, backend_nodes, default_nodes, &node.chain_code).await?;
+                Self::set_chain_node(repo, backend_nodes, &node.chain_code).await?;
             }
         }
 
@@ -106,8 +162,7 @@ impl NodeDomain {
         repo.begin_transaction().await?;
         for chain in chain_list {
             if chain.node_id.is_none() {
-                Self::set_chain_node(&mut repo, backend_nodes, default_nodes, &chain.chain_code)
-                    .await?;
+                Self::set_chain_node(&mut repo, backend_nodes, &chain.chain_code).await?;
             }
         }
         repo.commit_transaction().await?;
@@ -119,9 +174,21 @@ impl NodeDomain {
     pub(crate) async fn set_chain_node(
         repo: &mut ResourcesRepo,
         backend_nodes: &[NodeEntity],
-        default_nodes: &[NodeData],
+        // default_nodes: &[NodeData],
         chain_code: &str,
     ) -> Result<(), crate::ServiceError> {
+        let list = NodeRepoTrait::list(repo, Some(1)).await?;
+
+        let mut default_nodes = Vec::new();
+        for default_node in list.iter() {
+            // let node_id = NodeDomain::gen_node_id(&default_node.name, &default_node.chain_code);
+            default_nodes.push(wallet_types::valueobject::NodeData::new(
+                &default_node.node_id,
+                &default_node.rpc_url,
+                &default_node.chain_code,
+            ));
+        }
+
         if let Some(backend_nodes) = backend_nodes
             .iter()
             .find(|node| node.chain_code == chain_code)
