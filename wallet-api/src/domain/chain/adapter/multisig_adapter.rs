@@ -387,7 +387,10 @@ impl MultisigAdapter {
                 )
                 .with_inner_key(account.authority_addr.clone());
 
-                let fee = chain.estimate_fee(params, Some(multisig_parmas)).await?;
+                let fee = chain
+                    .estimate_fee(params, Some(multisig_parmas))
+                    .await
+                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
 
                 let fee =
                     CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency);
