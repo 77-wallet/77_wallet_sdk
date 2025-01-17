@@ -8,7 +8,10 @@ use wallet_database::{
         Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
-use wallet_transport_backend::consts::{endpoint::VERSION_DOWNLOAD, BASE_URL};
+use wallet_transport_backend::{
+    consts::{endpoint::VERSION_DOWNLOAD, BASE_URL},
+    response_vo::chain::ChainUrlInfo,
+};
 
 pub struct ConfigDomain;
 
@@ -214,6 +217,26 @@ impl ConfigDomain {
             config.set_block_browser_url(value);
         }
 
+        Ok(())
+    }
+
+    pub(crate) async fn set_block_browser_url(
+        list: Vec<ChainUrlInfo>,
+    ) -> Result<(), crate::ServiceError> {
+        let block_browser_url_list = list
+            .into_iter()
+            .map(|info| {
+                crate::request::init::BlockBrowserUrl::new(
+                    info.chain_code,
+                    info.address_url,
+                    info.hash_url,
+                )
+            })
+            .collect();
+        let value = wallet_utils::serde_func::serde_to_string(&block_browser_url_list)?;
+        ConfigDomain::set_config(BLOCK_BROWSER_URL_LIST, &value).await?;
+        let mut config = crate::app_state::APP_STATE.write().await;
+        config.set_block_browser_url(block_browser_url_list);
         Ok(())
     }
 

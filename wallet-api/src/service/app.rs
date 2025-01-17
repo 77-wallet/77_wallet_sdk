@@ -1,9 +1,6 @@
 use wallet_database::{
     dao::config::ConfigDao,
-    entities::config::{
-        config_key::{BLOCK_BROWSER_URL_LIST, LANGUAGE},
-        ConfigEntity, MinValueSwitchConfig,
-    },
+    entities::config::{config_key::LANGUAGE, ConfigEntity, MinValueSwitchConfig},
     repositories::{
         announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
         system_notification::SystemNotificationRepoTrait, wallet::WalletRepoTrait,
@@ -192,23 +189,8 @@ impl<
     pub async fn set_block_browser_url(&mut self) -> Result<(), crate::ServiceError> {
         // let tx = &mut self.repo;
         let backend_api = crate::manager::Context::get_global_backend_api()?;
-        let block_browser_url_list = backend_api
-            .chain_list()
-            .await?
-            .list
-            .into_iter()
-            .map(|info| {
-                crate::request::init::BlockBrowserUrl::new(
-                    info.chain_code,
-                    info.address_url,
-                    info.hash_url,
-                )
-            })
-            .collect();
-        let value = wallet_utils::serde_func::serde_to_string(&block_browser_url_list)?;
-        ConfigDomain::set_config(BLOCK_BROWSER_URL_LIST, &value).await?;
-        let mut config = crate::app_state::APP_STATE.write().await;
-        config.set_block_browser_url(block_browser_url_list);
+        let list = backend_api.chain_list().await?.list;
+        ConfigDomain::set_block_browser_url(list).await?;
         Ok(())
     }
 

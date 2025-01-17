@@ -83,6 +83,11 @@ pub async fn exec_incoming_publish(
             };
             payload.exec().await?;
         }
+        super::constant::Topic::ChainChange => {
+            let payload: super::payload::incoming::chain::ChainChange =
+                serde_json::from_slice(payload)?;
+            payload.exec().await?;
+        }
         super::constant::Topic::Order
         | super::constant::Topic::Common
         | super::constant::Topic::BulletinInfo

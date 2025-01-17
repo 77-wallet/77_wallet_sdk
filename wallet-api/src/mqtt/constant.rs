@@ -12,6 +12,8 @@ pub(crate) enum Topic {
     BulletinInfo,
     #[serde(rename = "wallet/rpc/change")]
     RpcChange,
+    #[serde(rename = "wallet/chain/change")]
+    ChainChange,
 }
 
 impl From<Topic> for String {
@@ -23,6 +25,7 @@ impl From<Topic> for String {
             Topic::Token => "wallet/token".to_string(),
             Topic::BulletinInfo => "wallet/bulletin".to_string(),
             Topic::RpcChange => "wallet/rpc/change".to_string(),
+            Topic::ChainChange => "wallet/chain/change".to_string(),
         }
     }
 }
@@ -47,6 +50,11 @@ impl Topic {
             // 可选地将 chainCode 和 tokenCode 作为 client_id 返回
             (topic, None) // 如果不需要可以设置为 None
         } else if v.len() == 3 && v[0] == "wallet" && v[1] == "rpc" && v[2] == "change" {
+            let topic = format!("{}/{}/{}", v[0], v[1], v[2]);
+
+            // 可选地将 chainCode 和 tokenCode 作为 client_id 返回
+            (topic, None) // 如果不需要可以设置为 None
+        } else if v.len() == 3 && v[0] == "wallet" && v[1] == "chain" && v[2] == "change" {
             let topic = format!("{}/{}/{}", v[0], v[1], v[2]);
 
             // 可选地将 chainCode 和 tokenCode 作为 client_id 返回

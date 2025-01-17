@@ -10,7 +10,7 @@ pub struct ChainInfo {
     pub test: bool,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainUrlInfo {
     /// 查看链上地址URL

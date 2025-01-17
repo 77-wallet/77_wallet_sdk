@@ -1,4 +1,5 @@
 pub mod announcement;
+pub mod chain;
 pub mod init;
 pub mod rpc;
 pub mod signature;
