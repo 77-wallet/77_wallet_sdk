@@ -145,7 +145,7 @@ impl NodeDomain {
         backend_nodes: &[NodeEntity],
     ) -> Result<(), crate::ServiceError> {
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
-        let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, chain_code, Some(0)).await?;
+        let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, &chain_code, Some(0)).await?;
         tracing::info!(
             "[sync_nodes_and_link_to_chains] local_backend_nodes: {:#?}",
             local_backend_nodes
@@ -154,8 +154,12 @@ impl NodeDomain {
             "[sync_nodes_and_link_to_chains] backend_nodes: {:#?}",
             backend_nodes
         );
-        let backend_node_rpcs: HashSet<String> =
-            backend_nodes.iter().map(|n| n.node_id.clone()).collect();
+        let backend_node_rpcs: HashSet<String> = backend_nodes
+            .iter()
+            .filter(|node| chain_code.contains(&node.chain_code))
+            .map(|n| n.node_id.clone())
+            .collect();
+
         for node in local_backend_nodes {
             if !backend_node_rpcs.contains(&node.node_id) {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
@@ -176,7 +180,7 @@ impl NodeDomain {
         repo: &mut ResourcesRepo,
         backend_nodes: &[NodeEntity],
     ) -> Result<(), crate::ServiceError> {
-        let chain_list = ChainRepoTrait::get_chain_list_all_status(repo).await?;
+        let chain_list = ChainRepoTrait::get_chain_list(repo).await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());

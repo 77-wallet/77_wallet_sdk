@@ -231,10 +231,9 @@ impl ChainEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, 
-        a.name as node_name
+        let sql = "select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
                             from chain as q  
-                            join node a on q.node_id = a.node_id WHERE q.status = 1;";
+                            left join node a on q.node_id = a.node_id WHERE q.status = 1;";
 
         sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
             .fetch_all(exec)

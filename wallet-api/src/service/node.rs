@@ -142,7 +142,7 @@ impl NodeService {
         };
 
         let node_list =
-            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code.to_string()], Some(1))
+            NodeRepoTrait::get_node_list_in_chain_codes(tx, &[chain_code.to_string()], Some(1))
                 .await?;
 
         let res = node_list
@@ -181,7 +181,7 @@ impl NodeService {
         //     )
         //     .await?;
         let list_with_node =
-            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code.to_string()], Some(1))
+            NodeRepoTrait::get_node_list_in_chain_codes(tx, &[chain_code.to_string()], Some(1))
                 .await?;
 
         let mut res = Vec::new();
