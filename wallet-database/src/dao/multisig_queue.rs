@@ -333,6 +333,7 @@ impl MultisigQueueDaoV1 {
             .bind(MultisigQueueStatus::PendingSignature.to_i8())
             .bind(MultisigQueueStatus::HasSignature.to_i8())
             .bind(MultisigQueueStatus::PendingExecution.to_i8())
+            .bind(MultisigQueueStatus::InConfirmation.to_i8())
             .fetch_optional(exec)
             .await?;
 

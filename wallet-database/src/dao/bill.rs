@@ -397,8 +397,8 @@ impl BillDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        // 20 分钟
-        let time = wallet_utils::time::now().timestamp() - (20 * 60);
+        // 一个 半小时
+        let time = wallet_utils::time::now().timestamp() - (90 * 60);
 
         let sql =
             "select * from bill where owner = $1 and status = $2 and chain_code = $3 and created_at > $4";
