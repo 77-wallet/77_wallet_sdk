@@ -106,8 +106,6 @@ impl ChainTransaction {
         adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
         //  check ongong tx
-        if params.base.chain_code == chain_code::BTC {}
-
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
             return Err(crate::BusinessError::Bill(
                 crate::BillError::ExistsUncomfrimationTx,

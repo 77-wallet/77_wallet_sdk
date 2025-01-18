@@ -325,7 +325,7 @@ impl MultisigQueueDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "select * from multisig_queue where from_addr = ? and chain_code = ? and status in (?,?,?)";
+        let sql = "select * from multisig_queue where from_addr = ? and chain_code = ? and status in (?,?,?,?)";
 
         let res = sqlx::query_as::<_, MultisigQueueEntity>(sql)
             .bind(address)
