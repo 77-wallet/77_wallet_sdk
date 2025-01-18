@@ -12,9 +12,18 @@ pub trait NodeRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, NodeEntity::list, vec![], is_local, None)
     }
 
+    async fn list_by_chain(
+        &mut self,
+        chain_code: Vec<String>,
+        is_local: Option<u8>,
+    ) -> Result<Vec<NodeEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, NodeEntity::list, chain_code, is_local, None)
+    }
+
     async fn get_node_list_in_chain_codes(
         &mut self,
-        chain_codes: Vec<&str>,
+        chain_codes: Vec<String>,
         status: Option<u8>,
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;

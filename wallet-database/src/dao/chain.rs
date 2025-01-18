@@ -127,7 +127,7 @@ impl ChainEntity {
     // 把指定的链status设置为1，其他设置为0
     pub async fn toggle_chains_status<'a, E>(
         executor: E,
-        chain_codes: Vec<String>,
+        chain_codes: &[String],
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,

@@ -36,7 +36,7 @@ pub trait ChainRepoTrait: super::TransactionTrait {
 
     async fn toggle_chains_status(
         &mut self,
-        chain_codes: Vec<String>,
+        chain_codes: &[String],
     ) -> Result<Vec<ChainEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, ChainEntity::toggle_chains_status, chain_codes)

@@ -1,18 +1,18 @@
-[chains.tron]
-name = "Tron"
-chain_code = "tron"
-main_symbol = "TRX"
-# node_name = "TRON Official Node"
-protocols = ["TRC20"]
-active = true
+# [chains.tron]
+# name = "Tron"
+# chain_code = "tron"
+# main_symbol = "TRX"
+# # node_name = "TRON Official Node"
+# protocols = ["TRC20"]
+# active = true
 
-[chains.eth]
-name = "Ethereum"
-chain_code = "eth"
-main_symbol = "ETH"
-# node_name = "Platform Node"
-protocols = ["ERC20"]
-active = true
+# [chains.eth]
+# name = "Ethereum"
+# chain_code = "eth"
+# main_symbol = "ETH"
+# # node_name = "Platform Node"
+# protocols = ["ERC20"]
+# active = true
 
 [chains.bnb]
 name = "BNB Smart Chain"

@@ -101,7 +101,7 @@ impl NodeService {
                 chain_codes.push(chain_code.to_string());
             }
         }
-        ChainDomain::toggle_chains(tx, chain_codes).await?;
+        ChainDomain::toggle_chains(tx, &chain_codes).await?;
         let chain_list_req =
             BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::CHAIN_LIST, &())?;
         Tasks::new()
@@ -142,7 +142,8 @@ impl NodeService {
         };
 
         let node_list =
-            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code], Some(1)).await?;
+            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code.to_string()], Some(1))
+                .await?;
 
         let res = node_list
             .into_iter()
@@ -180,7 +181,8 @@ impl NodeService {
         //     )
         //     .await?;
         let list_with_node =
-            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code], Some(1)).await?;
+            NodeRepoTrait::get_node_list_in_chain_codes(tx, vec![chain_code.to_string()], Some(1))
+                .await?;
 
         let mut res = Vec::new();
         for node in list_with_node {

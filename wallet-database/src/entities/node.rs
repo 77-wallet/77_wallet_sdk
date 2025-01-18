@@ -1,4 +1,11 @@
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros ::Resource)]
+#[derive(
+    Debug,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    sqlx::FromRow,
+    wallet_macro::macros ::Resource,
+)]
 #[serde(rename_all = "camelCase")]
 #[resource(
     // schema_name = "wallet",
@@ -18,9 +25,9 @@ pub struct NodeEntity {
     pub network: String,
     pub status: u8,
     pub is_local: u8,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 

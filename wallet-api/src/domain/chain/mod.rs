@@ -1,6 +1,10 @@
-use crate::response_vo;
+use crate::{
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    response_vo,
+};
 use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
 use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
+use wallet_transport_backend::request::ChainRpcListReq;
 use wallet_types::chain::network;
 
 pub mod adapter;
@@ -154,14 +158,24 @@ impl ChainDomain {
         }
 
         ChainRepoTrait::upsert_multi_chain(&mut repo, input).await?;
-        Self::toggle_chains(&mut repo, chain_codes).await?;
+        Self::toggle_chains(&mut repo, &chain_codes).await?;
+        let chain_rpc_list_req = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+            &ChainRpcListReq::new(chain_codes),
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                chain_rpc_list_req,
+            )))
+            .send()
+            .await?;
 
         Ok(has_new_chain)
     }
 
     pub(crate) async fn toggle_chains(
         repo: &mut wallet_database::repositories::ResourcesRepo,
-        chain_codes: Vec<String>,
+        chain_codes: &[String],
     ) -> Result<(), crate::ServiceError> {
         wallet_database::repositories::chain::ChainRepoTrait::toggle_chains_status(
             repo,

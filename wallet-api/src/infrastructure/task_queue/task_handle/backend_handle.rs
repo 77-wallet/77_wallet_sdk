@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
-    request::FindConfigByKey,
+    request::{ChainRpcListReq, FindConfigByKey},
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
 
@@ -186,6 +186,7 @@ impl EndpointHandler for SpecialHandler {
                 //先插入再过滤
                 ChainDomain::upsert_multi_chain_than_toggle(input).await?;
             }
+
             endpoint::CHAIN_RPC_LIST => {
                 let input = backend
                     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
@@ -193,9 +194,15 @@ impl EndpointHandler for SpecialHandler {
                     )
                     .await?;
                 tracing::warn!("chain rpc list: {:#?}", input);
+                let req = wallet_utils::serde_func::serde_from_value::<ChainRpcListReq>(body)?;
                 let mut backend_nodes = Vec::new();
                 NodeDomain::upsert_chain_rpc(&mut repo, input, &mut backend_nodes).await?;
-                NodeDomain::process_filtered_nodes(&mut repo, &backend_nodes).await?;
+                NodeDomain::sync_nodes_and_link_to_chains(
+                    &mut repo,
+                    req.chain_code,
+                    &backend_nodes,
+                )
+                .await?;
             }
             endpoint::MQTT_INIT => {
                 let mqtt_url = backend.post_req_str::<String>(endpoint, &body).await?;

@@ -3,6 +3,7 @@ pub(crate) mod task_manager;
 use wallet_database::{
     entities::{
         multisig_queue::QueueTaskEntity,
+        node::NodeEntity,
         task_queue::{TaskName, TaskQueueEntity},
     },
     repositories::task_queue::TaskQueueRepoTrait,
@@ -99,6 +100,7 @@ pub(crate) enum CommonTask {
     QueryCoinPrice(TokenQueryPriceReq),
     QueryQueueResult(QueueTaskEntity),
     RecoverMultisigAccountData(String),
+    SyncNodesAndLinkToChains(Vec<NodeEntity>),
 }
 
 pub(crate) struct TaskItem {
@@ -297,6 +299,12 @@ impl TryFrom<&TaskQueueEntity> for Task {
             TaskName::RecoverMultisigAccountData => Ok(Task::Common(
                 CommonTask::RecoverMultisigAccountData(value.request_body.clone()),
             )),
+            TaskName::SyncNodesAndLinkToChains => {
+                let req = wallet_utils::serde_func::serde_from_str::<Vec<NodeEntity>>(
+                    &value.request_body,
+                )?;
+                Ok(Task::Common(CommonTask::SyncNodesAndLinkToChains(req)))
+            }
         }
     }
 }
@@ -341,6 +349,7 @@ impl Task {
                 CommonTask::QueryCoinPrice(_) => TaskName::QueryCoinPrice,
                 CommonTask::QueryQueueResult(_) => TaskName::QueryQueueResult,
                 CommonTask::RecoverMultisigAccountData(_) => TaskName::RecoverMultisigAccountData,
+                CommonTask::SyncNodesAndLinkToChains(_) => TaskName::SyncNodesAndLinkToChains,
             },
         }
     }
@@ -407,6 +416,9 @@ impl Task {
                 CommonTask::RecoverMultisigAccountData(recover_multisig_account_data) => {
                     Some(recover_multisig_account_data.to_string())
                 }
+                CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => Some(
+                    wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?,
+                ),
             },
         })
     }

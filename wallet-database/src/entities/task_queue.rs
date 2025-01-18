@@ -94,4 +94,5 @@ pub enum TaskName {
     QueryCoinPrice,
     QueryQueueResult,
     RecoverMultisigAccountData,
+    SyncNodesAndLinkToChains,
 }

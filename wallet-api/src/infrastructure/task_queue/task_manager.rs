@@ -3,14 +3,14 @@ use super::{
     MqttTask, Task,
 };
 use crate::{
-    domain::{self, app::config::ConfigDomain, multisig::MultisigQueueDomain},
+    domain::{self, app::config::ConfigDomain, multisig::MultisigQueueDomain, node::NodeDomain},
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
 use dashmap::DashSet;
 use rand::Rng as _;
 use std::sync::Arc;
 use tokio_stream::StreamExt as _;
-use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
+use wallet_database::repositories::{chain::ChainRepoTrait, task_queue::TaskQueueRepoTrait};
 use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
 
 /// 定义共享的 running_tasks 类型
@@ -302,6 +302,16 @@ async fn handle_common_task(
         CommonTask::RecoverMultisigAccountData(uid) => {
             domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid).await?;
             MultisigQueueDomain::recover_all_queue_data(&uid).await?;
+        }
+        CommonTask::SyncNodesAndLinkToChains(data) => {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            let chain_codes = ChainRepoTrait::get_chain_list_all_status(&mut repo)
+                .await?
+                .into_iter()
+                .map(|chain| chain.chain_code)
+                .collect();
+            tracing::info!("[SyncNodesAndLinkToChains] chain_codes: {:#?}", chain_codes);
+            NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &data).await?;
         }
     }
     Ok(())

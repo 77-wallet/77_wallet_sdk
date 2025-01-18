@@ -104,7 +104,7 @@ impl NodeEntity {
 
     pub async fn list<'a, E>(
         exec: E,
-        chain_codes: Vec<&str>,
+        chain_codes: Vec<String>,
         is_local: Option<u8>,
         status: Option<u8>,
     ) -> Result<Vec<Self>, crate::Error>

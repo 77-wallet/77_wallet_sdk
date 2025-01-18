@@ -110,10 +110,8 @@ mod test {
         init_test_log();
         let base_url = crate::consts::BASE_URL;
 
-        let chain_code = "eth";
-        let req = ChainRpcListReq {
-            chain_code: chain_code.to_string(),
-        };
+        let chain_code = vec!["eth".to_string(), "tron".to_string(), "btc".to_string()];
+        let req = ChainRpcListReq::new(chain_code);
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .chain_rpc_list(req)

@@ -53,6 +53,7 @@ impl RpcChange {
         let RpcChange(body) = &self;
         let mut backend_nodes = Vec::new();
         let mut chains_set = std::collections::HashSet::new();
+        let mut chain_codes = Vec::new();
         for rpc_change_body in body {
             let RpcChangeBody {
                 chain_code,
@@ -65,7 +66,7 @@ impl RpcChange {
                 };
                 let key = (node.name.clone(), chain_code.clone());
                 chains_set.insert(key);
-
+                chain_codes.push(chain_code.to_string());
                 let network = "mainnet";
                 let node = wallet_database::entities::node::NodeCreateVo::new(
                     id, &node.name, chain_code, &node.url, None,
@@ -83,7 +84,7 @@ impl RpcChange {
         }
 
         NodeDomain::prune_nodes(&mut repo, &mut chains_set, Some(0)).await?;
-        NodeDomain::process_filtered_nodes(&mut repo, &backend_nodes).await?;
+        NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &backend_nodes).await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;

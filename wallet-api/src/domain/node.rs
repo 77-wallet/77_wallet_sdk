@@ -6,7 +6,9 @@ use wallet_database::{
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
+use crate::infrastructure::task_queue::{
+    BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
+};
 
 pub struct NodeDomain;
 
@@ -70,44 +72,43 @@ impl NodeDomain {
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let backend = crate::manager::Context::get_global_backend_api()?;
 
-        let local_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo).await?;
+        let local_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo)
+            .await?
+            .into_iter()
+            .map(|chain| chain.chain_code)
+            .collect::<Vec<String>>();
         let mut backend_nodes = Vec::new();
 
-        for chain in local_chains.iter() {
-            let nodes = match backend
-                .chain_rpc_list(ChainRpcListReq::new(&chain.chain_code))
-                .await
-            {
-                Ok(node) => node,
-                Err(e) => {
-                    tracing::error!("backend get chain rpc list error: {:?}", e);
-                    let chain_rpc_list_req = BackendApiTaskData::new(
-                        wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-                        &ChainRpcListReq::new(&chain.chain_code),
-                    )?;
-                    Tasks::new()
-                        .push(Task::BackendApi(BackendApiTask::BackendApi(
-                            chain_rpc_list_req,
-                        )))
-                        .send()
-                        .await?;
-                    continue;
-                }
-            };
-            // let chain_rpc_list_req = BackendApiTaskData::new(
-            //     wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-            //     &ChainRpcListReq::new(&chain.chain_code),
-            // )?;
-            // Tasks::new()
-            //     .push(Task::BackendApi(BackendApiTask::BackendApi(
-            //         chain_rpc_list_req,
-            //     )))
-            //     .send()
-            //     .await?;
-            Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
-        }
+        match backend
+            .chain_rpc_list(ChainRpcListReq::new(local_chains.clone()))
+            .await
+        {
+            Ok(nodes) => {
+                Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
 
-        Self::process_filtered_nodes(&mut repo, &backend_nodes).await?;
+                // FIXME:
+                Tasks::new()
+                    .push(Task::Common(CommonTask::SyncNodesAndLinkToChains(
+                        backend_nodes,
+                    )))
+                    .send()
+                    .await?;
+            }
+            Err(e) => {
+                tracing::error!("backend get chain rpc list error: {:?}", e);
+                let chain_rpc_list_req = BackendApiTaskData::new(
+                    wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+                    &ChainRpcListReq::new(local_chains),
+                )?;
+                Tasks::new()
+                    .push(Task::BackendApi(BackendApiTask::BackendApi(
+                        chain_rpc_list_req,
+                    )))
+                    .send()
+                    .await?;
+            }
+        };
+
         Ok(())
     }
 
@@ -137,13 +138,22 @@ impl NodeDomain {
         Ok(())
     }
 
-    pub(crate) async fn process_filtered_nodes(
+    // 为缺少节点的链分配节点，同时也包含了同步和过滤节点的操作
+    pub(crate) async fn sync_nodes_and_link_to_chains(
         repo: &mut ResourcesRepo,
+        chain_code: Vec<String>,
         backend_nodes: &[NodeEntity],
     ) -> Result<(), crate::ServiceError> {
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
-        let local_backend_nodes = NodeRepoTrait::list(repo, Some(0)).await?;
-
+        let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, chain_code, Some(0)).await?;
+        tracing::info!(
+            "[sync_nodes_and_link_to_chains] local_backend_nodes: {:#?}",
+            local_backend_nodes
+        );
+        tracing::info!(
+            "[sync_nodes_and_link_to_chains] backend_nodes: {:#?}",
+            backend_nodes
+        );
         let backend_node_rpcs: HashSet<String> =
             backend_nodes.iter().map(|n| n.node_id.clone()).collect();
         for node in local_backend_nodes {
@@ -151,22 +161,35 @@ impl NodeDomain {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
+                tracing::info!(
+                    "[sync_nodes_and_link_to_chains] remove node: {}",
+                    node.node_id
+                );
                 Self::set_chain_node(repo, backend_nodes, &node.chain_code).await?;
             }
         }
+        Self::assign_missing_nodes_to_chains(repo, backend_nodes).await?;
+        Ok(())
+    }
 
+    pub(crate) async fn assign_missing_nodes_to_chains(
+        repo: &mut ResourcesRepo,
+        backend_nodes: &[NodeEntity],
+    ) -> Result<(), crate::ServiceError> {
         let chain_list = ChainRepoTrait::get_chain_list_all_status(repo).await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        repo.begin_transaction().await?;
         for chain in chain_list {
             if chain.node_id.is_none() {
+                tracing::info!(
+                    "[assign_missing_nodes_to_chains] set chain node: {}",
+                    chain.chain_code
+                );
                 Self::set_chain_node(&mut repo, backend_nodes, &chain.chain_code).await?;
             }
         }
-        repo.commit_transaction().await?;
-
+        tracing::info!("[assign_missing_nodes_to_chains] end");
         Ok(())
     }
 
@@ -189,6 +212,7 @@ impl NodeDomain {
             ));
         }
 
+        repo.begin_transaction().await?;
         if let Some(backend_nodes) = backend_nodes
             .iter()
             .find(|node| node.chain_code == chain_code)
@@ -206,6 +230,7 @@ impl NodeDomain {
                 tracing::error!("set_chain_node error: {:?}", e);
             }
         }
+        repo.commit_transaction().await?;
         Ok(())
     }
 }
