@@ -1,10 +1,11 @@
 use wallet_database::{
     dao::multisig_account::MultisigAccountDaoV1,
     entities::multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
+    factory::RepositoryFactory,
 };
 
 use crate::{
-    domain,
+    domain::{self, multisig::MultisigDomain},
     notify::event::{multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront},
 };
 
@@ -43,6 +44,15 @@ impl OrderMultiSignServiceComplete {
             status,
             r#type,
         } = self;
+        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+        }
+
         let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
             .map_err(crate::ServiceError::Database)?

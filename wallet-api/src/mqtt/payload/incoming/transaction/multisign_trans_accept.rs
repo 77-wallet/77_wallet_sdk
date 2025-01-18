@@ -1,4 +1,5 @@
 use crate::{
+    domain::multisig::MultisigDomain,
     service::system_notification::SystemNotificationService,
     system_notification::{Notification, NotificationType},
 };
@@ -103,6 +104,15 @@ impl MultiSignTransAccept {
             MultisigSignatureDaoV1::create_or_update(sig, pool.clone())
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
+        }
+
+        if MultisigAccountDaoV1::find_by_address(from_addr, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
         }
 
         if let Some(multisig_account) =

@@ -1,8 +1,14 @@
 use wallet_database::{
-    dao::{multisig_queue::MultisigQueueDaoV1, multisig_signatures::MultisigSignatureDaoV1},
+    dao::{
+        multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1,
+        multisig_signatures::MultisigSignatureDaoV1,
+    },
     entities::multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
+    factory::RepositoryFactory,
     repositories::multisig_queue::MultisigQueueRepo,
 };
+
+use crate::domain::multisig::MultisigDomain;
 
 // 签名的结果同步给所有人
 use super::{MultiSignTransAcceptCompleteMsg, MultiSignTransAcceptCompleteMsgBody};
@@ -26,6 +32,15 @@ impl MultiSignTransAcceptCompleteMsg {
 
         // sync sign status
         if let Some(item) = body.first() {
+            if MultisigAccountDaoV1::find_by_address(&item.address, pool.as_ref())
+                .await
+                .map_err(crate::ServiceError::Database)?
+                .is_none()
+            {
+                let mut repo = RepositoryFactory::repo(pool.clone());
+                MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+            }
+
             let account =
                 MultisigQueueDaoV1::find_by_id_with_account(&item.queue_id, pool.as_ref())
                     .await

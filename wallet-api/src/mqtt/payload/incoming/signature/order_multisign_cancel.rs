@@ -1,6 +1,8 @@
-use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
+use wallet_database::{dao::multisig_account::MultisigAccountDaoV1, factory::RepositoryFactory};
 
-use crate::notify::event::multisig::OrderMultisignCanceledFrontend;
+use crate::{
+    domain::multisig::MultisigDomain, notify::event::multisig::OrderMultisignCanceledFrontend,
+};
 
 // 发起方取消多签账号消息，参与方同步自己多签账号的状态
 use super::OrderMultiSignCancel;
@@ -11,6 +13,15 @@ impl OrderMultiSignCancel {
         let OrderMultiSignCancel {
             ref multisig_account_id,
         } = self;
+
+        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+        }
 
         let multisig_account = MultisigAccountDaoV1::find_by_id(multisig_account_id, &*pool)
             .await

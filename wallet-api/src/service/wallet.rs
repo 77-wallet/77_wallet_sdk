@@ -18,13 +18,8 @@ use wallet_types::chain::{
 
 use crate::{
     domain::{
-        self,
-        account::AccountDomain,
-        app::DeviceDomain,
-        assets::AssetsDomain,
-        coin::CoinDomain,
-        multisig::{MultisigDomain, MultisigQueueDomain},
-        wallet::WalletDomain,
+        self, account::AccountDomain, app::DeviceDomain, assets::AssetsDomain, coin::CoinDomain,
+        multisig::MultisigDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
     response_vo::{
@@ -774,14 +769,7 @@ impl WalletService {
         wallet_address: &str,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        let wallet = WalletRepoTrait::detail(&mut tx, wallet_address)
-            .await?
-            .ok_or(crate::ServiceError::Business(crate::BusinessError::Wallet(
-                crate::WalletError::NotFound,
-            )))?;
-
-        MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
-        MultisigQueueDomain::recover_all_queue_data(&wallet.uid).await?;
+        MultisigDomain::recover_multisig_account_and_queue_data(&mut tx, wallet_address).await?;
 
         Ok(())
     }

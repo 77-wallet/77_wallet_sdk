@@ -12,7 +12,7 @@ use wallet_database::{
 };
 
 use crate::{
-    domain,
+    domain::{self, multisig::MultisigDomain},
     service::{
         account::AccountService, asset::AssetsService,
         system_notification::SystemNotificationService,
@@ -340,6 +340,15 @@ async fn create_system_notification(
                 }
             };
             tracing::warn!("multisig account: address: {address}");
+            if MultisigAccountDaoV1::find_by_address(address, pool.as_ref())
+                .await
+                .map_err(crate::ServiceError::Database)?
+                .is_none()
+            {
+                let mut repo = RepositoryFactory::repo(pool.clone());
+                MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+            }
+
             if let Some(multisig_account) =
                 MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
             {

@@ -19,11 +19,13 @@ use wallet_database::{
         multisig_queue::MultisigQueueEntity,
         wallet::WalletEntity,
     },
-    repositories::multisig_account::MultisigAccountRepo,
+    repositories::{multisig_account::MultisigAccountRepo, wallet::WalletRepoTrait, ResourcesRepo},
     DbPool,
 };
 use wallet_transport_backend::request::FindAddressRawDataReq;
 use wallet_types::constant::chain_code;
+
+use super::MultisigQueueDomain;
 
 pub struct MultisigDomain;
 
@@ -46,6 +48,32 @@ impl MultisigDomain {
                 crate::MultisigAccountError::NotOnChain,
             ))?;
         }
+
+        Ok(())
+    }
+
+    pub(crate) async fn recover_all_multisig_account_and_queue_data(
+        repo: &mut ResourcesRepo,
+    ) -> Result<(), crate::ServiceError> {
+        let wallet_list = repo.wallet_list().await?;
+        for wallet in wallet_list {
+            MultisigDomain::recover_multisig_account_and_queue_data(repo, &wallet.address).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn recover_multisig_account_and_queue_data(
+        repo: &mut ResourcesRepo,
+        wallet_address: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let wallet = WalletRepoTrait::detail(repo, wallet_address).await?.ok_or(
+            crate::ServiceError::Business(crate::BusinessError::Wallet(
+                crate::WalletError::NotFound,
+            )),
+        )?;
+
+        MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
+        MultisigQueueDomain::recover_all_queue_data(&wallet.uid).await?;
 
         Ok(())
     }

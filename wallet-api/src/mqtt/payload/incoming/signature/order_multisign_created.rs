@@ -1,4 +1,5 @@
 use crate::{
+    domain::multisig::MultisigDomain,
     notify::event::multisig::OrderMultiSignCreatedFrontend,
     service::system_notification::SystemNotificationService,
     system_notification::{Notification, NotificationType},
@@ -38,6 +39,15 @@ impl OrderMultiSignCreated {
             fee_hash,
             fee_chain,
         } = &self;
+
+        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+        }
 
         // update multisig account data
         MultisigAccountDaoV1::update_multisig_address(

@@ -1,9 +1,13 @@
 use wallet_database::{
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
     entities::multisig_account::MultisigAccountStatus,
+    factory::RepositoryFactory,
 };
 
-use crate::notify::event::{multisig::OrderMultiSignAcceptCompleteMsgFrontend, other::ErrFront};
+use crate::{
+    domain::multisig::MultisigDomain,
+    notify::event::{multisig::OrderMultiSignAcceptCompleteMsgFrontend, other::ErrFront},
+};
 
 use super::OrderMultiSignAcceptCompleteMsg;
 
@@ -20,6 +24,15 @@ impl OrderMultiSignAcceptCompleteMsg {
             address_list,
             accept_status,
         } = self;
+
+        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+        }
 
         let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
