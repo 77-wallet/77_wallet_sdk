@@ -45,9 +45,9 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
-    let to = "1Jv4gmzbgfJW9zFYLV3rDrd7GroUEuqBTz";
-    let value = "0.0000005";
+    let from = "bc1px49a0sgx66wuzyrezfw2gm7gynrq2gjncmlac84t2uyvav7mppgqggxsmg";
+    let to = "bc1pxns5602cyjycl0z2qsmemt67j9ynw7cd2u7l52z7emyq4n0n7wts3tyfwd";
+    let value = "0.00006";
     let chain_code = "btc";
     let symbol = "BTC";
     let password = "123456";

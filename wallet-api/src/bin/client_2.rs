@@ -47,7 +47,7 @@ async fn create_wallet(manager: &WalletManager, create: bool) {
     if create {
         let phrase = "divorce word join around degree mother quiz math just custom lunar angle";
 
-        let salt = "1234567q";
+        let salt = "q1111111";
         let req = CreateWalletReq::new(1, phrase, salt, "test", "账户", true, "123456", None);
         manager.create_wallet(req).await;
     }

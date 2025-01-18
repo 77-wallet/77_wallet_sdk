@@ -535,12 +535,17 @@ impl MultisigAdapter {
                         req.notes.clone(),
                     )?;
 
-                    let fee = chain
-                        .simulate_simple_fee(&req.from, &req.to, 1, params.clone())
-                        .await?;
-                    let fee = unit::u256_from_str(&fee.transaction_fee_i64().to_string())?;
+                    // let fee = chain
+                    //     .simulate_simple_fee(
+                    //         &req.from,
+                    //         &req.to,
+                    //         account.threshold as u8,
+                    //         params.clone(),
+                    //     )
+                    //     .await?;
+                    // let fee = unit::u256_from_str(&fee.transaction_fee_i64().to_string())?;
                     let balance = chain.balance(&req.from, None).await?;
-                    if balance < value + fee {
+                    if balance < value {
                         return Err(crate::BusinessError::Chain(
                             crate::ChainError::InsufficientBalance,
                         ))?;
