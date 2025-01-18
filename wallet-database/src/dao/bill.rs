@@ -389,6 +389,32 @@ impl BillDao {
         Ok(())
     }
 
+    pub async fn on_going_bill<'a, E>(
+        chain_code: &str,
+        address: &str,
+        exec: E,
+    ) -> Result<Vec<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // 20 分钟
+        let time = wallet_utils::time::now().timestamp() - (20 * 60);
+
+        let sql =
+            "select * from bill where owner = $1 and status = $2 and chain_code = $3 and created_at > $4";
+
+        let rs = sqlx::query_as::<_, BillEntity>(sql)
+            .bind(address)
+            .bind(BillStatus::Pending.to_i8())
+            .bind(chain_code)
+            .bind(time)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(rs)
+    }
+
     pub async fn last_bill<'a, E>(
         chain_code: &str,
         address: &str,

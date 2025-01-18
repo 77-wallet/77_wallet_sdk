@@ -5,13 +5,17 @@ use wallet_chain_interact::{
     sol::{self, SolFeeSetting},
     tron::{protocol::account::AccountResourceDetail, TronChain},
 };
-use wallet_database::entities::{
-    account::AccountEntity,
-    assets::{AssetsEntity, AssetsId},
-    bill::BillKind,
-    coin::CoinEntity,
+use wallet_database::{
+    dao::bill::BillDao,
+    entities::{
+        account::AccountEntity,
+        assets::{AssetsEntity, AssetsId},
+        bill::{BillEntity, BillKind},
+        coin::CoinEntity,
+    },
 };
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
+use wallet_types::constant::chain_code;
 use wallet_utils::unit;
 
 // sol 默认计算单元
@@ -83,12 +87,32 @@ impl ChainTransaction {
         Ok(coin)
     }
 
+    // btc 验证是否存在未确认的交易
+    async fn check_ongoing_bill(from: &str, chain_code: &str) -> Result<bool, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        if chain_code == chain_code::BTC {
+            let res = BillDao::on_going_bill(chain_code::BTC, from, pool.as_ref()).await?;
+            return Ok(res.len() > 0);
+        };
+
+        Ok(false)
+    }
+
     /// transfer
     pub async fn transfer(
         mut params: transaction::TransferReq,
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
+        //  check ongong tx
+        if params.base.chain_code == chain_code::BTC {}
+
+        if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
+            return Err(crate::BusinessError::Bill(
+                crate::BillError::ExistsUncomfrimationTx,
+            ))?;
+        };
         // get private_key
         let private_key = crate::domain::account::open_account_pk_with_password(
             &params.base.chain_code,

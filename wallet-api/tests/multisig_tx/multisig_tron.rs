@@ -145,8 +145,8 @@ async fn test_execute() {
 async fn test_check_ongoing() {
     let wallet_manager = get_manager().await;
 
-    let chain_code = "tron".to_string();
-    let address = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
+    let chain_code = "btc".to_string();
+    let address = "7xFhDzUVuirPCW8buDk9AqFcyuZ6CzMYv1Ah1GzK6Q5a".to_string();
     let rs = wallet_manager
         .check_ongoing_queue(chain_code, address)
         .await;
