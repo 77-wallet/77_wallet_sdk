@@ -628,7 +628,7 @@ impl MultisigTransactionService {
 
                 // check transaction_fee
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransaction::sol_priority_fee(&mut fee, Some(&queue.to_addr), 200_000);
+                ChainTransaction::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
 
                 let balance = chain
                     .balance(&multisig_account.initiator_addr, None)

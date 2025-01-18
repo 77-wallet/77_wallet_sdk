@@ -10,7 +10,7 @@ use wallet_database::{
     entities::{
         account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
-        bill::{BillEntity, BillKind},
+        bill::BillKind,
         coin::CoinEntity,
     },
 };
