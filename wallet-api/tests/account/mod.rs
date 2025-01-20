@@ -114,7 +114,7 @@ async fn test_show_key() {
 
     let parse = "member diesel marine culture boat differ spirit patient drum fix chunk sadness"
         .to_string();
-    let (_key, seed) = wallet_core::xpriv::phrase_to_master_key(1, &parse, "1234qwer").unwrap();
+    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "1234qwer").unwrap();
 
     let chain_code = "sol";
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
