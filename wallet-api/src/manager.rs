@@ -15,11 +15,6 @@ use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::factory::RepositoryFactory;
 use wallet_database::SqliteContext;
 
-pub const ACCESS_KEY_ID: &str = "LTAI5tFE2vXoF27vcHaJiyyd";
-pub const ACCESS_KEY_SECRET: &str = "6GDaBRqk9nmAQV46BgHnSWAml88tRX";
-pub const BUCKET_NAME: &str = "ossbuk23";
-pub const ENDPOINT: &str = "https://oss-cn-hongkong.aliyuncs.com/";
-
 pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
@@ -171,10 +166,10 @@ impl Context {
         let mqtt_url = Arc::new(RwLock::new(None));
 
         let oss_client = wallet_oss::oss_client::OssClient::new(
-            ACCESS_KEY_ID,
-            ACCESS_KEY_SECRET,
-            ENDPOINT,
-            BUCKET_NAME,
+            &config.oss.access_key_id,
+            &config.oss.access_key_secret,
+            &config.oss.endpoint,
+            &config.oss.bucket_name,
         );
 
         // 创建 TaskManager 实例
