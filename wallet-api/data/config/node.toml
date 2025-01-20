@@ -1,6 +1,13 @@
 [nodes]
 [nodes.tron]
 [[nodes.tron.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/tron"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.tron.nodes]]
 node_name = "TRON Official Node"
 rpc_url = "https://api.trongrid.io"
 http_url = ""
@@ -36,9 +43,16 @@ active = true
 # network = "mainnet"
 # active = false
 
+# [[nodes.eth.nodes]]
+# node_name = "Third-Party Node"
+# rpc_url = "https://rpc.ankr.com/eth/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
+# http_url = ""
+# network = "mainnet"
+# active = true
+
 [[nodes.eth.nodes]]
-node_name = "Third-Party Node"
-rpc_url = "https://rpc.ankr.com/eth/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/eth"
 http_url = ""
 network = "mainnet"
 active = true
@@ -58,9 +72,16 @@ active = true
 # network = "mainnet"
 # active = false
 
+# [[nodes.bnb.nodes]]
+# node_name = "Third-Party Node"
+# rpc_url = "https://rpc.ankr.com/bsc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
+# http_url = ""
+# network = "mainnet"
+# active = true
+
 [[nodes.bnb.nodes]]
-node_name = "Third-Party Node"
-rpc_url = "https://rpc.ankr.com/bsc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/bnb"
 http_url = ""
 network = "mainnet"
 active = true
@@ -80,6 +101,13 @@ active = true
 # http_url = ""
 # network = "mainnet"
 # active = false
+
+[[nodes.sol.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/sol"
+http_url = ""
+network = "mainnet"
+active = true
 
 [[nodes.sol.nodes]]
 node_name = "Solana Official Node"
@@ -103,9 +131,16 @@ active = true
 # network = "mainnet"
 # active = false
 
+# [[nodes.btc.nodes]]
+# node_name = "Third-Party Node"
+# rpc_url = "https://rpc.ankr.com/btc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
+# http_url = "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api/v2"
+# network = "mainnet"
+# active = true
+
 [[nodes.btc.nodes]]
-node_name = "Third-Party Node"
-rpc_url = "https://rpc.ankr.com/btc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
-http_url = "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api/v2"
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/btc"
+http_url = ""
 network = "mainnet"
 active = true
