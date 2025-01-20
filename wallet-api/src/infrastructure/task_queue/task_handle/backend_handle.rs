@@ -193,7 +193,6 @@ impl EndpointHandler for SpecialHandler {
                         endpoint, &body,
                     )
                     .await?;
-                tracing::warn!("chain rpc list: {:#?}", input);
                 let req = wallet_utils::serde_func::serde_from_value::<ChainRpcListReq>(body)?;
                 let mut backend_nodes = Vec::new();
                 NodeDomain::upsert_chain_rpc(&mut repo, input, &mut backend_nodes).await?;

@@ -146,14 +146,14 @@ impl NodeDomain {
     ) -> Result<(), crate::ServiceError> {
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
         let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, &chain_code, Some(0)).await?;
-        tracing::info!(
-            "[sync_nodes_and_link_to_chains] local_backend_nodes: {:#?}",
-            local_backend_nodes
-        );
-        tracing::info!(
-            "[sync_nodes_and_link_to_chains] backend_nodes: {:#?}",
-            backend_nodes
-        );
+        // tracing::info!(
+        //     "[sync_nodes_and_link_to_chains] local_backend_nodes: {:#?}",
+        //     local_backend_nodes
+        // );
+        // tracing::info!(
+        //     "[sync_nodes_and_link_to_chains] backend_nodes: {:#?}",
+        //     backend_nodes
+        // );
         let backend_node_rpcs: HashSet<String> = backend_nodes
             .iter()
             .filter(|node| chain_code.contains(&node.chain_code))
@@ -193,7 +193,7 @@ impl NodeDomain {
                 Self::set_chain_node(&mut repo, backend_nodes, &chain.chain_code).await?;
             }
         }
-        tracing::info!("[assign_missing_nodes_to_chains] end");
+        tracing::debug!("[assign_missing_nodes_to_chains] end");
         Ok(())
     }
 
