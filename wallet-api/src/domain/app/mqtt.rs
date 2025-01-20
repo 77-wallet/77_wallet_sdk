@@ -12,7 +12,6 @@ impl MqttDomain {
                 .ok_or(crate::BusinessError::Device(
                     crate::DeviceError::Uninitialized,
                 ))?;
-
         let content = DeviceDomain::device_content(&device)?;
         let client_id = DeviceDomain::client_id_by_device(&device)?;
         let md5_sn = DeviceDomain::md5_sn(&device.sn);

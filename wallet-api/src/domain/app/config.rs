@@ -165,6 +165,18 @@ impl ConfigDomain {
         Ok(())
     }
 
+    pub(crate) async fn init_mqtt_url() -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let config = ConfigDao::find_by_key(MQTT_URL, pool.as_ref()).await?;
+        if let Some(config) = config {
+            let mqtt_url = MqttUrl::try_from(config.value)?;
+            crate::Context::set_global_mqtt_url(&mqtt_url.url).await?;
+            let mut config = crate::app_state::APP_STATE.write().await;
+            config.set_mqtt_url(Some(mqtt_url.url));
+        }
+        Ok(())
+    }
+
     pub async fn init_official_website() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let official_website = ConfigDao::find_by_key(OFFICIAL_WEBSITE, pool.as_ref()).await?;
@@ -241,6 +253,9 @@ impl ConfigDomain {
     }
 
     pub async fn init_url() -> Result<(), crate::ServiceError> {
+        Self::init_mqtt_url().await?;
+        crate::WalletManager::init_mqtt().await?;
+
         Self::init_official_website().await?;
         Self::init_block_browser_url_list().await?;
         Self::init_app_install_download_url().await?;

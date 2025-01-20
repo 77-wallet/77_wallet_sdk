@@ -103,7 +103,6 @@ async fn test_sync_bill_by_address() {
     tracing::warn!("同步结果{:?}", _c);
 }
 
-
 #[tokio::test]
 async fn recent_bill() {
     let wallet_manager = get_manager().await;

@@ -8,9 +8,7 @@ use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
 pub const APP_ID: &str = "ada7d9308190fe45";
 
 use crate::{
-    infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
-    },
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
     request::devices::InitDeviceReq,
 };
 
@@ -46,7 +44,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
 
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
-            .push(Task::Initialization(InitializationTask::InitMqtt))
+            // .push(Task::Initialization(InitializationTask::InitMqtt))
             .send()
             .await?;
 

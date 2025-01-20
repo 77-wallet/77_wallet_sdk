@@ -125,7 +125,7 @@ impl TaskManager {
         let task_id = task.id.clone();
 
         let mut retry_count = 0;
-        let mut delay = 10;
+        let mut delay = 200; // 初始延迟设为 200 毫秒
 
         // while retry_count <= 10 {
         loop {
@@ -135,14 +135,14 @@ impl TaskManager {
                     let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
                     let _ = repo.task_failed(&task_id).await;
                 };
-                // 计算指数退避的延迟时间
-                delay = std::cmp::min(delay * 2, 120);
+                // 计算指数退避的延迟时间，单位是毫秒
+                delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为 120 秒（120,000 毫秒）
                 let jitter =
-                    std::time::Duration::from_secs(rand::thread_rng().gen_range(0..(delay / 2)));
-                delay = delay + jitter.as_secs();
+                    std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
+                delay = delay + jitter.as_millis() as u64; // 将延迟加上抖动
                 retry_count += 1;
-                tracing::debug!("[process_single_task] delay: {delay}, retry_count: {retry_count}, jitter: {jitter:?}");
-                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                tracing::debug!("[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}");
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 continue;
             }
             // 成功处理任务
@@ -250,7 +250,9 @@ async fn handle_initialization_task(
         }
         InitializationTask::InitMqtt => {
             let mut repo = RepositoryFactory::repo(pool.clone());
+            tracing::debug!("init mqtt start");
             domain::app::mqtt::MqttDomain::init(&mut repo).await?;
+            tracing::debug!("init mqtt end");
         }
     }
     Ok(())

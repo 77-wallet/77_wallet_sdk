@@ -30,8 +30,9 @@ async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
 }
 
 pub async fn init_some_data() -> Result<(), crate::ServiceError> {
-    let pool = Context::get_global_sqlite_pool()?;
+    crate::domain::app::config::ConfigDomain::init_url().await?;
 
+    let pool = Context::get_global_sqlite_pool()?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut node_service = NodeService::new(repo);
     node_service.init_chain_info().await?;
@@ -39,7 +40,6 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     let mut node_service = NodeService::new(repo);
     node_service.init_node_info().await?;
 
-    crate::domain::app::config::ConfigDomain::init_url().await?;
     let mut repo = RepositoryFactory::repo(pool.clone());
     crate::domain::coin::CoinDomain::init_coins(&mut repo).await?;
 
@@ -363,8 +363,10 @@ impl WalletManager {
         manager.start_task_check_loop();
 
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
-        self.init_mqtt().await?;
-
+        Tasks::new()
+            .push(Task::Initialization(InitializationTask::InitMqtt))
+            .send()
+            .await?;
         tokio::spawn(async move {
             if let Err(e) = do_some_init().await {
                 tracing::error!("init_data error: {}", e);
@@ -374,7 +376,7 @@ impl WalletManager {
         Ok(())
     }
 
-    async fn init_mqtt(&self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn init_mqtt() -> Result<(), crate::ServiceError> {
         let mqtt_init_req =
             BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
