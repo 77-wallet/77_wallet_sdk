@@ -331,6 +331,7 @@ impl MultisigTransactionService {
             queue_id,
             &multisig_account.id,
             multisig_account.threshold,
+            queue.status,
             pool.clone(),
         )
         .await?;

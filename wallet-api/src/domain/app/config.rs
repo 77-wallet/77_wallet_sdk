@@ -138,18 +138,18 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn set_version_download_url(
-        app_install_download_url: &str,
-    ) -> Result<(), crate::ServiceError> {
-        // let tx = &mut self.repo;
-        let encoded_url = urlencoding::encode(app_install_download_url);
-        let url = format!("{}/{}/{}", BASE_URL, VERSION_DOWNLOAD, encoded_url);
-        let config = wallet_database::entities::config::VersionDownloadUrl::new(&url);
-        ConfigDomain::set_config(APP_DOWNLOAD_URL, &config.to_json_str()?).await?;
-        let mut config = crate::app_state::APP_STATE.write().await;
-        config.set_app_download_url(Some(url));
-        Ok(())
-    }
+    // pub async fn set_version_download_url(
+    //     app_install_download_url: &str,
+    // ) -> Result<(), crate::ServiceError> {
+    //     // let tx = &mut self.repo;
+    //     let encoded_url = urlencoding::encode(app_install_download_url);
+    //     let url = format!("{}/{}/{}", BASE_URL, VERSION_DOWNLOAD, encoded_url);
+    //     let config = wallet_database::entities::config::VersionDownloadUrl::new(&url);
+    //     ConfigDomain::set_config(APP_DOWNLOAD_URL, &config.to_json_str()?).await?;
+    //     let mut config = crate::app_state::APP_STATE.write().await;
+    //     config.set_app_download_url(Some(url));
+    //     Ok(())
+    // }
 
     pub async fn init_app_install_download_url() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
