@@ -51,6 +51,7 @@ impl MultiSignTransAcceptCompleteMsg {
                     &item.queue_id,
                     &account.account_id,
                     account.threshold,
+                    account.status,
                     pool.clone(),
                 )
                 .await?;

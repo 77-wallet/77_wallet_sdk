@@ -154,23 +154,22 @@ impl MultisigQueueDomain {
 
         MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut params).await?;
 
-        match params.status {
-            MultisigQueueStatus::InConfirmation
-            | MultisigQueueStatus::Success
-            | MultisigQueueStatus::Fail => {}
-            _ => {
-                let multisig_account =
-                    MultisigDomain::account_by_id(&account_id, pool.clone()).await?;
+        let multisig_account = MultisigDomain::account_by_id(&account_id, pool.clone()).await?;
 
-                MultisigQueueRepo::sync_sign_status(
-                    &id,
-                    &account_id,
-                    multisig_account.threshold,
-                    pool.clone(),
-                )
-                .await?;
-            }
-        }
+        MultisigQueueRepo::sync_sign_status(
+            &id,
+            &account_id,
+            multisig_account.threshold,
+            params.status.to_i8(),
+            pool.clone(),
+        )
+        .await?;
+        // match params.status {
+        //     MultisigQueueStatus::InConfirmation
+        //     | MultisigQueueStatus::Success
+        //     | MultisigQueueStatus::Fail => {}
+        //     _ => {}
+        // }
 
         if report {
             Self::update_raw_data(&id, pool.clone()).await?;

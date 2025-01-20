@@ -177,49 +177,61 @@ impl MultisigQueueRepo {
         )
     }
 
+    // 未执行的交易修改状态(根据签名,数量)
     pub async fn sync_sign_status(
         queue_id: &str,
         account_id: &str,
         threshold: i32,
+        status: i8,
         pool: crate::DbPool,
     ) -> Result<(), crate::Error> {
-        // fetch all member sign result
-        let signature_result =
-            MultisigQueueRepo::member_signed_result(account_id, queue_id, pool.clone()).await?;
+        let status = MultisigQueueStatus::from_i8(status);
 
-        // first check self sign completed
-        let mut status = MultisigQueueStatus::HasSignature;
-        let mut remain_num = 0;
-        let mut apporved_num = 0;
+        if status != MultisigQueueStatus::Fail
+            && status != MultisigQueueStatus::Success
+            && status != MultisigQueueStatus::InConfirmation
+        {
+            // fetch all member sign result
+            let signature_result =
+                MultisigQueueRepo::member_signed_result(account_id, queue_id, pool.clone()).await?;
 
-        for sign in signature_result {
-            if sign.is_self == 1 && sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
-                status = MultisigQueueStatus::PendingSignature;
+            // first check self sign completed
+            let mut status = MultisigQueueStatus::HasSignature;
+            let mut remain_num = 0;
+            let mut apporved_num = 0;
+
+            for sign in signature_result {
+                if sign.is_self == 1 && sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
+                    status = MultisigQueueStatus::PendingSignature;
+                }
+
+                // 剩余未签名的数量
+                if sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
+                    remain_num += 1;
+                }
+
+                // 已经同意签名的数量
+                if sign.singed == MultisigSignatureStatus::Approved.to_i8() {
+                    apporved_num += 1;
+                }
             }
 
-            // 剩余未签名的数量
-            if sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
-                remain_num += 1;
+            if apporved_num >= threshold {
+                status = MultisigQueueStatus::PendingExecution;
+            } else {
+                // 如果剩余的未签名数量 + 同意签名的数量 < 阈值 则这个交易队列失败
+                if remain_num + apporved_num < threshold {
+                    return Ok(MultisigQueueDaoV1::update_fail(
+                        queue_id,
+                        SIGN_FAILED,
+                        pool.as_ref(),
+                    )
+                    .await?);
+                }
             }
 
-            // 已经同意签名的数量
-            if sign.singed == MultisigSignatureStatus::Approved.to_i8() {
-                apporved_num += 1;
-            }
+            MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?;
         }
-
-        if apporved_num >= threshold {
-            status = MultisigQueueStatus::PendingExecution;
-        } else {
-            // 如果剩余的未签名数量 + 同意签名的数量 < 阈值 则这个交易队列失败
-            if remain_num + apporved_num < threshold {
-                return Ok(
-                    MultisigQueueDaoV1::update_fail(queue_id, SIGN_FAILED, pool.as_ref()).await?,
-                );
-            }
-        }
-
-        MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?;
 
         Ok(())
     }
