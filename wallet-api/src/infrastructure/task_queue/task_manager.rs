@@ -34,7 +34,7 @@ impl TaskManager {
     }
 
     /// 启动任务检查循环
-    pub fn start_task_check_loop(&self) {
+    pub fn start_task_check(&self) {
         let running_tasks = Arc::clone(&self.running_tasks);
         tokio::spawn(async move {
             Self::task_check(running_tasks).await;

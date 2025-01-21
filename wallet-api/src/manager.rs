@@ -174,6 +174,7 @@ impl Context {
 
         // 创建 TaskManager 实例
         let task_manager = TaskManager::new();
+        task_manager.start_task_check();
 
         Ok(Context {
             dirs,
@@ -354,9 +355,8 @@ impl WalletManager {
 
     pub async fn init_data(&self) -> Result<(), crate::ServiceError> {
         // 启动任务检查循环
-        let manager = Context::get_global_task_manager()?;
-        manager.start_task_check_loop();
-
+        // let manager = Context::get_global_task_manager()?;
+        // manager.start_task_check();
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
         Tasks::new()
             .push(Task::Initialization(InitializationTask::InitMqtt))
