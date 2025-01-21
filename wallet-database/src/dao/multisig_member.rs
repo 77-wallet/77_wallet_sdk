@@ -35,6 +35,7 @@ impl MultisigMemberDaoV1 {
         DO UPDATE SET
             is_self = EXCLUDED.is_self,
             is_del = EXCLUDED.is_del,
+            confirmed = EXCLUDED.confirmed,
             updated_at = EXCLUDED.updated_at;",
         );
 

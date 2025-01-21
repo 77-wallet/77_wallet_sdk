@@ -73,8 +73,8 @@ impl OrderMultiSignAcceptCompleteMsg {
                     break;
                 }
             }
-            if flag {
-                // 所有owner都确认过，将多签账户的状态设置为2
+            if flag && account.status == MultisigAccountStatus::Pending.to_i8() {
+                // 所有owner都确认过，将多签账户的状态设待部署
                 MultisigAccountDaoV1::sync_status(
                     multi_account_id,
                     MultisigAccountStatus::Confirmed,

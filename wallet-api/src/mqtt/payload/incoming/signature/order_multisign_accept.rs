@@ -1,4 +1,5 @@
 use wallet_database::{
+    dao::multisig_account::MultisigAccountDaoV1,
     entities::{
         multisig_account::{MultiAccountOwner, MultisigAccountStatus, NewMultisigAccountEntity},
         multisig_member::MemberVo,
@@ -121,12 +122,11 @@ impl OrderMultiSignAccept {
         }
         params.status = status;
 
-        // 创建多签账户以及多签成员
-        wallet_database::dao::multisig_account::MultisigAccountDaoV1::create_account_with_member(
-            &params,
-            pool.clone(),
-        )
-        .await?;
+        let account = MultisigAccountDaoV1::find_by_id(&params.id, pool.as_ref()).await?;
+        if account.is_none() {
+            // 创建多签账户以及多签成员
+            MultisigAccountDaoV1::create_account_with_member(&params, pool.clone()).await?;
+        }
 
         let notification = Notification::new_multisig_notification(
             name,

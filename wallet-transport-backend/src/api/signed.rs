@@ -211,7 +211,7 @@ mod test {
     use crate::{
         api::BackendApi,
         request::{FindAddressRawDataReq, SignedFeeListReq, SignedFindAddressReq},
-        SignedCreateOrderReq, SignedUpdateRechargeHashReq,
+        SignedCreateOrderReq, SignedUpdateRechargeHashReq, SingedOrderCancelReq,
     };
 
     #[tokio::test]
@@ -259,6 +259,24 @@ mod test {
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .signed_order_create(req)
+            .await
+            .unwrap();
+
+        println!("[test_chain_default_list] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_cancel_multisig() {
+        init_test_log();
+        let base_url = "https://api.wallet.org";
+
+        let req = SingedOrderCancelReq {
+            order_id: "220236893877571584".to_string(),
+            raw_data: "".to_string(),
+        };
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .signed_order_cancel(&req)
             .await
             .unwrap();
 
