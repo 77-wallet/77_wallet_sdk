@@ -90,6 +90,7 @@ impl MultisigDomain {
         Ok(())
     }
 
+    // 恢复多签账号数据
     pub(crate) async fn recover_multisig_data(
         uid: &str,
         uid_list: &std::collections::HashSet<String>,
@@ -151,9 +152,9 @@ impl MultisigDomain {
         }
 
         let account_id = data.account.id.clone();
-        Self::insert(pool.clone(), data, uid_list).await?;
+        let owner = Self::insert(pool.clone(), data, uid_list).await?;
 
-        if flag {
+        if flag && owner != MultiAccountOwner::Participant {
             Self::update_raw_data(&account_id, pool.clone()).await?;
         }
 
@@ -166,6 +167,7 @@ impl MultisigDomain {
     ) -> Result<(), crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
 
+        // solana 多签账号来判断是否完成,其余链根据hash来判断
         match data.chain_code.as_str() {
             chain_code::SOLANA => match adapter {
                 domain::chain::adapter::TransactionAdapter::Solana(solana_chain) => {
@@ -195,8 +197,8 @@ impl MultisigDomain {
         Ok(())
     }
 
+    // 同步部署中多签账号的状态
     pub async fn sync_multisg_status(pool: DbPool) -> Result<(), crate::ServiceError> {
-        // 查询 部署中或者支付中的多签账号
         let mut pending_account = MultisigAccountDaoV1::pending_account(pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
@@ -234,21 +236,23 @@ impl MultisigDomain {
         Ok(())
     }
 
+    // 多签支付状态
     pub async fn hanle_pay_status(
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
     ) -> Result<(), crate::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
-
-        if let Some(tx_result) = adapter.query_tx_res(&data.deploy_hash).await? {
-            data.pay_status = if tx_result.status == 2 {
-                MultisigAccountPayStatus::Paid.to_i8()
+        if !data.fee_chain.is_empty() && !data.fee_hash.is_empty() {
+            let adapter = ChainAdapterFactory::get_transaction_adapter(&data.fee_chain).await?;
+            if let Some(tx_result) = adapter.query_tx_res(&data.fee_hash).await? {
+                data.pay_status = if tx_result.status == 2 {
+                    MultisigAccountPayStatus::Paid.to_i8()
+                } else {
+                    MultisigAccountPayStatus::PaidFail.to_i8()
+                }
             } else {
-                MultisigAccountPayStatus::PaidFail.to_i8()
-            }
-        } else {
-            if check_expiration && data.expiration_check() {
-                data.pay_status = MultisigAccountPayStatus::PaidFail.to_i8();
+                if check_expiration && data.expiration_check() {
+                    data.pay_status = MultisigAccountPayStatus::PaidFail.to_i8();
+                }
             }
         }
         Ok(())
@@ -258,7 +262,7 @@ impl MultisigDomain {
         pool: std::sync::Arc<Pool<Sqlite>>,
         data: MultisigAccountData,
         uid_list: &std::collections::HashSet<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<MultiAccountOwner, crate::ServiceError> {
         let MultisigAccountData { account, members } = data;
         let member_list = members.to_member_vo();
 
@@ -331,7 +335,7 @@ impl MultisigDomain {
 
         MultisigAccountDaoV1::create_account_with_member(&params, pool).await?;
 
-        Ok(())
+        Ok(owner)
     }
 
     pub async fn account_by_id(

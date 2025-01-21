@@ -254,13 +254,14 @@ mod test {
         Ok(())
     }
 
+    // 恢复多签张账号
     #[tokio::test]
     async fn test_recover_uid_multisig_data() -> Result<()> {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "f2ff333804bb67cfbc57ea0f00a38593e053347ab4b0e7e4f230c3b814e76cc8";
+        let uid = "2e5523e5039ba149f43d5994bce7e2973488d19cd391b6391473ecdfc2c0b5fb";
         let start_time = std::time::Instant::now();
 
         let res = crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid).await;
@@ -278,7 +279,7 @@ mod test {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await?;
 
-        let uid = "137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358";
+        let uid = "2e5523e5039ba149f43d5994bce7e2973488d19cd391b6391473ecdfc2c0b5fb";
         let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data(uid).await;
         tracing::info!("res: {res:?}");
 

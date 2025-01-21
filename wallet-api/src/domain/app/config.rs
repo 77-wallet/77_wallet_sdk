@@ -2,16 +2,13 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, APP_DOWNLOAD_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, LANGUAGE,
-            MQTT_URL, OFFICIAL_WEBSITE,
+            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, LANGUAGE, MQTT_URL,
+            OFFICIAL_WEBSITE,
         },
         Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
-use wallet_transport_backend::{
-    consts::{endpoint::VERSION_DOWNLOAD, BASE_URL},
-    response_vo::chain::ChainUrlInfo,
-};
+use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 
 pub struct ConfigDomain;
 
@@ -30,23 +27,6 @@ impl ConfigDomain {
             }
 
             return Ok(Some(min_config.value));
-            // // 币价格
-            // let token_currency = super::super::coin::TokenCurrencyGetter::get_currency(
-            //     &min_config.currency,
-            //     chain_code,
-            //     symbol,
-            // )
-            // .await?;
-
-            // if let Some(price) = token_currency.price {
-            //     if token_currency.rate == 0.0 || price == 0.0 {
-            //         return Ok(None);
-            //     }
-
-            //     return Ok(Some(min_config.value / token_currency.rate / price));
-            // } else {
-            //     return Ok(Some(0.0));
-            // }
         };
 
         Ok(None)

@@ -72,8 +72,8 @@ async fn query_bill_result() {
     let wallet_manager = get_manager().await;
 
     let req = vec![QueryBillReusltReq {
-        tx_hash: "ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a".to_string(),
-        owner: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        tx_hash: "2PfPFzv1u9yPgFsNdK4Amku2jb6cZ39u2WueAPkdnGJuuBvajDBfxWfvVESK8oCxctXFtyYwAxRvnfgfsrcWcZTx".to_string(),
+        owner: "5PvYfcS6M4VpeUoFCVQEWjkM4fFyxh4Gq2HTovW45LdN".to_string(),
     }];
 
     let c = wallet_manager.query_tx_result(req).await;
@@ -102,7 +102,6 @@ async fn test_sync_bill_by_address() {
         .await;
     tracing::warn!("同步结果{:?}", _c);
 }
-
 
 #[tokio::test]
 async fn recent_bill() {
