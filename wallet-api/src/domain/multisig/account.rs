@@ -52,12 +52,12 @@ impl MultisigDomain {
         Ok(())
     }
 
-    pub(crate) async fn recover_all_multisig_account_and_queue_data(
+    pub(crate) async fn recover_all_multisig_account_data(
         repo: &mut ResourcesRepo,
     ) -> Result<(), crate::ServiceError> {
         let wallet_list = repo.wallet_list().await?;
         for wallet in wallet_list {
-            MultisigDomain::recover_multisig_account_and_queue_data(repo, &wallet.address).await?;
+            MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
         }
         Ok(())
     }

@@ -31,7 +31,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             .is_none()
         {
             let mut repo = RepositoryFactory::repo(pool.clone());
-            MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
         }
 
         let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())

@@ -56,9 +56,28 @@ impl MultisigQueueDomain {
             .await?
             .into_iter()
             .map(|uid| uid.0)
-            .collect();
+            .collect::<Vec<String>>();
 
-        let account_ids = MultisigMemberDaoV1::list_by_uids(&uid_list, &*pool)
+        let raw_time = Self::get_raw_time(&uid_list).await?;
+
+        for uid in uid_list {
+            Self::recover_queue_data_with_raw_time(&uid, raw_time.clone()).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn recover_all_queue_data(uid: &str) -> Result<(), crate::ServiceError> {
+        let raw_time = Self::get_raw_time(&[uid.to_string()]).await?;
+        Self::recover_queue_data_with_raw_time(uid, raw_time).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn get_raw_time(
+        uid_list: &[String],
+    ) -> Result<Option<String>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let account_ids = MultisigMemberDaoV1::list_by_uids(uid_list, &*pool)
             .await
             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
             .0
@@ -71,17 +90,7 @@ impl MultisigQueueDomain {
             .await
             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
         let raw_time = queue.map(|q| q.created_at.format("%Y-%m-%d %H:%M:%S").to_string());
-
-        for uid in uid_list {
-            Self::recover_queue_data_with_raw_time(&uid, raw_time.clone()).await?;
-        }
-
-        Ok(())
-    }
-
-    pub async fn recover_all_queue_data(uid: &str) -> Result<(), crate::ServiceError> {
-        Self::recover_queue_data_with_raw_time(uid, None).await?;
-        Ok(())
+        Ok(raw_time)
     }
 
     pub async fn recover_queue_data(uid: &str) -> Result<(), crate::ServiceError> {

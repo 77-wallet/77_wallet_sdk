@@ -46,7 +46,7 @@ impl OrderMultiSignCreated {
             .is_none()
         {
             let mut repo = RepositoryFactory::repo(pool.clone());
-            MultisigDomain::recover_all_multisig_account_and_queue_data(&mut repo).await?;
+            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
         }
 
         // update multisig account data

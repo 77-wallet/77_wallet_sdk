@@ -173,7 +173,7 @@ impl MultisigMemberDaoV1 {
     }
 
     pub async fn list_by_uids<'a, E>(
-        uids: &Vec<String>,
+        uids: &[String],
         exec: E,
     ) -> Result<MultisigMemberEntities, crate::DatabaseError>
     where
