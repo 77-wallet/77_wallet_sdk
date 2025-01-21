@@ -86,7 +86,7 @@ pub struct Confirm {
     ext: serde_json::Value,
 }
 
-// biz_type = ORDER_MULTI_SIGN_ACCEPT_COMPLETE
+// biz_type = ORDER_MULTI_SIGN_SERVICE_COMPLETE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OrderMultiSignServiceComplete {
@@ -100,7 +100,7 @@ pub(crate) struct OrderMultiSignServiceComplete {
 
 impl OrderMultiSignServiceComplete {
     pub(crate) fn name(&self) -> String {
-        "ORDER_MULTI_SIGN_ACCEPT_COMPLETE".to_string()
+        "ORDER_MULTI_SIGN_SERVICE_COMPLETE".to_string()
     }
 }
 

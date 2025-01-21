@@ -1,6 +1,6 @@
 use wallet_database::{
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
-    entities::multisig_account::MultisigAccountStatus,
+    entities::multisig_account::{MultisigAccountEntity, MultisigAccountStatus},
     factory::RepositoryFactory,
 };
 
@@ -14,8 +14,6 @@ use super::OrderMultiSignAcceptCompleteMsg;
 // 参与方同意后、同步数据给其他的成员同步对应的状态数据(多签账号数据状态流转)
 impl OrderMultiSignAcceptCompleteMsg {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
         let event_name = self.name();
         let OrderMultiSignAcceptCompleteMsg {
             status,
@@ -25,20 +23,10 @@ impl OrderMultiSignAcceptCompleteMsg {
             accept_status,
         } = self;
 
-        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::ServiceError::Database)?
-            .is_none()
-        {
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
-        }
+        let account = Self::check_multisig_account_exists(multisig_account_id).await?;
 
-        let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::ServiceError::Database)?
-        else {
-            tracing::error!("[order multisig accept complete msg] multisig account not found");
+        let Some(account) = account else {
+            tracing::error!(event_name = %event_name, multisig_account_id = %multisig_account_id, "multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
 
             let data = crate::notify::NotifyEvent::Err(ErrFront {
@@ -49,8 +37,20 @@ impl OrderMultiSignAcceptCompleteMsg {
             return Err(err);
         };
 
+        Self::all_members_confirmed(&address_list, &account.id, account.status).await?;
+
+        Self::send_to_frontend(status as i8, &account.address, address_list, accept_status).await?;
+
+        Ok(())
+    }
+
+    async fn all_members_confirmed(
+        address_list: &[wallet_transport_backend::ConfirmedAddress],
+        multi_account_id: &str,
+        status: i8,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         for address in address_list.iter() {
-            let multi_account_id = &account.id;
             MultisigMemberDaoV1::sync_confirmed_and_pubkey_status(
                 multi_account_id,
                 &address.address,
@@ -62,7 +62,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-            let member = MultisigMemberDaoV1::find_records_by_id(&account.id, pool.as_ref())
+            let member = MultisigMemberDaoV1::find_records_by_id(&multi_account_id, pool.as_ref())
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
@@ -73,7 +73,7 @@ impl OrderMultiSignAcceptCompleteMsg {
                     break;
                 }
             }
-            if flag && account.status == MultisigAccountStatus::Pending.to_i8() {
+            if flag && status == MultisigAccountStatus::Pending.to_i8() {
                 // 所有owner都确认过，将多签账户的状态设待部署
                 MultisigAccountDaoV1::sync_status(
                     multi_account_id,
@@ -84,18 +84,43 @@ impl OrderMultiSignAcceptCompleteMsg {
                 .map_err(crate::ServiceError::Database)?;
             }
         }
+        Ok(())
+    }
 
+    async fn send_to_frontend(
+        status: i8,
+        address: &str,
+        address_list: Vec<wallet_transport_backend::ConfirmedAddress>,
+        accept_status: bool,
+    ) -> Result<(), crate::ServiceError> {
         let data = crate::notify::NotifyEvent::OrderMultiSignAcceptCompleteMsg(
             OrderMultiSignAcceptCompleteMsgFrontend {
                 status: status as i8,
-                multisign_address: account.address,
+                multisign_address: address.to_string(),
                 address_list,
                 accept_status,
             },
         );
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
-
         Ok(())
+    }
+
+    async fn check_multisig_account_exists(
+        multisig_account_id: &str,
+    ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
+        }
+
+        MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)
     }
 }
 
