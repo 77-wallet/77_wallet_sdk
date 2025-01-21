@@ -182,11 +182,13 @@ impl MultisigQueueDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"update multisig_queue set status = ? where id = ?"#;
+        let sql = r#"update multisig_queue set status = ? where id = ? and status not in (?,?)"#;
 
         let _res = sqlx::query(sql)
             .bind(status.to_i8())
             .bind(id)
+            .bind(MultisigQueueStatus::Fail.to_i8())
+            .bind(MultisigQueueStatus::Success.to_i8())
             .execute(exec)
             .await?;
 
@@ -203,7 +205,7 @@ impl MultisigQueueDaoV1 {
     {
         let sql = r#"update multisig_queue set status = ?,fail_reason = ? where id = ?"#;
 
-        sqlx::query(sql)
+        let _rs = sqlx::query(sql)
             .bind(MultisigQueueStatus::Fail.to_i8())
             .bind(reason)
             .bind(id)

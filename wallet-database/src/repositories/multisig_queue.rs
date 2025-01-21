@@ -250,13 +250,13 @@ impl MultisigQueueRepo {
         Ok(MultisigSignatureDaoV1::get_signed_list(queue_id, &*self.repo.db_pool).await?)
     }
 
-    pub async fn update_queue_status(
-        &self,
-        queue_id: &str,
-        status: MultisigQueueStatus,
-    ) -> Result<(), crate::Error> {
-        Ok(MultisigQueueDaoV1::update_status(queue_id, status, &*self.repo.db_pool).await?)
-    }
+    // pub async fn update_queue_status(
+    //     &self,
+    //     queue_id: &str,
+    //     status: MultisigQueueStatus,
+    // ) -> Result<(), crate::Error> {
+    //     Ok(MultisigQueueDaoV1::update_status(queue_id, status, &*self.repo.db_pool).await?)
+    // }
 
     pub async fn update_status_and_hash(
         &mut self,
