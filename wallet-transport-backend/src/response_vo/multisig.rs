@@ -206,3 +206,9 @@ pub struct FindAddressRawData {
 pub struct FindAddressRawDataRes {
     pub list: Vec<FindAddressRawData>,
 }
+
+#[derive(Deserialize, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MultisigAccountIsCancelRes {
+    pub status: bool,
+}

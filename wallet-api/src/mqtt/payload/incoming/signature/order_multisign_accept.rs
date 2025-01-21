@@ -10,7 +10,7 @@ use wallet_database::{
 use crate::{
     manager::Context,
     notify::event::multisig::OrderMultiSignAcceptFrontend,
-    service::{account::AccountService, system_notification::SystemNotificationService},
+    service::system_notification::SystemNotificationService,
     system_notification::{Notification, NotificationType},
 };
 
@@ -65,13 +65,23 @@ impl OrderMultiSignAccept {
             ref memeber,
         } = self;
         let pool = Context::get_global_sqlite_pool()?;
-        let repo = RepositoryFactory::repo(pool.clone());
-        let account_service = AccountService::new(repo);
-        let mut tx = account_service.repo;
+        let mut repo = RepositoryFactory::repo(pool.clone());
+        // 查询后端接口，判断是否账户已被取消
+        let backend_api = crate::Context::get_global_backend_api()?;
+        let is_cancel = backend_api.check_multisig_account_is_cancel(id).await?;
+        if is_cancel.status {
+            tracing::warn!("Multisig Account {id} has been canceled");
+            return Ok(());
+        }
 
-        let account = AccountRepoTrait::detail(&mut tx, address).await?;
+        let account = AccountRepoTrait::detail(&mut repo, address).await?;
 
-        let uid_list = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect();
+        let uid_list = repo
+            .uid_list()
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect();
 
         let mut params = NewMultisigAccountEntity::new(
             Some(id.to_string()),
@@ -97,7 +107,7 @@ impl OrderMultiSignAccept {
             }
 
             // 查询每个成员的账号，如果查到，说明是自己，修改为是自己
-            let account = AccountRepoTrait::detail(&mut tx, &m.address).await?;
+            let account = AccountRepoTrait::detail(&mut repo, &m.address).await?;
             if account.is_some() {
                 m.is_self = 1;
             }
@@ -140,7 +150,6 @@ impl OrderMultiSignAccept {
             memeber: memeber.to_vec(),
         });
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
-
         Ok(())
     }
 }

@@ -49,3 +49,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+
+// pub fn init_test_log() {
+//     tracing_subscriber::fmt()
+//         .pretty()
+//         .with_max_level(tracing::Level::DEBUG)
+//         .with_test_writer()
+//         .init();
+// }

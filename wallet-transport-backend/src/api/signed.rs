@@ -7,8 +7,9 @@ use crate::{
         address::AddressUidList,
         multisig::{DepositAddress, MultisigServiceFees},
     },
-    FindAddressRawDataRes, SignedCreateOrderReq, SignedOrderAcceptReq, SignedSaveAddressReq,
-    SignedUpdateRechargeHashReq, SignedUpdateSignedHashReq, SingedOrderCancelReq,
+    FindAddressRawDataRes, MultisigAccountIsCancelRes, SignedCreateOrderReq, SignedOrderAcceptReq,
+    SignedSaveAddressReq, SignedUpdateRechargeHashReq, SignedUpdateSignedHashReq,
+    SingedOrderCancelReq,
 };
 
 impl BackendApi {
@@ -189,6 +190,18 @@ impl BackendApi {
         self.post_request::<_, ()>("/signed/order/saveRawData", req)
             .await
     }
+
+    pub async fn check_multisig_account_is_cancel(
+        &self,
+        account_id: &str,
+    ) -> Result<MultisigAccountIsCancelRes, crate::Error> {
+        let req = serde_json::json!({
+            "orderId":account_id.to_string(),
+        });
+
+        self.post_request::<_, MultisigAccountIsCancelRes>("signed/order/findCancelStatusById", req)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -320,6 +333,19 @@ mod test {
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .signed_order_update_recharge_hash(&req)
+            .await
+            .unwrap();
+        println!("[test_signed_order_update_signed_hash] res: {res:?}");
+    }
+
+    #[tokio::test]
+    async fn test_query_multisig_account() {
+        init_test_log();
+        let base_url = "https://test-api.puke668.top";
+        let id = "214178817818890240";
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .check_multisig_account_is_cancel(id)
             .await
             .unwrap();
         println!("[test_signed_order_update_signed_hash] res: {res:?}");
