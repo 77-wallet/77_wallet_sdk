@@ -164,12 +164,6 @@ impl MultisigQueueDomain {
             pool.clone(),
         )
         .await?;
-        // match params.status {
-        //     MultisigQueueStatus::InConfirmation
-        //     | MultisigQueueStatus::Success
-        //     | MultisigQueueStatus::Fail => {}
-        //     _ => {}
-        // }
 
         if report {
             Self::update_raw_data(&id, pool.clone()).await?;

@@ -39,6 +39,7 @@ pub struct SignedCreateOrderReq {
 #[derive(Deserialize, Debug, Serialize)]
 pub struct SignedElement {
     pub salt: String,
+    pub authority_addr: String,
 }
 
 impl SignedCreateOrderReq {
@@ -51,9 +52,10 @@ impl SignedCreateOrderReq {
             multi_sig_address: multisig_address.to_string(),
         }
     }
-    pub fn with_elements(mut self, elements: &str) -> Self {
+    pub fn with_elements(mut self, elements: &str, authority_addr: &str) -> Self {
         let elements = SignedElement {
             salt: elements.to_string(),
+            authority_addr: authority_addr.to_string(),
         };
         self.multi_sig_elements = Some(elements);
         self
@@ -103,12 +105,14 @@ impl SignedUpdateSignedHashReq {
         order_id: &str,
         hash: &str,
         multisig_address: &str,
-        multi_sig_elements: &str,
+        salt: &str,
+        authority_addr: &str,
         tx_str: String,
         raw_data: String,
     ) -> Self {
         let element = SignedElement {
-            salt: multi_sig_elements.to_string(),
+            salt: salt.to_string(),
+            authority_addr: authority_addr.to_string(),
         };
         Self {
             order_id: order_id.to_string(),

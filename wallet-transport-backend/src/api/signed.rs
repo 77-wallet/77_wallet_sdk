@@ -242,7 +242,7 @@ mod test {
         let multisig_address = "0x1C2Ce4352f86D37715EA3a8De1D7122ff8760149";
 
         let req = SignedCreateOrderReq::new(chain_code, address, multisig_address)
-            .with_elements(&1.to_string());
+            .with_elements(&1.to_string(), "2");
         let res = BackendApi::new(Some(base_url.to_string()), None)
             .unwrap()
             .signed_order_create(req)

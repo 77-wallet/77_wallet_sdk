@@ -23,8 +23,6 @@ async fn test_fee() {
 
     let from = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
     let to = "3L4PXQqgsh4j6yoGvXLdaHJWPJQumG1yA4";
-    let from = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
-    let to = "3L4PXQqgsh4j6yoGvXLdaHJWPJQumG1yA4";
     let value = "0.00087585";
     let chain_code = "btc";
     let symbol = "BTC";

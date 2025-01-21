@@ -49,6 +49,14 @@ impl MultisigAccountDaoV1 {
             DO UPDATE SET
                 is_del = EXCLUDED.is_del,
                 status = EXCLUDED.status,
+                name = EXCLUDED.name,
+                address = EXCLUDED.address,
+                address_type = EXCLUDED.address_type,
+                deploy_hash = EXCLUDED.deploy_hash,
+                fee_hash = EXCLUDED.fee_hash,
+                authority_addr = EXCLUDED.authority_addr,
+                fee_chain = EXCLUDED.fee_chain,
+                salt = EXCLUDED.salt,
                 pay_status = EXCLUDED.pay_status,
                 owner = EXCLUDED.owner,
                 updated_at = EXCLUDED.updated_at

@@ -265,7 +265,7 @@ impl MultisigAccountService {
     ) -> Result<Pagination<MultisigAccountList>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        // 同步多签张阿红的状态
+        // 同步部署中多签账号的状态
         let _r = domain::multisig::MultisigDomain::sync_multisg_status(pool.clone()).await;
 
         let mut res = self
@@ -670,6 +670,7 @@ impl MultisigAccountService {
             &hash,
             &account.address,
             &account.salt,
+            &account.authority_addr,
             multisig_args.to_json_str()?,
             raw_data.to_string()?,
         );
