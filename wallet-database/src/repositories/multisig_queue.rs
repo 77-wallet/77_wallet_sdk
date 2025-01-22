@@ -57,8 +57,10 @@ impl MultisigQueueRepo {
                 )
                 .await?;
                 match exists {
-                    Some(_) => {
-                        MultisigSignatureDaoV1::update_status(signature, tx.as_mut()).await?
+                    Some(sign) => {
+                        if !sign.signature.is_empty() {
+                            MultisigSignatureDaoV1::update_status(signature, tx.as_mut()).await?
+                        }
                     }
                     None => {
                         MultisigSignatureDaoV1::create_signature(signature, tx.as_mut()).await?
