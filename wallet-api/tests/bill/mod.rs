@@ -85,8 +85,8 @@ async fn query_bill_result() {
 async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
-    let chain_code = "bnb".to_string();
-    let address = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3".to_string();
+    let chain_code = "sol".to_string();
+    let address = "BkbVqU6xGt58eqAqZYk32BpC3stazj8oeKFbLdqsvdDK".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
     tracing::warn!("同步结果{:?}", _c);
 }
