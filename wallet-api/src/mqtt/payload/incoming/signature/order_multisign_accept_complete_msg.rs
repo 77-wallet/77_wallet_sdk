@@ -1,6 +1,6 @@
 use wallet_database::{
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
-    entities::multisig_account::{MultisigAccountEntity, MultisigAccountStatus},
+    entities::multisig_account::MultisigAccountStatus,
 };
 
 use crate::{
@@ -28,7 +28,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             "Starting to process OrderMultiSignAcceptCompleteMsg"
         );
 
-        let account = Self::check_multisig_account_exists(multisig_account_id).await?;
+        let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
 
         let Some(account) = account else {
             tracing::error!(event_name = %event_name, multisig_account_id = %multisig_account_id, "multisig account not found");
@@ -117,27 +117,6 @@ impl OrderMultiSignAcceptCompleteMsg {
         );
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
         Ok(())
-    }
-
-    async fn check_multisig_account_exists(
-        multisig_account_id: &str,
-    ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::ServiceError::Database)?
-            .is_none()
-        {
-            tracing::warn!(
-                multisig_account_id = %multisig_account_id,
-                "Multisig account not found, attempting recovery"
-            );
-            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
-        }
-
-        MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::ServiceError::Database)
     }
 }
 

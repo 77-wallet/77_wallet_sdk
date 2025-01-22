@@ -9,25 +9,20 @@ use super::OrderMultiSignCancel;
 
 impl OrderMultiSignCancel {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+        let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let OrderMultiSignCancel {
             ref multisig_account_id,
         } = self;
-
-        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::ServiceError::Database)?
-            .is_none()
-        {
-            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
-        }
-
-        let multisig_account = MultisigAccountDaoV1::find_by_id(multisig_account_id, &*pool)
-            .await
-            .map_err(crate::ServiceError::Database)?;
+        tracing::info!(
+            event_name = %event_name,
+            multisig_account_id = %multisig_account_id,
+            "Starting to process OrderMultiSignCancel"
+        );
+        let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
 
         // check
-        if let Some(multisig_account) = multisig_account {
+        if let Some(multisig_account) = account {
             MultisigAccountDaoV1::logic_del_multisig_account(multisig_account_id, &*pool)
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
