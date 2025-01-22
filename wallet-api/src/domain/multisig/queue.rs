@@ -112,8 +112,11 @@ impl MultisigQueueDomain {
         let backend = crate::manager::Context::get_global_backend_api()?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let req =
-            wallet_transport_backend::request::FindAddressRawDataReq::new_trans(uid, raw_time);
+        let req = wallet_transport_backend::request::FindAddressRawDataReq::new_trans(
+            Some(uid.to_string()),
+            raw_time,
+            None,
+        );
         let data = backend.address_find_address_raw_data(req).await?;
 
         let list = data.list;

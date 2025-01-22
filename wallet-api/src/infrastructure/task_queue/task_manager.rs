@@ -302,7 +302,7 @@ async fn handle_common_task(
             domain::multisig::MultisigQueueDomain::sync_queue_status(&data.id).await?
         }
         CommonTask::RecoverMultisigAccountData(uid) => {
-            domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid).await?;
+            domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid, None).await?;
             MultisigQueueDomain::recover_all_queue_data(&uid).await?;
         }
         CommonTask::SyncNodesAndLinkToChains(data) => {

@@ -1,7 +1,6 @@
 use wallet_database::{
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
     entities::multisig_account::{MultisigAccountEntity, MultisigAccountStatus},
-    factory::RepositoryFactory,
 };
 
 use crate::{
@@ -133,8 +132,7 @@ impl OrderMultiSignAcceptCompleteMsg {
                 multisig_account_id = %multisig_account_id,
                 "Multisig account not found, attempting recovery"
             );
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
+            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
         }
 
         MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())

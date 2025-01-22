@@ -384,7 +384,7 @@ impl AddressInitReq {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FindAddressRawDataReq {
-    pub uid: String,
+    pub uid: Option<String>,
     // pub address: String,
     // pub chain_code: String,
     /// 类型：multisig：多签账户创建流程，trans：交易流程
@@ -392,38 +392,47 @@ pub struct FindAddressRawDataReq {
     pub r#type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_time: Option<String>,
+    pub business_id: Option<String>,
 }
 
 impl FindAddressRawDataReq {
     pub fn new(
-        uid: &str,
+        uid: Option<String>,
         // address: &str,
         // chain_code: &str,
         r#type: Option<String>,
         raw_time: Option<String>,
+        business_id: Option<String>,
     ) -> Self {
         Self {
             // address: address.to_string(),
-            uid: uid.to_string(),
+            uid,
             // chain_code: chain_code.to_string(),
             r#type,
             raw_time,
+            business_id,
         }
     }
 
-    pub fn new_multisig(uid: &str) -> Self {
+    pub fn new_multisig(uid: Option<String>, business_id: Option<String>) -> Self {
         Self {
-            uid: uid.to_string(),
+            uid,
             r#type: Some("multisig".to_string()),
             raw_time: None,
+            business_id,
         }
     }
 
-    pub fn new_trans(uid: &str, raw_time: Option<String>) -> Self {
+    pub fn new_trans(
+        uid: Option<String>,
+        raw_time: Option<String>,
+        business_id: Option<String>,
+    ) -> Self {
         Self {
-            uid: uid.to_string(),
+            uid,
             r#type: Some("trans".to_string()),
             raw_time,
+            business_id,
         }
     }
 }

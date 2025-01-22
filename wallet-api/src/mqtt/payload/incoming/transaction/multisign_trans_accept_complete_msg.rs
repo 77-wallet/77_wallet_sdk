@@ -38,7 +38,7 @@ impl MultiSignTransAcceptCompleteMsg {
                 .is_none()
             {
                 let mut repo = RepositoryFactory::repo(pool.clone());
-                MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
+                MultisigDomain::recover_multisig_data_by_address(&mut repo, &item.address).await?;
             }
 
             let account =

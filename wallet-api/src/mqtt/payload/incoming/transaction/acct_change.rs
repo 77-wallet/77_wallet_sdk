@@ -346,7 +346,7 @@ async fn create_system_notification(
                 .is_none()
             {
                 let mut repo = RepositoryFactory::repo(pool.clone());
-                MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
+                MultisigDomain::recover_multisig_data_by_address(&mut repo, address).await?;
             }
 
             if let Some(multisig_account) =

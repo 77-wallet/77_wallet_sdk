@@ -1,4 +1,4 @@
-use wallet_database::{dao::multisig_account::MultisigAccountDaoV1, factory::RepositoryFactory};
+use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 
 use crate::{
     domain::multisig::MultisigDomain, notify::event::multisig::OrderMultisignCanceledFrontend,
@@ -19,8 +19,7 @@ impl OrderMultiSignCancel {
             .map_err(crate::ServiceError::Database)?
             .is_none()
         {
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
+            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
         }
 
         let multisig_account = MultisigAccountDaoV1::find_by_id(multisig_account_id, &*pool)

@@ -45,8 +45,7 @@ impl OrderMultiSignCreated {
             .map_err(crate::ServiceError::Database)?
             .is_none()
         {
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
+            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
         }
 
         // update multisig account data

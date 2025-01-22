@@ -52,13 +52,10 @@ impl MultisigDomain {
         Ok(())
     }
 
-    pub(crate) async fn recover_all_multisig_account_data(
-        repo: &mut ResourcesRepo,
+    pub(crate) async fn recover_multisig_account_by_id(
+        multisig_account_id: &str,
     ) -> Result<(), crate::ServiceError> {
-        let wallet_list = repo.wallet_list().await?;
-        for wallet in wallet_list {
-            MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
-        }
+        Self::recover_multisig_data_by_id(multisig_account_id).await?;
         Ok(())
     }
 
@@ -72,13 +69,15 @@ impl MultisigDomain {
             )),
         )?;
 
-        MultisigDomain::recover_uid_multisig_data(&wallet.uid).await?;
+        MultisigDomain::recover_uid_multisig_data(&wallet.uid, None).await?;
         MultisigQueueDomain::recover_all_queue_data(&wallet.uid).await?;
 
         Ok(())
     }
 
-    pub(crate) async fn recover_uid_multisig_data(uid: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn recover_multisig_data_by_id(
+        multisig_account_id: &str,
+    ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
@@ -86,26 +85,77 @@ impl MultisigDomain {
             .map(|uid| uid.0)
             .collect::<std::collections::HashSet<String>>();
 
-        MultisigDomain::recover_multisig_data(uid, &uid_list).await?;
+        MultisigDomain::recover_multisig_data(
+            None,
+            &uid_list,
+            Some(multisig_account_id.to_string()),
+            None,
+        )
+        .await?;
+        Ok(())
+    }
+    pub(crate) async fn recover_multisig_data_by_address(
+        repo: &mut ResourcesRepo,
+        multisig_account_address: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let wallet_list = repo.wallet_list().await?;
+        for wallet in wallet_list {
+            MultisigDomain::recover_uid_multisig_data(
+                &wallet.uid,
+                Some(multisig_account_address.to_string()),
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn recover_uid_multisig_data(
+        uid: &str,
+        filter_multisig_account_address: Option<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let uid_list = WalletEntity::uid_list(&*pool)
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect::<std::collections::HashSet<String>>();
+
+        MultisigDomain::recover_multisig_data(
+            Some(uid.to_string()),
+            &uid_list,
+            None,
+            filter_multisig_account_address,
+        )
+        .await?;
         Ok(())
     }
 
     // 恢复多签账号数据
     pub(crate) async fn recover_multisig_data(
-        uid: &str,
+        uid: Option<String>,
         uid_list: &std::collections::HashSet<String>,
+        business_id: Option<String>,
+        filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let req = FindAddressRawDataReq::new_multisig(uid);
+        let req = FindAddressRawDataReq::new_multisig(uid, business_id);
         let data = backend.address_find_address_raw_data(req).await?;
 
         for multisig_raw_data in data.list {
             let Some(raw_data) = multisig_raw_data.raw_data else {
                 continue;
             };
-            if let Err(e) = Self::handle_one_mutlisg_data(&raw_data, pool.clone(), uid_list).await {
+            if let Err(e) = Self::handle_one_mutlisg_data(
+                &raw_data,
+                pool.clone(),
+                uid_list,
+                filter_multisig_account_address.clone(),
+            )
+            .await
+            {
                 tracing::error!("recover multisig data error :{}", e);
             }
         }
@@ -129,9 +179,14 @@ impl MultisigDomain {
         raw_data: &str,
         pool: DbPool,
         uid_list: &std::collections::HashSet<String>,
+        filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         let mut data = MultisigAccountData::from_string(raw_data)?;
-
+        if let Some(multisig_account_address) = filter_multisig_account_address {
+            if multisig_account_address != data.account.address {
+                return Ok(());
+            }
+        }
         let mut flag = false;
         // handle deploy status
         if !data.account.deploy_hash.is_empty()

@@ -261,10 +261,31 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "2e5523e5039ba149f43d5994bce7e2973488d19cd391b6391473ecdfc2c0b5fb";
+        let uid = "748f704632992c5af83b85f5ea1aeab499341850e3a050e1d4da749980789f18";
+        let address = Some("2hJAQuxY5PZsQAK2Jm3zjjNUPw7ph3yoFurJyGLTSBCC".to_string());
         let start_time = std::time::Instant::now();
 
-        let res = crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid).await;
+        let res =
+            crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid, address).await;
+        let elapsed_time = start_time.elapsed();
+        tracing::info!(
+            "test_recover_multisig_data elapsed time: {:?}",
+            elapsed_time
+        );
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_recover_multisig_data_by_id() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (_, _) = get_manager().await?;
+
+        // 前端的uid
+        let id = "218406973127921664";
+        let start_time = std::time::Instant::now();
+
+        let res = crate::domain::multisig::MultisigDomain::recover_multisig_account_by_id(id).await;
         let elapsed_time = start_time.elapsed();
         tracing::info!(
             "test_recover_multisig_data elapsed time: {:?}",

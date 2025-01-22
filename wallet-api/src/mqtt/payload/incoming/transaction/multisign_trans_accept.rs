@@ -111,8 +111,7 @@ impl MultiSignTransAccept {
             .map_err(crate::ServiceError::Database)?
             .is_none()
         {
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
+            MultisigDomain::recover_multisig_account_by_id(id).await?;
         }
 
         if let Some(multisig_account) =
