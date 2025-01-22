@@ -22,6 +22,12 @@ impl OrderMultiSignAcceptCompleteMsg {
             address_list,
             accept_status,
         } = self;
+        tracing::info!(
+            event_name = %event_name,
+            status = %status,
+            multisig_account_id = %multisig_account_id,
+            "Starting to process OrderMultiSignAcceptCompleteMsg"
+        );
 
         let account = Self::check_multisig_account_exists(multisig_account_id).await?;
 
@@ -38,7 +44,11 @@ impl OrderMultiSignAcceptCompleteMsg {
         };
 
         Self::all_members_confirmed(&address_list, &account.id, account.status).await?;
-
+        tracing::info!(
+            event_name = %event_name,
+            multisig_account_id = %account.id,
+            "All members confirmed for account"
+        );
         Self::send_to_frontend(status as i8, &account.address, address_list, accept_status).await?;
 
         Ok(())
@@ -66,6 +76,11 @@ impl OrderMultiSignAcceptCompleteMsg {
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
+            tracing::info!(
+                multi_account_id = %multi_account_id,
+                address = %address.address,
+                "Successfully synced confirmed status for member"
+            );
             let mut flag = true;
             for item in member.0.iter() {
                 if item.confirmed != 1 {
@@ -114,6 +129,10 @@ impl OrderMultiSignAcceptCompleteMsg {
             .map_err(crate::ServiceError::Database)?
             .is_none()
         {
+            tracing::warn!(
+                multisig_account_id = %multisig_account_id,
+                "Multisig account not found, attempting recovery"
+            );
             let mut repo = RepositoryFactory::repo(pool.clone());
             MultisigDomain::recover_all_multisig_account_data(&mut repo).await?;
         }
