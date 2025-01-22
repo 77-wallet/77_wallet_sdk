@@ -86,7 +86,6 @@ impl NodeDomain {
             Ok(nodes) => {
                 Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
 
-                // FIXME:
                 Tasks::new()
                     .push(Task::Common(CommonTask::SyncNodesAndLinkToChains(
                         backend_nodes,
@@ -165,10 +164,10 @@ impl NodeDomain {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
-                tracing::info!(
-                    "[sync_nodes_and_link_to_chains] remove node: {}",
-                    node.node_id
-                );
+                // tracing::info!(
+                //     "[sync_nodes_and_link_to_chains] remove node: {}",
+                //     node.node_id
+                // );
                 Self::set_chain_node(repo, backend_nodes, &node.chain_code).await?;
             }
         }

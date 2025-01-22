@@ -312,7 +312,6 @@ async fn handle_common_task(
                 .into_iter()
                 .map(|chain| chain.chain_code)
                 .collect();
-            tracing::info!("[SyncNodesAndLinkToChains] chain_codes: {:#?}", chain_codes);
             NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &data).await?;
         }
     }

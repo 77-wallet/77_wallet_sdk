@@ -105,8 +105,7 @@ mod tests {
     async fn test_oss_client() {
         let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET_NAME, ENDPOINT);
         println!("oss_client: {oss_client:#?}");
-        let file_path =
-            "/Users/qiuwenjing/workspace/work/rust/77_wallet_core/wallet-transport/test.txt";
+        let file_path = "/Users/qiuwenjing/workspace/work/rust/77_wallet_sdk/wallet-oss/test.txt";
         let file_name = "test.txt";
         let result = oss_client.upload_local_file(file_path, file_name).await;
         println!("result: {result:?}");
@@ -129,6 +128,7 @@ mod tests {
         let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET_NAME, ENDPOINT);
         let _file_name = "test.txt";
         // let _file_name = "sdk:2024-10-07 10:36:00.txt";
+        let _file_name = "sdk:2025-01-22 14:18:51.txt";
         let result = oss_client.get_object(_file_name).await.unwrap();
         println!(
             "file content: {}",
