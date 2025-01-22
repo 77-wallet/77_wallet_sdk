@@ -30,6 +30,10 @@ impl OrderMultiSignAccept {
     pub fn to_json_str(&self) -> Result<String, crate::error::ServiceError> {
         Ok(wallet_utils::serde_func::serde_to_string(self)?)
     }
+
+    pub(crate) fn name(&self) -> String {
+        "ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG".to_string()
+    }
 }
 
 // biz_type = ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG

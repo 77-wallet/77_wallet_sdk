@@ -55,12 +55,19 @@ impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
 
 impl OrderMultiSignAccept {
     async fn check_if_cancelled(id: &str) -> Result<bool, crate::ServiceError> {
+        tracing::info!("Checking if multisig account {} is cancelled...", id);
         let backend_api = crate::Context::get_global_backend_api()?;
         let is_cancel = backend_api.check_multisig_account_is_cancel(id).await?;
+        tracing::info!(
+            "Multisig account {} cancellation status: {}",
+            id,
+            is_cancel.status
+        );
         Ok(is_cancel.status)
     }
 
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
+        let event_name = self.name();
         let OrderMultiSignAccept {
             ref id,
             ref name,
@@ -71,6 +78,14 @@ impl OrderMultiSignAccept {
             ref address_type,
             ref memeber,
         } = self;
+        tracing::info!(
+            event_name = %event_name,
+            initiator_addr = %initiator_addr,
+            address = %address,
+            multisig_account_id = %id,
+            "Starting to process OrderMultiSignAccept"
+        );
+
         let pool = Context::get_global_sqlite_pool()?;
         let mut repo = RepositoryFactory::repo(pool.clone());
         // 查询后端接口，判断是否账户已被取消
@@ -99,6 +114,9 @@ impl OrderMultiSignAccept {
             memeber.to_owned(),
             &uid_list,
         );
+
+        tracing::info!("Created NewMultisigAccountEntity for account {}", id);
+
         // 如果查到该账号，说明是自己，修改Owner为自己
         params.owner = match account {
             Some(_) => MultiAccountOwner::Owner,
@@ -127,6 +145,7 @@ impl OrderMultiSignAccept {
         repo: &mut ResourcesRepo,
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::ServiceError> {
+        tracing::info!("Updating member info for multisig account {}", params.id);
         let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
             if m.confirmed != 1 {
@@ -195,11 +214,13 @@ impl OrderMultiSignAccept {
     async fn sync_multisig_account(
         params: NewMultisigAccountEntity,
     ) -> Result<(), crate::ServiceError> {
+        tracing::info!("Synchronizing multisig account {}", params.id);
         let pool = Context::get_global_sqlite_pool()?;
         let account = MultisigAccountDaoV1::find_by_id(&params.id, pool.as_ref()).await?;
         if account.is_none() {
             // 创建多签账户以及多签成员
             MultisigAccountDaoV1::create_account_with_member(&params, pool.clone()).await?;
+            tracing::info!("Multisig account {} created.", params.id);
         }
         Ok(())
     }
