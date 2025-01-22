@@ -90,7 +90,9 @@ impl OrderMultiSignAccept {
         let mut repo = RepositoryFactory::repo(pool.clone());
         // 查询后端接口，判断是否账户已被取消
         if Self::check_if_cancelled(id).await? {
-            tracing::warn!("Multisig Account {id} has been canceled");
+            tracing::warn!(
+                event_name = %event_name,
+                "Multisig Account {id} has been canceled");
             return Ok(());
         }
 
@@ -115,8 +117,6 @@ impl OrderMultiSignAccept {
             &uid_list,
         );
 
-        tracing::info!("Created NewMultisigAccountEntity for account {}", id);
-
         // 如果查到该账号，说明是自己，修改Owner为自己
         params.owner = match account {
             Some(_) => MultiAccountOwner::Owner,
@@ -124,9 +124,15 @@ impl OrderMultiSignAccept {
         };
 
         Self::update_member_info(&mut repo, &mut params).await?;
+        tracing::info!(
+            event_name = %event_name,
+            "Update member info for account {id}");
 
         Self::sync_multisig_account(params).await?;
 
+        tracing::info!(
+            event_name = %event_name,
+            "Sync multisig for account {id}");
         Self::send_system_notification(msg_id, name, address, &id).await?;
 
         Self::send_to_frontend(
@@ -145,7 +151,6 @@ impl OrderMultiSignAccept {
         repo: &mut ResourcesRepo,
         params: &mut NewMultisigAccountEntity,
     ) -> Result<(), crate::ServiceError> {
-        tracing::info!("Updating member info for multisig account {}", params.id);
         let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
             if m.confirmed != 1 {
@@ -214,7 +219,6 @@ impl OrderMultiSignAccept {
     async fn sync_multisig_account(
         params: NewMultisigAccountEntity,
     ) -> Result<(), crate::ServiceError> {
-        tracing::info!("Synchronizing multisig account {}", params.id);
         let pool = Context::get_global_sqlite_pool()?;
         let account = MultisigAccountDaoV1::find_by_id(&params.id, pool.as_ref()).await?;
         if account.is_none() {

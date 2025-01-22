@@ -72,6 +72,12 @@ pub struct OrderMultiSignCreated {
     pub fee_chain: Option<String>,
 }
 
+impl OrderMultiSignCreated {
+    pub(crate) fn name(&self) -> String {
+        "ORDER_MULTI_SIGN_CREATED".to_string()
+    }
+}
+
 impl OrderMultiSignAcceptCompleteMsg {
     pub(crate) fn name(&self) -> String {
         "ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG".to_string()
@@ -114,6 +120,12 @@ impl OrderMultiSignServiceComplete {
 pub(crate) struct OrderMultiSignCancel {
     // 多签账户id
     multisig_account_id: String,
+}
+
+impl OrderMultiSignCancel {
+    pub(crate) fn name(&self) -> String {
+        "ORDER_MULTI_SIGN_CANCEL".to_string()
+    }
 }
 
 #[cfg(test)]

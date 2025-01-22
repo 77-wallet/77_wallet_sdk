@@ -671,4 +671,25 @@ impl MultisigDomain {
         Tasks::new().push(device_unbind_address_task).send().await?;
         Ok(())
     }
+
+    pub(crate) async fn check_multisig_account_exists(
+        multisig_account_id: &str,
+    ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            tracing::warn!(
+                multisig_account_id = %multisig_account_id,
+                "Multisig account not found, attempting recovery"
+            );
+            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
+        }
+
+        MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)
+    }
 }

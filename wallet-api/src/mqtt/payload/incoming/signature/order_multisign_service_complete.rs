@@ -37,12 +37,19 @@ use super::OrderMultiSignServiceComplete;
 
 impl OrderMultiSignServiceComplete {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+        let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let OrderMultiSignServiceComplete {
             ref multisig_account_id,
             status,
             r#type,
         } = self;
+
+        tracing::info!(
+            event_name = %event_name,
+            multisig_account_id = %multisig_account_id,
+            "Starting to process OrderMultiSignServiceComplete"
+        );
         if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
             .map_err(crate::ServiceError::Database)?
