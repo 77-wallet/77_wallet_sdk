@@ -116,6 +116,32 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn delete_all<'a, E>(exec: E, typ: Option<u8>) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut sql = "DELETE FROM task_queue".to_string();
+        let mut conditions = Vec::new();
+        if typ.is_some() {
+            conditions.push("type = ?".to_string());
+        }
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let mut query = sqlx::query(&sql);
+
+        if let Some(typ) = typ {
+            query = query.bind(typ);
+        }
+
+        query
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn get_task_queue<'a, E>(exec: E, id: &str) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,

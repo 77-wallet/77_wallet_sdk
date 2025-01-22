@@ -51,7 +51,7 @@ impl CreateTaskQueueEntity {
         task_name: TaskName,
         request_body: Option<String>,
     ) -> Result<Self, crate::Error> {
-        Self::new(Some(id), task_name, request_body, 1, 0)
+        Self::new(Some(id), task_name, request_body, 2, 0)
     }
 
     pub fn with_backend_request<T: serde::Serialize>(

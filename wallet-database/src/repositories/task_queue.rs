@@ -64,4 +64,9 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::delete_old, day)
     }
+
+    async fn delete_all(&mut self, typ: Option<u8>) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::delete_all, typ)
+    }
 }

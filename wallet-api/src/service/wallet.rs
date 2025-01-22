@@ -3,8 +3,8 @@ use wallet_database::{
     entities::assets::AssetsId,
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
-        TransactionTrait as _,
+        coin::CoinRepoTrait, device::DeviceRepoTrait, task_queue::TaskQueueRepoTrait,
+        wallet::WalletRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
 };
 use wallet_transport_backend::{
@@ -735,6 +735,8 @@ impl WalletService {
         tx.update_password(None).await?;
 
         WalletRepoTrait::physical_delete_all(&mut tx).await?;
+        // 删除所有mqtt相关的任务
+        // TaskQueueRepoTrait::delete_all(&mut tx, 2).await?;
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
