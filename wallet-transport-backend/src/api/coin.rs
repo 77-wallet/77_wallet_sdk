@@ -294,7 +294,8 @@ mod test {
             .await
             .unwrap();
 
-        tracing::info!("[test_token_list] res: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("[test_token_list] res: {res}");
     }
 
     #[tokio::test]

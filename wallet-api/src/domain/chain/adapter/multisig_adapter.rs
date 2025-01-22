@@ -9,6 +9,7 @@ use crate::{
         self, CommonFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams, TronFeeDetails,
     },
 };
+use core::panic;
 use std::collections::HashMap;
 use wallet_chain_interact::{
     self as chain,
@@ -83,6 +84,7 @@ impl MultisigAdapter {
 
                 Ok(MultisigAdapter::Tron(tron_chain))
             }
+            _ => panic!("not support chain"),
         }
     }
 }

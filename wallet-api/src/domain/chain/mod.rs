@@ -85,6 +85,7 @@ pub fn check_address(
                     crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
                 })?
         }
+        _ => panic!("not support chain"),
     };
     Ok(())
 }

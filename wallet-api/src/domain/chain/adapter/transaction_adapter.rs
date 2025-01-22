@@ -79,6 +79,7 @@ impl TransactionAdapter {
                 let tron_chain = chain::tron::TronChain::new(provider)?;
                 Ok(TransactionAdapter::Tron(tron_chain))
             }
+            _ => panic!("not support chain"),
         }
     }
 }

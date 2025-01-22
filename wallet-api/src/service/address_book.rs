@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::{
     domain::{self, address_book::AddressBookDomain},
     response_vo::address_book::AddressBookResp,
@@ -127,6 +129,7 @@ impl AddressBookService {
             wallet_types::chain::chain::ChainCode::Tron => {
                 wallet_types::constant::check_black::TRON
             }
+            _ => panic!("not support chain"),
         };
 
         for token in token_address {

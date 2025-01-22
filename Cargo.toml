@@ -21,14 +21,14 @@ wallet-database = { version = "0.1.0", default-features = false, path = "wallet-
 wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 
-wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
-wallet-chain-interact = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
-wallet-chain-instance = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
-wallet-transport = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
-wallet-utils = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
-wallet-types = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
-wallet-tree = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
-wallet-core = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "b8e976dde3f63b32a801bd52c67fc098f3575a2d" }
+wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
+wallet-chain-interact = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
+wallet-chain-instance = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
+wallet-transport = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
+wallet-utils = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
+wallet-types = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
+wallet-tree = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
+wallet-core = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea4b7717d01c98054680f009b41eed88475d3963" }
 
 # wallet-keystore = { default-features = false, path = "../wallet_core/wallet-keystore" }
 # wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
