@@ -15,6 +15,7 @@ use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
 };
+use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     domain::{
@@ -524,21 +525,21 @@ impl WalletService {
         account_id: Option<u32>,
     ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
         tracing::info!("get_wallet_list start");
-        let tx = &mut self.repo;
-        let chains: ChainCodeAndName = tx.get_chain_list().await?.into();
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
-        // let service = Service::default();
-        tracing::info!("get_wallet_list get_token_currencies_v2 over");
-        let wallet_list = if let Some(wallet_address) = &wallet_address {
-            let wallet = tx
-                .wallet_detail_by_address(wallet_address)
-                .await?
-                .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
-            vec![wallet]
-        } else {
-            tx.wallet_list().await?
-        };
-        tracing::info!("get_wallet_list wallet_detail_by_address over");
+        // let tx = &mut self.repo;
+        // let chains: ChainCodeAndName = tx.get_chain_list().await?.into();
+        // let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        // // let service = Service::default();
+        // tracing::info!("get_wallet_list get_token_currencies_v2 over");
+        // let wallet_list = if let Some(wallet_address) = &wallet_address {
+        //     let wallet = tx
+        //         .wallet_detail_by_address(wallet_address)
+        //         .await?
+        //         .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+        //     vec![wallet]
+        // } else {
+        //     tx.wallet_list().await?
+        // };
+        // tracing::info!("get_wallet_list wallet_detail_by_address over");
         // let mut res = Vec::new();
         // tracing::info!("get_wallet_list 遍历钱包 start");
         // for wallet_info in wallet_list {
@@ -590,15 +591,143 @@ impl WalletService {
         // tracing::info!("get_wallet_list 遍历钱包 over");
         tracing::info!("get_wallet_list end");
 
-        let res = vec![crate::response_vo::wallet::WalletInfo {
-            address: "0x97d6f3B342395C939e978Fe8C07c9DEeD960111A".to_string(),
-            uid: "9f591267c93c6c710cd36537bfa8691495b9255f2c4dcd8b8294dde4e5727760".to_string(),
-            name: "often".to_string(),
-            balance: BalanceInfo::default(),
-            created_at: sqlx::types::chrono::Utc::now(),
-            updated_at: Some(sqlx::types::chrono::Utc::now()),
-            account_list: crate::response_vo::wallet::AccountInfos(Vec::new()),
-        }];
+        let json = serde_json::json!(
+            [{
+                "address": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                "uid": "71512c7dcca484ad9a03a0f7798e7bdd45602891ed464e0a541657137328d92d",
+                "name": "divorcer",
+                "balance": {
+                    "amount": 0.0,
+                    "currency": "USD",
+                    "unitPrice": 0.0,
+                    "fiatValue": 0.0
+                },
+                "createdAt": "2025-01-23T16:08:39Z",
+                "updatedAt": "2025-01-23T16:18:10Z",
+                "accountList": [{
+                    "accountId": 1,
+                    "accountIndexMap": {
+                        "accountId": 1,
+                        "unhardendIndex": 0,
+                        "hardenedIndex": 0,
+                        "inputIndex": 0
+                    },
+                    "name": "账户1",
+                    "balance": {
+                        "amount": 0.0,
+                        "currency": "USD",
+                        "unitPrice": 0.0,
+                        "fiatValue": 0.0
+                    },
+                    "chain": [{
+                            "address": "0x6D16BE2CEbb80B4Bf51F4C9e15FFe3950c0eD160",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/44'/60'/0'/0/0",
+                            "chainCode": "eth",
+                            "name": "ETH",
+                            "addressType": null,
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        },
+                        {
+                            "address": "0x6D16BE2CEbb80B4Bf51F4C9e15FFe3950c0eD160",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/44'/60'/0'/0/0",
+                            "chainCode": "bnb",
+                            "name": "BNB",
+                            "addressType": null,
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        },
+                        {
+                            "address": "TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/44'/195'/0'/0/0",
+                            "chainCode": "tron",
+                            "name": "TRON",
+                            "addressType": null,
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        },
+                        {
+                            "address": "bc1qeh6ehu4yxzcqkvjwy27htljp56rjunppuc4682",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/84'/0'/0'/0/0",
+                            "chainCode": "btc",
+                            "name": "BTC",
+                            "addressType": "Native SegWit",
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        },
+                        {
+                            "address": "3PLeenJWGNs58UfGPsF318BiMDqKMHTNLc",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/49'/0'/0'/0/0",
+                            "chainCode": "btc",
+                            "name": "BTC",
+                            "addressType": "Nested SegWit",
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        },
+                        {
+                            "address": "bc1p396uzj5uw4x3d70gcqrnd2euste2nvsswmglj8xrdcmejncg523sxr403h",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/86'/0'/0'/0/0",
+                            "chainCode": "btc",
+                            "name": "BTC",
+                            "addressType": "Taproot",
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        },
+                        {
+                            "address": "14VyGfccBhAVGTDt1CBV4ZkoxYfBc4vc4d",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/44'/0'/0'/0/0",
+                            "chainCode": "btc",
+                            "name": "BTC",
+                            "addressType": "Legacy",
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        },
+                        {
+                            "address": "burxycHoBDkhmEhrgny1no84nbL1yAdN1BG2BtYmRvh",
+                            "walletAddress": "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F",
+                            "derivationPath": "m/44'/501'/0'/0",
+                            "chainCode": "sol",
+                            "name": "SOLANA",
+                            "addressType": null,
+                            "createdAt": "2025-01-23T16:08:39Z",
+                            "updatedAt": "2025-01-23T16:08:40Z"
+                        }
+                    ]
+                }]
+            }
+            ]
+        );
+
+        let res = wallet_utils::serde_func::serde_from_value(json)?;
+        // vec![crate::response_vo::wallet::WalletInfo {
+        //     address: "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F".to_string(),
+        //     uid: "71512c7dcca484ad9a03a0f7798e7bdd45602891ed464e0a541657137328d92d".to_string(),
+        //     name: "divorcer".to_string(),
+        //     balance: BalanceInfo {
+        //         amount: 0.0,
+        //         currency: "USD".to_string(),
+        //         unit_price: Some(0.0),
+        //         fiat_value: Some(0.0),
+        //     },
+        //     created_at: sqlx::types::chrono::Utc::now(),
+        //     updated_at: Some(sqlx::types::chrono::Utc::now()),
+        //     account_list: crate::response_vo::wallet::AccountInfos(vec![
+        //         crate::response_vo::wallet::AccountInfo {
+        //             account_id: 1,
+        //             account_index_map: AccountIndexMap::from_input_index(0),
+        //             name: todo!(),
+        //             balance: todo!(),
+        //             chain: todo!(),
+        //         },
+        //     ]),
+        // }];
         Ok(res)
     }
 

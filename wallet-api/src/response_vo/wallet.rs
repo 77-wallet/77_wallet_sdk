@@ -32,7 +32,7 @@ pub struct GetPhraseRes {
 //     pub wallet_list: std::collections::HashMap<String, WalletInfo>,
 // }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletInfo {
     pub address: String,
@@ -44,7 +44,7 @@ pub struct WalletInfo {
     pub account_list: AccountInfos,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountInfo {
     pub account_id: u32,
@@ -54,7 +54,7 @@ pub struct AccountInfo {
     pub chain: Vec<ChainInfo>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainInfo {
     pub address: String,
@@ -67,7 +67,7 @@ pub struct ChainInfo {
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountInfos(pub Vec<AccountInfo>);
 

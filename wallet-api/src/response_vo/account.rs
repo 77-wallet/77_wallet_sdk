@@ -143,7 +143,7 @@ impl Resource {
     }
 }
 
-#[derive(Debug, serde::Serialize, Default)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceInfo {
     // amount of token
