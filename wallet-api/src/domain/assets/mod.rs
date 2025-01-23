@@ -259,16 +259,17 @@ impl AssetsDomain {
             .collect();
 
         // 在单个事务中批量更新数据库
-        let mut tx = pool.begin().await.expect("开启事务失败");
+        // let mut tx = pool.begin().await.expect("开启事务失败");
         for (assets_id, balance) in results.iter() {
-            if let Err(e) = AssetsEntity::update_balance(tx.as_mut(), &assets_id, &balance).await {
+            // if let Err(e) = AssetsEntity::update_balance(tx.as_mut(), &assets_id, &balance).await {
+            if let Err(e) = AssetsEntity::update_balance(&*pool, &assets_id, &balance).await {
                 tracing::error!("更新余额出错: {}", e);
             }
         }
         // 提交事务
-        if let Err(e) = tx.commit().await {
-            tracing::error!("提交事务失败: {}", e);
-        }
+        // if let Err(e) = tx.commit().await {
+        //     tracing::error!("提交事务失败: {}", e);
+        // }
 
         Ok(results)
     }
