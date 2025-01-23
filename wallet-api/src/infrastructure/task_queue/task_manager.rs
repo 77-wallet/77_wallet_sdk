@@ -113,7 +113,7 @@ impl TaskManager {
                     // 检查并更新 running_tasks
                     if running_tasks.insert(task_id.clone()) {
                         let running_tasks_clone = Arc::clone(&running_tasks);
-                        tokio::spawn(Self::process_single_task(task, running_tasks_clone));
+                        // tokio::spawn(Self::process_single_task(task, running_tasks_clone));
                     }
                 }
             }

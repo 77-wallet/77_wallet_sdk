@@ -174,7 +174,7 @@ impl Context {
 
         // 创建 TaskManager 实例
         let task_manager = TaskManager::new();
-        task_manager.start_task_check();
+        // task_manager.start_task_check();
 
         Ok(Context {
             dirs,
