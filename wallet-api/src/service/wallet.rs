@@ -524,11 +524,11 @@ impl WalletService {
         account_id: Option<u32>,
     ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
         tracing::info!("get_wallet_list start");
-        // let tx = &mut self.repo;
-        // let chains: ChainCodeAndName = tx.get_chain_list().await?.into();
-        // let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
-        // // let service = Service::default();
-        // tracing::info!("get_wallet_list get_token_currencies_v2 over");
+        let tx = &mut self.repo;
+        let chains: ChainCodeAndName = tx.get_chain_list().await?.into();
+        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        // let service = Service::default();
+        tracing::info!("get_wallet_list get_token_currencies_v2 over");
         // let wallet_list = if let Some(wallet_address) = &wallet_address {
         //     let wallet = tx
         //         .wallet_detail_by_address(wallet_address)
