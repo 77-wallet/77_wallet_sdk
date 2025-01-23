@@ -140,7 +140,7 @@ impl Tasks {
 
     pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
         use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
-
+        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
         let task_sender = crate::manager::Context::get_global_task_manager()?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
