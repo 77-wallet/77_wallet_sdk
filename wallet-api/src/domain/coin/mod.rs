@@ -23,8 +23,9 @@ impl CoinDomain {
         &mut self,
         repo: &mut ResourcesRepo,
     ) -> Result<TokenCurrencies, crate::ServiceError> {
-        let config = crate::app_state::APP_STATE.read().await;
-        let currency = config.currency();
+        // let config = crate::app_state::APP_STATE.read().await;
+        // let currency = config.currency();
+        let currency = "USD";
 
         let coins = repo.coin_list(None, None).await?;
 
