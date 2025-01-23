@@ -529,16 +529,16 @@ impl WalletService {
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
         // let service = Service::default();
         tracing::info!("get_wallet_list get_token_currencies_v2 over");
-        // let wallet_list = if let Some(wallet_address) = &wallet_address {
-        //     let wallet = tx
-        //         .wallet_detail_by_address(wallet_address)
-        //         .await?
-        //         .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
-        //     vec![wallet]
-        // } else {
-        //     tx.wallet_list().await?
-        // };
-        // tracing::info!("get_wallet_list wallet_detail_by_address over");
+        let wallet_list = if let Some(wallet_address) = &wallet_address {
+            let wallet = tx
+                .wallet_detail_by_address(wallet_address)
+                .await?
+                .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+            vec![wallet]
+        } else {
+            tx.wallet_list().await?
+        };
+        tracing::info!("get_wallet_list wallet_detail_by_address over");
         // let mut res = Vec::new();
         // tracing::info!("get_wallet_list 遍历钱包 start");
         // for wallet_info in wallet_list {
