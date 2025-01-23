@@ -55,10 +55,19 @@ impl SqlitePoolProvider {
         tracing::debug!("[init_pool] data base uri: {uri}");
 
         // get database connected
-        let pool = sqlx::Pool::<sqlx::Sqlite>::connect(uri)
+        // let pool = sqlx::Pool::<sqlx::Sqlite>::connect(uri)
+        //     .await
+        //     .map_err(|e| {
+        //         tracing::error!("[init_ database] connect error: {e}");
+        //         crate::DatabaseError::DatabaseConnectFailed
+        //     })?;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(20) // 最大连接数
+            .min_connections(1) // 最小连接数
+            .connect(uri)
             .await
             .map_err(|e| {
-                tracing::error!("[init_ database] connect error: {e}");
+                tracing::error!("[init_database] connect error: {e}");
                 crate::DatabaseError::DatabaseConnectFailed
             })?;
 
