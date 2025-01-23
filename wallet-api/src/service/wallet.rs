@@ -523,10 +523,12 @@ impl WalletService {
         chain_code: Option<String>,
         account_id: Option<u32>,
     ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
+        tracing::info!("get_wallet_list start");
         let tx = &mut self.repo;
         let chains: ChainCodeAndName = tx.get_chain_list().await?.into();
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
         // let service = Service::default();
+        tracing::info!("get_wallet_list get_token_currencies_v2 over");
         let wallet_list = if let Some(wallet_address) = &wallet_address {
             let wallet = tx
                 .wallet_detail_by_address(wallet_address)
@@ -536,7 +538,9 @@ impl WalletService {
         } else {
             tx.wallet_list().await?
         };
+        tracing::info!("get_wallet_list wallet_detail_by_address over");
         let mut res = Vec::new();
+        tracing::info!("get_wallet_list 遍历钱包 start");
         for wallet_info in wallet_list {
             let list = tx
                 .account_list_by_wallet_address_and_chain_code(
@@ -545,20 +549,25 @@ impl WalletService {
                     account_id,
                 )
                 .await?;
+            tracing::info!("get_wallet_list account_list_by_wallet_address_and_chain_code over");
             let mut account_list = token_currencies
                 .calculate_account_infos(list, &chains)
                 .await?;
-
+            tracing::info!("get_wallet_list calculate_account_infos over");
             // let mut account_cal_list = std::collections::HashMap::new();
             let mut wallet_assets = BalanceInfo::new_without_amount().await?;
+            tracing::info!("get_wallet_list new_without_amount over");
+            tracing::info!("get_wallet_list 遍历账户 start");
             for account in account_list.iter_mut() {
                 let mut account_assets_entity = self
                     .assets_domain
                     .get_account_assets_entity(tx, account.account_id, &wallet_info.address, None)
                     .await?;
+                tracing::info!("get_wallet_list get_account_assets_entity over");
                 let account_total_assets = token_currencies
                     .calculate_account_total_assets(&mut account_assets_entity)
                     .await?;
+                tracing::info!("get_wallet_list calculate_account_total_assets over");
                 let fiat_value = account_total_assets.fiat_value;
                 let amount = account_total_assets.amount;
                 account.balance.fiat_add(fiat_value);
@@ -566,6 +575,7 @@ impl WalletService {
                 wallet_assets.fiat_add(fiat_value);
                 wallet_assets.amount_add(amount);
             }
+            tracing::info!("get_wallet_list 遍历账户 over");
 
             res.push(crate::response_vo::wallet::WalletInfo {
                 address: wallet_info.address,
@@ -577,6 +587,8 @@ impl WalletService {
                 account_list,
             });
         }
+        tracing::info!("get_wallet_list 遍历钱包 over");
+        tracing::info!("get_wallet_list end");
 
         Ok(res)
     }
