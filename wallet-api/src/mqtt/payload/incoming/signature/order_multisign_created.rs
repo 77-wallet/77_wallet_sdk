@@ -29,7 +29,11 @@ impl OrderMultiSignCreated {
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
+        tracing::info!(
+            event_name = %event_name,
+            ?self,
+            "Starting to process OrderMultiSignCreated"
+        );
         let OrderMultiSignCreated {
             multisig_account_id,
             multisig_account_address,
@@ -40,11 +44,7 @@ impl OrderMultiSignCreated {
             fee_hash,
             fee_chain,
         } = &self;
-        tracing::info!(
-            event_name = %event_name,
-            multisig_account_id = %multisig_account_id,
-            "Starting to process OrderMultiSignCreated"
-        );
+
         if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
             .map_err(crate::ServiceError::Database)?

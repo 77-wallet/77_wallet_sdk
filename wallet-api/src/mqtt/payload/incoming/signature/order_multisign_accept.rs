@@ -68,6 +68,12 @@ impl OrderMultiSignAccept {
 
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
+        tracing::info!(
+            event_name = %event_name,
+            ?self,
+            "Starting to process OrderMultiSignAccept"
+        );
+
         let OrderMultiSignAccept {
             ref id,
             ref name,
@@ -78,13 +84,6 @@ impl OrderMultiSignAccept {
             ref address_type,
             ref memeber,
         } = self;
-        tracing::info!(
-            event_name = %event_name,
-            initiator_addr = %initiator_addr,
-            address = %address,
-            multisig_account_id = %id,
-            "Starting to process OrderMultiSignAccept"
-        );
 
         let pool = Context::get_global_sqlite_pool()?;
         let mut repo = RepositoryFactory::repo(pool.clone());

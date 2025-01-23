@@ -11,14 +11,15 @@ impl OrderMultiSignCancel {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        tracing::info!(
+            event_name = %event_name,
+            ?self,
+            "Starting to process OrderMultiSignCancel"
+        );
         let OrderMultiSignCancel {
             ref multisig_account_id,
         } = self;
-        tracing::info!(
-            event_name = %event_name,
-            multisig_account_id = %multisig_account_id,
-            "Starting to process OrderMultiSignCancel"
-        );
+
         let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
 
         // check

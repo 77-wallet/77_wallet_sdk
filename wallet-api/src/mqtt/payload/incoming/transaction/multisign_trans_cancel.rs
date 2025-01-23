@@ -7,14 +7,20 @@ use super::MultiSignTransCancel;
 
 impl MultiSignTransCancel {
     pub async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+        let event_name = self.name();
         let pool = crate::Context::get_global_sqlite_pool()?;
-
+        tracing::info!(
+            event_name = %event_name,
+            ?self,
+            "Starting MultiSignTransCancel processing");
         // 并发可能导致查询不出来结果
         let res = MultisigQueueDaoV1::find_by_id(&self.withdraw_id, pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
         if res.is_none() {
-            tracing::error!("cancel multisig queue faild affetd :0");
+            tracing::error!(
+                event_name = %event_name,
+                "Cancel multisig queue faild affetd :0");
             return Err(crate::ServiceError::Business(
                 crate::MultisigQueueError::NotFound.into(),
             ));

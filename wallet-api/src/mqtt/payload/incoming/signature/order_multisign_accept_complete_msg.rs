@@ -14,6 +14,12 @@ use super::OrderMultiSignAcceptCompleteMsg;
 impl OrderMultiSignAcceptCompleteMsg {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
+        tracing::info!(
+            event_name = %event_name,
+            ?self,
+            "Starting to process OrderMultiSignAcceptCompleteMsg"
+        );
+
         let OrderMultiSignAcceptCompleteMsg {
             status,
             ref multisig_account_id,
@@ -21,12 +27,6 @@ impl OrderMultiSignAcceptCompleteMsg {
             address_list,
             accept_status,
         } = self;
-        tracing::info!(
-            event_name = %event_name,
-            status = %status,
-            multisig_account_id = %multisig_account_id,
-            "Starting to process OrderMultiSignAcceptCompleteMsg"
-        );
 
         let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
 

@@ -15,8 +15,12 @@ use super::{MultiSignTransAcceptCompleteMsg, MultiSignTransAcceptCompleteMsgBody
 
 impl MultiSignTransAcceptCompleteMsg {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+        let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
+        tracing::info!(
+            event_name = %event_name,
+            ?self,
+            "Starting MultiSignTransAcceptCompleteMsg processing");
         let MultiSignTransAcceptCompleteMsg(body) = &self;
 
         for msg in body {

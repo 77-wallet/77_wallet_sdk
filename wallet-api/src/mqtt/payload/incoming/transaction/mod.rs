@@ -37,6 +37,10 @@ impl MultiSignTransAccept {
         self.signatures = signatures;
         self
     }
+
+    pub(crate) fn name(&self) -> String {
+        "MULTI_SIGN_TRANS_ACCEPT".to_string()
+    }
 }
 
 impl From<MultisigQueueEntity> for MultiSignTransAccept {
@@ -70,10 +74,22 @@ pub struct MultiSignTransCancel {
     pub withdraw_id: String,
 }
 
+impl MultiSignTransCancel {
+    pub(crate) fn name(&self) -> String {
+        "MULTI_SIGN_TRANS_CANCEL".to_string()
+    }
+}
+
 // biz_type = MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiSignTransAcceptCompleteMsg(Vec<MultiSignTransAcceptCompleteMsgBody>);
+
+impl MultiSignTransAcceptCompleteMsg {
+    pub(crate) fn name(&self) -> String {
+        "MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG".to_string()
+    }
+}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -140,4 +156,10 @@ pub struct AcctChange {
     // 备注
     #[serde(default)]
     pub notes: String,
+}
+
+impl AcctChange {
+    pub(crate) fn name(&self) -> String {
+        "ACCT_CHANGE".to_string()
+    }
 }
