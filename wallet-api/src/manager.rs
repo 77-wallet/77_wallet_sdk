@@ -359,7 +359,7 @@ impl WalletManager {
         // 启动任务检查循环
         // let manager = Context::get_global_task_manager()?;
         // manager.start_task_check();
-        crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+        // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
         Tasks::new()
             .push(Task::Initialization(InitializationTask::InitMqtt))
             .send()
