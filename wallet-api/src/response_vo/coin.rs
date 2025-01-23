@@ -471,6 +471,8 @@ pub struct TokenPriceChangeRes {
     pub day_change_amount: BalanceInfo,
     // 精度
     pub unit: Option<u8>,
+    // 代币别名
+    pub aname: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -506,6 +508,7 @@ impl From<(TokenPriceChangeBody, BalanceInfo, BalanceInfo, BalanceInfo)> for Tok
             unit: body.unit,
             // price: body.price,
             day_change_amount,
+            aname: body.aname,
         }
     }
 }

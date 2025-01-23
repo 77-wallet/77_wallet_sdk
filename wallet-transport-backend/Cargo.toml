@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["test"]
+# default = ["test"]
 # default = ["dev"]
-# default = ["prod"]
+default = ["prod"]
 test = []
 dev = []
 prod = []

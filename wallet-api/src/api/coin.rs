@@ -385,7 +385,7 @@ mod test {
         // let order_column = None;
         let order_type = Some("DESC".to_string());
         // let order_type = None;
-        let page_num = 1;
+        let page_num = 0;
         let page_size = 20;
 
         let res = wallet_manager

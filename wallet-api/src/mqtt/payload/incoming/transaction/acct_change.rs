@@ -134,7 +134,7 @@ impl AcctChange {
         }
 
         // 添加或更新资产余额
-        upsert_than_sync_assets(
+        Self::upsert_than_sync_assets(
             from_addr,
             to_addr,
             // address,
@@ -145,7 +145,7 @@ impl AcctChange {
         )
         .await?;
 
-        create_system_notification(
+        Self::create_system_notification(
             msg_id,
             tx_hash,
             symbol,
@@ -183,212 +183,192 @@ impl AcctChange {
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
-}
 
-async fn upsert_than_sync_assets(
-    from_addr: &str,
-    to_addr: &str,
-    // address: &str,
-    // chain_code: &str,
-    // symbol: &str,
-    // multisig_tx: bool,
-    // tx_kind_enum: BillKind,
-) -> Result<(), crate::ServiceError> {
-    // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    // let repo = RepositoryFactory::repo(pool.clone());
+    async fn upsert_than_sync_assets(
+        from_addr: &str,
+        to_addr: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
 
-    let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
+        if !asset_list.is_empty() {
+            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-    if !asset_list.is_empty() {
+            AssetsService::new(repo)
+                .sync_assets_by_addr(asset_list, None, vec![])
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn create_system_notification(
+        msg_id: &str,
+        tx_hash: &str,
+        symbol: &str,
+        chain_code: &str,
+        value: f64,
+        is_multisig: i32,
+        tx_kind_enum: BillKind,
+        transfer_type: i8,
+        status: bool,
+        address: &str,
+    ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = RepositoryFactory::repo(pool.clone());
+        let mut account_service = AccountService::new(repo);
 
-        AssetsService::new(repo)
-            .sync_assets_by_addr(asset_list, None, vec![])
-            .await?;
-    }
-    // // 如果是多签交易
-    // if multisig_tx {
-    //     let assets_id = AssetsId {
-    //         address: address.to_string(),
-    //         chain_code: chain_code.to_string(),
-    //         symbol: symbol.to_string(),
-    //     };
-    //     wallet_database::repositories::assets::AssetsRepoTrait::update_is_multisig(
-    //         &mut repo,
-    //         &assets_id,
-    //     )
-    //     .await?;
-    // }
-    Ok(())
-}
-
-async fn create_system_notification(
-    msg_id: &str,
-    tx_hash: &str,
-    symbol: &str,
-    chain_code: &str,
-    value: f64,
-    is_multisig: i32,
-    tx_kind_enum: BillKind,
-    transfer_type: i8,
-    status: bool,
-    address: &str,
-) -> Result<(), crate::ServiceError> {
-    let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    let repo = RepositoryFactory::repo(pool.clone());
-    let mut account_service = AccountService::new(repo);
-
-    let repo = RepositoryFactory::repo(pool.clone());
-    let mut system_notification_service = SystemNotificationService::new(repo);
-    if wallet_database::repositories::system_notification::SystemNotificationRepoTrait::detail(
-        &mut system_notification_service.repo,
-        msg_id,
-    )
-    .await?
-    .is_some()
-    {
-        tracing::warn!("system_noti already exists");
-        return Ok(());
-    };
-
-    // 判断是否是手续费，如果是则不创建通知
-    if let Some(chain) = ChainEntity::detail(&*pool, chain_code).await? {
-        if chain.main_symbol == *symbol && value == f64::default() {
-            tracing::warn!("tx_hash:{} is fee", tx_hash);
+        let repo = RepositoryFactory::repo(pool.clone());
+        let mut system_notification_service = SystemNotificationService::new(repo);
+        if wallet_database::repositories::system_notification::SystemNotificationRepoTrait::detail(
+            &mut system_notification_service.repo,
+            msg_id,
+        )
+        .await?
+        .is_some()
+        {
+            tracing::warn!("system_noti already exists");
             return Ok(());
-        }
-    }
+        };
 
-    // 添加系统通知
-    // type: 1/ 普通账户 2/多签账户建立 4/多签转账成功
-
-    // 交易类型 1:普通交易，2:部署多签账号手续费 3:服务费
-    // 是否多签 1-是，0-否
-    let reqs = match (is_multisig, tx_kind_enum) {
-        // 非多签的普通交易
-        (0, BillKind::Transfer) => {
-            let mut reqs = Vec::new();
-            // transfer_type: 交易方式 0转入 1转出 2初始化
-            let (transaction_status, notification_type) = match (transfer_type, status) {
-                (0, true) => (
-                    TransactionStatus::Received,
-                    NotificationType::ReceiveSuccess,
-                ),
-                (1, true) => (TransactionStatus::Sent, NotificationType::TransferSuccess),
-                (1, false) => (
-                    TransactionStatus::NotSent,
-                    NotificationType::TransferFailure,
-                ),
-                (_, _) => return Ok(()),
-            };
-
-            // 如果有查询是否是自己的账户
-            if let Some(account) = account_service
-                .repo
-                .detail_by_address_and_chain_code(address, chain_code)
-                .await?
-            {
-                let notif = Notification::new_transaction_notification(
-                    AccountType::Regular,
-                    &account.name,
-                    &account.address,
-                    value,
-                    symbol,
-                    &transaction_status,
-                    tx_hash,
-                    &notification_type,
-                );
-                let req = notif.gen_create_system_notification_entity(
-                    msg_id,
-                    0,
-                    Some("tx_hash".to_string()),
-                    Some(tx_hash.to_string()),
-                )?;
-                reqs.push(req);
+        // 判断是否是手续费，如果是则不创建通知
+        if let Some(chain) = ChainEntity::detail(&*pool, chain_code).await? {
+            if chain.main_symbol == *symbol && value == f64::default() {
+                tracing::warn!("tx_hash:{} is fee", tx_hash);
+                return Ok(());
             }
+        }
 
-            reqs
-        }
-        // 部署多签账号手续费
-        (_, BillKind::DeployMultiSign) => {
-            tracing::warn!("deploy multisig account fee");
-            return Ok(());
-        }
-        // 服务费
-        (_, BillKind::ServiceCharge) => {
-            tracing::warn!("service charge");
-            return Ok(());
-        }
-        // 多签的普通交易
-        (1, BillKind::Transfer) => {
-            let mut reqs = Vec::new();
-            // transfer_type: 交易方式 0转入 1转出 2初始化
-            let (transaction_status, notification_type) = match (transfer_type, status) {
-                (0, true) => (
-                    TransactionStatus::Received,
-                    NotificationType::ReceiveSuccess,
-                ),
-                (1, true) => (TransactionStatus::Sent, NotificationType::TransferSuccess),
-                (1, false) => (
-                    TransactionStatus::NotSent,
-                    NotificationType::TransferFailure,
-                ),
-                (_, _) => {
-                    tracing::warn!("invalid transfer type or status");
-                    return Ok(());
+        // 添加系统通知
+        // type: 1/ 普通账户 2/多签账户建立 4/多签转账成功
+
+        // 交易类型 1:普通交易，2:部署多签账号手续费 3:服务费
+        // 是否多签 1-是，0-否
+        let reqs = match (is_multisig, tx_kind_enum) {
+            // 非多签的普通交易
+            (0, BillKind::Transfer) => {
+                let mut reqs = Vec::new();
+                // transfer_type: 交易方式 0转入 1转出 2初始化
+                let (transaction_status, notification_type) = match (transfer_type, status) {
+                    (0, true) => (
+                        TransactionStatus::Received,
+                        NotificationType::ReceiveSuccess,
+                    ),
+                    (1, true) => (TransactionStatus::Sent, NotificationType::TransferSuccess),
+                    (1, false) => (
+                        TransactionStatus::NotSent,
+                        NotificationType::TransferFailure,
+                    ),
+                    (_, _) => return Ok(()),
+                };
+
+                // 如果有查询是否是自己的账户
+                if let Some(account) = account_service
+                    .repo
+                    .detail_by_address_and_chain_code(address, chain_code)
+                    .await?
+                {
+                    let notif = Notification::new_transaction_notification(
+                        AccountType::Regular,
+                        &account.name,
+                        &account.address,
+                        value,
+                        symbol,
+                        &transaction_status,
+                        tx_hash,
+                        &notification_type,
+                    );
+                    let req = notif.gen_create_system_notification_entity(
+                        msg_id,
+                        0,
+                        Some("tx_hash".to_string()),
+                        Some(tx_hash.to_string()),
+                    )?;
+                    reqs.push(req);
                 }
-            };
-            tracing::warn!("multisig account: address: {address}");
-            if MultisigAccountDaoV1::find_by_address(address, pool.as_ref())
-                .await
-                .map_err(crate::ServiceError::Database)?
-                .is_none()
-            {
-                let mut repo = RepositoryFactory::repo(pool.clone());
-                MultisigDomain::recover_multisig_data_by_address(&mut repo, address).await?;
+
+                reqs
             }
+            // 部署多签账号手续费
+            (_, BillKind::DeployMultiSign) => {
+                tracing::warn!("deploy multisig account fee");
+                return Ok(());
+            }
+            // 服务费
+            (_, BillKind::ServiceCharge) => {
+                tracing::warn!("service charge");
+                return Ok(());
+            }
+            // 多签的普通交易
+            (1, BillKind::Transfer) => {
+                let mut reqs = Vec::new();
+                // transfer_type: 交易方式 0转入 1转出 2初始化
+                let (transaction_status, notification_type) = match (transfer_type, status) {
+                    (0, true) => (
+                        TransactionStatus::Received,
+                        NotificationType::ReceiveSuccess,
+                    ),
+                    (1, true) => (TransactionStatus::Sent, NotificationType::TransferSuccess),
+                    (1, false) => (
+                        TransactionStatus::NotSent,
+                        NotificationType::TransferFailure,
+                    ),
+                    (_, _) => {
+                        tracing::warn!("invalid transfer type or status");
+                        return Ok(());
+                    }
+                };
+                tracing::warn!("multisig account: address: {address}");
+                if MultisigAccountDaoV1::find_by_address(address, pool.as_ref())
+                    .await
+                    .map_err(crate::ServiceError::Database)?
+                    .is_none()
+                {
+                    let mut repo = RepositoryFactory::repo(pool.clone());
+                    MultisigDomain::recover_multisig_data_by_address(&mut repo, address).await?;
+                }
 
-            if let Some(multisig_account) =
-                MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
-            {
-                tracing::warn!("multisig account: name: {}", multisig_account.name);
-                let notif = Notification::new_transaction_notification(
-                    AccountType::Multisig,
-                    &multisig_account.name,
-                    address,
-                    value,
-                    symbol,
-                    &transaction_status,
-                    tx_hash,
-                    &notification_type,
-                );
-                let req = notif.gen_create_system_notification_entity(
-                    msg_id,
-                    0,
-                    Some("tx_hash".to_string()),
-                    Some(tx_hash.to_string()),
-                )?;
+                if let Some(multisig_account) =
+                    MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
+                {
+                    tracing::warn!("multisig account: name: {}", multisig_account.name);
+                    let notif = Notification::new_transaction_notification(
+                        AccountType::Multisig,
+                        &multisig_account.name,
+                        address,
+                        value,
+                        symbol,
+                        &transaction_status,
+                        tx_hash,
+                        &notification_type,
+                    );
+                    let req = notif.gen_create_system_notification_entity(
+                        msg_id,
+                        0,
+                        Some("tx_hash".to_string()),
+                        Some(tx_hash.to_string()),
+                    )?;
 
-                reqs.push(req);
-            };
+                    reqs.push(req);
+                };
 
-            reqs
-        }
-        _ => {
-            tracing::warn!("unknown tx_kind_enum");
-            return Ok(());
-        }
-    };
+                reqs
+            }
+            _ => {
+                tracing::warn!("unknown tx_kind_enum");
+                return Ok(());
+            }
+        };
 
-    let pool = crate::Context::get_global_sqlite_pool()?;
-    let repo = RepositoryFactory::repo(pool.clone());
-    let system_notification_service = SystemNotificationService::new(repo);
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let repo = RepositoryFactory::repo(pool.clone());
+        let system_notification_service = SystemNotificationService::new(repo);
 
-    system_notification_service
-        .add_multi_system_notification_with_key_value(&reqs)
-        .await?;
-    Ok(())
+        system_notification_service
+            .add_multi_system_notification_with_key_value(&reqs)
+            .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
