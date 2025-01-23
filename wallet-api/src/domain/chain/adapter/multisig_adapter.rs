@@ -231,8 +231,8 @@ impl MultisigAdapter {
         member: MultisigMemberEntities,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
-        let currency = crate::app_state::APP_STATE.read().await;
-        let currency = currency.currency();
+        let currency_lock = crate::app_state::APP_STATE.read().await;
+        let currency = currency_lock.currency();
 
         let backend = crate::manager::Context::get_global_backend_api()?;
 

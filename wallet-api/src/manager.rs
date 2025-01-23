@@ -218,9 +218,11 @@ impl Context {
         Ok(&Context::get_context()?.dirs)
     }
 
-    pub(crate) fn get_global_mqtt_url(
-    ) -> Result<&'static std::sync::Arc<RwLock<Option<String>>>, crate::SystemError> {
-        Ok(&Context::get_context()?.mqtt_url)
+    pub(crate) async fn get_global_mqtt_url() -> Result<Option<String>, crate::SystemError> {
+        let rs = &Context::get_context()?.mqtt_url;
+
+        let res = rs.read().await.clone();
+        Ok(res)
     }
 
     pub(crate) async fn set_global_mqtt_url(mqtt_url: &str) -> Result<(), crate::ServiceError> {

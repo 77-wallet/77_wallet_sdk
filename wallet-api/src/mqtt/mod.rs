@@ -21,14 +21,13 @@ pub async fn init_mqtt_processor<'a>(
 ) -> Result<&'a MqttAsyncClient, crate::ServiceError> {
     MQTT_PROCESSOR
         .get_or_try_init(async || {
-            let url = crate::manager::Context::get_global_mqtt_url()?;
-            let url = url.read().await;
-
+            let url = crate::manager::Context::get_global_mqtt_url().await?;
             let Some(url) = url.as_ref() else {
                 return Err(crate::ServiceError::System(
                     crate::SystemError::MqttClientNotInit,
                 ));
             };
+
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
 

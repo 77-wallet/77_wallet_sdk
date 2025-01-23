@@ -84,6 +84,7 @@ impl ConfigDomain {
         } else {
             Currency::default()
         };
+        drop(config);
         ConfigDomain::set_config(CURRENCY, &currency.to_json_str()?).await?;
 
         Ok(())
@@ -194,6 +195,7 @@ impl ConfigDomain {
             let config = wallet_database::entities::config::Language::new(l);
             ConfigDomain::set_config(LANGUAGE, &config.to_json_str()?).await?;
         };
+        drop(config);
 
         Ok(())
     }
