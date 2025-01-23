@@ -145,14 +145,6 @@ impl NodeDomain {
     ) -> Result<(), crate::ServiceError> {
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
         let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, &chain_code, Some(0)).await?;
-        // tracing::info!(
-        //     "[sync_nodes_and_link_to_chains] local_backend_nodes: {:#?}",
-        //     local_backend_nodes
-        // );
-        // tracing::info!(
-        //     "[sync_nodes_and_link_to_chains] backend_nodes: {:#?}",
-        //     backend_nodes
-        // );
         let backend_node_rpcs: HashSet<String> = backend_nodes
             .iter()
             .filter(|node| chain_code.contains(&node.chain_code))
@@ -164,10 +156,6 @@ impl NodeDomain {
                 if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
                     tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
                 }
-                // tracing::info!(
-                //     "[sync_nodes_and_link_to_chains] remove node: {}",
-                //     node.node_id
-                // );
                 Self::set_chain_node(repo, backend_nodes, &node.chain_code).await?;
             }
         }
@@ -185,7 +173,7 @@ impl NodeDomain {
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         for chain in chain_list {
             if chain.node_id.is_none() {
-                tracing::info!(
+                tracing::debug!(
                     "[assign_missing_nodes_to_chains] set chain node: {}",
                     chain.chain_code
                 );

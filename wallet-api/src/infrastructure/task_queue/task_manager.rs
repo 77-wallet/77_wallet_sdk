@@ -224,7 +224,6 @@ async fn handle_initialization_task(
                 return Ok(());
             };
             let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-            // tracing::info!("[ProcessUnconfirmMsg] client_id: {}", client_id);
             let data = backend_api
                 .send_msg_query_unconfirm_msg(
                     &wallet_transport_backend::request::SendMsgQueryUnconfirmMsgReq {
@@ -233,8 +232,6 @@ async fn handle_initialization_task(
                 )
                 .await?
                 .list;
-            // tracing::info!("[ProcessUnconfirmMsg] data: {:#?}", data);
-            // tracing::info!("[ProcessUnconfirmMsg] client_id: {}", client_id);
             crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
         }
         InitializationTask::SetBlockBrowserUrl => {

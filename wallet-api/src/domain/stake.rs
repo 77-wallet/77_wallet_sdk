@@ -202,7 +202,6 @@ impl StakeDomain {
 
         let mut data = Vec::new();
         for (i, witness) in witness_list.into_iter().enumerate() {
-            // tracing::info!("i: {}", i);
             if i == 26 {
                 break;
             }
@@ -214,17 +213,13 @@ impl StakeDomain {
             } = witness;
             let brokerage = (100.0 - chain.get_brokerage(&address).await?.brokerage as f64) / 100.0;
 
-            // tracing::info!("brokerage: {}", brokerage);
             let block_reward = StakeDomain::calculate_block_reward(brokerage, vote_count as f64);
-            // tracing::info!("block_reward: {}", block_reward);
             let vote_reward = StakeDomain::calculate_vote_reward(
                 vote_count as f64,
                 total_sr_votes as f64,
                 brokerage,
             );
-            // tracing::info!("vote_reward: {}", vote_reward);
             let apr = StakeDomain::calculate_apr(vote_reward, block_reward);
-            // tracing::info!("apr: {}", apr);
             data.push(crate::response_vo::stake::Witness::new(
                 &wallet_utils::address::hex_to_bs58_addr(&address)?,
                 vote_count,

@@ -251,7 +251,7 @@ impl AssetsService {
             )
             .await?;
 
-        // tracing::info!("account_addresses: {:?}", account_addresses);
+        // tracing::debug!("account_addresses: {:?}", account_addresses);
 
         let mut res = AccountChainAssetList::default();
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
@@ -384,7 +384,6 @@ impl AssetsService {
             .get_addresses(tx, address, account_id, None, is_multisig)
             .await?;
 
-        // tracing::info!("remove_coin: {:?}", accounts);
         let mut assets_ids = Vec::new();
         let mut coin_ids = std::collections::HashSet::new();
         for account in accounts {
