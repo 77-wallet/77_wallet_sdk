@@ -1,5 +1,7 @@
 use wallet_types::chain::address::{category::AddressCategory, r#type::AddressType};
 
+use crate::domain::app::config::ConfigDomain;
+
 // 单笔交易需要花费的能量
 pub const NET_CONSUME: f64 = 270.0;
 // 代币转账消耗的能量
@@ -221,11 +223,16 @@ impl BalanceInfo {
     }
 
     pub async fn new_without_amount() -> Result<BalanceInfo, crate::ServiceError> {
-        let config = crate::app_state::APP_STATE.read().await;
-        let currency = config.currency();
+        tracing::warn!("获取钱包列表 - new_without_amount read app state start");
+        // let config = crate::app_state::APP_STATE.read().await;
+        tracing::warn!("获取钱包列表 - new_without_amount read app state over");
+        // let currency = config.currency();
+        // let currency = "USD".to_string();
+        let currency = ConfigDomain::get_currency().await?;
+
         Ok(Self {
             amount: Default::default(),
-            currency: currency.to_string(),
+            currency,
             unit_price: Default::default(),
             fiat_value: Default::default(),
         })

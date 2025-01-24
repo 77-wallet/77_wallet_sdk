@@ -9,6 +9,8 @@ use wallet_types::{
     valueobject::TokenPriceChangeBody,
 };
 
+use crate::domain::app::config::ConfigDomain;
+
 use super::{
     account::BalanceInfo,
     chain::{ChainAssets, ChainCodeAndName},
@@ -182,13 +184,15 @@ impl TokenCurrencies {
         exchange_rate: f64,
         value: f64,
     ) -> Result<BalanceInfo, crate::ServiceError> {
-        let config = crate::app_state::APP_STATE.read().await;
-        let currency = config.currency();
+        // let config = crate::app_state::APP_STATE.read().await;
+        // let currency = config.currency();
+        // let currency = "USD";
+        let currency = ConfigDomain::get_currency().await?;
         let unit_price = value * exchange_rate;
 
         Ok(BalanceInfo {
             amount: Default::default(),
-            currency: currency.to_string(),
+            currency,
             unit_price: Some(unit_price),
             fiat_value: Default::default(),
         })
@@ -259,13 +263,15 @@ impl TokenCurrencies {
     ) -> Result<BalanceInfo, crate::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(balance)?;
 
-        let config = crate::app_state::APP_STATE.read().await;
-        let currency = config.currency();
+        // let config = crate::app_state::APP_STATE.read().await;
+        // let currency = config.currency();
+        // let currency = "USD";
+        let currency = ConfigDomain::get_currency().await?;
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code);
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
             let price = token_currency
-                .get_price(currency)
+                .get_price(&currency)
                 .and_then(wallet_types::Decimal::from_f64_retain);
 
             let fiat_balance = price.map(|p| p * balance);
@@ -290,10 +296,13 @@ impl TokenCurrencies {
         &self,
         data: &mut [wallet_database::entities::assets::AssetsEntity],
     ) -> Result<BalanceInfo, crate::ServiceError> {
+        tracing::warn!("获取钱包列表 calculate_account_total_assets start");
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
-        let config = crate::app_state::APP_STATE.read().await;
-        let currency = config.currency();
+        // let config = crate::app_state::APP_STATE.read().await;
+        // let currency = config.currency();
+        // let currency = "USD";
+        let currency = ConfigDomain::get_currency().await?;
         for assets in data.iter_mut() {
             let token_currency_id = TokenCurrencyId::new(&assets.symbol, &assets.chain_code);
             // let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
@@ -309,7 +318,7 @@ impl TokenCurrencies {
 
             let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
                 let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
-                let price = token_currency.get_price(currency);
+                let price = token_currency.get_price(&currency);
                 if let Some(price) = price {
                     let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
                     Some(price * balance)
@@ -347,10 +356,12 @@ impl TokenCurrencies {
 
         let token_currency_id = TokenCurrencyId::new(&data.symbol, &data.chain_code);
         let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            let config = crate::app_state::APP_STATE.read().await;
-            let currency = config.currency();
+            // let config = crate::app_state::APP_STATE.read().await;
+            // let currency = config.currency();
+            // let currency = "USD";
+            let currency = ConfigDomain::get_currency().await?;
 
-            let price = token_currency.get_price(currency);
+            let price = token_currency.get_price(&currency);
             let fiat_balance = price.map(|p| p * balance_f);
             (price, fiat_balance)
         } else {
@@ -389,15 +400,21 @@ impl TokenCurrencies {
         data: Vec<wallet_database::entities::account::AccountEntity>,
         chains: &ChainCodeAndName,
     ) -> Result<AccountInfos, crate::ServiceError> {
+        tracing::warn!("获取钱包列表 - calculate_account_infos start");
         let mut account_list = Vec::<crate::response_vo::wallet::AccountInfo>::new();
         for account in data {
             let btc_address_type_opt: AddressType = account.address_type().try_into()?;
             let address_type = btc_address_type_opt.into();
 
+            tracing::warn!(
+                "获取钱包列表 - calculate_account_infos account_id: {}",
+                account.account_id
+            );
             if let Some(info) = account_list
                 .iter_mut()
                 .find(|info| info.account_id == account.account_id)
             {
+                tracing::warn!("获取钱包列表 - calculate_account_infos 修改");
                 let name = chains.get(&account.chain_code);
                 info.chain.push(crate::response_vo::wallet::ChainInfo {
                     address: account.address,
@@ -408,16 +425,22 @@ impl TokenCurrencies {
                     address_type,
                     created_at: account.created_at,
                     updated_at: account.updated_at,
-                })
+                });
+                tracing::warn!("获取钱包列表 - calculate_account_infos 修改 over");
             } else {
+                tracing::warn!("获取钱包列表 - calculate_account_infos 首次插入");
                 let name = chains.get(&account.chain_code);
+                tracing::warn!("获取钱包列表 - from_account_id start");
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
+                tracing::warn!("获取钱包列表 - from_account_id over");
+                let balance = BalanceInfo::new_without_amount().await?;
+                tracing::warn!("获取钱包列表 - new_without_amount over");
                 account_list.push(crate::response_vo::wallet::AccountInfo {
                     account_id: account.account_id,
                     account_index_map,
                     name: account.name,
-                    balance: BalanceInfo::new_without_amount().await?,
+                    balance,
                     chain: vec![crate::response_vo::wallet::ChainInfo {
                         address: account.address,
                         wallet_address: account.wallet_address,
@@ -428,9 +451,11 @@ impl TokenCurrencies {
                         created_at: account.created_at,
                         updated_at: account.updated_at,
                     }],
-                })
+                });
+                tracing::warn!("获取钱包列表 - calculate_account_infos 首次插入 over");
             }
         }
+        tracing::warn!("获取钱包列表 - calculate_account_infos over");
         Ok(AccountInfos(account_list))
     }
 }

@@ -7,6 +7,8 @@ use wallet_database::{
 };
 use wallet_transport_backend::{request::TokenQueryPriceReq, response_vo::coin::TokenCurrency};
 
+use super::app::config::ConfigDomain;
+
 pub struct CoinDomain {}
 impl Default for CoinDomain {
     fn default() -> Self {
@@ -25,7 +27,8 @@ impl CoinDomain {
     ) -> Result<TokenCurrencies, crate::ServiceError> {
         // let config = crate::app_state::APP_STATE.read().await;
         // let currency = config.currency();
-        let currency = "USD";
+        // let currency = "USD";
+        let currency = ConfigDomain::get_currency().await?;
 
         let coins = repo.coin_list(None, None).await?;
 

@@ -200,6 +200,17 @@ impl ConfigDomain {
         Ok(())
     }
 
+    pub(crate) async fn get_currency() -> Result<String, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let currency = ConfigDao::find_by_key(CURRENCY, pool.as_ref()).await?;
+        if let Some(currency) = currency {
+            let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
+            Ok(currency.currency)
+        } else {
+            Ok(String::from("USD"))
+        }
+    }
+
     pub async fn init_block_browser_url_list() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let block_browser_url_list =
