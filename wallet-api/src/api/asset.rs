@@ -399,7 +399,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0xdA1133ee46A847Ea5Cc83862a4cc18580417786d";
+        let address = "0x97d6f3B342395C939e978Fe8C07c9DEeD960111A";
         // let chain_code = Some("bnb");
         // let chain_code = Some("btc");
         // let chain_code = Some("eth".to_string());

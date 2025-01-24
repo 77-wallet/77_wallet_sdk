@@ -26,13 +26,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     wallet_manager.init_data().await?;
 
-    // let wallet = wallet_manager
-    //     .create_wallet(test_params.create_wallet_req)
-    //     .await
-    //     .result;
-    // tracing::warn!("wallet: {wallet:#?}");
-    // let wallet = wallet.unwrap();
-    // test_params.create_account_req.wallet_address = wallet.address.clone();
+    let wallet = wallet_manager
+        .create_wallet(test_params.create_wallet_req)
+        .await
+        .result;
+    tracing::warn!("wallet: {wallet:#?}");
+    let wallet = wallet.unwrap();
+    test_params.create_account_req.wallet_address = wallet.address.clone();
     // wallet_manager
     //     .create_account(test_params.create_account_req)
     //     .await

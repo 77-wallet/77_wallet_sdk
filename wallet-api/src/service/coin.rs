@@ -105,7 +105,6 @@ impl CoinService {
         let list = tx
             .hot_coin_list_symbol_not_in(&chain_codes, keyword, &symbol_list, page, page_size)
             .await?;
-
         let mut data = CoinInfoList::default();
         for coin in list.data {
             if let Some(d) = data
@@ -186,11 +185,36 @@ impl CoinService {
         // 拉取流行币种数据并追加到 `data`
         let req =
             wallet_transport_backend::request::TokenQueryByPageReq::new_popular_token(0, page_size);
+        // 获取默认的 coins list
+        let default_list: Vec<wallet_transport_backend::CoinInfo> =
+            crate::default_data::coin::init_default_coins_list()?
+                .coins
+                .iter()
+                .map(|coin| coin.to_owned().into())
+                .collect();
         if let Ok(mut list) = backend_api.token_query_by_page(&req).await {
             data.append(&mut list.list);
         }
 
-        let data = data.into_iter().map(|d| d.into()).collect();
+        let filtered_data: Vec<_> = data
+            .into_iter()
+            .filter(|coin| {
+                !default_list.iter().any(|default_coin| {
+                    tracing::info!("coin: {coin:#?}");
+                    tracing::info!(
+                        "default_coin symbol: {:?}, chain_code: {:?}, token_address: {:?}",
+                        default_coin.symbol,
+                        default_coin.chain_code,
+                        default_coin.token_address,
+                    );
+                    default_coin.chain_code == coin.chain_code
+                        && default_coin.symbol == coin.symbol
+                        && default_coin.token_address == coin.token_address
+                })
+            })
+            .collect();
+        tracing::info!("filtered_data: {filtered_data:#?}");
+        let data = filtered_data.into_iter().map(|d| d.into()).collect();
 
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
         // self.upsert_hot_coin_list(data, 0, 1).await?;
