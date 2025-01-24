@@ -296,7 +296,6 @@ impl TokenCurrencies {
         &self,
         data: &mut [wallet_database::entities::assets::AssetsEntity],
     ) -> Result<BalanceInfo, crate::ServiceError> {
-        tracing::warn!("获取钱包列表 calculate_account_total_assets start");
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
         // let config = crate::app_state::APP_STATE.read().await;
@@ -400,21 +399,15 @@ impl TokenCurrencies {
         data: Vec<wallet_database::entities::account::AccountEntity>,
         chains: &ChainCodeAndName,
     ) -> Result<AccountInfos, crate::ServiceError> {
-        tracing::warn!("获取钱包列表 - calculate_account_infos start");
         let mut account_list = Vec::<crate::response_vo::wallet::AccountInfo>::new();
         for account in data {
             let btc_address_type_opt: AddressType = account.address_type().try_into()?;
             let address_type = btc_address_type_opt.into();
 
-            tracing::warn!(
-                "获取钱包列表 - calculate_account_infos account_id: {}",
-                account.account_id
-            );
             if let Some(info) = account_list
                 .iter_mut()
                 .find(|info| info.account_id == account.account_id)
             {
-                tracing::warn!("获取钱包列表 - calculate_account_infos 修改");
                 let name = chains.get(&account.chain_code);
                 info.chain.push(crate::response_vo::wallet::ChainInfo {
                     address: account.address,
@@ -426,16 +419,11 @@ impl TokenCurrencies {
                     created_at: account.created_at,
                     updated_at: account.updated_at,
                 });
-                tracing::warn!("获取钱包列表 - calculate_account_infos 修改 over");
             } else {
-                tracing::warn!("获取钱包列表 - calculate_account_infos 首次插入");
                 let name = chains.get(&account.chain_code);
-                tracing::warn!("获取钱包列表 - from_account_id start");
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-                tracing::warn!("获取钱包列表 - from_account_id over");
                 let balance = BalanceInfo::new_without_amount().await?;
-                tracing::warn!("获取钱包列表 - new_without_amount over");
                 account_list.push(crate::response_vo::wallet::AccountInfo {
                     account_id: account.account_id,
                     account_index_map,
@@ -452,10 +440,8 @@ impl TokenCurrencies {
                         updated_at: account.updated_at,
                     }],
                 });
-                tracing::warn!("获取钱包列表 - calculate_account_infos 首次插入 over");
             }
         }
-        tracing::warn!("获取钱包列表 - calculate_account_infos over");
         Ok(AccountInfos(account_list))
     }
 }

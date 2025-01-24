@@ -32,7 +32,7 @@ pub async fn init_mqtt_processor<'a>(
             let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
 
             let up = user_property.to_vec();
-            tracing::info!("[init_mqtt_processor] url: {url}");
+            tracing::debug!("[init_mqtt_processor] url: {url}");
             let (client, eventloop) =
                 MqttClientBuilder::new(&user_property.client_id, url, username, password, up)
                     .build()?;

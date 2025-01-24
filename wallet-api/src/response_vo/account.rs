@@ -223,9 +223,7 @@ impl BalanceInfo {
     }
 
     pub async fn new_without_amount() -> Result<BalanceInfo, crate::ServiceError> {
-        tracing::warn!("获取钱包列表 - new_without_amount read app state start");
         // let config = crate::app_state::APP_STATE.read().await;
-        tracing::warn!("获取钱包列表 - new_without_amount read app state over");
         // let currency = config.currency();
         // let currency = "USD".to_string();
         let currency = ConfigDomain::get_currency().await?;
