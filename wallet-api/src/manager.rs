@@ -53,15 +53,15 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         &(),
     )?;
 
-    // let mqtt_init_req =
-    //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
+    let mqtt_init_req =
+        BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
     let sn = Context::get_context()?.device.sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
     Tasks::new()
         .push(Task::Initialization(InitializationTask::PullAnnouncement))
-        // .push(Task::Initialization(InitializationTask::PullHotCoins))
+        .push(Task::Initialization(InitializationTask::PullHotCoins))
         .push(Task::Initialization(
             InitializationTask::ProcessUnconfirmMsg,
         ))
@@ -77,7 +77,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             set_app_install_download_req,
         )))
-        // .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
+        .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
         .send()
         .await?;
 
