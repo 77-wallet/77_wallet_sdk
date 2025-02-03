@@ -39,7 +39,7 @@ async fn test_votes_fee() {
 async fn test_withdraw_fee() {
     let manager = get_manager().await;
 
-    let owner_address = "TJXWzjm6EuS7tzSXRBf9sHYBA5pcbsW7as";
+    let owner_address = "TGtSVaqXzzGM2XgbUvgZzZeNqFwp1VvyXS";
     let req = WithdrawBalanceReq::new(owner_address);
 
     let bill_kind = BillKind::WithdrawReward.to_i8() as i64;
