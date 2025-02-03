@@ -89,7 +89,6 @@ impl StackService {
         FrontendNotifyEvent::new(data).send().await?;
 
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
-
         // 验证余额
         let balance = self.chain.balance(from, None).await?;
         let consumer = self
