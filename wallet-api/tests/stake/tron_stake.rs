@@ -7,7 +7,7 @@ use wallet_database::entities::bill::BillKind;
 #[tokio::test]
 async fn test_account_resource() {
     let manager = get_manager().await;
-    let account = "TGtSVaqXzzGM2XgbUvgZzZeNqFwp1VvyXS".to_string();
+    let account = "TVnxXHsXYy5Ba6xr2q4qRWANQC4PyECQXV".to_string();
     let res = manager.resource_info(account).await;
 
     tracing::info!("resource = {}", serde_json::to_string(&res).unwrap());
@@ -35,8 +35,8 @@ async fn test_freeze() {
     let manager = get_manager().await;
     let req = FreezeBalanceReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        resource: "energy".to_string(),
-        frozen_balance: 50,
+        resource: "bandwidth".to_string(),
+        frozen_balance: 2895,
     };
     let password = "123456".to_string();
 
@@ -50,7 +50,7 @@ async fn test_unfreeze_fee() {
 
     let req = UnFreezeBalanceReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        resource: "energy".to_string(),
+        resource: "bandwidth".to_string(),
         unfreeze_balance: 50,
     };
 
@@ -68,8 +68,8 @@ async fn test_unfreeze() {
 
     let req = UnFreezeBalanceReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        resource: "energy".to_string(),
-        unfreeze_balance: 50,
+        resource: "bandwidth".to_string(),
+        unfreeze_balance: 10,
     };
 
     let password = "123456".to_string();

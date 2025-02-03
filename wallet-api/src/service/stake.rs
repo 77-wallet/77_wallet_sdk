@@ -80,6 +80,7 @@ impl StackService {
         bill_kind: BillKind,
         from: &str,
         password: &str,
+        value: i64,
     ) -> Result<String, crate::ServiceError> {
         // 构建交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -97,7 +98,7 @@ impl StackService {
             .transfer_fee(from, None, &resp.raw_data_hex, 1)
             .await?;
 
-        if balance.to::<i64>() < consumer.transaction_fee_i64() {
+        if balance.to::<i64>() < consumer.transaction_fee_i64() + value * tron::consts::TRX_VALUE {
             return Err(crate::BusinessError::Chain(
                 crate::ChainError::InsufficientFeeBalance,
             ))?;
@@ -113,6 +114,7 @@ impl StackService {
         let key = open_account_pk_with_password(chain_code::TRON, from, password).await?;
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
+        let transaction_fee = consumer.transaction_fee();
         // 写入本地交易数据
         let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
         let entity = NewBillEntity::new_stake_bill(
@@ -122,6 +124,7 @@ impl StackService {
             args.get_value(),
             bill_kind,
             bill_consumer.to_json_str()?,
+            transaction_fee,
         );
         domain::bill::BillDomain::create_bill(entity).await?;
 
@@ -194,13 +197,19 @@ impl StackService {
                 .await;
             match result {
                 Ok(hash) => {
+                    let transaction_fee = item.conusmer.transaction_fee();
+
+                    let bill_consumer =
+                        BillResourceConsume::new_tron(item.conusmer.act_bandwidth() as u64, 0)
+                            .to_json_str()?;
                     let entity = NewBillEntity::new_stake_bill(
                         hash.clone(),
                         from.to_string(),
                         item.to.clone(),
                         item.value,
                         bill_kind,
-                        "".to_string(),
+                        bill_consumer,
+                        transaction_fee,
                     );
                     domain::bill::BillDomain::create_bill(entity).await?;
 
@@ -484,7 +493,7 @@ impl StackService {
         };
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password)
+            .process_transaction(args, bill_kind, &from, password, req.frozen_balance)
             .await?;
 
         let resource_value = self
@@ -599,7 +608,7 @@ impl StackService {
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password)
+            .process_transaction(args, bill_kind, &from, password, 0)
             .await?;
 
         let resource_value = self
@@ -637,6 +646,7 @@ impl StackService {
                 BillKind::CancelAllUnFreeze,
                 &req.owner_address,
                 &password,
+                0,
             )
             .await?;
 
@@ -679,6 +689,7 @@ impl StackService {
                 BillKind::WithdrawUnFreeze,
                 &req.owner_address,
                 &password,
+                0,
             )
             .await?;
 
@@ -824,7 +835,7 @@ impl StackService {
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password)
+            .process_transaction(args, bill_kind, &from, password, 0)
             .await?;
 
         let resource_value = self
@@ -950,7 +961,7 @@ impl StackService {
         };
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, &password)
+            .process_transaction(args, bill_kind, &from, &password, 0)
             .await?;
 
         let resource_value = self
@@ -1214,7 +1225,7 @@ impl StackService {
         let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::Vote, &req.owner_address, password)
+            .process_transaction(args, BillKind::Vote, &req.owner_address, password, 0)
             .await?;
 
         Ok(tx_hash)
@@ -1228,7 +1239,13 @@ impl StackService {
         let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::WithdrawReward, &req.owner_address, password)
+            .process_transaction(
+                args,
+                BillKind::WithdrawReward,
+                &req.owner_address,
+                password,
+                0,
+            )
             .await?;
 
         Ok(tx_hash)

@@ -299,6 +299,7 @@ impl NewBillEntity {
         value: i64,
         bill_kind: BillKind,
         bill_consumer: String,
+        transaction_fee: String,
     ) -> Self {
         Self {
             hash,
@@ -309,7 +310,7 @@ impl NewBillEntity {
             symbol: "TRX".to_string(),
             status: 1,
             value: value as f64,
-            transaction_fee: "0".to_string(),
+            transaction_fee,
             resource_consume: bill_consumer,
             transaction_time: 0,
             multisig_tx: false,

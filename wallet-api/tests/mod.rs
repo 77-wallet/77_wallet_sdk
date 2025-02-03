@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::path::PathBuf;
 use tokio_stream::StreamExt;
 use wallet_api::{notify::FrontendNotifyEvent, WalletManager};
 use wallet_utils::init_test_log;
@@ -15,7 +15,14 @@ mod transactions;
 
 pub async fn get_manager() -> WalletManager {
     init_test_log();
-    let path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| {
+        std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
+    });
+    let path = PathBuf::from(manifest_dir)
         .join("test_data")
         .to_string_lossy()
         .to_string();
