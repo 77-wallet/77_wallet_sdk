@@ -194,8 +194,8 @@ impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: &WithdrawBalanceReq) -> Result<Self, Self::Error> {
         let args = Self {
-            // owner_address: wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?,
             owner_address: value.owner_address.clone(),
+            value: None,
         };
 
         Ok(args)

@@ -59,7 +59,7 @@ use wallet_utils::serde_func;
 
 struct TempBuildTransaction {
     to: String,
-    value: i64,
+    value: f64,
     conusmer: tron::params::ResourceConsumer,
     raw_data: RawTransactionParams,
 }
@@ -862,7 +862,7 @@ impl StackService {
         let chain_param = self.chain.get_provider().chain_params().await?;
 
         // 批量构建交易
-        let txs = self
+        let txs: Vec<TempBuildTransaction> = self
             .batch_build_transaction(args, bill_kind, &chain_param, &resource)
             .await?;
 
@@ -1236,7 +1236,21 @@ impl StackService {
         req: stake::WithdrawBalanceReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
-        let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
+        let mut args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
+
+        let value = self
+            .chain
+            .get_provider()
+            .get_reward(&req.owner_address)
+            .await?
+            .to_sun();
+
+        args.value = Some(value);
+        if value < 0.0 {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::NoRewardClaim,
+            ))?;
+        }
 
         let tx_hash = self
             .process_transaction(

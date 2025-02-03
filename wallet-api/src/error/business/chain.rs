@@ -29,6 +29,9 @@ pub enum ChainError {
     DustTransaction,
     #[error("Exceeds Max Fee")]
     ExceedsMaxFeerate,
+    // 波场没有奖励提取
+    #[error("no reward claim")]
+    NoRewardClaim,
 }
 
 impl ChainError {
@@ -48,6 +51,7 @@ impl ChainError {
             ChainError::ExceedsMaximum => 3512,
             ChainError::DustTransaction => 3513,
             ChainError::ExceedsMaxFeerate => 3514,
+            ChainError::NoRewardClaim => 3515,
         }
     }
 }
