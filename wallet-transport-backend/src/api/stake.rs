@@ -55,6 +55,15 @@ impl BackendApi {
             .await?;
         res.process()
     }
+
+    pub async fn vote_list(&self) -> Result<crate::response_vo::stake::VoteListResp, crate::Error> {
+        let res = self
+            .client
+            .post("vote/list")
+            .send::<BackendResponse>()
+            .await?;
+        res.process()
+    }
 }
 
 #[cfg(test)]
@@ -113,5 +122,17 @@ mod test {
             .await
             .unwrap();
         tracing::info!("{res:?}")
+    }
+
+    #[tokio::test]
+    async fn test_vote_list() {
+        init_test_log();
+        let base_url = BASE_URL;
+        let res = BackendApi::new(Some(base_url.to_string()), None)
+            .unwrap()
+            .vote_list()
+            .await
+            .unwrap();
+        tracing::info!("{res:#?}")
     }
 }

@@ -5,6 +5,7 @@ use wallet_chain_interact::tron::{
     operations::stake::{DelegateResouce, ResourceType},
 };
 use wallet_database::entities::bill::BillKind;
+use wallet_transport_backend::response_vo::stake::NodeRespList;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -276,6 +277,7 @@ impl VoteListResp {
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Witness {
+    pub name: Option<String>,
     pub address: String,
     pub vote_count: i64,
     pub vote_count_by_owner: Option<i64>,
@@ -284,9 +286,30 @@ pub struct Witness {
     pub apr: f64,
 }
 
+impl From<NodeRespList> for Witness {
+    fn from(value: NodeRespList) -> Self {
+        Witness::new(
+            value.name,
+            &value.address,
+            value.vote_count,
+            &value.url,
+            value.brokerage,
+            value.apr,
+        )
+    }
+}
+
 impl Witness {
-    pub fn new(address: &str, vote_count: i64, url: &str, brokerage: f64, apr: f64) -> Self {
+    pub fn new(
+        name: Option<String>,
+        address: &str,
+        vote_count: i64,
+        url: &str,
+        brokerage: f64,
+        apr: f64,
+    ) -> Self {
         Self {
+            name,
             address: address.to_string(),
             vote_count,
             url: url.to_string(),

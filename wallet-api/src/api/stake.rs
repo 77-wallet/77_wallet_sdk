@@ -320,6 +320,7 @@ mod tests {
         let res = wallet_utils::serde_func::serde_to_string(&res);
         tracing::info!("{:#?}", res);
     }
+
     #[tokio::test]
     async fn test_votes_node_list() {
         wallet_utils::init_test_log();

@@ -32,35 +32,21 @@ pub struct SystemEnergyResp {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoteListResp {
-    pub witnesses: Vec<Witness>,
+    pub node_resp_list: Vec<NodeRespList>,
+    pub total_vote_count: i64,
+    pub total_node: u16,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Witness {
+pub struct NodeRespList {
+    pub name: Option<String>,
     pub address: String,
-    pub vote_count: Option<i64>,
+    #[serde(default)]
+    pub vote_count: i64,
     pub url: String,
     /// 分成比例
-    pub brokerage: i64,
+    pub brokerage: f64,
     /// 年化收益率
-    pub apy: f64,
-}
-
-impl Witness {
-    pub fn new(
-        address: &str,
-        vote_count: Option<i64>,
-        url: &str,
-        brokerage: i64,
-        apy: f64,
-    ) -> Self {
-        Self {
-            address: wallet_utils::address::bs58_addr_to_hex(address).unwrap(),
-            vote_count,
-            url: url.to_string(),
-            brokerage,
-            apy,
-        }
-    }
+    pub apr: f64,
 }
