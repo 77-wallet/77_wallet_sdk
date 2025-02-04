@@ -56,10 +56,10 @@ async fn test_delegate() {
     let req = DelegateReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        balance: 50,
+        balance: 11,
         resource: "energy".to_string(),
-        lock: true,
-        lock_period: 0,
+        lock: false,
+        lock_period: 5,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;

@@ -68,7 +68,7 @@ async fn test_unfreeze() {
 
     let req = UnFreezeBalanceReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        resource: "bandwidth".to_string(),
+        resource: "energy".to_string(),
         unfreeze_balance: 10,
     };
 

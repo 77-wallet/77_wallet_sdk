@@ -829,6 +829,13 @@ impl StackService {
         password: &str,
     ) -> Result<resp::DelegateResp, crate::ServiceError> {
         let from = req.owner_address.clone();
+
+        if req.balance <= 0 {
+            return Err(crate::BusinessError::Stake(
+                crate::StakeError::DelegateLessThanMin,
+            ))?;
+        }
+
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
         let bill_kind = match resource_type {
@@ -903,6 +910,14 @@ impl StackService {
     ) -> Result<BatchDelegateResp, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
 
+        for list in req.list.iter() {
+            if list.value <= 0 {
+                return Err(crate::BusinessError::Stake(
+                    crate::StakeError::DelegateLessThanMin,
+                ))?;
+            }
+        }
+
         let bill_kind = match resource_type {
             ops::stake::ResourceType::BANDWIDTH => BillKind::BatchDelegateBandwidth,
             ops::stake::ResourceType::ENERGY => BillKind::BatchDelegateEnergy,
@@ -928,6 +943,14 @@ impl StackService {
         password: String,
     ) -> Result<BatchDelegateResp, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
+
+        for list in req.list.iter() {
+            if list.value <= 0 {
+                return Err(crate::BusinessError::Stake(
+                    crate::StakeError::UnDelegateLessThanMin,
+                ))?;
+            }
+        }
 
         let bill_kind = match resource_type {
             ops::stake::ResourceType::BANDWIDTH => BillKind::BatchUnDelegateBandwidth,
@@ -955,6 +978,13 @@ impl StackService {
         password: String,
     ) -> Result<resp::DelegateResp, crate::error::ServiceError> {
         let from = req.owner_address.clone();
+
+        if req.balance <= 0 {
+            return Err(crate::BusinessError::Stake(
+                crate::StakeError::UnDelegateLessThanMin,
+            ))?;
+        }
+
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
         let args = ops::stake::UnDelegateArgs::try_from(&req)?;
 

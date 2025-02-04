@@ -19,6 +19,10 @@ pub enum StakeError {
     UnSupportBillKind,
     #[error("multisig unsupport bill kind")]
     MultisigUnSupportBillKind,
+    #[error("delegateBalance must be greater than or equal to 1 TRX")]
+    DelegateLessThanMin,
+    #[error("undelegateBalance must be greater than or equal to 1 TRX")]
+    UnDelegateLessThanMin,
 }
 
 impl StakeError {
@@ -33,6 +37,8 @@ impl StakeError {
             StakeError::NoWithdrawableAmount => 3906,
             StakeError::UnSupportBillKind => 3907,
             StakeError::MultisigUnSupportBillKind => 3908,
+            StakeError::DelegateLessThanMin => 3909,
+            StakeError::UnDelegateLessThanMin => 3910,
         }
     }
 }

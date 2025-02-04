@@ -91,10 +91,10 @@ impl From<&DelegateReq> for wallet_database::entities::stake::NewDelegateEntity 
 impl TryFrom<&DelegateReq> for DelegateArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: &DelegateReq) -> Result<Self, Self::Error> {
-        let lock = if value.lock_period > 0 {
-            (value.lock_period * 28800, true)
+        let lock_period = if value.lock_period > 0 {
+            value.lock_period * 28800
         } else {
-            (0, false)
+            0
         };
 
         let args = Self {
@@ -102,8 +102,8 @@ impl TryFrom<&DelegateReq> for DelegateArgs {
             receiver_address: wallet_utils::address::bs58_addr_to_hex(&value.receiver_address)?,
             balance: value.balance * consts::TRX_VALUE,
             resource: stake::ResourceType::try_from(value.resource.as_str())?,
-            lock: lock.1,
-            lock_period: lock.0,
+            lock: value.lock,
+            lock_period,
         };
         Ok(args)
     }
@@ -225,6 +225,12 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
 
+        let lock_period = if value.lock_period > 0 {
+            value.lock_period * 28800
+        } else {
+            0
+        };
+
         value
             .list
             .iter()
@@ -237,7 +243,7 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
                     balance: item.value * consts::TRX_VALUE,
                     resource: resource_type,
                     lock: value.lock,
-                    lock_period: value.lock_period,
+                    lock_period,
                 })
             })
             .collect()
