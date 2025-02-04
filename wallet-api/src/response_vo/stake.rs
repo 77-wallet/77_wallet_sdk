@@ -51,6 +51,8 @@ pub struct FreezeResp {
     pub bill_kind: BillKind,
     pub tx_hash: String,
     pub expiration_at: Option<DateTime<Utc>>,
+    // 可能存在提取的金额
+    pub withdraw_amount: i64,
 }
 impl FreezeResp {
     pub fn new(
@@ -66,11 +68,17 @@ impl FreezeResp {
             tx_hash,
             bill_kind,
             expiration_at: None,
+            withdraw_amount: 0,
         }
     }
 
     pub fn expiration_at(mut self, date: DateTime<Utc>) -> Self {
         self.expiration_at = Some(date);
+        self
+    }
+
+    pub fn withdraw_amount(mut self, amount: i64) -> Self {
+        self.withdraw_amount = amount;
         self
     }
 }

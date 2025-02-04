@@ -569,9 +569,12 @@ impl StackService {
     ) -> Result<Vec<resp::UnfreezeListResp>, crate::error::ServiceError> {
         let account = self.chain.account_info(owner).await?;
 
+        let now = wallet_utils::time::now().timestamp_millis();
+
         let mut result = account
             .unfreeze_v2
             .iter()
+            .filter(|item| item.unfreeze_expire_time > now)
             .map(|item| {
                 let resource_type = if item.types.is_empty() {
                     ops::stake::ResourceType::BANDWIDTH
@@ -598,6 +601,14 @@ impl StackService {
         password: &str,
     ) -> Result<resp::FreezeResp, crate::error::ServiceError> {
         let from = req.owner_address.clone();
+
+        // 解质押的时候可能存在待提取的,提示给前端
+        let can_widthdraw = self
+            .chain
+            .provider
+            .can_withdraw_unfreeze_amount(&req.owner_address)
+            .await?;
+
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
         let bill_kind = match resource_type {
@@ -620,7 +631,8 @@ impl StackService {
 
         Ok(
             resp::FreezeResp::new(req.owner_address, resource, tx_hash, bill_kind)
-                .expiration_at(date),
+                .expiration_at(date)
+                .withdraw_amount(can_widthdraw.to_sun()),
         )
     }
 
@@ -716,8 +728,9 @@ impl StackService {
 
         res.votes = resource.tron_power_limit;
         res.freeze_num = account.frozen_v2.len() as i64 - 1;
-        res.unfreeze_num = account.unfreeze_v2.len() as i64;
         res.pending_withdraw = account.can_withdraw_num();
+        // 解锁中的不包括带提取的
+        res.unfreeze_num = account.unfreeze_v2.len() as i64 - res.pending_withdraw;
 
         // bandwitdh
         res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
