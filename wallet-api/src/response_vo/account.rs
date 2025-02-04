@@ -60,6 +60,8 @@ pub struct AccountResource {
     pub balance: f64,
     //  质押获得的票数
     pub votes: i64,
+    // 公共质押了多少
+    pub freeze_amount: i64,
     // 冻结的数量
     pub freeze_num: i64,
     // 解冻中的数量

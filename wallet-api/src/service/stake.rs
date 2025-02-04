@@ -772,6 +772,9 @@ impl StackService {
 
         res.delegate_num = res.bandwidth.delegate_freeze.amount + res.energy.delegate_freeze.amount;
 
+        // 总共质押了多少(包含解冻中的)
+        res.freeze_amount = (res.total_freeze.amount + res.total_un_freeze.amount) as i64;
+
         Ok(res)
     }
 
