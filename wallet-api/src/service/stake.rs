@@ -81,6 +81,7 @@ impl StackService {
         from: &str,
         password: &str,
         value: i64,
+        bill_value: f64,
     ) -> Result<String, crate::ServiceError> {
         // 构建交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -116,12 +117,18 @@ impl StackService {
 
         let transaction_fee = consumer.transaction_fee();
         // 写入本地交易数据
+
+        let value = if bill_value > 0.0 {
+            bill_value
+        } else {
+            args.get_value()
+        };
         let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
         let entity = NewBillEntity::new_stake_bill(
             hash.clone(),
             from.to_string(),
             args.get_to(),
-            args.get_value(),
+            value,
             bill_kind,
             bill_consumer.to_json_str()?,
             transaction_fee,
@@ -493,7 +500,7 @@ impl StackService {
         };
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password, req.frozen_balance)
+            .process_transaction(args, bill_kind, &from, password, req.frozen_balance, 0.0)
             .await?;
 
         let resource_value = self
@@ -625,7 +632,7 @@ impl StackService {
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password, 0)
+            .process_transaction(args, bill_kind, &from, password, 0, 0.0)
             .await?;
 
         let resource_value = self
@@ -652,10 +659,10 @@ impl StackService {
         let resource = ChainTransaction::account_resorce(&self.chain, &req.owner_address).await?;
 
         // 1可以解质押的带宽
-        let bandwidth = account.can_withdraw_unfreeze_amount("");
+        let bandwidth = account.un_freeze_amount("");
 
         // 2.可以解质押的能量
-        let energy = account.can_withdraw_unfreeze_amount("ENERGY");
+        let energy = account.un_freeze_amount("ENERGY");
         let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
 
         let tx_hash = self
@@ -665,6 +672,7 @@ impl StackService {
                 &req.owner_address,
                 &password,
                 0,
+                (bandwidth + energy) as f64,
             )
             .await?;
 
@@ -708,6 +716,7 @@ impl StackService {
                 &req.owner_address,
                 &password,
                 0,
+                0.0,
             )
             .await?;
 
@@ -864,7 +873,7 @@ impl StackService {
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password, 0)
+            .process_transaction(args, bill_kind, &from, password, 0, 0.0)
             .await?;
 
         let resource_value = self
@@ -1013,7 +1022,7 @@ impl StackService {
         };
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, &password, 0)
+            .process_transaction(args, bill_kind, &from, &password, 0, 0.0)
             .await?;
 
         let resource_value = self
@@ -1279,7 +1288,7 @@ impl StackService {
         let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, BillKind::Vote, &req.owner_address, password, 0)
+            .process_transaction(args, BillKind::Vote, &req.owner_address, password, 0, 0.0)
             .await?;
 
         Ok(tx_hash)
@@ -1313,6 +1322,7 @@ impl StackService {
                 &req.owner_address,
                 password,
                 0,
+                0.0,
             )
             .await?;
 
