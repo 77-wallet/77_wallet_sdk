@@ -345,7 +345,7 @@ impl StackService {
             ops::stake::ResourceType::BANDWIDTH => "",
             ops::stake::ResourceType::ENERGY => "ENERGY",
         };
-        let owner = account.frozen_v2_owner(&type_str);
+        let owner = account.frozen_v2_owner(&type_str) + delegate;
         resource.owner_freeze = TrxResource::new(owner, price);
 
         resource.can_unfreeze = owner;
@@ -769,7 +769,7 @@ impl StackService {
         let unit_price = token_price.get_price(currency);
 
         // 总质押
-        let amount = res.bandwidth.total_freeze.amount + res.energy.total_freeze.amount;
+        let amount = res.bandwidth.owner_freeze.amount + res.energy.owner_freeze.amount;
         let balance = BalanceInfo::new(amount as f64, unit_price, currency);
         res.total_freeze = balance;
 
