@@ -82,7 +82,7 @@ async fn test_unfreeze() {
 async fn test_freeze_list() {
     let manager = get_manager().await;
 
-    let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let owner = "TGtSVaqXzzGM2XgbUvgZzZeNqFwp1VvyXS".to_string();
     let res = manager.freeze_list(owner).await;
     tracing::info!("freeze  {}", serde_json::to_string(&res).unwrap());
 }

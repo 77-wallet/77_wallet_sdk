@@ -130,9 +130,9 @@ impl TrxResource {
 
 impl Resource {
     pub fn calculate_total(&mut self) {
-        let amount = self.owner_freeze.amount + self.acquire_freeze.amount;
+        let amount = self.owner_freeze.amount;
 
-        let value = self.owner_freeze.value + self.acquire_freeze.value;
+        let value = self.owner_freeze.value;
 
         self.total_freeze = TrxResource { amount, value }
     }

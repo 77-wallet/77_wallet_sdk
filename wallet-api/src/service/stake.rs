@@ -520,7 +520,11 @@ impl StackService {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let mut res = vec![];
-        let bandwidth = account.frozen_v2_owner("");
+
+        // 包含（质押中、解锁中、代理给别人的）
+        let mut bandwidth = account.frozen_v2_owner("");
+        bandwidth += account.delegate_resource(ops::stake::ResourceType::BANDWIDTH);
+
         if bandwidth > 0 {
             let resource_type = ops::stake::ResourceType::BANDWIDTH;
             let resource_value = resource.resource_value(resource_type, bandwidth)?;
@@ -540,7 +544,9 @@ impl StackService {
             res.push(freeze);
         }
 
-        let energy = account.frozen_v2_owner("ENERGY");
+        let mut energy = account.frozen_v2_owner("ENERGY");
+        energy += account.delegate_resource(ops::stake::ResourceType::ENERGY);
+
         if energy > 0 {
             let resource_type = ops::stake::ResourceType::ENERGY;
             let resource_value = resource.resource_value(resource_type, energy)?;
