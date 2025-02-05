@@ -1184,9 +1184,10 @@ impl StackService {
         &self,
         owner_address: Option<&str>,
     ) -> Result<resp::VoteListResp, crate::error::ServiceError> {
-        let chain = self.chain.get_provider();
         // 所有的超级节点列表
-        let mut res = StakeDomain::vote_list(chain).await?;
+        // let chain = self.chain.get_provider();
+        // let mut res = StakeDomain::vote_list(chain).await?;
+        let mut res = StakeDomain::vote_list_from_backend().await?;
         if let Some(owner_address) = owner_address {
             let account_info = self.chain.account_info(owner_address).await?;
             // 投票人投票列表
@@ -1207,9 +1208,9 @@ impl StackService {
         &self,
         owner: &str,
     ) -> Result<resp::VoterInfoResp, crate::error::ServiceError> {
-        // let chain = ChainAdapterFactory::get_tron_adapter().await?;
-        let chain = self.chain.get_provider();
-        let vote_list = StakeDomain::vote_list(chain).await?;
+        // let chain = self.chain.get_provider();
+        // let vote_list = StakeDomain::vote_list(chain).await?;
+        let vote_list = StakeDomain::vote_list_from_backend().await?;
         let reward = self.chain.get_provider().get_reward(owner).await?;
 
         let account_info = self.chain.account_info(owner).await?;
@@ -1248,8 +1249,9 @@ impl StackService {
     }
 
     pub async fn top_witness(&self) -> Result<Option<resp::Witness>, crate::error::ServiceError> {
-        let chain = self.chain.get_provider();
-        let list = StakeDomain::vote_list(chain).await?.data;
+        // let chain = self.chain.get_provider();
+        // let list = StakeDomain::vote_list(chain).await?.data;
+        let list = StakeDomain::vote_list_from_backend().await?.data;
         // 获取最大投票数的witness
         let mut max_apr = 0.0f64;
         let mut max_witness = None;

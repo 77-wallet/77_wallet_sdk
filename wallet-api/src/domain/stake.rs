@@ -188,6 +188,37 @@ impl StakeDomain {
         }
     }
 
+    // 从后端获取代表列表
+    pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::ServiceError>
+    {
+        let backend = crate::Context::get_global_backend_api()?;
+        let mut list = backend.vote_list().await?;
+        // let witness_list = list.node_resp_list;
+        list.node_resp_list.iter_mut().for_each(|item| {
+            item.brokerage = (100.0 - item.brokerage) / 100.0;
+            item.apr = item.apr * 100.0;
+        });
+        // list.node_resp_list.sort_by(|a, b| {
+        //     let a_vote_count = a.vote_count;
+        //     let b_vote_count = b.vote_count;
+        //     b_vote_count.cmp(&a_vote_count)
+        // });
+
+        let res = VoteListResp {
+            total: list.total_node,
+            total_votes: list.total_vote_count,
+            data: list
+                .node_resp_list
+                .into_iter()
+                .map(|node| node.into())
+                .collect(),
+        };
+
+        Ok(res)
+    }
+
+    // sdk主动查询代表列表
+    #[allow(unused)]
     pub(crate) async fn vote_list(
         chain: &wallet_chain_interact::tron::Provider,
     ) -> Result<VoteListResp, crate::error::ServiceError> {
@@ -214,13 +245,16 @@ impl StakeDomain {
             let brokerage = (100.0 - chain.get_brokerage(&address).await?.brokerage as f64) / 100.0;
 
             let block_reward = StakeDomain::calculate_block_reward(brokerage, vote_count as f64);
+
             let vote_reward = StakeDomain::calculate_vote_reward(
                 vote_count as f64,
                 total_sr_votes as f64,
                 brokerage,
             );
             let apr = StakeDomain::calculate_apr(vote_reward, block_reward);
+
             data.push(crate::response_vo::stake::Witness::new(
+                None,
                 &wallet_utils::address::hex_to_bs58_addr(&address)?,
                 vote_count,
                 &url,
