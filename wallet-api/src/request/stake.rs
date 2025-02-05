@@ -71,28 +71,28 @@ pub struct DelegateReq {
     pub balance: i64,
     pub resource: String,
     pub lock: bool,
-    pub lock_period: i64,
+    pub lock_period: f64,
 }
 
-impl From<&DelegateReq> for wallet_database::entities::stake::NewDelegateEntity {
-    fn from(value: &DelegateReq) -> Self {
-        Self {
-            tx_hash: "".to_string(),
-            owner_address: value.owner_address.clone(),
-            receiver_address: value.receiver_address.clone(),
-            amount: value.balance.to_string(),
-            resource_type: value.resource.clone(),
-            lock: value.lock.into(),
-            lock_period: value.lock_period,
-        }
-    }
-}
+// impl From<&DelegateReq> for wallet_database::entities::stake::NewDelegateEntity {
+//     fn from(value: &DelegateReq) -> Self {
+//         Self {
+//             tx_hash: "".to_string(),
+//             owner_address: value.owner_address.clone(),
+//             receiver_address: value.receiver_address.clone(),
+//             amount: value.balance.to_string(),
+//             resource_type: value.resource.clone(),
+//             lock: value.lock.into(),
+//             lock_period: value.lock_period,
+//         }
+//     }
+// }
 
 impl TryFrom<&DelegateReq> for DelegateArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: &DelegateReq) -> Result<Self, Self::Error> {
-        let lock_period = if value.lock_period > 0 {
-            value.lock_period * 28800
+        let lock_period = if value.lock_period > 0.0 {
+            (value.lock_period * 28800.0) as i64
         } else {
             0
         };
@@ -209,7 +209,7 @@ pub struct BatchDelegate {
     pub owner_address: String,
     pub resource_type: String,
     pub lock: bool,
-    pub lock_period: i64,
+    pub lock_period: f64,
     pub list: Vec<BatchList>,
 }
 
@@ -225,8 +225,8 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
 
-        let lock_period = if value.lock_period > 0 {
-            value.lock_period * 28800
+        let lock_period = if value.lock_period > 0.0 {
+            (value.lock_period * 28800.0) as i64
         } else {
             0
         };

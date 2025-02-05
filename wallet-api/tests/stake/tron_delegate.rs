@@ -39,7 +39,7 @@ async fn test_delegate_fee() {
         balance: 50,
         resource: "energy".to_string(),
         lock: false,
-        lock_period: 0,
+        lock_period: 0.0,
     };
 
     let bill_kind = BillKind::DelegateBandwidth.to_i8();
@@ -59,7 +59,7 @@ async fn test_delegate() {
         balance: 11,
         resource: "energy".to_string(),
         lock: false,
-        lock_period: 5,
+        lock_period: 5.0,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;
@@ -84,7 +84,7 @@ async fn test_batch_delegate_fee() {
         resource_type: "energy".to_string(),
         list: vec![rerevice1, rerevice2],
         lock: false,
-        lock_period: 0,
+        lock_period: 0.0,
     };
 
     let bill_kind = BillKind::BatchDelegateBandwidth.to_i8() as i64;
@@ -113,7 +113,7 @@ async fn test_batch_delegate() {
         resource_type: "energy".to_string(),
         list: vec![rerevice1, rerevice2],
         lock: false,
-        lock_period: 0,
+        lock_period: 0.0,
     };
 
     let manager = get_manager().await;
