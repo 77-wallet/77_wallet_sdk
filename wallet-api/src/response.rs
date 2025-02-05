@@ -114,7 +114,18 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
             }
             _ => (540, msg),
         },
-        wallet_chain_interact::Error::ContractValidationError(msg) => (-40000, msg),
+        wallet_chain_interact::Error::ContractValidationError(msg) => match msg {
+            wallet_chain_interact::ContractValidationError::WithdrawTooSoon(_) => {
+                (-40001, msg.to_string())
+            }
+            wallet_chain_interact::ContractValidationError::WitnessAccountDoesNotHaveAnyReward => {
+                (-40002, msg.to_string())
+            }
+            wallet_chain_interact::ContractValidationError::EnergyLockPeriodTooShort(_) => {
+                (-40003, msg.to_string())
+            }
+            wallet_chain_interact::ContractValidationError::Other(_) => (-40000, msg.to_string()),
+        },
         _ => (540, msg),
     }
 }

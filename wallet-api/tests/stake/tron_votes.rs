@@ -54,10 +54,10 @@ async fn test_withdraw_fee() {
 async fn test_claim_votes() {
     let manager = get_manager().await;
 
-    let owner_address = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
+    let owner_address = "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB";
     let req = WithdrawBalanceReq::new(owner_address);
 
-    let res = manager.claim_votes_rewards(req, "123").await;
+    let res = manager.claim_votes_rewards(req, "123456").await;
 
     tracing::info!("fee {}", serde_json::to_string(&res).unwrap());
 }
