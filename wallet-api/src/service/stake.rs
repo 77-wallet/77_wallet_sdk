@@ -262,7 +262,7 @@ impl StackService {
                 if types.to_ascii_lowercase() == "bandwidth"
                     && delegate.frozen_balance_for_bandwidth > 0
                 {
-                    let resource_type = ops::stake::ResourceType::ENERGY;
+                    let resource_type = ops::stake::ResourceType::BANDWIDTH;
                     let amount = delegate.value_trx(resource_type);
                     let resource_value = resource.resource_value(resource_type, amount)?;
 
