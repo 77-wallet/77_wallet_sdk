@@ -115,15 +115,18 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
             _ => (540, msg),
         },
         wallet_chain_interact::Error::ContractValidationError(msg) => match msg {
-            wallet_chain_interact::ContractValidationError::WithdrawTooSoon(_) => {
-                (3511, msg.to_string())
-            }
-            wallet_chain_interact::ContractValidationError::WitnessAccountDoesNotHaveAnyReward => {
-                (3512, msg.to_string())
-            }
-            wallet_chain_interact::ContractValidationError::EnergyLockPeriodTooShort(_) => {
-                (3513, msg.to_string())
-            }
+            wallet_chain_interact::ContractValidationError::WithdrawTooSoon(_) => (
+                crate::ChainError::WithdrawTooSoon.get_status_code(),
+                msg.to_string(),
+            ),
+            wallet_chain_interact::ContractValidationError::WitnessAccountDoesNotHaveAnyReward => (
+                crate::ChainError::WitnessAccountDoesNotHaveAnyReward.get_status_code(),
+                msg.to_string(),
+            ),
+            wallet_chain_interact::ContractValidationError::EnergyLockPeriodTooShort(_) => (
+                crate::ChainError::LockPeriodTooShort.get_status_code(),
+                msg.to_string(),
+            ),
             wallet_chain_interact::ContractValidationError::Other(_) => (-40000, msg.to_string()),
         },
         _ => (540, msg),

@@ -32,6 +32,12 @@ pub enum ChainError {
     // 波场没有奖励提取
     #[error("no reward claim")]
     NoRewardClaim,
+    #[error("last withdraw time  less than 24 hours")]
+    WithdrawTooSoon,
+    #[error("witnessAccount does not have any reward")]
+    WitnessAccountDoesNotHaveAnyReward,
+    #[error("The lock period for this time cannot be less than the remaining time")]
+    LockPeriodTooShort,
 }
 
 impl ChainError {
@@ -52,6 +58,9 @@ impl ChainError {
             ChainError::DustTransaction => 3513,
             ChainError::ExceedsMaxFeerate => 3514,
             ChainError::NoRewardClaim => 3515,
+            ChainError::WithdrawTooSoon => 3516,
+            ChainError::WitnessAccountDoesNotHaveAnyReward => 3517,
+            ChainError::LockPeriodTooShort => 3518,
         }
     }
 }
