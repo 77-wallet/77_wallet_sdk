@@ -352,8 +352,8 @@ impl StackService {
             ops::stake::ResourceType::BANDWIDTH => "",
             ops::stake::ResourceType::ENERGY => "ENERGY",
         };
-        let owner = account.frozen_v2_owner(&type_str) + delegate;
-        resource.owner_freeze = TrxResource::new(owner, price);
+        let owner = account.frozen_v2_owner(&type_str);
+        resource.owner_freeze = TrxResource::new(owner + delegate, price);
 
         resource.can_unfreeze = owner;
 
