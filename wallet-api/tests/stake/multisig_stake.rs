@@ -1,5 +1,7 @@
 use crate::get_manager;
-use wallet_api::request::stake::{FreezeBalanceReq, VoteWitnessReq, VotesReq};
+use wallet_api::request::stake::{
+    DelegateReq, FreezeBalanceReq, UnDelegateReq, VoteWitnessReq, VotesReq,
+};
 use wallet_database::entities::bill::BillKind;
 
 #[tokio::test]
@@ -9,10 +11,56 @@ async fn test_build_freeze() {
     let req = FreezeBalanceReq {
         owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         resource: "energy".to_string(),
-        frozen_balance: 100,
+        frozen_balance: 10,
     };
 
     let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;
+    let content = serde_json::to_string(&req).unwrap();
+
+    let password = "123456".to_string();
+    let res = manager
+        .build_multisig_stake(bill_kind, content, 1, password)
+        .await;
+
+    tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_build_delegate() {
+    let manager = get_manager().await;
+
+    let req = DelegateReq {
+        owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        receiver_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        balance: 100000,
+        resource: "energy".to_string(),
+        lock: false,
+        lock_period: 10000000.0,
+    };
+
+    let bill_kind = BillKind::DelegateEnergy.to_i8() as i64;
+    let content = serde_json::to_string(&req).unwrap();
+
+    let password = "123456".to_string();
+    let res = manager
+        .build_multisig_stake(bill_kind, content, 1, password)
+        .await;
+
+    tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_build_un_delegate() {
+    let manager = get_manager().await;
+
+    let req = UnDelegateReq {
+        owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        receiver_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        balance: 3,
+        resource: "energy".to_string(),
+    };
+
+    let bill_kind = BillKind::UnDelegateEnergy.to_i8() as i64;
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();

@@ -300,7 +300,7 @@ impl From<MultisigQueueEntity> for NewMultisigQueueEntity {
             fail_reason: value.fail_reason.to_string(),
             signatures: vec![],
             create_at: value.created_at,
-            transfer_type: BillKind::Transfer,
+            transfer_type: BillKind::try_from(value.transfer_type).unwrap_or(BillKind::Transfer),
         }
     }
 }

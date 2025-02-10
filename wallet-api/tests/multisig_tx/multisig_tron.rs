@@ -4,18 +4,18 @@ use wallet_api::{response_vo::transaction::TransferParams, MemberVo};
 #[tokio::test]
 async fn test_create_multisig_account() {
     let wallet_manager = get_manager().await;
-    let address = "TVrbFPUhu22tTUumhWHmRm5K3MdnXNCT1g".to_string();
+    let address = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
     let chain_code = "tron".to_string();
 
     let threshold = 2;
     let member1 = MemberVo::new(
         "account_1".to_string(),
-        "TVrbFPUhu22tTUumhWHmRm5K3MdnXNCT1g".to_string(),
+        "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
     );
 
     let member2 = MemberVo::new(
         "account_0".to_string(),
-        "TRwE9EPKxBR66D7RkMo3h886pyXGbfkmYP".to_string(),
+        "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
     );
 
     // let member3 = MemberVo::new(
@@ -130,7 +130,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "218875328414748672".to_string();
+    let id = "227595022416089088".to_string();
 
     let password = "123456".to_string();
     let fee = None;
