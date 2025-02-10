@@ -514,6 +514,8 @@ impl MultisigTransactionService {
         .await?;
         let transfer_amcount = wallet_utils::unit::convert_to_u256(&queue.value, assets.decimals)?;
 
+        let bill_kind = BillKind::try_from(queue.transfer_type)?;
+
         let instance =
             domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(&queue.chain_code)
                 .await?;
@@ -653,6 +655,13 @@ impl MultisigTransactionService {
                 let transfer_balance = chain
                     .balance(&queue.from_addr, queue.token_address())
                     .await?;
+
+                // 根据交易类型来判断是否需要将amount 进行验证
+                let transfer_amcount = if bill_kind.out_transfer_type() {
+                    transfer_amcount
+                } else {
+                    alloy::primitives::U256::ZERO
+                };
                 if transfer_balance < transfer_amcount {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientBalance,
@@ -738,7 +747,7 @@ impl MultisigTransactionService {
             queue.chain_code,
             queue.symbol,
             true,
-            BillKind::Transfer,
+            bill_kind,
             queue.notes.clone(),
         )
         .with_queue_id(queue_id)
@@ -766,8 +775,6 @@ impl MultisigTransactionService {
             raw_data,
         };
 
-        // TODO 当前调试用,最终删除
-        // tracing::error!("exec multisig tx = {}", tx_resp.tx_hash);
         let backend = crate::manager::Context::get_global_backend_api()?;
         if let Err(e) = backend.signed_tran_update_trans_hash(&req).await {
             tracing::error!("report signed tran update  add to task{}", e);

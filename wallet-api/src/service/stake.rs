@@ -375,23 +375,31 @@ impl StackService {
         resource.calculate_total();
     }
 
-    fn convert_stake_args(
+    async fn convert_stake_args(
         &self,
         bill_kind: BillKind,
         content: String,
-    ) -> Result<(StakeArgs, String), crate::ServiceError> {
+    ) -> Result<(StakeArgs, String, f64), crate::ServiceError> {
         match bill_kind {
             BillKind::FreezeBandwidth | BillKind::FreezeEnergy => {
                 let req = serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
                 let args = ops::stake::FreezeBalanceArgs::try_from(&req)?;
 
-                Ok((StakeArgs::Freeze(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::Freeze(args),
+                    req.owner_address.clone(),
+                    req.frozen_balance as f64,
+                ))
             }
             BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => {
                 let req = serde_func::serde_from_str::<stake::UnFreezeBalanceReq>(&content)?;
                 let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
-                Ok((StakeArgs::UnFreeze(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::UnFreeze(args),
+                    req.owner_address.clone(),
+                    req.unfreeze_balance as f64,
+                ))
             }
             BillKind::CancelAllUnFreeze => {
                 let req = serde_func::serde_from_str::<stake::CancelAllUnFreezeReq>(&content)?;
@@ -400,50 +408,84 @@ impl StackService {
                 Ok((
                     StakeArgs::CancelAllUnFreeze(args),
                     req.owner_address.clone(),
+                    0.0,
                 ))
             }
             BillKind::WithdrawUnFreeze => {
                 let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
+
+                let can_widthdraw = self
+                    .chain
+                    .provider
+                    .can_withdraw_unfreeze_amount(&req.owner_address)
+                    .await?;
                 let args = ops::stake::WithdrawUnfreezeArgs {
                     owner_address: req.owner_address.clone(),
                 };
 
-                Ok((StakeArgs::Withdraw(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::Withdraw(args),
+                    req.owner_address.clone(),
+                    can_widthdraw.to_sun() as f64,
+                ))
             }
             BillKind::DelegateBandwidth | BillKind::DelegateEnergy => {
                 let req = serde_func::serde_from_str::<stake::DelegateReq>(&content)?;
                 let args = ops::stake::DelegateArgs::try_from(&req)?;
 
-                Ok((StakeArgs::Delegate(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::Delegate(args),
+                    req.owner_address.clone(),
+                    req.balance as f64,
+                ))
             }
             BillKind::UnDelegateBandwidth | BillKind::UnDelegateEnergy => {
                 let req = serde_func::serde_from_str::<stake::UnDelegateReq>(&content)?;
                 let args = ops::stake::UnDelegateArgs::try_from(&req)?;
 
-                Ok((StakeArgs::UnDelegate(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::UnDelegate(args),
+                    req.owner_address.clone(),
+                    req.balance as f64,
+                ))
             }
             BillKind::BatchDelegateBandwidth | BillKind::BatchDelegateEnergy => {
                 let req = serde_func::serde_from_str::<stake::BatchDelegate>(&content)?;
 
+                let value = req.list.iter().map(|item| item.value).sum::<i64>() as f64;
+
                 let args: Vec<DelegateArgs> = (&req).try_into()?;
-                Ok((StakeArgs::BatchDelegate(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::BatchDelegate(args),
+                    req.owner_address.clone(),
+                    value,
+                ))
             }
             BillKind::BatchUnDelegateBandwidth | BillKind::BatchUnDelegateEnergy => {
                 let req = serde_func::serde_from_str::<stake::BatchUnDelegate>(&content)?;
 
+                let value = req.list.iter().map(|item| item.value).sum::<i64>() as f64;
                 let args: Vec<UnDelegateArgs> = (&req).try_into()?;
-                Ok((StakeArgs::BatchUnDelegate(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::BatchUnDelegate(args),
+                    req.owner_address.clone(),
+                    value,
+                ))
             }
             BillKind::Vote => {
                 let req = serde_func::serde_from_str::<stake::VoteWitnessReq>(&content)?;
                 let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
-                Ok((StakeArgs::Votes(args), req.owner_address.clone()))
+                Ok((StakeArgs::Votes(args), req.owner_address.clone(), 0.0))
             }
             BillKind::WithdrawReward => {
                 let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
                 let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
 
-                Ok((StakeArgs::WithdrawReward(args), req.owner_address.clone()))
+                Ok((
+                    StakeArgs::WithdrawReward(args),
+                    req.owner_address.clone(),
+                    0.0,
+                ))
             }
             _ => {
                 return Err(crate::BusinessError::Stake(
@@ -464,12 +506,9 @@ impl StackService {
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
+        let token_currency = TokenCurrencyGetter::get_currency(currency, "tron", "TRX").await?;
 
-        let token_currency =
-            domain::coin::token_price::TokenCurrencyGetter::get_currency(currency, "tron", "TRX")
-                .await?;
-
-        let (args, account) = self.convert_stake_args(bill_kind, content)?;
+        let (args, account, _) = self.convert_stake_args(bill_kind, content).await?;
 
         let consumer = args.exec(&account, &self.chain).await?;
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
@@ -716,7 +755,7 @@ impl StackService {
                 &req.owner_address,
                 &password,
                 0,
-                0.0,
+                can_widthdraw.to_sun() as f64,
             )
             .await?;
 
@@ -1342,7 +1381,7 @@ impl StackService {
 
         let bill_kind = BillKind::try_from(bill_kind as i8)?;
         // 转换多签的参数
-        let (args, address) = self.convert_stake_args(bill_kind, content)?;
+        let (args, address, amount) = self.convert_stake_args(bill_kind, content).await?;
 
         let account = MultisigDomain::account_by_address(&address, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
@@ -1363,6 +1402,7 @@ impl StackService {
             &resp.raw_data,
             bill_kind,
         );
+        queue.value = amount.to_string();
 
         let mut members = queue_repo.self_member_account_id(&account.id).await?;
         members.prioritize_by_address(&account.initiator_addr);

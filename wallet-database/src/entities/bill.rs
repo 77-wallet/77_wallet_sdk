@@ -174,6 +174,20 @@ impl BillKind {
             BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
         }
     }
+
+    // 金额是否转出的交易类型(针对本地的交易)
+    pub fn out_transfer_type(&self) -> bool {
+        match self {
+            BillKind::Transfer
+            | BillKind::ServiceCharge
+            | BillKind::MultiSignTx
+            | BillKind::SigningFee
+            | BillKind::DeployMultiSign
+            | BillKind::FreezeBandwidth
+            | BillKind::FreezeEnergy => true,
+            _ => false,
+        }
+    }
 }
 
 impl TryFrom<i8> for BillKind {
