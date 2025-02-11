@@ -516,9 +516,7 @@ impl MultisigTransactionService {
 
         let bill_kind = BillKind::try_from(queue.transfer_type)?;
 
-        let instance =
-            domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(&queue.chain_code)
-                .await?;
+        let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
         let tx_resp = match instance {
             MultisigAdapter::Ethereum(chain) => {
                 let multisig_account = domain::multisig::MultisigDomain::account_by_address(

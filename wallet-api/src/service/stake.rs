@@ -403,12 +403,17 @@ impl StackService {
             }
             BillKind::CancelAllUnFreeze => {
                 let req = serde_func::serde_from_str::<stake::CancelAllUnFreezeReq>(&content)?;
+
+                let account = self.chain.account_info(&req.owner_address).await?;
+                let bandwidth = account.un_freeze_amount("");
+                let energy = account.un_freeze_amount("ENERGY");
+
                 let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
 
                 Ok((
                     StakeArgs::CancelAllUnFreeze(args),
                     req.owner_address.clone(),
-                    0.0,
+                    (bandwidth + energy) as f64,
                 ))
             }
             BillKind::WithdrawUnFreeze => {
@@ -479,12 +484,20 @@ impl StackService {
             }
             BillKind::WithdrawReward => {
                 let req = serde_func::serde_from_str::<stake::WithdrawBalanceReq>(&content)?;
+
+                let value = self
+                    .chain
+                    .get_provider()
+                    .get_reward(&req.owner_address)
+                    .await?
+                    .to_sun();
+
                 let args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
 
                 Ok((
                     StakeArgs::WithdrawReward(args),
                     req.owner_address.clone(),
-                    0.0,
+                    value,
                 ))
             }
             _ => {
