@@ -4,7 +4,9 @@ use transaction::*;
 
 pub(crate) mod multisig;
 pub(crate) mod other;
+pub(crate) mod resource;
 pub(crate) mod transaction;
+
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
 pub enum NotifyEvent {
@@ -31,6 +33,11 @@ pub enum NotifyEvent {
     // 执行交易的过程
     TransactionProcess(TransactionProcessFrontend),
     ChainChange(crate::mqtt::payload::incoming::chain::ChainChange),
+
+    // 资源
+    EnergyStakeConfirm(resource::EnergyStakeConfirmFrontend),
+    EnergyStakeSuccess(resource::EnergyStakeSuccessFrontend),
+    EnergyStakeFailed(resource::EnergyStakeFailedFrontend),
 }
 
 impl NotifyEvent {
@@ -64,6 +71,11 @@ impl NotifyEvent {
             NotifyEvent::Debug(_) => "DEBUG".to_string(),
             NotifyEvent::Err(_) => "ERR".to_string(),
             NotifyEvent::TransactionProcess(_) => "TRANSACTION_PROCESS".to_string(),
+
+            // 资源
+            NotifyEvent::EnergyStakeConfirm(_) => "ENERGY_STAKE_CONFIRM".to_string(),
+            NotifyEvent::EnergyStakeSuccess(_) => "ENERGY_STAKE_SUCCESS".to_string(),
+            NotifyEvent::EnergyStakeFailed(_) => "ENERGY_STAKE_FAILED".to_string(),
         }
     }
 }

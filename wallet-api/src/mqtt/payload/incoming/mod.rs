@@ -1,6 +1,7 @@
 pub mod announcement;
 pub mod chain;
 pub mod init;
+pub mod resource;
 pub mod rpc;
 pub mod signature;
 #[cfg(feature = "token")]
