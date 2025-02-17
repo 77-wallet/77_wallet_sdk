@@ -1469,6 +1469,7 @@ impl StackService {
         let bill_kind = BillKind::try_from(bill_kind as i8)?;
         // 转换多签的参数
         let (args, address, amount) = self.convert_stake_args(bill_kind, content).await?;
+        let to = args.get_to();
 
         let account = MultisigDomain::account_by_address(&address, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
@@ -1484,12 +1485,13 @@ impl StackService {
         let mut queue = NewMultisigQueueEntity::new(
             account.id.to_string(),
             address.to_string(),
+            to,
             expiration as i64,
             &resp.tx_hash,
             &resp.raw_data,
             bill_kind,
+            amount.to_string(),
         );
-        queue.value = amount.to_string();
 
         let mut members = queue_repo.self_member_account_id(&account.id).await?;
         members.prioritize_by_address(&account.initiator_addr);

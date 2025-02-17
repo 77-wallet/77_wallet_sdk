@@ -2,7 +2,7 @@ use wallet_chain_interact::{
     tron::{
         operations::{
             stake::{self},
-            TronSimulateOperation,
+            TronSimulateOperation, TronTxOperation,
         },
         params::ResourceConsumer,
         TronChain,
@@ -96,6 +96,21 @@ impl StakeArgs {
             }
         };
         Ok(res)
+    }
+
+    pub fn get_to(&self) -> String {
+        match self {
+            Self::Freeze(params) => params.get_to(),
+            Self::UnFreeze(params) => params.get_to(),
+            Self::CancelAllUnFreeze(params) => params.get_to(),
+            Self::Withdraw(params) => params.get_to(),
+            Self::Delegate(params) => params.get_to(),
+            Self::UnDelegate(params) => params.get_to(),
+            Self::BatchDelegate(_params) => String::new(),
+            Self::BatchUnDelegate(_params) => String::new(),
+            Self::Votes(params) => params.get_to(),
+            Self::WithdrawReward(params) => params.get_to(),
+        }
     }
 
     // 构建多签交易
