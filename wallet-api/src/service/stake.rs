@@ -948,42 +948,28 @@ impl StackService {
     pub async fn min_remiaing_time(
         &self,
         from: String,
-        to: String,
+        to: Vec<String>,
         resource_type: String,
     ) -> Result<DelegateRemaingTime, crate::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
-        let mut res = self.chain.provider.delegated_resource(&from, &to).await?;
-
         let now = wallet_utils::time::now().timestamp_millis();
 
-        let time = match resource_type {
-            ops::stake::ResourceType::BANDWIDTH => {
-                res.delegated_resource.sort_by(|a, b| {
-                    a.expire_time_for_bandwidth
-                        .cmp(&b.expire_time_for_bandwidth)
-                });
-                let delegate = res
-                    .delegated_resource
-                    .iter()
-                    .find(|d| d.expire_time_for_bandwidth > now);
-                match delegate {
-                    Some(delegate) => delegate.expire_time_for_bandwidth,
-                    None => 0,
-                }
+        let mut times = vec![];
+        for address in to.iter() {
+            let time = self
+                .min_time_for_delegate(&from, &address, resource_type, now)
+                .await?;
+
+            tracing::warn!("TIME = {:?}", time);
+
+            if let Some(time) = time {
+                times.push(time);
             }
-            ops::stake::ResourceType::ENERGY => {
-                res.delegated_resource
-                    .sort_by(|a, b| a.expire_time_for_energy.cmp(&b.expire_time_for_energy));
-                let delegate = res
-                    .delegated_resource
-                    .iter()
-                    .find(|d| d.expire_time_for_energy > now);
-                match delegate {
-                    Some(delegate) => delegate.expire_time_for_energy,
-                    None => 0,
-                }
-            }
-        };
+        }
+
+        tracing::warn!("TIME = {:?}", times);
+
+        let time = times.iter().min().unwrap_or(&0).clone();
 
         let days = if time > 0 {
             let diff_days = (time - now) as f64 / 86400000.0;
@@ -993,6 +979,38 @@ impl StackService {
         };
 
         Ok(DelegateRemaingTime { days })
+    }
+
+    async fn min_time_for_delegate(
+        &self,
+        from: &str,
+        to: &str,
+        resource_type: ops::stake::ResourceType,
+        now: i64,
+    ) -> Result<Option<i64>, crate::ServiceError> {
+        let mut res = self.chain.provider.delegated_resource(&from, &to).await?;
+        let time = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => {
+                res.delegated_resource.sort_by(|a, b| {
+                    a.expire_time_for_bandwidth
+                        .cmp(&b.expire_time_for_bandwidth)
+                });
+
+                res.delegated_resource.iter().find_map(|d| {
+                    (d.expire_time_for_bandwidth > now).then_some(d.expire_time_for_bandwidth)
+                })
+            }
+            ops::stake::ResourceType::ENERGY => {
+                res.delegated_resource
+                    .sort_by(|a, b| a.expire_time_for_energy.cmp(&b.expire_time_for_energy));
+
+                res.delegated_resource.iter().find_map(|d| {
+                    (d.expire_time_for_energy > now).then_some(d.expire_time_for_energy)
+                })
+            }
+        };
+
+        Ok(time)
     }
 
     async fn process_batch<T>(

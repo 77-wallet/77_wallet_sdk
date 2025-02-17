@@ -55,11 +55,11 @@ async fn test_delegate() {
 
     let req = DelegateReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        receiver_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         balance: 13,
         resource: "energy".to_string(),
         lock: true,
-        lock_period: 5.0,
+        lock_period: 3.0,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;
@@ -240,9 +240,12 @@ async fn test_min_remaining_time() {
     let manager = get_manager().await;
 
     let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
-    let to = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
+    let to = vec![
+        "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+    ];
 
-    let resource_type = "bandwidth".to_string();
+    let resource_type = "energy".to_string();
 
     let res = manager.min_remaining_time(from, to, resource_type).await;
 

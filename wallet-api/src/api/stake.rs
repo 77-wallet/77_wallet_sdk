@@ -157,7 +157,7 @@ impl crate::WalletManager {
     pub async fn min_remaining_time(
         &self,
         from: String,
-        to: String,
+        to: Vec<String>,
         resource_type: String,
     ) -> ReturnType<DelegateRemaingTime> {
         StackService::new()
