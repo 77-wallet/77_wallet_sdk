@@ -27,4 +27,20 @@ impl MqttDomain {
         .await?;
         Ok(())
     }
+
+    pub(crate) async fn process_unconfirm_msg(client_id: &str) -> Result<(), crate::ServiceError> {
+        let backend_api = crate::manager::Context::get_global_backend_api()?;
+
+        let data = backend_api
+            .send_msg_query_unconfirm_msg(
+                &wallet_transport_backend::request::SendMsgQueryUnconfirmMsgReq {
+                    client_id: client_id.to_string(),
+                },
+            )
+            .await?
+            .list;
+        crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
+
+        Ok(())
+    }
 }

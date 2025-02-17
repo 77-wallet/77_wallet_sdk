@@ -200,8 +200,8 @@ impl CoinService {
             .into_iter()
             .filter(|coin| {
                 !default_list.iter().any(|default_coin| {
-                    tracing::info!("coin: {coin:#?}");
-                    tracing::info!(
+                    tracing::debug!("coin: {coin:#?}");
+                    tracing::debug!(
                         "default_coin symbol: {:?}, chain_code: {:?}, token_address: {:?}",
                         default_coin.symbol,
                         default_coin.chain_code,
@@ -213,7 +213,7 @@ impl CoinService {
                 })
             })
             .collect();
-        tracing::info!("filtered_data: {filtered_data:#?}");
+        tracing::debug!("filtered_data: {filtered_data:#?}");
         let data = filtered_data.into_iter().map(|d| d.into()).collect();
 
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
