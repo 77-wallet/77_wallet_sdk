@@ -91,12 +91,7 @@ pub struct DelegateReq {
 impl TryFrom<&DelegateReq> for DelegateArgs {
     type Error = crate::error::ServiceError;
     fn try_from(value: &DelegateReq) -> Result<Self, Self::Error> {
-        let lock_period = if value.lock_period > 0.0 {
-            (value.lock_period * 28800.0) as i64
-        } else {
-            0
-        };
-
+        let lock_period = expiration_time(value.lock_period);
         let args = Self {
             owner_address: wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?,
             receiver_address: wallet_utils::address::bs58_addr_to_hex(&value.receiver_address)?,
@@ -106,6 +101,19 @@ impl TryFrom<&DelegateReq> for DelegateArgs {
             lock_period,
         };
         Ok(args)
+    }
+}
+
+fn expiration_time(period: f64) -> i64 {
+    if period <= 0.0 {
+        return 0;
+    }
+
+    let base_time = (period * 28800.0) as i64;
+    if period == 24.0 {
+        base_time - 100 // 如果是 24 小时，扣减 5 分钟
+    } else {
+        base_time
     }
 }
 
@@ -229,12 +237,7 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
 
-        let lock_period = if value.lock_period > 0.0 {
-            (value.lock_period * 28800.0) as i64
-        } else {
-            0
-        };
-
+        let lock_period = expiration_time(value.lock_period);
         value
             .list
             .iter()
