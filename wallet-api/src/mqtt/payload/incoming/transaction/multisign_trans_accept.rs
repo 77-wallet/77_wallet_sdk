@@ -96,7 +96,7 @@ impl MultiSignTransAccept {
             created_at,
             ref signatures,
             ref account_id,
-            transfer_type: _,
+            transfer_type,
         } = self;
         // 新增交易队列数据
         let params: NewMultisigQueueEntity = (&self).into();
@@ -135,11 +135,12 @@ impl MultiSignTransAccept {
             .await?;
 
             // 系统通知
-            let notification = Notification::new_multisig_notification(
+            let notification = Notification::new_confirmation_notification(
                 &multisig_account.name,
                 &multisig_account.address,
                 &multisig_account.id,
-                NotificationType::TransferConfirmation,
+                transfer_type,
+                NotificationType::Confirmation,
             );
             let system_notification_service = SystemNotificationService::new(repo);
             system_notification_service

@@ -47,6 +47,7 @@ mod test {
     };
     use crate::test::env::get_manager;
     use anyhow::Result;
+    use wallet_database::entities::bill::BillKind;
     // 添加这个引用
 
     #[tokio::test]
@@ -90,7 +91,7 @@ mod test {
                 "Default Account",
                 "TRX1234567890123456789012345678901234",
                 "multisig123456",
-                NotificationType::TransferConfirmation,
+                NotificationType::Confirmation,
             );
 
             tracing::info!("notification: {notification:?}");
@@ -150,12 +151,56 @@ mod test {
                 "0x0000000000000000000000000000000000000000",
                 &NotificationType::ReceiveSuccess,
             );
-
             tracing::info!("notification: {notification:?}");
-            // let business_id = Some("321321321".to_string());
             let status = 4;
             let _res = wallet_manager
                 .add_system_notification("1239", notification, status)
+                .await;
+        }
+
+        {
+            let account_name = "Default Account";
+            let account_address = "TRX1234567890123456789012345678901234";
+            let multisig_account_id = "multisig123456";
+            let r#type = BillKind::BatchDelegateBandwidth;
+            let notification_type = NotificationType::Confirmation;
+
+            let notification = Notification::new_confirmation_notification(
+                account_name,
+                account_address,
+                multisig_account_id,
+                r#type,
+                notification_type,
+            );
+
+            tracing::info!("notification: {notification:?}");
+            let status = 4;
+            let _res = wallet_manager
+                .add_system_notification("1240", notification, status)
+                .await;
+        }
+
+        {
+            let account_address = "TRX1234567890123456789012345678901234";
+            let multisig_account_id = "multisig123456";
+            let r#type = BillKind::BatchDelegateBandwidth;
+            let status = true;
+            let transaction_hash = "0x1234567890123456789012345678901234567890";
+            let notification_type = &NotificationType::ResourceChange;
+
+            let notification = Notification::new_resource_notification(
+                account_address,
+                multisig_account_id,
+                r#type,
+                status,
+                transaction_hash,
+                notification_type,
+            );
+
+            tracing::info!("notification: {notification:?}");
+            let status = 4;
+            let _res = wallet_manager
+                .add_system_notification("1241", notification, status)
                 .await;
         }
 

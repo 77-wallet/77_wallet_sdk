@@ -1520,7 +1520,8 @@ impl StackService {
 
         // 上报后端
         let withdraw_id = res.id.clone();
-        let sync_params = MultiSignTransAccept::from(res).with_signature(queue.signatures.clone());
+        let sync_params =
+            MultiSignTransAccept::try_from(res)?.with_signature(queue.signatures.clone());
 
         let raw_data = MultisigQueueRepo::multisig_queue_data(&withdraw_id, pool)
             .await?

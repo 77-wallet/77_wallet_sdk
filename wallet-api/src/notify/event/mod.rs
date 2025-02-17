@@ -35,9 +35,7 @@ pub enum NotifyEvent {
     ChainChange(crate::mqtt::payload::incoming::chain::ChainChange),
 
     // 资源
-    EnergyStakeConfirm(resource::EnergyStakeConfirmFrontend),
-    EnergyStakeSuccess(resource::EnergyStakeSuccessFrontend),
-    EnergyStakeFailed(resource::EnergyStakeFailedFrontend),
+    TronSignFreezeDelegateVoteChange(resource::TronSignFreezeDelegateVoteChangeFrontend),
 }
 
 impl NotifyEvent {
@@ -73,9 +71,7 @@ impl NotifyEvent {
             NotifyEvent::TransactionProcess(_) => "TRANSACTION_PROCESS".to_string(),
 
             // 资源
-            NotifyEvent::EnergyStakeConfirm(_) => "ENERGY_STAKE_CONFIRM".to_string(),
-            NotifyEvent::EnergyStakeSuccess(_) => "ENERGY_STAKE_SUCCESS".to_string(),
-            NotifyEvent::EnergyStakeFailed(_) => "ENERGY_STAKE_FAILED".to_string(),
+            NotifyEvent::TronSignFreezeDelegateVoteChange(_) => "ENERGY_STAKE_CONFIRM".to_string(),
         }
     }
 }
