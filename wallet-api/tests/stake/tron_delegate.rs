@@ -56,9 +56,9 @@ async fn test_delegate() {
     let req = DelegateReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        balance: 11,
+        balance: 13,
         resource: "energy".to_string(),
-        lock: false,
+        lock: true,
         lock_period: 5.0,
     };
     let password = "123456".to_string();
@@ -180,7 +180,7 @@ async fn test_delegate_to_other() {
     let manager = get_manager().await;
 
     let owner_address = "TW94Y61N5k1SvVEsdTrE8Qi6GZK3gT9Vcr".to_string();
-    let typs = Some("bandwidth".to_string());
+    let typs = Some("energy".to_string());
     // let typs = None;
     let res = manager.delegate_to_other(owner_address, typs, 0, 10).await;
 
@@ -208,7 +208,7 @@ async fn test_un_delegate() {
     let req = UnDelegateReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        balance: 100,
+        balance: 161,
         resource: "energy".to_string(),
     };
     let password = "123456".to_string();
@@ -233,4 +233,18 @@ async fn test_undelegate_fee() {
     let res = manager.estimate_stake_fee(bill_kind, content).await;
 
     tracing::info!("fee {}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_min_remaining_time() {
+    let manager = get_manager().await;
+
+    let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let to = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
+
+    let resource_type = "bandwidth".to_string();
+
+    let res = manager.min_remaining_time(from, to, resource_type).await;
+
+    tracing::info!("min remaning time {}", serde_json::to_string(&res).unwrap());
 }

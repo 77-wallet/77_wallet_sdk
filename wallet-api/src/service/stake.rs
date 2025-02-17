@@ -25,6 +25,7 @@ use crate::response_vo::stake::AddressExists;
 use crate::response_vo::stake::BatchDelegateResp;
 use crate::response_vo::stake::BatchRes;
 use crate::response_vo::stake::DelegateListResp;
+use crate::response_vo::stake::DelegateRemaingTime;
 use crate::response_vo::stake::ResourceResp;
 use crate::response_vo::EstimateFeeResp;
 use crate::response_vo::TronFeeDetails;
@@ -942,6 +943,56 @@ impl StackService {
         Ok(resp::DelegateResp::new_delegate(
             req, resource, bill_kind, tx_hash,
         ))
+    }
+
+    pub async fn min_remiaing_time(
+        &self,
+        from: String,
+        to: String,
+        resource_type: String,
+    ) -> Result<DelegateRemaingTime, crate::ServiceError> {
+        let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
+        let mut res = self.chain.provider.delegated_resource(&from, &to).await?;
+
+        let now = wallet_utils::time::now().timestamp_millis();
+
+        let time = match resource_type {
+            ops::stake::ResourceType::BANDWIDTH => {
+                res.delegated_resource.sort_by(|a, b| {
+                    a.expire_time_for_bandwidth
+                        .cmp(&b.expire_time_for_bandwidth)
+                });
+                let delegate = res
+                    .delegated_resource
+                    .iter()
+                    .find(|d| d.expire_time_for_bandwidth > now);
+                match delegate {
+                    Some(delegate) => delegate.expire_time_for_bandwidth,
+                    None => 0,
+                }
+            }
+            ops::stake::ResourceType::ENERGY => {
+                res.delegated_resource
+                    .sort_by(|a, b| a.expire_time_for_energy.cmp(&b.expire_time_for_energy));
+                let delegate = res
+                    .delegated_resource
+                    .iter()
+                    .find(|d| d.expire_time_for_energy > now);
+                match delegate {
+                    Some(delegate) => delegate.expire_time_for_energy,
+                    None => 0,
+                }
+            }
+        };
+
+        let days = if time > 0 {
+            let diff_days = (time - now) as f64 / 86400000.0;
+            (diff_days * 100.0).round() / 100.0
+        } else {
+            0.0
+        };
+
+        Ok(DelegateRemaingTime { days })
     }
 
     async fn process_batch<T>(

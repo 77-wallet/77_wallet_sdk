@@ -9,8 +9,8 @@ use crate::{
         account::AccountResource,
         stake::{
             AddressExists, BatchDelegateResp, CancelAllUnFreezeResp, DelegateListResp,
-            DelegateResp, FreezeListResp, FreezeResp, ResourceResp, UnfreezeListResp,
-            WithdrawUnfreezeResp,
+            DelegateRemaingTime, DelegateResp, FreezeListResp, FreezeResp, ResourceResp,
+            UnfreezeListResp, WithdrawUnfreezeResp,
         },
     },
     service::stake::StackService,
@@ -114,11 +114,6 @@ impl crate::WalletManager {
         _symbol: String,
         _to: String,
     ) -> ReturnType<String> {
-        // let repo = self.repo_factory.stake_repo();
-        // StackService::new(repo)
-        //     .request_resource(account, energy, bandwidth, &value, &symbol, &to)
-        //     .await?
-        //     .into()
         "used request_energy to instead".to_string().into()
     }
 
@@ -155,6 +150,19 @@ impl crate::WalletManager {
         StackService::new()
             .await?
             .can_delegated_max(account, resource_type)
+            .await?
+            .into()
+    }
+
+    pub async fn min_remaining_time(
+        &self,
+        from: String,
+        to: String,
+        resource_type: String,
+    ) -> ReturnType<DelegateRemaingTime> {
+        StackService::new()
+            .await?
+            .min_remiaing_time(from, to, resource_type)
             .await?
             .into()
     }
