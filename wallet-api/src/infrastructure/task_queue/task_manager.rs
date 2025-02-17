@@ -3,7 +3,12 @@ use super::{
     MqttTask, Task,
 };
 use crate::{
-    domain::{self, app::config::ConfigDomain, multisig::MultisigQueueDomain, node::NodeDomain},
+    domain::{
+        self,
+        app::{config::ConfigDomain, mqtt::MqttDomain},
+        multisig::MultisigQueueDomain,
+        node::NodeDomain,
+    },
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
 use dashmap::DashSet;
@@ -175,7 +180,7 @@ impl TaskManager {
 
         match task {
             Task::Initialization(initialization_task) => {
-                handle_initialization_task(initialization_task, pool, backend_api).await
+                handle_initialization_task(initialization_task, pool).await
             }
             Task::BackendApi(backend_api_task) => {
                 handle_backend_api_task(backend_api_task, backend_api).await
@@ -192,7 +197,6 @@ impl TaskManager {
 async fn handle_initialization_task(
     task: InitializationTask,
     pool: Arc<sqlx::Pool<sqlx::Sqlite>>,
-    backend_api: &wallet_transport_backend::api::BackendApi,
 ) -> Result<(), crate::ServiceError> {
     match task {
         InitializationTask::PullAnnouncement => {
@@ -224,15 +228,17 @@ async fn handle_initialization_task(
                 return Ok(());
             };
             let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-            let data = backend_api
-                .send_msg_query_unconfirm_msg(
-                    &wallet_transport_backend::request::SendMsgQueryUnconfirmMsgReq {
-                        client_id: client_id.clone(),
-                    },
-                )
-                .await?
-                .list;
-            crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+                loop {
+                    interval.tick().await;
+
+                    if let Err(e) = MqttDomain::process_unconfirm_msg(&client_id).await {
+                        tracing::error!("process unconfirm msg error:{}", e);
+                    };
+                    tracing::warn!("处理未确认消息");
+                }
+            });
         }
         InitializationTask::SetBlockBrowserUrl => {
             let repo = RepositoryFactory::repo(pool.clone());
