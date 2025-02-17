@@ -145,6 +145,10 @@ impl VoteWitnessReq {
             votes,
         }
     }
+
+    pub fn get_votes(&self) -> i64 {
+        self.votes.iter().map(|item| item.vote_count).sum()
+    }
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
