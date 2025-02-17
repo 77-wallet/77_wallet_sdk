@@ -98,6 +98,7 @@ mod tests {
             chain_code: "tron".to_string(),
             tx_str: tx_str.to_string(),
             raw_data: "".to_string(),
+            tx_kind: 1,
         };
         let api = BackendApi::new(None, None).unwrap();
         let res = api.signed_tran_create(&req).await.unwrap();

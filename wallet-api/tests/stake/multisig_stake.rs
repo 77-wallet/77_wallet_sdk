@@ -11,7 +11,7 @@ async fn test_build_freeze() {
     let req = FreezeBalanceReq {
         owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         resource: "energy".to_string(),
-        frozen_balance: 10,
+        frozen_balance: 11,
     };
 
     let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;

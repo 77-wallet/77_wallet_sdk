@@ -170,6 +170,7 @@ impl MultisigTransactionService {
             chain_code: req_params.chain_code,
             tx_str: wallet_utils::serde_func::serde_to_string(&sync_params)?,
             raw_data,
+            tx_kind: BillKind::Transfer.to_i8(),
         };
 
         let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {

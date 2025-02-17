@@ -1514,6 +1514,7 @@ impl StackService {
             chain_code: chain_code::TRON.to_string(),
             tx_str: wallet_utils::serde_func::serde_to_string(&sync_params)?,
             raw_data,
+            tx_kind: bill_kind.to_i8(),
         };
 
         let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
