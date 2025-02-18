@@ -1,14 +1,11 @@
-use std::collections::HashMap;
-use tokio::sync::RwLock;
-
 #[derive(Debug)]
 pub struct SharedCache {
-    inner: RwLock<CacheMap>,
+    inner: dashmap::DashMap<String, CacheEntry>,
 }
 impl SharedCache {
     pub fn new() -> Self {
         Self {
-            inner: RwLock::new(CacheMap::new()),
+            inner: dashmap::DashMap::new(),
         }
     }
 
@@ -21,43 +18,19 @@ impl SharedCache {
     ) -> Result<(), crate::ServiceError> {
         let entry = CacheEntry::new(value, Some(expiration))?;
 
-        let mut lock = self.inner.write().await;
-        lock.set(key.to_string(), entry);
+        self.inner.insert(key.to_owned(), entry);
 
         Ok(())
     }
 
     pub async fn get(&self, key: &str) -> Option<CacheEntry> {
-        let lock = self.inner.read().await;
-
-        lock.get(key).cloned()
+        self.inner.get(key).map(|entry| entry.value().clone())
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), crate::ServiceError> {
-        let mut lock = self.inner.write().await;
-        lock.delete(key);
+        self.inner.remove(key);
 
         Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct CacheMap(HashMap<String, CacheEntry>);
-impl CacheMap {
-    fn new() -> Self {
-        CacheMap(HashMap::new())
-    }
-
-    fn set(&mut self, key: String, entry: CacheEntry) {
-        self.0.insert(key, entry);
-    }
-
-    fn get(&self, key: &str) -> Option<&CacheEntry> {
-        self.0.get(key)
-    }
-
-    fn delete(&mut self, key: &str) {
-        self.0.remove(key);
     }
 }
 

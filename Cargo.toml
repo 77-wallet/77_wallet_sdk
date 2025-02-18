@@ -142,7 +142,7 @@ once_cell = { version = "1", default-features = false }
 cfg-if = "1.0.0"
 
 # map
-dashmap = "6.1.0"
+dashmap = { version = "6.1.0", features = ["serde"] }
 
 [patch.crates-io.aes-gcm-siv]
 git = "https://github.com/RustCrypto/AEADs"
