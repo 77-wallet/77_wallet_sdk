@@ -163,6 +163,7 @@ impl MultiSignTransAccept {
                 raw_data: raw_data.to_string(),
                 status,
                 notes: notes.to_string(),
+                bill_kind: transfer_type,
                 created_at,
             },
         );
