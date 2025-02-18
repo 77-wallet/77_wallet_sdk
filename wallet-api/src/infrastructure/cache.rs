@@ -10,7 +10,7 @@ impl SharedCache {
     }
 
     // expiration unit is secs
-    pub async fn set_ex<T: serde::Serialize>(
+    pub fn set_ex<T: serde::Serialize>(
         &self,
         key: &str,
         value: T,
@@ -23,11 +23,28 @@ impl SharedCache {
         Ok(())
     }
 
-    pub async fn get(&self, key: &str) -> Option<CacheEntry> {
+    #[warn(dead_code)]
+    pub fn get(&self, key: &str) -> Option<CacheEntry> {
         self.inner.get(key).map(|entry| entry.value().clone())
     }
 
-    pub async fn delete(&self, key: &str) -> Result<(), crate::ServiceError> {
+    pub fn get_not_expriation(&self, key: &str) -> Option<CacheEntry> {
+        self.inner
+            .get(key)
+            .map(|entry| {
+                let entry = entry.value().clone();
+                if entry.is_expired() {
+                    self.inner.remove(key);
+                    None
+                } else {
+                    Some(entry)
+                }
+            })
+            .flatten()
+    }
+
+    #[warn(dead_code)]
+    pub fn delete(&self, key: &str) -> Result<(), crate::ServiceError> {
         self.inner.remove(key);
 
         Ok(())
@@ -67,8 +84,8 @@ mod test {
     async fn test_cache() {
         let cache = SharedCache::new();
 
-        let _rs = cache.set_ex("hello", "world", 10).await;
-        let rs = cache.get("hello").await;
+        let _rs = cache.set_ex("hello", "world", 10);
+        let rs = cache.get("hello");
 
         println!("{:?}", rs);
     }
@@ -77,15 +94,15 @@ mod test {
     async fn test_cached() {
         let cache = SharedCache::new();
 
-        let _rs = cache.set_ex("hello", "world", 10).await;
+        let _rs = cache.set_ex("hello", "world", 10);
 
-        let rs = cache.get("hello").await;
+        let rs = cache.get("hello");
         println!("{:?}", rs);
 
         println!("睡眠5秒");
         sleep(std::time::Duration::from_secs(5)).await;
 
-        let rs = cache.get("hello").await;
+        let rs = cache.get("hello");
         println!(
             "再次获取 {:?},是否过期 {}",
             rs.clone(),
@@ -95,7 +112,7 @@ mod test {
         println!("睡眠6秒");
         sleep(std::time::Duration::from_secs(5)).await;
 
-        let rs = cache.get("hello").await;
+        let rs = cache.get("hello");
         println!(
             "再次获取 {:?},是否过期 {}",
             rs.clone(),

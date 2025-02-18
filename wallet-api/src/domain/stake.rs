@@ -1,7 +1,7 @@
 use wallet_chain_interact::{
     tron::{
         operations::{
-            stake::{self},
+            stake::{self, DelegatedResource},
             TronSimulateOperation, TronTxOperation,
         },
         params::ResourceConsumer,
@@ -9,6 +9,7 @@ use wallet_chain_interact::{
     },
     types::MultisigTxResp,
 };
+use wallet_utils::serde_func::serde_from_value;
 
 use crate::response_vo::stake::VoteListResp;
 
@@ -163,6 +164,31 @@ const VOTE_ONE_DAY_TOTAL_REWARD: f64 = 4_608_000.0;
 const VOTER_VOTES: f64 = 10_000_000.0;
 
 impl StakeDomain {
+    pub async fn get_delegate_info(
+        from: &str,
+        to: &str,
+        chain: &TronChain,
+    ) -> Result<DelegatedResource, crate::ServiceError> {
+        let key = format!("{}_{}_delegate", from, to);
+
+        // 现从缓存中获取数据、没有在从链上获取
+        let cache = crate::Context::get_global_cache()?;
+        let res = cache.get_not_expriation(&key);
+        match res {
+            Some(res) => {
+                let res = serde_from_value::<DelegatedResource>(res.data)?;
+                tracing::warn!("get from cache");
+                Ok(res)
+            }
+            None => {
+                let res = chain.provider.delegated_resource(&from, &to).await?;
+                let _ = cache.set_ex(&key, &res, 30)?;
+                tracing::warn!("get from node");
+                Ok(res)
+            }
+        }
+    }
+
     // Function to calculate the voter reward
     pub(crate) fn calculate_vote_reward(sr_votes: f64, total_sr_votes: f64, brokerage: f64) -> f64 {
         VOTE_ONE_DAY_TOTAL_REWARD

@@ -247,6 +247,12 @@ async fn test_min_remaining_time() {
 
     let resource_type = "energy".to_string();
 
+    tracing::warn!("fisrt get");
+    let _res = manager
+        .min_remaining_time(from.clone(), to.clone(), resource_type.clone())
+        .await;
+
+    tracing::warn!("second get");
     let res = manager.min_remaining_time(from, to, resource_type).await;
 
     tracing::info!("min remaning time {}", serde_json::to_string(&res).unwrap());

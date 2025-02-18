@@ -960,14 +960,10 @@ impl StackService {
                 .min_time_for_delegate(&from, &address, resource_type, now)
                 .await?;
 
-            tracing::warn!("TIME = {:?}", time);
-
             if let Some(time) = time {
                 times.push(time);
             }
         }
-
-        tracing::warn!("TIME = {:?}", times);
 
         let time = times.iter().min().unwrap_or(&0).clone();
 
@@ -988,7 +984,8 @@ impl StackService {
         resource_type: ops::stake::ResourceType,
         now: i64,
     ) -> Result<Option<i64>, crate::ServiceError> {
-        let mut res = self.chain.provider.delegated_resource(&from, &to).await?;
+        let mut res = StakeDomain::get_delegate_info(from, to, &self.chain).await?;
+
         let time = match resource_type {
             ops::stake::ResourceType::BANDWIDTH => {
                 res.delegated_resource.sort_by(|a, b| {
