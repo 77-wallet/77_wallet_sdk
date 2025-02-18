@@ -1,9 +1,9 @@
 use wallet_database::entities::bill::BillKind;
 
-// biz_type = MULTI_SIGN_TRANS_ACCEPT
+// biz_type = CONFIRMATION
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MultiSignTransAcceptFrontend {
+pub struct ConfirmationFrontend {
     /// 队列id
     pub id: String,
     pub from_addr: String,

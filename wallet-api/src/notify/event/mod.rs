@@ -15,7 +15,7 @@ pub enum NotifyEvent {
     OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend),
     OrderMultiSignCreated(OrderMultiSignCreatedFrontend),
     OrderMultisignCanceled(OrderMultisignCanceledFrontend),
-    MultiSignTransAccept(MultiSignTransAcceptFrontend),
+    Confirmation(ConfirmationFrontend),
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsgFrontend),
     AcctChange(AcctChangeFrontend),
     TokenPriceChange(crate::response_vo::coin::TokenPriceChangeRes),
@@ -50,7 +50,7 @@ impl NotifyEvent {
             }
             NotifyEvent::OrderMultiSignCreated(_) => "ORDER_MULTI_SIGN_CREATED".to_string(),
             NotifyEvent::OrderMultisignCanceled(_) => "ORDER_MULTI_SIGN_CANCEL".to_string(),
-            NotifyEvent::MultiSignTransAccept(_) => "MULTI_SIGN_TRANS_ACCEPT".to_string(),
+            NotifyEvent::Confirmation(_) => "CONFIRMATION".to_string(),
             NotifyEvent::MultiSignTransAcceptCompleteMsg(_) => {
                 "MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG".to_string()
             }

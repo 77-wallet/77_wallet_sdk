@@ -148,8 +148,8 @@ impl MultiSignTransAccept {
                 .await?;
         };
 
-        let data = crate::notify::NotifyEvent::MultiSignTransAccept(
-            crate::notify::event::transaction::MultiSignTransAcceptFrontend {
+        let data = crate::notify::NotifyEvent::Confirmation(
+            crate::notify::event::transaction::ConfirmationFrontend {
                 id: id.to_string(),
                 from_addr: from_addr.to_string(),
                 to_addr: to_addr.to_string(),
