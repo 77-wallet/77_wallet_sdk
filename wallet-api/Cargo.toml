@@ -15,6 +15,7 @@ token = []
 dev = ["wallet-transport-backend/dev"]
 test = ["wallet-transport-backend/test"]
 prod = ["wallet-transport-backend/prod"]
+accept_invalid_certs = ["wallet-transport-backend/accept_invalid_certs"]
 
 [build-dependencies]
 dotenv = "0.15"

@@ -10,6 +10,7 @@ default = ["dev"]
 test = []
 dev = []
 prod = []
+accept_invalid_certs = ["wallet-transport/accept_invalid_certs"]
 
 [dependencies]
 wallet-utils = { workspace = true }
