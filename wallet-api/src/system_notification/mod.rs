@@ -172,7 +172,7 @@ pub struct SigConfirmationNotification {
     account_name: String,
     account_address: String,
     pub(crate) multisig_account_id: String,
-    r#type: BillKind,
+    bill_kind: BillKind,
     notification_type: NotificationType,
 }
 
@@ -195,8 +195,9 @@ pub struct TransactionNotification {
 #[serde(rename_all = "camelCase")]
 pub struct ResourceNotification {
     account_address: String,
+    account_name: String,
     pub(crate) multisig_account_id: String,
-    r#type: BillKind,
+    bill_kind: BillKind,
     status: bool,
     pub(crate) transaction_hash: String,
     notification_type: NotificationType,
@@ -249,14 +250,14 @@ impl Notification {
         account_name: &str,
         account_address: &str,
         multisig_account_id: &str,
-        r#type: BillKind,
+        bill_kind: BillKind,
         notification_type: NotificationType,
     ) -> Self {
         Notification::Confirmation(SigConfirmationNotification {
             account_name: account_name.to_string(),
             account_address: account_address.to_string(),
             multisig_account_id: multisig_account_id.to_string(),
-            r#type,
+            bill_kind,
             notification_type,
         })
     }
@@ -286,15 +287,17 @@ impl Notification {
 
     pub(crate) fn new_resource_notification(
         account_address: &str,
+        account_name: &str,
         multisig_account_id: &str,
-        r#type: BillKind,
+        bill_kind: BillKind,
         status: bool,
         transaction_hash: &str,
         notification_type: &NotificationType,
     ) -> Self {
         Notification::Resource(ResourceNotification {
             account_address: account_address.to_string(),
-            r#type,
+            account_name: account_name.to_string(),
+            bill_kind,
             status: status.clone(),
             notification_type: notification_type.clone(),
             transaction_hash: transaction_hash.to_string(),

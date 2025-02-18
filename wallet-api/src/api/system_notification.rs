@@ -181,6 +181,7 @@ mod test {
         }
 
         {
+            let account_name = "Default Account";
             let account_address = "TRX1234567890123456789012345678901234";
             let multisig_account_id = "multisig123456";
             let r#type = BillKind::BatchDelegateBandwidth;
@@ -190,6 +191,7 @@ mod test {
 
             let notification = Notification::new_resource_notification(
                 account_address,
+                account_name,
                 multisig_account_id,
                 r#type,
                 status,

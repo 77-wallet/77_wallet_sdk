@@ -191,6 +191,7 @@ impl TronSignFreezeDelegateVoteChange {
             // 系统通知
             let notification = Notification::new_resource_notification(
                 &multisig_account.address,
+                &multisig_account.name,
                 &multisig_account.id,
                 tx_kind,
                 status,
