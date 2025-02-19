@@ -144,6 +144,7 @@ impl Context {
         frontend_notify: FrontendNotifySender,
         config: crate::Config,
     ) -> Result<Context, crate::ServiceError> {
+        wallet_utils::log::set_app_code(&config.app_code);
         let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);

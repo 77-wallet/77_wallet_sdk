@@ -8,6 +8,7 @@ pub struct Config {
     pub oss: OssConfig,
     pub backend_api: BackendApiConfig,
     pub crypto: CryptoConfig,
+    pub app_code: String,
 }
 #[derive(Deserialize, Debug)]
 pub struct CryptoConfig {
