@@ -25,7 +25,7 @@ pub struct ResourceChangeFrontend {
     // 交易额
     pub value: f64,
     // 交易额-usdt
-    pub value_usdt: f64,
+    pub value_usdt: Option<f64>,
     // 手续费
     pub transaction_fee: f64,
     // 交易时间
@@ -43,13 +43,13 @@ pub struct ResourceChangeFrontend {
     // 带宽消耗
     pub net_used: f64,
     // 能量消耗
-    pub energy_used: f64,
+    pub energy_used: Option<f64>,
     // BANDWIDTH  / ENERGY
-    pub resource: String,
+    pub resource: Option<String>,
     // 是否锁定
-    pub lock: bool,
+    pub lock: Option<bool>,
     // 锁定周期
-    pub lock_period: String,
+    pub lock_period: Option<String>,
     // 投票的节点信息
     pub votes: Vec<Vote>,
 }

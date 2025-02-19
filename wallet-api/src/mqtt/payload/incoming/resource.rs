@@ -46,18 +46,20 @@ pub struct TronSignFreezeDelegateVoteChange {
     pub symbol: String,
     // 交易方式 0转入 1转出 2初始化
     pub transfer_type: i8,
-    // 交易类型 1:普通交易，2:部署多签账号 3:服务费 
+    // 交易类型 1:普通交易，2:部署多签账号 3:服务费
     pub tx_kind: BillKind,
     // from地址
     pub from_addr: String,
     // to地址
+    #[serde(default)]
     pub to_addr: String,
     // 合约地址
     pub token: Option<String>,
     // 交易额
     pub value: f64,
     // 交易额-usdt
-    pub value_usdt: f64,
+    #[serde(default)]
+    pub value_usdt: Option<f64>,
     // 手续费
     pub transaction_fee: f64,
     // 交易时间
@@ -69,20 +71,26 @@ pub struct TronSignFreezeDelegateVoteChange {
     // 块高
     pub block_height: i64,
     // 备注
+    #[serde(default)]
     pub notes: String,
     // 业务id
     pub queue_id: String,
     // 带宽消耗
     pub net_used: f64,
     // 能量消耗
-    pub energy_used: f64,
+    #[serde(default)]
+    pub energy_used: Option<f64>,
     // BANDWIDTH  / ENERGY
-    pub resource: String,
+    #[serde(default)]
+    pub resource: Option<String>,
     // 是否锁定
-    pub lock: bool,
+    #[serde(default)]
+    pub lock: Option<bool>,
     // 锁定周期
-    pub lock_period: String,
+    #[serde(default)]
+    pub lock_period: Option<String>,
     // 投票的节点信息
+    #[serde(default)]
     pub votes: Vec<Vote>,
 }
 
@@ -242,6 +250,10 @@ impl TronSignFreezeDelegateVoteChange {
 mod test {
     use std::str::FromStr;
 
+    use crate::{
+        mqtt::payload::incoming::resource::TronSignFreezeDelegateVoteChange, test::env::get_manager,
+    };
+
     #[test]
     fn test_decimal() {
         let balance = wallet_types::Decimal::from_str("1996.733").unwrap();
@@ -252,5 +264,20 @@ mod test {
             wallet_utils::unit::format_to_string(balance, 6).unwrap()
         );
         // let balance = wallet_utils::unit::u256_from_str(&balance.to_string()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn resource_change() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (_, _) = get_manager().await?;
+
+        let str1 = r#"{"blockHeight":69741653,"chainCode":"tron","fromAddr":"TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY","isMultisig":1,"netUsed":320.0,"queueId":"230495803410616320","status":true,"symbol":"trx","transactionFee":1000000.0,"transactionTime":"2025-02-18 19:14:12","transferType":1,"txHash":"0df3ba525f4688e73c25d3a15b26e7318054f25bb600c25fa52323fc9efa5e57","txKind":6,"value":6000000.0}"#;
+
+        let changet = serde_json::from_str::<TronSignFreezeDelegateVoteChange>(&str1).unwrap();
+
+        let res = changet.exec("1").await;
+        println!("{:?}", res);
+        Ok(())
     }
 }
