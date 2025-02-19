@@ -139,10 +139,11 @@ impl MultisigDomain {
         filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let req = FindAddressRawDataReq::new_multisig(uid, business_id);
-        let data = backend.address_find_address_raw_data(req).await?;
+        let data = backend.address_find_address_raw_data(cryptor, req).await?;
 
         for multisig_raw_data in data.list {
             let Some(raw_data) = multisig_raw_data.raw_data else {
@@ -511,7 +512,10 @@ impl MultisigDomain {
             .to_string()?;
 
         let backend_api = crate::Context::get_global_backend_api()?;
-        Ok(backend_api.update_raw_data(account_id, raw_data).await?)
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        Ok(backend_api
+            .update_raw_data(cryptor, account_id, raw_data)
+            .await?)
     }
 
     pub async fn physical_delete_wallet_account(

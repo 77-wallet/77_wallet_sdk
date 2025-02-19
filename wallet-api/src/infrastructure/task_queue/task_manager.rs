@@ -171,7 +171,7 @@ impl TaskManager {
         let id = task_entity.id.clone();
         let task: Task = task_entity.try_into()?;
         let backend_api = crate::manager::Context::get_global_backend_api()?;
-
+        let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
         // update task running status
         if retry_count > 0 {
             repo.increase_retry_times(&id).await?;
@@ -183,7 +183,7 @@ impl TaskManager {
                 handle_initialization_task(initialization_task, pool).await
             }
             Task::BackendApi(backend_api_task) => {
-                handle_backend_api_task(backend_api_task, backend_api).await
+                handle_backend_api_task(backend_api_task, backend_api, aes_cbc_cryptor).await
             }
             Task::Mqtt(mqtt_task) => handle_mqtt_task(mqtt_task, &id).await,
             Task::Common(common_task) => handle_common_task(common_task, pool).await,
@@ -264,10 +264,12 @@ async fn handle_initialization_task(
 async fn handle_backend_api_task(
     task: BackendApiTask,
     backend_api: &wallet_transport_backend::api::BackendApi,
+    aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
 ) -> Result<(), crate::ServiceError> {
     match task {
         BackendApiTask::BackendApi(data) => {
-            BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api).await?;
+            BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api, aes_cbc_cryptor)
+                .await?;
         }
     }
     Ok(())

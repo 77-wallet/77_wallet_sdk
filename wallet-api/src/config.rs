@@ -7,6 +7,12 @@ use std::{fs, path::Path};
 pub struct Config {
     pub oss: OssConfig,
     pub backend_api: BackendApiConfig,
+    pub crypto: CryptoConfig,
+}
+#[derive(Deserialize, Debug)]
+pub struct CryptoConfig {
+    pub aes_key: String,
+    pub aes_iv: String,
 }
 
 #[derive(Deserialize, Debug)]

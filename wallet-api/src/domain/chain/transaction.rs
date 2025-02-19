@@ -141,7 +141,8 @@ impl ChainTransaction {
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;
-            let _ = backend.delegate_complete(&request_id).await;
+            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+            let _ = backend.delegate_complete(cryptor, &request_id).await;
         }
         Ok(resp.tx_hash)
     }
@@ -151,7 +152,8 @@ impl ChainTransaction {
         provider: &eth::Provider,
         backend: &BackendApi,
     ) -> Result<GasOracle, crate::ServiceError> {
-        let gas_oracle = backend.gas_oracle(chain_code).await;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let gas_oracle = backend.gas_oracle(cryptor, chain_code).await;
 
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),

@@ -13,6 +13,7 @@ pub async fn send_request(
     args: Option<std::collections::HashMap<String, String>>,
     // headers: Option<Vec<(&str, &str)>>,
     headers: Option<std::collections::HashMap<String, String>>,
+    cryptor: wallet_utils::cbc::AesCbcCryptor,
 ) -> Result<std::collections::HashMap<String, serde_json::Value>, crate::Error> {
     let method = wallet_utils::parse_func::method_from_str(method)?;
 
@@ -62,7 +63,7 @@ pub async fn send_request(
         .map_err(|e| wallet_utils::Error::Http(e.into()))?;
     let res: BackendResponse = wallet_utils::serde_func::serde_from_str(&res)?;
 
-    res.process()
+    res.process(&cryptor)
 }
 
 pub async fn _send_request(
@@ -71,6 +72,7 @@ pub async fn _send_request(
     path: &str,
     args: Option<std::collections::HashMap<String, String>>,
     headers: Option<std::collections::HashMap<String, String>>,
+    cryptor: &wallet_utils::cbc::AesCbcCryptor,
 ) -> Result<std::collections::HashMap<String, serde_json::Value>, crate::Error> {
     let base_url = base_url.unwrap_or(BASE_URL.to_string());
     let client = HttpClient::new(&base_url, headers, None)?;
@@ -90,7 +92,7 @@ pub async fn _send_request(
     };
     let res: BackendResponse = wallet_utils::serde_func::serde_from_str(&res)?;
 
-    res.process()
+    res.process(cryptor)
 }
 
 #[cfg(test)]
@@ -114,14 +116,22 @@ mod test {
         "iccid": "6",
         "mem": "7"
     }"#;
-
+        let aes_cbc_cryptor =
+            wallet_utils::cbc::AesCbcCryptor::new("1234567890123456", "1234567890123456");
         let json: std::collections::HashMap<String, String> = serde_json::from_str(&data)?;
         let base_url = "http://api.wallet.net".to_string();
         let method = "POST";
         let path = "device/init";
-        let res = _send_request(Some(base_url), method, path, Some(json), Some(headers))
-            .await
-            .unwrap();
+        let res = _send_request(
+            Some(base_url),
+            method,
+            path,
+            Some(json),
+            Some(headers),
+            &aes_cbc_cryptor,
+        )
+        .await
+        .unwrap();
 
         println!("{:?}", res);
 

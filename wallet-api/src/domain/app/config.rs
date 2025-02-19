@@ -37,7 +37,8 @@ impl ConfigDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let backend = crate::Context::get_global_backend_api()?;
-        let res = backend.fetch_min_config(sn.to_string()).await?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let res = backend.fetch_min_config(cryptor, sn.to_string()).await?;
 
         for item in res.list {
             let key = MinValueSwitchConfig::get_key(&item.token_code.to_uppercase(), sn);

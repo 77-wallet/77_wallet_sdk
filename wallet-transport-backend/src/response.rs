@@ -15,17 +15,15 @@ pub enum BackendResponse {
 impl BackendResponse {
     pub fn process<T: for<'de> serde::Deserialize<'de> + serde::Serialize>(
         self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<T, crate::error::Error> {
         match self {
             BackendResponse::Success(ok) => {
                 if ok.success {
                     let res = match ok.data {
-                        Some(data) => wallet_utils::cbc::AesCbcCryptor::new(
-                            wallet_utils::cbc::AES_KEY,
-                            wallet_utils::cbc::AES_IV,
-                        )
-                        .decrypt(&data)
-                        .map_err(crate::Error::Utils)?,
+                        Some(data) => aes_cbc_cryptor
+                            .decrypt(&data)
+                            .map_err(crate::Error::Utils)?,
                         None => wallet_utils::serde_func::serde_to_value(None::<T>)?,
                     };
                     Ok(wallet_utils::serde_func::serde_from_value(res)?)

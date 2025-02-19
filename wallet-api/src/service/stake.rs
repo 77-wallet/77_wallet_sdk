@@ -1263,12 +1263,12 @@ impl StackService {
         address: String,
     ) -> Result<SystemEnergyResp, crate::error::ServiceError> {
         let backhand = Context::get_global_backend_api()?;
-
+        let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
         let req = serde_json::json!({
             "address": address
         });
         let res = backhand
-            .post_request::<_, SystemEnergyResp>("delegate/resource/limit", req)
+            .post_request::<_, SystemEnergyResp>("delegate/resource/limit", req, &aes_cbc_cryptor)
             .await?;
 
         Ok(res)
@@ -1280,16 +1280,17 @@ impl StackService {
         energy: i64,
     ) -> Result<String, crate::error::ServiceError> {
         let backhand = Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         // 验证后端的配置(是否开启了能量的补偿)
-        if !backhand.delegate_is_open().await? {
+        if !backhand.delegate_is_open(cryptor).await? {
             return Err(BusinessError::Stake(StakeError::SwitchClose))?;
         }
 
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         // request resource
-        let res = backhand.delegate_order(&account, energy).await?;
+        let res = backhand.delegate_order(cryptor, &account, energy).await?;
 
         let duration = tokio::time::Duration::from_millis(500);
 

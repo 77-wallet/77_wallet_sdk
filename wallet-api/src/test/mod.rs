@@ -11,7 +11,8 @@ pub async fn net_api(
     headers: Option<std::collections::HashMap<String, String>>,
 ) -> ReturnType<std::collections::HashMap<String, serde_json::Value>> {
     // wallet_transport_backend::
-    wallet_transport_backend::_send_request(base_url, method, path, args, headers)
+    let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+    wallet_transport_backend::_send_request(base_url, method, path, args, headers, cryptor)
         .await
         .map_err(crate::ServiceError::TransportBackend)
         .into()
