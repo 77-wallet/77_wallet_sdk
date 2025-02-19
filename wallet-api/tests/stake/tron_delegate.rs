@@ -253,6 +253,12 @@ async fn test_min_remaining_time() {
         .await;
 
     tracing::warn!("second get");
+    let res = manager
+        .min_remaining_time(from.clone(), to.clone(), resource_type.clone())
+        .await;
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+    tracing::warn!("3 get");
     let res = manager.min_remaining_time(from, to, resource_type).await;
 
     tracing::info!("min remaning time {}", serde_json::to_string(&res).unwrap());

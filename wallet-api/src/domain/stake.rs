@@ -173,17 +173,15 @@ impl StakeDomain {
 
         // 现从缓存中获取数据、没有在从链上获取
         let cache = crate::Context::get_global_cache()?;
-        let res = cache.get_not_expriation(&key);
+        let res = cache.get_not_expriation(&key).await;
         match res {
             Some(res) => {
                 let res = serde_from_value::<DelegatedResource>(res.data)?;
-                tracing::warn!("get from cache");
                 Ok(res)
             }
             None => {
                 let res = chain.provider.delegated_resource(&from, &to).await?;
-                let _ = cache.set_ex(&key, &res, 30)?;
-                tracing::warn!("get from node");
+                let _ = cache.set_ex(&key, &res, 30).await?;
                 Ok(res)
             }
         }
