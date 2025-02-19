@@ -15,7 +15,7 @@ pub enum NotifyEvent {
     OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend),
     OrderMultiSignCreated(OrderMultiSignCreatedFrontend),
     OrderMultisignCanceled(OrderMultisignCanceledFrontend),
-    MultiSignTransAccept(MultiSignTransAcceptFrontend),
+    Confirmation(ConfirmationFrontend),
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsgFrontend),
     AcctChange(AcctChangeFrontend),
     TokenPriceChange(crate::response_vo::coin::TokenPriceChangeRes),
@@ -35,9 +35,7 @@ pub enum NotifyEvent {
     ChainChange(crate::mqtt::payload::incoming::chain::ChainChange),
 
     // 资源
-    EnergyStakeConfirm(resource::EnergyStakeConfirmFrontend),
-    EnergyStakeSuccess(resource::EnergyStakeSuccessFrontend),
-    EnergyStakeFailed(resource::EnergyStakeFailedFrontend),
+    ResourceChange(resource::ResourceChangeFrontend),
 }
 
 impl NotifyEvent {
@@ -52,7 +50,7 @@ impl NotifyEvent {
             }
             NotifyEvent::OrderMultiSignCreated(_) => "ORDER_MULTI_SIGN_CREATED".to_string(),
             NotifyEvent::OrderMultisignCanceled(_) => "ORDER_MULTI_SIGN_CANCEL".to_string(),
-            NotifyEvent::MultiSignTransAccept(_) => "MULTI_SIGN_TRANS_ACCEPT".to_string(),
+            NotifyEvent::Confirmation(_) => "CONFIRMATION".to_string(),
             NotifyEvent::MultiSignTransAcceptCompleteMsg(_) => {
                 "MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG".to_string()
             }
@@ -73,9 +71,7 @@ impl NotifyEvent {
             NotifyEvent::TransactionProcess(_) => "TRANSACTION_PROCESS".to_string(),
 
             // 资源
-            NotifyEvent::EnergyStakeConfirm(_) => "ENERGY_STAKE_CONFIRM".to_string(),
-            NotifyEvent::EnergyStakeSuccess(_) => "ENERGY_STAKE_SUCCESS".to_string(),
-            NotifyEvent::EnergyStakeFailed(_) => "ENERGY_STAKE_FAILED".to_string(),
+            NotifyEvent::ResourceChange(_) => "RESOURCE_CHANGE".to_string(),
         }
     }
 }

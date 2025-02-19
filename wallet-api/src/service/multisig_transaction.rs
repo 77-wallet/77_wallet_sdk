@@ -158,7 +158,7 @@ impl MultisigTransactionService {
 
         // 上报后端
         let withdraw_id = res.id.clone();
-        let mut sync_params = MultiSignTransAccept::from(res);
+        let mut sync_params = MultiSignTransAccept::try_from(res)?;
         sync_params.signatures = signatures;
 
         let raw_data = MultisigQueueRepo::multisig_queue_data(&withdraw_id, pool)

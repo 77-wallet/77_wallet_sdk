@@ -89,6 +89,7 @@ pub enum TaskName {
     Init,
     OrderMultiSignCreated,
     BulletinMsg,
+    TronSignFreezeDelegateVoteChange,
     // RpcChange,
     // common
     QueryCoinPrice,

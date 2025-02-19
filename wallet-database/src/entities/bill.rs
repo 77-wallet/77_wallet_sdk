@@ -76,7 +76,8 @@ impl BillStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde_repr::Deserialize_repr)]
+#[repr(u8)]
 pub enum BillKind {
     // 普通交易
     Transfer = 1,

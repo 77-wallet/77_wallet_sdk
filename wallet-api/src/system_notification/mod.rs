@@ -112,6 +112,8 @@
 //     }
 // }
 
+use wallet_database::entities::bill::BillKind;
+
 // 账户类型枚举
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum AccountType {
@@ -124,10 +126,11 @@ pub enum AccountType {
 pub enum NotificationType {
     DeployInvite,
     DeployCompletion,
-    TransferConfirmation,
+    Confirmation,
     ReceiveSuccess,
     TransferSuccess,
     TransferFailure,
+    ResourceChange,
 }
 
 impl std::fmt::Display for NotificationType {
@@ -135,10 +138,11 @@ impl std::fmt::Display for NotificationType {
         match self {
             NotificationType::DeployInvite => write!(f, "DeployInvite"),
             NotificationType::DeployCompletion => write!(f, "DeployCompletion"),
-            NotificationType::TransferConfirmation => write!(f, "TransferConfirmation"),
+            NotificationType::Confirmation => write!(f, "Confirmation"),
             NotificationType::ReceiveSuccess => write!(f, "ReceiveSuccess"),
             NotificationType::TransferSuccess => write!(f, "TransferSuccess"),
             NotificationType::TransferFailure => write!(f, "TransferFailure"),
+            NotificationType::ResourceChange => write!(f, "ResourceChange"),
         }
     }
 }
@@ -161,6 +165,17 @@ pub struct MultisigNotification {
     notification_type: NotificationType,
 }
 
+// 确认通知结构体
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SigConfirmationNotification {
+    account_name: String,
+    account_address: String,
+    pub(crate) multisig_account_id: String,
+    bill_kind: BillKind,
+    notification_type: NotificationType,
+}
+
 // 交易通知结构体
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -175,12 +190,27 @@ pub struct TransactionNotification {
     notification_type: NotificationType,
 }
 
+// 交易通知结构体
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceNotification {
+    account_address: String,
+    account_name: String,
+    pub(crate) multisig_account_id: String,
+    bill_kind: BillKind,
+    status: bool,
+    pub(crate) transaction_hash: String,
+    notification_type: NotificationType,
+}
+
 // 通知类型枚举
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum Notification {
     Multisig(MultisigNotification),
     Transaction(TransactionNotification),
+    Confirmation(SigConfirmationNotification),
+    Resource(ResourceNotification),
 }
 
 // 实现通知的格式化方法
@@ -189,6 +219,8 @@ impl Notification {
         match self {
             Notification::Multisig(data) => data.notification_type.to_string(),
             Notification::Transaction(data) => data.notification_type.to_string(),
+            Notification::Resource(data) => data.notification_type.to_string(),
+            Notification::Confirmation(data) => data.notification_type.to_string(),
         }
     }
 
@@ -213,6 +245,23 @@ impl Notification {
         })
     }
 
+    // 创建确认通知
+    pub fn new_confirmation_notification(
+        account_name: &str,
+        account_address: &str,
+        multisig_account_id: &str,
+        bill_kind: BillKind,
+        notification_type: NotificationType,
+    ) -> Self {
+        Notification::Confirmation(SigConfirmationNotification {
+            account_name: account_name.to_string(),
+            account_address: account_address.to_string(),
+            multisig_account_id: multisig_account_id.to_string(),
+            bill_kind,
+            notification_type,
+        })
+    }
+
     // 创建交易通知
     pub fn new_transaction_notification(
         account_type: AccountType,
@@ -233,6 +282,26 @@ impl Notification {
             transaction_status: transaction_status.clone(),
             transaction_hash: transaction_hash.to_string(),
             notification_type: notification_type.clone(),
+        })
+    }
+
+    pub(crate) fn new_resource_notification(
+        account_address: &str,
+        account_name: &str,
+        multisig_account_id: &str,
+        bill_kind: BillKind,
+        status: bool,
+        transaction_hash: &str,
+        notification_type: &NotificationType,
+    ) -> Self {
+        Notification::Resource(ResourceNotification {
+            account_address: account_address.to_string(),
+            account_name: account_name.to_string(),
+            bill_kind,
+            status: status.clone(),
+            notification_type: notification_type.clone(),
+            transaction_hash: transaction_hash.to_string(),
+            multisig_account_id: multisig_account_id.to_string(),
         })
     }
 
