@@ -13,7 +13,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (wallet_manager, mut test_params) = get_manager().await.unwrap();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
-
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
     if wallet_manager

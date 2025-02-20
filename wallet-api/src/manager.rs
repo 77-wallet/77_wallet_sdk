@@ -144,7 +144,6 @@ impl Context {
         frontend_notify: FrontendNotifySender,
         config: crate::Config,
     ) -> Result<Context, crate::ServiceError> {
-        wallet_utils::log::set_app_code(&config.app_code);
         let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
@@ -395,7 +394,8 @@ impl WalletManager {
             .await?;
         Ok(())
     }
-    pub async fn init_log(level: Option<&str>) -> Result<(), crate::ServiceError> {
+    pub async fn init_log(level: Option<&str>, app_code: &str) -> Result<(), crate::ServiceError> {
+        wallet_utils::log::set_app_code(app_code);
         let context = Context::get_context()?;
 
         let log_dir = context.dirs.get_log_dir();
