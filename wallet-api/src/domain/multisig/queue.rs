@@ -1,5 +1,5 @@
 use crate::domain::{self, bill::BillDomain, multisig::MultisigDomain};
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 use wallet_database::{
     dao::{multisig_member::MultisigMemberDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities::{
@@ -89,16 +89,16 @@ impl MultisigQueueDomain {
         let queue = MultisigQueueDaoV1::list_by_account_ids(&account_ids_vec, &*pool)
             .await
             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-        let raw_time = queue.map(|q| q.created_at.format("%Y-%m-%d %H:%M:%S").to_string());
+
+        let raw_time = queue.map(|q| {
+            let now = q.created_at - Duration::from_secs(86400);
+            now.format("%Y-%m-%d %H:%M:%S").to_string()
+        });
         Ok(raw_time)
     }
 
     pub async fn recover_queue_data(uid: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let queue = MultisigQueueDaoV1::get_latest(&*pool)
-            .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-        let raw_time = queue.map(|q| q.created_at.format("%Y-%m-%d %H:%M:%S").to_string());
+        let raw_time = Self::get_raw_time(&[uid.to_string()]).await?;
 
         Self::recover_queue_data_with_raw_time(uid, raw_time).await?;
 
