@@ -1472,7 +1472,11 @@ impl StackService {
         let account = MultisigDomain::account_by_address(&address, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
 
-        let expiration = expiration * 3600;
+        let expiration = if expiration == 24 {
+            expiration * 3600 - 61
+        } else {
+            expiration * 3600
+        };
 
         // 构建多签交易
         let resp = args

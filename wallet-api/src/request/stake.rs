@@ -109,12 +109,7 @@ fn expiration_time(period: f64) -> i64 {
         return 0;
     }
 
-    let base_time = (period * 28800.0) as i64;
-    if period == 24.0 {
-        base_time - 100 // 如果是 24 小时，扣减 5 分钟
-    } else {
-        base_time
-    }
+    (period * 28800.0) as i64
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]

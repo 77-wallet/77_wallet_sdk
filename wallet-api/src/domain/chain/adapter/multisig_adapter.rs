@@ -501,7 +501,10 @@ impl MultisigAdapter {
                 Ok(args.get_raw_data(pda, tx_hash)?)
             }
             Self::Tron(chain) => {
-                let expiration = req.expiration.unwrap_or(1) * 3600;
+                let mut expiration = req.expiration.unwrap_or(1) * 3600;
+                if expiration == 86400 {
+                    expiration = expiration - 61
+                }
 
                 if let Some(token) = token {
                     let mut params = tron::operations::transfer::ContractTransferOpt::new(
