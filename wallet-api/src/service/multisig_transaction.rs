@@ -742,7 +742,7 @@ impl MultisigTransactionService {
             tx_resp.tx_hash.clone(),
             queue.from_addr,
             queue.to_addr,
-            queue.value.parse().unwrap(),
+            queue.value.parse().unwrap_or_default(),
             queue.chain_code,
             queue.symbol,
             true,

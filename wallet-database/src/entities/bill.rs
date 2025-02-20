@@ -409,10 +409,14 @@ impl NewBillEntity {
     }
 
     pub fn get_owner(&self) -> String {
-        if self.tx_type == 0 {
-            self.to.clone()
-        } else {
+        if self.tx_kind.in_transfer_type() {
             self.from.clone()
+        } else {
+            if self.tx_type == 0 {
+                self.to.clone()
+            } else {
+                self.from.clone()
+            }
         }
     }
 }
