@@ -30,7 +30,7 @@ use wallet_database::{
 
 use crate::{
     domain,
-    service::system_notification::SystemNotificationService,
+    service::{asset::AssetsService, system_notification::SystemNotificationService},
     system_notification::{Notification, NotificationType},
 };
 
@@ -192,6 +192,9 @@ impl TronSignFreezeDelegateVoteChange {
             domain::multisig::queue::MultisigQueueDomain::update_raw_data(queue_id, pool.clone())
                 .await?;
         }
+
+        // 添加或更新资产余额
+        Self::upsert_than_sync_assets(from_addr, to_addr).await?;
         Self::create_system_notification(
             msg_id,
             &self.tx_hash,
@@ -203,6 +206,28 @@ impl TronSignFreezeDelegateVoteChange {
 
         let data = crate::notify::NotifyEvent::ResourceChange(self.into());
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
+
+        Ok(())
+    }
+
+    async fn upsert_than_sync_assets(
+        from_addr: &str,
+        to_addr: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let asset_list = if to_addr.is_empty() {
+            vec![from_addr.to_string()]
+        } else {
+            vec![from_addr.to_string(), to_addr.to_string()]
+        };
+
+        if !asset_list.is_empty() {
+            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+            AssetsService::new(repo)
+                .sync_assets_by_addr(asset_list, None, vec![])
+                .await?;
+        }
 
         Ok(())
     }
