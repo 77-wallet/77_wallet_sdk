@@ -11,6 +11,10 @@ use crate::{
     service::{app::AppService, device::DeviceService},
 };
 
+use super::payload::incoming::{
+    resource::TronSignFreezeDelegateVoteChange, transaction::AcctChange,
+};
+
 pub(crate) async fn exec_incoming(
     client: &rumqttc::v5::AsyncClient,
     packet: Packet,
@@ -127,8 +131,21 @@ pub async fn exec_incoming_publish(
 pub(crate) async fn exec_payload(
     payload: super::payload::incoming::Message,
 ) -> Result<(), crate::ServiceError> {
-    let body: super::payload::incoming::Body =
-        wallet_utils::serde_func::serde_from_value(payload.body)?;
+    let body = match payload.biz_type {
+        super::payload::incoming::BizType::AcctChange => {
+            let data =
+                wallet_utils::serde_func::serde_from_value::<AcctChange>(payload.body.clone())?;
+            super::payload::incoming::Body::AcctChange(data)
+        }
+
+        super::payload::incoming::BizType::TronSignFreezeDelegateVoteChange => {
+            let data = wallet_utils::serde_func::serde_from_value::<
+                TronSignFreezeDelegateVoteChange,
+            >(payload.body.clone())?;
+            super::payload::incoming::Body::TronSignFreezeDelegateVoteChange(data)
+        }
+        _ => wallet_utils::serde_func::serde_from_value(payload.body)?,
+    };
     match (payload.biz_type, body) {
         (
             super::payload::incoming::BizType::OrderMultiSignAccept,
@@ -256,22 +273,22 @@ pub(crate) async fn exec_payload(
                 .send()
                 .await?;
         }
-        // (
-        //     super::payload::incoming::BizType::RpcAddressChange,
-        //     super::payload::incoming::Body::RpcChange(data),
-        // ) => {
-        //     Tasks::new()
-        //         .push_with_id(
-        //             &payload.msg_id,
-        //             Task::Mqtt(Box::new(MqttTask::RpcChange(data))),
-        //         )
-        //         .send()
-        //         .await?;
-        // }
-        (_, _) => {
+        (
+            super::payload::incoming::BizType::TronSignFreezeDelegateVoteChange,
+            super::payload::incoming::Body::TronSignFreezeDelegateVoteChange(data),
+        ) => {
+            Tasks::new()
+                .push_with_id(
+                    &payload.msg_id,
+                    Task::Mqtt(Box::new(MqttTask::TronSignFreezeDelegateVoteChange(data))),
+                )
+                .send()
+                .await?;
+        }
+        (biztype, data) => {
             return Err(crate::ServiceError::System(
-                crate::SystemError::MessageWrong,
-            ))
+                crate::SystemError::MessageWrong(biztype, data),
+            ));
         }
     }
     Ok(())

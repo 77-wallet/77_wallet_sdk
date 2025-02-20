@@ -1,3 +1,5 @@
+use crate::mqtt::payload::incoming::{BizType, Body};
+
 #[derive(Debug, thiserror::Error)]
 pub enum SystemError {
     // #[error("Database error: {0}")]
@@ -12,8 +14,8 @@ pub enum SystemError {
     ChannelSendFailed(String),
     #[error("Frontend notify sender not set")]
     FrontendNotifySenderUnset,
-    #[error("Message wrong")]
-    MessageWrong,
+    #[error("Message wrong [biz_type]: {0:?}, [body]: {1:?}")]
+    MessageWrong(BizType, Body),
     #[error("Mqtt client not init")]
     MqttClientNotInit,
     #[error("device not init")]

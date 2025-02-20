@@ -30,7 +30,7 @@ pub(crate) struct Message {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub(crate) enum BizType {
+pub enum BizType {
     // 多签订单通知
     /// ORDER_MULTI_SIGN_ACCEPT
     /// 订单多签-发起签名受理   同步多签账号(已测试)
@@ -71,6 +71,9 @@ pub(crate) enum BizType {
     BulletinMsg,
     /// 节点变动
     RpcAddressChange,
+
+    /// 资源变动
+    TronSignFreezeDelegateVoteChange,
 }
 
 // impl<'de> Deserialize<'de> for BizType {
@@ -116,7 +119,7 @@ pub(crate) enum BizType {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(untagged)]
-pub(crate) enum Body {
+pub enum Body {
     OrderMultiSignAccept(signature::OrderMultiSignAccept),
     OrderMultiSignAcceptCompleteMsg(signature::OrderMultiSignAcceptCompleteMsg),
     // SyncMultisigAccountStatus(signature::SyncMultisigAccountStatus),
@@ -134,6 +137,9 @@ pub(crate) enum Body {
     TokenPriceChange(token::TokenPriceChange),
     BulletinMsg(announcement::BulletinMsg),
     RpcChange(rpc::RpcChange),
+
+    /// 资源
+    TronSignFreezeDelegateVoteChange(resource::TronSignFreezeDelegateVoteChange),
 }
 
 // transaction

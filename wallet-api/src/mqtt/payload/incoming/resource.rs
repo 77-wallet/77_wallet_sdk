@@ -250,9 +250,7 @@ impl TronSignFreezeDelegateVoteChange {
 mod test {
     use std::str::FromStr;
 
-    use crate::{
-        mqtt::payload::incoming::resource::TronSignFreezeDelegateVoteChange, test::env::get_manager,
-    };
+    use crate::test::env::get_manager;
 
     #[test]
     fn test_decimal() {
@@ -272,12 +270,15 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
 
-        let str1 = r#"{"blockHeight":69741653,"chainCode":"tron","fromAddr":"TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY","isMultisig":1,"netUsed":320.0,"queueId":"230495803410616320","status":true,"symbol":"trx","transactionFee":1000000.0,"transactionTime":"2025-02-18 19:14:12","transferType":1,"txHash":"0df3ba525f4688e73c25d3a15b26e7318054f25bb600c25fa52323fc9efa5e57","txKind":6,"value":6000000.0}"#;
+        // let str1 = r#"{"blockHeight":69741653,"chainCode":"tron","fromAddr":"TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY","isMultisig":1,"netUsed":320.0,"queueId":"230495803410616320","status":true,"symbol":"trx","transactionFee":1000000.0,"transactionTime":"2025-02-18 19:14:12","transferType":1,"txHash":"0df3ba525f4688e73c25d3a15b26e7318054f25bb600c25fa52323fc9efa5e57","txKind":6,"value":6000000.0}"#;
+        let str1 = r#"{"appId":"18071adc038afff6630","bizType":"TRON_SIGN_FREEZE_DELEGATE_VOTE_CHANGE","body":{"blockHeight":69789938,"chainCode":"tron","fromAddr":"TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N","isMultisig":1,"netUsed":317,"queueId":"231100718596100096","status":true,"symbol":"trx","transactionFee":1,"transactionTime":"2025-02-20 11:29:09","transferType":1,"txHash":"864b9491ba4551cc33379cf5d32a20ec1d366f3ccbca8b262aecd09b101532d0","txKind":6,"value":1},"clientId":"ce1eeb921f1205027699eecf78bbdc91","deviceType":"ANDROID","sn":"9920759727e10fd5204cfc1b8d54c79381190d6dc1c9db9cda30959545ad45c1","msgId":"67b6a1bfaff07a6a2fdd8fcb"}"#;
 
-        let changet = serde_json::from_str::<TronSignFreezeDelegateVoteChange>(&str1).unwrap();
+        let changet =
+            serde_json::from_str::<crate::mqtt::payload::incoming::Message>(&str1).unwrap();
 
-        let res = changet.exec("1").await;
-        println!("{:?}", res);
+        tracing::warn!("change: {changet:#?}");
+        // let res = changet.exec("1").await;
+        // println!("{:?}", res);
         Ok(())
     }
 }
