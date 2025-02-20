@@ -653,6 +653,7 @@ impl WalletService {
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
+            tx.update_password(None).await?;
             None
         };
         tx.update_uid(uid.as_deref()).await?;
