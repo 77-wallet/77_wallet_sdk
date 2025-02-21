@@ -1411,8 +1411,17 @@ impl StackService {
     ) -> Result<String, crate::error::ServiceError> {
         let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
 
+        let bill_value = req.get_votes() as f64;
+
         let tx_hash = self
-            .process_transaction(args, BillKind::Vote, &req.owner_address, password, 0, 0.0)
+            .process_transaction(
+                args,
+                BillKind::Vote,
+                &req.owner_address,
+                password,
+                0,
+                bill_value,
+            )
             .await?;
 
         Ok(tx_hash)
