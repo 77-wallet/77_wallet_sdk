@@ -37,7 +37,6 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();
-    // crate::WalletManager::init_log(Some("info"), "xxxx").await?;
 
     Ok((wallet_manager, test_params))
 }
