@@ -21,8 +21,21 @@ impl JPushService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut ids = Vec::new();
         for message in messages {
-            let payload: crate::mqtt::payload::incoming::Message =
-                wallet_utils::serde_func::serde_from_str(message.as_str())?;
+            let payload = match wallet_utils::serde_func::serde_from_str::<
+                crate::mqtt::payload::incoming::Message,
+            >(message.as_str())
+            {
+                Ok(data) => data,
+                Err(e) => {
+                    tracing::error!("[jpush_multi] serde_from_str error: {}", e);
+                    if let Err(e) =
+                        FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                    {
+                        tracing::error!("send_error error: {}", e);
+                    }
+                    continue;
+                }
+            };
             let id = payload.msg_id.clone();
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
                 .await?
