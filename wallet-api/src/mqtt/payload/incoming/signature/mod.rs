@@ -39,7 +39,7 @@ impl OrderMultiSignAccept {
 // biz_type = ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OrderMultiSignAcceptCompleteMsg {
+pub struct OrderMultiSignAcceptCompleteMsg {
     /// 参与状态(同意1,不同意0)
     status: i32,
     /// 多签账户id
@@ -99,7 +99,7 @@ pub struct Confirm {
 // biz_type = ORDER_MULTI_SIGN_SERVICE_COMPLETE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OrderMultiSignServiceComplete {
+pub struct OrderMultiSignServiceComplete {
     // 多签账户id
     multisig_account_id: String,
     // 多签账号结果 true 多签账号或服务费执行完成  false 失败
@@ -117,7 +117,7 @@ impl OrderMultiSignServiceComplete {
 // biz_type = ORDER_MULTI_SIGN_CANCEL
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OrderMultiSignCancel {
+pub struct OrderMultiSignCancel {
     // 多签账户id
     multisig_account_id: String,
 }
