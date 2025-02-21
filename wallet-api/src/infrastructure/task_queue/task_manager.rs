@@ -9,6 +9,7 @@ use crate::{
         multisig::MultisigQueueDomain,
         node::NodeDomain,
     },
+    notify::FrontendNotifyEvent,
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
 use dashmap::DashSet;
@@ -234,6 +235,14 @@ async fn handle_initialization_task(
                     interval.tick().await;
 
                     if let Err(e) = MqttDomain::process_unconfirm_msg(&client_id).await {
+                        if let Err(e) = FrontendNotifyEvent::send_error(
+                            "InitializationTask::ProcessUnconfirmMsg",
+                            e.to_string(),
+                        )
+                        .await
+                        {
+                            tracing::error!("send_error error: {}", e);
+                        }
                         tracing::error!("process unconfirm msg error:{}", e);
                     };
                     tracing::warn!("处理未确认消息");

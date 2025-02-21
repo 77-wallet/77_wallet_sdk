@@ -1,7 +1,10 @@
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_transport_backend::{consts::endpoint::SEND_MSG_CONFIRM, request::SendMsgConfirmReq};
 
-use crate::infrastructure::task_queue::{BackendApiTask, Task, Tasks};
+use crate::{
+    infrastructure::task_queue::{BackendApiTask, Task, Tasks},
+    notify::FrontendNotifyEvent,
+};
 
 pub struct JPushService {}
 
@@ -26,6 +29,11 @@ impl JPushService {
                 .is_none()
             {
                 if let Err(e) = crate::mqtt::handle::exec_payload(payload).await {
+                    if let Err(e) =
+                        FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                    {
+                        tracing::error!("send_error error: {}", e);
+                    }
                     tracing::error!("[jpush_multi] exec_payload error: {}", e);
                 };
             };
