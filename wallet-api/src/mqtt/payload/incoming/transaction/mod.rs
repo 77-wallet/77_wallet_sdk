@@ -157,6 +157,12 @@ pub struct AcctChange {
     // 备注
     #[serde(default)]
     pub notes: String,
+    // 带宽消耗
+    #[serde(default)]
+    pub net_used: u64,
+    // 能量消耗
+    #[serde(default)]
+    pub energy_used: Option<u64>,
 }
 
 impl AcctChange {

@@ -41,9 +41,9 @@ pub struct ResourceChangeFrontend {
     // 业务id
     pub queue_id: String,
     // 带宽消耗
-    pub net_used: f64,
+    pub net_used: u64,
     // 能量消耗
-    pub energy_used: Option<f64>,
+    pub energy_used: Option<u64>,
     // BANDWIDTH  / ENERGY
     pub resource: Option<String>,
     // 是否锁定

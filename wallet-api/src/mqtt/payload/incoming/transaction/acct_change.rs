@@ -74,6 +74,8 @@ impl AcctChange {
             ref queue_id,
             block_height,
             ref notes,
+            net_used,
+            energy_used,
         } = self;
 
         let mut _status = if status { 2 } else { 3 };
@@ -85,20 +87,11 @@ impl AcctChange {
             _ => return Ok(()),
         };
 
-        // 主动查询链上的交易信息,获取交易所消耗的资源,以及更新状态
-        let mut consumer = String::new();
-        match domain::bill::BillDomain::get_onchain_bill(tx_hash, chain_code).await {
-            Ok(res) => {
-                if let Some(res) = res {
-                    // _status = res.status;
-                    consumer = res.resource_consume;
-                    // transaction_fee = res.transaction_fee;
-                }
-            }
-            Err(e) => {
-                tracing::error!("mqtt get bill resource consumer error:{e:?}");
-            }
-        }
+        let consumer = wallet_chain_interact::BillResourceConsume::new_tron(
+            net_used,
+            energy_used.unwrap_or_default(),
+        )
+        .to_json_str()?;
 
         let tx_kind_enum = BillKind::try_from(tx_kind)?;
         let multisig_tx = is_multisig == 1;
