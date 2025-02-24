@@ -129,7 +129,7 @@ impl TronSignFreezeDelegateVoteChange {
             ref from_addr,
             ref to_addr,
             ref token,
-            value,
+            mut value,
             transaction_fee,
             ref transaction_time,
             status,
@@ -139,6 +139,7 @@ impl TronSignFreezeDelegateVoteChange {
             ref queue_id,
             net_used,
             energy_used,
+            ref votes,
             ..
         } = self;
         let mut _status = if status { 2 } else { 3 };
@@ -149,6 +150,13 @@ impl TronSignFreezeDelegateVoteChange {
             energy_used.unwrap_or_default(),
         )
         .to_json_str()?;
+
+        if !votes.is_empty() {
+            value = 0f64;
+            for vote in votes.iter() {
+                value += vote.vote_count as f64;
+            }
+        }
 
         let tx_kind_enum = tx_kind;
         let multisig_tx = is_multisig == 1;
