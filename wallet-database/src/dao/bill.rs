@@ -285,7 +285,7 @@ impl BillDao {
         {
             ("".to_string(), "".to_string())
         } else {
-            (symbol, to)
+            (symbol.to_uppercase(), to)
         };
 
         let transaction_time = if transaction_time == 0 {
