@@ -103,11 +103,11 @@ pub struct PermissionResp {
     pub keys: Vec<Keys>,
 }
 
-impl TryFrom<&wallet_chain_interact::tron::protocol::account::PermissionResp> for PermissionResp {
+impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for PermissionResp {
     type Error = crate::ServiceError;
 
     fn try_from(
-        value: &wallet_chain_interact::tron::protocol::account::PermissionResp,
+        value: &wallet_chain_interact::tron::operations::multisig::Permission,
     ) -> Result<Self, Self::Error> {
         let operations = if value.permission_name == "owner" {
             None
@@ -132,8 +132,8 @@ pub struct Keys {
     weight: i8,
 }
 
-impl From<&wallet_chain_interact::tron::protocol::account::Keys> for Keys {
-    fn from(value: &wallet_chain_interact::tron::protocol::account::Keys) -> Self {
+impl From<&wallet_chain_interact::tron::operations::multisig::Keys> for Keys {
+    fn from(value: &wallet_chain_interact::tron::operations::multisig::Keys) -> Self {
         Keys {
             address: value.address.clone(),
             weight: value.weight.clone(),
