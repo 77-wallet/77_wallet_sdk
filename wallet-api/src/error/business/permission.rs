@@ -6,6 +6,12 @@ pub enum PermissionError {
     // 所有权重的和小于 阈值
     #[error("weight less tran threshold")]
     WeightLessThreshold,
+    // 活跃权限为空(至少保留一个活跃权限)
+    #[error("miss actives permission")]
+    MissActivesPermission,
+    // 未找到对应的活跃权限
+    #[error("actives permission not found")]
+    ActviesPermissionNotFound,
 }
 
 impl PermissionError {
@@ -13,6 +19,8 @@ impl PermissionError {
         match self {
             PermissionError::ActivesPermissionMore => 4300,
             PermissionError::WeightLessThreshold => 4301,
+            PermissionError::MissActivesPermission => 4302,
+            PermissionError::ActviesPermissionNotFound => 4303,
         }
     }
 }

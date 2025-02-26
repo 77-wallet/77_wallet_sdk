@@ -9,6 +9,7 @@ use crate::{
 };
 use wallet_chain_interact::{
     tron::{
+        consts,
         operations::{multisig::Permission, permisions::PermissionUpdateArgs, TronTxOperation},
         TronChain,
     },
@@ -44,11 +45,14 @@ impl PermssionService {
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
         // 验证余额
         let balance = self.chain.balance(from, None).await?;
-        let consumer = self
+        let mut consumer = self
             .chain
             .get_provider()
             .transfer_fee(from, None, &resp.raw_data_hex, 1)
             .await?;
+
+        // upgrade fee
+        consumer.set_extra_fee(100 * consts::TRX_VALUE);
 
         if balance.to::<i64>() < consumer.transaction_fee_i64() {
             return Err(crate::BusinessError::Chain(
@@ -105,8 +109,8 @@ impl PermssionService {
         let actives = account
             .active_permission
             .iter()
-            .map(|p| PermissionResp::try_from(p).unwrap())
-            .collect();
+            .map(|p| PermissionResp::try_from(p))
+            .collect::<Result<Vec<PermissionResp>, _>>()?;
 
         Ok(AccountPermission {
             owner: PermissionResp::try_from(&account.owner_permission)?,
@@ -132,14 +136,9 @@ impl PermssionService {
 
         let mut args = PermissionUpdateArgs::try_from(&account)?;
 
-        let permission = Permission::try_from(&req)?;
-
         // 新增权限
-        if let Some(actives) = args.actives.as_mut() {
-            actives.push(permission);
-        } else {
-            args.actives = Some(vec![permission])
-        }
+        let permission = Permission::try_from(&req)?;
+        args.actives.push(permission);
 
         let result = self
             .update_permision(BillKind::UpdatgePermission, &req.address, args, &password)
@@ -159,23 +158,22 @@ impl PermssionService {
 
         req.check_threshold()?;
 
-        let id = req.permission_id.unwrap();
-
         let mut args = PermissionUpdateArgs::try_from(&account)?;
-        let permission = Permission::try_from(&req)?;
 
-        // 新增权限
-        if let Some(actives) = args.actives.as_mut() {
-            for item in actives.iter_mut() {
-                if item.id.unwrap_or_default() == id {
-                    *item = permission;
-                    break;
-                }
-            }
+        // update permission
+        let id = req.permission_id.unwrap();
+        let new_permission = Permission::try_from(&req)?;
+        if let Some(permission) = args
+            .actives
+            .iter_mut()
+            .find(|p| p.id.unwrap_or_default() == id)
+        {
+            *permission = new_permission;
+        } else {
+            return Err(crate::BusinessError::Permisison(
+                crate::PermissionError::ActviesPermissionNotFound,
+            ))?;
         }
-
-        // 验证是否还有active 是否为空
-        // 验证是否修改
 
         let result = self
             .update_permision(BillKind::UpdatgePermission, &req.address, args, &password)
@@ -191,18 +189,27 @@ impl PermssionService {
         id: i8,
         password: String,
     ) -> Result<String, crate::ServiceError> {
-        // check
         let account = self.chain.account_info(&address).await?;
 
         let mut args = PermissionUpdateArgs::try_from(&account)?;
 
-        // 删除权限
-        if let Some(actives) = args.actives.as_mut() {
-            actives.retain(|item| item.id.unwrap_or_default() != id);
-        }
+        // check exists
+        let exists = args.actives.iter().any(|a| a.id.unwrap_or_default() == id);
+        if !exists {
+            return Err(crate::BusinessError::Permisison(
+                crate::PermissionError::ActviesPermissionNotFound,
+            ))?;
+        };
 
-        // 验证是否还有active 是否为空
-        // 验证是否删除
+        // 删除权限
+        args.actives
+            .retain(|item| item.id.unwrap_or_default() != id);
+
+        if args.actives.len() == 0 {
+            return Err(crate::BusinessError::Permisison(
+                crate::PermissionError::MissActivesPermission,
+            ))?;
+        }
 
         let result = self
             .update_permision(BillKind::UpdatgePermission, &address, args, &password)

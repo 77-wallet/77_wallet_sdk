@@ -98,6 +98,7 @@ pub struct AccountPermission {
 #[serde(rename_all = "camelCase")]
 pub struct PermissionResp {
     pub name: String,
+    pub permission_id: Option<i8>,
     pub threshold: i8,
     pub operations: Option<Vec<i8>>,
     pub keys: Vec<Keys>,
@@ -109,16 +110,17 @@ impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for
     fn try_from(
         value: &wallet_chain_interact::tron::operations::multisig::Permission,
     ) -> Result<Self, Self::Error> {
-        let operations = if value.permission_name == "owner" {
-            None
+        let (operations, id) = if value.permission_name == "owner" {
+            (None, None)
         } else {
             let operations = PermissionTypes::from_hex(&value.operations.as_ref().unwrap())?;
-            Some(operations)
+            (Some(operations), value.id)
         };
 
         Ok(PermissionResp {
             name: value.permission_name.clone(),
             threshold: value.threshold as i8,
+            permission_id: id,
             operations,
             keys: value.keys.iter().map(|k| Keys::from(k)).collect(),
         })
