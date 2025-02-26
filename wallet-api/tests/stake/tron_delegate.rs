@@ -253,7 +253,7 @@ async fn test_min_remaining_time() {
         .await;
 
     tracing::warn!("second get");
-    let res = manager
+    let _res = manager
         .min_remaining_time(from.clone(), to.clone(), resource_type.clone())
         .await;
 
