@@ -9,6 +9,7 @@ use crate::response_vo::multisig_account::{
     AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
 };
 use std::collections::HashMap;
+use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 use wallet_database::entities::assets::AssetsEntity;
 use wallet_database::entities::bill::{BillKind, NewBillEntity};
 use wallet_database::entities::chain::ChainEntity;
@@ -55,6 +56,7 @@ impl MultisigAccountService {
         mut member_list: Vec<MemberVo>,
         address_type: Option<String>,
     ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         // check address type
         let address_type = match chain_code.as_str() {
@@ -67,6 +69,16 @@ impl MultisigAccountService {
             }
             _ => String::new(),
         };
+
+        // check tron address repeat
+        let account = MultisigAccountDaoV1::find_by_address(&address, &*pool).await?;
+        if let Some(account) = account
+            && account.chain_code == chain_code::TRON
+        {
+            return Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::AddressRepeat,
+            ))?;
+        }
 
         let member_address = member_list
             .iter()
@@ -98,7 +110,6 @@ impl MultisigAccountService {
             }
         }
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()

@@ -387,6 +387,17 @@ impl MultisigDomain {
                 )
                 .await?;
             }
+        } else if params.chain_code == chain_code::TRON
+            && (status == MultisigAccountStatus::Confirmed
+                || status == MultisigAccountStatus::Pending)
+        {
+            AssetsEntity::update_tron_multisig_assets(
+                &params.address,
+                &params.chain_code,
+                CoinMultisigStatus::Deploying.to_i8(),
+                pool.as_ref(),
+            )
+            .await?;
         }
 
         MultisigAccountDaoV1::create_account_with_member(&params, pool).await?;

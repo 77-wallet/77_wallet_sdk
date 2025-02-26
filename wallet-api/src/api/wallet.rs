@@ -269,8 +269,8 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "748f704632992c5af83b85f5ea1aeab499341850e3a050e1d4da749980789f18";
-        let address = Some("2hJAQuxY5PZsQAK2Jm3zjjNUPw7ph3yoFurJyGLTSBCC".to_string());
+        let uid = "137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358";
+        let address = Some("TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string());
         let start_time = std::time::Instant::now();
 
         let res =

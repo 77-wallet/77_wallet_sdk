@@ -22,6 +22,9 @@ pub enum MultisigAccountError {
     NotPay,
     #[error("not onchain")]
     NotOnChain,
+    // 在tron 创建多签账号时，重复创建
+    #[error("address repeat")]
+    AddressRepeat,
 }
 
 impl MultisigAccountError {
@@ -38,6 +41,7 @@ impl MultisigAccountError {
             MultisigAccountError::OnlyInitiatorCreateTx => 3608,
             MultisigAccountError::NotPay => 3609,
             MultisigAccountError::NotOnChain => 3610,
+            MultisigAccountError::AddressRepeat => 3611,
         }
     }
 }
