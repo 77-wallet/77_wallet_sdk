@@ -5,7 +5,7 @@ use crate::{
         FrontendNotifyEvent, NotifyEvent,
     },
     request::permission::PermissionReq,
-    response_vo::permssion::{AccountPermission, PermissionList, PermissionResp},
+    response_vo::permssion::{AccountPermission, Keys, PermissionList, PermissionResp},
 };
 use wallet_chain_interact::{
     tron::{
@@ -15,7 +15,11 @@ use wallet_chain_interact::{
     },
     BillResourceConsume,
 };
-use wallet_database::entities::bill::{BillKind, NewBillEntity};
+use wallet_database::{
+    entities::bill::{BillKind, NewBillEntity},
+    repositories::{address_book::AddressBookRepo, permission::PermissionRepo},
+    DbPool,
+};
 use wallet_types::constant::chain_code;
 
 pub struct PermssionService {
@@ -26,6 +30,23 @@ impl PermssionService {
     pub async fn new() -> Result<Self, crate::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
         Ok(Self { chain })
+    }
+
+    // 标记使用地址簿里面的名字
+    pub async fn mark_address_book_name(
+        &self,
+        pool: &DbPool,
+        keys: &mut [Keys],
+    ) -> Result<(), crate::ServiceError> {
+        for key in keys.iter_mut() {
+            let book = AddressBookRepo::find_by_address_chain(pool, &key.address, chain_code::TRON)
+                .await?;
+            if let Some(book) = book {
+                key.name = book.name;
+            }
+        }
+
+        Ok(())
     }
 
     async fn update_permision<T>(
@@ -100,7 +121,7 @@ impl PermssionService {
     }
 
     // account permisson
-    pub async fn account_permssion(
+    pub async fn account_permission(
         &self,
         address: String,
     ) -> Result<AccountPermission, crate::ServiceError> {
@@ -112,10 +133,39 @@ impl PermssionService {
             .map(|p| PermissionResp::try_from(p))
             .collect::<Result<Vec<PermissionResp>, _>>()?;
 
-        Ok(AccountPermission {
+        let mut result = AccountPermission {
             owner: PermissionResp::try_from(&account.owner_permission)?,
             actives,
-        })
+        };
+
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        self.mark_address_book_name(&pool, &mut result.owner.keys)
+            .await?;
+
+        for item in result.actives.iter_mut() {
+            self.mark_address_book_name(&pool, &mut item.keys).await?;
+        }
+
+        Ok(result)
+    }
+
+    // 我管理的权限
+    pub async fn manager_permision(&self) -> Result<Vec<PermissionResp>, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let permissions = PermissionRepo::all_permission_with_user(&pool).await?;
+
+        let mut result = permissions
+            .iter()
+            .map(|p| PermissionResp::try_from(p))
+            .collect::<Result<Vec<PermissionResp>, crate::ServiceError>>()?;
+
+        for item in result.iter_mut() {
+            self.mark_address_book_name(&pool, &mut item.keys).await?;
+        }
+
+        Ok(result)
     }
 
     // add new permission

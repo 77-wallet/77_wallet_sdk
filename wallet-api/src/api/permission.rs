@@ -20,7 +20,16 @@ impl crate::WalletManager {
     pub async fn account_permission(&self, address: String) -> ReturnType<AccountPermission> {
         PermssionService::new()
             .await?
-            .account_permssion(address)
+            .account_permission(address)
+            .await?
+            .into()
+    }
+
+    // 管理其账号的权限
+    pub async fn manager_permission(&self, address: String) -> ReturnType<AccountPermission> {
+        PermssionService::new()
+            .await?
+            .account_permission(address)
             .await?
             .into()
     }

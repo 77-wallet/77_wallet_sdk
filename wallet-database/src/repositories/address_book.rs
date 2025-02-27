@@ -1,6 +1,6 @@
 use crate::{
     dao::address_book::AddressBookDao, entities::address_book::AddressBookEntity,
-    pagination::Pagination,
+    pagination::Pagination, DbPool,
 };
 
 use super::ResourcesRepo;
@@ -76,5 +76,13 @@ impl AddressBookRepo {
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
         Ok(AddressBookDao::find_by_address(self.repo.pool().as_ref(), address, chain_code).await?)
+    }
+
+    pub async fn find_by_address_chain(
+        pool: &DbPool,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<Option<AddressBookEntity>, crate::Error> {
+        Ok(AddressBookDao::find_by_address(pool.as_ref(), address, chain_code).await?)
     }
 }

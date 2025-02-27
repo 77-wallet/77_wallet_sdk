@@ -1,4 +1,5 @@
 use wallet_chain_interact::tron::operations::permisions::{ContractType, PermissionTypes};
+use wallet_database::entities::permission::PermissionWithuserEntity;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,16 +128,50 @@ impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for
     }
 }
 
+impl TryFrom<&PermissionWithuserEntity> for PermissionResp {
+    type Error = crate::ServiceError;
+
+    fn try_from(value: &PermissionWithuserEntity) -> Result<Self, Self::Error> {
+        let operations = PermissionTypes::from_hex(&value.permission.operations)?;
+
+        let keys = value
+            .user
+            .iter()
+            .map(|u| Keys::new(u.address.clone(), u.weight as i8))
+            .collect();
+
+        Ok(PermissionResp {
+            name: value.permission.name.clone(),
+            threshold: value.permission.threshold as i8,
+            permission_id: Some(value.permission.active_id as i8),
+            operations: Some(operations),
+            keys,
+        })
+    }
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Keys {
-    address: String,
+    pub name: String,
+    pub address: String,
     weight: i8,
+}
+
+impl Keys {
+    pub fn new(address: String, weight: i8) -> Self {
+        Self {
+            name: String::new(),
+            address,
+            weight,
+        }
+    }
 }
 
 impl From<&wallet_chain_interact::tron::operations::multisig::Keys> for Keys {
     fn from(value: &wallet_chain_interact::tron::operations::multisig::Keys) -> Self {
         Keys {
+            name: String::new(),
             address: value.address.clone(),
             weight: value.weight.clone(),
         }

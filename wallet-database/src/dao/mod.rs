@@ -13,6 +13,8 @@ pub mod multisig_member;
 pub mod multisig_queue;
 pub mod multisig_signatures;
 pub mod node;
+pub mod permission;
+pub mod permission_user;
 pub mod stake;
 pub mod system_notification;
 pub mod task_queue;

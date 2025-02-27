@@ -1,6 +1,7 @@
 pub mod announcement;
 pub mod chain;
 pub mod init;
+pub mod permission;
 pub mod resource;
 pub mod rpc;
 pub mod signature;
@@ -76,47 +77,6 @@ pub enum BizType {
     TronSignFreezeDelegateVoteChange,
 }
 
-// impl<'de> Deserialize<'de> for BizType {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         struct BizTypeVisitor;
-
-//         impl<'de> Visitor<'de> for BizTypeVisitor {
-//             type Value = BizType;
-
-//             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//                 formatter.write_str("an integer between 1001 and 1006")
-//             }
-
-//             fn visit_i64<E>(self, value: i64) -> Result<BizType, E>
-//             where
-//                 E: de::Error,
-//             {
-//                 match value {
-//                     1001 => Ok(BizType::ORDER_MULTI_SIGN_ACCEPT),
-//                     1002 => Ok(BizType::MultisigMemberParticipationConfirmation),
-//                     1003 => Ok(BizType::SyncMultisigAccountStatus),
-//                     1004 => Ok(BizType::CompletePayment),
-//                     1005 => Ok(BizType::SyncTransactionQueue),
-//                     1006 => Ok(BizType::SyncTransactionSignature),
-//                     _ => Err(de::Error::invalid_value(Unexpected::Signed(value), &self)),
-//                 }
-//             }
-
-//             fn visit_u64<E>(self, value: u64) -> Result<BizType, E>
-//             where
-//                 E: de::Error,
-//             {
-//                 self.visit_i64(value as i64)
-//             }
-//         }
-
-//         deserializer.deserialize_i64(BizTypeVisitor)
-//     }
-// }
-
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(untagged)]
 pub enum Body {
@@ -141,49 +101,3 @@ pub enum Body {
     /// 资源
     TronSignFreezeDelegateVoteChange(resource::TronSignFreezeDelegateVoteChange),
 }
-
-// transaction
-
-#[cfg(test)]
-mod test {
-    use super::BizType;
-
-    #[test]
-    fn test_dese() {
-        let data = serde_json::json!(1001);
-
-        let res = serde_json::from_value::<BizType>(data);
-
-        println!("res: {:?}", res);
-    }
-}
-
-/*
-test data
-[
-    {
-        "client_id": "client126",
-        "sn": "device459",
-        "device_type": "typeD",
-        "biz_type": 1004,
-        "body": {
-            "status": false,
-            "multi_account_id": "uuid-2"
-        }
-    }
-
-    {
-        "client_id": "client128",
-        "sn": "device461",
-        "device_type": "typeF",
-        "biz_type": 1006,
-        "body": {
-            "hash": "txhash-1",
-            "address": "address2",
-            "signature": "signature-1"
-        }
-    }
-]
-
-
-*/
