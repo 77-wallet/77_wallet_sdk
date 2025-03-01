@@ -3,7 +3,6 @@ use crate::{
         self, account::open_account_pk_with_password, chain::adapter::ChainAdapterFactory,
         coin::TokenCurrencyGetter,
     },
-    mqtt::payload::incoming::permission::PermissionAccept,
     notify::{
         event::other::{Process, TransactionProcessFrontend},
         FrontendNotifyEvent, NotifyEvent,
@@ -27,7 +26,7 @@ use wallet_database::{
     repositories::{address_book::AddressBookRepo, permission::PermissionRepo},
     DbPool,
 };
-use wallet_transport_backend::api::permission::PermissionAcceptReq;
+use wallet_transport_backend::api::permission::{CurrentPemission, PermissionAcceptReq};
 use wallet_types::constant::chain_code;
 
 pub struct PermssionService {
@@ -142,18 +141,29 @@ impl PermssionService {
 
     async fn upload_backend(
         &self,
-        permission: PermissionAccept,
+        permission: Permission,
+        all_users: Vec<String>,
+        types: String,
+        grantor_addr: &str,
         tx_hash: String,
     ) -> Result<(), crate::ServiceError> {
+        let users = permission.keys.iter().map(|k| k.address.clone()).collect();
+
         let req = PermissionAcceptReq {
             hash: tx_hash,
-            tx_str: permission.to_json_val()?,
+            grantor_addr: grantor_addr.to_string(),
+            users: all_users,
+            current: CurrentPemission {
+                users,
+                types,
+                opretions: todo!(),
+            },
         };
 
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let backend = crate::Context::get_global_backend_api()?;
 
-        backend.permission_accept(req, &cryptor).await?;
+        backend.permission_accept(req, &aes_cbc_cryptor).await?;
         Ok(())
     }
 }
@@ -264,12 +274,10 @@ impl PermssionService {
                     .find(|a| a.id.unwrap_or_default() == active_id)
                     .cloned();
 
-                tracing::warn!("p{:#?}", permission);
-
                 if let Some(permission) = permission {
-                    // // 删除权限
-                    // args.actives
-                    //     .retain(|item| item.id.unwrap_or_default() != active_id);
+                    // 删除权限
+                    args.actives
+                        .retain(|item| item.id.unwrap_or_default() != active_id);
 
                     if args.actives.len() == 0 {
                         return Err(crate::BusinessError::Permisison(
@@ -314,22 +322,27 @@ impl PermssionService {
         let account = self.chain.account_info(&req.grantor_addr).await?;
         let mut args = PermissionUpdateArgs::try_from(&account)?;
 
-        // let modified_permission = self.build_args(&mut args, &types, &req)?;
+        let modified_permission = self.build_args(&mut args, &types, &req)?;
 
-        tracing::warn!("{:#?}", args);
-        assert!(false);
+        let all_users = args
+            .actives
+            .iter()
+            .flat_map(|a| a.keys.iter().map(|k| k.address.clone()))
+            .collect();
+
         let tx_hash = self
             .update_permision(&req.grantor_addr, args, &password)
             .await?;
 
-        // let tx_hash =
-        //     "5cae1129bc8cda4e1c70c298be1bf4a97444bd27c72044b09da9442c57d13e55".to_string();
-
-        // let permission =
-        //     PermissionAccept::try_from((&modified_permission, req.grantor_addr.as_str()))?;
-
         // 上报后端
-        // self.upload_backend(permission, tx_hash.clone()).await?;
+        self.upload_backend(
+            modified_permission,
+            all_users,
+            types,
+            &req.grantor_addr,
+            tx_hash.clone(),
+        )
+        .await?;
 
         Ok(tx_hash)
     }

@@ -1,4 +1,5 @@
 use sqlx::{Executor, Sqlite};
+use wallet_types::constant::chain_code;
 
 use crate::entities::account::{AccountEntity, AccountWalletMapping, CreateAccountVo};
 
@@ -121,12 +122,17 @@ impl AccountEntity {
     pub async fn list_in_address<'a, E>(
         executor: E,
         addresses: &[String],
+        chain_code: Option<String>,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let addresses = crate::any_in_collection(addresses, "','");
-        let sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
+        let mut sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
+
+        if let Some(chain_code) = chain_code {
+            sql.push_str(&format!(" and chain_code = {}", chain_code));
+        }
 
         sqlx::query_as::<sqlx::Sqlite, AccountEntity>(&sql)
             .fetch_all(executor)

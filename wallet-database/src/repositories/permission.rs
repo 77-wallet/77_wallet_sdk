@@ -32,6 +32,37 @@ impl PermissionRepo {
         Ok(())
     }
 
+    pub async fn del_add(
+        pool: &DbPool,
+        permissions: &[PermissionEntity],
+        users: &[PermissionUserEntity],
+        grantor_addr: &str,
+    ) -> Result<(), crate::Error> {
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // 删除原来的权限
+        PermissionDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
+        // 删除成员
+        PermissionUserDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
+
+        // 新增权限
+        for permission in permissions {
+            PermissionDao::add(permission, tx.as_mut()).await?;
+        }
+
+        //  新增成员
+        PermissionUserDao::batch_add(users, tx.as_mut()).await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
+    }
+
     // 新增权限以及成员
     pub async fn upate_with_user(
         pool: &DbPool,

@@ -5,7 +5,17 @@ use super::BackendApi;
 #[serde(rename_all = "camelCase")]
 pub struct PermissionAcceptReq {
     pub hash: String,
-    pub tx_str: serde_json::Value,
+    pub grantor_addr: String,
+    pub users: Vec<String>,
+    pub current: CurrentPemission,
+}
+
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentPemission {
+    pub users: Vec<String>,
+    pub types: String,
+    pub opretions: String,
 }
 
 #[derive(serde::Serialize, Debug)]

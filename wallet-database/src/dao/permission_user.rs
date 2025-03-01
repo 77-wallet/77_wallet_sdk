@@ -69,4 +69,18 @@ impl PermissionUserDao {
 
         Ok(())
     }
+
+    pub async fn delete_by_grantor_addr<'a, E>(
+        grantor_addr: &str,
+        exec: E,
+    ) -> Result<(), crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"delete from permission_user where grantor_addr = ?"#;
+
+        sqlx::query(&sql).bind(grantor_addr).execute(exec).await?;
+
+        Ok(())
+    }
 }

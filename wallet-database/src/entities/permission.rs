@@ -1,3 +1,5 @@
+use crate::dao::permission;
+
 use super::permission_user::PermissionUserEntity;
 use chrono::{DateTime, Utc};
 
@@ -19,8 +21,11 @@ pub struct PermissionEntity {
 }
 
 impl PermissionEntity {
-    pub fn get_id(address: &str, active_id: i8) -> String {
-        wallet_utils::snowflake::gen_hash_uid(vec![address, &active_id.to_string()])
+    pub fn get_id(address: &str, operations: &str, member: &[&str]) -> String {
+        let mut params = vec![address, operations];
+        params.extend(member);
+
+        wallet_utils::snowflake::gen_hash_uid(params)
     }
 }
 

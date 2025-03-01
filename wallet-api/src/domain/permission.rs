@@ -1,7 +1,7 @@
+use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
     entities::{
         account::{self, AccountEntity},
-        permission::PermissionEntity,
         permission_user::PermissionUserEntity,
     },
     repositories::permission::PermissionRepo,
@@ -9,9 +9,10 @@ use wallet_database::{
 };
 use wallet_transport_backend::api::permission::GetPermissionBackReq;
 use wallet_types::constant::chain_code;
-use wallet_utils::serde_func;
 
-use crate::mqtt::payload::incoming::permission::PermissionAccept;
+use crate::mqtt::payload::incoming::permission::NewPermissionUser;
+
+use super::chain::adapter::ChainAdapterFactory;
 
 pub struct PermissionDomain;
 
@@ -45,17 +46,8 @@ impl PermissionDomain {
             let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
 
             for item in result.list {
-                let permission = serde_func::serde_from_str::<PermissionAccept>(&item.data);
-
-                match permission {
-                    Ok(permission) => {
-                        if let Err(e) = Self::handel_one_item(&pool, &permission).await {
-                            tracing::warn!("[recover_permission] error:{}", e);
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("[recover_permission] parse error:{}", e);
-                    }
+                if let Err(e) = Self::handel_one_item(&pool, &item.data).await {
+                    tracing::warn!("[recover_permission] error:{}", e);
                 }
             }
         }
@@ -63,32 +55,73 @@ impl PermissionDomain {
         Ok(())
     }
 
-    async fn handel_one_item(
+    pub async fn self_contain_permiison(
         pool: &DbPool,
-        permission: &PermissionAccept,
-    ) -> Result<(), crate::ServiceError> {
-        // 查询是否存在
-        let old_permision = PermissionRepo::find_by_grantor_and_active(
-            pool,
-            &permission.permission.grantor_addr,
-            permission.permission.active_id,
-            true,
+        account: &TronAccount,
+        address: &str,
+    ) -> Result<Vec<NewPermissionUser>, crate::ServiceError> {
+        let addresses = account
+            .active_permission
+            .iter()
+            .flat_map(|p| p.keys.iter().map(|k| k.address.clone()))
+            .collect::<Vec<String>>();
+
+        let local_account = AccountEntity::list_in_address(
+            pool.as_ref(),
+            &addresses,
+            Some(chain_code::TRON.to_string()),
         )
         .await?;
 
-        let mut users = permission.users.clone();
-        Self::mark_user_isself(pool, &mut users).await?;
+        let mut reuslt = vec![];
+        for item in account.active_permission.iter() {
+            for key in item.keys.iter() {
+                if local_account
+                    .iter()
+                    .find(|a| a.address == key.address)
+                    .is_some()
+                {
+                    let permission_with_user = NewPermissionUser::try_from((item, address))?;
 
-        let is_update = old_permision.is_some();
-
-        if users.iter().any(|u| u.is_self == 1) {
-            if is_update {
-                PermissionRepo::upate_with_user(pool, &permission.permission, &users).await?;
-            } else {
-                PermissionRepo::add_with_user(pool, &permission.permission, &users).await?;
+                    reuslt.push(permission_with_user);
+                }
             }
-        } else {
-            tracing::info!("recover permission -->  skipped: not self {}", is_update);
+        }
+
+        Ok(reuslt)
+    }
+
+    pub async fn del_add_update(
+        pool: &DbPool,
+        mut permissions: Vec<NewPermissionUser>,
+        grantor_addr: &str,
+    ) -> Result<(), crate::ServiceError> {
+        // 标记那些是自己
+        for p in permissions.iter_mut() {
+            Self::mark_user_isself(pool, &mut p.users).await?;
+        }
+
+        let mut p = vec![];
+        let mut users = vec![];
+        for item in permissions {
+            p.push(item.permission);
+            users.extend(item.users);
+        }
+
+        PermissionRepo::del_add(pool, &p, &users, grantor_addr).await?;
+
+        Ok(())
+    }
+
+    async fn handel_one_item(pool: &DbPool, grantor_addr: &str) -> Result<(), crate::ServiceError> {
+        let chain = ChainAdapterFactory::get_tron_adapter().await?;
+        let account = chain.account_info(grantor_addr).await?;
+
+        let new_permission =
+            PermissionDomain::self_contain_permiison(&pool, &account, grantor_addr).await?;
+
+        if new_permission.len() > 0 {
+            PermissionDomain::del_add_update(&pool, new_permission, grantor_addr).await?;
         }
 
         Ok(())

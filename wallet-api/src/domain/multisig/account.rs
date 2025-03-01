@@ -641,6 +641,7 @@ impl MultisigDomain {
         let other_accounts = wallet_database::entities::account::AccountEntity::list_in_address(
             &*pool,
             &other_addresses,
+            None,
         )
         .await?;
         let other_members = other_members
