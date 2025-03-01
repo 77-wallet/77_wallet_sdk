@@ -99,7 +99,7 @@ pub struct AccountPermission {
 #[serde(rename_all = "camelCase")]
 pub struct PermissionResp {
     pub name: String,
-    pub permission_id: Option<i8>,
+    pub active_id: Option<i8>,
     pub threshold: i8,
     pub operations: Option<Vec<i8>>,
     pub keys: Vec<Keys>,
@@ -121,7 +121,7 @@ impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for
         Ok(PermissionResp {
             name: value.permission_name.clone(),
             threshold: value.threshold as i8,
-            permission_id: id,
+            active_id: id,
             operations,
             keys: value.keys.iter().map(|k| Keys::from(k)).collect(),
         })
@@ -143,7 +143,7 @@ impl TryFrom<&PermissionWithuserEntity> for PermissionResp {
         Ok(PermissionResp {
             name: value.permission.name.clone(),
             threshold: value.permission.threshold as i8,
-            permission_id: Some(value.permission.active_id as i8),
+            active_id: Some(value.permission.active_id as i8),
             operations: Some(operations),
             keys,
         })

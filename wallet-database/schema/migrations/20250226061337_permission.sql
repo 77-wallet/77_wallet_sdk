@@ -1,6 +1,7 @@
 -- Add migration script here
 CREATE TABLE permission(
     id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
     grantor_addr VARCHAR(128) NOT NULL,
     types VARCHAR(128) NOT NULL,
     active_id INTEGER NOT NULL,

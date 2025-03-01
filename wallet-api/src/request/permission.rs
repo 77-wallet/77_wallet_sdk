@@ -4,15 +4,19 @@ use wallet_chain_interact::tron::operations::{
 };
 
 pub struct PermissionReq {
-    pub address: String,
+    pub grantor_addr: String,
     pub name: String,
-    pub permission_id: Option<i8>,
+    pub active_id: Option<i8>,
     pub threshold: i8,
     pub operations: Vec<i8>,
     pub keys: Vec<KeysReq>,
 }
 
 impl PermissionReq {
+    pub const NEW: &'static str = "new";
+    pub const UPDATE: &'static str = "update";
+    pub const DELETE: &'static str = "delete";
+
     pub fn check_threshold(&self) -> Result<(), crate::BusinessError> {
         let weight = self.keys.iter().map(|k| k.weight).sum::<i8>();
         if weight < self.threshold {

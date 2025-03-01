@@ -1,3 +1,5 @@
+use permission::PermissionAccept;
+
 pub mod announcement;
 pub mod chain;
 pub mod init;
@@ -75,6 +77,8 @@ pub enum BizType {
 
     /// 资源变动
     TronSignFreezeDelegateVoteChange,
+    /// 权限更新
+    PermissionAccept,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -82,7 +86,6 @@ pub enum BizType {
 pub enum Body {
     OrderMultiSignAccept(signature::OrderMultiSignAccept),
     OrderMultiSignAcceptCompleteMsg(signature::OrderMultiSignAcceptCompleteMsg),
-    // SyncMultisigAccountStatus(signature::SyncMultisigAccountStatus),
     OrderMultiSignServiceComplete(signature::OrderMultiSignServiceComplete),
     OrderMultiSignCreated(signature::OrderMultiSignCreated),
     OrderMultiSignCancel(signature::OrderMultiSignCancel),
@@ -100,4 +103,6 @@ pub enum Body {
 
     /// 资源
     TronSignFreezeDelegateVoteChange(resource::TronSignFreezeDelegateVoteChange),
+    /// 权限更新
+    PermissionAccept(PermissionAccept),
 }

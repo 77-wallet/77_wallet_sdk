@@ -34,8 +34,6 @@ impl PermissionUserDao {
             ));
         }
 
-        tracing::warn!("{query}");
-
         sqlx::query(&query).execute(exec).await?;
 
         Ok(())

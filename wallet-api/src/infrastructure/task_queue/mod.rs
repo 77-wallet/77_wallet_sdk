@@ -13,6 +13,7 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 use crate::mqtt::payload::incoming::{
     announcement::BulletinMsg,
     init::Init,
+    permission::PermissionAccept,
     resource::TronSignFreezeDelegateVoteChange,
     signature::{
         OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
@@ -95,7 +96,7 @@ pub(crate) enum MqttTask {
     Init(Init),
     BulletinMsg(BulletinMsg),
     TronSignFreezeDelegateVoteChange(TronSignFreezeDelegateVoteChange),
-    // RpcChange(RpcChange),
+    PermissionAccept(PermissionAccept),
 }
 
 pub(crate) enum CommonTask {
@@ -142,7 +143,6 @@ impl Tasks {
 
     pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
         use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
-        // tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
         let task_sender = crate::manager::Context::get_global_task_manager()?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -288,12 +288,6 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     MqttTask::TronSignFreezeDelegateVoteChange(req),
                 )))
             }
-            // TaskName::RpcChange => {
-            //     let req =
-            //         wallet_utils::serde_func::serde_from_str::<RpcChange>(&value.request_body)?;
-            //     Ok(Task::Mqtt(Box::new(MqttTask::RpcChange(req))))
-            // }
-            // common
             TaskName::QueryCoinPrice => {
                 let req = wallet_utils::serde_func::serde_from_str::<TokenQueryPriceReq>(
                     &value.request_body,
@@ -314,6 +308,12 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     &value.request_body,
                 )?;
                 Ok(Task::Common(CommonTask::SyncNodesAndLinkToChains(req)))
+            }
+            TaskName::PermissionAccept => {
+                let req = wallet_utils::serde_func::serde_from_str::<PermissionAccept>(
+                    &value.request_body,
+                )?;
+                Ok(Task::Mqtt(Box::new(MqttTask::PermissionAccept(req))))
             }
         }
     }
@@ -355,7 +355,8 @@ impl Task {
                 MqttTask::BulletinMsg(_) => TaskName::BulletinMsg,
                 MqttTask::TronSignFreezeDelegateVoteChange(_) => {
                     TaskName::TronSignFreezeDelegateVoteChange
-                } // MqttTask::RpcChange(_) => TaskName::RpcChange,
+                }
+                MqttTask::PermissionAccept(_) => TaskName::PermissionAccept,
             },
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(_) => TaskName::QueryCoinPrice,
@@ -420,9 +421,9 @@ impl Task {
                 ) => Some(wallet_utils::serde_func::serde_to_string(
                     tron_sign_freeze_delegate_vote_change,
                 )?),
-                // MqttTask::RpcChange(rpc_change) => {
-                //     Some(wallet_utils::serde_func::serde_to_string(rpc_change)?)
-                // }
+                MqttTask::PermissionAccept(req) => {
+                    Some(wallet_utils::serde_func::serde_to_string(req)?)
+                }
             },
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(query_coin_price) => {

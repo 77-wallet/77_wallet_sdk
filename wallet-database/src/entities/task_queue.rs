@@ -90,6 +90,7 @@ pub enum TaskName {
     OrderMultiSignCreated,
     BulletinMsg,
     TronSignFreezeDelegateVoteChange,
+    PermissionAccept,
     // RpcChange,
     // common
     QueryCoinPrice,

@@ -1,23 +1,58 @@
 use super::BackendApi;
 
+// 权限变更请求参数
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct PermissionAcceptReq {
     pub hash: String,
-    pub tx_str: String,
-    // upsert ,delete
-    pub op_type: String,
+    pub tx_str: serde_json::Value,
 }
+
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPermissionBackReq {
+    pub address: Option<String>,
+    pub uid: Option<String>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionBackupResp {
+    pub list: Vec<PermissionItem>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionItem {
+    pub data: String,
+}
+
 impl BackendApi {
     pub async fn permission_accept(
         &self,
-        _aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        req: PermissionAcceptReq,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::Error> {
-        // let res = self
-        //     .client
-        //     .post("delegate/order")
-        //     .json(req)
-        //     .send::<BackendResponse>()
-        //     .await?;
-        // res.process(aes_cbc_cryptor)
+        let endpoint = "permission/change";
+
+        let _result = self
+            .post_request::<_, bool>(endpoint, &req, aes_cbc_cryptor)
+            .await;
+
         Ok(())
+    }
+
+    pub async fn get_permission_backup(
+        &self,
+        req: GetPermissionBackReq,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+    ) -> Result<PermissionBackupResp, crate::Error> {
+        let endpoint = "permission/getBackUpData";
+
+        let result = self
+            .post_request::<_, PermissionBackupResp>(endpoint, &req, aes_cbc_cryptor)
+            .await?;
+
+        Ok(result)
     }
 }

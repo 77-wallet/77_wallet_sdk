@@ -12,6 +12,9 @@ pub enum PermissionError {
     // 未找到对应的活跃权限
     #[error("actives permission not found")]
     ActviesPermissionNotFound,
+    // 不支持的操作类型(delete update new)
+    #[error("actives permission not found")]
+    UnSupportOpType,
 }
 
 impl PermissionError {
@@ -21,6 +24,7 @@ impl PermissionError {
             PermissionError::WeightLessThreshold => 4301,
             PermissionError::MissActivesPermission => 4302,
             PermissionError::ActviesPermissionNotFound => 4303,
+            PermissionError::UnSupportOpType => 4304,
         }
     }
 }

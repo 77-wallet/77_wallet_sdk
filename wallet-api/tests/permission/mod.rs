@@ -1,5 +1,8 @@
 use crate::get_manager;
-use wallet_api::request::permission::{KeysReq, PermissionReq};
+use wallet_api::{
+    domain,
+    request::permission::{KeysReq, PermissionReq},
+};
 
 // 权限列表
 #[tokio::test]
@@ -32,9 +35,9 @@ async fn test_permssion_accounts() {
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
 
-// 新增权限
+// 新增权限手续费
 #[tokio::test]
-async fn test_add_permission() {
+async fn test_add_permission_fee() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![KeysReq {
@@ -43,16 +46,44 @@ async fn test_add_permission() {
     }];
 
     let req = PermissionReq {
-        address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         name: "测试".to_string(),
-        permission_id: None,
+        active_id: None,
         threshold: 1,
-        operations: vec![1, 2],
+        operations: vec![1, 2, 3, 5],
+        keys,
+    };
+
+    let res = wallet_manager
+        .modify_permission_fee(req, "new".to_string())
+        .await;
+
+    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+}
+
+// 新增权限
+#[tokio::test]
+async fn test_add_permission() {
+    let wallet_manager = get_manager().await;
+
+    let keys = vec![KeysReq {
+        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        weight: 1,
+    }];
+
+    let req = PermissionReq {
+        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        name: "my permission".to_string(),
+        active_id: None,
+        threshold: 1,
+        operations: vec![1, 2, 3, 6],
         keys,
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager.add_permission(req, password).await;
+    let res = wallet_manager
+        .modify_permission(req, "new".to_string(), password)
+        .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
@@ -63,21 +94,23 @@ async fn test_up_permision() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![KeysReq {
-        address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         weight: 1,
     }];
 
     let req = PermissionReq {
-        address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         name: "修改权限".to_string(),
-        permission_id: Some(3),
+        active_id: Some(3),
         threshold: 1,
         operations: vec![1],
         keys,
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager.up_permission(req, password).await;
+    let res = wallet_manager
+        .modify_permission(req, "update".to_string(), password)
+        .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
@@ -87,13 +120,34 @@ async fn test_up_permision() {
 async fn test_del_permission() {
     let wallet_manager = get_manager().await;
 
-    let address = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string();
-    let permission_id = 3;
+    let keys = vec![KeysReq {
+        address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        weight: 1,
+    }];
+
+    let req = PermissionReq {
+        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        name: "修改权限".to_string(),
+        active_id: Some(2),
+        threshold: 1,
+        operations: vec![1],
+        keys,
+    };
     let password = "123456".to_string();
 
     let res = wallet_manager
-        .del_permission(address, permission_id, password)
+        .modify_permission(req, "delete".to_string(), password)
         .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
+}
+
+#[tokio::test]
+async fn test_recover_data() {
+    let _wallet_manager = get_manager().await;
+
+    let uids = vec!["137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358"];
+    domain::permission::PermissionDomain::recover_permission(&uids)
+        .await
+        .unwrap();
 }

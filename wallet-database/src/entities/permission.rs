@@ -2,6 +2,7 @@ use super::permission_user::PermissionUserEntity;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct PermissionEntity {
     pub id: String,
     pub name: String,
@@ -9,12 +10,18 @@ pub struct PermissionEntity {
     pub types: String,
     pub active_id: i64,
     pub threshold: i64,
-    pub memeber: i64,
+    pub member: i64,
     pub chain_code: String,
     pub operations: String,
     pub is_del: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+impl PermissionEntity {
+    pub fn get_id(address: &str, active_id: i8) -> String {
+        wallet_utils::snowflake::gen_hash_uid(vec![address, &active_id.to_string()])
+    }
 }
 
 pub struct PermissionWithuserEntity {
@@ -25,7 +32,7 @@ pub struct PermissionWithuserEntity {
 impl PermissionWithuserEntity {
     // check whether user has changed
     pub fn user_has_changed(&self, user: &[PermissionUserEntity]) -> bool {
-        if self.permission.memeber != user.len() as i64 {
+        if self.permission.member != user.len() as i64 {
             return true;
         }
 

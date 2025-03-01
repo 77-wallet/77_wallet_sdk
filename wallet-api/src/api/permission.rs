@@ -1,7 +1,10 @@
 use super::ReturnType;
 use crate::{
     request::permission::PermissionReq,
-    response_vo::permssion::{AccountPermission, PermissionList},
+    response_vo::{
+        permssion::{AccountPermission, PermissionList},
+        EstimateFeeResp,
+    },
     service::permission::PermssionService,
 };
 
@@ -34,35 +37,68 @@ impl crate::WalletManager {
             .into()
     }
 
-    // new permisson
-    pub async fn add_permission(&self, req: PermissionReq, password: String) -> ReturnType<String> {
-        PermssionService::new()
-            .await?
-            .add_permission(req, password)
-            .await?
-            .into()
-    }
-
-    // update permission
-    pub async fn up_permission(&self, req: PermissionReq, password: String) -> ReturnType<String> {
-        PermssionService::new()
-            .await?
-            .up_permission(req, password)
-            .await?
-            .into()
-    }
-
-    // delegate permission
-    pub async fn del_permission(
+    pub async fn modify_permission_fee(
         &self,
-        address: String,
-        id: i8,
+        req: PermissionReq,
+        types: String,
+    ) -> ReturnType<EstimateFeeResp> {
+        PermssionService::new()
+            .await?
+            .modify_permission_fee(req, types)
+            .await?
+            .into()
+    }
+
+    pub async fn modify_permission(
+        &self,
+        req: PermissionReq,
+        types: String,
         password: String,
     ) -> ReturnType<String> {
         PermssionService::new()
             .await?
-            .del_permission(address, id, password)
+            .modify_permission(req, types, password)
             .await?
             .into()
     }
+
+    // // new permisson
+    // pub async fn add_permission(&self, req: PermissionReq, password: String) -> ReturnType<String> {
+    //     PermssionService::new()
+    //         .await?
+    //         .add_permission(req, password)
+    //         .await?
+    //         .into()
+    // }
+
+    // pub async fn add_permission_fee(&self, req: PermissionReq) -> ReturnType<EstimateFeeResp> {
+    //     PermssionService::new()
+    //         .await?
+    //         .add_permission_fee(req)
+    //         .await?
+    //         .into()
+    // }
+
+    // // update permission
+    // pub async fn up_permission(&self, req: PermissionReq, password: String) -> ReturnType<String> {
+    //     PermssionService::new()
+    //         .await?
+    //         .up_permission(req, password)
+    //         .await?
+    //         .into()
+    // }
+
+    // // delegate permission
+    // pub async fn del_permission(
+    //     &self,
+    //     grantor_addr: String,
+    //     active_id: i8,
+    //     password: String,
+    // ) -> ReturnType<String> {
+    //     PermssionService::new()
+    //         .await?
+    //         .del_permission(grantor_addr, active_id, password)
+    //         .await?
+    //         .into()
+    // }
 }

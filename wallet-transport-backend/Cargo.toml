@@ -14,7 +14,6 @@ accept_invalid_certs = ["wallet-transport/accept_invalid_certs"]
 
 [dependencies]
 wallet-utils = { workspace = true }
-# wallet-error = { workspace = true }
 wallet-transport = { workspace = true }
 wallet-types = { workspace = true }
 
