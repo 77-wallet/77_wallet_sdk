@@ -54,7 +54,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
         #[cfg(feature = "token")]
         super::constant::Topic::Token => {
             let payload: crate::mqtt::payload::incoming::token::TokenPriceChange =
-                serde_json::from_slice(&payload)?;
+                serde_json::from_slice(&publish.payload)?;
             payload.exec().await?;
         }
         super::constant::Topic::RpcChange => {
