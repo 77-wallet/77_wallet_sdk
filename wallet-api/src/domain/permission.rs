@@ -1,3 +1,5 @@
+use super::chain::adapter::ChainAdapterFactory;
+use crate::mqtt::payload::incoming::permission::NewPermissionUser;
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
     entities::{
@@ -9,10 +11,6 @@ use wallet_database::{
 };
 use wallet_transport_backend::api::permission::GetPermissionBackReq;
 use wallet_types::constant::chain_code;
-
-use crate::mqtt::payload::incoming::permission::NewPermissionUser;
-
-use super::chain::adapter::ChainAdapterFactory;
 
 pub struct PermissionDomain;
 
@@ -40,19 +38,19 @@ impl PermissionDomain {
 
         let _a = Self::handel_one_item(&pool, "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR").await?;
 
-        // for uid in uids {
-        //     let req = GetPermissionBackReq {
-        //         address: None,
-        //         uid: Some(uid.to_string()),
-        //     };
-        //     let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
+        for uid in uids {
+            let req = GetPermissionBackReq {
+                address: None,
+                uid: Some(uid.to_string()),
+            };
+            let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
 
-        //     for item in result.list {
-        //         if let Err(e) = Self::handel_one_item(&pool, &item.data).await {
-        //             tracing::warn!("[recover_permission] error:{}", e);
-        //         }
-        //     }
-        // }
+            for item in result.list {
+                if let Err(e) = Self::handel_one_item(&pool, &item.data).await {
+                    tracing::warn!("[recover_permission] error:{}", e);
+                }
+            }
+        }
 
         Ok(())
     }

@@ -1,21 +1,28 @@
 use super::BackendApi;
 
 // 权限变更请求参数
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionAcceptReq {
     pub hash: String,
     pub grantor_addr: String,
-    pub users: Vec<String>,
+    pub sender_user: Vec<String>,
+    pub new_user: Vec<String>,
     pub current: CurrentPemission,
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentPemission {
-    pub users: Vec<String>,
+    // 上次的成员
+    pub original_user: Vec<String>,
+    // 修改后的成员
+    pub new_user: Vec<String>,
+    pub name: String,
+    #[serde(rename = "type")]
     pub types: String,
-    pub opretions: String,
+    pub active_id: i64,
+    pub opreatins: String,
 }
 
 #[derive(serde::Serialize, Debug)]

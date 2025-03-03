@@ -26,6 +26,10 @@ impl PermissionReq {
         }
         Ok(())
     }
+
+    pub fn users(&self) -> Vec<String> {
+        self.keys.iter().map(|k| k.address.clone()).collect()
+    }
 }
 
 impl TryFrom<&PermissionReq> for Permission {

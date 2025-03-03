@@ -26,7 +26,7 @@ use wallet_database::{
     repositories::{address_book::AddressBookRepo, permission::PermissionRepo},
     DbPool,
 };
-use wallet_transport_backend::api::permission::{CurrentPemission, PermissionAcceptReq};
+use wallet_transport_backend::api::permission::PermissionAcceptReq;
 use wallet_types::constant::chain_code;
 
 pub struct PermssionService {
@@ -139,31 +139,13 @@ impl PermssionService {
         ))
     }
 
-    async fn upload_backend(
-        &self,
-        permission: Permission,
-        all_users: Vec<String>,
-        types: String,
-        grantor_addr: &str,
-        tx_hash: String,
-    ) -> Result<(), crate::ServiceError> {
-        let users = permission.keys.iter().map(|k| k.address.clone()).collect();
-
-        let req = PermissionAcceptReq {
-            hash: tx_hash,
-            grantor_addr: grantor_addr.to_string(),
-            users: all_users,
-            current: CurrentPemission {
-                users,
-                types,
-                opretions: todo!(),
-            },
-        };
-
+    // 上报后端
+    async fn upload_backend(&self, params: PermissionAcceptReq) -> Result<(), crate::ServiceError> {
         let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let backend = crate::Context::get_global_backend_api()?;
 
-        backend.permission_accept(req, &aes_cbc_cryptor).await?;
+        backend.permission_accept(params, &aes_cbc_cryptor).await?;
+
         Ok(())
     }
 }
@@ -232,7 +214,8 @@ impl PermssionService {
         args: &mut PermissionUpdateArgs,
         types: &str,
         req: &PermissionReq,
-    ) -> Result<Permission, crate::ServiceError> {
+        backup_params: Option<&mut PermissionAcceptReq>,
+    ) -> Result<(), crate::ServiceError> {
         req.check_threshold()?;
         match types {
             PermissionReq::NEW => {
@@ -243,8 +226,20 @@ impl PermssionService {
                 };
 
                 let permission = Permission::try_from(req)?;
-                args.actives.push(permission.clone());
-                Ok(permission)
+
+                // 拼接上报后端的参数
+                if let Some(params) = backup_params {
+                    params.current.types = PermissionReq::NEW.to_string();
+                    params.current.name = req.name.to_string();
+                    params.current.active_id = args.actives.len() as i64 + 2;
+                    params.current.new_user = req.users();
+                    params.current.opreatins = permission.operations.clone().unwrap_or_default();
+
+                    params.sender_user = req.users();
+                }
+
+                args.actives.push(permission);
+                Ok(())
             }
             PermissionReq::UPDATE => {
                 // 对原来的进行调整
@@ -256,14 +251,29 @@ impl PermssionService {
                     .iter_mut()
                     .find(|p| p.id.unwrap_or_default() == id)
                 {
-                    *permission = new_permission.clone();
+                    // 拼接上报后端的参数
+                    if let Some(params) = backup_params {
+                        let users = permission.users();
+
+                        params.current.original_user = users.clone();
+                        params.current.types = PermissionReq::UPDATE.to_string();
+                        params.current.name = req.name.to_string();
+                        params.current.active_id = id as i64;
+                        params.current.new_user = req.users();
+                        params.current.opreatins =
+                            permission.operations.clone().unwrap_or_default();
+
+                        params.sender_user = users;
+                    }
+
+                    *permission = new_permission;
                 } else {
                     return Err(crate::BusinessError::Permisison(
                         crate::PermissionError::ActviesPermissionNotFound,
                     ))?;
                 }
 
-                Ok(new_permission)
+                Ok(())
             }
             PermissionReq::DELETE => {
                 let active_id = req.active_id.unwrap_or_default();
@@ -275,6 +285,16 @@ impl PermssionService {
                     .cloned();
 
                 if let Some(permission) = permission {
+                    // 拼接上报后端的参数
+                    if let Some(params) = backup_params {
+                        let users = permission.users();
+
+                        params.current.original_user = users.clone();
+                        params.current.types = PermissionReq::DELETE.to_string();
+                        params.current.name = req.name.to_string();
+                        params.current.new_user = vec![];
+                    }
+
                     // 删除权限
                     args.actives
                         .retain(|item| item.id.unwrap_or_default() != active_id);
@@ -285,7 +305,7 @@ impl PermssionService {
                         ))?;
                     }
 
-                    Ok(permission)
+                    Ok(())
                 } else {
                     return Err(crate::BusinessError::Permisison(
                         crate::PermissionError::ActviesPermissionNotFound,
@@ -307,7 +327,7 @@ impl PermssionService {
         let account = self.chain.account_info(&req.grantor_addr).await?;
         let mut args = PermissionUpdateArgs::try_from(&account)?;
 
-        let _ = self.build_args(&mut args, &types, &req)?;
+        let _ = self.build_args(&mut args, &types, &req, None)?;
 
         self.update_permission_fee(&req.grantor_addr, args).await
     }
@@ -322,27 +342,31 @@ impl PermssionService {
         let account = self.chain.account_info(&req.grantor_addr).await?;
         let mut args = PermissionUpdateArgs::try_from(&account)?;
 
-        let modified_permission = self.build_args(&mut args, &types, &req)?;
+        // 上报后端的参数
+        let mut backend_params: PermissionAcceptReq = PermissionAcceptReq::default();
+        if types == PermissionReq::DELETE {
+            backend_params.sender_user = account.all_actives_user();
+        }
 
-        let all_users = args
-            .actives
-            .iter()
-            .flat_map(|a| a.keys.iter().map(|k| k.address.clone()))
-            .collect();
+        self.build_args(&mut args, &types, &req, Some(&mut backend_params))?;
+
+        // 这个地址所有权限的用户集合
+        let mut new_users = vec![];
+        for item in args.actives.iter() {
+            for key in item.keys.iter() {
+                new_users.push(wallet_utils::address::hex_to_bs58_addr(&key.address)?);
+            }
+        }
 
         let tx_hash = self
             .update_permision(&req.grantor_addr, args, &password)
             .await?;
 
+        backend_params.hash = tx_hash.clone();
+        backend_params.grantor_addr = req.grantor_addr.clone();
+
         // 上报后端
-        self.upload_backend(
-            modified_permission,
-            all_users,
-            types,
-            &req.grantor_addr,
-            tx_hash.clone(),
-        )
-        .await?;
+        self.upload_backend(backend_params).await?;
 
         Ok(tx_hash)
     }

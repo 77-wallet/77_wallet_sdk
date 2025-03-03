@@ -11,15 +11,21 @@ use wallet_utils::serde_func;
 #[serde(rename_all = "camelCase")]
 pub struct PermissionAccept {
     pub grantor_addr: String,
-    // 当前操作的类型
+    // 当前操作权限
     pub current: CurrentOp,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentOp {
-    users: Vec<String>,
+    // 上次的成员
+    original_user: Vec<String>,
+    // 修改后的成员
+    new_user: Vec<String>,
+    name: String,
+    #[serde(rename = "type")]
     types: String,
+    active_id: i64,
     opreatins: String,
 }
 
@@ -111,32 +117,32 @@ impl PermissionAccept {
 
 #[cfg(test)]
 mod test {
-    use super::CurrentOp;
-    use crate::{mqtt::payload::incoming::permission::PermissionAccept, test::env::get_manager};
+    // use super::CurrentOp;
+    // use crate::{mqtt::payload::incoming::permission::PermissionAccept, test::env::get_manager};
 
-    fn get_data() -> PermissionAccept {
-        let result = PermissionAccept {
-            grantor_addr: "xxx".to_string(),
-            current: CurrentOp {
-                users: vec!["xx".to_string()],
-                types: "delete".to_string(),
-                opreatins: "xxx".to_string(),
-            },
-        };
-        result
-    }
+    // fn get_data() -> PermissionAccept {
+    //     let result = PermissionAccept {
+    //         grantor_addr: "xxx".to_string(),
+    //         current: CurrentOp {
+    //             users: vec!["xx".to_string()],
+    //             types: "delete".to_string(),
+    //             opreatins: "xxx".to_string(),
+    //         },
+    //     };
+    //     result
+    // }
 
-    #[tokio::test]
-    async fn new_permision() -> anyhow::Result<()> {
-        wallet_utils::init_test_log();
-        let (_, _) = get_manager().await?;
+    // #[tokio::test]
+    // async fn new_permision() -> anyhow::Result<()> {
+    //     wallet_utils::init_test_log();
+    //     let (_, _) = get_manager().await?;
 
-        let change = get_data();
+    //     let change = get_data();
 
-        let res = change.exec("1").await;
-        println!("{:?}", res);
-        Ok(())
-    }
+    //     let res = change.exec("1").await;
+    //     println!("{:?}", res);
+    //     Ok(())
+    // }
 }
 // // 新增或者更新权限
 // async fn upsert(&self, pool: DbPool) -> Result<(), crate::ServiceError> {
