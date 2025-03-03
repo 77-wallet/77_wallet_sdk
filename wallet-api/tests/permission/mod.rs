@@ -35,6 +35,14 @@ async fn test_permssion_accounts() {
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
 
+// manager permission
+#[tokio::test]
+async fn test_manager_permission() {
+    let wallet_manager = get_manager().await;
+    let res = wallet_manager.manager_permission().await;
+    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+}
+
 // 新增权限手续费
 #[tokio::test]
 async fn test_add_permission_fee() {

@@ -14,7 +14,7 @@ impl PermissionDao {
     {
         let sql = r#"
             INSERT INTO permission
-            (id, name,grantor_addr, types, active_id, threshold, memeber, chain_code, operations, is_del, created_at)
+            (id, name,grantor_addr, types, active_id, threshold, member, chain_code, operations, is_del, created_at)
                 VALUES
             (?,?, ?, ?, ?, ?, ?, ?, ?, ?,?)"#;
 
@@ -52,7 +52,7 @@ impl PermissionDao {
         SET 
             name = ?,
             threshold = ?, 
-            memeber = ?, 
+            member = ?, 
             chain_code = ?, 
             operations = ?, 
             is_del = ?,

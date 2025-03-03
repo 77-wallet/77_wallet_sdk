@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 pub struct PermissionUserEntity {
     pub id: Option<i64>,
     pub address: String,
+    pub grantor_addr: String,
     pub permission_id: String,
     pub is_self: i64,
     pub weight: i64,

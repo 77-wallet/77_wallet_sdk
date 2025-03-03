@@ -6,7 +6,7 @@ CREATE TABLE permission(
     types VARCHAR(128) NOT NULL,
     active_id INTEGER NOT NULL,
     threshold INTEGER NOT NULL,
-    memeber INTEGER NOT NULL,
+    member INTEGER NOT NULL,
     chain_code VARCHAR(32) NOT NULL,
     operations VARCHAR(128),
     is_del INTEGER DEFAULT 0,

@@ -38,42 +38,42 @@ impl PermissionDomain {
         let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        for uid in uids {
-            let req = GetPermissionBackReq {
-                address: None,
-                uid: Some(uid.to_string()),
-            };
-            let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
+        let _a = Self::handel_one_item(&pool, "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR").await?;
 
-            for item in result.list {
-                if let Err(e) = Self::handel_one_item(&pool, &item.data).await {
-                    tracing::warn!("[recover_permission] error:{}", e);
-                }
-            }
-        }
+        // for uid in uids {
+        //     let req = GetPermissionBackReq {
+        //         address: None,
+        //         uid: Some(uid.to_string()),
+        //     };
+        //     let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
+
+        //     for item in result.list {
+        //         if let Err(e) = Self::handel_one_item(&pool, &item.data).await {
+        //             tracing::warn!("[recover_permission] error:{}", e);
+        //         }
+        //     }
+        // }
 
         Ok(())
     }
 
+    // retain the permissions to self.
     pub async fn self_contain_permiison(
         pool: &DbPool,
         account: &TronAccount,
         address: &str,
     ) -> Result<Vec<NewPermissionUser>, crate::ServiceError> {
-        let addresses = account
-            .active_permission
-            .iter()
-            .flat_map(|p| p.keys.iter().map(|k| k.address.clone()))
-            .collect::<Vec<String>>();
-
-        let local_account = AccountEntity::list_in_address(
-            pool.as_ref(),
-            &addresses,
-            Some(chain_code::TRON.to_string()),
-        )
-        .await?;
-
         let mut reuslt = vec![];
+
+        let addresses = account.all_actives_user();
+
+        let chain_code = Some(chain_code::TRON.to_string());
+        let local_account =
+            AccountEntity::list_in_address(pool.as_ref(), &addresses, chain_code).await?;
+        if local_account.is_empty() {
+            return Ok(reuslt);
+        }
+
         for item in account.active_permission.iter() {
             for key in item.keys.iter() {
                 if local_account
@@ -82,7 +82,6 @@ impl PermissionDomain {
                     .is_some()
                 {
                     let permission_with_user = NewPermissionUser::try_from((item, address))?;
-
                     reuslt.push(permission_with_user);
                 }
             }
@@ -119,6 +118,8 @@ impl PermissionDomain {
 
         let new_permission =
             PermissionDomain::self_contain_permiison(&pool, &account, grantor_addr).await?;
+
+        // tracing::warn!("new permission {:#?}", new_permission);
 
         if new_permission.len() > 0 {
             PermissionDomain::del_add_update(&pool, new_permission, grantor_addr).await?;

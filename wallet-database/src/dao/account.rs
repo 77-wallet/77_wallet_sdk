@@ -131,7 +131,7 @@ impl AccountEntity {
         let mut sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
 
         if let Some(chain_code) = chain_code {
-            sql.push_str(&format!(" and chain_code = {}", chain_code));
+            sql.push_str(&format!(" and chain_code = '{}'", chain_code));
         }
 
         sqlx::query_as::<sqlx::Sqlite, AccountEntity>(&sql)

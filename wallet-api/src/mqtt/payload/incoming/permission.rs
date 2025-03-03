@@ -29,6 +29,7 @@ impl PermissionAccept {
     }
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct NewPermissionUser {
     pub permission: PermissionEntity,
     pub users: Vec<PermissionUserEntity>,
@@ -66,7 +67,8 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
         for key in permission.keys.iter() {
             let user = PermissionUserEntity {
                 id: None,
-                address: wallet_utils::address::hex_to_bs58_addr(&key.address)?,
+                address: key.address.clone(),
+                grantor_addr: value.1.to_string(),
                 permission_id: p.id.clone(),
                 is_self: 0,
                 weight: key.weight as i64,

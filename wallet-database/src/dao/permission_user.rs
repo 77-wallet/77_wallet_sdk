@@ -14,7 +14,7 @@ impl PermissionUserDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let mut query = String::from(
-            "INSERT INTO permission_user (address, permission_id, is_self, weight,created_at) VALUES ",
+            "INSERT INTO permission_user (address,grantor_addr, permission_id, is_self, weight,created_at) VALUES ",
         );
 
         for (i, param) in users.iter().enumerate() {
@@ -22,8 +22,9 @@ impl PermissionUserDao {
                 query.push_str(", ");
             }
             query.push_str(&format!(
-                "('{}', '{}', '{}', {}, '{}')",
+                "('{}','{}','{}', '{}', {}, '{}')",
                 param.address,
+                param.grantor_addr,
                 param.permission_id,
                 param.is_self,
                 param.weight,
