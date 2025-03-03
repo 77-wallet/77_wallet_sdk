@@ -40,6 +40,7 @@ async fn test_delegate_fee() {
         resource: "energy".to_string(),
         lock: false,
         lock_period: 0.0,
+        signer: None,
     };
 
     let bill_kind = BillKind::DelegateBandwidth.to_i8();
@@ -60,6 +61,7 @@ async fn test_delegate() {
         resource: "energy".to_string(),
         lock: true,
         lock_period: 3.0,
+        signer: None,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;
@@ -85,6 +87,7 @@ async fn test_batch_delegate_fee() {
         list: vec![rerevice1, rerevice2],
         lock: false,
         lock_period: 0.0,
+        signer: None,
     };
 
     let bill_kind = BillKind::BatchDelegateBandwidth.to_i8() as i64;
@@ -114,6 +117,7 @@ async fn test_batch_delegate() {
         list: vec![rerevice1, rerevice2],
         lock: false,
         lock_period: 0.0,
+        signer: None,
     };
 
     let manager = get_manager().await;
@@ -139,6 +143,7 @@ async fn test_batch_un_delegate_fee() {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         resource_type: "energy".to_string(),
         list: vec![rerevice1, rerevice2],
+        signer: None,
     };
 
     let bill_kind = BillKind::BatchUnDelegateEnergy.to_i8() as i64;
@@ -166,6 +171,7 @@ async fn test_batch_un_delegate() {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         resource_type: "energy".to_string(),
         list: vec![rerevice1, rerevice2],
+        signer: None,
     };
 
     let manager = get_manager().await;
@@ -210,6 +216,7 @@ async fn test_un_delegate() {
         receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         balance: 161,
         resource: "energy".to_string(),
+        signer: None,
     };
     let password = "123456".to_string();
     let res = manager.un_delegate_resource(req, password).await;
@@ -225,6 +232,7 @@ async fn test_undelegate_fee() {
         resource: "energy".to_string(),
         receiver_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         balance: 50,
+        signer: None,
     };
 
     let bill_kind = BillKind::UnDelegateEnergy.to_i8() as i64;

@@ -245,6 +245,10 @@ impl TransactionAdapter {
                         params.base.notes.clone(),
                     )?;
 
+                    if let Some(signer) = &params.signer {
+                        transfer_params = transfer_params.with_permission(signer.permission_id);
+                    }
+
                     let provider = chain.get_provider();
                     let balance = chain
                         .balance(&params.base.from, Some(contract.clone()))
@@ -298,24 +302,30 @@ impl TransactionAdapter {
                     let value_f64 = unit::format_to_f64(transfer_amount, params.base.decimals)?;
                     let value_i64 = (value_f64 * tron::consts::TRX_TO_SUN as f64) as i64;
 
-                    let params = tron::operations::transfer::TransferOpt::new(
+                    let mut param = tron::operations::transfer::TransferOpt::new(
                         &params.base.from,
                         &params.base.to,
                         transfer_amount,
                         params.base.notes.clone(),
                     )?;
+                    if let Some(signer) = &params.signer {
+                        param = param.with_permission(signer.permission_id);
+                    }
+
+                    // tracing::warn!("params {:#?}", param);
+                    // assert!(false);
 
                     let provider = chain.get_provider();
-                    let account = provider.account_info(&params.from).await?;
+                    let account = provider.account_info(&param.from).await?;
                     if account.balance <= 0 {
                         return Err(crate::BusinessError::Chain(
                             crate::ChainError::InsufficientBalance,
                         ))?;
                     }
 
-                    let tx = params.build_raw_transaction(provider).await?;
+                    let tx = param.build_raw_transaction(provider).await?;
                     let consumer = provider
-                        .transfer_fee(&params.from, Some(&params.to), &tx.raw_data_hex, 1)
+                        .transfer_fee(&param.from, Some(&param.to), &tx.raw_data_hex, 1)
                         .await?;
 
                     if account.balance < consumer.transaction_fee_i64() + value_i64 {

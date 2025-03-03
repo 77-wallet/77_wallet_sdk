@@ -111,10 +111,18 @@ impl ChainTransaction {
                 crate::BillError::ExistsUncomfrimationTx,
             ))?;
         };
+
+        // 确定那个地址进行签名
+        let address = if let Some(signer) = &params.signer {
+            signer.address.clone()
+        } else {
+            params.base.from.clone()
+        };
+
         // get private_key
         let private_key = crate::domain::account::open_account_pk_with_password(
             &params.base.chain_code,
-            &params.base.from,
+            &address,
             &params.password,
         )
         .await?;

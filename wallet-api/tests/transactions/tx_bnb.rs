@@ -68,6 +68,7 @@ async fn test_transfer() {
         fee_setting:
             r#"{"gasLimit":23100,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1000000000"}"#
                 .to_string(),
+        signer:None,
     };
 
     let token_fee = wallet_manager.transfer(params).await;

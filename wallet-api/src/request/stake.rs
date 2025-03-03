@@ -1,3 +1,4 @@
+use super::transaction::Signer;
 use wallet_chain_interact::tron::{
     consts,
     operations::stake::{
@@ -12,14 +13,17 @@ pub struct FreezeBalanceReq {
     pub owner_address: String,
     pub resource: String,
     pub frozen_balance: i64,
+    pub signer: Option<Signer>,
 }
 impl TryFrom<&FreezeBalanceReq> for stake::FreezeBalanceArgs {
     type Error = crate::error::ServiceError;
+
     fn try_from(value: &FreezeBalanceReq) -> Result<Self, Self::Error> {
         let args = stake::FreezeBalanceArgs::new(
             &value.owner_address,
             &value.resource,
             value.frozen_balance,
+            value.signer.clone().map(|s| s.permission_id),
         )?;
         Ok(args)
     }
@@ -31,18 +35,7 @@ pub struct UnFreezeBalanceReq {
     pub owner_address: String,
     pub resource: String,
     pub unfreeze_balance: i64,
-}
-
-impl From<&UnFreezeBalanceReq> for wallet_database::entities::stake::NewUnFreezeEntity {
-    fn from(value: &UnFreezeBalanceReq) -> Self {
-        Self {
-            tx_hash: "".to_string(),
-            owner_address: value.owner_address.clone(),
-            resource_type: value.resource.clone(),
-            amount: value.unfreeze_balance.to_string(),
-            freeze_time: 0,
-        }
-    }
+    pub signer: Option<Signer>,
 }
 
 impl TryFrom<&UnFreezeBalanceReq> for UnFreezeBalanceArgs {
@@ -52,6 +45,7 @@ impl TryFrom<&UnFreezeBalanceReq> for UnFreezeBalanceArgs {
             &value.owner_address,
             &value.resource,
             value.unfreeze_balance,
+            value.signer.clone().map(|s| s.permission_id),
         )?;
         Ok(args)
     }
@@ -61,6 +55,7 @@ impl TryFrom<&UnFreezeBalanceReq> for UnFreezeBalanceArgs {
 #[serde(rename_all = "camelCase")]
 pub struct CancelAllUnFreezeReq {
     pub owner_address: String,
+    pub signer: Option<Signer>,
 }
 
 #[derive(serde::Serialize, Debug, serde::Deserialize)]
@@ -72,21 +67,8 @@ pub struct DelegateReq {
     pub resource: String,
     pub lock: bool,
     pub lock_period: f64,
+    pub signer: Option<Signer>,
 }
-
-// impl From<&DelegateReq> for wallet_database::entities::stake::NewDelegateEntity {
-//     fn from(value: &DelegateReq) -> Self {
-//         Self {
-//             tx_hash: "".to_string(),
-//             owner_address: value.owner_address.clone(),
-//             receiver_address: value.receiver_address.clone(),
-//             amount: value.balance.to_string(),
-//             resource_type: value.resource.clone(),
-//             lock: value.lock.into(),
-//             lock_period: value.lock_period,
-//         }
-//     }
-// }
 
 impl TryFrom<&DelegateReq> for DelegateArgs {
     type Error = crate::error::ServiceError;
@@ -99,6 +81,7 @@ impl TryFrom<&DelegateReq> for DelegateArgs {
             resource: stake::ResourceType::try_from(value.resource.as_str())?,
             lock: value.lock,
             lock_period,
+            permission_id: value.signer.clone().map(|s| s.permission_id),
         };
         Ok(args)
     }
@@ -119,6 +102,7 @@ pub struct UnDelegateReq {
     pub resource: String,
     pub receiver_address: String,
     pub balance: i64,
+    pub signer: Option<Signer>,
 }
 
 impl TryFrom<&UnDelegateReq> for UnDelegateArgs {
@@ -129,6 +113,7 @@ impl TryFrom<&UnDelegateReq> for UnDelegateArgs {
             receiver_address: wallet_utils::address::bs58_addr_to_hex(&value.receiver_address)?,
             balance: value.balance * consts::TRX_VALUE,
             resource: stake::ResourceType::try_from(value.resource.as_str())?,
+            permission_id: value.signer.clone().map(|s| s.permission_id),
         };
         Ok(args)
     }
@@ -139,13 +124,15 @@ impl TryFrom<&UnDelegateReq> for UnDelegateArgs {
 pub struct VoteWitnessReq {
     pub owner_address: String,
     pub votes: Vec<VotesReq>,
+    pub signer: Option<Signer>,
 }
 
 impl VoteWitnessReq {
-    pub fn new(owner_address: &str, votes: Vec<VotesReq>) -> Self {
+    pub fn new(owner_address: &str, votes: Vec<VotesReq>, signer: Option<Signer>) -> Self {
         Self {
             owner_address: owner_address.to_string(),
             votes,
+            signer,
         }
     }
 
@@ -179,7 +166,11 @@ impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
             votes.push(vote);
         }
 
-        Ok(VoteWitnessArgs::new(&value.owner_address, votes)?)
+        Ok(VoteWitnessArgs::new(
+            &value.owner_address,
+            votes,
+            value.signer.clone().map(|s| s.permission_id),
+        )?)
     }
 }
 
@@ -187,12 +178,14 @@ impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
 #[serde(rename_all = "camelCase")]
 pub struct WithdrawBalanceReq {
     pub owner_address: String,
+    pub signer: Option<Signer>,
 }
 
 impl WithdrawBalanceReq {
-    pub fn new(owner_address: &str) -> Self {
+    pub fn new(owner_address: &str, signer: Option<Signer>) -> Self {
         Self {
             owner_address: owner_address.to_string(),
+            signer,
         }
     }
 }
@@ -203,6 +196,7 @@ impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {
         let args = Self {
             owner_address: value.owner_address.clone(),
             value: None,
+            permission_id: value.signer.clone().map(|s| s.permission_id),
         };
 
         Ok(args)
@@ -218,6 +212,7 @@ pub struct BatchDelegate {
     pub lock: bool,
     pub lock_period: f64,
     pub list: Vec<BatchList>,
+    pub signer: Option<Signer>,
 }
 
 impl BatchDelegate {
@@ -231,6 +226,8 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
     fn try_from(value: &BatchDelegate) -> Result<Self, Self::Error> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
+
+        let permission_id = value.signer.clone().map(|s| s.permission_id);
 
         let lock_period = expiration_time(value.lock_period);
         value
@@ -246,6 +243,7 @@ impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
                     resource: resource_type,
                     lock: value.lock,
                     lock_period,
+                    permission_id,
                 })
             })
             .collect()
@@ -259,6 +257,7 @@ pub struct BatchUnDelegate {
     pub owner_address: String,
     pub resource_type: String,
     pub list: Vec<BatchList>,
+    pub signer: Option<Signer>,
 }
 impl BatchUnDelegate {
     pub fn total(&self) -> i64 {
@@ -272,6 +271,8 @@ impl TryFrom<&BatchUnDelegate> for Vec<UnDelegateArgs> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
 
+        let permission_id = value.signer.clone().map(|s| s.permission_id);
+
         value
             .list
             .iter()
@@ -283,6 +284,7 @@ impl TryFrom<&BatchUnDelegate> for Vec<UnDelegateArgs> {
                     )?,
                     balance: item.value * consts::TRX_VALUE,
                     resource: resource_type,
+                    permission_id,
                 })
             })
             .collect()

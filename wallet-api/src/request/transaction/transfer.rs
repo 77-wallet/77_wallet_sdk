@@ -6,7 +6,13 @@ pub struct TransferReq {
     pub base: BaseTransferReq,
     pub password: String,
     pub fee_setting: String,
-    // pub notes: Option<String>,
+    pub signer: Option<Signer>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Signer {
+    pub address: String,
+    pub permission_id: i64,
 }
 
 #[derive(Debug, Clone)]

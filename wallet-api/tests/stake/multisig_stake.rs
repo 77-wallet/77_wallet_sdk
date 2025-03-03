@@ -12,6 +12,7 @@ async fn test_build_freeze() {
         owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         resource: "energy".to_string(),
         frozen_balance: 11,
+        signer: None,
     };
 
     let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;
@@ -36,6 +37,7 @@ async fn test_build_delegate() {
         resource: "energy".to_string(),
         lock: false,
         lock_period: 10000000.0,
+        signer: None,
     };
 
     let bill_kind = BillKind::DelegateEnergy.to_i8() as i64;
@@ -58,6 +60,7 @@ async fn test_build_un_delegate() {
         receiver_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         balance: 3,
         resource: "energy".to_string(),
+        signer: None,
     };
 
     let bill_kind = BillKind::UnDelegateEnergy.to_i8() as i64;
@@ -79,6 +82,7 @@ async fn test_build_vote() {
     let req = VoteWitnessReq::new(
         owner_address,
         vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1)],
+        None,
     );
     let bill_kind = BillKind::Vote.to_i8() as i64;
     let content = serde_json::to_string(&req).unwrap();

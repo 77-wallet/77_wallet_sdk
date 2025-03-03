@@ -317,6 +317,7 @@ mod tests {
         let vote_witness_req = VoteWitnessReq::new(
             owner_address,
             vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1)],
+            None,
         ); // You may need to import this struct
         let password = "123456"; // Replace with the actual password
         tracing::warn!(

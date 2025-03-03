@@ -1,5 +1,5 @@
 use crate::get_manager;
-use wallet_api::request::transaction;
+use wallet_api::request::transaction::{self, Signer};
 
 #[tokio::test]
 async fn test_balance() {
@@ -46,12 +46,10 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
-    let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
-    let value = "0.1";
+    let from = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR";
+    let to = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
+    let value = "5";
     let symbol = "TRX";
-    // let symbol = "USDT";
-    // let symbol = "WIN";
     let chain_code = "tron";
     let password = "123456";
     let notes = "test".to_string();
@@ -63,13 +61,16 @@ async fn test_transfer() {
         chain_code.to_string(),
         symbol.to_string(),
     );
-
     base.with_notes(notes);
 
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
         fee_setting: "".to_string(),
+        signer: Some(Signer {
+            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+            permission_id: 3,
+        }),
     };
 
     let transfer = wallet_manager.transfer(params).await;
@@ -105,6 +106,7 @@ async fn test_transfer_with_subsidy() {
         base,
         password: password.to_string(),
         fee_setting: "".to_string(),
+        signer: None,
     };
 
     let transfer = wallet_manager.transfer(params).await;
