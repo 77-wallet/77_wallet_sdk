@@ -13,7 +13,8 @@ use crate::{
 };
 
 use super::payload::incoming::{
-    resource::TronSignFreezeDelegateVoteChange, transaction::AcctChange,
+    permission::PermissionAccept, resource::TronSignFreezeDelegateVoteChange,
+    transaction::AcctChange,
 };
 
 pub(crate) async fn exec_incoming(
@@ -123,6 +124,10 @@ pub(crate) async fn exec_payload(
                 payload.body.clone(),
             )?;
             super::payload::incoming::Body::TronSignFreezeDelegateVoteChange(data)
+        }
+        super::payload::incoming::BizType::PermissionAccept => {
+            let data = serde_func::serde_from_value::<PermissionAccept>(payload.body.clone())?;
+            super::payload::incoming::Body::PermissionAccept(data)
         }
         _ => serde_func::serde_from_value(payload.body)?,
     };

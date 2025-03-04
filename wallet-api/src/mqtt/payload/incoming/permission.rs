@@ -36,7 +36,7 @@ pub struct CurrentOp {
     #[serde(rename = "type")]
     types: String,
     active_id: i64,
-    opreatins: String,
+    operations: String,
 }
 
 impl PermissionAccept {
@@ -58,9 +58,7 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
     fn try_from(value: (&Permission, &str)) -> Result<Self, Self::Error> {
         let permission = value.0;
 
-        let operations = permission.operations.clone().unwrap_or_default().clone();
-        let member: Vec<&str> = permission.keys.iter().map(|m| m.address.as_str()).collect();
-        let id = PermissionEntity::get_id(value.1, &operations, &member);
+        let id = PermissionEntity::get_id(value.1, permission.id.unwrap_or_default() as i64);
         let time = wallet_utils::time::now();
 
         let p = PermissionEntity {
@@ -135,10 +133,14 @@ impl PermissionAccept {
         let new_permission =
             PermissionDomain::self_contain_permiison(&pool, &account, &self.grantor_addr).await?;
 
-        // 通知到我了但是我的本地的地址不包含这个数据,删除或者不管
         if new_permission.len() > 0 {
             // 删除原来的,新增
+            tracing::warn!("recover_all_old_permission :new");
             PermissionDomain::del_add_update(&pool, new_permission, &self.grantor_addr).await?;
+        } else {
+            tracing::warn!("recover_all_old_permission :delete");
+            // 删除原来所有的权限
+            PermissionRepo::delete_all(&pool, &self.grantor_addr).await?;
         }
 
         Ok(())
@@ -167,8 +169,12 @@ impl PermissionAccept {
             let mut users = permissions.users.clone();
 
             PermissionDomain::mark_user_isself(&pool, &mut users).await?;
-
-            Ok(PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?)
+            if users.iter().any(|u| u.is_self == 1) {
+                return Ok(
+                    PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?,
+                );
+            }
+            Ok(())
         }
     }
 
@@ -181,7 +187,8 @@ impl PermissionAccept {
         // 是否成员发生了变化
         if old_permission.user_has_changed(&permissions.users) {
             tracing::warn!("update user ");
-            self.udpate_user_change(pool.clone(), &permissions).await?;
+            self.udpate_user_change(pool.clone(), &permissions, &old_permission.permission.id)
+                .await?;
         } else {
             tracing::warn!("only update permisson");
             PermissionRepo::update_permission(&pool, &permissions.permission).await?;
@@ -195,51 +202,39 @@ impl PermissionAccept {
         &self,
         pool: DbPool,
         permissions: &NewPermissionUser,
+        id: &str,
     ) -> Result<(), crate::ServiceError> {
         let mut users = permissions.users.clone();
         PermissionDomain::mark_user_isself(&pool, &mut users).await?;
 
         // 成员变化是否把自己移除了(没有is_self = 1的数据)
         if users.iter().any(|u| u.is_self == 1) {
+            tracing::warn!("change user ");
             PermissionRepo::upate_with_user(&pool, &permissions.permission, &users).await?;
         } else {
-            PermissionRepo::delete(
-                &pool,
-                &permissions.permission.grantor_addr,
-                permissions.permission.active_id,
-            )
-            .await?;
+            tracing::warn!(" not self delete ");
+            PermissionRepo::delete_one(&pool, id).await?;
         }
+
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-    // use super::CurrentOp;
-    // use crate::{mqtt::payload::incoming::permission::PermissionAccept, test::env::get_manager};
+    use crate::{mqtt::payload::incoming::permission::PermissionAccept, test::env::get_manager};
 
-    // fn get_data() -> PermissionAccept {
-    //     let result = PermissionAccept {
-    //         grantor_addr: "xxx".to_string(),
-    //         current: CurrentOp {
-    //             users: vec!["xx".to_string()],
-    //             types: "delete".to_string(),
-    //             opreatins: "xxx".to_string(),
-    //         },
-    //     };
-    //     result
-    // }
+    #[tokio::test]
+    async fn new_permision() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        let (_, _) = get_manager().await?;
 
-    // #[tokio::test]
-    // async fn new_permision() -> anyhow::Result<()> {
-    //     wallet_utils::init_test_log();
-    //     let (_, _) = get_manager().await?;
+        let str = r#"{"grantorAddr":"TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR","current":{"originalUser":["TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1"],"newUser":[],"name":"修改权限","type":"delete","activeId":0,"operations":""}}"#;
 
-    //     let change = get_data();
+        let change = serde_json::from_str::<PermissionAccept>(&str).unwrap();
 
-    //     let res = change.exec("1").await;
-    //     println!("{:?}", res);
-    //     Ok(())
-    // }
+        let res = change.exec("1").await;
+        println!("{:?}", res);
+        Ok(())
+    }
 }

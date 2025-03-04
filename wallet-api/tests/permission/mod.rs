@@ -49,13 +49,13 @@ async fn test_add_permission_fee() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![KeysReq {
-        address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         weight: 1,
     }];
 
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "测试".to_string(),
+        name: "转账、质押".to_string(),
         active_id: None,
         threshold: 1,
         operations: vec![1, 2, 3, 5],
@@ -101,17 +101,27 @@ async fn test_add_permission() {
 async fn test_up_permision() {
     let wallet_manager = get_manager().await;
 
-    let keys = vec![KeysReq {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        weight: 1,
-    }];
+    let keys = vec![
+        KeysReq {
+            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+            weight: 1,
+        },
+        // KeysReq {
+        //     address: "TRC4h5pHsz8zKDGdHR28GtZvAMNXCsbKRu".to_string(),
+        //     weight: 1,
+        // },
+        // KeysReq {
+        //     address: "TDVayp1uF6CD3NGT1ZR4SJcxot5VQHQNtY".to_string(),
+        //     weight: 1,
+        // },
+    ];
 
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "修改权限".to_string(),
-        active_id: Some(3),
+        name: "final".to_string(),
+        active_id: Some(2),
         threshold: 1,
-        operations: vec![1],
+        operations: vec![1, 54, 55],
         keys,
     };
     let password = "123456".to_string();
@@ -136,7 +146,7 @@ async fn test_del_permission() {
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         name: "修改权限".to_string(),
-        active_id: Some(3),
+        active_id: Some(2),
         threshold: 1,
         operations: vec![1],
         keys,
@@ -154,8 +164,8 @@ async fn test_del_permission() {
 async fn test_recover_data() {
     let _wallet_manager = get_manager().await;
 
-    let uids = vec!["137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358"];
-    domain::permission::PermissionDomain::recover_permission(&uids)
+    let uids = vec!["137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358".to_string()];
+    domain::permission::PermissionDomain::recover_permission(uids)
         .await
         .unwrap();
 }

@@ -117,29 +117,26 @@ impl PermissionDao {
         Ok(result)
     }
 
-    pub async fn solf_delete<'a, E>(
-        grantor_addr: &str,
-        active_id: i64,
-        exec: E,
-    ) -> Result<(), crate::DatabaseError>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"update permission 
-            set 
-                is_del = 1,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where 
-                grantor_addr = ? and active_id = ?"#;
+    // pub async fn delete<'a, E>(
+    //     grantor_addr: &str,
+    //     active_id: i64,
+    //     exec: E,
+    // ) -> Result<(), crate::DatabaseError>
+    // where
+    //     E: Executor<'a, Database = Sqlite>,
+    // {
+    //     let sql = r#"delete from permission
+    //         where
+    //             grantor_addr = ? and active_id = ?"#;
 
-        let _c = sqlx::query(&sql)
-            .bind(grantor_addr)
-            .bind(active_id)
-            .execute(exec)
-            .await?;
+    //     let _c = sqlx::query(&sql)
+    //         .bind(grantor_addr)
+    //         .bind(active_id)
+    //         .execute(exec)
+    //         .await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     pub async fn delete_by_grantor_addr<'a, E>(
         grantor_addr: &str,
@@ -151,6 +148,17 @@ impl PermissionDao {
         let sql = r#"delete from permission where grantor_addr = ?"#;
 
         sqlx::query(&sql).bind(grantor_addr).execute(exec).await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_by_id<'a, E>(id: &str, exec: E) -> Result<(), crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"delete from permission where id = ?"#;
+
+        sqlx::query(&sql).bind(id).execute(exec).await?;
 
         Ok(())
     }

@@ -30,13 +30,11 @@ impl PermissionDomain {
     }
 
     // 恢复权限数据
-    pub async fn recover_permission(uids: &[&str]) -> Result<(), crate::ServiceError> {
+    pub async fn recover_permission(uids: Vec<String>) -> Result<(), crate::ServiceError> {
         let bakend = crate::Context::get_global_backend_api()?;
 
         let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let pool = crate::Context::get_global_sqlite_pool()?;
-
-        let _a = Self::handel_one_item(&pool, "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR").await?;
 
         for uid in uids {
             let req = GetPermissionBackReq {
@@ -46,7 +44,7 @@ impl PermissionDomain {
             let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
 
             for item in result.list {
-                if let Err(e) = Self::handel_one_item(&pool, &item.data).await {
+                if let Err(e) = Self::handel_one_item(&pool, &item).await {
                     tracing::warn!("[recover_permission] error:{}", e);
                 }
             }
@@ -61,7 +59,7 @@ impl PermissionDomain {
         account: &TronAccount,
         address: &str,
     ) -> Result<Vec<NewPermissionUser>, crate::ServiceError> {
-        let mut reuslt = vec![];
+        let mut result = vec![];
 
         let addresses = account.all_actives_user();
 
@@ -69,23 +67,25 @@ impl PermissionDomain {
         let local_account =
             AccountEntity::list_in_address(pool.as_ref(), &addresses, chain_code).await?;
         if local_account.is_empty() {
-            return Ok(reuslt);
+            return Ok(result);
         }
 
         for item in account.active_permission.iter() {
+            // 过滤掉只有一个自己的权限
+            if item.keys.len() == 1 && item.keys[0].address == address {
+                continue;
+            }
+
             for key in item.keys.iter() {
-                if local_account
-                    .iter()
-                    .find(|a| a.address == key.address)
-                    .is_some()
-                {
+                if local_account.iter().any(|a| a.address == key.address) {
                     let permission_with_user = NewPermissionUser::try_from((item, address))?;
-                    reuslt.push(permission_with_user);
+                    result.push(permission_with_user);
+                    break;
                 }
             }
         }
 
-        Ok(reuslt)
+        Ok(result)
     }
 
     // 从account 中找到新增的数据

@@ -238,7 +238,7 @@ impl PermssionService {
                     params.current.name = req.name.to_string();
                     params.current.active_id = args.actives.len() as i64 + 2;
                     params.current.new_user = req.users();
-                    params.current.opreatins = permission.operations.clone().unwrap_or_default();
+                    params.current.operations = permission.operations.clone().unwrap_or_default();
 
                     params.sender_user = req.users();
                 }
@@ -258,17 +258,23 @@ impl PermssionService {
                 {
                     // 拼接上报后端的参数
                     if let Some(params) = backup_params {
-                        let users = permission.users_from_hex()?;
+                        let mut users = permission.users_from_hex()?;
 
                         params.current.original_user = users.clone();
                         params.current.types = PermissionReq::UPDATE.to_string();
                         params.current.name = req.name.to_string();
                         params.current.active_id = id as i64;
                         params.current.new_user = req.users();
-                        params.current.opreatins =
+                        params.current.operations =
                             permission.operations.clone().unwrap_or_default();
 
-                        params.sender_user = users;
+                        users.extend(req.users());
+
+                        params.sender_user = users
+                            .into_iter()
+                            .collect::<HashSet<String>>()
+                            .into_iter()
+                            .collect();
                     }
 
                     *permission = new_permission;
@@ -347,7 +353,7 @@ impl PermssionService {
         let mut args = PermissionUpdateArgs::try_from(&account)?;
 
         // 上报后端的参数
-        let mut backend_params: PermissionAcceptReq = PermissionAcceptReq::default();
+        let mut backend_params = PermissionAcceptReq::default();
         if types == PermissionReq::DELETE {
             backend_params.sender_user = account.all_actives_user();
         }
@@ -369,7 +375,7 @@ impl PermssionService {
 
         backend_params.hash = tx_hash.clone();
         backend_params.grantor_addr = req.grantor_addr.clone();
-        backend_params.new_user = new_users.into_iter().collect();
+        backend_params.back_user = new_users.into_iter().collect();
 
         tracing::warn!("{:#?}", backend_params);
 
@@ -436,7 +442,7 @@ impl PermssionService {
         .await?;
 
         backend_params.grantor_addr = req.grantor_addr.clone();
-        backend_params.new_user = new_users.into_iter().collect();
+        backend_params.back_user = new_users.into_iter().collect();
 
         MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params)).await?;
 

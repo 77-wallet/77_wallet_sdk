@@ -103,6 +103,7 @@ pub(crate) enum CommonTask {
     QueryCoinPrice(TokenQueryPriceReq),
     QueryQueueResult(QueueTaskEntity),
     RecoverMultisigAccountData(String),
+    RecoverPermission(String),
     SyncNodesAndLinkToChains(Vec<NodeEntity>),
 }
 
@@ -303,6 +304,9 @@ impl TryFrom<&TaskQueueEntity> for Task {
             TaskName::RecoverMultisigAccountData => Ok(Task::Common(
                 CommonTask::RecoverMultisigAccountData(value.request_body.clone()),
             )),
+            TaskName::RecoverPermission => Ok(Task::Common(CommonTask::RecoverPermission(
+                value.request_body.clone(),
+            ))),
             TaskName::SyncNodesAndLinkToChains => {
                 let req = wallet_utils::serde_func::serde_from_str::<Vec<NodeEntity>>(
                     &value.request_body,
@@ -363,6 +367,7 @@ impl Task {
                 CommonTask::QueryQueueResult(_) => TaskName::QueryQueueResult,
                 CommonTask::RecoverMultisigAccountData(_) => TaskName::RecoverMultisigAccountData,
                 CommonTask::SyncNodesAndLinkToChains(_) => TaskName::SyncNodesAndLinkToChains,
+                CommonTask::RecoverPermission(_) => TaskName::RecoverPermission,
             },
         }
     }
@@ -435,6 +440,7 @@ impl Task {
                 CommonTask::RecoverMultisigAccountData(recover_multisig_account_data) => {
                     Some(recover_multisig_account_data.to_string())
                 }
+                CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
                 CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => Some(
                     wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?,
                 ),

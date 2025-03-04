@@ -48,6 +48,8 @@ impl PermissionRepo {
         // 删除成员
         PermissionUserDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
 
+        tracing::warn!("删除完成");
+
         // 新增权限
         for permission in permissions {
             PermissionDao::add(permission, tx.as_mut()).await?;
@@ -56,6 +58,7 @@ impl PermissionRepo {
         //  新增成员
         PermissionUserDao::batch_add(users, tx.as_mut()).await?;
 
+        tracing::warn!("新增完成");
         tx.commit()
             .await
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
@@ -155,11 +158,41 @@ impl PermissionRepo {
         Ok(res)
     }
 
-    pub async fn delete(
-        pool: &DbPool,
-        grantor_addr: &str,
-        active_id: i64,
-    ) -> Result<(), crate::Error> {
-        Ok(PermissionDao::solf_delete(grantor_addr, active_id, pool.as_ref()).await?)
+    // 删除成员以及权限
+    pub async fn delete_all(pool: &DbPool, grantor_addr: &str) -> Result<(), crate::Error> {
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // 删除原来的权限
+        PermissionDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
+        // 删除成员
+        PermissionUserDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
+    }
+
+    // 删除成员以及权限
+    pub async fn delete_one(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // 删除原来的权限
+        PermissionDao::delete_by_id(id, tx.as_mut()).await?;
+        // 删除成员
+        PermissionUserDao::delete_by_permission(id, tx.as_mut()).await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
     }
 }

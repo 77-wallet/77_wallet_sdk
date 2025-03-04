@@ -312,6 +312,9 @@ async fn handle_common_task(
             domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid, None).await?;
             MultisigQueueDomain::recover_all_queue_data(&uid).await?;
         }
+        CommonTask::RecoverPermission(uid) => {
+            domain::permission::PermissionDomain::recover_permission(vec![uid]).await?;
+        }
         CommonTask::SyncNodesAndLinkToChains(data) => {
             let mut repo = RepositoryFactory::repo(pool.clone());
             let chain_codes = ChainRepoTrait::get_chain_list_all_status(&mut repo)

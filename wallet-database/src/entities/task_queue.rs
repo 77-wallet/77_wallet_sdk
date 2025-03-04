@@ -97,4 +97,5 @@ pub enum TaskName {
     QueryQueueResult,
     RecoverMultisigAccountData,
     SyncNodesAndLinkToChains,
+    RecoverPermission,
 }

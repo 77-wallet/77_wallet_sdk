@@ -62,6 +62,20 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn build_multisig_queue(
+        &self,
+        req: PermissionReq,
+        types: String,
+        password: String,
+        expiration: i64,
+    ) -> ReturnType<String> {
+        PermssionService::new()
+            .await?
+            .build_multisig_permission(req, types, expiration, password)
+            .await?
+            .into()
+    }
+
     // // new permisson
     // pub async fn add_permission(&self, req: PermissionReq, password: String) -> ReturnType<String> {
     //     PermssionService::new()

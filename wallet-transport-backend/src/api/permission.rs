@@ -7,7 +7,7 @@ pub struct PermissionAcceptReq {
     pub hash: String,
     pub grantor_addr: String,
     pub sender_user: Vec<String>,
-    pub new_user: Vec<String>,
+    pub back_user: Vec<String>,
     pub current: CurrentPemission,
 }
 
@@ -22,7 +22,7 @@ pub struct CurrentPemission {
     #[serde(rename = "type")]
     pub types: String,
     pub active_id: i64,
-    pub opreatins: String,
+    pub operations: String,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -35,13 +35,7 @@ pub struct GetPermissionBackReq {
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionBackupResp {
-    pub list: Vec<PermissionItem>,
-}
-
-#[derive(serde::Deserialize, serde::Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct PermissionItem {
-    pub data: String,
+    pub list: Vec<String>,
 }
 
 impl BackendApi {
