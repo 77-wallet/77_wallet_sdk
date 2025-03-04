@@ -1,7 +1,17 @@
-use crate::domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain};
-use wallet_chain_interact::tron::operations::multisig::Permission;
-use wallet_database::entities::{
-    permission::PermissionEntity, permission_user::PermissionUserEntity,
+use crate::{
+    domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
+    request::permission::PermissionReq,
+};
+use wallet_chain_interact::tron::{
+    operations::multisig::Permission, protocol::account::TronAccount,
+};
+use wallet_database::{
+    entities::{
+        permission::{PermissionEntity, PermissionWithuserEntity},
+        permission_user::PermissionUserEntity,
+    },
+    repositories::permission::PermissionRepo,
+    DbPool,
 };
 use wallet_types::constant::chain_code;
 use wallet_utils::serde_func;
@@ -41,7 +51,7 @@ pub struct NewPermissionUser {
     pub users: Vec<PermissionUserEntity>,
 }
 
-// 请求参数转换为mqtt通知body
+// 权限转换为数据库对应的实体
 impl TryFrom<(&Permission, &str)> for NewPermissionUser {
     type Error = crate::ServiceError;
 
@@ -98,6 +108,29 @@ impl PermissionAccept {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let account = chain.account_info(&self.grantor_addr).await?;
 
+        // 判断当前的事件是否是删除(删除需要同步所有的权限数据)
+        if self.current.types == PermissionReq::DELETE {
+            self.recover_all_old_permission(pool, &account).await?;
+        } else {
+            let address = &self.grantor_addr;
+            let permissions =
+                PermissionDomain::find_permission(&account, self.current.active_id, address)
+                    .await?;
+
+            self.upsert(pool.clone(), permissions).await?
+        }
+
+        // TODO 系统通知
+
+        Ok(())
+    }
+
+    // 删除事件、全部更新本地的权限
+    async fn recover_all_old_permission(
+        &self,
+        pool: DbPool,
+        account: &TronAccount,
+    ) -> Result<(), crate::ServiceError> {
         // 权限是否包含自己
         let new_permission =
             PermissionDomain::self_contain_permiison(&pool, &account, &self.grantor_addr).await?;
@@ -105,12 +138,78 @@ impl PermissionAccept {
         // 通知到我了但是我的本地的地址不包含这个数据,删除或者不管
         if new_permission.len() > 0 {
             // 删除原来的,新增
-            // TODO 再次进行过滤(那些需要进行新增)
             PermissionDomain::del_add_update(&pool, new_permission, &self.grantor_addr).await?;
         }
 
-        // TODO 系统通知
+        Ok(())
+    }
 
+    // 新增或者更新权限
+    async fn upsert(
+        &self,
+        pool: DbPool,
+        permissions: NewPermissionUser,
+    ) -> Result<(), crate::ServiceError> {
+        // 查询出原来的权限
+        let old_permisson = PermissionRepo::permission_with_user(
+            &pool,
+            &permissions.permission.grantor_addr,
+            permissions.permission.active_id,
+            true,
+        )
+        .await?;
+
+        // 存在走更新流程
+        if let Some(old_permission) = old_permisson {
+            self.update(pool, permissions, old_permission).await
+        } else {
+            tracing::warn!("add new permission");
+            let mut users = permissions.users.clone();
+
+            PermissionDomain::mark_user_isself(&pool, &mut users).await?;
+
+            Ok(PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?)
+        }
+    }
+
+    async fn update(
+        &self,
+        pool: DbPool,
+        permissions: NewPermissionUser,
+        old_permission: PermissionWithuserEntity,
+    ) -> Result<(), crate::ServiceError> {
+        // 是否成员发生了变化
+        if old_permission.user_has_changed(&permissions.users) {
+            tracing::warn!("update user ");
+            self.udpate_user_change(pool.clone(), &permissions).await?;
+        } else {
+            tracing::warn!("only update permisson");
+            PermissionRepo::update_permission(&pool, &permissions.permission).await?;
+        }
+
+        // TODO 是否需要把进行中的队列删除
+        Ok(())
+    }
+
+    async fn udpate_user_change(
+        &self,
+        pool: DbPool,
+        permissions: &NewPermissionUser,
+    ) -> Result<(), crate::ServiceError> {
+        let mut users = permissions.users.clone();
+        PermissionDomain::mark_user_isself(&pool, &mut users).await?;
+
+        // 成员变化是否把自己移除了(没有is_self = 1的数据)
+        if users.iter().any(|u| u.is_self == 1) {
+            PermissionRepo::upate_with_user(&pool, &permissions.permission, &users).await?;
+        } else {
+            PermissionRepo::delete(
+                &pool,
+                &permissions.permission.grantor_addr,
+                permissions.permission.active_id,
+            )
+            .await?;
+        }
         Ok(())
     }
 }
@@ -144,73 +243,3 @@ mod test {
     //     Ok(())
     // }
 }
-// // 新增或者更新权限
-// async fn upsert(&self, pool: DbPool) -> Result<(), crate::ServiceError> {
-//     // 查询出原来的权限
-//     let old_permisson = PermissionRepo::permission_with_user(
-//         &pool,
-//         &self.permission.grantor_addr,
-//         self.permission.active_id,
-//         true,
-//     )
-//     .await?;
-
-//     // 存在走更新流程
-//     if let Some(old_permission) = old_permisson {
-//         self.update(pool, old_permission).await
-//     } else {
-//         let mut users = self.users.clone();
-
-//         PermissionDomain::mark_user_isself(&pool, &mut users).await?;
-
-//         Ok(PermissionRepo::add_with_user(&pool, &self.permission, &users).await?)
-//     }
-// }
-
-// async fn update(
-//     &self,
-//     pool: DbPool,
-//     old_permission: PermissionWithuserEntity,
-// ) -> Result<(), crate::ServiceError> {
-//     // 是否成员发生了变化
-//     if old_permission.user_has_changed(&self.users) {
-//         tracing::warn!("update user ");
-//         self.udpate_user_change(pool.clone()).await?;
-//     } else {
-//         tracing::warn!("only update permisson");
-//         PermissionRepo::update_permission(&pool, &self.permission).await?;
-//     }
-
-//     // TODO 是否需要把进行中的队列删除
-//     Ok(())
-// }
-
-// async fn udpate_user_change(&self, pool: DbPool) -> Result<(), crate::ServiceError> {
-//     let mut users = self.users.clone();
-//     PermissionDomain::mark_user_isself(&pool, &mut users).await?;
-
-//     // 成员变化是否把自己移除了(没有is_self = 1的数据)
-//     if users.iter().any(|u| u.is_self == 1) {
-//         PermissionRepo::upate_with_user(&pool, &self.permission, &users).await?;
-//     } else {
-//         PermissionRepo::delete(
-//             &pool,
-//             &self.permission.grantor_addr,
-//             self.permission.active_id,
-//         )
-//         .await?;
-//     }
-//     Ok(())
-// }
-
-// async fn delete_permission(&self, pool: DbPool) -> Result<(), crate::ServiceError> {
-//     PermissionRepo::delete(
-//         &pool,
-//         &self.permission.grantor_addr,
-//         self.permission.active_id,
-//     )
-//     .await?;
-//     // TODO 是否需要把进行中的队列删除
-
-//     Ok(())
-// }

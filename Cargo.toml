@@ -18,23 +18,23 @@ wallet-database = { version = "0.1.0", default-features = false, path = "wallet-
 wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 
-wallet-keystore = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
-wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
-wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
-wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
-wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
-wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
-wallet-tree = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
-wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-keystore = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-tree = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
+# wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "95020a5a72f77f90f402418242af028427d1078a" }
 
-# wallet-keystore = { default-features = false, path = "../wallet_core/wallet-keystore" }
-# wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
-# wallet-chain-instance = { default-features = false, path = "../wallet_core/wallet-chain-instance" }
-# wallet-transport = { default-features = false, path = "../wallet_core/wallet-transport" }
-# wallet-utils = { default-features = false, path = "../wallet_core/wallet-utils" }
-# wallet-types = { default-features = false, path = "../wallet_core/wallet-types" }
-# wallet-tree = { default-features = false, path = "../wallet_core/wallet-tree" }
-# wallet-core = { default-features = false, path = "../wallet_core/wallet-core" }
+wallet-keystore = { default-features = false, path = "../wallet_core/wallet-keystore" }
+wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
+wallet-chain-instance = { default-features = false, path = "../wallet_core/wallet-chain-instance" }
+wallet-transport = { default-features = false, path = "../wallet_core/wallet-transport" }
+wallet-utils = { default-features = false, path = "../wallet_core/wallet-utils" }
+wallet-types = { default-features = false, path = "../wallet_core/wallet-types" }
+wallet-tree = { default-features = false, path = "../wallet_core/wallet-tree" }
+wallet-core = { default-features = false, path = "../wallet_core/wallet-core" }
 
 # wallet-keystore = { default-features = false, path = "../77_wallet_core/wallet-keystore" }
 # wallet-chain-interact = { default-features = false, path = "../77_wallet_core/wallet-chain-interact" }

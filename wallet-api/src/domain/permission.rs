@@ -88,6 +88,24 @@ impl PermissionDomain {
         Ok(reuslt)
     }
 
+    // 从account 中找到新增的数据
+    pub async fn find_permission(
+        account: &TronAccount,
+        id: i64,
+        address: &str,
+    ) -> Result<NewPermissionUser, crate::ServiceError> {
+        for item in account.active_permission.iter() {
+            if item.id.unwrap_or_default() as i64 == id {
+                let permission_with_user = NewPermissionUser::try_from((item, address))?;
+                return Ok(permission_with_user);
+            }
+        }
+
+        Err(crate::BusinessError::Permisison(
+            crate::PermissionError::ActviesPermissionNotFound,
+        ))?
+    }
+
     pub async fn del_add_update(
         pool: &DbPool,
         mut permissions: Vec<NewPermissionUser>,
@@ -116,8 +134,6 @@ impl PermissionDomain {
 
         let new_permission =
             PermissionDomain::self_contain_permiison(&pool, &account, grantor_addr).await?;
-
-        // tracing::warn!("new permission {:#?}", new_permission);
 
         if new_permission.len() > 0 {
             PermissionDomain::del_add_update(&pool, new_permission, grantor_addr).await?;

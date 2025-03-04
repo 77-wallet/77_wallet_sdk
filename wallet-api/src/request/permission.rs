@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use wallet_chain_interact::tron::operations::{
     multisig::{Keys, Permission},
     permisions::PermissionTypes,
@@ -28,7 +30,12 @@ impl PermissionReq {
     }
 
     pub fn users(&self) -> Vec<String> {
-        self.keys.iter().map(|k| k.address.clone()).collect()
+        self.keys
+            .iter()
+            .map(|k| k.address.clone())
+            .collect::<HashSet<String>>()
+            .into_iter()
+            .collect()
     }
 }
 

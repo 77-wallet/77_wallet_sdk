@@ -13,6 +13,7 @@ use crate::{
         EstimateFeeResp, TronFeeDetails,
     },
 };
+use alloy::primitives::map::HashSet;
 use wallet_chain_interact::{
     tron::{
         consts,
@@ -144,9 +145,7 @@ impl PermssionService {
         let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let backend = crate::Context::get_global_backend_api()?;
 
-        backend.permission_accept(params, &aes_cbc_cryptor).await?;
-
-        Ok(())
+        Ok(backend.permission_accept(params, &aes_cbc_cryptor).await?)
     }
 }
 
@@ -253,7 +252,7 @@ impl PermssionService {
                 {
                     // 拼接上报后端的参数
                     if let Some(params) = backup_params {
-                        let users = permission.users();
+                        let users = permission.users_from_hex()?;
 
                         params.current.original_user = users.clone();
                         params.current.types = PermissionReq::UPDATE.to_string();
@@ -287,12 +286,11 @@ impl PermssionService {
                 if let Some(permission) = permission {
                     // 拼接上报后端的参数
                     if let Some(params) = backup_params {
-                        let users = permission.users();
+                        let users = permission.users_from_hex()?;
 
                         params.current.original_user = users.clone();
                         params.current.types = PermissionReq::DELETE.to_string();
                         params.current.name = req.name.to_string();
-                        params.current.new_user = vec![];
                     }
 
                     // 删除权限
@@ -350,11 +348,12 @@ impl PermssionService {
 
         self.build_args(&mut args, &types, &req, Some(&mut backend_params))?;
 
+        tracing::warn!("{:#?}", args);
         // 这个地址所有权限的用户集合
-        let mut new_users = vec![];
+        let mut new_users = HashSet::new();
         for item in args.actives.iter() {
             for key in item.keys.iter() {
-                new_users.push(wallet_utils::address::hex_to_bs58_addr(&key.address)?);
+                new_users.insert(wallet_utils::address::hex_to_bs58_addr(&key.address)?);
             }
         }
 
@@ -364,6 +363,9 @@ impl PermssionService {
 
         backend_params.hash = tx_hash.clone();
         backend_params.grantor_addr = req.grantor_addr.clone();
+        backend_params.new_user = new_users.into_iter().collect();
+
+        tracing::warn!("{:#?}", backend_params);
 
         // 上报后端
         self.upload_backend(backend_params).await?;
