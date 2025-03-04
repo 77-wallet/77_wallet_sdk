@@ -1,31 +1,6 @@
-use wallet_transport_backend::request::{
-    SignedTranAcceptReq, SignedTranCreateReq, SignedTranUpdateHashReq,
-};
+use wallet_transport_backend::request::{SignedTranAcceptReq, SignedTranUpdateHashReq};
 
 use crate::init;
-
-#[tokio::test]
-pub async fn test_signed_tran_create() -> Result<(), wallet_transport_backend::Error> {
-    let (aes_cbc_cryptor, backend_api) = init()?; // Initialize using init()
-
-    let tx_str = "xxxxxxxxxxxx";
-    let req = SignedTranCreateReq {
-        withdraw_id: "155061461155188736".to_string(),
-        address: "TL5YGitvEyqUakseGRED2jDUJ8sv6qpLaR".to_string(),
-        chain_code: "tron".to_string(),
-        tx_str: tx_str.to_string(),
-        raw_data: "".to_string(),
-        tx_kind: 1,
-    };
-
-    let res = backend_api
-        .signed_tran_create(&aes_cbc_cryptor, &req)
-        .await
-        .unwrap();
-    tracing::info!("res  {:?}", res);
-
-    Ok(())
-}
 
 #[tokio::test]
 pub async fn test_fee_oracle() -> Result<(), wallet_transport_backend::Error> {

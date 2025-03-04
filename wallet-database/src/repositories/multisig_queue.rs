@@ -16,6 +16,7 @@ use crate::{
         },
     },
     pagination::Pagination,
+    DbPool,
 };
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
@@ -245,20 +246,19 @@ impl MultisigQueueRepo {
         Ok(MultisigMemberDaoV1::get_self_by_id(id, &*self.repo.db_pool).await?)
     }
 
+    pub async fn self_member_by_account(
+        id: &str,
+        pool: &DbPool,
+    ) -> Result<MultisigMemberEntities, crate::Error> {
+        Ok(MultisigMemberDaoV1::get_self_by_id(id, pool.as_ref()).await?)
+    }
+
     pub async fn get_signed_list(
         &mut self,
         queue_id: &str,
     ) -> Result<MultisigSignatureEntities, crate::Error> {
         Ok(MultisigSignatureDaoV1::get_signed_list(queue_id, &*self.repo.db_pool).await?)
     }
-
-    // pub async fn update_queue_status(
-    //     &self,
-    //     queue_id: &str,
-    //     status: MultisigQueueStatus,
-    // ) -> Result<(), crate::Error> {
-    //     Ok(MultisigQueueDaoV1::update_status(queue_id, status, &*self.repo.db_pool).await?)
-    // }
 
     pub async fn update_status_and_hash(
         &mut self,

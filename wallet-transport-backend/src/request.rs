@@ -518,7 +518,7 @@ pub struct SignedTranCreateReq {
     pub chain_code: String,
     pub address: String,
     pub tx_str: String,
-    pub raw_data: String,
+    pub raw_data: serde_json::Value,
     pub tx_kind: i8,
 }
 

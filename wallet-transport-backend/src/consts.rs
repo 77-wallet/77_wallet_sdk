@@ -20,6 +20,8 @@ pub mod endpoint {
 
         // Report the transaction hash of the executed multisig to the backend
         pub const SIGNED_TRAN_UPDATE_TRANS_HASH: &str = "signed/trans/updateTransdHash";
+
+        pub const PERMISSION_ACCEPT: &str = "";
     }
 
     pub const DEVICE_INIT: &str = "device/init";

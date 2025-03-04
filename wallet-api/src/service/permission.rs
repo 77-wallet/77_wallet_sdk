@@ -1,7 +1,10 @@
 use crate::{
     domain::{
-        self, account::open_account_pk_with_password, chain::adapter::ChainAdapterFactory,
+        self,
+        account::open_account_pk_with_password,
+        chain::adapter::ChainAdapterFactory,
         coin::TokenCurrencyGetter,
+        multisig::{MultisigDomain, MultisigQueueDomain},
     },
     notify::{
         event::other::{Process, TransactionProcessFrontend},
@@ -23,7 +26,10 @@ use wallet_chain_interact::{
     BillResourceConsume,
 };
 use wallet_database::{
-    entities::bill::{BillKind, NewBillEntity},
+    entities::{
+        bill::{BillKind, NewBillEntity},
+        multisig_queue::NewMultisigQueueEntity,
+    },
     repositories::{address_book::AddressBookRepo, permission::PermissionRepo},
     DbPool,
 };
@@ -371,6 +377,70 @@ impl PermssionService {
         self.upload_backend(backend_params).await?;
 
         Ok(tx_hash)
+    }
+
+    pub async fn build_multisig_permission(
+        &self,
+        req: PermissionReq,
+        types: String,
+        expiration: i64,
+        password: String,
+    ) -> Result<String, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let bill_kind = BillKind::UpdatgePermission;
+
+        let account = MultisigDomain::account_by_address(&req.grantor_addr, true, &pool).await?;
+        MultisigDomain::validate_queue(&account)?;
+
+        let tron_account = self.chain.account_info(&req.grantor_addr).await?;
+        let mut backend_params = PermissionAcceptReq::default();
+        if types == PermissionReq::DELETE {
+            backend_params.sender_user = tron_account.all_actives_user();
+        }
+
+        let mut args = PermissionUpdateArgs::try_from(&tron_account)?;
+        self.build_args(&mut args, &types, &req, Some(&mut backend_params))?;
+
+        // 这个地址所有权限的用户集合
+        let mut new_users = HashSet::new();
+        for item in args.actives.iter() {
+            for key in item.keys.iter() {
+                new_users.insert(wallet_utils::address::hex_to_bs58_addr(&key.address)?);
+            }
+        }
+
+        // 构建多签交易
+        let expiration = MultisigQueueDomain::sub_expiration(expiration);
+        let resp = self
+            .chain
+            .build_multisig_transaction(args, expiration as u64)
+            .await?;
+
+        let mut queue = NewMultisigQueueEntity::new(
+            account.id.to_string(),
+            req.grantor_addr.to_string(),
+            String::new(),
+            expiration,
+            &resp.tx_hash,
+            &resp.raw_data,
+            bill_kind,
+            "0".to_string(),
+        );
+
+        let res = MultisigQueueDomain::tron_sign_and_create_queue(
+            &mut queue,
+            &account,
+            password,
+            pool.clone(),
+        )
+        .await?;
+
+        backend_params.grantor_addr = req.grantor_addr.clone();
+        backend_params.new_user = new_users.into_iter().collect();
+
+        MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params)).await?;
+
+        Ok(resp.tx_hash)
     }
 }
 

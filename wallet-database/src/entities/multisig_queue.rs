@@ -143,6 +143,7 @@ pub struct NewMultisigQueueEntity {
     pub transfer_type: BillKind,
 }
 impl NewMultisigQueueEntity {
+    // expiration 小时对应的秒
     pub fn new(
         account_id: String,
         from_addr: String,
@@ -154,7 +155,9 @@ impl NewMultisigQueueEntity {
         value: String,
     ) -> Self {
         let id = wallet_utils::snowflake::get_uid().unwrap();
-        // TODO trx 字符串以及 unwrap
+
+        let expiration = wallet_utils::time::now().timestamp() + expiration;
+
         Self {
             id: id.to_string(),
             account_id,
@@ -273,6 +276,10 @@ impl MultisigQueueData {
 
     pub fn from_string(data: &str) -> Result<Self, crate::Error> {
         Ok(wallet_utils::hex_func::bincode_decode(data)?)
+    }
+
+    pub fn to_json_value(&self) -> Result<serde_json::Value, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_value(&self)?)
     }
 }
 

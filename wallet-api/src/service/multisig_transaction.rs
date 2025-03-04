@@ -1,12 +1,11 @@
 use crate::domain::chain::adapter::{ChainAdapterFactory, MultisigAdapter};
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::chain::TransferResp;
+use crate::domain::multisig::MultisigQueueDomain;
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
 };
-use crate::mqtt::payload::incoming::transaction::{
-    MultiSignTransAccept, MultiSignTransAcceptCompleteMsgBody,
-};
+use crate::mqtt::payload::incoming::transaction::MultiSignTransAcceptCompleteMsgBody;
 use crate::response_vo::multisig_account::QueueInfo;
 use crate::response_vo::MultisigQueueFeeParams;
 use crate::response_vo::{multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams};
@@ -26,9 +25,7 @@ use wallet_database::entities::multisig_signatures::{MultisigSignatureStatus, Ne
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_transport_backend::consts::endpoint;
-use wallet_transport_backend::request::{
-    SignedTranAcceptReq, SignedTranCreateReq, SignedTranUpdateHashReq,
-};
+use wallet_transport_backend::request::{SignedTranAcceptReq, SignedTranUpdateHashReq};
 use wallet_types::constant::chain_code;
 use wallet_utils::{serde_func, unit};
 
@@ -157,27 +154,7 @@ impl MultisigTransactionService {
             MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue_params).await?;
 
         // 上报后端
-        let withdraw_id = res.id.clone();
-        let mut sync_params = MultiSignTransAccept::try_from(res)?;
-        sync_params.signatures = signatures;
-
-        let raw_data = MultisigQueueRepo::multisig_queue_data(&withdraw_id, pool)
-            .await?
-            .to_string()?;
-        let req = SignedTranCreateReq {
-            withdraw_id,
-            address: req_params.from,
-            chain_code: req_params.chain_code,
-            tx_str: wallet_utils::serde_func::serde_to_string(&sync_params)?,
-            raw_data,
-            tx_kind: BillKind::Transfer.to_i8(),
-        };
-
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
-            endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
-            body: serde_func::serde_to_value(&req)?,
-        }));
-        Tasks::new().push(task).send().await?;
+        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None).await?;
 
         Ok(rs.tx_hash)
     }

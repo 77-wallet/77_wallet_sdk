@@ -4,7 +4,9 @@ pub mod multisign_trans_accept_complete_msg;
 pub mod multisign_trans_cancel;
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_database::entities::{
-    bill::BillKind, multisig_queue::MultisigQueueEntity, multisig_signatures::NewSignatureEntity,
+    bill::BillKind,
+    multisig_queue::{MultisigQueueData, MultisigQueueEntity},
+    multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
 };
 
 // biz_type = MULTI_SIGN_TRANS_ACCEPT
@@ -64,6 +66,43 @@ impl TryFrom<MultisigQueueEntity> for MultiSignTransAccept {
             signatures: vec![],
             account_id: value.account_id,
             transfer_type: value.transfer_type.try_into()?,
+        })
+    }
+}
+impl TryFrom<&MultisigQueueData> for MultiSignTransAccept {
+    type Error = crate::ServiceError;
+
+    fn try_from(value: &MultisigQueueData) -> Result<Self, Self::Error> {
+        let mut signatures = vec![];
+
+        for item in value.signatures.0.iter() {
+            let signature = NewSignatureEntity {
+                queue_id: value.queue.id.clone(),
+                address: item.address.clone(),
+                signature: item.signature.clone(),
+                status: MultisigSignatureStatus::try_from(item.status as i32)?,
+            };
+            signatures.push(signature);
+        }
+
+        Ok(Self {
+            id: value.queue.id.clone(),
+            from_addr: value.queue.from_addr.clone(),
+            to_addr: value.queue.to_addr.clone(),
+            value: value.queue.value.clone(),
+            expiration: value.queue.expiration,
+            symbol: value.queue.symbol.clone(),
+            chain_code: value.queue.chain_code.clone(),
+            token_addr: value.queue.token_addr.clone(),
+            msg_hash: value.queue.msg_hash.clone(),
+            tx_hash: value.queue.tx_hash.clone(),
+            raw_data: value.queue.raw_data.clone(),
+            status: value.queue.status,
+            notes: value.queue.notes.clone(),
+            created_at: value.queue.created_at,
+            signatures,
+            account_id: value.queue.account_id.clone(),
+            transfer_type: value.queue.transfer_type.try_into()?,
         })
     }
 }

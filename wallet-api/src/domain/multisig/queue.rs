@@ -1,17 +1,28 @@
-use crate::domain::{self, bill::BillDomain, multisig::MultisigDomain};
+use crate::{
+    domain::{self, bill::BillDomain, multisig::MultisigDomain},
+    infrastructure::task_queue::{self, BackendApiTaskData},
+    mqtt::payload::incoming::transaction::MultiSignTransAccept,
+};
 use std::{collections::HashSet, sync::Arc, time::Duration};
+use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
     dao::{multisig_member::MultisigMemberDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities::{
+        multisig_account::MultisigAccountEntity,
         multisig_queue::{
             MultisigQueueData, MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity,
         },
-        multisig_signatures::NewSignatureEntity,
+        multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
         wallet::WalletEntity,
     },
     repositories::multisig_queue::MultisigQueueRepo,
     DbPool,
 };
+use wallet_transport_backend::{
+    api::permission::PermissionAcceptReq, consts::endpoint, request::SignedTranCreateReq,
+};
+use wallet_types::constant::chain_code;
+use wallet_utils::serde_func;
 
 pub struct MultisigQueueDomain;
 impl MultisigQueueDomain {
@@ -232,5 +243,91 @@ impl MultisigQueueDomain {
         Ok(backend_api
             .update_raw_data(cryptor, queue_id, raw_data)
             .await?)
+    }
+
+    // 波场交易队列事件、并进行默认签名
+    pub async fn tron_sign_and_create_queue(
+        queue: &mut NewMultisigQueueEntity,
+        account: &MultisigAccountEntity,
+        password: String,
+        pool: DbPool,
+    ) -> Result<MultisigQueueEntity, crate::ServiceError> {
+        let mut members = MultisigQueueRepo::self_member_by_account(&account.id, &pool).await?;
+        members.prioritize_by_address(&account.initiator_addr);
+
+        // sign num
+        let sign_num = members.0.len().min(account.threshold as usize);
+        for i in 0..sign_num {
+            let member = members.0.get(i).unwrap();
+            let key = crate::domain::account::open_account_pk_with_password(
+                &queue.chain_code,
+                &member.address,
+                &password,
+            )
+            .await?;
+
+            let sign_result = TransactionOpt::sign_transaction(&queue.raw_data, key)?;
+            let sign = NewSignatureEntity::new(
+                &queue.id,
+                &member.address,
+                &sign_result.signature,
+                MultisigSignatureStatus::Approved,
+            );
+            queue.signatures.push(sign);
+        }
+
+        // 计算签名的状态
+        queue.status =
+            MultisigQueueEntity::compute_status(queue.signatures.len(), account.threshold as usize);
+
+        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), queue).await?;
+
+        Ok(res)
+    }
+
+    // 队列数据上报到后端
+    pub async fn upload_queue_backend(
+        queue_id: String,
+        pool: &DbPool,
+        backend_params: Option<PermissionAcceptReq>,
+    ) -> Result<(), crate::ServiceError> {
+        let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone()).await?;
+
+        let accept_params = MultiSignTransAccept::try_from(&raw_data)?;
+
+        let req = SignedTranCreateReq {
+            withdraw_id: raw_data.queue.id.clone(),
+            address: raw_data.queue.from_addr.clone(),
+            chain_code: raw_data.queue.chain_code.clone(),
+            tx_str: wallet_utils::serde_func::serde_to_string(&accept_params)?,
+            raw_data: raw_data.to_json_value()?,
+            tx_kind: raw_data.queue.transfer_type as i8,
+        };
+
+        let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+            BackendApiTaskData::new(endpoint::multisig::SIGNED_TRAN_CREATE, &req)?,
+        ));
+
+        let mut tasks = task_queue::Tasks::new().push(task);
+        // 权限的修改单独上报一份权限的数据
+        if let Some(backend_params) = backend_params {
+            let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+                BackendApiTaskData::new(endpoint::multisig::PERMISSION_ACCEPT, &backend_params)?,
+            ));
+            tasks = tasks.push(task);
+        }
+
+        tasks.send().await?;
+
+        Ok(())
+    }
+
+    // 过期时间 小时转换为秒
+    pub fn sub_expiration(expiration: i64) -> i64 {
+        if expiration == 24 {
+            expiration * 3600 - 61
+        } else {
+            expiration * 3600
+        }
     }
 }
