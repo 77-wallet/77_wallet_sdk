@@ -33,6 +33,7 @@ pub struct MultiSignTransAccept {
     pub signatures: Vec<NewSignatureEntity>,
     pub account_id: String,
     pub transfer_type: BillKind,
+    pub permission_id: String,
 }
 impl MultiSignTransAccept {
     pub fn with_signature(mut self, signatures: Vec<NewSignatureEntity>) -> Self {
@@ -66,6 +67,7 @@ impl TryFrom<MultisigQueueEntity> for MultiSignTransAccept {
             signatures: vec![],
             account_id: value.account_id,
             transfer_type: value.transfer_type.try_into()?,
+            permission_id: value.permission_id,
         })
     }
 }
@@ -103,6 +105,7 @@ impl TryFrom<&MultisigQueueData> for MultiSignTransAccept {
             signatures,
             account_id: value.queue.account_id.clone(),
             transfer_type: value.queue.transfer_type.try_into()?,
+            permission_id: value.queue.permission_id.clone(),
         })
     }
 }

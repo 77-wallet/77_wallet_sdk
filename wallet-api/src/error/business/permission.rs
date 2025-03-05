@@ -15,6 +15,9 @@ pub enum PermissionError {
     // 不支持的操作类型(delete update new)
     #[error("actives permission not found")]
     UnSupportOpType,
+    // 链不支持权限
+    #[error("un support permission chain")]
+    UnSupprtPermissionChain,
 }
 
 impl PermissionError {
@@ -25,6 +28,7 @@ impl PermissionError {
             PermissionError::MissActivesPermission => 4302,
             PermissionError::ActviesPermissionNotFound => 4303,
             PermissionError::UnSupportOpType => 4304,
+            PermissionError::UnSupprtPermissionChain => 4305,
         }
     }
 }

@@ -1,11 +1,12 @@
 use crate::domain::chain::adapter::{ChainAdapterFactory, MultisigAdapter};
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::chain::TransferResp;
-use crate::domain::multisig::MultisigQueueDomain;
+use crate::domain::multisig::{MultisigDomain, MultisigQueueDomain};
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
 };
 use crate::mqtt::payload::incoming::transaction::MultiSignTransAcceptCompleteMsgBody;
+use crate::request::transaction::Signer;
 use crate::response_vo::multisig_account::QueueInfo;
 use crate::response_vo::MultisigQueueFeeParams;
 use crate::response_vo::{multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams};
@@ -24,6 +25,7 @@ use wallet_database::entities::multisig_queue::{
 use wallet_database::entities::multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity};
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
+use wallet_database::repositories::permission::PermissionRepo;
 use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::request::{SignedTranAcceptReq, SignedTranUpdateHashReq};
 use wallet_types::constant::chain_code;
@@ -37,9 +39,7 @@ impl MultisigTransactionService {
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let account =
-            domain::multisig::MultisigDomain::account_by_address(&req_params.from, true, &pool)
-                .await?;
+        let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
 
         let assets = domain::chain::transaction::ChainTransaction::assets(
             &req_params.chain_code,
@@ -70,88 +70,102 @@ impl MultisigTransactionService {
         Ok(fee_resp)
     }
 
-    /// Creates a new multisig transaction queue.
+    // Creates a new multisig transaction queue.
     pub async fn create_multisig_queue(
-        req_params: TransferParams,
+        req: TransferParams,
+        password: String,
+    ) -> Result<String, crate::ServiceError> {
+        if let Some(signer) = req.signer.clone() {
+            Self::create_with_permission(req, &password, signer).await
+        } else {
+            Self::create_with_account(req, &password).await
+        }
+    }
+
+    async fn create_with_account(
+        req: TransferParams,
+        password: &str,
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut queue_repo = MultisigQueueRepo::new(pool.clone());
 
-        let account =
-            domain::multisig::MultisigDomain::account_by_address(&req_params.from, true, &pool)
-                .await?;
-        domain::multisig::account::MultisigDomain::validate_queue(&account)?;
+        let assets = ChainTransaction::assets(&req.chain_code, &req.symbol, &req.from).await?;
 
-        let assets = domain::chain::transaction::ChainTransaction::assets(
-            &req_params.chain_code,
-            &req_params.symbol,
-            &req_params.from,
-        )
-        .await?;
+        let account = MultisigDomain::account_by_address(&req.from, true, &pool).await?;
+        MultisigDomain::validate_queue(&account)?;
 
-        let key = crate::domain::account::open_account_pk_with_password(
-            &account.chain_code,
-            &account.initiator_addr,
-            &req_params.password,
-        )
-        .await?;
+        let key =
+            ChainTransaction::get_key(&req.from, &req.chain_code, &password, &req.signer).await?;
+
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
         let rs = adapter
-            .build_multisig_tx(
-                &req_params,
-                &account,
-                assets.decimals,
-                assets.token_address(),
-                key,
-            )
+            .build_multisig_with_account(&req, &account, &assets, key)
             .await?;
 
-        let mut queue_params = NewMultisigQueueEntity::from(&req_params)
+        let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
             .with_raw_data(&rs.raw_data)
             .with_token(assets.token_address())
             .set_id();
-        queue_params.account_id = account.id.clone();
-        let now = wallet_utils::time::now().timestamp();
-        queue_params.expiration = queue_params.expiration * 3600 + now;
-        let chain_code = &queue_params.chain_code;
+        queue.account_id = account.id.clone();
 
-        if req_params.chain_code != chain_code::SOLANA {
-            // signed once
-            let mut members = queue_repo.self_member_account_id(&account.id).await?;
-            members.prioritize_by_address(&account.initiator_addr);
-
-            // sign num
-            let sign_num = members.0.len().min(account.threshold as usize);
-            for i in 0..sign_num {
-                let member = members.0.get(i).unwrap();
-                let key = crate::domain::account::open_account_pk_with_password(
-                    chain_code,
-                    &member.address,
-                    &req_params.password,
-                )
+        if queue.chain_code != chain_code::SOLANA {
+            // 对多签队列进行签名
+            MultisigQueueDomain::batch_sign_queue(&mut queue, &password, &account, &adapter, &pool)
                 .await?;
-
-                let sign_result = adapter
-                    .sign_multisig_tx(&account, &member.address, key, &rs.raw_data)
-                    .await?;
-                let sign = NewSignatureEntity::new(
-                    &queue_params.id,
-                    &member.address,
-                    &sign_result.signature,
-                    MultisigSignatureStatus::Approved,
-                );
-                queue_params.signatures.push(sign);
-            }
         }
 
-        let signatures = queue_params.signatures.clone();
-        queue_params.status =
-            MultisigQueueEntity::compute_status(signatures.len(), account.threshold as usize);
+        queue.compute_status(account.threshold);
 
         // write multisig queue data to local database
-        let res =
-            MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue_params).await?;
+        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
+
+        // 上报后端
+        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None).await?;
+
+        Ok(rs.tx_hash)
+    }
+
+    async fn create_with_permission(
+        req: TransferParams,
+        password: &str,
+        signer: Signer,
+    ) -> Result<String, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let assets = ChainTransaction::assets(&req.chain_code, &req.symbol, &req.from).await?;
+
+        let permission =
+            PermissionRepo::permission_with_user(&pool, &req.from, signer.permission_id, false)
+                .await?;
+
+        let Some(p) = permission else {
+            return Err(crate::BusinessError::Permisison(
+                crate::PermissionError::ActviesPermissionNotFound,
+            ))?;
+        };
+
+        let adapter = ChainAdapterFactory::get_multisig_adapter(&req.chain_code).await?;
+        let rs = adapter
+            .build_multisig_with_permission(&req, &p.permission, &assets)
+            .await?;
+
+        let mut queue = NewMultisigQueueEntity::from(&req)
+            .with_msg_hash(&rs.tx_hash)
+            .with_raw_data(&rs.raw_data)
+            .with_token(assets.token_address())
+            .set_id();
+        queue.permission_id = p.permission.id.clone();
+
+        if queue.chain_code != chain_code::SOLANA {
+            // 对多签队列进行签名
+            MultisigQueueDomain::batch_sign_with_permission(&mut queue, &password, &p, &pool)
+                .await?;
+        }
+
+        queue.compute_status(p.permission.threshold as i32);
+
+        // write multisig queue data to local database
+        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
 
         // 上报后端
         MultisigQueueDomain::upload_queue_backend(res.id, &pool, None).await?;
@@ -246,17 +260,13 @@ impl MultisigTransactionService {
         address: String,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let queue = domain::multisig::MultisigDomain::queue_by_id(&queue_id, &pool).await?;
+        let queue = MultisigDomain::queue_by_id(&queue_id, &pool).await?;
         let multisig_account =
-            domain::multisig::MultisigDomain::account_by_address(&queue.from_addr, true, &pool)
-                .await?;
+            MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
 
-        let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(&queue.chain_code)
-                .await?;
+        let adapter = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
 
-        let main_coin =
-            domain::chain::transaction::ChainTransaction::main_coin(&queue.chain_code).await?;
+        let main_coin = ChainTransaction::main_coin(&queue.chain_code).await?;
 
         let res = adapter
             .sign_fee(
@@ -285,12 +295,11 @@ impl MultisigTransactionService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = MultisigQueueRepo::new(pool.clone());
 
-        let queue = domain::multisig::MultisigDomain::queue_by_id(queue_id, &pool).await?;
-        domain::multisig::MultisigQueueDomain::validate_queue(&queue, false)?;
+        let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
+        MultisigQueueDomain::validate_queue(&queue, false)?;
 
         let multisig_account =
-            domain::multisig::MultisigDomain::account_by_address(&queue.from_addr, true, &pool)
-                .await?;
+            MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
 
         // 1.签名
         let signed_res = Self::_sign_transaction(
@@ -774,15 +783,6 @@ impl MultisigTransactionService {
         chain_code: String,
         address: String,
     ) -> Result<Option<QueueInfo>, crate::ServiceError> {
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // let mut queue_repo = MultisigQueueRepo::new(pool.clone());
-
-        // let rs = queue_repo
-        //     .ongoing_queue(&chain_code, &address)
-        //     .await?
-        //     .and_then(|q| Some(QueueInfo::from(q)));
-        // Ok(rs)
-
         if chain_code.as_str() == chain_code::ETHEREUM
             || chain_code.as_str() == chain_code::BNB
             || chain_code.as_str() == chain_code::BTC
@@ -803,7 +803,7 @@ impl MultisigTransactionService {
     // cancel multisig queue
     pub async fn cancel_queue(queue_id: String) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let queue = domain::multisig::MultisigDomain::queue_by_id(&queue_id, &pool).await?;
+        let queue = MultisigDomain::queue_by_id(&queue_id, &pool).await?;
 
         // check status
         if !queue.can_cancel() {

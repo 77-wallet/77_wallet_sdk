@@ -20,9 +20,13 @@ impl crate::WalletManager {
     }
 
     /// Creates a new multisig transaction with the provided parameters.
-    pub async fn create_multisig_queue(&self, params: TransferParams) -> ReturnType<String> {
+    pub async fn create_multisig_queue(
+        &self,
+        params: TransferParams,
+        password: String,
+    ) -> ReturnType<String> {
         crate::service::multisig_transaction::MultisigTransactionService::create_multisig_queue(
-            params,
+            params, password,
         )
         .await
         .into()

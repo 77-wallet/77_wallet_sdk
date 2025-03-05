@@ -1,5 +1,10 @@
 use crate::{
-    domain::{self, bill::BillDomain, multisig::MultisigDomain},
+    domain::{
+        self,
+        bill::BillDomain,
+        chain::{adapter::MultisigAdapter, transaction::ChainTransaction},
+        multisig::MultisigDomain,
+    },
     infrastructure::task_queue::{self, BackendApiTaskData},
     mqtt::payload::incoming::transaction::MultiSignTransAccept,
 };
@@ -8,11 +13,13 @@ use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
     dao::{multisig_member::MultisigMemberDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities::{
+        account::{AccountEntity, QueryReq},
         multisig_account::MultisigAccountEntity,
         multisig_queue::{
             MultisigQueueData, MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity,
         },
         multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
+        permission::PermissionWithuserEntity,
         wallet::WalletEntity,
     },
     repositories::multisig_queue::MultisigQueueRepo,
@@ -21,8 +28,8 @@ use wallet_database::{
 use wallet_transport_backend::{
     api::permission::PermissionAcceptReq, consts::endpoint, request::SignedTranCreateReq,
 };
-use wallet_types::constant::chain_code;
-use wallet_utils::serde_func;
+
+use super::account;
 
 pub struct MultisigQueueDomain;
 impl MultisigQueueDomain {
@@ -277,12 +284,89 @@ impl MultisigQueueDomain {
         }
 
         // 计算签名的状态
-        queue.status =
-            MultisigQueueEntity::compute_status(queue.signatures.len(), account.threshold as usize);
+        queue.compute_status(account.threshold);
 
         let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), queue).await?;
 
         Ok(res)
+    }
+
+    // 非solana链对交易队列进行批量签名
+    pub async fn batch_sign_queue(
+        queue: &mut NewMultisigQueueEntity,
+        password: &str,
+        account: &MultisigAccountEntity,
+        adapter: &MultisigAdapter,
+        pool: &DbPool,
+    ) -> Result<(), crate::ServiceError> {
+        let mut members = MultisigQueueRepo::self_member_by_account(&account.id, pool).await?;
+        members.prioritize_by_address(&account.initiator_addr);
+
+        // sign num
+        let sign_num = members.0.len().min(account.threshold as usize);
+        for i in 0..sign_num {
+            let member = members.0.get(i).unwrap();
+            let key =
+                ChainTransaction::get_key(&member.address, &queue.chain_code, &password, &None)
+                    .await?;
+
+            let sign_res = adapter
+                .sign_multisig_tx(&account, &member.address, key, &queue.raw_data)
+                .await?;
+
+            let sign =
+                NewSignatureEntity::new_approve(&queue.id, &member.address, sign_res.signature);
+            queue.signatures.push(sign);
+        }
+
+        Ok(())
+    }
+
+    // 签名时权限创建所有的签名者(目前仅有tron)
+    pub async fn batch_sign_with_permission(
+        queue: &mut NewMultisigQueueEntity,
+        password: &str,
+        p: &PermissionWithuserEntity,
+        pool: &DbPool,
+    ) -> Result<(), crate::ServiceError> {
+        // sign num
+        let mut signatures = p
+            .user
+            .iter()
+            .map(|u| NewSignatureEntity::from((u, queue.id.as_str())))
+            .collect::<Vec<NewSignatureEntity>>();
+
+        // 需要执行几次签名
+        let sign_num = p.user.len().min(p.permission.threshold as usize);
+        let mut signed = 0;
+
+        for user in signatures.iter_mut() {
+            let query_req = QueryReq::new_address_chain(&user.address, &queue.chain_code);
+
+            if AccountEntity::detail(pool.as_ref(), &query_req)
+                .await?
+                .is_some()
+            {
+                let key =
+                    ChainTransaction::get_key(&user.address, &queue.chain_code, &password, &None)
+                        .await?;
+
+                let res = TransactionOpt::sign_transaction(&queue.raw_data, key)?;
+
+                user.signature = res.signature;
+                user.status = MultisigSignatureStatus::Approved;
+
+                signed += 1;
+            }
+
+            if signed >= sign_num {
+                break;
+            }
+        }
+
+        queue.signatures = signatures;
+
+        Ok(())
     }
 
     // 队列数据上报到后端

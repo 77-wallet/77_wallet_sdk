@@ -1,3 +1,5 @@
+use crate::request::transaction::Signer;
+
 use super::account::default_unit_price_as_zero;
 use super::account::BalanceInfo;
 use alloy::primitives::U256;
@@ -33,15 +35,17 @@ pub struct TransferParams {
     pub expiration: Option<i64>,
     pub chain_code: String,
     pub symbol: String,
-    pub password: String,
     pub notes: Option<String>,
     pub spend_all: bool,
+    pub signer: Option<Signer>,
 }
 
 impl From<&TransferParams> for NewMultisigQueueEntity {
     fn from(value: &TransferParams) -> Self {
-        let expiration = value.expiration.unwrap_or(1);
         let notes = value.notes.clone().unwrap_or_default();
+
+        let now = wallet_utils::time::now().timestamp();
+        let expiration = value.expiration.unwrap_or(1) * 3600 + now;
 
         Self {
             id: "".to_string(),
@@ -62,6 +66,7 @@ impl From<&TransferParams> for NewMultisigQueueEntity {
             fail_reason: "".to_string(),
             create_at: wallet_utils::time::now(),
             transfer_type: BillKind::Transfer,
+            permission_id: "".to_string(),
         }
     }
 }

@@ -66,6 +66,7 @@ impl From<&MultiSignTransAccept> for NewMultisigQueueEntity {
             account_id: value.account_id.clone(),
             create_at: value.created_at,
             transfer_type: BillKind::try_from(value.transfer_type).unwrap(),
+            permission_id: value.permission_id.clone(),
         }
     }
 }
@@ -97,6 +98,7 @@ impl MultiSignTransAccept {
             ref signatures,
             ref account_id,
             transfer_type,
+            ref permission_id,
         } = self;
         // 新增交易队列数据
         let params: NewMultisigQueueEntity = (&self).into();

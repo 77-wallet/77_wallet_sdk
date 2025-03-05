@@ -443,6 +443,9 @@ impl PermssionService {
 
         backend_params.grantor_addr = req.grantor_addr.clone();
         backend_params.back_user = new_users.into_iter().collect();
+        backend_params.multi_sign_id = res.id.clone();
+
+        tracing::warn!("{:#?}", backend_params);
 
         MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params)).await?;
 

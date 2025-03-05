@@ -32,6 +32,7 @@ pub struct MultisigQueueEntity {
     pub updated_at: Option<DateTime<Utc>>,
     pub account_id: String,
     pub transfer_type: i8,
+    pub permission_id: String,
 }
 impl MultisigQueueEntity {
     pub fn token_address(&self) -> Option<String> {
@@ -42,15 +43,15 @@ impl MultisigQueueEntity {
     }
 
     // default status : pending signature
-    pub fn compute_status(sign_num: usize, threshold: usize) -> MultisigQueueStatus {
-        if sign_num > 0 && sign_num < threshold {
-            return MultisigQueueStatus::HasSignature;
-        } else if sign_num >= threshold {
-            return MultisigQueueStatus::PendingExecution;
-        }
+    // pub fn compute_status(&mut self, sign_num: usize, threshold: usize) -> MultisigQueueStatus {
+    //     if sign_num > 0 && sign_num < threshold {
+    //         return MultisigQueueStatus::HasSignature;
+    //     } else if sign_num >= threshold {
+    //         return MultisigQueueStatus::PendingExecution;
+    //     }
 
-        MultisigQueueStatus::PendingSignature
-    }
+    //     MultisigQueueStatus::PendingSignature
+    // }
 
     pub fn can_cancel(&self) -> bool {
         self.status == MultisigQueueStatus::PendingSignature.to_i8()
@@ -141,6 +142,7 @@ pub struct NewMultisigQueueEntity {
     pub signatures: Vec<NewSignatureEntity>,
     pub create_at: DateTime<Utc>,
     pub transfer_type: BillKind,
+    pub permission_id: String,
 }
 impl NewMultisigQueueEntity {
     // expiration 小时对应的秒
@@ -177,6 +179,7 @@ impl NewMultisigQueueEntity {
             signatures: vec![],
             create_at: wallet_utils::time::now(),
             transfer_type: bill_kind,
+            permission_id: String::new(),
         }
     }
 }
@@ -233,6 +236,16 @@ impl NewMultisigQueueEntity {
 
     fn is_expired(&self) -> bool {
         self.expiration < wallet_utils::time::now().timestamp()
+    }
+
+    pub fn compute_status(&mut self, threshold: i32) {
+        let sign_num = self.signatures.len() as i32;
+
+        if sign_num > 0 && sign_num < threshold {
+            self.status = MultisigQueueStatus::HasSignature;
+        } else if sign_num >= threshold {
+            self.status = MultisigQueueStatus::PendingExecution;
+        }
     }
 }
 
@@ -310,6 +323,7 @@ impl From<MultisigQueueEntity> for NewMultisigQueueEntity {
             signatures: vec![],
             create_at: value.created_at,
             transfer_type: BillKind::try_from(value.transfer_type).unwrap_or(BillKind::Transfer),
+            permission_id: value.permission_id,
         }
     }
 }

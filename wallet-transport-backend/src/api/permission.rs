@@ -9,6 +9,7 @@ pub struct PermissionAcceptReq {
     pub sender_user: Vec<String>,
     pub back_user: Vec<String>,
     pub current: CurrentPemission,
+    pub multi_sign_id: String,
 }
 
 #[derive(serde::Serialize, Debug, Default)]

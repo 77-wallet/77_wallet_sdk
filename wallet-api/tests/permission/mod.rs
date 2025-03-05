@@ -161,6 +161,33 @@ async fn test_del_permission() {
 }
 
 #[tokio::test]
+async fn test_build_multisig_queue() {
+    let wallet_manager = get_manager().await;
+
+    let keys = vec![KeysReq {
+        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        weight: 1,
+    }];
+
+    let req = PermissionReq {
+        grantor_addr: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        name: "new_permission".to_string(),
+        active_id: None,
+        threshold: 1,
+        operations: vec![1],
+        keys,
+    };
+    let password = "123456".to_string();
+    let expiration = 5;
+
+    let res = wallet_manager
+        .build_multisig_queue(req, "new".to_string(), password, expiration)
+        .await;
+
+    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+}
+
+#[tokio::test]
 async fn test_recover_data() {
     let _wallet_manager = get_manager().await;
 

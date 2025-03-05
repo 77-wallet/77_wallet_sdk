@@ -67,13 +67,13 @@ async fn test_create_transfer() {
         expiration: Some(2),
         chain_code: "tron".to_owned(),
         symbol: "TRX".to_owned(),
-        password,
         notes: Some("salary".to_string()),
         spend_all: false,
+        signer: None,
     };
 
     // 创建交易
-    let res = manager.create_multisig_queue(params).await;
+    let res = manager.create_multisig_queue(params, password).await;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("tx info of = {:?}", res);
 }

@@ -75,11 +75,7 @@ impl StackService {
         signer: &Option<Signer>,
         password: &str,
     ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
-        if let Some(singer) = signer {
-            open_account_pk_with_password(chain_code::TRON, &singer.address, password).await
-        } else {
-            open_account_pk_with_password(chain_code::TRON, from, password).await
-        }
+        ChainTransaction::get_key(&from, chain_code::TRON, password, signer).await
     }
 
     async fn process_transaction<T>(
