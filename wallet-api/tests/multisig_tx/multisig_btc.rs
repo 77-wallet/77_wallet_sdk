@@ -1,8 +1,9 @@
-use crate::multisig_tx::get_manager;
 use wallet_api::{
     response_vo::{transaction::TransferParams, MultisigQueueFeeParams},
     MemberVo,
 };
+
+use crate::get_manager;
 
 #[tokio::test]
 async fn test_create_multisig_account() {

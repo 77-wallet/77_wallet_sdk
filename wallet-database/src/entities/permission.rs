@@ -50,4 +50,7 @@ impl PermissionWithuserEntity {
         }
         false
     }
+    pub fn users(&self) -> Vec<String> {
+        self.user.iter().map(|u| u.address.clone()).collect()
+    }
 }

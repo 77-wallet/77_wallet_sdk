@@ -117,6 +117,29 @@ impl PermissionDao {
         Ok(result)
     }
 
+    pub async fn find_by_id<'a, E>(
+        id: &str,
+        include_del: bool,
+        exec: E,
+    ) -> Result<Option<PermissionEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = if include_del {
+            r#"select * from permission where id = ?"#
+        } else {
+            r#"select * from permission where id = ? and is_del = 0"#
+        };
+
+        let result = sqlx::query_as::<_, PermissionEntity>(&sql)
+            .bind(id)
+            .bind(include_del)
+            .fetch_optional(exec)
+            .await?;
+
+        Ok(result)
+    }
+
     // pub async fn delete<'a, E>(
     //     grantor_addr: &str,
     //     active_id: i64,

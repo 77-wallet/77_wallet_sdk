@@ -3,13 +3,13 @@ use crate::{
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
         multisig_queue::MultisigQueueDaoV1, multisig_signatures::MultisigSignatureDaoV1,
+        permission::PermissionDao, permission_user::PermissionUserDao,
     },
     entities::{
-        multisig_account::MultisigAccountEntity,
         multisig_member::MultisigMemberEntities,
         multisig_queue::{
             fail_reason::SIGN_FAILED, MemberSignedResult, MultisigQueueData, MultisigQueueEntity,
-            MultisigQueueStatus, MultisigQueueWithAccountEntity, NewMultisigQueueEntity,
+            MultisigQueueSimpleEntity, MultisigQueueStatus, NewMultisigQueueEntity,
         },
         multisig_signatures::{
             MultisigSignatureEntities, MultisigSignatureStatus, NewSignatureEntity,
@@ -37,7 +37,6 @@ impl MultisigQueueRepo {
         pool: Arc<Pool<Sqlite>>,
         params: &mut NewMultisigQueueEntity,
     ) -> Result<MultisigQueueEntity, crate::Error> {
-        // get database transaction
         let mut tx = pool
             .begin()
             .await
@@ -51,7 +50,7 @@ impl MultisigQueueRepo {
             for signature in &mut params.signatures {
                 signature.queue_id = res.id.clone();
 
-                let exists = MultisigSignatureDaoV1::find_by_address_and_queue_id(
+                let exists = MultisigSignatureDaoV1::find_signature(
                     &res.id,
                     &signature.address,
                     tx.as_mut(),
@@ -76,64 +75,51 @@ impl MultisigQueueRepo {
         Ok(res)
     }
 
-    pub async fn multisig_account(
-        &self,
-        address: &str,
-    ) -> Result<Option<MultisigAccountEntity>, crate::Error> {
-        let pool = self.repo.pool_ref();
-        let conditions = vec![("address", address)];
-        Ok(MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref()).await?)
-    }
-
-    pub async fn find_by_id_with_account(
-        &mut self,
+    // 拼接额外的信息(区分多签账号和权限)
+    pub async fn find_by_id_with_extra(
         id: &str,
-    ) -> Result<Option<MultisigQueueWithAccountEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::find_by_id_with_account(id, &*self.repo.db_pool).await?)
+        pool: &DbPool,
+    ) -> Result<Option<MultisigQueueSimpleEntity>, crate::Error> {
+        Ok(MultisigQueueDaoV1::find_with_extra(id, pool.as_ref()).await?)
     }
 
     pub async fn queue_list(
-        &mut self,
         from: Option<&str>,
         chain_code: Option<&str>,
         status: i32,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<MultisigQueueWithAccountEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::queue_list(
-            from,
-            chain_code,
-            status,
-            page,
-            page_size,
-            self.repo.pool(),
-        )
-        .await?)
+        pool: DbPool,
+    ) -> Result<Pagination<MultisigQueueSimpleEntity>, crate::Error> {
+        let lists =
+            MultisigQueueDaoV1::lists(from, chain_code, status, page, page_size, pool.clone())
+                .await?;
+
+        Ok(lists)
     }
 
-    pub async fn queue_list_info(
-        &self,
-        from: Option<&str>,
-        chain_code: Option<&str>,
-        status: i32,
-        page: i64,
-        page_size: i64,
-    ) -> Result<Pagination<MultisigQueueWithAccountEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::queue_list(
-            from,
-            chain_code,
-            status,
-            page,
-            page_size,
-            self.repo.pool(),
-        )
-        .await?)
+    pub async fn update_fail(
+        pool: &DbPool,
+        queue_id: &str,
+        reason: &str,
+    ) -> Result<(), crate::Error> {
+        Ok(MultisigQueueDaoV1::update_fail(&queue_id, reason, pool.as_ref()).await?)
     }
 
-    pub async fn get_signed_count(&self, id: &str) -> Result<i64, crate::Error> {
-        Ok(MultisigSignatureDaoV1::get_signed_count(id, &*self.repo.db_pool).await?)
+    pub async fn signed_result(
+        queue_id: &str,
+        account_id: &str,
+        permission_id: &str,
+        pool: DbPool,
+    ) -> Result<Vec<MemberSignedResult>, crate::Error> {
+        if !account_id.is_empty() {
+            Self::member_signed_result(account_id, queue_id, pool).await
+        } else {
+            Self::permision_signed_reuslt(permission_id, queue_id, pool).await
+        }
     }
 
+    // 多签账号的前面结果
     pub async fn member_signed_result(
         account_id: &str,
         queue_id: &str,
@@ -144,15 +130,13 @@ impl MultisigQueueRepo {
         let mut member = MultisigMemberDaoV1::find_records_by_id(account_id, pool.as_ref()).await?;
 
         for item in member.0.iter_mut() {
-            let mut sign_result = MemberSignedResult::new(&item.name, &item.address, item.is_self);
+            let mut sign_result =
+                MemberSignedResult::new(&item.name, &item.address, item.is_self, 1);
 
             // 获取签名的结果
-            let sign = MultisigSignatureDaoV1::find_by_address_and_queue_id(
-                queue_id,
-                &item.address,
-                pool.as_ref(),
-            )
-            .await?;
+            let sign =
+                MultisigSignatureDaoV1::find_signature(queue_id, &item.address, pool.as_ref())
+                    .await?;
             if let Some(sign) = sign {
                 sign_result.singed = sign.status;
                 sign_result.signature = sign.signature;
@@ -162,12 +146,31 @@ impl MultisigQueueRepo {
         Ok(result)
     }
 
-    // get multisig queue by id
-    pub async fn queue_by_id(
-        &self,
+    // 权限的签名结果
+    pub async fn permision_signed_reuslt(
+        permission_id: &str,
         queue_id: &str,
-    ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::find_by_id(queue_id, &*self.repo.db_pool).await?)
+        pool: DbPool,
+    ) -> Result<Vec<MemberSignedResult>, crate::Error> {
+        let mut result = vec![];
+
+        let mut users = PermissionUserDao::find_by_permission(permission_id, pool.as_ref()).await?;
+
+        for user in users.iter_mut() {
+            let mut sign_result =
+                MemberSignedResult::new("", &user.address, user.is_self as i8, user.weight);
+
+            // 获取签名的结果
+            let sign =
+                MultisigSignatureDaoV1::find_signature(queue_id, &user.address, pool.as_ref())
+                    .await?;
+            if let Some(sign) = sign {
+                sign_result.singed = sign.status;
+                sign_result.signature = sign.signature;
+            }
+            result.push(sign_result);
+        }
+        Ok(result)
     }
 
     pub async fn create_or_update_sign(
@@ -182,61 +185,100 @@ impl MultisigQueueRepo {
 
     // 未执行的交易修改状态(根据签名,数量)
     pub async fn sync_sign_status(
-        queue_id: &str,
-        account_id: &str,
-        threshold: i32,
+        queue: &MultisigQueueEntity,
         status: i8,
         pool: crate::DbPool,
     ) -> Result<(), crate::Error> {
         let status = MultisigQueueStatus::from_i8(status);
 
-        if status != MultisigQueueStatus::Fail
-            && status != MultisigQueueStatus::Success
-            && status != MultisigQueueStatus::InConfirmation
-        {
-            // fetch all member sign result
-            let signature_result =
-                MultisigQueueRepo::member_signed_result(account_id, queue_id, pool.clone()).await?;
+        if !status.need_sync_status() {
+            return Ok(());
+        }
 
-            // first check self sign completed
-            let mut status = MultisigQueueStatus::HasSignature;
-            let mut remain_num = 0;
-            let mut apporved_num = 0;
+        // 多签的账号或者权限的账号
+        let status = if !queue.account_id.is_empty() {
+            MultisigQueueRepo::compute_status_by_account(&queue, &pool).await?
+        } else {
+            MultisigQueueRepo::compute_status_by_permission(&queue, &pool).await?
+        };
 
-            for sign in signature_result {
-                if sign.is_self == 1 && sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
-                    status = MultisigQueueStatus::PendingSignature;
-                }
-
-                // 剩余未签名的数量
-                if sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
-                    remain_num += 1;
-                }
-
-                // 已经同意签名的数量
-                if sign.singed == MultisigSignatureStatus::Approved.to_i8() {
-                    apporved_num += 1;
-                }
+        match status {
+            MultisigQueueStatus::Fail => {
+                MultisigQueueDaoV1::update_fail(&queue.id, SIGN_FAILED, pool.as_ref()).await?
             }
-
-            if apporved_num >= threshold {
-                status = MultisigQueueStatus::PendingExecution;
-            } else {
-                // 如果剩余的未签名数量 + 同意签名的数量 < 阈值 则这个交易队列失败
-                if remain_num + apporved_num < threshold {
-                    return Ok(MultisigQueueDaoV1::update_fail(
-                        queue_id,
-                        SIGN_FAILED,
-                        pool.as_ref(),
-                    )
-                    .await?);
-                }
-            }
-
-            MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?;
+            _ => MultisigQueueDaoV1::update_status(&queue.id, status, pool.as_ref()).await?,
         }
 
         Ok(())
+    }
+
+    // 根据多签账号计算队列里面的状态
+    async fn compute_status_by_account(
+        queue: &MultisigQueueEntity,
+        pool: &DbPool,
+    ) -> Result<MultisigQueueStatus, crate::Error> {
+        let account = MultisigAccountDaoV1::find_by_id(&queue.account_id, pool.as_ref())
+            .await?
+            .ok_or(crate::DatabaseError::ReturningNone)?;
+
+        // fetch all member sign result
+        let signed =
+            MultisigQueueRepo::member_signed_result(&queue.account_id, &queue.id, pool.clone())
+                .await?;
+
+        Ok(Self::compute_status(signed, account.threshold as i64))
+    }
+
+    fn compute_status(signed: Vec<MemberSignedResult>, threshold: i64) -> MultisigQueueStatus {
+        let mut status = MultisigQueueStatus::HasSignature;
+        let mut remain_num = 0;
+        let mut apporved_num = 0;
+
+        for sign in signed {
+            if sign.is_self == 1 && sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
+                status = MultisigQueueStatus::PendingSignature;
+            }
+
+            // 剩余未签名的数量
+            if sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
+                remain_num += sign.weight;
+            }
+
+            // 已经同意签名的数量
+            if sign.singed == MultisigSignatureStatus::Approved.to_i8() {
+                apporved_num += sign.weight;
+            }
+        }
+
+        if apporved_num >= threshold {
+            status = MultisigQueueStatus::PendingExecution;
+        } else {
+            // 如果剩余的未签名数量 + 同意签名的数量 < 阈值 则这个交易队列失败
+            if remain_num + apporved_num < threshold {
+                status = MultisigQueueStatus::Fail;
+            }
+        }
+        status
+    }
+
+    async fn compute_status_by_permission(
+        queue: &MultisigQueueEntity,
+        pool: &DbPool,
+    ) -> Result<MultisigQueueStatus, crate::Error> {
+        let permission = PermissionDao::find_by_id(&queue.permission_id, false, pool.as_ref())
+            .await?
+            .ok_or(crate::DatabaseError::ReturningNone)?;
+
+        // fetch all user sign result
+        let signed = MultisigQueueRepo::signed_result(
+            &queue.id,
+            &queue.account_id,
+            &queue.permission_id,
+            pool.clone(),
+        )
+        .await?;
+
+        Ok(Self::compute_status(signed, permission.threshold))
     }
 
     pub async fn self_member_account_id(
@@ -254,10 +296,10 @@ impl MultisigQueueRepo {
     }
 
     pub async fn get_signed_list(
-        &mut self,
+        pool: &DbPool,
         queue_id: &str,
     ) -> Result<MultisigSignatureEntities, crate::Error> {
-        Ok(MultisigSignatureDaoV1::get_signed_list(queue_id, &*self.repo.db_pool).await?)
+        Ok(MultisigSignatureDaoV1::get_signed_list(queue_id, pool.as_ref()).await?)
     }
 
     pub async fn update_status_and_hash(
@@ -291,14 +333,16 @@ impl MultisigQueueRepo {
         ))
     }
 
+    pub async fn permision_update_fail(address: &str, pool: &DbPool) -> Result<(), crate::Error> {
+        Ok(MultisigQueueDaoV1::permission_fail(address, pool.as_ref()).await?)
+    }
+
     pub async fn ongoing_queue(
-        &mut self,
         chain_code: &str,
         address: &str,
+        pool: &DbPool,
     ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
-        let queue =
-            MultisigQueueDaoV1::ongoing_queue(self.repo.db_pool.as_ref(), chain_code, address)
-                .await?;
+        let queue = MultisigQueueDaoV1::ongoing_queue(pool.as_ref(), chain_code, address).await?;
         Ok(queue)
     }
 }

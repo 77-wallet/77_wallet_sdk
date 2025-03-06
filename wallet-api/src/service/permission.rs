@@ -360,7 +360,6 @@ impl PermssionService {
 
         self.build_args(&mut args, &types, &req, Some(&mut backend_params))?;
 
-        tracing::warn!("{:#?}", args);
         // 这个地址所有权限的用户集合
         let mut new_users = HashSet::new();
         for item in args.actives.iter() {
@@ -376,8 +375,6 @@ impl PermssionService {
         backend_params.hash = tx_hash.clone();
         backend_params.grantor_addr = req.grantor_addr.clone();
         backend_params.back_user = new_users.into_iter().collect();
-
-        tracing::warn!("{:#?}", backend_params);
 
         // 上报后端
         self.upload_backend(backend_params).await?;
@@ -447,7 +444,8 @@ impl PermssionService {
 
         tracing::warn!("{:#?}", backend_params);
 
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params)).await?;
+        MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params), None)
+            .await?;
 
         Ok(resp.tx_hash)
     }

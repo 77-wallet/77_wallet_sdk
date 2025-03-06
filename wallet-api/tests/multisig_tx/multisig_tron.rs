@@ -1,5 +1,8 @@
-use crate::multisig_tx::get_manager;
-use wallet_api::{response_vo::transaction::TransferParams, MemberVo};
+use wallet_api::{
+    request::transaction::Signer, response_vo::transaction::TransferParams, MemberVo,
+};
+
+use crate::get_manager;
 
 #[tokio::test]
 async fn test_create_multisig_account() {
@@ -60,8 +63,14 @@ async fn test_create_transfer() {
     let manager = get_manager().await;
 
     let password = "123456".to_string();
+
+    let signer = Signer {
+        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        permission_id: 2,
+    };
+
     let params = TransferParams {
-        from: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_owned(),
+        from: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_owned(),
         to: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_owned(),
         value: "1".to_owned(),
         expiration: Some(2),
@@ -69,7 +78,7 @@ async fn test_create_transfer() {
         symbol: "TRX".to_owned(),
         notes: Some("salary".to_string()),
         spend_all: false,
-        signer: None,
+        signer: Some(signer),
     };
 
     // 创建交易
@@ -83,7 +92,7 @@ async fn test_queue_list() {
     let manager = get_manager().await;
 
     // 列表
-    let res = manager.multisig_queue_list(None, None, 2, 0, 10).await;
+    let res = manager.multisig_queue_list(None, None, 3, 0, 10).await;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("queue list = {}", res);
 }
@@ -104,7 +113,7 @@ async fn test_queue_info() {
 async fn test_sign_transaction() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "209826970702319616".to_owned();
+    let queue_id = "236256927787651072".to_owned();
     let status = 1;
     let password = "123456".to_string();
     let sign = wallet_manager
@@ -130,7 +139,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "227595022416089088".to_string();
+    let id = "236256927787651072".to_string();
 
     let password = "123456".to_string();
     let fee = None;
@@ -158,7 +167,7 @@ async fn test_check_ongoing() {
 async fn test_cancel_queue() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "209856963415248896".to_string();
+    let queue_id = "236235581254930432".to_string();
     let rs = wallet_manager.cancel_queue(queue_id).await;
 
     tracing::info!("res {}", serde_json::to_string(&rs).unwrap());

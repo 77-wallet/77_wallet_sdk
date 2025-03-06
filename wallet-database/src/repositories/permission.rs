@@ -195,4 +195,25 @@ impl PermissionRepo {
 
         Ok(())
     }
+
+    pub async fn find_by_id(pool: &DbPool, id: &str) -> Result<PermissionEntity, crate::Error> {
+        let rs = PermissionDao::find_by_id(id, false, pool.as_ref())
+            .await?
+            .ok_or(crate::DatabaseError::ReturningNone)?;
+        Ok(rs)
+    }
+
+    pub async fn find_option(
+        pool: &DbPool,
+        id: &str,
+    ) -> Result<Option<PermissionEntity>, crate::Error> {
+        Ok(PermissionDao::find_by_id(id, false, pool.as_ref()).await?)
+    }
+
+    pub async fn self_user(
+        pool: &DbPool,
+        permission_id: &str,
+    ) -> Result<Vec<PermissionUserEntity>, crate::Error> {
+        Ok(PermissionUserDao::self_users(permission_id, pool.as_ref()).await?)
+    }
 }

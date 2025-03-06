@@ -55,11 +55,7 @@ impl MultisigMemberDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let query = r#"
-            SELECT *
-            FROM multisig_member
-            WHERE account_id =?
-        "#;
+        let query = r#"SELECT * FROM multisig_member WHERE account_id =?"#;
 
         let res = sqlx::query_as::<_, MultisigMemberEntity>(query)
             .bind(account_id)

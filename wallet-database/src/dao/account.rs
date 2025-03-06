@@ -1,7 +1,5 @@
-use sqlx::{Executor, Sqlite};
-use wallet_types::constant::chain_code;
-
 use crate::entities::account::{AccountEntity, AccountWalletMapping, CreateAccountVo};
+use sqlx::{Executor, Sqlite};
 
 impl AccountEntity {
     pub async fn upsert_multi_account<'a, E>(

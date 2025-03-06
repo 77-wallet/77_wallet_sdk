@@ -1534,7 +1534,7 @@ impl StackService {
         )
         .await?;
 
-        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None).await?;
+        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, None).await?;
         Ok(resp.tx_hash)
     }
 }

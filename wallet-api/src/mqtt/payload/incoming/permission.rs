@@ -10,7 +10,7 @@ use wallet_database::{
         permission::{PermissionEntity, PermissionWithuserEntity},
         permission_user::PermissionUserEntity,
     },
-    repositories::permission::PermissionRepo,
+    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
     DbPool,
 };
 use wallet_types::constant::chain_code;
@@ -108,7 +108,10 @@ impl PermissionAccept {
 
         // 判断当前的事件是否是删除(删除需要同步所有的权限数据)
         if self.current.types == PermissionReq::DELETE {
-            self.recover_all_old_permission(pool, &account).await?;
+            self.recover_all_old_permission(pool.clone(), &account)
+                .await?;
+
+            MultisigQueueRepo::permision_update_fail(&self.grantor_addr, &pool).await?;
         } else {
             let address = &self.grantor_addr;
             let permissions =
@@ -194,7 +197,7 @@ impl PermissionAccept {
             PermissionRepo::update_permission(&pool, &permissions.permission).await?;
         }
 
-        // TODO 是否需要把进行中的队列删除
+        MultisigQueueRepo::permision_update_fail(&self.grantor_addr, &pool).await?;
         Ok(())
     }
 

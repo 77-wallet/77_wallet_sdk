@@ -57,6 +57,23 @@ impl PermissionUserDao {
         Ok(result)
     }
 
+    pub async fn self_users<'a, E>(
+        permission_id: &str,
+        exec: E,
+    ) -> Result<Vec<PermissionUserEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"select * from permission_user where permission_id = ? and is_self = 1"#;
+
+        let result = sqlx::query_as::<_, PermissionUserEntity>(&sql)
+            .bind(permission_id)
+            .fetch_all(exec)
+            .await?;
+
+        Ok(result)
+    }
+
     pub async fn delete_by_permission<'a, E>(
         permission_id: &str,
         exec: E,

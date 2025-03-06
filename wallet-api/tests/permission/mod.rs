@@ -106,10 +106,10 @@ async fn test_up_permision() {
             address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
             weight: 1,
         },
-        // KeysReq {
-        //     address: "TRC4h5pHsz8zKDGdHR28GtZvAMNXCsbKRu".to_string(),
-        //     weight: 1,
-        // },
+        KeysReq {
+            address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+            weight: 1,
+        },
         // KeysReq {
         //     address: "TDVayp1uF6CD3NGT1ZR4SJcxot5VQHQNtY".to_string(),
         //     weight: 1,
@@ -120,7 +120,7 @@ async fn test_up_permision() {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         name: "final".to_string(),
         active_id: Some(2),
-        threshold: 1,
+        threshold: 2,
         operations: vec![1, 54, 55],
         keys,
     };
@@ -164,10 +164,16 @@ async fn test_del_permission() {
 async fn test_build_multisig_queue() {
     let wallet_manager = get_manager().await;
 
-    let keys = vec![KeysReq {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        weight: 1,
-    }];
+    let keys = vec![
+        KeysReq {
+            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+            weight: 1,
+        },
+        KeysReq {
+            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+            weight: 1,
+        },
+    ];
 
     let req = PermissionReq {
         grantor_addr: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
@@ -184,7 +190,9 @@ async fn test_build_multisig_queue() {
         .build_multisig_queue(req, "new".to_string(), password, expiration)
         .await;
 
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+
+    loop {}
 }
 
 #[tokio::test]

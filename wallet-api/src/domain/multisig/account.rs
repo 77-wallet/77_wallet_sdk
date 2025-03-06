@@ -188,6 +188,7 @@ impl MultisigDomain {
                 return Ok(());
             }
         }
+
         let mut flag = false;
         // handle deploy status
         if !data.account.deploy_hash.is_empty()

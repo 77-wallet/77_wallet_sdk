@@ -351,7 +351,7 @@ impl NewBillEntity {
         }
     }
 
-    pub fn new_signed_bill(hash: String, from: String, chain_code: String, symbol: String) -> Self {
+    pub fn new_signed_bill(hash: String, from: String, chain_code: String) -> Self {
         // TODO 现在sol 链默认确认中的手续费 0.000005
         Self {
             hash,
@@ -359,7 +359,7 @@ impl NewBillEntity {
             to: "".to_string(),
             token: None,
             chain_code,
-            symbol,
+            symbol: "SOL".to_string(),
             status: 1,
             value: 0.0,
             transaction_fee: "0.000005".to_string(),

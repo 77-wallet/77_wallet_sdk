@@ -3,33 +3,41 @@ use crate::{
         self,
         bill::BillDomain,
         chain::{adapter::MultisigAdapter, transaction::ChainTransaction},
-        multisig::MultisigDomain,
     },
-    infrastructure::task_queue::{self, BackendApiTaskData},
-    mqtt::payload::incoming::transaction::MultiSignTransAccept,
+    infrastructure::task_queue::{self, BackendApiTask, BackendApiTaskData, Task, Tasks},
+    mqtt::payload::incoming::transaction::{
+        MultiSignTransAccept, MultiSignTransAcceptCompleteMsgBody,
+    },
+    response_vo::multisig_transaction::ExtraData,
 };
+use serde_json::json;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
-    dao::{multisig_member::MultisigMemberDaoV1, multisig_queue::MultisigQueueDaoV1},
+    dao::{
+        multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
+        multisig_queue::MultisigQueueDaoV1,
+    },
     entities::{
         account::{AccountEntity, QueryReq},
         multisig_account::MultisigAccountEntity,
         multisig_queue::{
-            MultisigQueueData, MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity,
+            MultisigQueueData, MultisigQueueEntity, MultisigQueueSimpleEntity, MultisigQueueStatus,
+            NewMultisigQueueEntity,
         },
         multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
         permission::PermissionWithuserEntity,
         wallet::WalletEntity,
     },
-    repositories::multisig_queue::MultisigQueueRepo,
+    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
     DbPool,
 };
 use wallet_transport_backend::{
-    api::permission::PermissionAcceptReq, consts::endpoint, request::SignedTranCreateReq,
+    api::permission::PermissionAcceptReq,
+    consts::endpoint,
+    request::{PermissionData, SignedTranAcceptReq, SignedTranCreateReq},
 };
-
-use super::account;
+use wallet_utils::serde_func;
 
 pub struct MultisigQueueDomain;
 impl MultisigQueueDomain {
@@ -158,7 +166,6 @@ impl MultisigQueueDomain {
     ) -> Result<(), crate::ServiceError> {
         let MultisigQueueData { queue, signatures } = data;
         let id = queue.id.clone();
-        let account_id = queue.account_id.clone();
 
         // 构建交易数据
         let mut params = NewMultisigQueueEntity::from(queue).check_expiration();
@@ -183,18 +190,8 @@ impl MultisigQueueDomain {
             params = params.with_signatures(signature);
         }
 
-        MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut params).await?;
-
-        let multisig_account = MultisigDomain::account_by_id(&account_id, pool.clone()).await?;
-
-        MultisigQueueRepo::sync_sign_status(
-            &id,
-            &account_id,
-            multisig_account.threshold,
-            params.status.to_i8(),
-            pool.clone(),
-        )
-        .await?;
+        let queue = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut params).await?;
+        MultisigQueueRepo::sync_sign_status(&queue, params.status.to_i8(), pool.clone()).await?;
 
         if report {
             Self::update_raw_data(&id, pool.clone()).await?;
@@ -374,6 +371,7 @@ impl MultisigQueueDomain {
         queue_id: String,
         pool: &DbPool,
         backend_params: Option<PermissionAcceptReq>,
+        opt_data: Option<PermissionData>,
     ) -> Result<(), crate::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone()).await?;
 
@@ -384,8 +382,9 @@ impl MultisigQueueDomain {
             address: raw_data.queue.from_addr.clone(),
             chain_code: raw_data.queue.chain_code.clone(),
             tx_str: wallet_utils::serde_func::serde_to_string(&accept_params)?,
-            raw_data: raw_data.to_json_value()?,
+            raw_data: raw_data.to_string()?,
             tx_kind: raw_data.queue.transfer_type as i8,
+            permission_data: opt_data,
         };
 
         let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
@@ -406,6 +405,38 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
+    pub async fn upload_queue_sign(
+        queue_id: &str,
+        pool: DbPool,
+        signed: Vec<NewSignatureEntity>,
+        status: MultisigSignatureStatus,
+    ) -> Result<(), crate::ServiceError> {
+        let tx_str = signed
+            .iter()
+            .map(|i| i.into())
+            .collect::<Vec<MultiSignTransAcceptCompleteMsgBody>>();
+        let accept_address = signed.iter().map(|v| v.address.clone()).collect();
+
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
+            .await?
+            .to_string()?;
+        let req = SignedTranAcceptReq {
+            withdraw_id: queue_id.to_string(),
+            tx_str: json!(tx_str),
+            accept_address,
+            status: status.to_i8(),
+            raw_data,
+        };
+
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_TRAN_ACCEPT.to_string(),
+            body: serde_func::serde_to_value(&req)?,
+        }));
+        Tasks::new().push(task).send().await?;
+
+        Ok(())
+    }
+
     // 过期时间 小时转换为秒
     pub fn sub_expiration(expiration: i64) -> i64 {
         if expiration == 24 {
@@ -413,5 +444,26 @@ impl MultisigQueueDomain {
         } else {
             expiration * 3600
         }
+    }
+
+    pub async fn handle_queue_extra(
+        queue: &MultisigQueueSimpleEntity,
+        pool: &DbPool,
+    ) -> Result<Option<ExtraData>, crate::ServiceError> {
+        if !queue.account_id.is_empty() {
+            let account =
+                MultisigAccountDaoV1::find_by_id(&queue.account_id, pool.as_ref()).await?;
+            if let Some(account) = account {
+                return Ok(Some(ExtraData::from(account)));
+            }
+        } else {
+            let permission = PermissionRepo::find_option(pool, &queue.permission_id).await?;
+
+            if let Some(permission) = permission {
+                return Ok(Some(ExtraData::from(permission)));
+            };
+        }
+
+        Ok(None)
     }
 }

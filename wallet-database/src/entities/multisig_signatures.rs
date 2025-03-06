@@ -31,6 +31,10 @@ impl MultisigSignatureEntities {
             .iter()
             .any(|s| s.address == address && s.status == MultisigSignatureStatus::Approved.to_i8())
     }
+
+    pub fn need_signed_num(&self, threshold: usize) -> usize {
+        (threshold as usize - self.0.len()).max(0)
+    }
 }
 
 #[derive(Clone, Debug, Copy, serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]

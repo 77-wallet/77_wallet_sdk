@@ -50,15 +50,14 @@ impl MultiSignTransAcceptCompleteMsg {
                     .await
                     .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-            if let Some(account) = account {
-                MultisigQueueRepo::sync_sign_status(
-                    &item.queue_id,
-                    &account.account_id,
-                    account.threshold,
-                    account.status,
-                    pool.clone(),
-                )
-                .await?;
+            // TODO
+            let queue = MultisigQueueDaoV1::find_by_id(&item.queue_id, pool.as_ref())
+                .await
+                .unwrap()
+                .unwrap();
+
+            if let Some(_account) = account {
+                MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
             }
         }
 

@@ -127,14 +127,7 @@ impl MultiSignTransAccept {
                 .map_err(crate::ServiceError::Database)?
         {
             // 同步签名的状态
-            MultisigQueueRepo::sync_sign_status(
-                id,
-                account_id,
-                multisig_account.threshold,
-                _res.status,
-                pool,
-            )
-            .await?;
+            MultisigQueueRepo::sync_sign_status(&_res, _res.status, pool).await?;
 
             // 系统通知
             let notification = Notification::new_confirmation_notification(
