@@ -332,7 +332,7 @@ impl PermssionService {
                 }
             }
             _ => Err(crate::BusinessError::Permisison(
-                crate::PermissionError::UnSupportOpType,
+                crate::PermissionError::UnSupportOpType(types.to_string()),
             ))?,
         }
     }

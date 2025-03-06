@@ -55,7 +55,7 @@ async fn test_add_permission_fee() {
 
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "转账、质押".to_string(),
+        name: "转账、质押,12".to_string(),
         active_id: None,
         threshold: 1,
         operations: vec![1, 2, 3, 5],
@@ -81,10 +81,10 @@ async fn test_add_permission() {
 
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "新增权限".to_string(),
+        name: "新增权hah限".to_string(),
         active_id: None,
         threshold: 1,
-        operations: vec![1, 2, 3, 6],
+        operations: vec![0, 2, 5, 12, 16, 48, 58],
         keys,
     };
     let password = "123456".to_string();
