@@ -1,8 +1,17 @@
-use wallet_database::repositories::{
-    account::AccountRepoTrait, chain::ChainRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
+use wallet_database::{
+    entities::{
+        config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
+        device::DeviceEntity,
+    },
+    repositories::{
+        account::AccountRepoTrait, chain::ChainRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
+    },
 };
+use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
 
 use crate::request::wallet::ResetRootReq;
+
+use super::app::config::ConfigDomain;
 
 const DEFAULT_SALT: &str = "salt";
 
@@ -30,138 +39,288 @@ impl WalletDomain {
         Ok(encrypted_password)
     }
 
-    pub(crate) fn validate_password(
-        device: &wallet_database::entities::device::DeviceEntity,
-        password: &str,
-    ) -> Result<(), crate::ServiceError> {
-        let encrypted_password = Self::encrypt_password(password, &device.sn)?;
+    pub(crate) async fn validate_password(password: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let Some(pw) = &device.password else {
-            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
+        let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        if pw != &encrypted_password {
-            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
+        if device.password.is_none() {
+            let dirs = crate::Context::get_global_dirs()?;
+
+            let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+            let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+            if let Err(e) = wallet_tree
+                .io()
+                .load_custom(&dirs.root_dir, "verify", password)
+            {
+                return Err(
+                    crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
+                );
+            }
+        } else {
+            WalletDomain::upgrade_algorithm(password).await?;
         }
+
+        // let encrypted_password = Self::encrypt_password(password, &device.sn)?;
+
+        // let Some(pw) = &device.password else {
+        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
+        // };
+
+        // if pw != &encrypted_password {
+        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
+        // }
         Ok(())
     }
 
-    pub(crate) fn get_seed_wallet(
+    pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), crate::ServiceError> {
+        // let mut tx = self.repo;
+        // let wallet = WalletRepoTrait::get_wallet_by_address(&mut tx, wallet_address).await?;
+        // if wallet.is_none() {
+        //     return Err(crate::BusinessError::Wallet(crate::WalletError::NotFound).into());
+        // }
+        let dirs = crate::manager::Context::get_global_dirs()?;
+        // let wallet_tree =
+        // wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+        let mut legacy_wallet_tree = WalletTreeStrategy::V1.get_wallet_tree(&dirs.wallet_dir)?;
+
+        #[derive(Debug, Clone, Eq, PartialEq, Hash)]
+        pub struct AccountInfo {
+            pub wallet_address: String,
+            pub address: String,
+            pub chain_code: String,
+            pub derivation_path: String,
+        }
+
+        // 将子密钥全部读取出来
+        let mut data = std::collections::HashMap::<AccountInfo, Vec<u8>>::new();
+        for (k, v) in legacy_wallet_tree.iter() {
+            for account in v.get_accounts().into_iter() {
+                let subs_dir = dirs.get_subs_dir(k)?;
+
+                let address = account.get_address();
+                let chain_code = account.chain_code().unwrap_or_default();
+                let derivation_path = account.derivation_path().unwrap_or_default();
+
+                let naming = legacy_wallet_tree.naming();
+                let pk = legacy_wallet_tree.io().load(
+                    naming,
+                    None,
+                    address,
+                    &chain_code,
+                    &derivation_path,
+                    &subs_dir,
+                    password,
+                )?;
+
+                data.insert(
+                    AccountInfo {
+                        wallet_address: k.to_string(),
+                        address: address.to_string(),
+                        chain_code,
+                        derivation_path,
+                    },
+                    pk,
+                );
+            }
+        }
+
+        tracing::info!("data: {data:#?}");
+        let modern_wallet_tree = WalletTreeStrategy::V2.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        // let wallet_tr
+        wallet_tree.io().store(
+            "verify",
+            &"data",
+            &dirs.root_dir,
+            password,
+            wallet_tree::KdfAlgorithm::Argon2id,
+        )?;
+
+        for (info, d) in data {
+            let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
+                &info.derivation_path,
+            )?;
+            let account_index_map =
+                wallet_utils::address::AccountIndexMap::from_account_id(hd_path.get_account_id()?)?;
+            let subs_dir = dirs.get_subs_dir(&info.wallet_address)?;
+            let naming = modern_wallet_tree.naming();
+
+            modern_wallet_tree.io().store_subkey(
+                naming,
+                &account_index_map,
+                &info.address,
+                &info.chain_code,
+                &info.derivation_path,
+                &d,
+                &subs_dir,
+                password,
+                wallet_tree::KdfAlgorithm::Argon2id,
+            )?;
+            legacy_wallet_tree.delete_subkey(
+                &info.wallet_address,
+                &info.address,
+                &info.chain_code.as_str(),
+                &subs_dir,
+                password,
+            )?;
+        }
+
+        let keystore_kdf_algorithm = wallet_database::entities::config::KeystoreKdfAlgorithm {
+            keystore_kdf_algorithm: KdfAlgorithm::Argon2id,
+        };
+        let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
+            wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V2,
+        };
+        ConfigDomain::set_config(
+            KEYSTORE_KDF_ALGORITHM,
+            &keystore_kdf_algorithm.to_json_str()?,
+        )
+        .await?;
+        ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
+            .await?;
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        DeviceEntity::update_password(&*pool, None).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn get_seed(
         dirs: &crate::manager::Dirs,
         wallet_address: &str,
         wallet_password: &str,
-    ) -> Result<wallet_keystore::wallet::seed::SeedWallet, crate::ServiceError> {
+    ) -> Result<Vec<u8>, crate::ServiceError> {
         let root_dir = dirs.get_root_dir(wallet_address)?;
-        Ok(wallet_keystore::Keystore::load_seed_keystore(
-            wallet_address,
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        Ok(wallet_tree::api::KeystoreApi::load_seed(
+            &wallet_tree,
             &root_dir,
+            wallet_address,
             wallet_password,
         )?)
     }
 
-    pub(crate) async fn reset_root(
-        &self,
-        repo: &mut ResourcesRepo,
-        root_dir: std::path::PathBuf,
-        subs_dir: std::path::PathBuf,
-        wallet_tree: wallet_tree::wallet_tree::WalletTree,
-        private_key: Vec<u8>,
-        seed: Vec<u8>,
-        req: ResetRootReq,
-    ) -> Result<(), crate::ServiceError> {
-        // todo!()
-        let ResetRootReq {
-            language_code,
-            phrase,
-            salt,
-            wallet_address,
-            new_password,
-            subkey_password,
-        } = req;
+    // #[deprecated]
+    // pub(crate) async fn reset_root(
+    //     &self,
+    //     repo: &mut ResourcesRepo,
+    //     root_dir: std::path::PathBuf,
+    //     subs_dir: std::path::PathBuf,
+    //     mut wallet_tree: Box<dyn wallet_tree::wallet_tree::WalletTreeOps>,
+    //     private_key: Vec<u8>,
+    //     seed: Vec<u8>,
+    //     req: ResetRootReq,
+    // ) -> Result<(), crate::ServiceError> {
+    //     // todo!()
+    //     let ResetRootReq {
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //         wallet_address,
+    //         new_password,
+    //         subkey_password,
+    //     } = req;
 
-        // Parse the provided address
+    //     // Parse the provided address
 
-        let alloy_wallet_address = wallet_address
-            .parse::<alloy::primitives::Address>()
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    //     let alloy_wallet_address = wallet_address
+    //         .parse::<alloy::primitives::Address>()
+    //         .map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
-        // Verify that the provided mnemonic phrase and salt generate the expected address
-        // TODO:
-        wallet_keystore::api::KeystoreApi::check_wallet_address(
-            language_code,
-            &phrase,
-            &salt,
-            wallet_chain_instance::instance::Address::EthAddress(alloy_wallet_address),
-            // None,
-            // Some(ChainCode::Eth),
-        )
-        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    //     // Verify that the provided mnemonic phrase and salt generate the expected address
+    //     // TODO:
+    //     wallet_keystore::api::KeystoreApi::check_wallet_address(
+    //         language_code,
+    //         &phrase,
+    //         &salt,
+    //         wallet_chain_instance::instance::Address::EthAddress(alloy_wallet_address),
+    //         // None,
+    //         // Some(ChainCode::Eth),
+    //     )
+    //     .map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
-        // Clear any existing keystore at the storage path
-        wallet_utils::file_func::recreate_dir_all(&root_dir)?;
+    //     // Clear any existing keystore at the storage path
+    //     wallet_utils::file_func::recreate_dir_all(&root_dir)?;
 
-        // Create a new root keystore with the new password
-        wallet_keystore::api::KeystoreApi::initialize_root_keystore(
-            &wallet_address,
-            &private_key,
-            &seed,
-            &phrase,
-            &root_dir,
-            &new_password,
-            // name,
-        )?;
+    //     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+    //     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        if subs_dir.exists() {
-            if let Some(subkey_password) = subkey_password {
-                // Retrieve the wallet branch for the specified wallet
-                let wallet = wallet_tree
-                    .get_wallet_branch(&wallet_address.to_string())
-                    .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-                let root_info = &wallet.root_info;
+    //     let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+    //     // Create a new root keystore with the new password
+    //     wallet_keystore::api::KeystoreApi::initialize_root_keystore(
+    //         wallet_tree,
+    //         &wallet_address,
+    //         &private_key,
+    //         &seed,
+    //         &phrase,
+    //         &root_dir,
+    //         &new_password,
+    //         algorithm, // name,
+    //     )?;
 
-                let seed_wallet = wallet_keystore::Keystore::load_seed_keystore(
-                    &root_info.address.to_string(),
-                    &root_dir,
-                    &new_password,
-                )?;
+    //     let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+    //     if subs_dir.exists() {
+    //         if let Some(subkey_password) = subkey_password {
+    //             // Retrieve the wallet branch for the specified wallet
+    //             let wallet = wallet_tree
+    //                 .get_wallet_branch(&wallet_address.to_string())
+    //                 .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    //             let root_info = &wallet.get_root();
 
-                let seed = seed_wallet.seed;
-                // let keypair = instance.gen_keypair(&seed, index)?;
+    //             let seed = wallet_keystore::api::KeystoreApi::load_seed(
+    //                 &wallet_tree,
+    //                 &root_dir,
+    //                 root_info.get_address(),
+    //                 &new_password,
+    //             )?;
 
-                for info in wallet.accounts.iter() {
-                    // TODO:
-                    let account = repo
-                        .detail_by_address_and_chain_code(
-                            &info.address,
-                            &info.chain_code.to_string(),
-                        )
-                        .await?;
-                    if let Some(account) = account
-                        && let Some(chain) = repo.detail_with_node(&account.chain_code).await?
-                    {
-                        let instance = wallet_chain_instance::instance::ChainObject::new(
-                            &account.chain_code,
-                            account.address_type(),
-                            chain.network.as_str().into(),
-                        )?;
-                        wallet_keystore::api::KeystoreApi::initialize_child_keystore(
-                            &instance,
-                            &seed,
-                            &info.derivation_path,
-                            subs_dir.to_string_lossy().to_string().as_str(),
-                            &subkey_password,
-                        )?;
-                    }
-                }
-            } else {
-                wallet_tree
-                    .deprecate_subkeys(alloy_wallet_address, subs_dir)
-                    .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-            }
-        }
+    //             // let keypair = instance.gen_keypair(&seed, index)?;
 
-        Ok(())
-    }
+    //             for info in wallet.accounts.iter() {
+    //                 // TODO:
+    //                 let account = repo
+    //                     .detail_by_address_and_chain_code(
+    //                         &info.address,
+    //                         &info.chain_code.to_string(),
+    //                     )
+    //                     .await?;
+    //                 if let Some(account) = account
+    //                     && let Some(chain) = repo.detail_with_node(&account.chain_code).await?
+    //                 {
+    //                     let instance = wallet_chain_instance::instance::ChainObject::new(
+    //                         &account.chain_code,
+    //                         account.address_type(),
+    //                         chain.network.as_str().into(),
+    //                     )?;
+    //                     wallet_keystore::api::KeystoreApi::initialize_child_keystore(
+    //                         &instance,
+    //                         &seed,
+    //                         &info.derivation_path,
+    //                         subs_dir.to_string_lossy().to_string().as_str(),
+    //                         &subkey_password,
+    //                         algorithm.to_owned(),
+    //                     )?;
+    //                 }
+    //             }
+    //         } else {
+    //             wallet_tree
+    //                 .as_mut()
+    //                 .deprecate_subkeys(&alloy_wallet_address.to_string(), subs_dir)
+    //                 .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    //         }
+    //     }
+
+    //     Ok(())
+    // }
 
     pub(crate) async fn restart_existing_wallet(
         &self,

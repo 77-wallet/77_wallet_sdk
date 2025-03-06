@@ -80,29 +80,29 @@ impl crate::WalletManager {
             .into()
     }
 
-    /// Recovers a subkey associated with a given wallet name and address.
-    ///
-    /// This function attempts to recover a subkey by performing the following steps:
-    /// 1. Retrieves the path to the subkeys directory for the specified wallet.
-    /// 2. Traverses the directory structure to get the wallet tree.
-    /// 3. Calls the `recover_subkey` function from the wallet manager handler to perform the recovery.
-    ///
-    /// # Arguments
-    ///
-    /// * `wallet_name` - A `String` specifying the name of the wallet.
-    /// * `address` - A `String` specifying the address associated with the subkey.
-    ///
-    /// # Returns
-    ///
-    /// * `Response<()>` - A response indicating the success or failure of the operation.
-    pub fn recover_subkey(&self, wallet_name: &str, address: &str) -> ReturnType<()> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+    // /// Recovers a subkey associated with a given wallet name and address.
+    // ///
+    // /// This function attempts to recover a subkey by performing the following steps:
+    // /// 1. Retrieves the path to the subkeys directory for the specified wallet.
+    // /// 2. Traverses the directory structure to get the wallet tree.
+    // /// 3. Calls the `recover_subkey` function from the wallet manager handler to perform the recovery.
+    // ///
+    // /// # Arguments
+    // ///
+    // /// * `wallet_name` - A `String` specifying the name of the wallet.
+    // /// * `address` - A `String` specifying the address associated with the subkey.
+    // ///
+    // /// # Returns
+    // ///
+    // /// * `Response<()>` - A response indicating the success or failure of the operation.
+    // pub fn recover_subkey(&self, wallet_name: &str, address: &str) -> ReturnType<()> {
+    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    //     let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AccountService::new(repo)
-            .recover_subkey(wallet_name, address)?
-            .into()
-    }
+    //     AccountService::new(repo)
+    //         .recover_subkey(wallet_name, address)?
+    //         .into()
+    // }
 
     pub async fn get_account_private_key(
         &self,
@@ -147,12 +147,13 @@ impl crate::WalletManager {
         &self,
         wallet_address: &str,
         account_id: u32,
+        password: &str,
     ) -> ReturnType<()> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo)
-            .physical_delete_account(wallet_address, account_id)
+            .physical_delete_account(wallet_address, account_id, password)
             .await?
             .into()
     }
@@ -206,7 +207,7 @@ mod test {
         let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
         let account = wallet_manager
-            .get_account_private_key(password, "0xA575b273D948F896c122E9450286aBC3A813E7D4", 1)
+            .get_account_private_key(password, "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406", 2)
             .await;
         tracing::info!("[get_account_private_key] account: {account:?}");
 
@@ -264,10 +265,11 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let account_id = 1;
-        let wallet_address = "0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F";
+        let account_id = 2;
+        let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
+        let password = "q1111111";
         let account = wallet_manager
-            .physical_delete_account(wallet_address, account_id)
+            .physical_delete_account(wallet_address, account_id, password)
             .await;
         tracing::info!("[test_] test_physical_delete_account: {account:?}");
 

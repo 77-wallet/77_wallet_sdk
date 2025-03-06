@@ -13,7 +13,7 @@ use wallet_types::chain::{
 };
 
 use crate::{
-    domain::{self, account::AccountDomain, wallet::WalletDomain},
+    domain::{self, account::AccountDomain, app::config::ConfigDomain, wallet::WalletDomain},
     infrastructure::task_queue::{BackendApiTask, CommonTask, Task, Tasks},
     response_vo::account::DerivedAddressesList,
 };
@@ -98,7 +98,7 @@ impl AccountService {
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        WalletDomain::validate_password(&device, wallet_password)?;
+        WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let wallet = tx
             .wallet_detail_by_address(wallet_address)
@@ -106,7 +106,7 @@ impl AccountService {
             .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
 
         // 获取种子
-        let seed_wallet = WalletDomain::get_seed_wallet(dirs, &wallet.address, wallet_password)?;
+        let seed = WalletDomain::get_seed(dirs, &wallet.address, wallet_password).await?;
         // 获取默认链和币
         let default_chain_list = tx.get_chain_list().await?;
         let default_coins_list = tx.default_coin_list().await?;
@@ -176,7 +176,7 @@ impl AccountService {
                 let res = AccountDomain::create_account_with_derivation_path(
                     &mut tx,
                     dirs,
-                    &seed_wallet.seed,
+                    &seed,
                     instance,
                     &derivation_path,
                     &account_index_map,
@@ -251,14 +251,21 @@ impl AccountService {
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        WalletDomain::validate_password(&device, password)?;
+        WalletDomain::validate_password(password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
         let dirs = crate::manager::Context::get_global_dirs()?;
 
         let root_dir = dirs.get_root_dir(wallet_address)?;
-        let seed =
-            wallet_keystore::api::KeystoreApi::load_seed(root_dir, wallet_address, password)?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let seed = wallet_tree::api::KeystoreApi::load_seed(
+            &wallet_tree,
+            &root_dir,
+            wallet_address,
+            password,
+        )?;
 
         // 获取默认链和币
         let chains = if !all {
@@ -356,6 +363,7 @@ impl AccountService {
         self,
         wallet_address: &str,
         account_id: u32,
+        password: &str,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
         let Some(device) = tx.get_device_info().await? else {
@@ -390,18 +398,27 @@ impl AccountService {
             Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
         Tasks::new().push(device_unbind_address_task).send().await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
-        let mut wallet_tree =
-            wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let mut wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
         let subs_path = dirs.get_subs_dir(wallet_address)?;
 
         let mut req = DeviceBindAddressReq::new(&device.sn);
         for del in deleted {
-            wallet_tree.delete_subkeys(
+            wallet_tree.delete_subkey(
+                // naming,
                 wallet_address,
-                &subs_path,
                 &del.address,
-                &del.chain_code.as_str().try_into()?,
+                &del.chain_code,
+                &subs_path,
+                password,
             )?;
+            // wallet_tree.delete_subkey(
+            //     wallet_address,
+            //     &subs_path,
+            //     &del.address,
+            //     &del.chain_code.as_str().try_into()?,
+            // )?;
             req.push(&del.chain_code, &del.address);
         }
 
@@ -470,15 +487,18 @@ impl AccountService {
         let root_dir = dirs.get_root_dir(&wallet.address)?;
 
         // Traverse the directory structure to obtain the current wallet tree.
-        let wallet_tree =
-            wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
 
-        Ok(wallet_keystore::api::KeystoreApi::update_root_password(
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        Ok(wallet_tree::api::KeystoreApi::update_root_password(
             root_dir,
             wallet_tree,
             wallet_address,
             old_password,
             new_password,
+            algorithm,
         )
         .map_err(|e| crate::SystemError::Service(e.to_string()))?)
     }
@@ -510,8 +530,9 @@ impl AccountService {
         let subs_dir = dirs.get_subs_dir(&account.wallet_address)?;
 
         // Traverse the directory structure to obtain the current wallet tree.
-        let wallet_tree =
-            wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
         let Some(chain) = tx.detail_with_node(chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
                 crate::ChainError::NotFound(chain_code.to_string()),
@@ -523,7 +544,8 @@ impl AccountService {
             chain.network.as_str().into(),
         )?;
 
-        Ok(wallet_keystore::api::KeystoreApi::update_child_password(
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        Ok(wallet_tree::api::KeystoreApi::update_child_password(
             subs_dir,
             instance,
             wallet_tree,
@@ -531,6 +553,7 @@ impl AccountService {
             address,
             old_password,
             new_password,
+            algorithm,
         )
         .map_err(|e| crate::SystemError::Service(e.to_string()))?)
     }
@@ -546,7 +569,7 @@ impl AccountService {
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        WalletDomain::validate_password(&device, password)?;
+        WalletDomain::validate_password(password).await?;
 
         let account_list = tx
             .account_list_by_wallet_address_and_account_id_and_chain_codes(
@@ -624,22 +647,22 @@ impl AccountService {
         Ok(crate::response_vo::account::GetAccountAddressRes(res))
     }
 
-    pub fn recover_subkey(
-        &self,
-        wallet_name: &str,
-        address: &str,
-    ) -> Result<(), crate::ServiceError> {
-        let dirs = crate::manager::Context::get_global_dirs()?;
-        // Get the path to the subkeys directory for the given wallet name.
-        let subs_path = dirs.get_subs_dir(wallet_name)?;
+    // pub fn recover_subkey(
+    //     &self,
+    //     wallet_name: &str,
+    //     address: &str,
+    // ) -> Result<(), crate::ServiceError> {
+    //     let dirs = crate::manager::Context::get_global_dirs()?;
+    //     // Get the path to the subkeys directory for the given wallet name.
+    //     let subs_path = dirs.get_subs_dir(wallet_name)?;
 
-        // Traverse the directory structure to obtain the wallet tree.
-        let mut wallet_tree =
-            wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+    //     // Traverse the directory structure to obtain the wallet tree.
+    //     let mut wallet_tree =
+    //         wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
 
-        // Call the recover_subkey function to recover the subkey,
-        // passing in the wallet tree, address, subkeys path, and wallet name.
-        let wallet = wallet_tree.get_mut_wallet_branch(wallet_name)?;
-        Ok(wallet.recover_subkey(address, subs_path)?)
-    }
+    //     // Call the recover_subkey function to recover the subkey,
+    //     // passing in the wallet tree, address, subkeys path, and wallet name.
+    //     let wallet = wallet_tree.get_mut_wallet_branch(wallet_name)?;
+    //     Ok(wallet.recover_subkey(address, subs_path)?)
+    // }
 }

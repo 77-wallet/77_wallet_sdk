@@ -12,6 +12,8 @@ use crate::{
     service::asset::AddressChainCode,
 };
 
+use super::app::config::ConfigDomain;
+
 pub struct AccountDomain {}
 
 impl Default for AccountDomain {
@@ -259,22 +261,28 @@ impl AccountDomain {
         let chain_code = keypair.chain_code().to_string();
 
         let address_type = instance.address_type();
+        let address = keypair.address();
         // Get the root keystore using the root password
 
         // Call the derive_subkey function from the wallet manager handler,
         // passing in the root directory, subkeys path, wallet tree, derivation path,
         // wallet name, root password, and derive password.
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let derive_wallet = wallet_keystore::api::KeystoreApi::initialize_child_keystore(
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        wallet_tree::api::KeystoreApi::initialize_child_keystore(
+            wallet_tree,
+            account_index_map,
             instance,
             seed,
             &derivation_path,
             subs_dir.to_string_lossy().to_string().as_str(),
             &derive_password.unwrap_or(root_password.to_owned()),
+            algorithm,
         )
         .map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
-        let address = derive_wallet.address().to_string();
         let pubkey = keypair.pubkey();
 
         let mut req = wallet_database::entities::account::CreateAccountVo::new(
@@ -303,7 +311,7 @@ pub async fn open_account_pk_with_password(
     let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
         return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
     };
-    super::wallet::WalletDomain::validate_password(&device, password)?;
+    super::wallet::WalletDomain::validate_password(password).await?;
 
     let db = crate::manager::Context::get_global_sqlite_pool()?;
     let dirs = crate::manager::Context::get_global_dirs()?;
@@ -322,27 +330,36 @@ pub async fn open_account_pk_with_password(
             crate::ChainError::NotFound(chain_code.to_string()),
         )));
     };
-    let instance = wallet_chain_instance::instance::ChainObject::new(
-        chain_code,
-        account.address_type(),
-        chain.network.as_str().into(),
-    )?;
+    // let instance = wallet_chain_instance::instance::ChainObject::new(
+    //     chain_code,
+    //     account.address_type(),
+    //     chain.network.as_str().into(),
+    // )?;
 
-    let chain_code = chain_code.try_into()?;
-    let name = wallet_tree::wallet_tree::WalletBranch::get_sub_pk_filename(
-        &account.address,
-        &chain_code,
-        &account.derivation_path,
-    )?;
+    let chain_code: ChainCode = chain_code.try_into()?;
+    // let name = wallet_tree::wallet_tree::WalletBranch::get_sub_pk_filename(
+    //     &account.address,
+    //     &chain_code,
+    //     &account.derivation_path,
+    // )?;
 
     let subs_path = dirs.get_subs_dir(&wallet.address)?;
-    let storage_path = subs_path.join(name);
+    // let storage_path = subs_path.join(name);
+    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+    let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-    let key = wallet_keystore::api::KeystoreApi::get_private_key(
+    let key = wallet_tree::api::KeystoreApi::load_sub_pk(
+        &wallet_tree,
+        Some(&wallet_utils::address::AccountIndexMap::from_account_id(
+            account.account_id,
+        )?),
+        &subs_path,
+        address,
+        &chain_code.to_string(),
+        &account.derivation_path,
         password,
-        &storage_path,
-        instance.gen_gen_address()?,
     )?;
+    // let key = wallet_keystore::api::KeystoreApi::get_private_key(password, &storage_path)?;
 
     // TODO: 优化
     let private_key = match chain_code {

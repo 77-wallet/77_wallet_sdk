@@ -1,6 +1,17 @@
 pub mod config;
 pub mod mqtt;
-use wallet_database::entities::account::AccountEntity;
+use config::ConfigDomain;
+use wallet_database::{
+    entities::{
+        account::AccountEntity,
+        config::config_key::{
+            KEYSTORE_KDF_ALGORITHM, WALLET_PW_KDF_ALGORITHM, WALLET_TREE_STRATEGY,
+        },
+    },
+    factory::RepositoryFactory,
+    repositories::device::DeviceRepoTrait,
+};
+use wallet_keystore::KdfAlgorithm;
 
 use crate::{infrastructure::task_queue::BackendApiTaskData, service::device::APP_ID};
 
@@ -106,6 +117,62 @@ impl DeviceDomain {
             &device_unbind_address_req,
         )?;
         Ok(device_unbind_address_task)
+    }
+
+    pub(crate) async fn check_wallet_password_is_null() -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let mut repo = RepositoryFactory::repo(pool.clone());
+        let device = DeviceRepoTrait::get_device_info(&mut repo).await?.ok_or(
+            crate::BusinessError::Device(crate::DeviceError::Uninitialized),
+        )?;
+
+        let (wallet_pw_kdf_algorithm, keystore_kdf_algorithm, wallet_tree_strategy) = if device
+            .password
+            .is_some()
+        {
+            let wallet_pw_kdf_algorithm = wallet_database::entities::config::WalletPwKdfAlgorithm {
+                wallet_pw_kdf_algorithm: KdfAlgorithm::Pbkdf2,
+            };
+            let keystore_kdf_algorithm = wallet_database::entities::config::KeystoreKdfAlgorithm {
+                keystore_kdf_algorithm: KdfAlgorithm::Scrypt,
+            };
+            let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
+                wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V1,
+            };
+            (
+                wallet_pw_kdf_algorithm,
+                keystore_kdf_algorithm,
+                wallet_tree_strategy,
+            )
+        } else {
+            let wallet_pw_kdf_algorithm = wallet_database::entities::config::WalletPwKdfAlgorithm {
+                wallet_pw_kdf_algorithm: KdfAlgorithm::Pbkdf2,
+            };
+            let keystore_kdf_algorithm = wallet_database::entities::config::KeystoreKdfAlgorithm {
+                keystore_kdf_algorithm: KdfAlgorithm::Argon2id,
+            };
+            let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
+                wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V2,
+            };
+            (
+                wallet_pw_kdf_algorithm,
+                keystore_kdf_algorithm,
+                wallet_tree_strategy,
+            )
+        };
+        ConfigDomain::set_config(
+            WALLET_PW_KDF_ALGORITHM,
+            &wallet_pw_kdf_algorithm.to_json_str()?,
+        )
+        .await?;
+        ConfigDomain::set_config(
+            KEYSTORE_KDF_ALGORITHM,
+            &keystore_kdf_algorithm.to_json_str()?,
+        )
+        .await?;
+        ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
+            .await?;
+        Ok(())
     }
 }
 

@@ -2,12 +2,13 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, LANGUAGE, MQTT_URL,
-            OFFICIAL_WEBSITE,
+            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, KEYSTORE_KDF_ALGORITHM,
+            LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_PW_KDF_ALGORITHM, WALLET_TREE_STRATEGY,
         },
         Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
+use wallet_keystore::KdfAlgorithm;
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 
 pub struct ConfigDomain;
@@ -209,6 +210,54 @@ impl ConfigDomain {
             Ok(currency.currency)
         } else {
             Ok(String::from("USD"))
+        }
+    }
+
+    pub(crate) async fn get_wallet_pw_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let wallet_pw_kdf_algorithm =
+            ConfigDao::find_by_key(WALLET_PW_KDF_ALGORITHM, pool.as_ref()).await?;
+        if let Some(wallet_pw_kdf_algorithm) = wallet_pw_kdf_algorithm {
+            let wallet_pw_kdf_algorithm =
+                wallet_database::entities::config::WalletPwKdfAlgorithm::try_from(
+                    wallet_pw_kdf_algorithm.value,
+                )?;
+            Ok(wallet_pw_kdf_algorithm.wallet_pw_kdf_algorithm)
+        } else {
+            Ok(KdfAlgorithm::Pbkdf2)
+        }
+    }
+
+    pub(crate) async fn get_keystore_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let keystore_kdf_algorithm =
+            ConfigDao::find_by_key(KEYSTORE_KDF_ALGORITHM, pool.as_ref()).await?;
+        if let Some(keystore_kdf_algorithm) = keystore_kdf_algorithm {
+            let keystore_kdf_algorithm =
+                wallet_database::entities::config::KeystoreKdfAlgorithm::try_from(
+                    keystore_kdf_algorithm.value,
+                )?;
+            Ok(keystore_kdf_algorithm.keystore_kdf_algorithm)
+        } else {
+            // Ok(KdfAlgorithm::Scrypt)
+            Ok(KdfAlgorithm::Argon2id)
+        }
+    }
+
+    pub(crate) async fn get_wallet_tree_strategy(
+    ) -> Result<wallet_tree::WalletTreeStrategy, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let wallet_tree_strategy =
+            ConfigDao::find_by_key(WALLET_TREE_STRATEGY, pool.as_ref()).await?;
+        if let Some(wallet_tree_strategy) = wallet_tree_strategy {
+            let wallet_tree_strategy =
+                wallet_database::entities::config::WalletTreeStrategy::try_from(
+                    wallet_tree_strategy.value,
+                )?;
+            Ok(wallet_tree_strategy.wallet_tree_strategy)
+        } else {
+            Ok(wallet_tree::WalletTreeStrategy::V2)
+            // Ok(wallet_tree::WalletTreeStrategy::V1)
         }
     }
 

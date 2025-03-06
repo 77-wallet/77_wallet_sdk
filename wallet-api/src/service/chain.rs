@@ -85,7 +85,7 @@ impl ChainService {
         let Some(device) = DeviceRepoTrait::get_device_info(&mut tx).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        domain::wallet::WalletDomain::validate_password(&device, wallet_password)?;
+        domain::wallet::WalletDomain::validate_password(wallet_password).await?;
         let chain_list = ChainRepoTrait::get_chain_node_list(&mut tx).await?;
 
         let account_wallet_mapping = tx.account_wallet_mapping().await?;
@@ -95,11 +95,12 @@ impl ChainService {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
 
-            let seed_wallet = domain::wallet::WalletDomain::get_seed_wallet(
+            let seed = domain::wallet::WalletDomain::get_seed(
                 dirs,
                 &wallet.wallet_address,
                 wallet_password,
-            )?;
+            )
+            .await?;
 
             for chain in chain_list.iter() {
                 let btc_address_types = if chain.chain_code == "btc" {
@@ -115,7 +116,7 @@ impl ChainService {
                     let address = AccountDomain::create_account_with_account_id(
                         &mut tx,
                         dirs,
-                        &seed_wallet.seed,
+                        &seed,
                         instance,
                         &account_index_map,
                         &wallet.uid,
