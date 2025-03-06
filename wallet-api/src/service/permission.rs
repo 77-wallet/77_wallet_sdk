@@ -12,7 +12,9 @@ use crate::{
     },
     request::permission::PermissionReq,
     response_vo::{
-        permssion::{AccountPermission, Keys, PermissionList, PermissionResp},
+        permssion::{
+            AccountPermission, Keys, ManagerPermissionResp, PermissionList, PermissionResp,
+        },
         EstimateFeeResp, TronFeeDetails,
     },
 };
@@ -196,18 +198,25 @@ impl PermssionService {
     }
 
     // 我管理的权限
-    pub async fn manager_permision(&self) -> Result<Vec<PermissionResp>, crate::ServiceError> {
+    pub async fn manager_permision(
+        &self,
+    ) -> Result<Vec<ManagerPermissionResp>, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let permissions = PermissionRepo::all_permission_with_user(&pool).await?;
 
-        let mut result = permissions
-            .iter()
-            .map(|p| PermissionResp::try_from(p))
-            .collect::<Result<Vec<PermissionResp>, crate::ServiceError>>()?;
+        let mut result: Vec<ManagerPermissionResp> = vec![];
 
-        for item in result.iter_mut() {
-            self.mark_address_book_name(&pool, &mut item.keys).await?;
+        for permission in permissions.iter() {
+            let grantor_addr = permission.permission.grantor_addr.clone();
+            let mut p = PermissionResp::try_from(permission)?;
+
+            self.mark_address_book_name(&pool, &mut p.keys).await?;
+
+            result.push(ManagerPermissionResp {
+                grantor_addr,
+                permission: p,
+            });
         }
 
         Ok(result)

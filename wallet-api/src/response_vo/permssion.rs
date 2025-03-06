@@ -105,6 +105,13 @@ pub struct PermissionResp {
     pub keys: Vec<Keys>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagerPermissionResp {
+    pub grantor_addr: String,
+    pub permission: PermissionResp,
+}
+
 impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for PermissionResp {
     type Error = crate::ServiceError;
 

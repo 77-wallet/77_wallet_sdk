@@ -2,7 +2,7 @@ use super::ReturnType;
 use crate::{
     request::permission::PermissionReq,
     response_vo::{
-        permssion::{AccountPermission, PermissionList, PermissionResp},
+        permssion::{AccountPermission, ManagerPermissionResp, PermissionList, PermissionResp},
         EstimateFeeResp,
     },
     service::permission::PermssionService,
@@ -29,7 +29,7 @@ impl crate::WalletManager {
     }
 
     // 管理其账号的权限
-    pub async fn manager_permission(&self) -> ReturnType<Vec<PermissionResp>> {
+    pub async fn manager_permission(&self) -> ReturnType<Vec<ManagerPermissionResp>> {
         PermssionService::new()
             .await?
             .manager_permision()
