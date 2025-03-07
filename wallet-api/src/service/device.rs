@@ -1,10 +1,10 @@
+use crate::domain::app::config::ConfigDomain;
+use wallet_database::entities::config::config_key::APP_VERSION;
 use wallet_database::{
     entities::device::{CreateDeviceEntity, DeviceEntity},
     repositories::device::DeviceRepoTrait,
 };
 use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
-use wallet_database::entities::config::config_key::APP_VERSION;
-use crate::domain::app::config::ConfigDomain;
 // pub const APP_ID: &str = "bc7f694ee0a9488cada7d9308190fe45";
 pub const APP_ID: &str = "ada7d9308190fe45";
 
@@ -35,8 +35,6 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         // let package_id = req.package_id.clone();
         let upsert_req = (&req).into();
         tx.upsert(upsert_req).await?;
-
-
 
         let task_req: DeviceInitReq = (&req).into();
         // let tasks = vec![Task::BackendApi(BackendApiTask::DeviceInit(req))];

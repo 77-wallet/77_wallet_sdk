@@ -1,6 +1,6 @@
 use wallet_database::{
     dao::config::ConfigDao,
-    entities::config::config_key::APP_VERSION,
+    entities::config::{config_key::APP_VERSION, AppVersion},
     repositories::{device::DeviceRepoTrait, ResourcesRepo},
 };
 
@@ -26,6 +26,8 @@ impl MqttDomain {
             .ok_or(crate::ServiceError::Business(crate::BusinessError::Config(
                 crate::ConfigError::NotFound(APP_VERSION.to_owned()),
             )))?;
+
+        let app_version = AppVersion::try_from(app_version.value)?;
         crate::mqtt::init_mqtt_processor(
             &device.sn,
             &md5_sn,
@@ -35,7 +37,7 @@ impl MqttDomain {
                 &client_id,
                 &device.sn,
                 &md5_sn,
-                &app_version.value,
+                &app_version.app_version,
             ),
             crate::mqtt::wrap_handle_eventloop,
         )
