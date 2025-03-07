@@ -2,7 +2,7 @@ use super::ReturnType;
 use crate::{
     request::permission::PermissionReq,
     response_vo::{
-        permssion::{AccountPermission, ManagerPermissionResp, PermissionList, PermissionResp},
+        permssion::{AccountPermission, ManagerPermissionResp, PermissionList},
         EstimateFeeResp,
     },
     service::permission::PermssionService,

@@ -146,7 +146,7 @@ async fn test_del_permission() {
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         name: "修改权限".to_string(),
-        active_id: Some(2),
+        active_id: Some(4),
         threshold: 1,
         operations: vec![1],
         keys,
@@ -170,29 +170,27 @@ async fn test_build_multisig_queue() {
             weight: 1,
         },
         KeysReq {
-            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+            address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
             weight: 1,
         },
     ];
 
     let req = PermissionReq {
         grantor_addr: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        name: "new_permission".to_string(),
-        active_id: None,
+        name: "update permsion 3".to_string(),
+        active_id: Some(5),
         threshold: 1,
-        operations: vec![1],
+        operations: vec![1, 2, 3, 4, 5],
         keys,
     };
     let password = "123456".to_string();
     let expiration = 5;
 
     let res = wallet_manager
-        .build_multisig_queue(req, "new".to_string(), password, expiration)
+        .build_multisig_queue(req, "update".to_string(), password, expiration)
         .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
-
-    loop {}
 }
 
 #[tokio::test]
@@ -203,4 +201,12 @@ async fn test_recover_data() {
     domain::permission::PermissionDomain::recover_permission(uids)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn test_backup() {
+    let _wallet_manager = get_manager().await;
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
+    tracing::info!("xxx")
 }

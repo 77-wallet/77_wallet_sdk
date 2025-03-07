@@ -66,14 +66,14 @@ async fn test_create_transfer() {
 
     let signer = Signer {
         address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        permission_id: 2,
+        permission_id: 4,
     };
 
     let params = TransferParams {
-        from: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_owned(),
-        to: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_owned(),
-        value: "1".to_owned(),
-        expiration: Some(2),
+        from: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_owned(),
+        to: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_owned(),
+        value: "5".to_owned(),
+        expiration: Some(5),
         chain_code: "tron".to_owned(),
         symbol: "TRX".to_owned(),
         notes: Some("salary".to_string()),
@@ -139,7 +139,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "236256927787651072".to_string();
+    let id = "236631132983136256".to_string();
 
     let password = "123456".to_string();
     let fee = None;

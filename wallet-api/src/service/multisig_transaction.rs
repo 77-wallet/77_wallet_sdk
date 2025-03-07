@@ -393,31 +393,29 @@ impl MultisigTransactionService {
         password: &str,
         sign_addr: Vec<String>,
     ) -> Result<Vec<NewSignatureEntity>, crate::ServiceError> {
-        let mut repo = MultisigQueueRepo::new(pool.clone());
-
         match status {
             MultisigSignatureStatus::Rejected | MultisigSignatureStatus::UnSigned => {
                 let mut result = vec![];
                 for address in sign_addr {
                     let params = NewSignatureEntity::new(&queue.id, &address, "", status);
-                    repo.create_or_update_sign(&params).await?;
+
+                    MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
+
                     result.push(params);
                 }
                 Ok(result)
             }
             MultisigSignatureStatus::Approved => {
                 if !queue.account_id.is_empty() {
-                    Self::signe_account(&mut repo, queue, pool, sign_addr, password, status).await
+                    Self::signe_account(queue, pool, sign_addr, password, status).await
                 } else {
-                    Self::signed_permission(&mut repo, queue, pool, sign_addr, password, status)
-                        .await
+                    Self::signed_permission(queue, pool, sign_addr, password, status).await
                 }
             }
         }
     }
 
     async fn signe_account(
-        repo: &mut MultisigQueueRepo,
         queue: &MultisigQueueEntity,
         pool: DbPool,
         sign_addr: Vec<String>,
@@ -455,7 +453,7 @@ impl MultisigTransactionService {
                 .await?;
             let params = NewSignatureEntity::new(&queue.id, address, &rs.signature, status);
 
-            repo.create_or_update_sign(&params).await?;
+            MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
             result.push(params);
 
             if queue.chain_code == chain_code::SOLANA {
@@ -478,7 +476,6 @@ impl MultisigTransactionService {
 
     // 目前只有tron链实现了权限相关的内容
     async fn signed_permission(
-        repo: &mut MultisigQueueRepo,
         queue: &MultisigQueueEntity,
         pool: DbPool,
         sign_addr: Vec<String>,
@@ -514,7 +511,7 @@ impl MultisigTransactionService {
                 tron::operations::multisig::TransactionOpt::sign_transaction(&queue.raw_data, key)?;
             let params = NewSignatureEntity::new(&queue.id, address, &res.signature, status);
 
-            repo.create_or_update_sign(&params).await?;
+            MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
             result.push(params);
 
             if queue.chain_code == chain_code::SOLANA {

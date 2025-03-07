@@ -517,7 +517,7 @@ pub struct SignedTranCreateReq {
     pub withdraw_id: String,
     pub chain_code: String,
     pub address: String,
-    pub tx_str: String,
+    // pub tx_str: String,
     pub raw_data: String,
     pub tx_kind: i8,
     pub permission_data: Option<PermissionData>,

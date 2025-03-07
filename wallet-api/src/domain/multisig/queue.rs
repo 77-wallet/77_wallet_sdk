@@ -5,9 +5,7 @@ use crate::{
         chain::{adapter::MultisigAdapter, transaction::ChainTransaction},
     },
     infrastructure::task_queue::{self, BackendApiTask, BackendApiTaskData, Task, Tasks},
-    mqtt::payload::incoming::transaction::{
-        MultiSignTransAccept, MultiSignTransAcceptCompleteMsgBody,
-    },
+    mqtt::payload::incoming::transaction::MultiSignTransAcceptCompleteMsgBody,
     response_vo::multisig_transaction::ExtraData,
 };
 use serde_json::json;
@@ -149,10 +147,15 @@ impl MultisigQueueDomain {
         let list = data.list;
         for item in list {
             if let Some(raw_data) = item.raw_data {
-                if let Ok(multisig_queue_data) = MultisigQueueData::from_string(&raw_data) {
-                    let que_id = multisig_queue_data.queue.id.clone();
-                    if let Err(e) = Self::insert(pool.clone(), multisig_queue_data).await {
-                        tracing::error!("revover queue data error: {} queue_id = {}", e, que_id);
+                match MultisigQueueData::from_string(&raw_data) {
+                    Ok(r) => {
+                        let id = r.queue.id.clone();
+                        if let Err(e) = Self::insert(pool.clone(), r).await {
+                            tracing::error!("revover queue data error: {} queue_id = {}", e, id);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("revover queue data paser : {}", e);
                     }
                 }
             }
@@ -375,13 +378,13 @@ impl MultisigQueueDomain {
     ) -> Result<(), crate::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone()).await?;
 
-        let accept_params = MultiSignTransAccept::try_from(&raw_data)?;
+        // let accept_params = MultiSignTransAccept::try_from(&raw_data)?;
 
         let req = SignedTranCreateReq {
             withdraw_id: raw_data.queue.id.clone(),
             address: raw_data.queue.from_addr.clone(),
             chain_code: raw_data.queue.chain_code.clone(),
-            tx_str: wallet_utils::serde_func::serde_to_string(&accept_params)?,
+            // tx_str: wallet_utils::serde_func::serde_to_string(&accept_params)?,
             raw_data: raw_data.to_string()?,
             tx_kind: raw_data.queue.transfer_type as i8,
             permission_data: opt_data,

@@ -132,11 +132,8 @@ impl AcctChange {
 
         // 添加或更新资产余额
         Self::upsert_than_sync_assets(
-            from_addr,
-            to_addr,
-            // address,
-            // chain_code,
-            // symbol,
+            from_addr, to_addr, // address,
+            chain_code, symbol,
             // multisig_tx,
             // tx_kind_enum,
         )
@@ -184,6 +181,8 @@ impl AcctChange {
     async fn upsert_than_sync_assets(
         from_addr: &str,
         to_addr: &str,
+        chain_code: &str,
+        symbol: &str,
     ) -> Result<(), crate::ServiceError> {
         let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
 
@@ -192,7 +191,11 @@ impl AcctChange {
             let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
             AssetsService::new(repo)
-                .sync_assets_by_addr(asset_list, None, vec![])
+                .sync_assets_by_addr(
+                    asset_list,
+                    Some(chain_code.to_string()),
+                    vec![symbol.to_string()],
+                )
                 .await?;
         }
 

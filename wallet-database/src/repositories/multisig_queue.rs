@@ -1,4 +1,4 @@
-use super::{ResourcesRepo, TransactionTrait};
+use super::ResourcesRepo;
 use crate::{
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
@@ -19,7 +19,6 @@ use crate::{
     DbPool,
 };
 use sqlx::{Pool, Sqlite};
-use std::sync::Arc;
 
 pub struct MultisigQueueRepo {
     repo: ResourcesRepo,
@@ -34,7 +33,7 @@ impl MultisigQueueRepo {
 
 impl MultisigQueueRepo {
     pub async fn create_queue_with_sign(
-        pool: Arc<Pool<Sqlite>>,
+        pool: DbPool,
         params: &mut NewMultisigQueueEntity,
     ) -> Result<MultisigQueueEntity, crate::Error> {
         let mut tx = pool
@@ -45,27 +44,28 @@ impl MultisigQueueRepo {
         // create multisig queue
         let res = MultisigQueueDaoV1::create_queue(params, tx.as_mut()).await?;
 
-        // if signatures is not empty insert signatures
+        //  if signatures is not empty insert signatures
         if !params.signatures.is_empty() {
             for signature in &mut params.signatures {
                 signature.queue_id = res.id.clone();
 
                 let exists = MultisigSignatureDaoV1::find_signature(
-                    &res.id,
+                    &signature.queue_id,
                     &signature.address,
                     tx.as_mut(),
                 )
                 .await?;
+
                 match exists {
-                    Some(sign) => {
-                        if !sign.signature.is_empty() {
+                    Some(s) => {
+                        if !s.signature.is_empty() {
                             MultisigSignatureDaoV1::update_status(signature, tx.as_mut()).await?
                         }
                     }
                     None => {
                         MultisigSignatureDaoV1::create_signature(signature, tx.as_mut()).await?
                     }
-                }
+                };
             }
         }
 
@@ -96,6 +96,13 @@ impl MultisigQueueRepo {
                 .await?;
 
         Ok(lists)
+    }
+
+    pub async fn find_by_id(
+        pool: &DbPool,
+        queue_id: &str,
+    ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
+        Ok(MultisigQueueDaoV1::find_by_id(&queue_id, pool.as_ref()).await?)
     }
 
     pub async fn update_fail(
@@ -174,13 +181,25 @@ impl MultisigQueueRepo {
     }
 
     pub async fn create_or_update_sign(
-        &mut self,
         params: &NewSignatureEntity,
+        pool: &DbPool,
     ) -> Result<(), crate::Error> {
-        Ok(
-            MultisigSignatureDaoV1::create_or_update(params, self.repo.get_db_pool().clone())
-                .await?,
+        let signature = MultisigSignatureDaoV1::find_signature(
+            &params.queue_id,
+            &params.address,
+            pool.as_ref(),
         )
+        .await?;
+
+        match signature {
+            Some(s) => {
+                if !s.signature.is_empty() {
+                    MultisigSignatureDaoV1::update_status(params, pool.as_ref()).await?
+                }
+            }
+            None => MultisigSignatureDaoV1::create_signature(params, pool.as_ref()).await?,
+        };
+        Ok(())
     }
 
     // 未执行的交易修改状态(根据签名,数量)

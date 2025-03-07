@@ -14,7 +14,7 @@ async fn test_set_min_value_config() {
     let wallet_manager = get_manager().await;
 
     let symbol = "TRx".to_string();
-    let value = 49.0;
+    let value = 1.0;
     let switch = true;
 
     let configs = wallet_manager

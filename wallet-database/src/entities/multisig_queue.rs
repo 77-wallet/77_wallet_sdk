@@ -122,27 +122,6 @@ pub struct MultisigQueueSimpleEntity {
     pub created_at: DateTime<Utc>,
 }
 
-// // account 表
-// #[sqlx(default)]
-// pub name: String,
-// // account 表
-// #[sqlx(default)]
-// pub threshold: i32,
-// // account 表
-// #[sqlx(default)]
-// pub member_num: i32,
-// // account 表
-// pub initiator_addr: String,
-
-// #[derive(Debug, serde::Serialize, sqlx::FromRow, Clone, Default)]
-// #[serde(rename_all = "camelCase")]
-// pub struct ExtraData {
-//     pub name: String,
-//     pub threshold: String,
-//     pub member_num: String,
-//     pub initiator_addr: String,
-// }
-
 #[derive(Debug)]
 pub struct NewMultisigQueueEntity {
     pub id: String,
