@@ -128,7 +128,6 @@ impl WalletDomain {
             }
         }
 
-        tracing::info!("data: {data:#?}");
         let modern_wallet_tree = WalletTreeStrategy::V2.get_wallet_tree(&dirs.wallet_dir)?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
