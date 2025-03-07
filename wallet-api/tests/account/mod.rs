@@ -31,6 +31,7 @@ async fn create_device() {
         mem: None,
         app_id: None,
         package_id: None,
+        app_version: None,
     };
     let res = manager.init_device(req).await;
     tracing::info!("response {:?}", res);

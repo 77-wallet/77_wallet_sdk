@@ -1,4 +1,8 @@
-use wallet_database::repositories::{device::DeviceRepoTrait, ResourcesRepo};
+use wallet_database::{
+    dao::config::ConfigDao,
+    entities::config::config_key::APP_VERSION,
+    repositories::{device::DeviceRepoTrait, ResourcesRepo},
+};
 
 use super::DeviceDomain;
 
@@ -15,12 +19,23 @@ impl MqttDomain {
         let content = DeviceDomain::device_content(&device)?;
         let client_id = DeviceDomain::client_id_by_device(&device)?;
         let md5_sn = DeviceDomain::md5_sn(&device.sn);
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let app_version = ConfigDao::find_by_key(APP_VERSION, pool.as_ref())
+            .await?
+            .ok_or(crate::ServiceError::Business(crate::BusinessError::Config(
+                crate::ConfigError::NotFound(APP_VERSION.to_owned()),
+            )))?;
         crate::mqtt::init_mqtt_processor(
             &device.sn,
             &md5_sn,
             crate::mqtt::user_property::UserProperty::new(
                 // &package_id.unwrap_or("77wallet".to_string()),
-                &content, &client_id, &device.sn, &md5_sn,
+                &content,
+                &client_id,
+                &device.sn,
+                &md5_sn,
+                &app_version.value,
             ),
             crate::mqtt::wrap_handle_eventloop,
         )

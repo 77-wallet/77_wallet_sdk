@@ -9,6 +9,7 @@ pub mod config_key {
     pub const LANGUAGE: &str = "language";
     pub const MQTT_URL: &str = "mqtt_url";
     pub const CURRENCY: &str = "currency";
+    pub const APP_VERSION: &str = "app_version";
 }
 
 pub(crate) const USD: &str = "USD";
@@ -173,6 +174,24 @@ impl Currency {
 }
 
 impl TryFrom<String> for Currency {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct AppVersion {
+    pub app_version: String,
+}
+
+impl AppVersion {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for AppVersion {
     type Error = crate::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_str(&value)?)
