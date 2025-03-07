@@ -5,6 +5,7 @@ pub mod bill;
 pub mod chain;
 pub mod chain_node;
 pub mod coin;
+pub mod config;
 pub mod device;
 pub mod exchange_rate;
 pub mod multisig_account;
@@ -40,6 +41,8 @@ pub enum BusinessError {
     ExchangeRate(#[from] exchange_rate::ExchangeRate),
     #[error("chain node: error: {0}")]
     ChainNode(#[from] chain_node::ChainNodeError),
+    #[error("Config: error: {0}")]
+    Config(#[from] config::ConfigError),
 }
 
 impl BusinessError {
@@ -58,6 +61,7 @@ impl BusinessError {
             BusinessError::Coin(msg) => msg.get_status_code(),
             BusinessError::ExchangeRate(msg) => msg.get_status_code(),
             BusinessError::ChainNode(msg) => msg.get_status_code(),
+            BusinessError::Config(msg) => msg.get_status_code(),
         }
     }
 }

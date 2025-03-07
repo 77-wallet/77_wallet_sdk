@@ -22,8 +22,9 @@ pub use error::{
     business::{
         account::AccountError, announcement::AnnouncementError, assets::AssetsError,
         bill::BillError, chain::ChainError, chain_node::ChainNodeError, coin::CoinError,
-        device::DeviceError, exchange_rate::ExchangeRate, multisig_account::MultisigAccountError,
-        multisig_queue::MultisigQueueError, stake::StakeError, wallet::WalletError, BusinessError,
+        config::ConfigError, device::DeviceError, exchange_rate::ExchangeRate,
+        multisig_account::MultisigAccountError, multisig_queue::MultisigQueueError,
+        stake::StakeError, wallet::WalletError, BusinessError,
     },
     system::SystemError,
     Errors, ServiceError,
