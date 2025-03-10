@@ -33,14 +33,10 @@ pub async fn init_mqtt_processor<'a>(
 
             let up = user_property.to_vec();
 
-            tracing::error!("[init_mqtt_processor] p: {up:#?}");
-
             tracing::debug!("[init_mqtt_processor] url: {url}");
             let (client, eventloop) =
                 MqttClientBuilder::new(&user_property.client_id, url, username, password, up)
                     .build()?;
-
-            tracing::error!("[init_mqtt_processor] url: {url}");
 
             let cli = client.client();
             let eventloop = MqttEventLoop::new(eventloop);

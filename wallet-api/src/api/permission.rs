@@ -75,44 +75,4 @@ impl crate::WalletManager {
             .await?
             .into()
     }
-
-    // // new permisson
-    // pub async fn add_permission(&self, req: PermissionReq, password: String) -> ReturnType<String> {
-    //     PermssionService::new()
-    //         .await?
-    //         .add_permission(req, password)
-    //         .await?
-    //         .into()
-    // }
-
-    // pub async fn add_permission_fee(&self, req: PermissionReq) -> ReturnType<EstimateFeeResp> {
-    //     PermssionService::new()
-    //         .await?
-    //         .add_permission_fee(req)
-    //         .await?
-    //         .into()
-    // }
-
-    // // update permission
-    // pub async fn up_permission(&self, req: PermissionReq, password: String) -> ReturnType<String> {
-    //     PermssionService::new()
-    //         .await?
-    //         .up_permission(req, password)
-    //         .await?
-    //         .into()
-    // }
-
-    // // delegate permission
-    // pub async fn del_permission(
-    //     &self,
-    //     grantor_addr: String,
-    //     active_id: i8,
-    //     password: String,
-    // ) -> ReturnType<String> {
-    //     PermssionService::new()
-    //         .await?
-    //         .del_permission(grantor_addr, active_id, password)
-    //         .await?
-    //         .into()
-    // }
 }

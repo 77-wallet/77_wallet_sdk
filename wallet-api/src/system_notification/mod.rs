@@ -1,118 +1,6 @@
-// /// 1/ 普通账户 2/多签账户建立 3/多签转账
-// pub enum SystemNotificationType {
-//     /// 普通地址充值/提币
-//     ///
-//     /// 普通地址充值：
-//     /// 收款成功 status 2-成功 transfer_type 1-转出
-//     ///
-//     /// 普通地址提币：
-//     /// 转账成功 status 2-成功 transfer_type 0-转入
-//     /// 转账失败 status 3-失败 transfer_type 0-转入
-//     CommonTransfer,
-//     /// 多签地址收款/提币
-//     ///
-//     /// 多签地址收款：
-//     /// 收款成功 status 2-成功 transfer_type 1-转出
-//     /// 收款失败 status 3-失败 transfer_type 1-转出
-//     ///
-//     /// 多签地址提币：
-//     /// 转账成功 status 2-成功 transfer_type 0-转入
-//     /// 转账失败 status 3-失败 transfer_type 0-转入
-//     MultisigTransfer,
-
-//     /// 多签账户创建等待加入
-//     MultisigWaitJoin,
-
-//     /// 多签转账等待签名
-//     MultisigWaitSign,
-
-//     /// 多签账户创建成功
-//     MultisigCreated,
-// }
-
-// impl SystemNotificationType {
-//     pub(crate) fn to_i8(self) -> i8 {
-//         match self {
-//             SystemNotificationType::CommonTransfer => 1,
-//             SystemNotificationType::MultisigTransfer => 2,
-//             SystemNotificationType::MultisigWaitJoin => 3,
-//             SystemNotificationType::MultisigWaitSign => 5,
-//             // SystemNotificationType::MultisigCanceled => 6,
-//             SystemNotificationType::MultisigCreated => 7,
-//         }
-//     }
-// }
-
-// #[derive(Debug, serde::Serialize)]
-// #[serde(untagged)]
-// pub enum Content {
-//     #[serde(rename_all = "camelCase")]
-//     CommonTransfer {
-//         tx_hash: String,
-//         wallet_name: String,
-//         account_name: String,
-//         uid: String,
-//         // 交易方式 0转入 1转出
-//         transfer_type: i8,
-//         // 交易状态 1-pending 2-成功 3-失败
-//         status: i8,
-//     },
-//     #[serde(rename_all = "camelCase")]
-//     MultisigTransfer {
-//         tx_hash: String,
-//         multisig_account_id: String,
-//         multisig_account_name: String,
-//         multisig_account_address: String,
-//         // 交易方式 0转入 1转出
-//         transfer_type: i8,
-//         // 交易状态 1-pending 2-成功 3-失败
-//         status: i8,
-//     },
-//     #[serde(rename_all = "camelCase")]
-//     MultisigWaitJoin {
-//         multisig_account_id: String,
-//         multisig_account_address: String,
-//         multisig_account_name: String,
-//     },
-//     #[serde(rename_all = "camelCase")]
-//     MultisigAcceptJoin {
-//         multisig_account_id: String,
-//         multisig_account_address: String,
-//         multisig_account_name: String,
-//         accept_address_list: Vec<String>,
-//     },
-//     #[serde(rename_all = "camelCase")]
-//     MultisigWaitSign {
-//         queue_id: String,
-//         multisig_account_id: String,
-//         multisig_account_address: String,
-//         multisig_account_name: String,
-//     },
-//     // #[serde(rename_all = "camelCase")]
-//     // MultisigCanceled {
-//     //     multisig_account_id: String,
-//     //     multisig_account_address: String,
-//     //     multisig_account_name: String,
-//     // },
-//     #[serde(rename_all = "camelCase")]
-//     MultisigUpgrade {
-//         multisig_account_id: String,
-//         multisig_account_address: String,
-//         multisig_account_name: String,
-//         /// 1/成功 2/失败
-//         status: i8,
-//     },
-// }
-
-// impl Content {
-//     pub(crate) fn serialize(self) -> Result<String, crate::ServiceError> {
-//         serde_json::to_string(&self).map_err(|e| {
-//             crate::ServiceError::Utils(wallet_utils::error::serde::SerdeError::Json(e).into())
-//         })
-//     }
-// }
-
+use permission_change::PermissionChange;
 use wallet_database::entities::bill::BillKind;
+pub mod permission_change;
 
 // 账户类型枚举
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -131,6 +19,7 @@ pub enum NotificationType {
     TransferSuccess,
     TransferFailure,
     ResourceChange,
+    PermissionChange,
 }
 
 impl std::fmt::Display for NotificationType {
@@ -143,6 +32,7 @@ impl std::fmt::Display for NotificationType {
             NotificationType::TransferSuccess => write!(f, "TransferSuccess"),
             NotificationType::TransferFailure => write!(f, "TransferFailure"),
             NotificationType::ResourceChange => write!(f, "ResourceChange"),
+            NotificationType::PermissionChange => write!(f, "PermissionChange"),
         }
     }
 }
@@ -211,6 +101,7 @@ pub enum Notification {
     Transaction(TransactionNotification),
     Confirmation(SigConfirmationNotification),
     Resource(ResourceNotification),
+    PermissionChange(PermissionChange),
 }
 
 // 实现通知的格式化方法
@@ -221,6 +112,7 @@ impl Notification {
             Notification::Transaction(data) => data.notification_type.to_string(),
             Notification::Resource(data) => data.notification_type.to_string(),
             Notification::Confirmation(data) => data.notification_type.to_string(),
+            Notification::PermissionChange(data) => data.notification_type.to_string(),
         }
     }
 

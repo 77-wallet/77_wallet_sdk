@@ -85,7 +85,7 @@ impl EndpointHandler for DefaultHandler {
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::ServiceError> {
         // 实现具体的处理逻辑
-        let res = backend
+        let _res = backend
             .post_req_str::<serde_json::Value>(endpoint, &body, aes_cbc_cryptor)
             .await?;
         Ok(())

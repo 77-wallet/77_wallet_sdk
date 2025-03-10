@@ -1,6 +1,8 @@
 use crate::{
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
     request::permission::PermissionReq,
+    service::system_notification::SystemNotificationService,
+    system_notification::{permission_change::PermissionChange, Notification},
 };
 use wallet_chain_interact::tron::{
     operations::multisig::Permission, protocol::account::TronAccount,
@@ -10,6 +12,7 @@ use wallet_database::{
         permission::{PermissionEntity, PermissionWithuserEntity},
         permission_user::PermissionUserEntity,
     },
+    factory::RepositoryFactory,
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
     DbPool,
 };
@@ -121,8 +124,6 @@ impl PermissionAccept {
             self.upsert(pool.clone(), permissions).await?
         }
 
-        // TODO 系统通知
-
         Ok(())
     }
 
@@ -173,10 +174,13 @@ impl PermissionAccept {
 
             PermissionDomain::mark_user_isself(&pool, &mut users).await?;
             if users.iter().any(|u| u.is_self == 1) {
-                return Ok(
-                    PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?,
-                );
+                PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?;
+
+                Self::system_notify(&pool, &permissions.permission).await?;
+
+                return Ok(());
             }
+
             Ok(())
         }
     }
@@ -218,6 +222,21 @@ impl PermissionAccept {
             tracing::warn!(" not self delete ");
             PermissionRepo::delete_one(&pool, id).await?;
         }
+
+        Ok(())
+    }
+
+    async fn system_notify(
+        pool: &DbPool,
+        permission: &PermissionEntity,
+    ) -> Result<(), crate::ServiceError> {
+        let repo = RepositoryFactory::repo(pool.clone());
+        let system_notification_service = SystemNotificationService::new(repo);
+
+        let notification = Notification::PermissionChange(PermissionChange::try_from(permission)?);
+        system_notification_service
+            .add_system_notification(&permission.id, notification, 0)
+            .await?;
 
         Ok(())
     }

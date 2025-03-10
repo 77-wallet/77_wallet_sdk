@@ -81,7 +81,7 @@ async fn test_add_permission() {
 
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "新增权hah限".to_string(),
+        name: "wode".to_string(),
         active_id: None,
         threshold: 1,
         operations: vec![0, 2, 5, 12, 16, 48, 58],
