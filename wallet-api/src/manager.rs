@@ -440,7 +440,7 @@ impl Dirs {
         let export_dir = Self::join_path(root_dir, "export");
         let log_dir = Self::join_path(root_dir, "log");
 
-        for dir in [&db_dir, &export_dir, &log_dir] {
+        for dir in [&db_dir, &export_dir, &log_dir, &wallet_dir] {
             wallet_utils::file_func::create_dir_all(dir)?;
         }
 

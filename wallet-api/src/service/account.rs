@@ -566,10 +566,10 @@ impl AccountService {
     ) -> Result<crate::response_vo::account::GetAccountPrivateKeyRes, crate::ServiceError> {
         let tx = &mut self.repo;
 
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
-        WalletDomain::validate_password(password).await?;
+        // let Some(device) = tx.get_device_info().await? else {
+        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        // };
+        // WalletDomain::validate_password(password).await?;
 
         let account_list = tx
             .account_list_by_wallet_address_and_account_id_and_chain_codes(
@@ -578,7 +578,6 @@ impl AccountService {
                 Vec::new(),
             )
             .await?;
-
         let chains = tx.get_chain_list().await?;
 
         let mut res = Vec::new();

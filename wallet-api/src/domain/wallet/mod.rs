@@ -3,13 +3,9 @@ use wallet_database::{
         config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
         device::DeviceEntity,
     },
-    repositories::{
-        account::AccountRepoTrait, chain::ChainRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
-    },
+    repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
 };
 use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
-
-use crate::request::wallet::ResetRootReq;
 
 use super::app::config::ConfigDomain;
 
@@ -52,13 +48,26 @@ impl WalletDomain {
             let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
             let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-            if let Err(e) = wallet_tree
-                .io()
-                .load_custom(&dirs.root_dir, "verify", password)
-            {
-                return Err(
-                    crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
-                );
+            let file_name = "verify";
+            let file_path = dirs.root_dir.join(&file_name);
+            if wallet_utils::file_func::exists(&file_path)? {
+                if let Err(_) = wallet_tree
+                    .io()
+                    .load_custom(&dirs.root_dir, &file_name, password)
+                {
+                    return Err(crate::BusinessError::Wallet(
+                        crate::WalletError::PasswordIncorrect,
+                    )
+                    .into());
+                }
+            } else {
+                wallet_tree.io().store(
+                    file_name,
+                    &"data",
+                    &dirs.root_dir,
+                    password,
+                    wallet_tree::KdfAlgorithm::Argon2id,
+                )?;
             }
         } else {
             WalletDomain::upgrade_algorithm(password).await?;

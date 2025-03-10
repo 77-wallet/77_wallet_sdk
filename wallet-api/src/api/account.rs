@@ -204,10 +204,14 @@ mod test {
         // let account_name = "account_name1";
         // let derivation_path = Some("m/44'/60'/0'/0/1".to_string());
         // let derivation_path = Some("m/44'/501'/1'/0".to_string());
+
+        // let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
+        // let wallet_address = "0x65Eb73c5aeAD87688D639E796C959E23C2356681";
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
         let account = wallet_manager
-            .get_account_private_key(password, "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406", 2)
+            .get_account_private_key(password, wallet_address, 1)
             .await;
         tracing::info!("[get_account_private_key] account: {account:?}");
 

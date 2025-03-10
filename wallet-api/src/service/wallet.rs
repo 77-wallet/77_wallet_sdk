@@ -271,20 +271,22 @@ impl WalletService {
     ) -> Result<CreateWalletRes, crate::ServiceError> {
         let tx = &mut self.repo;
 
+        WalletDomain::validate_password(wallet_password).await?;
+
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        let encrypted_pw = WalletDomain::encrypt_password(wallet_password, &device.sn)?;
-        // 如果有密码，就校验，否则更新密码
-        if let Some(password) = &device.password {
-            if password != &encrypted_pw {
-                return Err(
-                    crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
-                );
-            }
-        } else {
-            tx.update_password(Some(&encrypted_pw)).await?;
-        }
+        // let encrypted_pw = WalletDomain::encrypt_password(wallet_password, &device.sn)?;
+        // // 如果有密码，就校验，否则更新密码
+        // if let Some(password) = &device.password {
+        //     if password != &encrypted_pw {
+        //         return Err(
+        //             crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
+        //         );
+        //     }
+        // } else {
+        //     tx.update_password(Some(&encrypted_pw)).await?;
+        // }
 
         let dirs = crate::manager::Context::get_global_dirs()?;
 

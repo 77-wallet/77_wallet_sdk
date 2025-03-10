@@ -46,14 +46,15 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
+    let from = "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB";
     let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
     let value = "0.1";
     let symbol = "TRX";
     // let symbol = "USDT";
     // let symbol = "WIN";
     let chain_code = "tron";
-    let password = "123456";
+    // let password = "123456";
+    let password = "q1111111";
     let notes = "test".to_string();
 
     let mut base = transaction::BaseTransferReq::new(

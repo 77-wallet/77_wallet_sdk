@@ -477,7 +477,7 @@ mod test {
         let (wallet_manager, test_params) = get_manager().await?;
         let res = wallet_manager
             // .upgrade_algorithm(&test_params.create_wallet_req.wallet_password)
-            .validate_password("q1111111")
+            .validate_password("q11111111")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
