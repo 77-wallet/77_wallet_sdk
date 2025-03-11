@@ -462,7 +462,7 @@ mod test {
     async fn test_upgrade_algorithm() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let res = wallet_manager
             // .upgrade_algorithm(&test_params.create_wallet_req.wallet_password)
             .upgrade_algorithm("q1111111")
@@ -475,7 +475,7 @@ mod test {
     async fn test_validate_password() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, test_params) = get_manager().await?;
+        let (wallet_manager, _test_params) = get_manager().await?;
         let res = wallet_manager
             // .upgrade_algorithm(&test_params.create_wallet_req.wallet_password)
             .validate_password("q11111111")

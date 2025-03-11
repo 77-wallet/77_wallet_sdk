@@ -7,6 +7,7 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::request::{DeviceBindAddressReq, TokenQueryPriceReq};
+use wallet_tree::api::KeystoreApi;
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
@@ -93,6 +94,7 @@ impl AccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::ServiceError> {
+        let start = std::time::Instant::now();
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let Some(device) = tx.get_device_info().await? else {
@@ -159,6 +161,7 @@ impl AccountService {
         };
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
+        let mut subkeys = Vec::<wallet_tree::io::BulkSubkey>::new();
         for chain_code in &chains {
             let btc_address_types = if chain_code == "btc" {
                 BTC_ADDRESS_TYPES.to_vec()
@@ -173,24 +176,36 @@ impl AccountService {
                 let instance: wallet_chain_instance::instance::ChainObject =
                     (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
 
-                let res = AccountDomain::create_account_with_derivation_path(
-                    &mut tx,
-                    dirs,
-                    &seed,
-                    instance,
-                    &derivation_path,
-                    &account_index_map,
-                    &wallet.uid,
-                    &wallet.address,
-                    wallet_password,
-                    derive_password.clone(),
-                    name,
-                    is_default_name,
-                )
-                .await?;
+                let (account_address, derivation_path) =
+                    AccountDomain::create_account_with_derivation_path(
+                        &mut tx,
+                        &seed,
+                        &instance,
+                        derivation_path.as_deref(),
+                        &account_index_map,
+                        &wallet.uid,
+                        &wallet.address,
+                        name,
+                        is_default_name,
+                    )
+                    .await?;
+
+                let keypair = instance
+                    .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
+                    .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+                let pk = keypair.private_key_bytes()?;
+                let subkey = wallet_tree::io::BulkSubkey::new(
+                    account_index_map.clone(),
+                    &account_address.address,
+                    chain_code,
+                    derivation_path.as_str(),
+                    pk,
+                );
+                subkeys.push(subkey);
                 for coin in &default_coins_list {
                     if &coin.chain_code == chain_code {
-                        let assets_id = AssetsId::new(&res.address, chain_code, &coin.symbol);
+                        let assets_id =
+                            AssetsId::new(&account_address.address, chain_code, &coin.symbol);
                         let assets = CreateAssetsVo::new(
                             assets_id,
                             coin.decimals,
@@ -211,6 +226,17 @@ impl AccountService {
                 }
             }
         }
+
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        KeystoreApi::initialize_child_keystores(
+            wallet_tree,
+            subkeys,
+            dirs.get_subs_dir(wallet_address)?,
+            wallet_password,
+            algorithm,
+        )?;
 
         // let accounts = tx.list().await?;
 
@@ -237,6 +263,7 @@ impl AccountService {
             .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
             .send()
             .await?;
+        tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(())
     }
 
@@ -248,9 +275,7 @@ impl AccountService {
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::ServiceError> {
         let mut tx = self.repo;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
+
         WalletDomain::validate_password(password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
