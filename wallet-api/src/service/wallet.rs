@@ -672,6 +672,9 @@ impl WalletService {
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
+            let file_name = "verify";
+            let file_path = dirs.root_dir.join(&file_name);
+            wallet_utils::file_func::remove_file(file_path)?;
             tx.update_password(None).await?;
             None
         };
@@ -782,6 +785,9 @@ impl WalletService {
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
+        let file_name = "verify";
+        let file_path = dirs.root_dir.join(&file_name);
+        wallet_utils::file_func::remove_file(file_path)?;
         Ok(())
     }
 
