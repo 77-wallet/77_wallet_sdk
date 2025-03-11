@@ -2,6 +2,7 @@ use wallet_database::{
     entities::{
         config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
         device::DeviceEntity,
+        wallet::WalletEntity,
     },
     repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
 };
@@ -37,14 +38,19 @@ impl WalletDomain {
 
     pub(crate) async fn validate_password(password: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let dirs = crate::Context::get_global_dirs()?;
+
+        if WalletEntity::wallet_latest(&*pool).await?.is_none() {
+            let file_name = "verify";
+            let file_path = dirs.root_dir.join(&file_name);
+            wallet_utils::file_func::remove_file(file_path)?;
+        };
 
         let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
         if device.password.is_none() {
-            let dirs = crate::Context::get_global_dirs()?;
-
             let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
             let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
