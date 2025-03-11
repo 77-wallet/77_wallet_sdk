@@ -784,7 +784,8 @@ impl WalletService {
 
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
-        wallet_utils::file_func::remove_dir_all(wallet_dir)?;
+        wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
+        wallet_utils::file_func::create_dir_all(wallet_dir)?;
         let file_name = "verify";
         let file_path = dirs.root_dir.join(&file_name);
         wallet_utils::file_func::remove_file(file_path)?;
