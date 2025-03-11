@@ -43,7 +43,9 @@ impl WalletDomain {
         if WalletEntity::wallet_latest(&*pool).await?.is_none() {
             let file_name = "verify";
             let file_path = dirs.root_dir.join(&file_name);
-            wallet_utils::file_func::remove_file(file_path)?;
+            if wallet_utils::file_func::exists(&file_path)? {
+                wallet_utils::file_func::remove_file(file_path)?;
+            }
         };
 
         let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
@@ -67,6 +69,7 @@ impl WalletDomain {
                     .into());
                 }
             } else {
+                tracing::info!("开始存储");
                 wallet_tree.io().store(
                     file_name,
                     &"data",
