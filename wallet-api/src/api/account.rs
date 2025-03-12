@@ -211,7 +211,7 @@ mod test {
         let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
         let account = wallet_manager
-            .get_account_private_key(password, wallet_address, 1)
+            .get_account_private_key(password, wallet_address, 2)
             .await;
         tracing::info!("[get_account_private_key] account: {account:?}");
 

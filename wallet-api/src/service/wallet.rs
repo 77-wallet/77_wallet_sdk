@@ -286,7 +286,12 @@ impl WalletService {
         let start = std::time::Instant::now();
         let tx = &mut self.repo;
 
+        let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
+        tracing::info!(
+            "Password validation took: {:?}",
+            password_validation_start.elapsed()
+        );
 
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
@@ -294,16 +299,22 @@ impl WalletService {
 
         let dirs = crate::manager::Context::get_global_dirs()?;
 
+        let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo {
-            private_key,
+            private_key: _,
             seed,
             address,
             phrase,
         } = wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
+        tracing::info!(
+            "Master key generation took: {:?}",
+            master_key_start.elapsed()
+        );
 
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
+        let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
-
+        tracing::info!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let address = &address.to_string();
         let seed = seed.clone();
 
@@ -315,20 +326,31 @@ impl WalletService {
         let storage_path = dirs.get_root_dir(address)?;
         wallet_utils::file_func::recreate_dir_all(&storage_path)?;
 
+        let wallet_tree_start = std::time::Instant::now();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         tracing::info!("wallet_tree: {wallet_tree:#?}");
+        tracing::info!(
+            "Wallet tree strategy retrieval took: {:?}",
+            wallet_tree_start.elapsed()
+        );
+
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let initialize_root_keystore_start = std::time::Instant::now();
         wallet_tree::api::KeystoreApi::initialize_root_keystore(
             wallet_tree,
             address,
-            &private_key,
+            // &private_key,
             &seed,
             &phrase,
             &storage_path,
             wallet_password,
             algorithm,
         )?;
+        tracing::info!(
+            "Initialize root keystore took: {:?}",
+            initialize_root_keystore_start.elapsed()
+        );
         tx.upsert_wallet(address, &uid, wallet_name).await?;
         let default_chain_list = tx.get_chain_list().await?;
         let coins = tx.default_coin_list().await?;
@@ -337,6 +359,7 @@ impl WalletService {
             .map(|chain| chain.chain_code)
             .collect::<Vec<String>>();
 
+        let account_creation_start = std::time::Instant::now();
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut subkeys = Vec::<wallet_tree::io::BulkSubkey>::new();
 
@@ -421,7 +444,12 @@ impl WalletService {
                 }
             }
         }
+        tracing::info!(
+            "Account creation and subkey generation took: {:?}",
+            account_creation_start.elapsed()
+        );
 
+        let child_keystore_start = std::time::Instant::now();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
@@ -432,6 +460,10 @@ impl WalletService {
             wallet_password,
             algorithm,
         )?;
+        tracing::info!(
+            "Child keystore initialization took: {:?}",
+            child_keystore_start.elapsed()
+        );
 
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new().push(task).send().await?;

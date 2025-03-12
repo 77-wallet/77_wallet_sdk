@@ -18,24 +18,24 @@ wallet-database = { version = "0.1.0", default-features = false, path = "wallet-
 wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 
-# wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-chain-interact = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-chain-instance = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-transport = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-utils = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-types = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-tree = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-core = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
+# wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+# wallet-chain-interact = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+# wallet-chain-instance = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+# wallet-transport = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+# wallet-utils = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+# wallet-types = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+# wallet-tree = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+# wallet-core = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
 
 
-# wallet-keystore = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-tree = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
-# wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "ea642ed0fda17b5067c74eb52e7970898e85d374" }
+wallet-keystore = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+wallet-tree = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
+wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "90346a3f0c26bf9955d926743c360a49a10d6e0f" }
 
 # wallet-keystore = { default-features = false, path = "../wallet_core/wallet-keystore" }
 # wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
@@ -46,14 +46,14 @@ wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-mac
 # wallet-tree = { default-features = false, path = "../wallet_core/wallet-tree" }
 # wallet-core = { default-features = false, path = "../wallet_core/wallet-core" }
 
-wallet-keystore = { default-features = false, path = "../77_wallet_core/wallet-keystore" }
-wallet-chain-interact = { default-features = false, path = "../77_wallet_core/wallet-chain-interact" }
-wallet-chain-instance = { default-features = false, path = "../77_wallet_core/wallet-chain-instance" }
-wallet-transport = { default-features = false, path = "../77_wallet_core/wallet-transport" }
-wallet-utils = { default-features = false, path = "../77_wallet_core/wallet-utils" }
-wallet-types = { default-features = false, path = "../77_wallet_core/wallet-types" }
-wallet-tree = { default-features = false, path = "../77_wallet_core/wallet-tree" }
-wallet-core = { default-features = false, path = "../77_wallet_core/wallet-core" }
+# wallet-keystore = { default-features = false, path = "../77_wallet_core/wallet-keystore" }
+# wallet-chain-interact = { default-features = false, path = "../77_wallet_core/wallet-chain-interact" }
+# wallet-chain-instance = { default-features = false, path = "../77_wallet_core/wallet-chain-instance" }
+# wallet-transport = { default-features = false, path = "../77_wallet_core/wallet-transport" }
+# wallet-utils = { default-features = false, path = "../77_wallet_core/wallet-utils" }
+# wallet-types = { default-features = false, path = "../77_wallet_core/wallet-types" }
+# wallet-tree = { default-features = false, path = "../77_wallet_core/wallet-tree" }
+# wallet-core = { default-features = false, path = "../77_wallet_core/wallet-core" }
 
 # wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
 # wallet-error = { version = "0.1.0", default-features = false, path = "wallet-error" }

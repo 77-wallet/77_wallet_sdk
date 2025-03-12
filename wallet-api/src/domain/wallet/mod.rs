@@ -101,10 +101,11 @@ impl WalletDomain {
         //     return Err(crate::BusinessError::Wallet(crate::WalletError::NotFound).into());
         // }
         let dirs = crate::manager::Context::get_global_dirs()?;
+
         // let wallet_tree =
         // wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
         let mut legacy_wallet_tree = WalletTreeStrategy::V1.get_wallet_tree(&dirs.wallet_dir)?;
-
+        // tracing::info!("legacy_wallet_tree: {:?}", legacy_wallet_tree);
         #[derive(Debug, Clone, Eq, PartialEq, Hash)]
         pub struct AccountInfo {
             pub wallet_address: String,
@@ -113,19 +114,40 @@ impl WalletDomain {
             pub derivation_path: String,
         }
 
+        let modern_wallet_tree = WalletTreeStrategy::V2.get_wallet_tree(&dirs.wallet_dir)?;
         // 将子密钥全部读取出来
-        let mut data = std::collections::HashMap::<AccountInfo, Vec<u8>>::new();
+        let mut account_data = std::collections::HashMap::<AccountInfo, Vec<u8>>::new();
         for (k, v) in legacy_wallet_tree.iter() {
-            for account in v.get_accounts().into_iter() {
-                let subs_dir = dirs.get_subs_dir(k)?;
+            let root_dir = dirs.get_root_dir(k)?;
+            let subs_dir = dirs.get_subs_dir(k)?;
+            let root_data = legacy_wallet_tree.io().load_root(
+                legacy_wallet_tree.naming(),
+                k,
+                &root_dir,
+                password,
+            )?;
 
+            modern_wallet_tree.io().store_root(
+                modern_wallet_tree.naming(),
+                k,
+                root_data.seed(),
+                root_data.phrase(),
+                &root_dir,
+                password,
+                wallet_tree::KdfAlgorithm::Argon2id,
+            )?;
+
+            legacy_wallet_tree
+                .io()
+                .delete_root(legacy_wallet_tree.naming(), k, &root_dir)?;
+
+            for account in v.get_accounts().into_iter() {
                 let address = account.get_address();
                 let chain_code = account.chain_code().unwrap_or_default();
                 let derivation_path = account.derivation_path().unwrap_or_default();
 
-                let naming = legacy_wallet_tree.naming();
-                let pk = legacy_wallet_tree.io().load(
-                    naming,
+                let pk = legacy_wallet_tree.io().load_subkey(
+                    legacy_wallet_tree.naming(),
                     None,
                     address,
                     &chain_code,
@@ -134,7 +156,7 @@ impl WalletDomain {
                     password,
                 )?;
 
-                data.insert(
+                account_data.insert(
                     AccountInfo {
                         wallet_address: k.to_string(),
                         address: address.to_string(),
@@ -146,13 +168,8 @@ impl WalletDomain {
             }
         }
 
-        let modern_wallet_tree = WalletTreeStrategy::V2.get_wallet_tree(&dirs.wallet_dir)?;
-
-        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
-        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
         // let wallet_tr
-        wallet_tree.io().store(
+        modern_wallet_tree.io().store(
             "verify",
             &"data",
             &dirs.root_dir,
@@ -160,7 +177,7 @@ impl WalletDomain {
             wallet_tree::KdfAlgorithm::Argon2id,
         )?;
 
-        for (info, d) in data {
+        for (info, d) in account_data {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
                 &info.derivation_path,
             )?;
