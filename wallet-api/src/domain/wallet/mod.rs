@@ -69,7 +69,6 @@ impl WalletDomain {
                     .into());
                 }
             } else {
-                tracing::info!("开始存储");
                 wallet_tree.io().store(
                     file_name,
                     &"data",

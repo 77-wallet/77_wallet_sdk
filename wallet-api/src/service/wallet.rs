@@ -329,7 +329,6 @@ impl WalletService {
         let wallet_tree_start = std::time::Instant::now();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        tracing::info!("wallet_tree: {wallet_tree:#?}");
         tracing::info!(
             "Wallet tree strategy retrieval took: {:?}",
             wallet_tree_start.elapsed()
