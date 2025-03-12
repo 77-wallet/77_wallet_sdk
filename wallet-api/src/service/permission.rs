@@ -209,12 +209,14 @@ impl PermssionService {
 
         for permission in permissions.iter() {
             let grantor_addr = permission.permission.grantor_addr.clone();
+            let name = permission.permission.name.clone();
             let mut p = PermissionResp::try_from(permission)?;
 
             self.mark_address_book_name(&pool, &mut p.keys).await?;
 
             result.push(ManagerPermissionResp {
                 grantor_addr,
+                name,
                 permission: p,
             });
         }

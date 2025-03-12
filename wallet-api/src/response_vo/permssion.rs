@@ -109,6 +109,7 @@ pub struct PermissionResp {
 #[serde(rename_all = "camelCase")]
 pub struct ManagerPermissionResp {
     pub grantor_addr: String,
+    pub name: String,
     pub permission: PermissionResp,
 }
 
@@ -144,7 +145,7 @@ impl TryFrom<&PermissionWithuserEntity> for PermissionResp {
         let keys = value
             .user
             .iter()
-            .map(|u| Keys::new(u.address.clone(), u.weight as i8))
+            .map(|u| Keys::new(u.address.clone(), u.weight as i8, u.is_self))
             .collect();
 
         Ok(PermissionResp {
@@ -162,15 +163,17 @@ impl TryFrom<&PermissionWithuserEntity> for PermissionResp {
 pub struct Keys {
     pub name: String,
     pub address: String,
+    pub is_self: i64,
     weight: i8,
 }
 
 impl Keys {
-    pub fn new(address: String, weight: i8) -> Self {
+    pub fn new(address: String, weight: i8, is_self: i64) -> Self {
         Self {
             name: String::new(),
             address,
             weight,
+            is_self,
         }
     }
 }
@@ -181,6 +184,7 @@ impl From<&wallet_chain_interact::tron::operations::multisig::Keys> for Keys {
             name: String::new(),
             address: value.address.clone(),
             weight: value.weight.clone(),
+            is_self: 0,
         }
     }
 }
