@@ -1,6 +1,7 @@
 use crate::get_manager;
-use wallet_api::request::stake::{
-    DelegateReq, FreezeBalanceReq, UnDelegateReq, VoteWitnessReq, VotesReq,
+use wallet_api::request::{
+    stake::{DelegateReq, FreezeBalanceReq, UnDelegateReq, VoteWitnessReq, VotesReq},
+    transaction::Signer,
 };
 use wallet_database::entities::bill::BillKind;
 
@@ -8,11 +9,16 @@ use wallet_database::entities::bill::BillKind;
 async fn test_build_freeze() {
     let manager = get_manager().await;
 
+    let singer = Signer {
+        address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        permission_id: 4,
+    };
+
     let req = FreezeBalanceReq {
         owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
         resource: "energy".to_string(),
-        frozen_balance: 11,
-        signer: None,
+        frozen_balance: 50,
+        signer: Some(singer),
     };
 
     let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;

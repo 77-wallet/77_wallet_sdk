@@ -90,7 +90,7 @@ async fn test_add_permission() {
     let password = "123456".to_string();
 
     let res = wallet_manager
-        .modify_permission(req, "new".to_string(), password)
+        .modify_permission(req, "update".to_string(), password)
         .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
@@ -107,21 +107,17 @@ async fn test_up_permision() {
             weight: 1,
         },
         KeysReq {
-            address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+            address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
             weight: 1,
         },
-        // KeysReq {
-        //     address: "TDVayp1uF6CD3NGT1ZR4SJcxot5VQHQNtY".to_string(),
-        //     weight: 1,
-        // },
     ];
 
     let req = PermissionReq {
-        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "final".to_string(),
-        active_id: Some(2),
+        grantor_addr: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        name: "update_stake".to_string(),
+        active_id: Some(4),
         threshold: 2,
-        operations: vec![1, 54, 55],
+        operations: vec![1, 54, 55, 59, 56, 57, 58],
         keys,
     };
     let password = "123456".to_string();
@@ -177,10 +173,10 @@ async fn test_build_multisig_queue() {
 
     let req = PermissionReq {
         grantor_addr: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        name: "update permsion 3".to_string(),
-        active_id: Some(5),
+        name: "stake".to_string(),
+        active_id: Some(4),
         threshold: 1,
-        operations: vec![1, 2, 3, 4, 5],
+        operations: vec![1, 54, 55, 59, 56, 57, 58],
         keys,
     };
     let password = "123456".to_string();
