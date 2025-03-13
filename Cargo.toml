@@ -6,6 +6,7 @@ members = [
     # "wallet-error",
     "wallet-macro",
     "wallet-oss",
+    "wallet-tree",
 ]
 
 resolver = "2"
@@ -17,6 +18,7 @@ wallet-oss = { version = "0.1.0", default-features = false, path = "wallet-oss" 
 wallet-database = { version = "0.1.0", default-features = false, path = "wallet-database" }
 wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
+wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree" }
 
 # wallet-keystore = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
 # wallet-chain-interact = { default-features = false, git = "https://github.com/77-wallet/77_wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
@@ -34,7 +36,7 @@ wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wal
 wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
 wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
 wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
-wallet-tree = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
+# wallet-tree = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
 wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "0642e7b4383cd6de46989d017615ad9f4d9b3d38" }
 
 # wallet-keystore = { default-features = false, path = "../wallet_core/wallet-keystore" }
@@ -153,6 +155,8 @@ cfg-if = "1.0.0"
 
 # map
 dashmap = { version = "6.1.0", features = ["serde"] }
+
+coins-bip32 = "0.8.7"
 
 [patch.crates-io.aes-gcm-siv]
 git = "https://github.com/RustCrypto/AEADs"
