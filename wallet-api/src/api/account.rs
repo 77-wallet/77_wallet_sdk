@@ -211,7 +211,7 @@ mod test {
         let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
         let account = wallet_manager
-            .get_account_private_key(password, wallet_address, 2)
+            .get_account_private_key(password, wallet_address, 1)
             .await;
         tracing::info!("[get_account_private_key] account: {account:?}");
 
@@ -269,8 +269,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let account_id = 2;
-        let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
+        let account_id = 1;
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let password = "q1111111";
         let account = wallet_manager
             .physical_delete_account(wallet_address, account_id, password)

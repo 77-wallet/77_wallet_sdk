@@ -12,6 +12,7 @@ use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
 };
+use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     domain::{self, account::AccountDomain, app::config::ConfigDomain, wallet::WalletDomain},
@@ -143,6 +144,7 @@ impl AccountService {
         // 获取该账户的最大索引，并加一
         let account_index_map = if let Some(index) = index {
             let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
+            tracing::warn!("account index: {:#?}", index);
             if tx.has_account_id(&wallet.address, index.account_id).await? {
                 return Err(crate::ServiceError::Business(
                     crate::BusinessError::Account(crate::AccountError::AlreadyExist),
@@ -394,6 +396,7 @@ impl AccountService {
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
+        WalletDomain::validate_password(password).await?;
         // Check if this is the last account
         let account_count = tx.count_unique_account_ids(wallet_address).await?;
         if account_count <= 1 {
@@ -428,24 +431,29 @@ impl AccountService {
 
         let subs_path = dirs.get_subs_dir(wallet_address)?;
 
-        let mut req = DeviceBindAddressReq::new(&device.sn);
-        for del in deleted {
-            wallet_tree.delete_subkey(
-                // naming,
-                wallet_address,
-                &del.address,
-                &del.chain_code,
-                &subs_path,
-                password,
-            )?;
-            // wallet_tree.delete_subkey(
-            //     wallet_address,
-            //     &subs_path,
-            //     &del.address,
-            //     &del.chain_code.as_str().try_into()?,
-            // )?;
-            req.push(&del.chain_code, &del.address);
-        }
+        wallet_tree.io().delete_account(
+            wallet_tree.naming(),
+            &AccountIndexMap::from_account_id(account_id)?,
+            &dirs.get_subs_dir(wallet_address)?,
+        )?;
+
+        // for del in deleted {
+        //     wallet_tree.delete_subkey(
+        //         // naming,
+        //         wallet_address,
+        //         &del.address,
+        //         &del.chain_code,
+        //         &subs_path,
+        //         password,
+        //     )?;
+        //     // wallet_tree.delete_subkey(
+        //     //     wallet_address,
+        //     //     &subs_path,
+        //     //     &del.address,
+        //     //     &del.chain_code.as_str().try_into()?,
+        //     // )?;
+        //     req.push(&del.chain_code, &del.address);
+        // }
 
         Ok(())
     }
