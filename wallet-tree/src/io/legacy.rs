@@ -26,14 +26,28 @@ impl IoStrategy for LegacyIo {
         Ok(())
     }
 
+    fn load_account(
+        &self,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        subs_dir: &dyn AsRef<std::path::Path>,
+        password: &str,
+    ) -> Result<super::AccountData, crate::Error> {
+        todo!()
+    }
+
     fn load_root(
         &self,
         wallet_address: &str,
         root_dir: &dyn AsRef<std::path::Path>,
         password: &str,
     ) -> Result<super::RootData, crate::Error> {
-        let seed_meta =
-            LegacyNaming::generate_filemeta(FileType::Seed, &wallet_address, None, None, None)?;
+        let seed_meta = LegacyNaming::generate_filemeta(
+            FileType::Seed,
+            Some(wallet_address.to_string()),
+            None,
+            None,
+            None,
+        )?;
         let seed_filename = LegacyNaming::encode(seed_meta)?;
 
         let seed = crate::Keystore::load_data::<_, wallet_keystore::wallet::seed::SeedWallet>(
@@ -41,8 +55,13 @@ impl IoStrategy for LegacyIo {
             password,
         )?;
 
-        let phrase_meta =
-            LegacyNaming::generate_filemeta(FileType::Phrase, &wallet_address, None, None, None)?;
+        let phrase_meta = LegacyNaming::generate_filemeta(
+            FileType::Phrase,
+            Some(wallet_address.to_string()),
+            None,
+            None,
+            None,
+        )?;
         let phrase_filename = LegacyNaming::encode(phrase_meta)?;
 
         let phrase_wallet = crate::Keystore::load_data::<
@@ -64,12 +83,15 @@ impl IoStrategy for LegacyIo {
     ) -> Result<Vec<u8>, crate::Error> {
         let pk_meta = LegacyNaming::generate_filemeta(
             FileType::DerivedData,
-            &address,
+            Some(address.to_string()),
             account_index_map,
             Some(chain_code.to_string()),
             Some(derivation_path.to_string()),
         )?;
         let pk_filename = LegacyNaming::encode(pk_meta)?;
+        tracing::warn!("password: {:?}", password);
+        tracing::warn!("subs_dir: {:?}", subs_dir.as_ref());
+        tracing::warn!("pk_filename: {}", pk_filename);
         let data =
             KeystoreBuilder::new_decrypt(subs_dir.as_ref().join(pk_filename), password).load()?;
         let pk: PkWallet = data.try_into()?;
@@ -86,10 +108,20 @@ impl IoStrategy for LegacyIo {
         password: &str,
         algorithm: wallet_keystore::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
-        let phrase_meta =
-            LegacyNaming::generate_filemeta(FileType::Phrase, &address, None, None, None)?;
-        let seed_meta =
-            LegacyNaming::generate_filemeta(FileType::Seed, &address, None, None, None)?;
+        let phrase_meta = LegacyNaming::generate_filemeta(
+            FileType::Phrase,
+            Some(address.to_string()),
+            None,
+            None,
+            None,
+        )?;
+        let seed_meta = LegacyNaming::generate_filemeta(
+            FileType::Seed,
+            Some(address.to_string()),
+            None,
+            None,
+            None,
+        )?;
         let seed_filename = LegacyNaming::encode(seed_meta)?;
         let phrase_filename = LegacyNaming::encode(phrase_meta)?;
 
@@ -117,7 +149,7 @@ impl IoStrategy for LegacyIo {
     ) -> Result<(), crate::Error> {
         let file_meta = LegacyNaming::generate_filemeta(
             FileType::DerivedData,
-            &address,
+            Some(address.to_string()),
             Some(account_index_map),
             Some(chain_code.to_string()),
             Some(derivation_path.to_string()),
@@ -140,7 +172,7 @@ impl IoStrategy for LegacyIo {
         for subkey in subkeys {
             let file_meta = LegacyNaming::generate_filemeta(
                 FileType::DerivedData,
-                &subkey.address,
+                Some(subkey.address),
                 Some(&subkey.account_index_map),
                 Some(subkey.chain_code.to_string()),
                 Some(subkey.derivation_path.to_string()),
@@ -170,7 +202,7 @@ impl IoStrategy for LegacyIo {
             .as_ref()
             .join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
                 FileType::PrivateKey,
-                &address,
+                Some(address.to_string()),
                 None,
                 None,
                 None,
@@ -180,7 +212,7 @@ impl IoStrategy for LegacyIo {
             .as_ref()
             .join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
                 FileType::Phrase,
-                &address,
+                Some(address.to_string()),
                 None,
                 None,
                 None,
@@ -190,7 +222,7 @@ impl IoStrategy for LegacyIo {
             .as_ref()
             .join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
                 FileType::Seed,
-                &address,
+                Some(address.to_string()),
                 None,
                 None,
                 None,

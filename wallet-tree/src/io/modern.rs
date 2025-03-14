@@ -27,14 +27,51 @@ impl IoStrategy for ModernIo {
         Ok(())
     }
 
+    fn load_account(
+        &self,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        subs_dir: &dyn AsRef<std::path::Path>,
+        password: &str,
+    ) -> Result<super::AccountData, crate::Error> {
+        let pk_meta = ModernNaming::generate_filemeta(
+            FileType::DerivedData,
+            None,
+            Some(account_index_map),
+            None,
+            None,
+        )?;
+
+        let pk_filename = ModernNaming::encode(pk_meta)?;
+        let data =
+            KeystoreBuilder::new_decrypt(subs_dir.as_ref().join(pk_filename), password).load()?;
+        let derived_data: KeystoreData = data.try_into()?;
+
+        let mut res = super::AccountData::default();
+        for (k, v) in derived_data.iter() {
+            match KeyMeta::decode(k) {
+                Ok(meta) => {
+                    res.insert(meta, v.to_vec());
+                }
+                Err(e) => tracing::error!("KeyMeta decode error: {e}"),
+            }
+        }
+
+        Ok(res)
+    }
+
     fn load_root(
         &self,
         wallet_address: &str,
         root_dir: &dyn AsRef<std::path::Path>,
         password: &str,
     ) -> Result<super::RootData, crate::Error> {
-        let root_meta =
-            ModernNaming::generate_filemeta(FileType::Root, wallet_address, None, None, None)?;
+        let root_meta = ModernNaming::generate_filemeta(
+            FileType::Root,
+            Some(wallet_address.to_string()),
+            None,
+            None,
+            None,
+        )?;
         let root_filename = ModernNaming::encode(root_meta)?;
         let data =
             KeystoreBuilder::new_decrypt(root_dir.as_ref().join(root_filename), password).load()?;
@@ -52,13 +89,15 @@ impl IoStrategy for ModernIo {
     ) -> Result<Vec<u8>, crate::Error> {
         let pk_meta = ModernNaming::generate_filemeta(
             FileType::DerivedData,
-            &address,
+            Some(address.to_string()),
             account_index_map,
             Some(chain_code.to_string()),
             Some(derivation_path.to_string()),
         )?;
         let pk_filename = ModernNaming::encode(pk_meta)?;
-
+        tracing::warn!("password: {:?}", password);
+        tracing::warn!("subs_dir: {:?}", subs_dir.as_ref());
+        tracing::warn!("load_subkey: {}", pk_filename);
         let data =
             KeystoreBuilder::new_decrypt(subs_dir.as_ref().join(pk_filename), password).load()?;
 
@@ -131,7 +170,7 @@ impl IoStrategy for ModernIo {
 
         let meta = ModernNaming::generate_filemeta(
             FileType::DerivedData,
-            &address,
+            Some(address.to_string()),
             Some(account_index_map),
             Some(chain_code.to_string()),
             Some(derivation_path.to_string()),
@@ -171,6 +210,10 @@ impl IoStrategy for ModernIo {
         };
 
         derived_data.insert(key.encode(), data.as_ref().to_vec());
+
+        tracing::warn!("password: {:?}", password);
+        tracing::warn!("base_path: {:?}", base_path);
+        tracing::warn!("key_filename: {}", key_filename);
 
         let val = wallet_utils::serde_func::serde_to_vec(&derived_data)?;
         let rng = rand::thread_rng();
@@ -226,7 +269,7 @@ impl IoStrategy for ModernIo {
             } else {
                 KeystoreData::default()
             };
-
+            tracing::warn!("aaa keystore_data: {:?}", keystore_data);
             // 收集本批次的元数据更新
             for subkey in subkeys {
                 let key = KeyMeta {
@@ -276,7 +319,13 @@ impl IoStrategy for ModernIo {
         root_dir: &dyn AsRef<std::path::Path>,
     ) -> Result<(), crate::Error> {
         wallet_utils::file_func::remove_file(root_dir.as_ref().join(ModernNaming::encode(
-            ModernNaming::generate_filemeta(FileType::Root, &address, None, None, None)?,
+            ModernNaming::generate_filemeta(
+                FileType::Root,
+                Some(address.to_string()),
+                None,
+                None,
+                None,
+            )?,
         )?))?;
 
         Ok(())
@@ -305,7 +354,7 @@ impl IoStrategy for ModernIo {
         // 2. 生成密钥文件名（保持与存储时相同的命名逻辑）
         let meta = ModernNaming::generate_filemeta(
             FileType::DerivedData,
-            "", // address 字段在删除时不需要
+            None, // address 字段在删除时不需要
             Some(&account_index_map),
             None, // chain_code
             None, // derivation_path

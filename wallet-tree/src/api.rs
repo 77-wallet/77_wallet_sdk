@@ -129,6 +129,18 @@ impl KeystoreApi {
         Ok(pk)
     }
 
+    pub fn load_account_pk(
+        wallet_tree: &Box<dyn WalletTreeOps>,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        subs_dir: &std::path::PathBuf,
+        password: &str,
+    ) -> Result<crate::io::AccountData, crate::Error> {
+        let account_data = wallet_tree
+            .io()
+            .load_account(account_index_map, subs_dir, password)?;
+        Ok(account_data)
+    }
+
     pub fn load_seed(
         wallet_tree: &Box<dyn WalletTreeOps>,
         root_dir: &std::path::PathBuf,
@@ -177,6 +189,41 @@ impl KeystoreApi {
         )
     }
 
+    pub fn update_account_password(
+        wallet_tree: Box<dyn WalletTreeOps>,
+        subs_dir: &std::path::PathBuf,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        old_password: &str,
+        new_password: &str,
+        algorithm: KdfAlgorithm,
+    ) -> Result<(), crate::Error> {
+        // let mut accounts = wallet_tree
+        //     .get_wallet_branch(wallet_address)?
+        //     .get_accounts();
+
+        let account_data =
+            Self::load_account_pk(&wallet_tree, account_index_map, subs_dir, old_password)?;
+
+        let mut subkeys = Vec::<crate::io::BulkSubkey>::new();
+        for (meta, pk) in account_data.iter() {
+            let subkey = crate::io::BulkSubkey::new(
+                account_index_map.clone(),
+                &meta.address,
+                &meta.chain_code,
+                &meta.derivation_path,
+                pk.to_vec(),
+            );
+            subkeys.push(subkey);
+        }
+        wallet_tree
+            .io()
+            .delete_account(account_index_map, subs_dir)?;
+
+        Self::initialize_child_keystores(wallet_tree, subkeys, subs_dir, new_password, algorithm)?;
+
+        Ok(())
+    }
+
     pub fn update_child_password(
         subs_dir: std::path::PathBuf,
         instance: wallet_chain_instance::instance::ChainObject,
@@ -189,6 +236,7 @@ impl KeystoreApi {
     ) -> Result<(), crate::Error> {
         // let gen_address = instance.gen_gen_address()?;
 
+        tracing::info!("wallet_tree: {:#?}", wallet_tree);
         if let Some(account) = wallet_tree
             .get_wallet_branch(wallet_address)?
             .get_account(address, instance.chain_code())
@@ -231,11 +279,13 @@ impl KeystoreApi {
                 derivation_path,
                 &pk,
                 &subs_dir,
-                old_password,
+                new_password,
                 algorithm,
             )?;
 
             // crate::Keystore::store_data(&filename, pk, &subs_dir, new_password, algorithm)?;
+        } else {
+            tracing::error!("account not found");
         }
 
         Ok(())

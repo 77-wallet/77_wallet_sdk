@@ -18,7 +18,7 @@ pub trait NamingStrategy: Send + Sync {
     /// 生成元数据
     fn generate_filemeta(
         file_type: FileType,
-        address: &str,
+        address: Option<String>,
         account_index_map: Option<&wallet_utils::address::AccountIndexMap>,
         chain_code: Option<String>,
         derivation_path: Option<String>,

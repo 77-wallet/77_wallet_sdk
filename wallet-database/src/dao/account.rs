@@ -406,4 +406,17 @@ impl AccountEntity {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn get_all_account_indices<'a, E>(exec: E) -> Result<Vec<u32>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT DISTINCT account_id FROM account ORDER BY account_id";
+
+        sqlx::query_as::<_, (u32,)>(sql)
+            .fetch_all(exec)
+            .await
+            .map(|rows| rows.into_iter().map(|(id,)| id).collect())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }

@@ -169,14 +169,14 @@ impl NamingStrategy for ModernNaming {
 
     fn generate_filemeta(
         file_type: FileType,
-        address: &str,
+        address: Option<String>,
         account_index_map: Option<&wallet_utils::address::AccountIndexMap>,
         chain_code: Option<String>,
         derivation_path: Option<String>,
     ) -> Result<Box<dyn FileMeta>, crate::Error> {
         Ok(Box::new(ModernFileMeta {
             file_type,
-            address: Some(address.to_string()),
+            address,
             account_index_map: account_index_map.cloned(),
             chain_code,
             derivation_path,
@@ -229,7 +229,7 @@ impl DerefMut for KeystoreData {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub struct KeyMeta {
     pub chain_code: String,
     pub address: String,

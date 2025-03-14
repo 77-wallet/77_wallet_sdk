@@ -158,14 +158,14 @@ impl NamingStrategy for LegacyNaming {
 
     fn generate_filemeta(
         file_type: FileType,
-        address: &str,
+        address: Option<String>,
         _account_index_map: Option<&wallet_utils::address::AccountIndexMap>,
         chain_code: Option<String>,
         derivation_path: Option<String>,
     ) -> Result<Box<dyn FileMeta>, crate::Error> {
         Ok(Box::new(LegacyFileMeta {
             file_type,
-            address: address.to_string(),
+            address: address.unwrap_or_default(),
             chain_code,
             derivation_path,
         }))

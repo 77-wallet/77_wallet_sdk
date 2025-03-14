@@ -1,9 +1,15 @@
 pub(crate) mod legacy;
 pub(crate) mod modern;
 
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
+    path::Path,
+};
 
 use wallet_keystore::{KdfAlgorithm, KeystoreBuilder, RecoverableData};
+
+use crate::naming::modern::KeyMeta;
 
 pub trait IoStrategy: Send + Sync {
     fn store(
@@ -42,6 +48,13 @@ pub trait IoStrategy: Send + Sync {
         subs_dir: &dyn AsRef<std::path::Path>,
         password: &str,
     ) -> Result<Vec<u8>, crate::Error>;
+
+    fn load_account(
+        &self,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        subs_dir: &dyn AsRef<std::path::Path>,
+        password: &str,
+    ) -> Result<AccountData, crate::Error>;
 
     fn delete_root(
         &self,
@@ -109,6 +122,22 @@ impl BulkSubkey {
             derivation_path: derivation_path.to_string(),
             data,
         }
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
+pub struct AccountData(BTreeMap<KeyMeta, Vec<u8>>);
+
+impl Deref for AccountData {
+    type Target = BTreeMap<KeyMeta, Vec<u8>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for AccountData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

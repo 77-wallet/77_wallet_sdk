@@ -267,7 +267,12 @@ pub async fn open_account_pk_with_password(
     address: &str,
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
+    tracing::info!("open_account_pk_with_password: address: {:?}", address);
     super::wallet::WalletDomain::validate_password(password).await?;
+    tracing::info!(
+        "open_account_pk_with_password: chain_code: {:?}",
+        chain_code
+    );
 
     let db = crate::manager::Context::get_global_sqlite_pool()?;
     let dirs = crate::manager::Context::get_global_dirs()?;
@@ -304,11 +309,17 @@ pub async fn open_account_pk_with_password(
     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
+    tracing::info!("open_account_pk_with_password: subs_path: {:?}", subs_path);
+    let account_index_map =
+        wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
+    tracing::info!(
+        "open_account_pk_with_password: account_index_map: {:?}",
+        account_index_map
+    );
+    tracing::info!("open_account_pk_with_password: password: {}", password);
     let key = wallet_tree::api::KeystoreApi::load_sub_pk(
         &wallet_tree,
-        Some(&wallet_utils::address::AccountIndexMap::from_account_id(
-            account.account_id,
-        )?),
+        Some(&account_index_map),
         &subs_path,
         address,
         &chain_code.to_string(),

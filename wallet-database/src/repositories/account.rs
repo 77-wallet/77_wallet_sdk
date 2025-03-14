@@ -158,6 +158,11 @@ pub trait AccountRepoTrait: super::TransactionTrait {
         )
     }
 
+    async fn get_all_account_indices(&mut self) -> Result<Vec<u32>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, AccountEntity::get_all_account_indices,)
+    }
+
     async fn get_account_list_by_wallet_address(
         &mut self,
         wallet_address: Option<&str>,

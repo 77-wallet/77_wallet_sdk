@@ -465,7 +465,9 @@ impl AccountService {
         // let dirs = crate::manager::Context::get_global_dirs()?;
         WalletDomain::validate_password(old_password).await?;
         let tx = &mut self.repo;
-        let account_list = tx.list().await?;
+        // let account_list = tx.list().await?;
+
+        let indices = tx.get_all_account_indices().await?;
 
         // let Some(device) = tx.get_device_info().await? else {
         //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
@@ -484,19 +486,29 @@ impl AccountService {
 
         let wallet_list = tx.wallet_list().await?;
 
+        tracing::info!("wallet_list: {:?}", wallet_list);
+        // tracing::info!("account_list: {:?}", account_list);
         for wallet in wallet_list {
             self.set_root_password(&wallet.address, old_password, new_password)
                 .await?;
-        }
 
-        for account in account_list {
-            self.set_sub_password(
-                &account.address,
-                &account.chain_code,
-                old_password,
-                new_password,
-            )
-            .await?;
+            for index in &indices {
+                let account_index_map = AccountIndexMap::from_account_id(*index)?;
+                self.set_account_password(
+                    &wallet.address,
+                    &account_index_map,
+                    old_password,
+                    new_password,
+                )
+                .await?;
+                // self.set_sub_password(
+                //     &account.address,
+                //     &account.chain_code,
+                //     old_password,
+                //     new_password,
+                // )
+                // .await?;
+            }
         }
 
         self.set_verify_password(new_password).await?;
@@ -604,6 +616,33 @@ impl AccountService {
         .map_err(|e| crate::SystemError::Service(e.to_string()))?)
     }
 
+    pub async fn set_account_password(
+        &self,
+        wallet_address: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let dirs = crate::manager::Context::get_global_dirs()?;
+        let subs_dir = dirs.get_subs_dir(wallet_address)?;
+
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        wallet_tree::api::KeystoreApi::update_account_password(
+            wallet_tree,
+            &subs_dir,
+            account_index_map,
+            old_password,
+            new_password,
+            algorithm,
+        )
+        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+
+        Ok(())
+    }
+
     pub async fn get_account_private_key(
         &mut self,
         password: &str,
@@ -627,6 +666,7 @@ impl AccountService {
         let chains = tx.get_chain_list().await?;
 
         let mut res = Vec::new();
+        tracing::info!("account_list: {}", account_list.len());
         for account in account_list {
             let private_key = crate::domain::account::open_account_pk_with_password(
                 &account.chain_code,
