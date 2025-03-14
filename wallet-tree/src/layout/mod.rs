@@ -3,7 +3,7 @@ pub(crate) mod modern;
 
 use std::path::{Path, PathBuf};
 
-use crate::{naming::FileMeta, wallet_tree::WalletTreeOps};
+use crate::{naming::FileMeta, wallet_hierarchy::WalletTreeOps};
 
 pub trait LayoutStrategy: Send + Sync {
     /// 获取文件存储路径

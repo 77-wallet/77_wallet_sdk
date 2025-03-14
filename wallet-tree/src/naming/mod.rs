@@ -4,20 +4,19 @@ pub(crate) mod legacy;
 pub(crate) mod modern;
 pub trait NamingStrategy: Send + Sync {
     /// 将元数据编码为文件名
-    fn encode(&self, meta: Box<dyn FileMeta>) -> Result<String, crate::Error>;
+    fn encode(meta: Box<dyn FileMeta>) -> Result<String, crate::Error>;
 
     /// 从文件名解析元数据
-    fn decode(&self, path: &str, filename: &str) -> Result<Box<dyn FileMeta>, crate::Error>;
+    fn decode(path: &str, filename: &str) -> Result<Box<dyn FileMeta>, crate::Error>;
 
     /// 验证文件名格式
-    fn validate(&self, filename: &str) -> bool;
+    fn validate(filename: &str) -> bool;
 
     /// 策略版本号
-    fn version(&self) -> u32;
+    fn version() -> u32;
 
     /// 生成元数据
     fn generate_filemeta(
-        &self,
         file_type: FileType,
         address: &str,
         account_index_map: Option<&wallet_utils::address::AccountIndexMap>,

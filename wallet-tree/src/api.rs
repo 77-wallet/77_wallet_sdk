@@ -1,6 +1,8 @@
+use wallet_chain_instance::derivation_path;
 use wallet_keystore::{wallet::prikey::PkWallet, KdfAlgorithm, KeystoreJson};
+use wallet_utils::address::AccountIndexMap;
 
-use crate::wallet_tree::WalletTreeOps;
+use crate::wallet_hierarchy::WalletTreeOps;
 
 pub struct KeystoreApi;
 
@@ -16,11 +18,9 @@ impl KeystoreApi {
         password: &str,
         algorithm: KdfAlgorithm,
     ) -> Result<(), crate::Error> {
-        let naming = wallet_tree.naming();
-
         wallet_tree
             .io()
-            .store_root(naming, address, seed, phrase, path, password, algorithm)?;
+            .store_root(address, seed, phrase, path, password, algorithm)?;
         Ok(())
     }
 
@@ -32,22 +32,20 @@ impl KeystoreApi {
         password: &str,
         algorithm: KdfAlgorithm,
     ) -> Result<(), crate::Error> {
-        let naming = wallet_tree.naming();
-
         wallet_tree
             .io()
-            .store_subkeys_bulk(naming, subkeys, &subs_path, password, algorithm)?;
+            .store_subkeys_bulk(subkeys, &subs_path, password, algorithm)?;
 
         Ok(())
     }
 
-    pub fn get_private_key<P: AsRef<std::path::Path> + std::fmt::Debug>(
-        password: &str,
-        path: P,
-    ) -> Result<Vec<u8>, crate::Error> {
-        let pkwallet = crate::Keystore::load_data::<_, PkWallet>(path, password)?;
-        Ok(pkwallet.pkey().to_vec())
-    }
+    // pub fn get_private_key<P: AsRef<std::path::Path> + std::fmt::Debug>(
+    //     password: &str,
+    //     path: P,
+    // ) -> Result<Vec<u8>, crate::Error> {
+    //     let pkwallet = crate::Keystore::load_data::<_, PkWallet>(path, password)?;
+    //     Ok(pkwallet.pkey().to_vec())
+    // }
 
     pub fn check_wallet_address(
         language_code: u8,
@@ -73,6 +71,44 @@ impl KeystoreApi {
         Ok(())
     }
 
+    pub fn remove_verify_file(root_dir: &std::path::PathBuf) -> Result<(), crate::Error> {
+        let file_name = "verify";
+        let file_path = root_dir.join(&file_name);
+        if wallet_utils::file_func::exists(&file_path)? {
+            wallet_utils::file_func::remove_file(file_path)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn load_verify_file(
+        wallet_tree: &Box<dyn WalletTreeOps>,
+        root_dir: &std::path::PathBuf,
+        password: &str,
+    ) -> Result<(), crate::Error> {
+        let file_name = "verify";
+        wallet_tree
+            .io()
+            .load_custom(&root_dir, &file_name, password)?;
+        Ok(())
+    }
+
+    pub fn store_verify_file(
+        wallet_tree: &Box<dyn WalletTreeOps>,
+        root_dir: &std::path::PathBuf,
+        password: &str,
+    ) -> Result<(), crate::Error> {
+        let file_name = "verify";
+        wallet_tree.io().store(
+            file_name,
+            &"data",
+            &root_dir,
+            password,
+            crate::KdfAlgorithm::Argon2id,
+        )?;
+        Ok(())
+    }
+
     pub fn load_sub_pk(
         wallet_tree: &Box<dyn WalletTreeOps>,
         account_index_map: Option<&wallet_utils::address::AccountIndexMap>,
@@ -82,10 +118,7 @@ impl KeystoreApi {
         derivation_path: &str,
         password: &str,
     ) -> Result<Vec<u8>, crate::Error> {
-        let naming = wallet_tree.naming();
-
         let pk = wallet_tree.io().load_subkey(
-            naming,
             account_index_map,
             address,
             chain_code,
@@ -102,11 +135,9 @@ impl KeystoreApi {
         wallet_address: &str,
         password: &str,
     ) -> Result<Vec<u8>, crate::Error> {
-        let naming = wallet_tree.naming();
-
         let root = wallet_tree
             .io()
-            .load_root(naming, wallet_address, root_dir, password)?;
+            .load_root(wallet_address, root_dir, password)?;
         Ok(root.seed().to_vec())
     }
 
@@ -116,11 +147,9 @@ impl KeystoreApi {
         wallet_address: &str,
         password: &str,
     ) -> Result<String, crate::Error> {
-        let naming = wallet_tree.naming();
-
         let root = wallet_tree
             .io()
-            .load_root(naming, wallet_address, root_dir, password)?;
+            .load_root(wallet_address, root_dir, password)?;
         Ok(root.phrase().to_string())
     }
 
@@ -165,10 +194,27 @@ impl KeystoreApi {
             .get_account(address, instance.chain_code())
         {
             let meta = account.get_filemeta();
-            let filename = wallet_tree.naming().encode(meta)?;
+            // let filename = wallet_tree.naming().encode(meta)?;
             // let filename = account.gen_name_with_derivation_path()?;
-            let path = subs_dir.join(&filename);
-            let pk = crate::api::KeystoreApi::get_private_key(old_password, &path)?;
+            // let path = subs_dir.join(&filename);
+            let account_index_map = if let Some(meta) = meta.account_index() {
+                Some(AccountIndexMap::from_account_id(meta)?)
+            } else {
+                None
+            };
+            // let pk = crate::api::KeystoreApi::get_private_key(old_password, &path)?;
+
+            let chain_code = account.get_chain_code().to_string();
+            let derivation_path = account.get_derivation_path();
+            let pk = wallet_tree.io().load_subkey(
+                account_index_map.as_ref(),
+                account.get_address(),
+                &chain_code,
+                derivation_path,
+                &subs_dir,
+                old_password,
+            )?;
+            // let pk = crate::api::KeystoreApi::get_private_key(old_password, &path)?;
 
             // let name = wallet_tree::wallet_tree::subs::SubsKeystoreInfo::new(
             //     &account.derivation_path,
@@ -178,7 +224,18 @@ impl KeystoreApi {
             // )
             // .gen_name_with_derivation_path()?;
 
-            crate::Keystore::store_data(&filename, pk, &subs_dir, new_password, algorithm)?;
+            wallet_tree.io().store_subkey(
+                &account_index_map.ok_or(crate::Error::MissingIndex)?,
+                address,
+                &chain_code,
+                derivation_path,
+                &pk,
+                &subs_dir,
+                old_password,
+                algorithm,
+            )?;
+
+            // crate::Keystore::store_data(&filename, pk, &subs_dir, new_password, algorithm)?;
         }
 
         Ok(())

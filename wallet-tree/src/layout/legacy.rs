@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::{
     naming::{legacy::LegacyNaming, FileMeta, FileType, NamingStrategy as _},
-    wallet_tree::{legecy_adapter::LegacyWalletTree, WalletTreeOps},
+    wallet_hierarchy::{legecy_adapter::LegacyWalletTree, WalletTreeOps},
 };
 
 use super::LayoutStrategy;
@@ -106,14 +106,12 @@ impl LayoutStrategy for LegacyLayout {
 impl LegacyLayout {
     /// 根据文件名解析 FileMeta
     fn parse_filename(&self, filename: &str) -> Result<Box<dyn FileMeta>, crate::Error> {
-        let naming = LegacyNaming; // 使用旧版命名策略
-        naming.decode("", filename)
+        LegacyNaming::decode("", filename)
     }
 
     /// 生成文件名
     fn generate_filename(&self, meta: Box<dyn FileMeta>) -> Result<String, crate::Error> {
-        let naming = LegacyNaming; // 使用旧版命名策略
-        naming.encode(meta)
+        LegacyNaming::encode(meta)
     }
 }
 

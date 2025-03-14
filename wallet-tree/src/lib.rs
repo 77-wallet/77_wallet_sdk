@@ -3,14 +3,13 @@ pub mod api;
 pub mod error;
 pub mod io;
 pub mod layout;
-pub mod migration;
 pub mod naming;
 pub mod service;
 pub mod utils;
-pub mod wallet_tree;
+pub mod wallet_hierarchy;
 
 pub use error::Error;
 
-pub use crate::wallet_tree::WalletTreeStrategy;
+pub use crate::wallet_hierarchy::WalletTreeStrategy;
 pub use service::Keystore;
 pub use wallet_keystore::KdfAlgorithm;

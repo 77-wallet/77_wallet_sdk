@@ -6,7 +6,7 @@ use wallet_database::{
         coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
     },
 };
-use wallet_transport_backend::request::{DeviceBindAddressReq, TokenQueryPriceReq};
+use wallet_transport_backend::request::TokenQueryPriceReq;
 use wallet_tree::api::KeystoreApi;
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
@@ -427,12 +427,11 @@ impl AccountService {
         Tasks::new().push(device_unbind_address_task).send().await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
-        let mut wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let subs_path = dirs.get_subs_dir(wallet_address)?;
+        // let subs_path = dirs.get_subs_dir(wallet_address)?;
 
         wallet_tree.io().delete_account(
-            wallet_tree.naming(),
             &AccountIndexMap::from_account_id(account_id)?,
             &dirs.get_subs_dir(wallet_address)?,
         )?;
@@ -464,23 +463,24 @@ impl AccountService {
         new_password: &str,
     ) -> Result<(), crate::ServiceError> {
         // let dirs = crate::manager::Context::get_global_dirs()?;
+        WalletDomain::validate_password(old_password).await?;
         let tx = &mut self.repo;
         let account_list = tx.list().await?;
 
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
-        let old_encrypted_password = WalletDomain::encrypt_password(old_password, &device.sn)?;
+        // let Some(device) = tx.get_device_info().await? else {
+        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        // };
+        // let old_encrypted_password = WalletDomain::encrypt_password(old_password, &device.sn)?;
 
-        if let Some(password) = &device.password {
-            if password != &old_encrypted_password {
-                return Err(
-                    crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
-                );
-            }
-        }
-        let new_encrypted_password = WalletDomain::encrypt_password(new_password, &device.sn)?;
-        tx.update_password(Some(&new_encrypted_password)).await?;
+        // if let Some(password) = &device.password {
+        //     if password != &old_encrypted_password {
+        //         return Err(
+        //             crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
+        //         );
+        //     }
+        // }
+        // let new_encrypted_password = WalletDomain::encrypt_password(new_password, &device.sn)?;
+        // tx.update_password(Some(&new_encrypted_password)).await?;
 
         let wallet_list = tx.wallet_list().await?;
 
@@ -498,6 +498,19 @@ impl AccountService {
             )
             .await?;
         }
+
+        self.set_verify_password(new_password).await?;
+        Ok(())
+    }
+
+    pub async fn set_verify_password(&mut self, password: &str) -> Result<(), crate::ServiceError> {
+        let dirs = crate::manager::Context::get_global_dirs()?;
+        wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        wallet_tree::api::KeystoreApi::store_verify_file(&wallet_tree, &dirs.root_dir, password)?;
+
         Ok(())
     }
 

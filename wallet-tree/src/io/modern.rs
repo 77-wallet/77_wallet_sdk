@@ -4,7 +4,7 @@ use serde::Serialize;
 use wallet_keystore::KeystoreBuilder;
 
 use crate::naming::{
-    modern::{DerivedMetadata, KeyMeta, KeyMetas, KeystoreData},
+    modern::{DerivedMetadata, KeyMeta, KeyMetas, KeystoreData, ModernNaming},
     FileType, NamingStrategy,
 };
 
@@ -29,14 +29,13 @@ impl IoStrategy for ModernIo {
 
     fn load_root(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         wallet_address: &str,
         root_dir: &dyn AsRef<std::path::Path>,
         password: &str,
     ) -> Result<super::RootData, crate::Error> {
         let root_meta =
-            naming.generate_filemeta(FileType::Root, wallet_address, None, None, None)?;
-        let root_filename = naming.encode(root_meta)?;
+            ModernNaming::generate_filemeta(FileType::Root, wallet_address, None, None, None)?;
+        let root_filename = ModernNaming::encode(root_meta)?;
         let data =
             KeystoreBuilder::new_decrypt(root_dir.as_ref().join(root_filename), password).load()?;
         Ok(data.try_into()?)
@@ -44,7 +43,6 @@ impl IoStrategy for ModernIo {
 
     fn load_subkey(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         account_index_map: Option<&wallet_utils::address::AccountIndexMap>,
         address: &str,
         chain_code: &str,
@@ -52,14 +50,14 @@ impl IoStrategy for ModernIo {
         subs_dir: &dyn AsRef<std::path::Path>,
         password: &str,
     ) -> Result<Vec<u8>, crate::Error> {
-        let pk_meta = naming.generate_filemeta(
+        let pk_meta = ModernNaming::generate_filemeta(
             FileType::DerivedData,
             &address,
             account_index_map,
             Some(chain_code.to_string()),
             Some(derivation_path.to_string()),
         )?;
-        let pk_filename = naming.encode(pk_meta)?;
+        let pk_filename = ModernNaming::encode(pk_meta)?;
 
         let data =
             KeystoreBuilder::new_decrypt(subs_dir.as_ref().join(pk_filename), password).load()?;
@@ -85,7 +83,6 @@ impl IoStrategy for ModernIo {
 
     fn store_root(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         address: &str,
         seed: &[u8],
         phrase: &str,
@@ -110,7 +107,6 @@ impl IoStrategy for ModernIo {
 
     fn store_subkey(
         &self,
-        naming: Box<dyn NamingStrategy>,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         address: &str,
         chain_code: &str,
@@ -133,7 +129,7 @@ impl IoStrategy for ModernIo {
             DerivedMetadata::default()
         };
 
-        let meta = naming.generate_filemeta(
+        let meta = ModernNaming::generate_filemeta(
             FileType::DerivedData,
             &address,
             Some(account_index_map),
@@ -142,7 +138,7 @@ impl IoStrategy for ModernIo {
         )?;
 
         // 生成密钥文件名
-        let key_filename = naming.encode(meta)?;
+        let key_filename = ModernNaming::encode(meta)?;
         // let key_filename = format!("key{}.keystore", account_idx);
 
         // 添加新条目
@@ -192,7 +188,6 @@ impl IoStrategy for ModernIo {
 
     fn store_subkeys_bulk(
         &self,
-        naming: Box<dyn NamingStrategy>,
         subkeys: Vec<super::BulkSubkey>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
@@ -277,26 +272,18 @@ impl IoStrategy for ModernIo {
 
     fn delete_root(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         address: &str,
         root_dir: &dyn AsRef<std::path::Path>,
     ) -> Result<(), crate::Error> {
-        wallet_utils::file_func::remove_file(root_dir.as_ref().join(
-            naming.encode(naming.generate_filemeta(
-                FileType::Root,
-                &address,
-                None,
-                None,
-                None,
-            )?)?,
-        ))?;
+        wallet_utils::file_func::remove_file(root_dir.as_ref().join(ModernNaming::encode(
+            ModernNaming::generate_filemeta(FileType::Root, &address, None, None, None)?,
+        )?))?;
 
         Ok(())
     }
 
     fn delete_account(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         file_path: &dyn AsRef<std::path::Path>,
     ) -> Result<(), crate::Error> {
@@ -316,7 +303,7 @@ impl IoStrategy for ModernIo {
         metadata.accounts.remove(&account_index_map.account_id);
 
         // 2. 生成密钥文件名（保持与存储时相同的命名逻辑）
-        let meta = naming.generate_filemeta(
+        let meta = ModernNaming::generate_filemeta(
             FileType::DerivedData,
             "", // address 字段在删除时不需要
             Some(&account_index_map),
@@ -324,7 +311,7 @@ impl IoStrategy for ModernIo {
             None, // derivation_path
         )?;
 
-        let key_filename = naming.encode(meta)?;
+        let key_filename = ModernNaming::encode(meta)?;
         let data_path = subs_dir.join(key_filename);
 
         // 3. 并行处理文件操作

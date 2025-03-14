@@ -88,7 +88,7 @@ impl FileMeta for ModernFileMetas {
 pub struct ModernNaming;
 
 impl NamingStrategy for ModernNaming {
-    fn encode(&self, meta: Box<dyn FileMeta>) -> Result<String, Error> {
+    fn encode(meta: Box<dyn FileMeta>) -> Result<String, Error> {
         match meta.file_type() {
             FileType::Phrase => Ok(format!(
                 "{}-phrase",
@@ -115,7 +115,7 @@ impl NamingStrategy for ModernNaming {
         }
     }
 
-    fn decode(&self, path: &str, filename: &str) -> Result<Box<dyn FileMeta>, Error> {
+    fn decode(path: &str, filename: &str) -> Result<Box<dyn FileMeta>, Error> {
         if let Some(idx) = filename
             .strip_prefix("key")
             .and_then(|s| s.strip_suffix(".keystore"))
@@ -154,11 +154,11 @@ impl NamingStrategy for ModernNaming {
         }
     }
 
-    fn version(&self) -> u32 {
+    fn version() -> u32 {
         2
     }
 
-    fn validate(&self, filename: &str) -> bool {
+    fn validate(filename: &str) -> bool {
         filename.ends_with("-phrase")
             || filename.ends_with("-pk")
             || filename.ends_with("-seed")
@@ -168,7 +168,6 @@ impl NamingStrategy for ModernNaming {
     }
 
     fn generate_filemeta(
-        &self,
         file_type: FileType,
         address: &str,
         account_index_map: Option<&wallet_utils::address::AccountIndexMap>,

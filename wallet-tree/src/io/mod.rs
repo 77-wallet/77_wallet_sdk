@@ -5,8 +5,6 @@ use std::path::Path;
 
 use wallet_keystore::{KdfAlgorithm, KeystoreBuilder, RecoverableData};
 
-use crate::naming::NamingStrategy;
-
 pub trait IoStrategy: Send + Sync {
     fn store(
         &self,
@@ -30,7 +28,6 @@ pub trait IoStrategy: Send + Sync {
 
     fn load_root(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         wallet_address: &str,
         root_dir: &dyn AsRef<std::path::Path>,
         password: &str,
@@ -38,7 +35,6 @@ pub trait IoStrategy: Send + Sync {
 
     fn load_subkey(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         account_index_map: Option<&wallet_utils::address::AccountIndexMap>,
         address: &str,
         chain_code: &str,
@@ -49,14 +45,12 @@ pub trait IoStrategy: Send + Sync {
 
     fn delete_root(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         address: &str,
         root_dir: &dyn AsRef<std::path::Path>,
     ) -> Result<(), crate::Error>;
 
     fn store_root(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         address: &str,
         seed: &[u8],
         phrase: &str,
@@ -67,7 +61,6 @@ pub trait IoStrategy: Send + Sync {
 
     fn store_subkey(
         &self,
-        naming: Box<dyn NamingStrategy>,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         address: &str,
         chain_code: &str,
@@ -80,7 +73,6 @@ pub trait IoStrategy: Send + Sync {
 
     fn store_subkeys_bulk(
         &self,
-        naming: Box<dyn NamingStrategy>,
         subkeys: Vec<BulkSubkey>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
@@ -89,7 +81,6 @@ pub trait IoStrategy: Send + Sync {
 
     fn delete_account(
         &self,
-        naming: Box<dyn crate::naming::NamingStrategy>,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         file_path: &dyn AsRef<std::path::Path>,
     ) -> Result<(), crate::Error>;

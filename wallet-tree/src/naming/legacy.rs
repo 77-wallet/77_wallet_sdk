@@ -36,7 +36,7 @@ impl FileMeta for LegacyFileMeta {
 pub struct LegacyNaming;
 
 impl NamingStrategy for LegacyNaming {
-    fn encode(&self, meta: Box<dyn FileMeta>) -> Result<String, crate::Error> {
+    fn encode(meta: Box<dyn FileMeta>) -> Result<String, crate::Error> {
         match meta.file_type() {
             FileType::Phrase => Ok(format!(
                 "{}-phrase",
@@ -71,7 +71,7 @@ impl NamingStrategy for LegacyNaming {
         }
     }
 
-    fn decode(&self, _path: &str, filename: &str) -> Result<Box<dyn FileMeta>, crate::Error> {
+    fn decode(_path: &str, filename: &str) -> Result<Box<dyn FileMeta>, crate::Error> {
         let parts: Vec<&str> = filename.split('-').collect();
 
         // 解析 root 文件
@@ -121,11 +121,11 @@ impl NamingStrategy for LegacyNaming {
         Err(crate::Error::FilenameInvalid)
     }
 
-    fn version(&self) -> u32 {
+    fn version() -> u32 {
         1
     }
 
-    fn validate(&self, filename: &str) -> bool {
+    fn validate(filename: &str) -> bool {
         let parts: Vec<&str> = filename.split('-').collect();
 
         // 检查基础分割格式
@@ -157,7 +157,6 @@ impl NamingStrategy for LegacyNaming {
     }
 
     fn generate_filemeta(
-        &self,
         file_type: FileType,
         address: &str,
         _account_index_map: Option<&wallet_utils::address::AccountIndexMap>,
@@ -186,7 +185,7 @@ mod tests {
         #[test]
         fn parse_phrase_file() {
             let filename = format!("{}-phrase", TEST_ADDRESS);
-            let meta = LegacyNaming.decode("", &filename).unwrap();
+            let meta = LegacyNaming::decode("", &filename).unwrap();
 
             assert_eq!(meta.file_type(), &FileType::Phrase);
             assert_eq!(meta.address(), Some(TEST_ADDRESS.to_string()));
@@ -196,7 +195,7 @@ mod tests {
         #[test]
         fn parse_pk_file() {
             let filename = format!("{}-pk", TEST_ADDRESS);
-            let meta = LegacyNaming.decode("", &filename).unwrap();
+            let meta = LegacyNaming::decode("", &filename).unwrap();
 
             assert_eq!(meta.file_type(), &FileType::PrivateKey);
             assert_eq!(meta.address(), Some(TEST_ADDRESS.to_string()));
@@ -236,10 +235,8 @@ mod tests {
 
         #[test]
         fn parse_all_subs_formats() {
-            let strategy = LegacyNaming;
-
             for (filename, expected_chain, expected_path) in SUBS_EXAMPLES {
-                let meta = strategy.decode("", filename).unwrap();
+                let meta = LegacyNaming::decode("", filename).unwrap();
 
                 assert_eq!(meta.file_type(), &FileType::DerivedData);
                 assert_eq!(meta.chain_code(), Some(expected_chain.to_string()));
@@ -250,7 +247,7 @@ mod tests {
         #[test]
         fn handle_special_characters() {
             let filename = "btc-特殊地址-m%2Ftest%2Fpath%2Fwith%2Fchinese-%E4%B8%AD%E6%96%87-pk";
-            let meta = LegacyNaming.decode("", filename).unwrap();
+            let meta = LegacyNaming::decode("", filename).unwrap();
 
             assert_eq!(
                 meta.derivation_path(),
@@ -272,34 +269,32 @@ mod validate_tests {
 
     #[test]
     fn validate_root_files() {
-        let strategy = LegacyNaming;
-
-        assert!(strategy.validate(VALID_ROOT));
-        assert!(strategy.validate(VALID_PHRASE));
-        assert!(strategy.validate(VALID_SEED));
-        assert!(!strategy.validate("0x123-invalid"));
+        assert!(LegacyNaming::validate(VALID_ROOT));
+        assert!(LegacyNaming::validate(VALID_PHRASE));
+        assert!(LegacyNaming::validate(VALID_SEED));
+        assert!(!LegacyNaming::validate("0x123-invalid"));
     }
 
     #[test]
     fn validate_subs_files() {
-        let strategy = LegacyNaming;
-
-        assert!(strategy.validate(VALID_SUB));
-        assert!(!strategy.validate(INVALID_SUB)); // 缺少编码字符%
-        assert!(!strategy.validate("chain-addr-pk")); // 部分不足
+        assert!(LegacyNaming::validate(VALID_SUB));
+        assert!(!LegacyNaming::validate(INVALID_SUB)); // 缺少编码字符%
+        assert!(!LegacyNaming::validate("chain-addr-pk")); // 部分不足
     }
 
     #[test]
     fn validate_edge_cases() {
-        let strategy = LegacyNaming;
-
         // 正确包含多个连字符的路径
-        assert!(strategy.validate("btc-addr-m%2Fpath%2Fwith-multiple-hyphens-pk"));
+        assert!(LegacyNaming::validate(
+            "btc-addr-m%2Fpath%2Fwith-multiple-hyphens-pk"
+        ));
 
         // 无效的编码格式
-        assert!(!strategy.validate("eth-addr-m/path/without/encoding-pk"));
+        assert!(!LegacyNaming::validate(
+            "eth-addr-m/path/without/encoding-pk"
+        ));
 
         // 错误的后缀
-        assert!(!strategy.validate("eth-addr-m%2Fpath-wrongsuffix"));
+        assert!(!LegacyNaming::validate("eth-addr-m%2Fpath-wrongsuffix"));
     }
 }

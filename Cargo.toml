@@ -103,6 +103,7 @@ sha2 = "0.10.1"
 sha3 = "0.10.0"
 uuid = { version = "1.0", features = ["serde", "v4"] }
 base64 = "0.22.1"
+coins-bip32 = "0.8.7"
 
 # serde
 serde = { version = "1", features = ["derive"] }
@@ -156,7 +157,6 @@ cfg-if = "1.0.0"
 # map
 dashmap = { version = "6.1.0", features = ["serde"] }
 
-coins-bip32 = "0.8.7"
 
 [patch.crates-io.aes-gcm-siv]
 git = "https://github.com/RustCrypto/AEADs"

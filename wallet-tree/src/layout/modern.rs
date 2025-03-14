@@ -11,7 +11,7 @@ use crate::{
         modern::{ModernFileMetas, ModernNaming},
         FileMeta, FileType, NamingStrategy as _,
     },
-    wallet_tree::{
+    wallet_hierarchy::{
         modern_adapter::{ModernRoot, ModernWalletBranch, ModernWalletTree},
         WalletTreeOps,
     },
@@ -147,7 +147,7 @@ impl LayoutStrategy for ModernLayout {
 
 impl ModernLayout {
     fn parse_meta_data(&self, path: &str, filename: &str) -> Result<ModernFileMetas, crate::Error> {
-        let meta_box: Box<dyn any::Any> = ModernNaming.decode(path, filename)?;
+        let meta_box: Box<dyn any::Any> = ModernNaming::decode(path, filename)?;
         meta_box
             .downcast::<ModernFileMetas>() // 直接调用，无需类型转换
             .map(|boxed| *boxed) // 解包 Box
@@ -158,6 +158,6 @@ impl ModernLayout {
     }
 
     fn generate_filename(&self, meta: Box<dyn FileMeta>) -> Result<String, crate::Error> {
-        ModernNaming.encode(meta)
+        ModernNaming::encode(meta)
     }
 }
