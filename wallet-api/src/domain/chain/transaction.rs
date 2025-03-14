@@ -112,7 +112,7 @@ impl ChainTransaction {
             ))?;
         };
         // get private_key
-        let private_key = crate::domain::account::open_account_pk_with_password(
+        let private_key = crate::domain::account::open_subpk_with_password(
             &params.base.chain_code,
             &params.base.from,
             &params.password,

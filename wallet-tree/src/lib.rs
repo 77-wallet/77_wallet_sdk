@@ -11,5 +11,6 @@ pub mod wallet_hierarchy;
 pub use error::Error;
 
 pub use crate::wallet_hierarchy::WalletTreeStrategy;
+pub use naming::modern::KeyMeta;
 pub use service::Keystore;
 pub use wallet_keystore::KdfAlgorithm;

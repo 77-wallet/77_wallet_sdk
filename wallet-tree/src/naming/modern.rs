@@ -229,7 +229,7 @@ impl DerefMut for KeystoreData {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub struct KeyMeta {
     pub chain_code: String,
     pub address: String,

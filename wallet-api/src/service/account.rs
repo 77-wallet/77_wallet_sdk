@@ -464,26 +464,11 @@ impl AccountService {
     ) -> Result<(), crate::ServiceError> {
         // let dirs = crate::manager::Context::get_global_dirs()?;
         WalletDomain::validate_password(old_password).await?;
+        tracing::info!("验证密码");
         let tx = &mut self.repo;
         // let account_list = tx.list().await?;
 
         let indices = tx.get_all_account_indices().await?;
-
-        // let Some(device) = tx.get_device_info().await? else {
-        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        // };
-        // let old_encrypted_password = WalletDomain::encrypt_password(old_password, &device.sn)?;
-
-        // if let Some(password) = &device.password {
-        //     if password != &old_encrypted_password {
-        //         return Err(
-        //             crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
-        //         );
-        //     }
-        // }
-        // let new_encrypted_password = WalletDomain::encrypt_password(new_password, &device.sn)?;
-        // tx.update_password(Some(&new_encrypted_password)).await?;
-
         let wallet_list = tx.wallet_list().await?;
 
         tracing::info!("wallet_list: {:?}", wallet_list);
@@ -491,7 +476,7 @@ impl AccountService {
         for wallet in wallet_list {
             self.set_root_password(&wallet.address, old_password, new_password)
                 .await?;
-
+            tracing::info!("设置 root 密码");
             for index in &indices {
                 let account_index_map = AccountIndexMap::from_account_id(*index)?;
                 self.set_account_password(
@@ -501,6 +486,7 @@ impl AccountService {
                     new_password,
                 )
                 .await?;
+                tracing::info!("设置 account 密码");
                 // self.set_sub_password(
                 //     &account.address,
                 //     &account.chain_code,
@@ -512,6 +498,7 @@ impl AccountService {
         }
 
         self.set_verify_password(new_password).await?;
+        tracing::info!("设置 verify 密码");
         Ok(())
     }
 
@@ -667,27 +654,41 @@ impl AccountService {
 
         let mut res = Vec::new();
         tracing::info!("account_list: {}", account_list.len());
-        for account in account_list {
-            let private_key = crate::domain::account::open_account_pk_with_password(
-                &account.chain_code,
-                &account.address,
-                password,
-            )
-            .await?;
 
-            let btc_address_type_opt: AddressType = account.address_type().try_into()?;
-            if let Some(chain) = chains
-                .iter()
-                .find(|chain| chain.chain_code == account.chain_code)
-            {
-                let data = crate::response_vo::account::GetAccountPrivateKey {
-                    chain_code: account.chain_code,
-                    name: chain.name.clone(),
-                    address: account.address,
-                    address_type: btc_address_type_opt.into(),
-                    private_key: private_key.to_string(),
-                };
-                res.push(data);
+        let account_index_map = AccountIndexMap::from_account_id(account_id)?;
+
+        let data = domain::account::open_accounts_pk_with_password(
+            &account_index_map,
+            wallet_address,
+            password,
+        )
+        .await?;
+        for account in account_list {
+            // let private_key = crate::domain::account::open_account_pk_with_password(
+            //     &account.chain_code,
+            //     &account.address,
+            //     password,
+            // )
+            // .await?;
+            if let Some((_, pk)) = data.iter().find(|(meta, _)| {
+                meta.chain_code == account.chain_code
+                    && meta.address == account.address
+                    && meta.derivation_path == account.derivation_path
+            }) {
+                let btc_address_type_opt: AddressType = account.address_type().try_into()?;
+                if let Some(chain) = chains
+                    .iter()
+                    .find(|chain| chain.chain_code == account.chain_code)
+                {
+                    let data = crate::response_vo::account::GetAccountPrivateKey {
+                        chain_code: account.chain_code,
+                        name: chain.name.clone(),
+                        address: account.address,
+                        address_type: btc_address_type_opt.into(),
+                        private_key: pk.to_string(),
+                    };
+                    res.push(data);
+                }
             }
         }
 

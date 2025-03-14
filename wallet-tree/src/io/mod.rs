@@ -125,8 +125,14 @@ impl BulkSubkey {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub struct AccountData(BTreeMap<KeyMeta, Vec<u8>>);
+
+impl AccountData {
+    pub fn into_inner(self) -> BTreeMap<KeyMeta, Vec<u8>> {
+        self.0
+    }
+}
 
 impl Deref for AccountData {
     type Target = BTreeMap<KeyMeta, Vec<u8>>;
