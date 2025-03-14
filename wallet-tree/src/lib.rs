@@ -1,8 +1,8 @@
 #![feature(trait_upcasting, let_chains)]
 pub mod api;
 pub mod error;
-pub mod io;
-pub mod layout;
+pub mod file_ops;
+pub mod directory_structure;
 pub mod naming;
 pub mod service;
 pub mod utils;

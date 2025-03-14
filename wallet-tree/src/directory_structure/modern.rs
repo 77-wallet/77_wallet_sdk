@@ -6,7 +6,7 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    layout::LayoutStrategy,
+    directory_structure::LayoutStrategy,
     naming::{
         modern::{ModernFileMetas, ModernNaming},
         FileMeta, FileType, NamingStrategy as _,

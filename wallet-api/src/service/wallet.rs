@@ -186,7 +186,7 @@ impl WalletService {
             .await?
             .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
 
-        let mut subkeys = Vec::<wallet_tree::io::BulkSubkey>::new();
+        let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         let mut accounts = Vec::new();
         for data in datas {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
@@ -220,7 +220,7 @@ impl WalletService {
                 .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
                 .map_err(|e| crate::SystemError::Service(e.to_string()))?;
             let pk = keypair.private_key_bytes()?;
-            let subkey = wallet_tree::io::BulkSubkey::new(
+            let subkey = wallet_tree::file_ops::BulkSubkey::new(
                 account_index_map.clone(),
                 &account.address,
                 &data.chain_code,
@@ -360,7 +360,7 @@ impl WalletService {
 
         let account_creation_start = std::time::Instant::now();
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-        let mut subkeys = Vec::<wallet_tree::io::BulkSubkey>::new();
+        let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
         for account_id in account_ids {
             let account_index_map =
@@ -407,7 +407,7 @@ impl WalletService {
                         .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
                         .map_err(|e| crate::SystemError::Service(e.to_string()))?;
                     let pk = keypair.private_key_bytes()?;
-                    let subkey = wallet_tree::io::BulkSubkey::new(
+                    let subkey = wallet_tree::file_ops::BulkSubkey::new(
                         account_index_map.clone(),
                         &account_address.address,
                         chain_code,

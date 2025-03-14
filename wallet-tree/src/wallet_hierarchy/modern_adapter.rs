@@ -8,7 +8,7 @@ use wallet_keystore::KeystoreBuilder;
 use wallet_types::chain::chain::ChainCode;
 
 use crate::{
-    layout::LayoutStrategy,
+    directory_structure::LayoutStrategy,
     naming::{
         modern::{DerivedMetadata, KeyMeta, KeystoreData, ModernFileMeta},
         FileMeta,
@@ -19,9 +19,9 @@ use super::{AccountTrait, RootTrait, WalletBranchOps, WalletTreeOps};
 
 #[derive(Clone, Debug, Default)]
 pub struct ModernWalletTree {
-    pub layout: crate::layout::modern::ModernLayout,
+    pub layout: crate::directory_structure::modern::ModernLayout,
     pub naming: crate::naming::modern::ModernNaming,
-    pub io: crate::io::modern::ModernIo,
+    pub io: crate::file_ops::modern::ModernIo,
     pub tree: ModernWalletBranches,
 }
 
@@ -44,7 +44,7 @@ impl DerefMut for ModernWalletBranches {
 impl ModernWalletTree {}
 
 impl WalletTreeOps for ModernWalletTree {
-    fn layout(&self) -> Box<dyn crate::layout::LayoutStrategy> {
+    fn layout(&self) -> Box<dyn crate::directory_structure::LayoutStrategy> {
         Box::new(self.layout.clone())
     }
 
@@ -52,7 +52,7 @@ impl WalletTreeOps for ModernWalletTree {
     //     &self.naming
     // }
 
-    fn io(&self) -> Box<dyn crate::io::IoStrategy> {
+    fn io(&self) -> Box<dyn crate::file_ops::IoStrategy> {
         Box::new(self.io.clone())
     }
 
@@ -61,7 +61,7 @@ impl WalletTreeOps for ModernWalletTree {
         Self: Sized,
     {
         let wallet_tree: Box<dyn std::any::Any> =
-            crate::layout::modern::ModernLayout.scan(&wallet_dir)?;
+            crate::directory_structure::modern::ModernLayout.scan(&wallet_dir)?;
         wallet_tree
             .downcast::<ModernWalletTree>() // 直接调用，无需类型转换
             .map(|boxed| *boxed) // 解包 Box

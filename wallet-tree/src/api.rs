@@ -27,7 +27,7 @@ impl KeystoreApi {
     // 传入derivation_path，由根私钥派生出子私钥，创建子Keystore，并生成keystore文件
     pub fn initialize_child_keystores<P: AsRef<std::path::Path>>(
         wallet_tree: Box<dyn WalletTreeOps>,
-        subkeys: Vec<crate::io::BulkSubkey>,
+        subkeys: Vec<crate::file_ops::BulkSubkey>,
         subs_path: P,
         password: &str,
         algorithm: KdfAlgorithm,
@@ -134,7 +134,7 @@ impl KeystoreApi {
         account_index_map: &wallet_utils::address::AccountIndexMap,
         subs_dir: &std::path::PathBuf,
         password: &str,
-    ) -> Result<crate::io::AccountData, crate::Error> {
+    ) -> Result<crate::file_ops::AccountData, crate::Error> {
         let account_data = wallet_tree
             .io()
             .load_account(account_index_map, subs_dir, password)?;
@@ -204,9 +204,9 @@ impl KeystoreApi {
         let account_data =
             Self::load_account_pk(&wallet_tree, account_index_map, subs_dir, old_password)?;
 
-        let mut subkeys = Vec::<crate::io::BulkSubkey>::new();
+        let mut subkeys = Vec::<crate::file_ops::BulkSubkey>::new();
         for (meta, pk) in account_data.iter() {
-            let subkey = crate::io::BulkSubkey::new(
+            let subkey = crate::file_ops::BulkSubkey::new(
                 account_index_map.clone(),
                 &meta.address,
                 &meta.chain_code,

@@ -4,7 +4,7 @@ use serde::Serialize;
 use wallet_types::chain::chain::ChainCode;
 
 use crate::{
-    layout::LayoutStrategy,
+    directory_structure::LayoutStrategy,
     naming::{FileMeta, FileType},
 };
 
@@ -17,9 +17,9 @@ use super::{AccountTrait, RootTrait, WalletBranchOps, WalletTreeOps};
 /// 表示钱包的目录结构，将钱包名称映射到其下的账户目录结构。
 #[derive(Debug, Default, PartialEq, Clone, Serialize)]
 pub struct LegacyWalletTree {
-    pub layout: crate::layout::legacy::LegacyLayout,
+    pub layout: crate::directory_structure::legacy::LegacyLayout,
     pub naming: crate::naming::legacy::LegacyNaming,
-    pub io: crate::io::legacy::LegacyIo,
+    pub io: crate::file_ops::legacy::LegacyIo,
     pub tree: LegacyWalletBranches,
 }
 
@@ -395,7 +395,7 @@ impl WalletTreeOps for LegacyWalletTree {
     //     naming_ref as &'a N
     // }
 
-    fn io(&self) -> Box<dyn crate::io::IoStrategy> {
+    fn io(&self) -> Box<dyn crate::file_ops::IoStrategy> {
         Box::new(self.io.clone())
     }
     fn traverse(wallet_dir: &std::path::PathBuf) -> Result<Self, crate::Error>

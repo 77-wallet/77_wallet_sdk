@@ -108,7 +108,7 @@ impl ChainService {
             )
             .await?;
 
-            let mut subkeys = Vec::<wallet_tree::io::BulkSubkey>::new();
+            let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
             for chain in chain_list.iter() {
                 let btc_address_types = if chain.chain_code == "btc" {
                     BTC_ADDRESS_TYPES.to_vec()
@@ -137,7 +137,7 @@ impl ChainService {
                         .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
                         .map_err(|e| crate::SystemError::Service(e.to_string()))?;
                     let pk = keypair.private_key_bytes()?;
-                    let subkey = wallet_tree::io::BulkSubkey::new(
+                    let subkey = wallet_tree::file_ops::BulkSubkey::new(
                         account_index_map.clone(),
                         &account_address.address,
                         &chain.chain_code,

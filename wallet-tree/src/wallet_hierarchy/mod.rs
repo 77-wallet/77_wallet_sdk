@@ -4,7 +4,7 @@ pub mod modern_adapter;
 use serde::{Deserialize, Serialize};
 use wallet_types::chain::chain::ChainCode;
 
-use crate::{io::IoStrategy, layout::LayoutStrategy, naming::FileMeta};
+use crate::{file_ops::IoStrategy, directory_structure::LayoutStrategy, naming::FileMeta};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

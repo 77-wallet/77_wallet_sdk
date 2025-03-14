@@ -263,6 +263,77 @@ impl AccountDomain {
         repo.upsert_multi_account(vec![req]).await?;
         Ok((address, account_name, derivation_path))
     }
+
+    pub async fn set_root_password(
+        wallet_address: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), crate::ServiceError> {
+        // let tx = &mut self.repo;
+
+        let dirs = crate::manager::Context::get_global_dirs()?;
+        let db = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let wallet = WalletEntity::detail(db.as_ref(), wallet_address)
+            .await?
+            .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+
+        // Get the path to the root directory for the given wallet name.
+        let root_dir = dirs.get_root_dir(&wallet.address)?;
+
+        // Traverse the directory structure to obtain the current wallet tree.
+
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        Ok(wallet_tree::api::KeystoreApi::update_root_password(
+            root_dir,
+            wallet_tree,
+            wallet_address,
+            old_password,
+            new_password,
+            algorithm,
+        )
+        .map_err(|e| crate::SystemError::Service(e.to_string()))?)
+    }
+
+    pub async fn set_account_password(
+        wallet_address: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let dirs = crate::manager::Context::get_global_dirs()?;
+        let subs_dir = dirs.get_subs_dir(wallet_address)?;
+
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        wallet_tree::api::KeystoreApi::update_account_password(
+            wallet_tree,
+            &subs_dir,
+            account_index_map,
+            old_password,
+            new_password,
+            algorithm,
+        )
+        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+
+        Ok(())
+    }
+
+    pub async fn set_verify_password(password: &str) -> Result<(), crate::ServiceError> {
+        let dirs = crate::manager::Context::get_global_dirs()?;
+        wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        wallet_tree::api::KeystoreApi::store_verify_file(&wallet_tree, &dirs.root_dir, password)?;
+
+        Ok(())
+    }
 }
 
 pub async fn open_accounts_pk_with_password(
