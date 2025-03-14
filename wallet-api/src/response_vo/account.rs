@@ -24,7 +24,6 @@ pub struct TransactionFee {
 #[derive(Debug, serde::Serialize)]
 pub struct CreateAccountRes {
     pub address: String,
-    // pub wallet_tree: wallet_keystore::WalletTree,
 }
 
 #[derive(Debug, serde::Serialize)]

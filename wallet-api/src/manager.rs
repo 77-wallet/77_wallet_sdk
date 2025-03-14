@@ -177,7 +177,6 @@ impl Context {
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         // 创建 TaskManager 实例
         let task_manager = TaskManager::new();
-        task_manager.start_task_check();
 
         Ok(Context {
             dirs,
@@ -370,11 +369,14 @@ impl WalletManager {
         // 启动任务检查循环
         // let manager = Context::get_global_task_manager()?;
         // manager.start_task_check();
+        Context::get_global_task_manager()?.start_task_check();
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+
         Tasks::new()
             .push(Task::Initialization(InitializationTask::InitMqtt))
             .send()
             .await?;
+        domain::app::DeviceDomain::check_wallet_password_is_null().await?;
         tokio::spawn(async move {
             if let Err(e) = do_some_init().await {
                 tracing::error!("init_data error: {}", e);
@@ -438,7 +440,7 @@ impl Dirs {
         let export_dir = Self::join_path(root_dir, "export");
         let log_dir = Self::join_path(root_dir, "log");
 
-        for dir in [&db_dir, &export_dir, &log_dir] {
+        for dir in [&db_dir, &export_dir, &log_dir, &wallet_dir] {
             wallet_utils::file_func::create_dir_all(dir)?;
         }
 
@@ -547,7 +549,9 @@ mod tests {
             .unwrap();
         let dirs = crate::manager::Context::get_global_dirs()?;
 
-        wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+        wallet_tree::wallet_tree::legecy_adapter::LegacyWalletTree::traverse_directory_structure(
+            &dirs.wallet_dir,
+        )?;
 
         Ok(())
     }

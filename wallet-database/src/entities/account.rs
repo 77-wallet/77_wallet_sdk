@@ -46,20 +46,20 @@ impl CreateAccountVo {
     pub fn new(
         account_id: u32,
         address: &str,
-        pubkey: String,
-        wallet_address: String,
-        derivation_path: String,
-        chain_code: String,
+        pubkey: &str,
+        wallet_address: &str,
+        derivation_path: &str,
+        chain_code: &str,
         name: &str,
     ) -> Self {
         Self {
             account_id,
             address: address.to_string(),
-            pubkey,
+            pubkey: pubkey.to_string(),
             address_type: "".to_string(),
-            wallet_address,
-            derivation_path,
-            chain_code,
+            wallet_address: wallet_address.to_string(),
+            derivation_path: derivation_path.to_string(),
+            chain_code: chain_code.to_string(),
             name: name.to_string(),
         }
     }

@@ -9,6 +9,9 @@ pub mod config_key {
     pub const LANGUAGE: &str = "language";
     pub const MQTT_URL: &str = "mqtt_url";
     pub const CURRENCY: &str = "currency";
+    pub const WALLET_PW_KDF_ALGORITHM: &str = "wallet_pw_kdf_algorithm";
+    pub const KEYSTORE_KDF_ALGORITHM: &str = "keystore_kdf_algorithm";
+    pub const WALLET_TREE_STRATEGY: &str = "wallet_tree_strategy";
     pub const APP_VERSION: &str = "app_version";
 }
 
@@ -174,6 +177,60 @@ impl Currency {
 }
 
 impl TryFrom<String> for Currency {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct WalletPwKdfAlgorithm {
+    pub wallet_pw_kdf_algorithm: wallet_tree::KdfAlgorithm,
+}
+
+impl WalletPwKdfAlgorithm {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for WalletPwKdfAlgorithm {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct KeystoreKdfAlgorithm {
+    pub keystore_kdf_algorithm: wallet_tree::KdfAlgorithm,
+}
+
+impl KeystoreKdfAlgorithm {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for KeystoreKdfAlgorithm {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct WalletTreeStrategy {
+    pub wallet_tree_strategy: wallet_tree::WalletTreeStrategy,
+}
+
+impl WalletTreeStrategy {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for WalletTreeStrategy {
     type Error = crate::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_str(&value)?)

@@ -32,13 +32,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .result;
     tracing::warn!("wallet: {wallet:#?}");
-    let wallet = wallet.unwrap();
-    test_params.create_account_req.wallet_address = wallet.address.clone();
 
-    let config = wallet_manager.get_config().await;
-    tracing::info!("config result: {config:#?}");
-    let res = wallet_utils::serde_func::serde_to_string(&config)?;
-    tracing::info!("config result: {res}");
+    let sync_res = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    tracing::info!("sync res: {sync_res:#?}");
+    // let wallet = wallet.unwrap();
+    // test_params.create_account_req.wallet_address = wallet.address.clone();
+
+    // let config = wallet_manager.get_config().await;
+    // tracing::info!("config result: {config:#?}");
+    // let res = wallet_utils::serde_func::serde_to_string(&config)?;
+    // tracing::info!("config result: {res}");
     while let Some(_data) = rx.next().await {
         tracing::info!("data: {_data:?}");
     }

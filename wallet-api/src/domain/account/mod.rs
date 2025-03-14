@@ -1,7 +1,5 @@
 use wallet_database::{
-    entities::{
-        account::AccountEntity, chain::ChainEntity, device::DeviceEntity, wallet::WalletEntity,
-    },
+    entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
@@ -11,6 +9,8 @@ use crate::{
     response_vo::account::CreateAccountRes,
     service::asset::AddressChainCode,
 };
+
+use super::app::config::ConfigDomain;
 
 pub struct AccountDomain {}
 
@@ -104,28 +104,22 @@ impl AccountDomain {
 
     pub async fn create_account_with_derivation_path(
         repo: &mut ResourcesRepo,
-        dirs: &crate::manager::Dirs,
         seed: &[u8],
-        instance: wallet_chain_instance::instance::ChainObject,
-        derivation_path: &Option<String>,
+        instance: &wallet_chain_instance::instance::ChainObject,
+        derivation_path: Option<&str>,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         uid: &str,
         wallet_address: &str,
-        root_password: &str,
-        derive_password: Option<String>,
         name: &str,
         is_default_name: bool,
-    ) -> Result<CreateAccountRes, crate::ServiceError> {
-        let (address, name) = Self::derive_subkey(
+    ) -> Result<(CreateAccountRes, String), crate::ServiceError> {
+        let (address, name, derivation_path) = Self::derive_subkey(
             repo,
-            dirs,
             seed,
             account_index_map,
-            &instance,
+            instance,
             derivation_path,
             wallet_address,
-            root_password,
-            derive_password,
             name,
             is_default_name,
         )
@@ -143,7 +137,7 @@ impl AccountDomain {
         )
         .await?;
 
-        Ok(res)
+        Ok((res, derivation_path))
     }
 
     pub async fn address_init(
@@ -182,27 +176,21 @@ impl AccountDomain {
 
     pub async fn create_account_with_account_id(
         repo: &mut ResourcesRepo,
-        dirs: &crate::manager::Dirs,
         seed: &[u8],
-        instance: wallet_chain_instance::instance::ChainObject,
+        instance: &wallet_chain_instance::instance::ChainObject,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         uid: &str,
         wallet_address: &str,
-        root_password: &str,
-        derive_password: Option<String>,
         name: &str,
         is_default_name: bool,
-    ) -> Result<CreateAccountRes, crate::ServiceError> {
-        let (address, name) = Self::derive_subkey(
+    ) -> Result<(CreateAccountRes, String), crate::ServiceError> {
+        let (address, name, derivation_path) = Self::derive_subkey(
             repo,
-            dirs,
             seed,
             account_index_map,
-            &instance,
-            &None,
+            instance,
+            None,
             wallet_address,
-            root_password,
-            derive_password,
             name,
             is_default_name,
         )
@@ -221,29 +209,24 @@ impl AccountDomain {
         )
         .await?;
 
-        Ok(res)
+        Ok((res, derivation_path))
     }
 
     pub(crate) async fn derive_subkey(
         repo: &mut ResourcesRepo,
-        dirs: &crate::manager::Dirs,
         seed: &[u8],
         account_index_map: &wallet_utils::address::AccountIndexMap,
         instance: &wallet_chain_instance::instance::ChainObject,
-        derivation_path: &Option<String>,
+        derivation_path: Option<&str>,
         wallet_address: &str,
-        root_password: &str,
-        derive_password: Option<String>,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(String, String), crate::ServiceError> {
+    ) -> Result<(String, String, String), crate::ServiceError> {
         let account_name = if is_default_name {
             format!("{name}{}", account_index_map.account_id)
         } else {
             name.to_string()
         };
-        // Get the path to the subkeys directory for the given wallet name.
-        let subs_dir = dirs.get_subs_dir(wallet_address)?;
 
         let keypair = if let Some(derivation_path) = derivation_path {
             instance
@@ -259,38 +242,23 @@ impl AccountDomain {
         let chain_code = keypair.chain_code().to_string();
 
         let address_type = instance.address_type();
-        // Get the root keystore using the root password
-
-        // Call the derive_subkey function from the wallet manager handler,
-        // passing in the root directory, subkeys path, wallet tree, derivation path,
-        // wallet name, root password, and derive password.
-
-        let derive_wallet = wallet_keystore::api::KeystoreApi::initialize_child_keystore(
-            instance,
-            seed,
-            &derivation_path,
-            subs_dir.to_string_lossy().to_string().as_str(),
-            &derive_password.unwrap_or(root_password.to_owned()),
-        )
-        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-
-        let address = derive_wallet.address().to_string();
+        let address = keypair.address();
         let pubkey = keypair.pubkey();
 
         let mut req = wallet_database::entities::account::CreateAccountVo::new(
             account_index_map.account_id,
             &address,
-            pubkey,
-            wallet_address.to_string(),
-            derivation_path,
-            chain_code,
+            &pubkey,
+            wallet_address,
+            &derivation_path,
+            &chain_code,
             &account_name,
         );
         if let AddressType::Btc(address_type) = address_type {
             req = req.with_address_type(address_type.as_ref());
         };
         repo.upsert_multi_account(vec![req]).await?;
-        Ok((address, account_name))
+        Ok((address, account_name, derivation_path))
     }
 }
 
@@ -299,11 +267,7 @@ pub async fn open_account_pk_with_password(
     address: &str,
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
-    let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
-        return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-    };
-    super::wallet::WalletDomain::validate_password(&device, password)?;
+    super::wallet::WalletDomain::validate_password(password).await?;
 
     let db = crate::manager::Context::get_global_sqlite_pool()?;
     let dirs = crate::manager::Context::get_global_dirs()?;
@@ -322,27 +286,36 @@ pub async fn open_account_pk_with_password(
             crate::ChainError::NotFound(chain_code.to_string()),
         )));
     };
-    let instance = wallet_chain_instance::instance::ChainObject::new(
-        chain_code,
-        account.address_type(),
-        chain.network.as_str().into(),
-    )?;
+    // let instance = wallet_chain_instance::instance::ChainObject::new(
+    //     chain_code,
+    //     account.address_type(),
+    //     chain.network.as_str().into(),
+    // )?;
 
-    let chain_code = chain_code.try_into()?;
-    let name = wallet_tree::wallet_tree::WalletBranch::get_sub_pk_filename(
-        &account.address,
-        &chain_code,
-        &account.derivation_path,
-    )?;
+    let chain_code: ChainCode = chain_code.try_into()?;
+    // let name = wallet_tree::wallet_tree::WalletBranch::get_sub_pk_filename(
+    //     &account.address,
+    //     &chain_code,
+    //     &account.derivation_path,
+    // )?;
 
     let subs_path = dirs.get_subs_dir(&wallet.address)?;
-    let storage_path = subs_path.join(name);
+    // let storage_path = subs_path.join(name);
+    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+    let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-    let key = wallet_keystore::api::KeystoreApi::get_private_key(
+    let key = wallet_tree::api::KeystoreApi::load_sub_pk(
+        &wallet_tree,
+        Some(&wallet_utils::address::AccountIndexMap::from_account_id(
+            account.account_id,
+        )?),
+        &subs_path,
+        address,
+        &chain_code.to_string(),
+        &account.derivation_path,
         password,
-        &storage_path,
-        instance.gen_gen_address()?,
     )?;
+    // let key = wallet_keystore::api::KeystoreApi::get_private_key(password, &storage_path)?;
 
     // TODO: 优化
     let private_key = match chain_code {

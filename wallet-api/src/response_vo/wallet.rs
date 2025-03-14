@@ -17,12 +17,6 @@ pub struct CreateWalletRes {
 }
 
 #[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResetRootRes {
-    pub wallet_tree: wallet_tree::wallet_tree::WalletTree,
-}
-
-#[derive(Debug, serde::Serialize)]
 pub struct GetPhraseRes {
     pub phrase: String,
 }

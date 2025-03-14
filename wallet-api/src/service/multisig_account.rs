@@ -567,7 +567,7 @@ impl MultisigAccountService {
         let to = &address.address;
 
         // fetch value
-        let req = SignedFeeListReq::new(&payer.chain_code);
+        let req = SignedFeeListReq::new(&multisig_account.chain_code);
         let amount = backend.signed_fee_list(cryptor, req).await?;
         let amount = amount.list.first().unwrap();
         let value = amount.price.to_string();
