@@ -21,8 +21,10 @@ async fn test_build_freeze() {
         signer: Some(singer),
     };
 
-    let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;
+    let bill_kind = BillKind::DelegateEnergy.to_i8() as i64;
     let content = serde_json::to_string(&req).unwrap();
+
+    let content = r#"{"ownerAddress":"TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY","receiverAddress":"TTD5EM94SmLPSTyvzjiisjB71QCD4vHQcm","balance":5,"resource":"ENERGY","lock":false,"lockPeriod":0,"signer":{"address":"TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY","permissionId":2}}"#.to_string();
 
     let password = "123456".to_string();
     let res = manager
