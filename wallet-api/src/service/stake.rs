@@ -1,5 +1,5 @@
 use crate::domain;
-use crate::domain::account::open_account_pk_with_password;
+use crate::domain::account::open_subpk_with_password;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
@@ -113,7 +113,7 @@ impl StackService {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let key = open_account_pk_with_password(chain_code::TRON, from, password).await?;
+        let key = open_subpk_with_password(chain_code::TRON, from, password).await?;
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
         let transaction_fee = consumer.transaction_fee();
@@ -1040,7 +1040,7 @@ impl StackService {
             ))?;
         }
 
-        let key = open_account_pk_with_password(chain_code::TRON, owner_address, &password).await?;
+        let key = open_subpk_with_password(chain_code::TRON, owner_address, &password).await?;
         let res = self.batch_exec(owner_address, key, bill_kind, txs).await?;
 
         let resource_value = resource.resource_value(resource_type, amount)?;
@@ -1511,7 +1511,7 @@ impl StackService {
         let sign_num = members.0.len().min(account.threshold as usize);
         for i in 0..sign_num {
             let member = members.0.get(i).unwrap();
-            let key = crate::domain::account::open_account_pk_with_password(
+            let key = crate::domain::account::open_subpk_with_password(
                 chain_code::TRON,
                 &member.address,
                 &password,

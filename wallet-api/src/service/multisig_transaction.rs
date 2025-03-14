@@ -92,7 +92,7 @@ impl MultisigTransactionService {
         )
         .await?;
 
-        let key = crate::domain::account::open_account_pk_with_password(
+        let key = crate::domain::account::open_subpk_with_password(
             &account.chain_code,
             &account.initiator_addr,
             &req_params.password,
@@ -128,7 +128,7 @@ impl MultisigTransactionService {
             let sign_num = members.0.len().min(account.threshold as usize);
             for i in 0..sign_num {
                 let member = members.0.get(i).unwrap();
-                let key = crate::domain::account::open_account_pk_with_password(
+                let key = crate::domain::account::open_subpk_with_password(
                     chain_code,
                     &member.address,
                     &req_params.password,
@@ -456,7 +456,7 @@ impl MultisigTransactionService {
                         continue;
                     };
 
-                    let key = crate::domain::account::open_account_pk_with_password(
+                    let key = crate::domain::account::open_subpk_with_password(
                         &queue.chain_code,
                         address,
                         password,
@@ -539,7 +539,7 @@ impl MultisigTransactionService {
                     signatures,
                 )?;
 
-                let key = crate::domain::account::open_account_pk_with_password(
+                let key = crate::domain::account::open_subpk_with_password(
                     &queue.chain_code,
                     &multisig_account.initiator_addr,
                     &password,
@@ -614,7 +614,7 @@ impl MultisigTransactionService {
                 )
                 .await?;
 
-                let key = crate::domain::account::open_account_pk_with_password(
+                let key = crate::domain::account::open_subpk_with_password(
                     &queue.chain_code,
                     &multisig_account.initiator_addr,
                     &password,

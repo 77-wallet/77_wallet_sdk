@@ -6,7 +6,7 @@ use wallet_database::{
     },
     repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
 };
-use wallet_tree::{KdfAlgorithm, WalletTreeStrategy};
+use wallet_tree::{api::KeystoreApi, KdfAlgorithm, WalletTreeStrategy};
 
 use super::app::config::ConfigDomain;
 
@@ -41,11 +41,7 @@ impl WalletDomain {
         let dirs = crate::Context::get_global_dirs()?;
 
         if WalletEntity::wallet_latest(&*pool).await?.is_none() {
-            let file_name = "verify";
-            let file_path = dirs.root_dir.join(&file_name);
-            if wallet_utils::file_func::exists(&file_path)? {
-                wallet_utils::file_func::remove_file(file_path)?;
-            }
+            KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         };
 
         let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
@@ -59,9 +55,8 @@ impl WalletDomain {
             let file_name = "verify";
             let file_path = dirs.root_dir.join(&file_name);
             if wallet_utils::file_func::exists(&file_path)? {
-                if let Err(_) = wallet_tree
-                    .io()
-                    .load_custom(&dirs.root_dir, &file_name, password)
+                if let Err(_) =
+                    KeystoreApi::load_verify_file(&wallet_tree, &dirs.root_dir, password)
                 {
                     return Err(crate::BusinessError::Wallet(
                         crate::WalletError::PasswordIncorrect,
@@ -69,13 +64,7 @@ impl WalletDomain {
                     .into());
                 }
             } else {
-                wallet_tree.io().store(
-                    file_name,
-                    &"data",
-                    &dirs.root_dir,
-                    password,
-                    wallet_tree::KdfAlgorithm::Argon2id,
-                )?;
+                KeystoreApi::store_verify_file(&wallet_tree, &dirs.root_dir, password)?;
             }
         } else {
             WalletDomain::upgrade_algorithm(password).await?;
@@ -119,15 +108,9 @@ impl WalletDomain {
         for (k, v) in legacy_wallet_tree.iter() {
             let root_dir = dirs.get_root_dir(k)?;
             let subs_dir = dirs.get_subs_dir(k)?;
-            let root_data = legacy_wallet_tree.io().load_root(
-                legacy_wallet_tree.naming(),
-                k,
-                &root_dir,
-                password,
-            )?;
+            let root_data = legacy_wallet_tree.io().load_root(k, &root_dir, password)?;
 
             modern_wallet_tree.io().store_root(
-                modern_wallet_tree.naming(),
                 k,
                 root_data.seed(),
                 root_data.phrase(),
@@ -136,9 +119,7 @@ impl WalletDomain {
                 wallet_tree::KdfAlgorithm::Argon2id,
             )?;
 
-            legacy_wallet_tree
-                .io()
-                .delete_root(legacy_wallet_tree.naming(), k, &root_dir)?;
+            legacy_wallet_tree.io().delete_root(k, &root_dir)?;
 
             for account in v.get_accounts().into_iter() {
                 let address = account.get_address();
@@ -146,7 +127,6 @@ impl WalletDomain {
                 let derivation_path = account.derivation_path().unwrap_or_default();
 
                 let pk = legacy_wallet_tree.io().load_subkey(
-                    legacy_wallet_tree.naming(),
                     None,
                     address,
                     &chain_code,
@@ -183,10 +163,8 @@ impl WalletDomain {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(hd_path.get_account_id()?)?;
             let subs_dir = dirs.get_subs_dir(&info.wallet_address)?;
-            let naming = modern_wallet_tree.naming();
 
             modern_wallet_tree.io().store_subkey(
-                naming,
                 &account_index_map,
                 &info.address,
                 &info.chain_code,

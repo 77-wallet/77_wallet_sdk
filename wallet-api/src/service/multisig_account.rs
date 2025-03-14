@@ -643,7 +643,7 @@ impl MultisigAccountService {
         adapter: &domain::chain::adapter::MultisigAdapter,
     ) -> Result<String, crate::ServiceError> {
         // 1.执行链上部署交易
-        let key = domain::account::open_account_pk_with_password(
+        let key = domain::account::open_subpk_with_password(
             &account.chain_code,
             &account.initiator_addr,
             password,

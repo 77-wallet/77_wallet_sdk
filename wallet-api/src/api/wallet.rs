@@ -450,11 +450,11 @@ mod test {
             .set_all_password(old_passwd, new_passwd)
             .await;
         tracing::info!("res: {res:?}");
-        let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
-        let key = wallet_manager
-            .get_account_private_key(new_passwd, wallet_address, 1)
-            .await;
-        tracing::info!("key: {key:?}");
+        // let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        // let key = wallet_manager
+        //     .get_account_private_key(new_passwd, wallet_address, 1)
+        //     .await;
+        // tracing::info!("key: {key:?}");
         Ok(())
     }
 

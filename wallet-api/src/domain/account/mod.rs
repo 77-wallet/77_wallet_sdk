@@ -2,7 +2,10 @@ use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
 };
-use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
+use wallet_types::{
+    chain::{address::r#type::AddressType, chain::ChainCode},
+    constant::chain_code,
+};
 
 use crate::{
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
@@ -262,7 +265,60 @@ impl AccountDomain {
     }
 }
 
-pub async fn open_account_pk_with_password(
+pub async fn open_accounts_pk_with_password(
+    account_index_map: &wallet_utils::address::AccountIndexMap,
+    address: &str,
+    password: &str,
+) -> Result<
+    std::collections::HashMap<wallet_tree::KeyMeta, wallet_chain_interact::types::ChainPrivateKey>,
+    crate::ServiceError,
+> {
+    tracing::info!("open_account_pk_with_password: address: {:?}", address);
+    super::wallet::WalletDomain::validate_password(password).await?;
+
+    let db = crate::manager::Context::get_global_sqlite_pool()?;
+    let dirs = crate::manager::Context::get_global_dirs()?;
+
+    let subs_path = dirs.get_subs_dir(&address)?;
+    // let storage_path = subs_path.join(name);
+    let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+    let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+    tracing::info!("open_account_pk_with_password: subs_path: {:?}", subs_path);
+    tracing::info!("open_account_pk_with_password: password: {}", password);
+
+    let account_data = wallet_tree::api::KeystoreApi::load_account_pk(
+        &wallet_tree,
+        &account_index_map,
+        &subs_path,
+        password,
+    )?;
+    let mut res = std::collections::HashMap::default();
+    for (meta, key) in account_data.into_inner() {
+        let chain_code = &meta.chain_code;
+        let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), &chain_code).await? else {
+            return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
+                crate::ChainError::NotFound(chain_code.to_string()),
+            )));
+        };
+        let chain_code = chain_code.as_str().try_into()?;
+
+        let private_key = match chain_code {
+            ChainCode::Solana => {
+                wallet_utils::parse_func::sol_keypair_from_bytes(&key)?.to_base58_string()
+            }
+            ChainCode::Bitcoin => {
+                wallet_chain_interact::btc::wif_private_key(&key, chain.network.as_str().into())?
+            }
+            _ => hex::encode(key),
+        };
+
+        res.insert(meta, private_key.into());
+    }
+    Ok(res)
+}
+
+pub async fn open_subpk_with_password(
     chain_code: &str,
     address: &str,
     password: &str,
@@ -286,29 +342,19 @@ pub async fn open_account_pk_with_password(
             crate::ChainError::NotFound(chain_code.to_string()),
         )));
     };
-    // let instance = wallet_chain_instance::instance::ChainObject::new(
-    //     chain_code,
-    //     account.address_type(),
-    //     chain.network.as_str().into(),
-    // )?;
 
     let chain_code: ChainCode = chain_code.try_into()?;
-    // let name = wallet_tree::wallet_tree::WalletBranch::get_sub_pk_filename(
-    //     &account.address,
-    //     &chain_code,
-    //     &account.derivation_path,
-    // )?;
 
     let subs_path = dirs.get_subs_dir(&wallet.address)?;
     // let storage_path = subs_path.join(name);
     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
+    let account_index_map =
+        wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
     let key = wallet_tree::api::KeystoreApi::load_sub_pk(
         &wallet_tree,
-        Some(&wallet_utils::address::AccountIndexMap::from_account_id(
-            account.account_id,
-        )?),
+        Some(&account_index_map),
         &subs_path,
         address,
         &chain_code.to_string(),
