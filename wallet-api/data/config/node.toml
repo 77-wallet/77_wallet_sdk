@@ -14,12 +14,12 @@ http_url = ""
 network = "mainnet"
 active = true
 
-[[nodes.tron.nodes]]
-node_name = "Nileex"
-rpc_url = "https://api.nileex.io"
-http_url = ""
-network = "testnet"
-active = true
+# [[nodes.tron.nodes]]
+# node_name = "Nileex"
+# rpc_url = "https://api.nileex.io"
+# http_url = ""
+# network = "testnet"
+# active = true
 
 # [[nodes.tron.nodes]]
 # node_name = "Platform Node"
