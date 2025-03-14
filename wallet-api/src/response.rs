@@ -129,6 +129,7 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
             ),
             wallet_chain_interact::ContractValidationError::Other(_) => (-40000, msg.to_string()),
         },
+        wallet_chain_interact::Error::RpcError(_) => (-40000, msg.to_string()),
         _ => (540, msg),
     }
 }

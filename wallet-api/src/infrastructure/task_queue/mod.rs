@@ -13,6 +13,7 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 use crate::mqtt::payload::incoming::{
     announcement::BulletinMsg,
     init::Init,
+    resource::TronSignFreezeDelegateVoteChange,
     signature::{
         OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
         OrderMultiSignCreated, OrderMultiSignServiceComplete,
@@ -93,6 +94,7 @@ pub(crate) enum MqttTask {
     AcctChange(AcctChange),
     Init(Init),
     BulletinMsg(BulletinMsg),
+    TronSignFreezeDelegateVoteChange(TronSignFreezeDelegateVoteChange),
     // RpcChange(RpcChange),
 }
 
@@ -278,6 +280,14 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     wallet_utils::serde_func::serde_from_str::<BulletinMsg>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::BulletinMsg(req))))
             }
+            TaskName::TronSignFreezeDelegateVoteChange => {
+                let req = wallet_utils::serde_func::serde_from_str::<
+                    TronSignFreezeDelegateVoteChange,
+                >(&value.request_body)?;
+                Ok(Task::Mqtt(Box::new(
+                    MqttTask::TronSignFreezeDelegateVoteChange(req),
+                )))
+            }
             // TaskName::RpcChange => {
             //     let req =
             //         wallet_utils::serde_func::serde_from_str::<RpcChange>(&value.request_body)?;
@@ -343,7 +353,9 @@ impl Task {
                 MqttTask::AcctChange(_) => TaskName::AcctChange,
                 MqttTask::Init(_) => TaskName::Init,
                 MqttTask::BulletinMsg(_) => TaskName::BulletinMsg,
-                // MqttTask::RpcChange(_) => TaskName::RpcChange,
+                MqttTask::TronSignFreezeDelegateVoteChange(_) => {
+                    TaskName::TronSignFreezeDelegateVoteChange
+                } // MqttTask::RpcChange(_) => TaskName::RpcChange,
             },
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(_) => TaskName::QueryCoinPrice,
@@ -402,9 +414,15 @@ impl Task {
                 MqttTask::Init(init) => Some(wallet_utils::serde_func::serde_to_string(init)?),
                 MqttTask::BulletinMsg(bulletin_msg) => {
                     Some(wallet_utils::serde_func::serde_to_string(bulletin_msg)?)
-                } // MqttTask::RpcChange(rpc_change) => {
-                  //     Some(wallet_utils::serde_func::serde_to_string(rpc_change)?)
-                  // }
+                }
+                MqttTask::TronSignFreezeDelegateVoteChange(
+                    tron_sign_freeze_delegate_vote_change,
+                ) => Some(wallet_utils::serde_func::serde_to_string(
+                    tron_sign_freeze_delegate_vote_change,
+                )?),
+                // MqttTask::RpcChange(rpc_change) => {
+                //     Some(wallet_utils::serde_func::serde_to_string(rpc_change)?)
+                // }
             },
             Task::Common(common_task) => match common_task {
                 CommonTask::QueryCoinPrice(query_coin_price) => {

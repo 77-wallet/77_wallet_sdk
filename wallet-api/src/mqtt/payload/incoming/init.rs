@@ -55,6 +55,7 @@ impl Init {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let backend = crate::manager::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let mut assets_service = AssetsService::new(repo);
 
@@ -90,10 +91,13 @@ impl Init {
                 chain_instance.decimals(token_addr).await?
             } else {
                 backend
-                    .token_query_by_contract_address(&TokenQueryByContractAddressReq {
-                        chain_code: chain_code.to_string(),
-                        contract_address: "".to_string(),
-                    })
+                    .token_query_by_contract_address(
+                        cryptor,
+                        &TokenQueryByContractAddressReq {
+                            chain_code: chain_code.to_string(),
+                            contract_address: "".to_string(),
+                        },
+                    )
                     .await?
                     .unit
             };

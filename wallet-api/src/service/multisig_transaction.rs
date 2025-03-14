@@ -92,7 +92,7 @@ impl MultisigTransactionService {
         )
         .await?;
 
-        let key = crate::domain::account::open_account_pk_with_password(
+        let key = crate::domain::account::open_subpk_with_password(
             &account.chain_code,
             &account.initiator_addr,
             &req_params.password,
@@ -128,7 +128,7 @@ impl MultisigTransactionService {
             let sign_num = members.0.len().min(account.threshold as usize);
             for i in 0..sign_num {
                 let member = members.0.get(i).unwrap();
-                let key = crate::domain::account::open_account_pk_with_password(
+                let key = crate::domain::account::open_subpk_with_password(
                     chain_code,
                     &member.address,
                     &req_params.password,
@@ -158,7 +158,7 @@ impl MultisigTransactionService {
 
         // 上报后端
         let withdraw_id = res.id.clone();
-        let mut sync_params = MultiSignTransAccept::from(res);
+        let mut sync_params = MultiSignTransAccept::try_from(res)?;
         sync_params.signatures = signatures;
 
         let raw_data = MultisigQueueRepo::multisig_queue_data(&withdraw_id, pool)
@@ -170,6 +170,7 @@ impl MultisigTransactionService {
             chain_code: req_params.chain_code,
             tx_str: wallet_utils::serde_func::serde_to_string(&sync_params)?,
             raw_data,
+            tx_kind: BillKind::Transfer.to_i8(),
         };
 
         let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
@@ -455,7 +456,7 @@ impl MultisigTransactionService {
                         continue;
                     };
 
-                    let key = crate::domain::account::open_account_pk_with_password(
+                    let key = crate::domain::account::open_subpk_with_password(
                         &queue.chain_code,
                         address,
                         password,
@@ -514,9 +515,9 @@ impl MultisigTransactionService {
         .await?;
         let transfer_amcount = wallet_utils::unit::convert_to_u256(&queue.value, assets.decimals)?;
 
-        let instance =
-            domain::chain::adapter::ChainAdapterFactory::get_multisig_adapter(&queue.chain_code)
-                .await?;
+        let bill_kind = BillKind::try_from(queue.transfer_type)?;
+
+        let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
         let tx_resp = match instance {
             MultisigAdapter::Ethereum(chain) => {
                 let multisig_account = domain::multisig::MultisigDomain::account_by_address(
@@ -538,7 +539,7 @@ impl MultisigTransactionService {
                     signatures,
                 )?;
 
-                let key = crate::domain::account::open_account_pk_with_password(
+                let key = crate::domain::account::open_subpk_with_password(
                     &queue.chain_code,
                     &multisig_account.initiator_addr,
                     &password,
@@ -613,7 +614,7 @@ impl MultisigTransactionService {
                 )
                 .await?;
 
-                let key = crate::domain::account::open_account_pk_with_password(
+                let key = crate::domain::account::open_subpk_with_password(
                     &queue.chain_code,
                     &multisig_account.initiator_addr,
                     &password,
@@ -653,6 +654,13 @@ impl MultisigTransactionService {
                 let transfer_balance = chain
                     .balance(&queue.from_addr, queue.token_address())
                     .await?;
+
+                // 根据交易类型来判断是否需要将amount 进行验证
+                let transfer_amcount = if bill_kind.out_transfer_type() {
+                    transfer_amcount
+                } else {
+                    alloy::primitives::U256::ZERO
+                };
                 if transfer_balance < transfer_amcount {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientBalance,
@@ -734,11 +742,11 @@ impl MultisigTransactionService {
             tx_resp.tx_hash.clone(),
             queue.from_addr,
             queue.to_addr,
-            queue.value.parse().unwrap(),
+            queue.value.parse().unwrap_or_default(),
             queue.chain_code,
             queue.symbol,
             true,
-            BillKind::Transfer,
+            bill_kind,
             queue.notes.clone(),
         )
         .with_queue_id(queue_id)
@@ -766,10 +774,9 @@ impl MultisigTransactionService {
             raw_data,
         };
 
-        // TODO 当前调试用,最终删除
-        // tracing::error!("exec multisig tx = {}", tx_resp.tx_hash);
         let backend = crate::manager::Context::get_global_backend_api()?;
-        if let Err(e) = backend.signed_tran_update_trans_hash(&req).await {
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        if let Err(e) = backend.signed_tran_update_trans_hash(cryptor, &req).await {
             tracing::error!("report signed tran update  add to task{}", e);
             let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
                 endpoint: endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH.to_string(),
@@ -780,7 +787,7 @@ impl MultisigTransactionService {
 
         // 回收资源
         if let Some(request_id) = request_resource_id {
-            let _rs = backend.delegate_complete(&request_id).await;
+            let _rs = backend.delegate_complete(cryptor, &request_id).await;
         }
 
         Ok(tx_resp.tx_hash)
@@ -838,7 +845,11 @@ impl MultisigTransactionService {
             .await?
             .to_string()?;
         let backend = crate::Context::get_global_backend_api()?;
-        if let Err(_e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        if let Err(_e) = backend
+            .signed_trans_cancel(cryptor, &queue_id, raw_data)
+            .await
+        {
             MultisigQueueDaoV1::rollback_update_fail(&queue_id, queue.status, pool.as_ref())
                 .await
                 .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;

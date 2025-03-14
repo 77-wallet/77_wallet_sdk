@@ -1,7 +1,9 @@
-// biz_type = MULTI_SIGN_TRANS_ACCEPT
+use wallet_database::entities::bill::BillKind;
+
+// biz_type = CONFIRMATION
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MultiSignTransAcceptFrontend {
+pub struct ConfirmationFrontend {
     /// 队列id
     pub id: String,
     pub from_addr: String,
@@ -19,6 +21,7 @@ pub struct MultiSignTransAcceptFrontend {
     /// 0待签名 1待执行 2已执行
     pub status: i8,
     pub notes: String,
+    pub bill_kind: BillKind,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
 }
 

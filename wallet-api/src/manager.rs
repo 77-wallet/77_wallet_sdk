@@ -116,6 +116,7 @@ pub struct Context {
     pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
     pub(crate) device: Arc<DeviceInfo>,
     pub(crate) cache: Arc<SharedCache>,
+    pub(crate) aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
 }
 
 #[derive(Debug, Clone)]
@@ -172,9 +173,10 @@ impl Context {
             &config.oss.bucket_name,
         );
 
+        let aes_cbc_cryptor =
+            wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         // 创建 TaskManager 实例
         let task_manager = TaskManager::new();
-        task_manager.start_task_check();
 
         Ok(Context {
             dirs,
@@ -188,6 +190,7 @@ impl Context {
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
+            aes_cbc_cryptor,
         })
     }
 
@@ -212,6 +215,11 @@ impl Context {
     pub(crate) fn get_global_backend_api(
     ) -> Result<&'static wallet_transport_backend::api::BackendApi, crate::ServiceError> {
         Ok(&Context::get_context()?.backend_api)
+    }
+
+    pub(crate) fn get_global_aes_cbc_cryptor(
+    ) -> Result<&'static wallet_utils::cbc::AesCbcCryptor, crate::ServiceError> {
+        Ok(&Context::get_context()?.aes_cbc_cryptor)
     }
 
     pub(crate) fn get_global_dirs() -> Result<&'static crate::manager::Dirs, crate::SystemError> {
@@ -274,8 +282,10 @@ impl Context {
 
         if token_expired {
             let backend_api = cx.backend_api.clone();
-
-            let new_token_response = backend_api.rpc_token(&cx.device.client_id).await;
+            let aes_cbc_cryptor = &cx.aes_cbc_cryptor;
+            let new_token_response = backend_api
+                .rpc_token(aes_cbc_cryptor, &cx.device.client_id)
+                .await;
             match new_token_response {
                 Ok(token) => {
                     let new_token = RpcToken {
@@ -359,11 +369,14 @@ impl WalletManager {
         // 启动任务检查循环
         // let manager = Context::get_global_task_manager()?;
         // manager.start_task_check();
+        Context::get_global_task_manager()?.start_task_check();
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+
         Tasks::new()
             .push(Task::Initialization(InitializationTask::InitMqtt))
             .send()
             .await?;
+        domain::app::DeviceDomain::check_wallet_password_is_null().await?;
         tokio::spawn(async move {
             if let Err(e) = do_some_init().await {
                 tracing::error!("init_data error: {}", e);
@@ -383,7 +396,8 @@ impl WalletManager {
             .await?;
         Ok(())
     }
-    pub async fn init_log(level: Option<&str>) -> Result<(), crate::ServiceError> {
+    pub async fn init_log(level: Option<&str>, app_code: &str) -> Result<(), crate::ServiceError> {
+        wallet_utils::log::set_app_code(app_code);
         let context = Context::get_context()?;
 
         let log_dir = context.dirs.get_log_dir();
@@ -426,7 +440,7 @@ impl Dirs {
         let export_dir = Self::join_path(root_dir, "export");
         let log_dir = Self::join_path(root_dir, "log");
 
-        for dir in [&db_dir, &export_dir, &log_dir] {
+        for dir in [&db_dir, &export_dir, &log_dir, &wallet_dir] {
             wallet_utils::file_func::create_dir_all(dir)?;
         }
 
@@ -535,7 +549,9 @@ mod tests {
             .unwrap();
         let dirs = crate::manager::Context::get_global_dirs()?;
 
-        wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+        wallet_tree::wallet_hierarchy::legecy_adapter::LegacyWalletTree::traverse_directory_structure(
+            &dirs.wallet_dir,
+        )?;
 
         Ok(())
     }

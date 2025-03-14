@@ -4,7 +4,9 @@ use transaction::*;
 
 pub(crate) mod multisig;
 pub(crate) mod other;
+pub(crate) mod resource;
 pub(crate) mod transaction;
+
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
 pub enum NotifyEvent {
@@ -13,7 +15,7 @@ pub enum NotifyEvent {
     OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend),
     OrderMultiSignCreated(OrderMultiSignCreatedFrontend),
     OrderMultisignCanceled(OrderMultisignCanceledFrontend),
-    MultiSignTransAccept(MultiSignTransAcceptFrontend),
+    Confirmation(ConfirmationFrontend),
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsgFrontend),
     AcctChange(AcctChangeFrontend),
     TokenPriceChange(crate::response_vo::coin::TokenPriceChangeRes),
@@ -31,6 +33,9 @@ pub enum NotifyEvent {
     // 执行交易的过程
     TransactionProcess(TransactionProcessFrontend),
     ChainChange(crate::mqtt::payload::incoming::chain::ChainChange),
+
+    // 资源
+    ResourceChange(resource::ResourceChangeFrontend),
 }
 
 impl NotifyEvent {
@@ -45,7 +50,7 @@ impl NotifyEvent {
             }
             NotifyEvent::OrderMultiSignCreated(_) => "ORDER_MULTI_SIGN_CREATED".to_string(),
             NotifyEvent::OrderMultisignCanceled(_) => "ORDER_MULTI_SIGN_CANCEL".to_string(),
-            NotifyEvent::MultiSignTransAccept(_) => "MULTI_SIGN_TRANS_ACCEPT".to_string(),
+            NotifyEvent::Confirmation(_) => "CONFIRMATION".to_string(),
             NotifyEvent::MultiSignTransAcceptCompleteMsg(_) => {
                 "MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG".to_string()
             }
@@ -64,6 +69,9 @@ impl NotifyEvent {
             NotifyEvent::Debug(_) => "DEBUG".to_string(),
             NotifyEvent::Err(_) => "ERR".to_string(),
             NotifyEvent::TransactionProcess(_) => "TRANSACTION_PROCESS".to_string(),
+
+            // 资源
+            NotifyEvent::ResourceChange(_) => "RESOURCE_CHANGE".to_string(),
         }
     }
 }

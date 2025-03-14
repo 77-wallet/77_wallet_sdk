@@ -4,7 +4,7 @@ pub mod multisign_trans_accept_complete_msg;
 pub mod multisign_trans_cancel;
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_database::entities::{
-    multisig_queue::MultisigQueueEntity, multisig_signatures::NewSignatureEntity,
+    bill::BillKind, multisig_queue::MultisigQueueEntity, multisig_signatures::NewSignatureEntity,
 };
 
 // biz_type = MULTI_SIGN_TRANS_ACCEPT
@@ -30,7 +30,7 @@ pub struct MultiSignTransAccept {
     pub created_at: DateTime<Utc>,
     pub signatures: Vec<NewSignatureEntity>,
     pub account_id: String,
-    pub transfer_type: i8,
+    pub transfer_type: BillKind,
 }
 impl MultiSignTransAccept {
     pub fn with_signature(mut self, signatures: Vec<NewSignatureEntity>) -> Self {
@@ -43,9 +43,10 @@ impl MultiSignTransAccept {
     }
 }
 
-impl From<MultisigQueueEntity> for MultiSignTransAccept {
-    fn from(value: MultisigQueueEntity) -> Self {
-        Self {
+impl TryFrom<MultisigQueueEntity> for MultiSignTransAccept {
+    type Error = crate::ServiceError;
+    fn try_from(value: MultisigQueueEntity) -> Result<Self, Self::Error> {
+        Ok(Self {
             id: value.id,
             from_addr: value.from_addr,
             to_addr: value.to_addr,
@@ -62,8 +63,8 @@ impl From<MultisigQueueEntity> for MultiSignTransAccept {
             created_at: value.created_at,
             signatures: vec![],
             account_id: value.account_id,
-            transfer_type: value.transfer_type,
-        }
+            transfer_type: value.transfer_type.try_into()?,
+        })
     }
 }
 
@@ -156,6 +157,12 @@ pub struct AcctChange {
     // 备注
     #[serde(default)]
     pub notes: String,
+    // 带宽消耗
+    #[serde(default)]
+    pub net_used: u64,
+    // 能量消耗
+    #[serde(default)]
+    pub energy_used: Option<u64>,
 }
 
 impl AcctChange {

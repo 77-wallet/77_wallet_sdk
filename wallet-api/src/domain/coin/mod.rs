@@ -72,6 +72,7 @@ impl CoinDomain {
     ) -> Result<Vec<TokenPriceChangeRes>, crate::ServiceError> {
         let tx = repo;
         let backend_api = crate::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let coins = tx.coin_list_with_symbols(&symbols, None).await?;
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -81,7 +82,7 @@ impl CoinDomain {
             req.insert(&coin.chain_code, &contract_address);
         });
 
-        let tokens = backend_api.token_query_price(req).await?.list;
+        let tokens = backend_api.token_query_price(cryptor, req).await?.list;
 
         let config = crate::app_state::APP_STATE.read().await;
         let currency = config.currency();

@@ -48,9 +48,12 @@ impl BackendTaskHandle {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::ServiceError> {
         let handler = Self::get_handler(endpoint);
-        handler.handle(endpoint, body, backend).await?;
+        handler
+            .handle(endpoint, body, backend, aes_cbc_cryptor)
+            .await?;
 
         Ok(())
     }
@@ -64,6 +67,7 @@ trait EndpointHandler {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::ServiceError>;
 }
 
@@ -77,10 +81,11 @@ impl EndpointHandler for DefaultHandler {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::ServiceError> {
         // 实现具体的处理逻辑
         backend
-            .post_req_str::<serde_json::Value>(endpoint, &body)
+            .post_req_str::<serde_json::Value>(endpoint, &body, aes_cbc_cryptor)
             .await?;
         Ok(())
     }
@@ -96,19 +101,24 @@ impl EndpointHandler for SpecialHandler {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         match endpoint {
             endpoint::DEVICE_INIT => {
-                let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
+                let res = backend
+                    .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
+                    .await;
                 res?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
                 repo.device_init().await?;
             }
             endpoint::KEYS_INIT => {
-                let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
+                let res = backend
+                    .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
+                    .await;
                 res?;
                 let req: wallet_transport_backend::request::KeysInitReq =
                     wallet_utils::serde_func::serde_from_value(body)?;
@@ -116,7 +126,9 @@ impl EndpointHandler for SpecialHandler {
                 repo.wallet_init(&req.uid).await?;
             }
             endpoint::LANGUAGE_INIT => {
-                backend.post_req_str::<()>(endpoint, &body).await?;
+                backend
+                    .post_req_str::<()>(endpoint, &body, aes_cbc_cryptor)
+                    .await?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
                 repo.language_init().await?;
                 let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -124,7 +136,9 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
             }
             endpoint::ADDRESS_INIT => {
-                let res = backend.post_req_str::<()>(endpoint, &body).await;
+                let res = backend
+                    .post_req_str::<()>(endpoint, &body, aes_cbc_cryptor)
+                    .await;
                 res?;
                 use wallet_database::repositories::account::AccountRepoTrait as _;
                 let req: wallet_transport_backend::request::AddressInitReq =
@@ -132,7 +146,9 @@ impl EndpointHandler for SpecialHandler {
                 repo.account_init(&req.address, &req.chain_code).await?;
             }
             endpoint::TOKEN_CUSTOM_TOKEN_INIT => {
-                let res = backend.post_req_str::<bool>(endpoint, &body).await;
+                let res = backend
+                    .post_req_str::<bool>(endpoint, &body, aes_cbc_cryptor)
+                    .await;
                 res?;
 
                 let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -141,7 +157,9 @@ impl EndpointHandler for SpecialHandler {
             }
 
             endpoint::TOKEN_QUERY_RATES => {
-                let rates: TokenRates = backend.post_req_str::<TokenRates>(endpoint, &body).await?;
+                let rates: TokenRates = backend
+                    .post_req_str::<TokenRates>(endpoint, &body, aes_cbc_cryptor)
+                    .await?;
 
                 let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
                 let exchange_rate_service =
@@ -154,7 +172,7 @@ impl EndpointHandler for SpecialHandler {
                 match req.key.as_str() {
                     "OFFICIAL:WEBSITE" => {
                         let res = backend
-                            .post_req_str::<FindConfigByKeyRes>(endpoint, &body)
+                            .post_req_str::<FindConfigByKeyRes>(endpoint, &body, aes_cbc_cryptor)
                             .await?;
                         ConfigDomain::set_official_website(res.value).await?;
                     }
@@ -164,7 +182,9 @@ impl EndpointHandler for SpecialHandler {
                 }
             }
             endpoint::APP_INSTALL_DOWNLOAD => {
-                let url = backend.post_req_str::<String>(endpoint, &body).await?;
+                let url = backend
+                    .post_req_str::<String>(endpoint, &body, aes_cbc_cryptor)
+                    .await?;
                 ConfigDomain::set_app_download_qr_code_url(&url).await?;
                 // ConfigDomain::set_version_download_url(&url).await?;
             }
@@ -179,7 +199,9 @@ impl EndpointHandler for SpecialHandler {
             endpoint::CHAIN_LIST => {
                 let input = backend
                     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainList>(
-                        endpoint, &body,
+                        endpoint,
+                        &body,
+                        aes_cbc_cryptor,
                     )
                     .await?;
 
@@ -190,7 +212,9 @@ impl EndpointHandler for SpecialHandler {
             endpoint::CHAIN_RPC_LIST => {
                 let input = backend
                     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
-                        endpoint, &body,
+                        endpoint,
+                        &body,
+                        aes_cbc_cryptor,
                     )
                     .await?;
                 let req = wallet_utils::serde_func::serde_from_value::<ChainRpcListReq>(body)?;
@@ -204,7 +228,9 @@ impl EndpointHandler for SpecialHandler {
                 .await?;
             }
             endpoint::MQTT_INIT => {
-                let mqtt_url = backend.post_req_str::<String>(endpoint, &body).await?;
+                let mqtt_url = backend
+                    .post_req_str::<String>(endpoint, &body, aes_cbc_cryptor)
+                    .await?;
                 ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
             }
             _ => {

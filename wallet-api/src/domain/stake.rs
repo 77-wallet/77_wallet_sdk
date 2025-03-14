@@ -1,14 +1,15 @@
 use wallet_chain_interact::{
     tron::{
         operations::{
-            stake::{self},
-            TronSimulateOperation,
+            stake::{self, DelegatedResource},
+            TronSimulateOperation, TronTxOperation,
         },
         params::ResourceConsumer,
         TronChain,
     },
     types::MultisigTxResp,
 };
+use wallet_utils::serde_func::serde_from_value;
 
 use crate::response_vo::stake::VoteListResp;
 
@@ -98,6 +99,21 @@ impl StakeArgs {
         Ok(res)
     }
 
+    pub fn get_to(&self) -> String {
+        match self {
+            Self::Freeze(params) => params.get_to(),
+            Self::UnFreeze(params) => params.get_to(),
+            Self::CancelAllUnFreeze(params) => params.get_to(),
+            Self::Withdraw(params) => params.get_to(),
+            Self::Delegate(params) => params.get_to(),
+            Self::UnDelegate(params) => params.get_to(),
+            Self::BatchDelegate(_params) => String::new(),
+            Self::BatchUnDelegate(_params) => String::new(),
+            Self::Votes(params) => params.get_to(),
+            Self::WithdrawReward(params) => params.get_to(),
+        }
+    }
+
     // 构建多签交易
     pub async fn build_multisig_tx(
         self,
@@ -148,6 +164,29 @@ const VOTE_ONE_DAY_TOTAL_REWARD: f64 = 4_608_000.0;
 const VOTER_VOTES: f64 = 10_000_000.0;
 
 impl StakeDomain {
+    pub async fn get_delegate_info(
+        from: &str,
+        to: &str,
+        chain: &TronChain,
+    ) -> Result<DelegatedResource, crate::ServiceError> {
+        let key = format!("{}_{}_delegate", from, to);
+
+        // 现从缓存中获取数据、没有在从链上获取
+        let cache = crate::Context::get_global_cache()?;
+        let res = cache.get_not_expriation(&key).await;
+        match res {
+            Some(res) => {
+                let res = serde_from_value::<DelegatedResource>(res.data)?;
+                Ok(res)
+            }
+            None => {
+                let res = chain.provider.delegated_resource(&from, &to).await?;
+                let _ = cache.set_ex(&key, &res, 30).await?;
+                Ok(res)
+            }
+        }
+    }
+
     // Function to calculate the voter reward
     pub(crate) fn calculate_vote_reward(sr_votes: f64, total_sr_votes: f64, brokerage: f64) -> f64 {
         VOTE_ONE_DAY_TOTAL_REWARD
@@ -192,7 +231,8 @@ impl StakeDomain {
     pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::ServiceError>
     {
         let backend = crate::Context::get_global_backend_api()?;
-        let mut list = backend.vote_list().await?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let mut list = backend.vote_list(cryptor).await?;
         // let witness_list = list.node_resp_list;
         list.node_resp_list.iter_mut().for_each(|item| {
             item.brokerage = (100.0 - item.brokerage) / 100.0;

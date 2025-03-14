@@ -9,6 +9,7 @@ use crate::response_vo::multisig_account::{
     AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
 };
 use std::collections::HashMap;
+use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 use wallet_database::entities::assets::AssetsEntity;
 use wallet_database::entities::bill::{BillKind, NewBillEntity};
 use wallet_database::entities::chain::ChainEntity;
@@ -55,6 +56,8 @@ impl MultisigAccountService {
         mut member_list: Vec<MemberVo>,
         address_type: Option<String>,
     ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         // check address type
         let address_type = match chain_code.as_str() {
             chain_code::BTC => {
@@ -67,6 +70,16 @@ impl MultisigAccountService {
             _ => String::new(),
         };
 
+        // check tron address repeat
+        let account = MultisigAccountDaoV1::find_by_address(&address, &*pool).await?;
+        if let Some(account) = account
+            && account.chain_code == chain_code::TRON
+        {
+            return Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::AddressRepeat,
+            ))?;
+        }
+
         let member_address = member_list
             .iter()
             .map(|m| m.address.clone())
@@ -75,7 +88,7 @@ impl MultisigAccountService {
         // 获取address对应的uid
         let address_uid = self
             .backend
-            .get_address_uid(chain_code.clone(), member_address)
+            .get_address_uid(cryptor, chain_code.clone(), member_address)
             .await?;
         // 设置member 的ui
         for item in member_list.iter_mut() {
@@ -97,7 +110,6 @@ impl MultisigAccountService {
             }
         }
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()
@@ -129,7 +141,9 @@ impl MultisigAccountService {
             &sync_account_params.to_json_str()?,
             raw_data,
         );
-        self.backend.signed_order_save_confirm_address(req).await?;
+        self.backend
+            .signed_order_save_confirm_address(cryptor, req)
+            .await?;
         self.repo.create_with_member(&params).await?;
 
         Ok(())
@@ -302,10 +316,11 @@ impl MultisigAccountService {
         self,
         chain_code: &str,
     ) -> Result<String, crate::ServiceError> {
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let req = SignedFindAddressReq::new(chain_code);
         let res = self
             .backend
-            .signed_find_address(req)
+            .signed_find_address(cryptor, req)
             .await
             .map_err(crate::ServiceError::TransportBackend)?;
 
@@ -316,9 +331,10 @@ impl MultisigAccountService {
         self,
         chain_code: &str,
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         // service fee
         let req = SignedFeeListReq::new(chain_code);
-        let res = self.backend.signed_fee_list(req).await?;
+        let res = self.backend.signed_fee_list(cryptor, req).await?;
 
         if res.list.is_empty() {
             return Err(crate::BusinessError::MultisigAccount(
@@ -543,15 +559,16 @@ impl MultisigAccountService {
         password: &str,
     ) -> Result<(String, String), crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         // fetch address
         let req = SignedFindAddressReq::new(&payer.chain_code);
-        let address = backend.signed_find_address(req).await?;
+        let address = backend.signed_find_address(cryptor, req).await?;
         let to = &address.address;
 
         // fetch value
-        let req = SignedFeeListReq::new(&payer.chain_code);
-        let amount = backend.signed_fee_list(req).await?;
+        let req = SignedFeeListReq::new(&multisig_account.chain_code);
+        let amount = backend.signed_fee_list(cryptor, req).await?;
         let amount = amount.list.first().unwrap();
         let value = amount.price.to_string();
 
@@ -626,7 +643,7 @@ impl MultisigAccountService {
         adapter: &domain::chain::adapter::MultisigAdapter,
     ) -> Result<String, crate::ServiceError> {
         // 1.执行链上部署交易
-        let key = domain::account::open_account_pk_with_password(
+        let key = domain::account::open_subpk_with_password(
             &account.chain_code,
             &account.initiator_addr,
             password,

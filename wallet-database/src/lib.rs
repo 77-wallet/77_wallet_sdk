@@ -9,6 +9,7 @@ pub mod repositories;
 
 // database pool
 pub type DbPool = std::sync::Arc<sqlx::Pool<Sqlite>>;
+pub use wallet_tree::KdfAlgorithm;
 
 use error::database::DatabaseError;
 use sqlx::Sqlite;

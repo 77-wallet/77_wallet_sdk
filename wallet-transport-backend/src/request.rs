@@ -519,6 +519,7 @@ pub struct SignedTranCreateReq {
     pub address: String,
     pub tx_str: String,
     pub raw_data: String,
+    pub tx_kind: i8,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

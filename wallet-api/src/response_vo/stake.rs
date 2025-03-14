@@ -29,6 +29,12 @@ impl ResourceResp {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DelegateRemaingTime {
+    pub days: f64,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FreezeListResp {
     pub resource: ResourceResp,
     pub opration_time: Option<DateTime<Utc>>,

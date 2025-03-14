@@ -1,9 +1,10 @@
+use crate::domain::app::config::ConfigDomain;
+use wallet_database::entities::config::config_key::APP_VERSION;
 use wallet_database::{
     entities::device::{CreateDeviceEntity, DeviceEntity},
     repositories::device::DeviceRepoTrait,
 };
 use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
-
 // pub const APP_ID: &str = "bc7f694ee0a9488cada7d9308190fe45";
 pub const APP_ID: &str = "ada7d9308190fe45";
 
@@ -35,11 +36,11 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         let upsert_req = (&req).into();
         tx.upsert(upsert_req).await?;
 
-        let req: DeviceInitReq = (&req).into();
+        let task_req: DeviceInitReq = (&req).into();
         // let tasks = vec![Task::BackendApi(BackendApiTask::DeviceInit(req))];
         let task_data = BackendApiTaskData {
             endpoint: endpoint::DEVICE_INIT.to_string(),
-            body: wallet_utils::serde_func::serde_to_value(&req)?,
+            body: wallet_utils::serde_func::serde_to_value(&task_req)?,
         };
 
         Tasks::new()
@@ -48,6 +49,10 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
             .send()
             .await?;
 
+        let app_version = wallet_database::entities::config::AppVersion {
+            app_version: req.app_version,
+        };
+        ConfigDomain::set_config(APP_VERSION, &app_version.to_json_str()?).await?;
         // let device = tx
         //     .get_device_info()
         //     .await?

@@ -4,7 +4,6 @@ pub mod announcement;
 pub mod app;
 pub mod assets;
 pub mod bill;
-pub mod cache;
 pub mod chain;
 pub mod coin;
 pub mod exchange_rate;

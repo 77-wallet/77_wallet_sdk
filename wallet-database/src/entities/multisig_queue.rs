@@ -146,10 +146,12 @@ impl NewMultisigQueueEntity {
     pub fn new(
         account_id: String,
         from_addr: String,
+        to: String,
         expiration: i64,
         msg_hash: &str,
         raw_data: &str,
         bill_kind: BillKind,
+        value: String,
     ) -> Self {
         let id = wallet_utils::snowflake::get_uid().unwrap();
         // TODO trx 字符串以及 unwrap
@@ -157,8 +159,8 @@ impl NewMultisigQueueEntity {
             id: id.to_string(),
             account_id,
             from_addr,
-            to_addr: String::new(),
-            value: "0".to_string(),
+            to_addr: to,
+            value,
             symbol: "TRX".to_string(),
             expiration,
             chain_code: chain_code::TRON.to_string(),
@@ -300,7 +302,7 @@ impl From<MultisigQueueEntity> for NewMultisigQueueEntity {
             fail_reason: value.fail_reason.to_string(),
             signatures: vec![],
             create_at: value.created_at,
-            transfer_type: BillKind::Transfer,
+            transfer_type: BillKind::try_from(value.transfer_type).unwrap_or(BillKind::Transfer),
         }
     }
 }

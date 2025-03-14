@@ -7,13 +7,14 @@ impl AnnouncementDomain {
         repo: &mut wallet_database::repositories::ResourcesRepo,
     ) -> Result<(), crate::error::ServiceError> {
         let backend = crate::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let list = AnnouncementRepoTrait::list(repo).await?;
 
         if let Some(device) = DeviceRepoTrait::get_device_info(repo).await? {
             let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;
             let req = wallet_transport_backend::request::AnnouncementListReq::new(client_id, 0, 50);
-            let res = backend.announcement_list(req).await?;
+            let res = backend.announcement_list(cryptor, req).await?;
 
             let res_ids: std::collections::HashSet<_> =
                 res.list.iter().map(|info| info.id.to_string()).collect();

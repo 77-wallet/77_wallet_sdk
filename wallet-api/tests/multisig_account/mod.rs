@@ -38,7 +38,7 @@ async fn test_deploy_multisig_fee() {
 async fn test_deploy_multisig_account() {
     let wallet_manager = get_manager().await;
 
-    let account_id = "195646693646143488".to_string();
+    let account_id = "227548537003577344".to_string();
 
     let fee_setting = r#"{"gasLimit": 262975,"baseFee": "3329262291","priorityFee": "0","maxFeePerGas": "3995114749"}"#.to_string();
     let fee_setting = Some(fee_setting);
@@ -76,7 +76,7 @@ async fn test_multisig_account_list() {
 async fn test_cancel_account() {
     let wallet_manager = get_manager().await;
 
-    let id = "205779272093274112".to_string();
+    let id = "233276907775463424".to_string();
     let list = wallet_manager.cancel_multisig(id).await;
     println!("{:?}", list);
 }

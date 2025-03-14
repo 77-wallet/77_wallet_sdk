@@ -93,9 +93,20 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
             let no: crate::system_notification::Notification =
                 wallet_utils::serde_func::serde_from_str(&notif.content)?;
             let val = match no {
-                crate::system_notification::Notification::Multisig(multisig_notification) => {
+                crate::system_notification::Notification::Multisig(notification) => {
                     match MultisigAccountDaoV1::find_by_id(
-                        &multisig_notification.multisig_account_id,
+                        &notification.multisig_account_id,
+                        &*pool,
+                    )
+                    .await?
+                    {
+                        Some(_) => (notif, true).into(),
+                        None => (notif, false).into(),
+                    }
+                }
+                crate::system_notification::Notification::Confirmation(notification) => {
+                    match MultisigAccountDaoV1::find_by_id(
+                        &notification.multisig_account_id,
                         &*pool,
                     )
                     .await?
@@ -107,6 +118,17 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
                 crate::system_notification::Notification::Transaction(transaction_notification) => {
                     let hash = transaction_notification.transaction_hash;
                     match BillDao::get_one_by_hash(&hash, &*pool).await? {
+                        Some(_) => (notif, true).into(),
+                        None => (notif, false).into(),
+                    }
+                }
+                crate::system_notification::Notification::Resource(notification) => {
+                    match MultisigAccountDaoV1::find_by_id(
+                        &notification.multisig_account_id,
+                        &*pool,
+                    )
+                    .await?
+                    {
                         Some(_) => (notif, true).into(),
                         None => (notif, false).into(),
                     }

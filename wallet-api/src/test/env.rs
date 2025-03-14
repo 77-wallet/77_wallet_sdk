@@ -25,18 +25,6 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
         std::fs::create_dir_all(&storage_dir)?;
     }
 
-    // 测试参数
-
-    // if temp {
-    //     info!("storage_dir: {:?}", storage_dir);
-    //     // 创建临时目录结构
-    //     let temm_dir = tempfile::tempdir_in(&storage_dir)?;
-    //     wallet_name = temm_dir
-    //         .path()
-    //         .file_name()
-    //         .map(|name| name.to_string_lossy().to_string());
-    // }
-
     info!("[setup_test_environment] storage_dir: {:?}", storage_dir);
 
     let config = crate::config::Config::new(&crate::test::env::get_config()?)?;

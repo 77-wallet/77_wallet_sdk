@@ -1,7 +1,10 @@
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_transport_backend::{consts::endpoint::SEND_MSG_CONFIRM, request::SendMsgConfirmReq};
 
-use crate::infrastructure::task_queue::{BackendApiTask, Task, Tasks};
+use crate::{
+    infrastructure::task_queue::{BackendApiTask, Task, Tasks},
+    notify::FrontendNotifyEvent,
+};
 
 pub struct JPushService {}
 
@@ -18,14 +21,32 @@ impl JPushService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut ids = Vec::new();
         for message in messages {
-            let payload: crate::mqtt::payload::incoming::Message =
-                wallet_utils::serde_func::serde_from_str(message.as_str())?;
+            let payload = match wallet_utils::serde_func::serde_from_str::<
+                crate::mqtt::payload::incoming::Message,
+            >(message.as_str())
+            {
+                Ok(data) => data,
+                Err(e) => {
+                    tracing::error!("[jpush_multi] serde_from_str error: {}", e);
+                    if let Err(e) =
+                        FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                    {
+                        tracing::error!("send_error error: {}", e);
+                    }
+                    continue;
+                }
+            };
             let id = payload.msg_id.clone();
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
                 .await?
                 .is_none()
             {
                 if let Err(e) = crate::mqtt::handle::exec_payload(payload).await {
+                    if let Err(e) =
+                        FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                    {
+                        tracing::error!("send_error error: {}", e);
+                    }
                     tracing::error!("[jpush_multi] exec_payload error: {}", e);
                 };
             };

@@ -20,9 +20,9 @@ impl MultisigQueueDaoV1 {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"Insert into multisig_queue 
-            (id, from_addr, to_addr, value,expiration, symbol, chain_code, token_addr, msg_hash,
-             tx_hash, raw_data, status,notes,fail_reason,created_at,account_id,transfer_type)
-                values (?, ?, ?, ?, ?, ?, ?,?,?, ?, ?, ?, ?,?,?,?,?)
+            (id, from_addr,to_addr,value,expiration,symbol,chain_code,token_addr,msg_hash,
+             tx_hash,raw_data,status,notes,fail_reason,created_at,account_id,transfer_type)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict (id)
                 do update set
                     is_del = excluded.is_del,
@@ -47,7 +47,6 @@ impl MultisigQueueDaoV1 {
             .bind(params.create_at.to_rfc3339_opts(SecondsFormat::Secs, true))
             .bind(&params.account_id)
             .bind(&params.transfer_type.to_i8())
-            .bind(0)
             .fetch_all(exec)
             .await?;
 

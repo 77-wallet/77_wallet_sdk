@@ -13,6 +13,7 @@ pub struct InitDeviceReq {
     pub mem: Option<String>,
     pub app_id: Option<String>,
     pub package_id: Option<String>,
+    pub app_version: String,
 }
 
 impl From<&InitDeviceReq> for DeviceInitReq {

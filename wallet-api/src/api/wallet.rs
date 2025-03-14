@@ -1,5 +1,5 @@
 use crate::api::ReturnType;
-use crate::response_vo::wallet::{CreateWalletRes, ResetRootRes};
+use crate::response_vo::wallet::CreateWalletRes;
 use crate::service::wallet::WalletService;
 
 impl crate::WalletManager {
@@ -135,32 +135,40 @@ impl crate::WalletManager {
             .into()
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub async fn reset_root(
-        &self,
-        language_code: u8,
-        phrase: &str,
-        salt: &str,
-        address: &str,
-        new_password: &str,
-        subkey_password: Option<String>,
-    ) -> ReturnType<ResetRootRes> {
-        WalletService::new(self.repo_factory.resuource_repo())
-            .reset_root(
-                language_code,
-                phrase,
-                salt,
-                address,
-                new_password,
-                subkey_password,
-            )
-            .await?
-            .into()
-    }
+    // #[allow(clippy::too_many_arguments)]
+    // #[deprecated]
+    // pub async fn reset_root(
+    //     &self,
+    //     language_code: u8,
+    //     phrase: &str,
+    //     salt: &str,
+    //     address: &str,
+    //     new_password: &str,
+    //     subkey_password: Option<String>,
+    // ) -> ReturnType<()> {
+    //     WalletService::new(self.repo_factory.resuource_repo())
+    //         .reset_root(
+    //             language_code,
+    //             phrase,
+    //             salt,
+    //             address,
+    //             new_password,
+    //             subkey_password,
+    //         )
+    //         .await?
+    //         .into()
+    // }
 
     pub async fn recover_multisig_data(&self, wallet_address: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resuource_repo())
             .recover_multisig_data(wallet_address)
+            .await?
+            .into()
+    }
+
+    pub async fn upgrade_algorithm(&self, password: &str) -> ReturnType<()> {
+        WalletService::new(self.repo_factory.resuource_repo())
+            .upgrade_algorithm(password)
             .await?
             .into()
     }
@@ -232,7 +240,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
+        // let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         let res = wallet_manager.physical_delete_wallet(wallet_address).await;
         tracing::info!("res: {res:?}");
@@ -261,8 +270,8 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // 前端的uid
-        let uid = "748f704632992c5af83b85f5ea1aeab499341850e3a050e1d4da749980789f18";
-        let address = Some("2hJAQuxY5PZsQAK2Jm3zjjNUPw7ph3yoFurJyGLTSBCC".to_string());
+        let uid = "137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358";
+        let address = Some("TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string());
         let start_time = std::time::Instant::now();
 
         let res =
@@ -300,7 +309,7 @@ mod test {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await?;
 
-        let uid = "2e5523e5039ba149f43d5994bce7e2973488d19cd391b6391473ecdfc2c0b5fb";
+        let uid = "71512c7dcca484ad9a03a0f7798e7bdd45602891ed464e0a541657137328d92d";
         let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data(uid).await;
         tracing::info!("res: {res:?}");
 
@@ -413,7 +422,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
 
-        let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
+        let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
 
         let res = wallet_manager
             .get_phrase(
@@ -431,7 +440,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let old_passwd = "123456";
+        // let old_passwd = "123456";
+        let old_passwd = "q1111111";
         // let old_passwd = "new_passwd";
         let new_passwd = "new_passwd";
         // let new_passwd = "123456";
@@ -440,11 +450,37 @@ mod test {
             .set_all_password(old_passwd, new_passwd)
             .await;
         tracing::info!("res: {res:?}");
-        let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
-        let key = wallet_manager
-            .get_account_private_key(new_passwd, wallet_address, 1)
+        // let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        // let key = wallet_manager
+        //     .get_account_private_key(new_passwd, wallet_address, 1)
+        //     .await;
+        // tracing::info!("key: {key:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_upgrade_algorithm() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let res = wallet_manager
+            // .upgrade_algorithm(&test_params.create_wallet_req.wallet_password)
+            .upgrade_algorithm("q1111111")
             .await;
-        tracing::info!("key: {key:?}");
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_validate_password() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let res = wallet_manager
+            // .upgrade_algorithm(&test_params.create_wallet_req.wallet_password)
+            .validate_password("q1111111")
+            .await;
+        tracing::info!("res: {res:?}");
         Ok(())
     }
 }

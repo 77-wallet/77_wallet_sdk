@@ -132,7 +132,8 @@ impl<
     pub async fn check_version(self, r#type: &str) -> Result<AppVersionRes, crate::ServiceError> {
         let req = VersionViewReq::new(r#type);
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let res = backend.version_view(req).await?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let res = backend.version_view(cryptor, req).await?;
         Ok(res)
     }
 
@@ -189,7 +190,8 @@ impl<
     pub async fn set_block_browser_url(&mut self) -> Result<(), crate::ServiceError> {
         // let tx = &mut self.repo;
         let backend_api = crate::manager::Context::get_global_backend_api()?;
-        let list = backend_api.chain_list().await?.list;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let list = backend_api.chain_list(cryptor).await?.list;
         ConfigDomain::set_block_browser_url(&list).await?;
         Ok(())
     }
@@ -306,7 +308,8 @@ impl<
             is_open: switch,
         };
         let backend = crate::Context::get_global_backend_api()?;
-        if let Err(e) = backend.save_send_msg_account(vec![req]).await {
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        if let Err(e) = backend.save_send_msg_account(cryptor, vec![req]).await {
             tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
         }
 
@@ -339,7 +342,8 @@ impl<
     ) -> Result<(), crate::ServiceError> {
         let req = AppInstallSaveReq::new(sn, device_type, channel);
         let backend = crate::manager::Context::get_global_backend_api()?;
-        backend.app_install_save(req).await?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        backend.app_install_save(cryptor, req).await?;
         Ok(())
     }
 }

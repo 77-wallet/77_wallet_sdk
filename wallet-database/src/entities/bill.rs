@@ -76,7 +76,8 @@ impl BillStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde_repr::Deserialize_repr)]
+#[repr(u8)]
 pub enum BillKind {
     // 普通交易
     Transfer = 1,
@@ -174,6 +175,28 @@ impl BillKind {
             BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
         }
     }
+
+    // 金额是否转出的交易类型(针对本地的交易)
+    pub fn out_transfer_type(&self) -> bool {
+        match self {
+            BillKind::Transfer
+            | BillKind::ServiceCharge
+            | BillKind::MultiSignTx
+            | BillKind::SigningFee
+            | BillKind::DeployMultiSign
+            | BillKind::FreezeBandwidth
+            | BillKind::FreezeEnergy => true,
+            _ => false,
+        }
+    }
+
+    // 哪些交易类型是转入的的(在freeze中)
+    pub fn in_transfer_type(&self) -> bool {
+        match self {
+            BillKind::WithdrawUnFreeze | BillKind::WithdrawReward => true,
+            _ => false,
+        }
+    }
 }
 
 impl TryFrom<i8> for BillKind {
@@ -243,6 +266,8 @@ impl NewBillEntity {
         tx_kind: BillKind,
         notes: String,
     ) -> Self {
+        let tx_type = if tx_kind.in_transfer_type() { 0 } else { 1 };
+
         Self {
             hash,
             from,
@@ -252,7 +277,7 @@ impl NewBillEntity {
             multisig_tx,
             symbol,
             chain_code,
-            tx_type: 1,
+            tx_type,
             tx_kind,
             status: 1,
             queue_id: "".to_owned(),
@@ -384,10 +409,14 @@ impl NewBillEntity {
     }
 
     pub fn get_owner(&self) -> String {
-        if self.tx_type == 0 {
-            self.to.clone()
-        } else {
+        if self.tx_kind.in_transfer_type() {
             self.from.clone()
+        } else {
+            if self.tx_type == 0 {
+                self.to.clone()
+            } else {
+                self.from.clone()
+            }
         }
     }
 }

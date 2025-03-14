@@ -11,6 +11,7 @@ use wallet_transport_backend::{
     consts::endpoint,
     request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
+use wallet_tree::api::KeystoreApi;
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
@@ -18,14 +19,19 @@ use wallet_types::chain::{
 
 use crate::{
     domain::{
-        self, account::AccountDomain, app::DeviceDomain, assets::AssetsDomain, coin::CoinDomain,
-        multisig::MultisigDomain, wallet::WalletDomain,
+        self,
+        account::AccountDomain,
+        app::{config::ConfigDomain, DeviceDomain},
+        assets::AssetsDomain,
+        coin::CoinDomain,
+        multisig::MultisigDomain,
+        wallet::WalletDomain,
     },
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
     response_vo::{
         account::BalanceInfo,
         chain::ChainCodeAndName,
-        wallet::{CreateWalletRes, GeneratePhraseRes, QueryPhraseRes, ResetRootRes},
+        wallet::{CreateWalletRes, GeneratePhraseRes, QueryPhraseRes},
     },
 };
 
@@ -65,20 +71,19 @@ impl WalletService {
         Ok(encrypted_password)
     }
 
-    pub(crate) async fn validate_password(
-        mut self,
-        encrypted_password: &str,
-    ) -> Result<(), crate::ServiceError> {
-        let Some(device) = self.repo.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
-        let Some(password) = device.password else {
-            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
-        };
+    pub(crate) async fn validate_password(self, password: &str) -> Result<(), crate::ServiceError> {
+        WalletDomain::validate_password(password).await?;
 
-        if password != encrypted_password {
-            return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
-        }
+        // let Some(device) = self.repo.get_device_info().await? else {
+        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        // };
+        // let Some(password) = device.password else {
+        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
+        // };
+
+        // if password != encrypted_password {
+        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
+        // }
 
         Ok(())
     }
@@ -167,22 +172,21 @@ impl WalletService {
         is_default_name: bool,
     ) -> Result<crate::response_vo::wallet::ImportDerivationPathRes, crate::ServiceError> {
         let mut tx = self.repo;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
-        WalletDomain::validate_password(&device, wallet_password)?;
+
+        WalletDomain::validate_password(wallet_password).await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
         let datas: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
-        let seed_wallet = WalletDomain::get_seed_wallet(dirs, wallet_address, wallet_password)?;
+        let seed = WalletDomain::get_seed(dirs, wallet_address, wallet_password).await?;
 
         let wallet = tx
             .wallet_detail_by_address(wallet_address)
             .await?
             .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
 
+        let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         let mut accounts = Vec::new();
         for data in datas {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
@@ -199,24 +203,43 @@ impl WalletService {
                 chain.network.as_str().into(),
             )?;
 
-            let account = AccountDomain::create_account_with_derivation_path(
+            let (account, _) = AccountDomain::create_account_with_derivation_path(
                 &mut tx,
-                dirs,
-                &seed_wallet.seed,
-                instance,
-                &Some(data.derivation_path),
+                &seed,
+                &instance,
+                Some(&data.derivation_path),
                 &account_index_map,
                 &wallet.uid,
                 wallet_address,
-                wallet_password,
-                None,
                 account_name,
                 is_default_name,
             )
             .await?;
-            accounts.push(account.address)
-        }
 
+            let keypair = instance
+                .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
+                .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+            let pk = keypair.private_key_bytes()?;
+            let subkey = wallet_tree::file_ops::BulkSubkey::new(
+                account_index_map.clone(),
+                &account.address,
+                &data.chain_code,
+                &data.derivation_path,
+                pk,
+            );
+            subkeys.push(subkey);
+            accounts.push(account.address);
+        }
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        KeystoreApi::initialize_child_keystores(
+            wallet_tree,
+            subkeys,
+            dirs.get_subs_dir(wallet_address)?,
+            wallet_password,
+            algorithm,
+        )?;
         Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
     }
 
@@ -260,39 +283,38 @@ impl WalletService {
         wallet_password: &str,
         derive_password: Option<String>,
     ) -> Result<CreateWalletRes, crate::ServiceError> {
+        let start = std::time::Instant::now();
         let tx = &mut self.repo;
+
+        let password_validation_start = std::time::Instant::now();
+        WalletDomain::validate_password(wallet_password).await?;
+        tracing::info!(
+            "Password validation took: {:?}",
+            password_validation_start.elapsed()
+        );
 
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-        let encrypted_pw = WalletDomain::encrypt_password(wallet_password, &device.sn)?;
-        // 如果有密码，就校验，否则更新密码
-        if let Some(password) = &device.password {
-            if password != &encrypted_pw {
-                return Err(
-                    crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into(),
-                );
-            }
-        } else {
-            tx.update_password(Some(&encrypted_pw)).await?;
-        }
 
         let dirs = crate::manager::Context::get_global_dirs()?;
 
-        let wallet_keystore::api::RootInfo {
-            private_key,
+        let master_key_start = std::time::Instant::now();
+        let wallet_tree::api::RootInfo {
+            private_key: _,
             seed,
             address,
             phrase,
-        } = wallet_keystore::api::KeystoreApi::generate_master_key_info(
-            language_code,
-            phrase,
-            salt,
-        )?;
+        } = wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
+        tracing::info!(
+            "Master key generation took: {:?}",
+            master_key_start.elapsed()
+        );
 
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
+        let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
-
+        tracing::info!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let address = &address.to_string();
         let seed = seed.clone();
 
@@ -304,14 +326,30 @@ impl WalletService {
         let storage_path = dirs.get_root_dir(address)?;
         wallet_utils::file_func::recreate_dir_all(&storage_path)?;
 
-        wallet_keystore::api::KeystoreApi::initialize_root_keystore(
+        let wallet_tree_start = std::time::Instant::now();
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        tracing::info!(
+            "Wallet tree strategy retrieval took: {:?}",
+            wallet_tree_start.elapsed()
+        );
+
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        let initialize_root_keystore_start = std::time::Instant::now();
+        wallet_tree::api::KeystoreApi::initialize_root_keystore(
+            wallet_tree,
             address,
-            &private_key,
+            // &private_key,
             &seed,
             &phrase,
             &storage_path,
             wallet_password,
+            algorithm,
         )?;
+        tracing::info!(
+            "Initialize root keystore took: {:?}",
+            initialize_root_keystore_start.elapsed()
+        );
         tx.upsert_wallet(address, &uid, wallet_name).await?;
         let default_chain_list = tx.get_chain_list().await?;
         let coins = tx.default_coin_list().await?;
@@ -320,7 +358,10 @@ impl WalletService {
             .map(|chain| chain.chain_code)
             .collect::<Vec<String>>();
 
+        let account_creation_start = std::time::Instant::now();
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
+        let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
+
         for account_id in account_ids {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
@@ -349,24 +390,38 @@ impl WalletService {
                     let instance: wallet_chain_instance::instance::ChainObject =
                         (&code, &btc_address_type, network.into()).try_into()?;
 
-                    let address = AccountDomain::create_account_with_account_id(
-                        tx,
-                        dirs,
-                        &seed,
-                        instance,
-                        &account_index_map,
-                        &uid,
-                        address,
-                        wallet_password,
-                        derive_password.clone(),
-                        account_name,
-                        is_default_name,
-                    )
-                    .await?;
+                    let (account_address, derivation_path) =
+                        AccountDomain::create_account_with_account_id(
+                            tx,
+                            &seed,
+                            &instance,
+                            &account_index_map,
+                            &uid,
+                            address,
+                            account_name,
+                            is_default_name,
+                        )
+                        .await?;
+
+                    let keypair = instance
+                        .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
+                        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+                    let pk = keypair.private_key_bytes()?;
+                    let subkey = wallet_tree::file_ops::BulkSubkey::new(
+                        account_index_map.clone(),
+                        &account_address.address,
+                        chain_code,
+                        derivation_path.as_str(),
+                        pk,
+                    );
+                    subkeys.push(subkey);
                     for coin in &coins {
                         if chain_code == &coin.chain_code {
-                            let assets_id =
-                                AssetsId::new(&address.address, &coin.chain_code, &coin.symbol);
+                            let assets_id = AssetsId::new(
+                                &account_address.address,
+                                &coin.chain_code,
+                                &coin.symbol,
+                            );
                             let assets = CreateAssetsVo::new(
                                 assets_id,
                                 coin.decimals,
@@ -388,6 +443,27 @@ impl WalletService {
                 }
             }
         }
+        tracing::info!(
+            "Account creation and subkey generation took: {:?}",
+            account_creation_start.elapsed()
+        );
+
+        let child_keystore_start = std::time::Instant::now();
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+        KeystoreApi::initialize_child_keystores(
+            wallet_tree,
+            subkeys,
+            dirs.get_subs_dir(&address)?,
+            wallet_password,
+            algorithm,
+        )?;
+        tracing::info!(
+            "Child keystore initialization took: {:?}",
+            child_keystore_start.elapsed()
+        );
+
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new().push(task).send().await?;
         tx.update_uid(Some(&uid)).await?;
@@ -448,6 +524,7 @@ impl WalletService {
             .send()
             .await?;
 
+        tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(CreateWalletRes {
             address: address.to_string(),
         })
@@ -460,11 +537,17 @@ impl WalletService {
     ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::ServiceError> {
         let dirs = crate::manager::Context::get_global_dirs()?;
         let root_dir = dirs.get_root_dir(wallet_address)?;
-        let phrase_wallet =
-            wallet_keystore::Keystore::load_phrase_keystore(wallet_address, &root_dir, password)?;
-        Ok(crate::response_vo::wallet::GetPhraseRes {
-            phrase: phrase_wallet.phrase,
-        })
+
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let phrase = wallet_tree::api::KeystoreApi::load_phrase(
+            &wallet_tree,
+            &root_dir,
+            wallet_address,
+            password,
+        )?;
+        Ok(crate::response_vo::wallet::GetPhraseRes { phrase })
     }
 
     pub(crate) fn generate_phrase(
@@ -653,6 +736,9 @@ impl WalletService {
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
+            let file_name = "verify";
+            let file_path = dirs.root_dir.join(&file_name);
+            wallet_utils::file_func::remove_file(file_path)?;
             tx.update_password(None).await?;
             None
         };
@@ -762,7 +848,11 @@ impl WalletService {
 
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
-        wallet_utils::file_func::remove_dir_all(wallet_dir)?;
+        wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
+        wallet_utils::file_func::create_dir_all(wallet_dir)?;
+        let file_name = "verify";
+        let file_path = dirs.root_dir.join(&file_name);
+        wallet_utils::file_func::remove_file(file_path)?;
         Ok(())
     }
 
@@ -776,71 +866,76 @@ impl WalletService {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub async fn reset_root(
-        &mut self,
-        language_code: u8,
-        phrase: &str,
-        salt: &str,
-        _address: &str,
-        new_password: &str,
-        subkey_password: Option<String>,
-    ) -> Result<ResetRootRes, crate::ServiceError> {
-        // let service = Service::default();
-        let dirs = crate::manager::Context::get_global_dirs()?;
-        let wallet_keystore::api::RootInfo {
-            private_key,
-            seed,
-            address,
-            phrase,
-        } = wallet_keystore::api::KeystoreApi::generate_master_key_info(
-            language_code,
-            phrase,
-            salt,
-        )
-        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-        let address = address.to_string();
+    // #[allow(clippy::too_many_arguments)]
+    // #[deprecated]
+    // pub async fn reset_root(
+    //     &mut self,
+    //     language_code: u8,
+    //     phrase: &str,
+    //     salt: &str,
+    //     _address: &str,
+    //     new_password: &str,
+    //     subkey_password: Option<String>,
+    // ) -> Result<(), crate::ServiceError> {
+    //     // let service = Service::default();
+    //     let dirs = crate::manager::Context::get_global_dirs()?;
+    //     let wallet_keystore::api::RootInfo {
+    //         private_key,
+    //         seed,
+    //         address,
+    //         phrase,
+    //     } = wallet_keystore::api::KeystoreApi::generate_master_key_info(
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //     )
+    //     .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    //     let address = address.to_string();
 
-        // Get the path to the root directory for the given wallet name.
-        let root_path = dirs.get_root_dir(&address)?;
+    //     // Get the path to the root directory for the given wallet name.
+    //     let root_path = dirs.get_root_dir(&address)?;
 
-        // Get the path to the subkeys directory for the given wallet name.
-        let subs_path = dirs.get_subs_dir(&address)?;
+    //     // Get the path to the subkeys directory for the given wallet name.
+    //     let subs_path = dirs.get_subs_dir(&address)?;
 
-        // Traverse the directory structure to obtain the current wallet tree.
-        let wallet_tree =
-            wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+    //     // Traverse the directory structure to obtain the current wallet tree.
+    //     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+    //     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        // Call the reset_root function from the wallet manager handler,
-        // passing in the root path, subs path, wallet tree, wallet name,
-        // language code, phrase, salt, address, new password, and subkey password.
-        let req = crate::request::wallet::ResetRootReq {
-            language_code,
-            phrase: phrase.to_string(),
-            salt: salt.to_string(),
-            wallet_address: address.to_string(),
-            new_password: new_password.to_string(),
-            subkey_password,
-        };
+    //     // Call the reset_root function from the wallet manager handler,
+    //     // passing in the root path, subs path, wallet tree, wallet name,
+    //     // language code, phrase, salt, address, new password, and subkey password.
+    //     let req = crate::request::wallet::ResetRootReq {
+    //         language_code,
+    //         phrase: phrase.to_string(),
+    //         salt: salt.to_string(),
+    //         wallet_address: address.to_string(),
+    //         new_password: new_password.to_string(),
+    //         subkey_password,
+    //     };
 
-        self.wallet_domain
-            .reset_root(
-                &mut self.repo,
-                root_path,
-                subs_path,
-                wallet_tree,
-                private_key,
-                seed,
-                req,
-            )
-            .await?;
+    //     self.wallet_domain
+    //         .reset_root(
+    //             &mut self.repo,
+    //             root_path,
+    //             subs_path,
+    //             wallet_tree,
+    //             private_key,
+    //             seed,
+    //             req,
+    //         )
+    //         .await?;
 
-        // Traverse the directory structure again to update the wallet tree after resetting the root key.
-        let wallet_tree =
-            wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
+    //     Ok(())
+    // }
 
-        // Return the updated wallet tree as part of the ResetRootRes response.
-        Ok(ResetRootRes { wallet_tree })
+    pub async fn upgrade_algorithm(
+        &self,
+        password: &str,
+        // algorithm: u8,
+    ) -> Result<(), crate::ServiceError> {
+        WalletDomain::upgrade_algorithm(password).await?;
+        Ok(())
     }
 }
 

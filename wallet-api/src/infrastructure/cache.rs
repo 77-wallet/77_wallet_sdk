@@ -39,6 +39,74 @@ impl SharedCache {
 
         Ok(())
     }
+
+    pub async fn get_not_expriation(&self, key: &str) -> Option<CacheEntry> {
+        let lock = self.inner.read().await;
+
+        let result = lock.get(key).cloned();
+        drop(lock);
+
+        if let Some(result) = result {
+            if result.is_expired() {
+                {
+                    let mut lock = self.inner.write().await;
+                    lock.delete(key);
+                }
+                None
+            } else {
+                Some(result)
+            }
+        } else {
+            None
+        }
+    }
+
+    // pub fn new() -> Self {
+    //     Self {
+    //         inner: dashmap::DashMap::new(),
+    //     }
+    // }
+
+    // // expiration unit is secs
+    // pub fn set_ex<T: serde::Serialize>(
+    //     &self,
+    //     key: &str,
+    //     value: T,
+    //     expiration: u64,
+    // ) -> Result<(), crate::ServiceError> {
+    //     let entry = CacheEntry::new(value, Some(expiration))?;
+
+    //     self.inner.insert(key.to_owned(), entry);
+
+    //     Ok(())
+    // }
+
+    // #[warn(dead_code)]
+    // pub fn get(&self, key: &str) -> Option<CacheEntry> {
+    //     self.inner.get(key).map(|entry| entry.value().clone())
+    // }
+
+    // pub fn get_not_expriation(&self, key: &str) -> Option<CacheEntry> {
+    //     self.inner
+    //         .get(key)
+    //         .map(|entry| {
+    //             let entry = entry.value().clone();
+    //             if entry.is_expired() {
+    //                 // self.inner.remove(key);
+    //                 None
+    //             } else {
+    //                 Some(entry)
+    //             }
+    //         })
+    //         .flatten()
+    // }
+
+    // #[warn(dead_code)]
+    // pub fn delete(&self, key: &str) -> Result<(), crate::ServiceError> {
+    //     self.inner.remove(key);
+
+    //     Ok(())
+    // }
 }
 
 #[derive(Debug)]
