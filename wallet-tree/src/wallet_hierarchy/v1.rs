@@ -417,8 +417,6 @@ impl WalletTreeOps for LegacyWalletTree {
             .get_mut(wallet_address)
             .ok_or(crate::Error::LocalNoWallet)?;
 
-        // wallet.delete_subkey(wallet_address, file_path, address, chain_code)?;
-
         wallet.delete_subkey(
             wallet_address,
             file_path.as_ref(),
@@ -453,27 +451,11 @@ impl WalletBranchOps for LegacyWalletBranch {
 #[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct RootKeystoreInfo {
     pub address: String,
-    // pub suffix: crate::utils::file::Suffix,
-    // pub phrase: Option<()>,
-    // pub pk: Option<()>,
-    // pub seed: Option<()>,
 }
 
 impl RootTrait for RootKeystoreInfo {
     fn get_address(&self) -> &str {
         &self.address
-    }
-
-    fn get_phrase_filemeta(&self) -> Option<()> {
-        Some(())
-    }
-
-    fn get_pk_filemeta(&self) -> Option<()> {
-        Some(())
-    }
-
-    fn get_seed_filemeta(&self) -> Option<()> {
-        Some(())
     }
 }
 
@@ -490,14 +472,12 @@ pub struct SubsKeystoreInfo {
     pub derivation_path: String,
     pub address: String,
     pub chain_code: ChainCode,
-    // pub suffix: crate::utils::file::Suffix,
     pub file_type: FileType,
 }
 
 impl SubsKeystoreInfo {
     pub fn new(
         derivation_path: &str,
-        // suffix: crate::utils::file::Suffix,
         chain_code: &ChainCode,
         address: &str,
         file_type: FileType,
@@ -506,7 +486,6 @@ impl SubsKeystoreInfo {
             derivation_path: derivation_path.to_string(),
             address: address.to_string(),
             chain_code: *chain_code,
-            // suffix,
             file_type,
         }
     }

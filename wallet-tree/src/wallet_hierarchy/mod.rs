@@ -68,7 +68,4 @@ pub trait AccountTrait: FileMeta + std::fmt::Debug + Send + Sync {
 
 pub trait RootTrait: std::fmt::Debug + Send + Sync {
     fn get_address(&self) -> &str;
-    fn get_phrase_filemeta(&self) -> Option<()>;
-    fn get_pk_filemeta(&self) -> Option<()>;
-    fn get_seed_filemeta(&self) -> Option<()>;
 }

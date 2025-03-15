@@ -227,26 +227,11 @@ impl WalletBranchOps for ModernWalletBranch {
 pub struct ModernRoot {
     // 根账户信息
     pub address: String,
-    pub phrase: Option<()>,
-    pub pk: Option<()>,
-    pub seed: Option<()>,
 }
 
 impl RootTrait for ModernRoot {
     fn get_address(&self) -> &str {
         &self.address
-    }
-
-    fn get_phrase_filemeta(&self) -> Option<()> {
-        self.phrase
-    }
-
-    fn get_pk_filemeta(&self) -> Option<()> {
-        self.pk
-    }
-
-    fn get_seed_filemeta(&self) -> Option<()> {
-        self.seed
     }
 }
 

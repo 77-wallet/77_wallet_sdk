@@ -269,7 +269,6 @@ impl IoStrategy for ModernIo {
             } else {
                 KeystoreData::default()
             };
-            tracing::warn!("aaa keystore_data: {:?}", keystore_data);
             // 收集本批次的元数据更新
             for subkey in subkeys {
                 let key = KeyMeta {

@@ -341,9 +341,6 @@ pub async fn open_accounts_pk_with_password(
     std::collections::HashMap<wallet_tree::KeyMeta, wallet_chain_interact::types::ChainPrivateKey>,
     crate::ServiceError,
 > {
-    tracing::info!("open_account_pk_with_password: address: {:?}", address);
-    super::wallet::WalletDomain::validate_password(password).await?;
-
     let db = crate::manager::Context::get_global_sqlite_pool()?;
     let dirs = crate::manager::Context::get_global_dirs()?;
 
@@ -351,9 +348,6 @@ pub async fn open_accounts_pk_with_password(
     // let storage_path = subs_path.join(name);
     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-    tracing::info!("open_account_pk_with_password: subs_path: {:?}", subs_path);
-    tracing::info!("open_account_pk_with_password: password: {}", password);
 
     let account_data = wallet_tree::api::KeystoreApi::load_account_pk(
         &*wallet_tree,
@@ -414,7 +408,6 @@ pub async fn open_subpk_with_password(
     let chain_code: ChainCode = chain_code.try_into()?;
 
     let subs_path = dirs.get_subs_dir(&wallet.address)?;
-    // let storage_path = subs_path.join(name);
     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
@@ -429,7 +422,6 @@ pub async fn open_subpk_with_password(
         &account.derivation_path,
         password,
     )?;
-    // let key = wallet_keystore::api::KeystoreApi::get_private_key(password, &storage_path)?;
 
     // TODO: 优化
     let private_key = match chain_code {

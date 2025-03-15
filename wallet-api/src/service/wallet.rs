@@ -11,7 +11,7 @@ use wallet_transport_backend::{
     consts::endpoint,
     request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
-use wallet_tree::api::KeystoreApi;
+use wallet_tree::{api::KeystoreApi, file_ops::RootData};
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
@@ -340,8 +340,7 @@ impl WalletService {
             wallet_tree,
             address,
             // &private_key,
-            &seed,
-            &phrase,
+            RootData::new(&phrase, &seed),
             &storage_path,
             wallet_password,
             algorithm,

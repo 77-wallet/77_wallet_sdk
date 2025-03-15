@@ -154,8 +154,11 @@ pub struct RootData {
 }
 
 impl RootData {
-    pub(crate) fn new(phrase: String, seed: Vec<u8>) -> Self {
-        Self { phrase, seed }
+    pub fn new(phrase: &str, seed: &[u8]) -> Self {
+        Self {
+            phrase: phrase.to_string(),
+            seed: seed.to_vec(),
+        }
     }
 
     pub fn phrase(&self) -> &str {

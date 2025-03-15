@@ -72,14 +72,8 @@ impl LayoutStrategy for ModernLayout {
                             };
 
                             match meta.file_type() {
-                                FileType::PrivateKey => {
-                                    modern_root.pk = Some(());
-                                }
-                                FileType::Phrase => {
-                                    modern_root.phrase = Some(());
-                                }
-                                FileType::Seed => {
-                                    modern_root.seed = Some(());
+                                FileType::Root => {
+                                    modern_root.address = address.to_string();
                                 }
                                 _ => continue,
                             }

@@ -69,7 +69,7 @@ impl IoStrategy for LegacyIo {
             wallet_keystore::wallet::phrase::PhraseWallet,
         >(root_dir.as_ref().join(phrase_filename), password)?;
 
-        Ok(super::RootData::new(phrase_wallet.phrase, seed.seed))
+        Ok(super::RootData::new(&phrase_wallet.phrase, &seed.seed))
     }
 
     fn load_subkey(
