@@ -55,12 +55,12 @@ impl WalletTreeOps for ModernWalletTree {
         Box::new(self.io.clone())
     }
 
-    fn traverse(wallet_dir: &std::path::PathBuf) -> Result<Self, crate::Error>
+    fn traverse(wallet_dir: &std::path::Path) -> Result<Self, crate::Error>
     where
         Self: Sized,
     {
         let wallet_tree: Box<dyn std::any::Any> =
-            crate::directory_structure::v2::ModernLayout.scan(&wallet_dir)?;
+            crate::directory_structure::v2::ModernLayout.scan(wallet_dir)?;
         wallet_tree
             .downcast::<ModernWalletTree>() // 直接调用，无需类型转换
             .map(|boxed| *boxed) // 解包 Box

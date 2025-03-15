@@ -82,14 +82,14 @@ impl Oss {
         Oss::new(key_id, key_secret, endpoint, bucket)
     }
 
-    #[cfg(feature = "debug-print")]
-    pub fn open_debug(&self) {
-        std::env::set_var("RUST_LOG", "oss=debug");
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .with_line_number(true)
-            .init();
-    }
+    // #[cfg(feature = "debug-print")]
+    // pub fn open_debug(&self) {
+    //     std::env::set_var("RUST_LOG", "oss=debug");
+    //     tracing_subscriber::fmt()
+    //         .with_max_level(tracing::Level::DEBUG)
+    //         .with_line_number(true)
+    //         .init();
+    // }
     #[cfg(not(feature = "debug-print"))]
     #[allow(dead_code)]
     pub fn open_debug(&self) {}

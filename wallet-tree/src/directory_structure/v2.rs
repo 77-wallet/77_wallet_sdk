@@ -46,8 +46,7 @@ impl LayoutStrategy for ModernLayout {
         let mut entries = ModernWalletTree::default();
         // let address = base_path.file_name().unwrap().to_str().unwrap();
 
-        for entry in wallet_utils::file_func::read_dir(base_path.to_path_buf())? {
-            if let Ok(entry) = entry {
+        for entry in (wallet_utils::file_func::read_dir(base_path)? ).flatten(){
                 let wallet_dir = entry.path();
                 if wallet_dir.is_dir() {
                     let address = wallet_dir
@@ -66,8 +65,8 @@ impl LayoutStrategy for ModernLayout {
                             let path = entry.path();
                             if path.is_file() {
                                 let filename = path.file_name().unwrap().to_str().unwrap();
-                                let Ok(meta) = self
-                                    .parse_meta_data(&path.to_string_lossy().to_string(), filename)
+                                let Ok(meta) =
+                                    self.parse_meta_data(path.to_string_lossy().as_ref(), filename)
                                 else {
                                     continue;
                                 };
@@ -134,7 +133,6 @@ impl LayoutStrategy for ModernLayout {
                 } else {
                     continue;
                 }
-            }
         }
 
         Ok(Box::new(entries))

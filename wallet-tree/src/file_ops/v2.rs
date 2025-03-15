@@ -23,7 +23,7 @@ impl IoStrategy for ModernIo {
         algorithm: wallet_keystore::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let rng = rand::thread_rng();
-        KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, &name).save()?;
+        KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, name).save()?;
         Ok(())
     }
 
@@ -75,7 +75,7 @@ impl IoStrategy for ModernIo {
         let root_filename = ModernNaming::encode(root_meta)?;
         let data =
             KeystoreBuilder::new_decrypt(root_dir.as_ref().join(root_filename), password).load()?;
-        Ok(data.try_into()?)
+        data.try_into()
     }
 
     fn load_subkey(
@@ -117,7 +117,7 @@ impl IoStrategy for ModernIo {
             }
         }
 
-        return Err(crate::Error::PrivateKeyNotFound);
+        Err(crate::Error::PrivateKeyNotFound)
     }
 
     fn store_root(
@@ -240,7 +240,7 @@ impl IoStrategy for ModernIo {
         let base_path = file_path.as_ref();
         let meta_path = base_path.join("derived_meta.json");
         let subs_dir = base_path;
-        wallet_utils::file_func::create_dir_all(&subs_dir)?;
+        wallet_utils::file_func::create_dir_all(subs_dir)?;
 
         // 1. 分组处理：按账户索引分组
         let mut grouped = BTreeMap::<u32, Vec<&BulkSubkey>>::new();
@@ -355,7 +355,7 @@ impl IoStrategy for ModernIo {
         let meta = ModernNaming::generate_filemeta(
             FileType::DerivedData,
             None, // address 字段在删除时不需要
-            Some(&account_index_map),
+            Some(account_index_map),
             None, // chain_code
             None, // derivation_path
         )?;
@@ -392,10 +392,12 @@ impl IoStrategy for ModernIo {
         });
 
         // 4. 清理空目录
-        if subs_dir.exists() {
-            if fs::read_dir(&subs_dir).unwrap().next().is_none() {
-                fs::remove_dir(&subs_dir).unwrap();
-            }
+        if subs_dir.exists()
+            && wallet_utils::file_func::read_dir(subs_dir)?
+                .next()
+                .is_none()
+        {
+            wallet_utils::file_func::remove_dir_all(subs_dir)?;
         }
 
         delete_result

@@ -455,7 +455,7 @@ impl WalletService {
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
             subkeys,
-            dirs.get_subs_dir(&address)?,
+            dirs.get_subs_dir(address)?,
             wallet_password,
             algorithm,
         )?;
@@ -542,7 +542,7 @@ impl WalletService {
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         let phrase = wallet_tree::api::KeystoreApi::load_phrase(
-            &wallet_tree,
+            &*wallet_tree,
             &root_dir,
             wallet_address,
             password,
@@ -736,9 +736,7 @@ impl WalletService {
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
-            let file_name = "verify";
-            let file_path = dirs.root_dir.join(&file_name);
-            wallet_utils::file_func::remove_file(file_path)?;
+            KeystoreApi::remove_verify_file(&dirs.root_dir)?;
             tx.update_password(None).await?;
             None
         };
@@ -851,7 +849,7 @@ impl WalletService {
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
         let file_name = "verify";
-        let file_path = dirs.root_dir.join(&file_name);
+        let file_path = dirs.root_dir.join(file_name);
         wallet_utils::file_func::remove_file(file_path)?;
         Ok(())
     }

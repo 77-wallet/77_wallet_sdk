@@ -53,18 +53,16 @@ impl WalletDomain {
             let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
             let file_name = "verify";
-            let file_path = dirs.root_dir.join(&file_name);
+            let file_path = dirs.root_dir.join(file_name);
             if wallet_utils::file_func::exists(&file_path)? {
-                if let Err(_) =
-                    KeystoreApi::load_verify_file(&wallet_tree, &dirs.root_dir, password)
-                {
+                if KeystoreApi::load_verify_file(&*wallet_tree, &dirs.root_dir, password).is_err() {
                     return Err(crate::BusinessError::Wallet(
                         crate::WalletError::PasswordIncorrect,
                     )
                     .into());
                 }
             } else {
-                KeystoreApi::store_verify_file(&wallet_tree, &dirs.root_dir, password)?;
+                KeystoreApi::store_verify_file(&*wallet_tree, &dirs.root_dir, password)?;
             }
         } else {
             WalletDomain::upgrade_algorithm(password).await?;
@@ -177,7 +175,7 @@ impl WalletDomain {
             legacy_wallet_tree.delete_subkey(
                 &info.wallet_address,
                 &info.address,
-                &info.chain_code.as_str(),
+                info.chain_code.as_str(),
                 &subs_dir,
                 password,
             )?;
@@ -213,7 +211,7 @@ impl WalletDomain {
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         Ok(wallet_tree::api::KeystoreApi::load_seed(
-            &wallet_tree,
+            &*wallet_tree,
             &root_dir,
             wallet_address,
             wallet_password,

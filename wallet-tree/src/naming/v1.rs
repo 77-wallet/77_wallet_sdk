@@ -135,10 +135,7 @@ impl NamingStrategy for LegacyNaming {
 
         // 验证 Root 文件
         if parts.len() == 2 {
-            return match parts[1] {
-                "phrase" | "pk" | "seed" => true,
-                _ => false,
-            };
+            return matches!(parts[1], "phrase" | "pk" | "seed");
         }
 
         // 验证 Subs 文件

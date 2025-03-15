@@ -327,7 +327,7 @@ impl AccountDomain {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        wallet_tree::api::KeystoreApi::store_verify_file(&wallet_tree, &dirs.root_dir, password)?;
+        wallet_tree::api::KeystoreApi::store_verify_file(&*wallet_tree, &dirs.root_dir, password)?;
 
         Ok(())
     }
@@ -347,7 +347,7 @@ pub async fn open_accounts_pk_with_password(
     let db = crate::manager::Context::get_global_sqlite_pool()?;
     let dirs = crate::manager::Context::get_global_dirs()?;
 
-    let subs_path = dirs.get_subs_dir(&address)?;
+    let subs_path = dirs.get_subs_dir(address)?;
     // let storage_path = subs_path.join(name);
     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -356,15 +356,15 @@ pub async fn open_accounts_pk_with_password(
     tracing::info!("open_account_pk_with_password: password: {}", password);
 
     let account_data = wallet_tree::api::KeystoreApi::load_account_pk(
-        &wallet_tree,
-        &account_index_map,
+        &*wallet_tree,
+        account_index_map,
         &subs_path,
         password,
     )?;
     let mut res = std::collections::HashMap::default();
     for (meta, key) in account_data.into_inner() {
         let chain_code = &meta.chain_code;
-        let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), &chain_code).await? else {
+        let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
                 crate::ChainError::NotFound(chain_code.to_string()),
             )));
@@ -421,7 +421,7 @@ pub async fn open_subpk_with_password(
     let account_index_map =
         wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
     let key = wallet_tree::api::KeystoreApi::load_sub_pk(
-        &wallet_tree,
+        &*wallet_tree,
         Some(&account_index_map),
         &subs_path,
         address,

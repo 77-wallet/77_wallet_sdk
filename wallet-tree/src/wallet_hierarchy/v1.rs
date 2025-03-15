@@ -265,7 +265,7 @@ impl LegacyWalletBranch {
     pub fn delete_subkey(
         &mut self,
         wallet_address: &str,
-        subs_path: &std::path::PathBuf,
+        subs_path: &std::path::Path,
         address: &str,
         chain_code: &ChainCode,
     ) -> Result<(), crate::Error> {
@@ -378,11 +378,11 @@ impl WalletTreeOps for LegacyWalletTree {
     fn io(&self) -> Box<dyn crate::file_ops::IoStrategy> {
         Box::new(self.io.clone())
     }
-    fn traverse(wallet_dir: &std::path::PathBuf) -> Result<Self, crate::Error>
+    fn traverse(wallet_dir: &std::path::Path) -> Result<Self, crate::Error>
     where
         Self: Sized,
     {
-        LegacyWalletTree::traverse_directory_structure(wallet_dir)
+        LegacyWalletTree::traverse_directory_structure(&wallet_dir.to_path_buf())
     }
 
     fn get_wallet_branch(
@@ -421,7 +421,7 @@ impl WalletTreeOps for LegacyWalletTree {
 
         wallet.delete_subkey(
             wallet_address,
-            &file_path.as_ref().to_path_buf(),
+            file_path.as_ref(),
             address,
             &chain_code.try_into()?,
         )?;
@@ -505,7 +505,7 @@ impl SubsKeystoreInfo {
         Self {
             derivation_path: derivation_path.to_string(),
             address: address.to_string(),
-            chain_code: chain_code.clone(),
+            chain_code: *chain_code,
             // suffix,
             file_type,
         }

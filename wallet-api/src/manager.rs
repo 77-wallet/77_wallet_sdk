@@ -403,7 +403,7 @@ impl WalletManager {
         let log_dir = context.dirs.get_log_dir();
         let sn = &context.device.sn;
 
-        wallet_utils::log::set_sn_code(&sn);
+        wallet_utils::log::set_sn_code(sn);
 
         Ok(wallet_utils::log::file::init_log(
             log_dir.to_string_lossy().as_ref(),

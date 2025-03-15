@@ -31,7 +31,7 @@ static INIT_NODES_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultN
 pub(crate) fn get_default_node_list() -> Result<&'static DefaultNodeList, crate::ServiceError> {
     INIT_NODES_INFO.get_or_try_init(|| {
         let toml_content = include_str!("../../data/config/node.toml");
-        let toml_data: DefaultNodeList = wallet_utils::serde_func::toml_from_str(&toml_content)?;
+        let toml_data: DefaultNodeList = wallet_utils::serde_func::toml_from_str(toml_content)?;
 
         Ok(toml_data)
     })

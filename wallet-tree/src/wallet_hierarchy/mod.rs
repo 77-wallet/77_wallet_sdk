@@ -16,7 +16,7 @@ pub enum WalletTreeStrategy {
 impl WalletTreeStrategy {
     pub fn get_wallet_tree(
         self,
-        wallet_dir: &std::path::PathBuf,
+        wallet_dir: &std::path::Path,
     ) -> Result<Box<dyn WalletTreeOps>, crate::Error> {
         Ok(match self {
             WalletTreeStrategy::V1 => Box::new(v1::LegacyWalletTree::traverse(wallet_dir)?),
@@ -30,7 +30,7 @@ pub trait WalletTreeOps: std::any::Any + std::fmt::Debug + std::marker::Send {
 
     fn io(&self) -> Box<dyn IoStrategy>;
 
-    fn traverse(wallet_dir: &std::path::PathBuf) -> Result<Self, crate::Error>
+    fn traverse(wallet_dir: &std::path::Path) -> Result<Self, crate::Error>
     where
         Self: Sized;
 

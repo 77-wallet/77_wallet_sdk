@@ -142,15 +142,15 @@ impl CacheEntry {
         expiration: Option<u64>,
     ) -> Result<Self, crate::ServiceError> {
         let data = wallet_utils::serde_func::serde_to_value(data)?;
-        let instant = expiration
-            .and_then(|i| Some(std::time::Instant::now() + std::time::Duration::from_secs(i)));
+        let instant =
+            expiration.map(|i| std::time::Instant::now() + std::time::Duration::from_secs(i));
 
         Ok(Self { data, instant })
     }
 
     pub fn is_expired(&self) -> bool {
         self.instant
-            .map_or(false, |instant| instant <= std::time::Instant::now())
+            .is_some_and(|instant| instant <= std::time::Instant::now())
     }
 }
 

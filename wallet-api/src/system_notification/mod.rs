@@ -298,7 +298,7 @@ impl Notification {
             account_address: account_address.to_string(),
             account_name: account_name.to_string(),
             bill_kind,
-            status: status.clone(),
+            status,
             notification_type: notification_type.clone(),
             transaction_hash: transaction_hash.to_string(),
             multisig_account_id: multisig_account_id.to_string(),

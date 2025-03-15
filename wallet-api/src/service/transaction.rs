@@ -117,16 +117,9 @@ impl TransactionService {
             Err(_) => return None,
         };
 
-        match MultisigQueueRepo::member_signed_result(
-            &queue.account_id,
-            &bill.queue_id,
-            pool.clone(),
-        )
-        .await
-        {
-            Ok(signature) => Some(signature),
-            Err(_) => None,
-        }
+        (MultisigQueueRepo::member_signed_result(&queue.account_id, &bill.queue_id, pool.clone())
+            .await)
+            .ok()
     }
 
     pub async fn bill_detail(

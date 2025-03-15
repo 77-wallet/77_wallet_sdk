@@ -704,7 +704,7 @@ impl MultisigTransactionService {
 
                     consumer
                 } else {
-                    let to = (!queue.to_addr.is_empty()).then(|| queue.to_addr.as_str());
+                    let to = (!queue.to_addr.is_empty()).then_some(queue.to_addr.as_str());
 
                     let consumer = provider
                         .transfer_fee(
@@ -816,7 +816,7 @@ impl MultisigTransactionService {
             let rs = queue_repo
                 .ongoing_queue(&chain_code, &address)
                 .await?
-                .and_then(|q| Some(QueueInfo::from(q)));
+                .map(QueueInfo::from);
             Ok(rs)
         } else {
             Ok(None)

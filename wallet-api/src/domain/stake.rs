@@ -180,8 +180,8 @@ impl StakeDomain {
                 Ok(res)
             }
             None => {
-                let res = chain.provider.delegated_resource(&from, &to).await?;
-                let _ = cache.set_ex(&key, &res, 30).await?;
+                let res = chain.provider.delegated_resource(from, to).await?;
+                cache.set_ex(&key, &res, 30).await?;
                 Ok(res)
             }
         }
@@ -236,7 +236,7 @@ impl StakeDomain {
         // let witness_list = list.node_resp_list;
         list.node_resp_list.iter_mut().for_each(|item| {
             item.brokerage = (100.0 - item.brokerage) / 100.0;
-            item.apr = item.apr * 100.0;
+            item.apr *= 100.0;
         });
         // list.node_resp_list.sort_by(|a, b| {
         //     let a_vote_count = a.vote_count;

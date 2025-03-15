@@ -22,7 +22,7 @@ impl IoStrategy for LegacyIo {
         algorithm: wallet_keystore::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let rng = rand::thread_rng();
-        KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, &name).save()?;
+        KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, name).save()?;
         Ok(())
     }
 

@@ -79,7 +79,7 @@ impl ConfigDomain {
     pub async fn set_currency(currency: Option<Currency>) -> Result<(), crate::ServiceError> {
         let mut config = crate::app_state::APP_STATE.write().await;
         let currency = if let Some(currency) = currency
-            && &currency.currency != config.currency()
+            && currency.currency != config.currency()
         {
             config.set_fiat_from_str(&currency.currency);
             currency
@@ -264,7 +264,7 @@ impl ConfigDomain {
         list: &[ChainUrlInfo],
     ) -> Result<(), crate::ServiceError> {
         let block_browser_url_list = list
-            .into_iter()
+            .iter()
             .map(|info| {
                 crate::request::init::BlockBrowserUrl::new(
                     info.chain_code.clone(),

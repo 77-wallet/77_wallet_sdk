@@ -288,7 +288,7 @@ impl AccountService {
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         let seed = wallet_tree::api::KeystoreApi::load_seed(
-            &wallet_tree,
+            &*wallet_tree,
             &root_dir,
             wallet_address,
             password,
