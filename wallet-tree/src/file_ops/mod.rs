@@ -1,5 +1,5 @@
-pub(crate) mod legacy;
-pub(crate) mod modern;
+pub(crate) mod v1;
+pub(crate) mod v2;
 
 use std::{
     collections::BTreeMap,
@@ -9,7 +9,7 @@ use std::{
 
 use wallet_keystore::{KdfAlgorithm, KeystoreBuilder, RecoverableData};
 
-use crate::naming::modern::KeyMeta;
+use crate::naming::v2::KeyMeta;
 
 pub trait IoStrategy: Send + Sync {
     fn store(

@@ -8,11 +8,11 @@ use serde::Serialize;
 use crate::{
     directory_structure::LayoutStrategy,
     naming::{
-        modern::{ModernFileMetas, ModernNaming},
+        v2::{ModernFileMetas, ModernNaming},
         FileMeta, FileType, NamingStrategy as _,
     },
     wallet_hierarchy::{
-        modern_adapter::{ModernRoot, ModernWalletBranch, ModernWalletTree},
+        v2::{ModernRoot, ModernWalletBranch, ModernWalletTree},
         WalletTreeOps,
     },
 };

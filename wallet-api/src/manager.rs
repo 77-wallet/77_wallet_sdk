@@ -549,7 +549,7 @@ mod tests {
             .unwrap();
         let dirs = crate::manager::Context::get_global_dirs()?;
 
-        wallet_tree::wallet_hierarchy::legecy_adapter::LegacyWalletTree::traverse_directory_structure(
+        wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(
             &dirs.wallet_dir,
         )?;
 

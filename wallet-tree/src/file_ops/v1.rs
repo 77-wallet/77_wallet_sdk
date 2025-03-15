@@ -1,7 +1,7 @@
 use serde::Serialize;
 use wallet_keystore::{wallet::prikey::PkWallet, KeystoreBuilder};
 
-use crate::naming::{legacy::LegacyNaming, FileType};
+use crate::naming::{v1::LegacyNaming, FileType};
 
 use super::IoStrategy;
 
@@ -9,7 +9,7 @@ use crate::naming::NamingStrategy as _;
 
 #[derive(Debug, Default, PartialEq, Clone, Serialize)]
 pub struct LegacyIo {
-    naming: std::marker::PhantomData<crate::naming::legacy::LegacyNaming>,
+    naming: std::marker::PhantomData<crate::naming::v1::LegacyNaming>,
 }
 
 impl IoStrategy for LegacyIo {
@@ -28,9 +28,9 @@ impl IoStrategy for LegacyIo {
 
     fn load_account(
         &self,
-        account_index_map: &wallet_utils::address::AccountIndexMap,
-        subs_dir: &dyn AsRef<std::path::Path>,
-        password: &str,
+        _account_index_map: &wallet_utils::address::AccountIndexMap,
+        _subs_dir: &dyn AsRef<std::path::Path>,
+        _password: &str,
     ) -> Result<super::AccountData, crate::Error> {
         todo!()
     }

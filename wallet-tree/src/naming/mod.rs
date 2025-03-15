@@ -1,7 +1,7 @@
 use serde::Serialize;
 
-pub(crate) mod legacy;
-pub(crate) mod modern;
+pub(crate) mod v1;
+pub(crate) mod v2;
 pub trait NamingStrategy: Send + Sync {
     /// 将元数据编码为文件名
     fn encode(meta: Box<dyn FileMeta>) -> Result<String, crate::Error>;
@@ -43,25 +43,3 @@ pub enum FileType {
     DerivedMeta,
     DeprecatedPk,
 }
-
-#[derive(Debug, PartialEq, Clone, Serialize)]
-pub struct FileTypes(Vec<FileType>);
-
-#[derive(Debug, Clone)]
-pub enum DirectoryNaming {
-    Root,
-    Subs,
-}
-
-// impl FileType {
-//     pub fn to_string(&self) -> String {
-//         match self {
-//             FileType::PrivateKey => "pk",
-//             FileType::Phrase => "phrase",
-//             FileType::Seed => "seed",
-//             FileType::DerivedData => "pk",
-//             FileType::DerivedMeta => "derived_meta.json",
-//         }
-//         .to_string()
-//     }
-// }

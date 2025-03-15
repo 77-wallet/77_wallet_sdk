@@ -1,6 +1,6 @@
 use crate::{
     naming::FileType,
-    wallet_hierarchy::legecy_adapter::{RootKeystoreInfo, SubsKeystoreInfo},
+    wallet_hierarchy::v1::{RootKeystoreInfo, SubsKeystoreInfo},
 };
 
 pub fn extract_wallet_address_and_suffix_from_filename(

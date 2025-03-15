@@ -4,7 +4,7 @@ use serde::Serialize;
 use wallet_keystore::KeystoreBuilder;
 
 use crate::naming::{
-    modern::{DerivedMetadata, KeyMeta, KeyMetas, KeystoreData, ModernNaming},
+    v2::{DerivedMetadata, KeyMeta, KeyMetas, KeystoreData, ModernNaming},
     FileType, NamingStrategy,
 };
 
@@ -122,7 +122,7 @@ impl IoStrategy for ModernIo {
 
     fn store_root(
         &self,
-        address: &str,
+        _address: &str,
         seed: &[u8],
         phrase: &str,
         file_path: &dyn AsRef<std::path::Path>,
@@ -197,7 +197,7 @@ impl IoStrategy for ModernIo {
 
         // 2. 处理密钥数据
         let data_path = base_path.join(&key_filename);
-        let mut derived_data = crate::naming::modern::KeystoreData::default();
+        let mut derived_data = crate::naming::v2::KeystoreData::default();
         if data_path.exists() {
             let keystore = KeystoreBuilder::new_decrypt(&data_path, password).load()?;
             derived_data = keystore.try_into()?;

@@ -17,9 +17,9 @@ use super::{AccountTrait, RootTrait, WalletBranchOps, WalletTreeOps};
 /// 表示钱包的目录结构，将钱包名称映射到其下的账户目录结构。
 #[derive(Debug, Default, PartialEq, Clone, Serialize)]
 pub struct LegacyWalletTree {
-    pub layout: crate::directory_structure::legacy::LegacyLayout,
-    pub naming: crate::naming::legacy::LegacyNaming,
-    pub io: crate::file_ops::legacy::LegacyIo,
+    pub layout: crate::directory_structure::v1::LegacyLayout,
+    pub naming: crate::naming::v1::LegacyNaming,
+    pub io: crate::file_ops::v1::LegacyIo,
     pub tree: LegacyWalletBranches,
 }
 

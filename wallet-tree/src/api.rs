@@ -1,5 +1,4 @@
-use wallet_chain_instance::derivation_path;
-use wallet_keystore::{wallet::prikey::PkWallet, KdfAlgorithm, KeystoreJson};
+use wallet_keystore::{KdfAlgorithm, KeystoreJson};
 use wallet_utils::address::AccountIndexMap;
 
 use crate::wallet_hierarchy::WalletTreeOps;
