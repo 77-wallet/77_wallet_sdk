@@ -231,7 +231,6 @@ impl KeystoreApi {
         new_password: &str,
         algorithm: KdfAlgorithm,
     ) -> Result<(), crate::Error> {
-        tracing::info!("wallet_tree: {:#?}", wallet_tree);
         if let Some(account) = wallet_tree
             .get_wallet_branch(wallet_address)?
             .get_account(address, instance.chain_code())

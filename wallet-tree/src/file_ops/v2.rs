@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs};
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 use wallet_keystore::KeystoreBuilder;
@@ -95,9 +95,7 @@ impl IoStrategy for ModernIo {
             Some(derivation_path.to_string()),
         )?;
         let pk_filename = ModernNaming::encode(pk_meta)?;
-        tracing::warn!("password: {:?}", password);
-        tracing::warn!("subs_dir: {:?}", subs_dir.as_ref());
-        tracing::warn!("load_subkey: {}", pk_filename);
+
         let data =
             KeystoreBuilder::new_decrypt(subs_dir.as_ref().join(pk_filename), password).load()?;
 
@@ -157,13 +155,13 @@ impl IoStrategy for ModernIo {
     ) -> Result<(), crate::Error> {
         let account_idx = account_index_map.account_id;
         let base_path = file_path.as_ref();
-        // let data_path = base_path.join("subs/derived_keys.keystore");
         let meta_path = base_path.join("derived_meta.json");
 
         // 1. 处理元数据
         let mut metadata = if meta_path.exists() {
-            let content = fs::read_to_string(&meta_path).unwrap();
-            serde_json::from_str(&content).unwrap_or_else(|_| DerivedMetadata::default())
+            let mut content = String::new();
+            wallet_utils::file_func::read(&mut content, &meta_path)?;
+            wallet_utils::serde_func::serde_from_str(&content).unwrap_or_default()
         } else {
             DerivedMetadata::default()
         };
@@ -211,10 +209,6 @@ impl IoStrategy for ModernIo {
 
         derived_data.insert(key.encode(), data.as_ref().to_vec());
 
-        tracing::warn!("password: {:?}", password);
-        tracing::warn!("base_path: {:?}", base_path);
-        tracing::warn!("key_filename: {}", key_filename);
-
         let val = wallet_utils::serde_func::serde_to_vec(&derived_data)?;
         let rng = rand::thread_rng();
         KeystoreBuilder::new_encrypt(
@@ -253,8 +247,9 @@ impl IoStrategy for ModernIo {
 
         // 2. 准备元数据更新
         let mut metadata = if meta_path.exists() {
-            let content = fs::read_to_string(&meta_path).unwrap();
-            serde_json::from_str(&content).unwrap_or_default()
+            let mut content = String::new();
+            wallet_utils::file_func::read(&mut content, &meta_path)?;
+            wallet_utils::serde_func::serde_from_str(&content).unwrap_or_default()
         } else {
             DerivedMetadata::default()
         };
@@ -305,9 +300,9 @@ impl IoStrategy for ModernIo {
         let temp_meta_path = meta_path.with_extension("tmp");
         wallet_utils::file_func::write_all(
             &temp_meta_path,
-            &serde_json::to_vec_pretty(&metadata).unwrap(),
+            &wallet_utils::serde_func::serde_to_vec(&metadata)?,
         )?;
-        fs::rename(temp_meta_path, meta_path).unwrap();
+        wallet_utils::file_func::rename(temp_meta_path, meta_path)?;
         tracing::warn!("store_subkeys_bulk cost: {:?}", start.elapsed());
         Ok(())
     }
@@ -341,7 +336,8 @@ impl IoStrategy for ModernIo {
 
         // 1. 原子操作元数据
         let mut metadata: DerivedMetadata = if meta_path.exists() {
-            let content = fs::read_to_string(&meta_path).unwrap();
+            let mut content = String::new();
+            wallet_utils::file_func::read(&mut content, &meta_path)?;
             wallet_utils::serde_func::serde_from_str(&content)?
         } else {
             return Err(crate::Error::MetadataNotFound);
@@ -370,7 +366,7 @@ impl IoStrategy for ModernIo {
                     let temp_path = meta_path.with_extension("tmp");
                     wallet_utils::file_func::write_all(
                         &temp_path,
-                        &serde_json::to_vec_pretty(&metadata).unwrap(),
+                        &wallet_utils::serde_func::serde_to_vec(&metadata)?,
                     )?;
                     wallet_utils::file_func::rename(temp_path, meta_path)
                 });

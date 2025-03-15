@@ -4,12 +4,10 @@ use super::{FileMeta, FileType, NamingStrategy};
 
 #[derive(Debug, Clone)]
 pub struct LegacyFileMeta {
-    // pub directory_naming: DirectoryNaming,
     pub file_type: FileType,
     pub address: String,
     pub chain_code: Option<String>,
     pub derivation_path: Option<String>,
-    // pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 impl FileMeta for LegacyFileMeta {
@@ -89,7 +87,6 @@ impl NamingStrategy for LegacyNaming {
                 address: parts[0].to_string(),
                 chain_code: None,
                 derivation_path: None,
-                // timestamp: Utc::now(),
             }));
         }
 
@@ -105,16 +102,11 @@ impl NamingStrategy for LegacyNaming {
                 wallet_utils::parse_func::derivation_path_percent_decode(&encoded_path)?
                     .to_string();
 
-            // let derivation_path = percent_decode_str(&encoded_path)
-            //     .decode_utf8()?
-            //     .into_owned();
-
             return Ok(Box::new(LegacyFileMeta {
                 file_type: FileType::DerivedData,
                 address,
                 chain_code: Some(chain),
                 derivation_path: Some(derivation_path),
-                // timestamp: Utc::now(),
             }));
         }
 

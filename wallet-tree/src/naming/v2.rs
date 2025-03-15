@@ -14,7 +14,6 @@ pub enum ModernFileMetas {
     DerivedMeta(Vec<ModernFileMeta>),
 }
 
-// #[derive(Clone, Debug)]
 #[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct ModernFileMeta {
     pub file_type: FileType,
