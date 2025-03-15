@@ -46,93 +46,92 @@ impl LayoutStrategy for ModernLayout {
         let mut entries = ModernWalletTree::default();
         // let address = base_path.file_name().unwrap().to_str().unwrap();
 
-        for entry in (wallet_utils::file_func::read_dir(base_path)? ).flatten(){
-                let wallet_dir = entry.path();
-                if wallet_dir.is_dir() {
-                    let address = wallet_dir
-                        .file_name()
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string();
-                    let root_dir = wallet_dir.join("root");
-                    let subs_dir = wallet_dir.join("subs");
+        for entry in (wallet_utils::file_func::read_dir(base_path)?).flatten() {
+            let wallet_dir = entry.path();
+            if wallet_dir.is_dir() {
+                let address = wallet_dir
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+                let root_dir = wallet_dir.join("root");
+                let subs_dir = wallet_dir.join("subs");
 
-                    // 处理 root 文件
-                    let mut wallet_branch = if root_dir.exists() {
-                        let mut modern_root = ModernRoot::default();
-                        for entry in std::fs::read_dir(root_dir).unwrap() {
-                            let entry = entry.unwrap();
-                            let path = entry.path();
-                            if path.is_file() {
-                                let filename = path.file_name().unwrap().to_str().unwrap();
-                                let Ok(meta) =
-                                    self.parse_meta_data(path.to_string_lossy().as_ref(), filename)
-                                else {
-                                    continue;
-                                };
-
-                                match meta.file_type() {
-                                    FileType::PrivateKey => {
-                                        modern_root.pk = Some(());
-                                    }
-                                    FileType::Phrase => {
-                                        modern_root.phrase = Some(());
-                                    }
-                                    FileType::Seed => {
-                                        modern_root.seed = Some(());
-                                    }
-                                    _ => continue,
-                                }
-                            }
-                        }
-                        ModernWalletBranch {
-                            root: modern_root,
-                            subs: Default::default(),
-                        }
-                    } else {
-                        continue;
-                    };
-
-                    // 处理 subs 文件
-                    if subs_dir.exists() {
-                        // 加载元数据文件
-                        let meta_file = subs_dir.join("derived_meta.json");
-                        if meta_file.exists() {
-                            let Ok(meta) = self
-                                .parse_meta_data(&meta_file.to_string_lossy(), "derived_meta.json")
+                // 处理 root 文件
+                let mut wallet_branch = if root_dir.exists() {
+                    let mut modern_root = ModernRoot::default();
+                    for entry in std::fs::read_dir(root_dir).unwrap() {
+                        let entry = entry.unwrap();
+                        let path = entry.path();
+                        if path.is_file() {
+                            let filename = path.file_name().unwrap().to_str().unwrap();
+                            let Ok(meta) =
+                                self.parse_meta_data(path.to_string_lossy().as_ref(), filename)
                             else {
                                 continue;
                             };
 
-                            // 加载所有密钥文件
-                            if let ModernFileMetas::DerivedMeta(entries) = meta {
-                                for mut entry in entries {
-                                    let file_name = format!(
-                                        "key{}.keystore",
-                                        entry.account_index().ok_or(crate::Error::MissingIndex)?
-                                    );
-                                    let key_path = subs_dir.join(&file_name);
+                            match meta.file_type() {
+                                FileType::PrivateKey => {
+                                    modern_root.pk = Some(());
+                                }
+                                FileType::Phrase => {
+                                    modern_root.phrase = Some(());
+                                }
+                                FileType::Seed => {
+                                    modern_root.seed = Some(());
+                                }
+                                _ => continue,
+                            }
+                        }
+                    }
+                    ModernWalletBranch {
+                        root: modern_root,
+                        subs: Default::default(),
+                    }
+                } else {
+                    continue;
+                };
 
-                                    if key_path.exists() {
-                                        let Ok(meta) = self.parse_meta_data(
-                                            &key_path.to_string_lossy(),
-                                            &file_name,
-                                        ) else {
-                                            continue;
-                                        };
-                                        if let ModernFileMetas::DerivedData(_) = meta {
-                                            entry.file_type = meta.file_type().clone();
-                                            wallet_branch.subs.push(entry);
-                                        }
+                // 处理 subs 文件
+                if subs_dir.exists() {
+                    // 加载元数据文件
+                    let meta_file = subs_dir.join("derived_meta.json");
+                    if meta_file.exists() {
+                        let Ok(meta) =
+                            self.parse_meta_data(&meta_file.to_string_lossy(), "derived_meta.json")
+                        else {
+                            continue;
+                        };
+
+                        // 加载所有密钥文件
+                        if let ModernFileMetas::DerivedMeta(entries) = meta {
+                            for mut entry in entries {
+                                let file_name = format!(
+                                    "key{}.keystore",
+                                    entry.account_index().ok_or(crate::Error::MissingIndex)?
+                                );
+                                let key_path = subs_dir.join(&file_name);
+
+                                if key_path.exists() {
+                                    let Ok(meta) = self
+                                        .parse_meta_data(&key_path.to_string_lossy(), &file_name)
+                                    else {
+                                        continue;
+                                    };
+                                    if let ModernFileMetas::DerivedData(_) = meta {
+                                        entry.file_type = meta.file_type().clone();
+                                        wallet_branch.subs.push(entry);
                                     }
                                 }
                             }
                         }
                     }
-                    entries.tree.insert(address, wallet_branch);
-                } else {
-                    continue;
                 }
+                entries.tree.insert(address, wallet_branch);
+            } else {
+                continue;
+            }
         }
 
         Ok(Box::new(entries))

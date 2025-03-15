@@ -260,10 +260,7 @@ impl StackService {
     ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
         let mut result = Vec::new();
 
-        let res = chain
-            .provider
-            .delegated_resource(owner_address, to)
-            .await?;
+        let res = chain.provider.delegated_resource(owner_address, to).await?;
 
         for delegate in res.delegated_resource {
             if let Some(types) = &resource_type {
