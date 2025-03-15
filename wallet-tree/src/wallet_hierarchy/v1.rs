@@ -262,26 +262,6 @@ impl LegacyWalletBranch {
         Ok(())
     }
 
-    // pub fn deprecate_subkeys(
-    //     &mut self,
-    //     wallet_address: &str,
-    //     subs_path: std::path::PathBuf,
-    // ) -> Result<(), crate::Error> {
-    //     if self.root_info.address == wallet_address {
-    //         for keystore_info in self.accounts.iter_mut() {
-    //             let old_pk_name = keystore_info.gen_name_with_derivation_path()?;
-    //             let old_path = subs_path.join(old_pk_name);
-    //             keystore_info.file_type = FileType::DeprecatedPk;
-    //             let new_pk_name = keystore_info.gen_name_with_derivation_path()?;
-    //             let new_path = subs_path.join(new_pk_name);
-    //             if let Err(e) = std::fs::rename(&old_path, new_path) {
-    //                 tracing::error!("[deprecate_subkeys] Rename {old_path:?} error: {e}");
-    //             };
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
     pub fn delete_subkey(
         &mut self,
         wallet_address: &str,
@@ -430,7 +410,7 @@ impl WalletTreeOps for LegacyWalletTree {
         address: &str,
         chain_code: &str,
         file_path: &dyn AsRef<std::path::Path>,
-        password: &str,
+        _password: &str,
     ) -> Result<(), crate::Error> {
         let wallet = self
             .tree

@@ -105,6 +105,7 @@ impl LayoutStrategy for LegacyLayout {
 
 impl LegacyLayout {
     /// 根据文件名解析 FileMeta
+    #[allow(dead_code)]
     fn parse_filename(&self, filename: &str) -> Result<Box<dyn FileMeta>, crate::Error> {
         LegacyNaming::decode("", filename)
     }

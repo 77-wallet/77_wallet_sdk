@@ -5,7 +5,6 @@ use std::{
 
 use serde::Serialize;
 use wallet_keystore::KeystoreBuilder;
-use wallet_types::chain::chain::ChainCode;
 
 use crate::{
     directory_structure::LayoutStrategy,
@@ -71,7 +70,7 @@ impl WalletTreeOps for ModernWalletTree {
     fn delete_subkey(
         &mut self,
         // naming: Box<dyn crate::naming::NamingStrategy>,
-        wallet_address: &str,
+        _wallet_address: &str,
         address: &str,
         chain_code: &str,
         file_path: &dyn AsRef<std::path::Path>,
@@ -195,22 +194,6 @@ pub struct ModernWalletBranch {
     // 根账户信息
     pub root: ModernRoot,
     pub subs: Vec<ModernFileMeta>,
-}
-
-impl ModernWalletBranch {
-    pub fn delete_subkey(
-        &mut self,
-        wallet_address: &str,
-        subs_path: &std::path::PathBuf,
-        address: &str,
-        chain_code: &ChainCode,
-    ) -> Result<(), crate::Error> {
-        let index = self.subs.iter().position(|sub| {
-            sub.get_address() == address && sub.chain_code() == Some(chain_code.to_string())
-        });
-
-        Ok(())
-    }
 }
 
 impl WalletBranchOps for ModernWalletBranch {

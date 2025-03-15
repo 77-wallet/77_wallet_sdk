@@ -10,8 +10,9 @@ pub fn extract_wallet_address_and_suffix_from_filename(
     if parts.len() >= 2 {
         let address = parts[0].to_string();
         let suffix = parts[1];
-        let deprecated = suffix.starts_with("deprecated");
-        let file_type = if suffix.ends_with("phrase") {
+        // let deprecated = suffix.starts_with("deprecated");
+        // let file_type =
+        if suffix.ends_with("phrase") {
             // if deprecated {
             //     Suffix::deprecated_pk()
             // } else {
@@ -41,7 +42,7 @@ pub fn extract_sub_address_and_derive_path_from_filename(
         let encoded_derivation_path = parts[2].to_string();
         let suffix = parts[3];
 
-        let deprecated = suffix.starts_with("deprecated");
+        // let deprecated = suffix.starts_with("deprecated");
         let file_type = if suffix.ends_with("pk") {
             // if deprecated {
             //     Suffix::deprecated_pk()
