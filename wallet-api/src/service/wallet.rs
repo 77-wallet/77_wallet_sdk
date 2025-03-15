@@ -281,7 +281,7 @@ impl WalletService {
         account_name: &str,
         is_default_name: bool,
         wallet_password: &str,
-        derive_password: Option<String>,
+        // derive_password: Option<String>,
     ) -> Result<CreateWalletRes, crate::ServiceError> {
         let start = std::time::Instant::now();
         let tx = &mut self.repo;

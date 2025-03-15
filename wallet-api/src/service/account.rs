@@ -1,6 +1,6 @@
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{account::AccountEntity, assets::AssetsId, wallet::WalletEntity},
+    entities::{account::AccountEntity, assets::AssetsId},
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
         coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
@@ -89,7 +89,7 @@ impl AccountService {
         self,
         wallet_address: &str,
         wallet_password: &str,
-        derive_password: Option<String>,
+        // derive_password: Option<String>,
         derivation_path: Option<String>,
         index: Option<i32>,
         name: &str,

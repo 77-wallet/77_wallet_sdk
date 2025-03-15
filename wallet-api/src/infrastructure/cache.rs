@@ -27,12 +27,13 @@ impl SharedCache {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn get(&self, key: &str) -> Option<CacheEntry> {
         let lock = self.inner.read().await;
 
         lock.get(key).cloned()
     }
-
+    #[allow(dead_code)]
     pub async fn delete(&self, key: &str) -> Result<(), crate::ServiceError> {
         let mut lock = self.inner.write().await;
         lock.delete(key);

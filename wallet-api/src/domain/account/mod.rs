@@ -2,10 +2,7 @@ use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
 };
-use wallet_types::{
-    chain::{address::r#type::AddressType, chain::ChainCode},
-    constant::chain_code,
-};
+use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
 use crate::{
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},

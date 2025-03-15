@@ -16,7 +16,7 @@ impl crate::WalletManager {
             .create_account(
                 &req.wallet_address,
                 &req.root_password,
-                req.derive_password,
+                // req.derive_password,
                 req.derivation_path,
                 req.index,
                 &req.name,
@@ -209,7 +209,7 @@ mod test {
         // let wallet_address = "0x65Eb73c5aeAD87688D639E796C959E23C2356681";
         let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let password = &test_params.create_wallet_req.wallet_password;
-        let password = "new_passwd";
+        // let password = "new_passwd";
         let account = wallet_manager
             .get_account_private_key(password, wallet_address, 1)
             .await;

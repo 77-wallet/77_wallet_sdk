@@ -3,7 +3,7 @@ use wallet_database::{
     entities::config::{
         config_key::{
             APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, KEYSTORE_KDF_ALGORITHM,
-            LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_PW_KDF_ALGORITHM, WALLET_TREE_STRATEGY,
+            LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
         },
         Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
@@ -210,21 +210,6 @@ impl ConfigDomain {
             Ok(currency.currency)
         } else {
             Ok(String::from("USD"))
-        }
-    }
-
-    pub(crate) async fn get_wallet_pw_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let wallet_pw_kdf_algorithm =
-            ConfigDao::find_by_key(WALLET_PW_KDF_ALGORITHM, pool.as_ref()).await?;
-        if let Some(wallet_pw_kdf_algorithm) = wallet_pw_kdf_algorithm {
-            let wallet_pw_kdf_algorithm =
-                wallet_database::entities::config::WalletPwKdfAlgorithm::try_from(
-                    wallet_pw_kdf_algorithm.value,
-                )?;
-            Ok(wallet_pw_kdf_algorithm.wallet_pw_kdf_algorithm)
-        } else {
-            Ok(KdfAlgorithm::Pbkdf2)
         }
     }
 

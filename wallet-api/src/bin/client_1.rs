@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .await
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
-    let (wallet_manager, mut test_params) = get_manager().await.unwrap();
+    let (wallet_manager, test_params) = get_manager().await.unwrap();
     // wallet_api::WalletManager::init_log(Some("info"), "xxxx").await?;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
