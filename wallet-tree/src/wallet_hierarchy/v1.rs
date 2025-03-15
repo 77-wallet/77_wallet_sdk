@@ -132,7 +132,7 @@ impl LegacyWalletTree {
 
             tracing::info!("[traverse_directory_structure] path: {}", path.display());
             if path.is_dir() {
-                let wallet_name = path.file_name().unwrap().to_string_lossy().to_string();
+                let wallet_address = path.file_name().unwrap().to_string_lossy().to_string();
                 let root_dir = path.join("root");
                 let subs_dir = path.join("subs");
 
@@ -143,25 +143,25 @@ impl LegacyWalletTree {
                     "[traverse_directory_structure] root_dir: {}",
                     root_dir.display()
                 );
-                let Some(root_dir) = wallet_utils::file_func::read_dir(root_dir)?
+                if let Some(root_dir) = wallet_utils::file_func::read_dir(root_dir)?
                     .filter_map(Result::ok)
                     .map(|e| e.file_name())
                     .find(|e| e.to_string_lossy().ends_with("-phrase"))
-                else {
-                    continue;
+                {
+                    let pk_filename = root_dir.to_string_lossy().to_string();
+                    wallet_branch.add_root_from_filename(&pk_filename)?;
+                    tracing::info!(
+                        "[traverse_directory_structure] pk_filename: {}",
+                        pk_filename
+                    );
+                    tracing::info!(
+                        "[traverse_directory_structure] root_dir 2: {}",
+                        root_dir.to_string_lossy()
+                    );
+                } else {
+                    wallet_branch.root_info = RootKeystoreInfo::new(&wallet_address);
                 };
 
-                tracing::info!(
-                    "[traverse_directory_structure] root_dir 2: {}",
-                    root_dir.to_string_lossy()
-                );
-                let pk_filename = root_dir.to_string_lossy().to_string();
-
-                tracing::info!(
-                    "[traverse_directory_structure] pk_filename: {}",
-                    pk_filename
-                );
-                wallet_branch.add_root_from_filename(&pk_filename)?;
                 tracing::info!(
                     "[traverse_directory_structure] wallet_branch: {:?}",
                     wallet_branch
@@ -197,7 +197,7 @@ impl LegacyWalletTree {
                 // 将钱包分支添加到钱包树中
                 wallet_tree
                     .tree
-                    .insert(wallet_name.to_string(), wallet_branch);
+                    .insert(wallet_address.to_string(), wallet_branch);
             }
         }
 

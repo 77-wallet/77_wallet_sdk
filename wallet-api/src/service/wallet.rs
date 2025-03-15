@@ -73,18 +73,6 @@ impl WalletService {
 
     pub(crate) async fn validate_password(self, password: &str) -> Result<(), crate::ServiceError> {
         WalletDomain::validate_password(password).await?;
-
-        // let Some(device) = self.repo.get_device_info().await? else {
-        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        // };
-        // let Some(password) = device.password else {
-        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
-        // };
-
-        // if password != encrypted_password {
-        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
-        // }
-
         Ok(())
     }
 

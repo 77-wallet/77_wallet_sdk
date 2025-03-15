@@ -103,21 +103,30 @@ impl WalletDomain {
         let modern_wallet_tree = WalletTreeStrategy::V2.get_wallet_tree(&dirs.wallet_dir)?;
         // 将子密钥全部读取出来
         let mut account_data = std::collections::HashMap::<AccountInfo, Vec<u8>>::new();
+        tracing::info!("legacy_wallet_tree: {:#?}", legacy_wallet_tree);
+
+        let mut delete_roots = Vec::new();
+        let mut delete_subs = Vec::new();
         for (k, v) in legacy_wallet_tree.iter() {
             let root_dir = dirs.get_root_dir(k)?;
             let subs_dir = dirs.get_subs_dir(k)?;
-            let root_data = legacy_wallet_tree.io().load_root(k, &root_dir, password)?;
-
-            modern_wallet_tree.io().store_root(
-                k,
-                root_data.seed(),
-                root_data.phrase(),
-                &root_dir,
-                password,
-                wallet_tree::KdfAlgorithm::Argon2id,
-            )?;
-
-            legacy_wallet_tree.io().delete_root(k, &root_dir)?;
+            match legacy_wallet_tree.io().load_root(k, &root_dir, password) {
+                Ok(root_data) => {
+                    if let Err(e) = modern_wallet_tree.io().store_root(
+                        k,
+                        root_data.seed(),
+                        root_data.phrase(),
+                        &root_dir,
+                        password,
+                        wallet_tree::KdfAlgorithm::Argon2id,
+                    ) {
+                        tracing::error!("store_root error: {:?}", e);
+                    };
+                }
+                Err(e) => {
+                    tracing::error!("load_root error: {:?}", e);
+                }
+            };
 
             for account in v.get_accounts().into_iter() {
                 let address = account.get_address();
@@ -143,6 +152,7 @@ impl WalletDomain {
                     pk,
                 );
             }
+            delete_roots.push(k);
         }
 
         // let wallet_tr
@@ -154,30 +164,42 @@ impl WalletDomain {
             wallet_tree::KdfAlgorithm::Argon2id,
         )?;
 
+        let mut subkeys = std::collections::HashMap::new();
         for (info, d) in account_data {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
                 &info.derivation_path,
             )?;
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(hd_path.get_account_id()?)?;
-            let subs_dir = dirs.get_subs_dir(&info.wallet_address)?;
 
-            modern_wallet_tree.io().store_subkey(
-                &account_index_map,
+            let subkey = wallet_tree::file_ops::BulkSubkey::new(
+                account_index_map.clone(),
                 &info.address,
                 &info.chain_code,
                 &info.derivation_path,
-                &d,
+                d,
+            );
+
+            subkeys
+                .entry(info.wallet_address.clone())
+                .or_insert_with(Vec::new)
+                .push(subkey);
+
+            // subkeys.push(subkey);
+            delete_subs.push(SubsKeyInfo {
+                wallet_address: info.wallet_address,
+                address: info.address,
+                chain_code: info.chain_code,
+            });
+        }
+
+        for (wallet_address, subkey) in subkeys {
+            let subs_dir = dirs.get_subs_dir(&wallet_address)?;
+            modern_wallet_tree.io().store_subkeys_bulk(
+                subkey,
                 &subs_dir,
                 password,
                 wallet_tree::KdfAlgorithm::Argon2id,
-            )?;
-            legacy_wallet_tree.delete_subkey(
-                &info.wallet_address,
-                &info.address,
-                info.chain_code.as_str(),
-                &subs_dir,
-                password,
             )?;
         }
 
@@ -196,6 +218,22 @@ impl WalletDomain {
             .await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        for k in delete_roots {
+            let root_dir = dirs.get_root_dir(k)?;
+            legacy_wallet_tree.io().delete_root(k, &root_dir)?;
+        }
+
+        for k in delete_subs {
+            let subs_dir = dirs.get_subs_dir(&k.wallet_address)?;
+            legacy_wallet_tree.delete_subkey(
+                &k.wallet_address,
+                &k.address,
+                k.chain_code.as_str(),
+                &subs_dir,
+                password,
+            )?;
+        }
         DeviceEntity::update_password(&*pool, None).await?;
 
         Ok(())
@@ -351,4 +389,10 @@ impl WalletDomain {
         }
         Ok(account_ids)
     }
+}
+
+struct SubsKeyInfo {
+    pub wallet_address: String,
+    pub address: String,
+    pub chain_code: String,
 }

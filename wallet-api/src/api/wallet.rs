@@ -324,7 +324,7 @@ mod test {
 
         let wallet_address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
         let res = wallet_manager
-            .edit_wallet_name("wenjing_wallet", wallet_address)
+            .edit_wallet_name("wallet", wallet_address)
             .await;
         tracing::info!("res: {res:?}");
 

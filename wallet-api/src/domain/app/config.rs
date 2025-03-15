@@ -224,8 +224,8 @@ impl ConfigDomain {
                 )?;
             Ok(keystore_kdf_algorithm.keystore_kdf_algorithm)
         } else {
-            // Ok(KdfAlgorithm::Scrypt)
-            Ok(KdfAlgorithm::Argon2id)
+            Ok(KdfAlgorithm::Scrypt)
+            // Ok(KdfAlgorithm::Argon2id)
         }
     }
 
@@ -241,8 +241,8 @@ impl ConfigDomain {
                 )?;
             Ok(wallet_tree_strategy.wallet_tree_strategy)
         } else {
-            Ok(wallet_tree::WalletTreeStrategy::V2)
-            // Ok(wallet_tree::WalletTreeStrategy::V1)
+            // Ok(wallet_tree::WalletTreeStrategy::V2)
+            Ok(wallet_tree::WalletTreeStrategy::V1)
         }
     }
 
