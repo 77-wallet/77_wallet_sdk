@@ -8,9 +8,12 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 use wallet_tree::api::KeystoreApi;
-use wallet_types::chain::{
-    address::r#type::{AddressType, BTC_ADDRESS_TYPES},
-    chain::ChainCode,
+use wallet_types::{
+    chain::{
+        address::r#type::{AddressType, BTC_ADDRESS_TYPES},
+        chain::ChainCode,
+    },
+    constant::chain_code,
 };
 use wallet_utils::address::AccountIndexMap;
 
@@ -231,6 +234,12 @@ impl AccountService {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+
+        let tron_address = subkeys
+            .iter()
+            .find(|s| s.chain_code == chain_code::TRON)
+            .map(|s| s.address.clone());
+
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
             subkeys,
@@ -244,14 +253,19 @@ impl AccountService {
 
         let uid = wallet.uid;
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
-        Tasks::new()
+        let mut tasks = Tasks::new()
             .push(task)
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 device_bind_address_task_data,
             )))
-            .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
-            .send()
-            .await?;
+            .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)));
+
+        if let Some(tron_address) = tron_address {
+            tasks = tasks.push(Task::Common(CommonTask::RecoverPermission(tron_address)));
+        }
+
+        tasks.send().await?;
+
         tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(())
     }

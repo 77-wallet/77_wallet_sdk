@@ -12,9 +12,12 @@ use wallet_transport_backend::{
     request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
 use wallet_tree::{api::KeystoreApi, file_ops::RootData};
-use wallet_types::chain::{
-    address::r#type::{AddressType, BTC_ADDRESS_TYPES},
-    chain::ChainCode,
+use wallet_types::{
+    chain::{
+        address::r#type::{AddressType, BTC_ADDRESS_TYPES},
+        chain::ChainCode,
+    },
+    constant::chain_code,
 };
 
 use crate::{
@@ -439,6 +442,13 @@ impl WalletService {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+
+        // 波场的地址
+        let tron_address = subkeys
+            .iter()
+            .find(|s| s.chain_code == chain_code::TRON)
+            .map(|s| s.address.clone());
+
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
             subkeys,
@@ -494,7 +504,7 @@ impl WalletService {
         let device_bind_address_task_data =
             domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
-        Tasks::new()
+        let mut tasks = Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 keys_init_task_data,
             )))
@@ -509,10 +519,12 @@ impl WalletService {
             )))
             .push(Task::Common(CommonTask::RecoverMultisigAccountData(
                 uid.clone(),
-            )))
-            .push(Task::Common(CommonTask::RecoverPermission(uid)))
-            .send()
-            .await?;
+            )));
+
+        if let Some(tron_address) = tron_address {
+            tasks = tasks.push(Task::Common(CommonTask::RecoverPermission(tron_address)));
+        };
+        tasks.send().await?;
 
         tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(CreateWalletRes {

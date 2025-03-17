@@ -30,16 +30,16 @@ impl PermissionDomain {
     }
 
     // 恢复权限数据
-    pub async fn recover_permission(uids: Vec<String>) -> Result<(), crate::ServiceError> {
+    pub async fn recover_permission(addresss: Vec<String>) -> Result<(), crate::ServiceError> {
         let bakend = crate::Context::get_global_backend_api()?;
 
         let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        for uid in uids {
+        for address in addresss {
             let req = GetPermissionBackReq {
-                address: None,
-                uid: Some(uid.to_string()),
+                address: Some(address),
+                uid: None,
             };
             let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
 
