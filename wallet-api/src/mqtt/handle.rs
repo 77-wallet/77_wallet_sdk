@@ -22,7 +22,7 @@ pub(crate) async fn exec_incoming(
     match packet {
         Packet::Connect(_, _, _) => {}
         Packet::ConnAck(conn_ack) => {
-            exec_incoming_connack(&client, conn_ack).await?;
+            exec_incoming_connack(client, conn_ack).await?;
         }
         Packet::Publish(publish) => {
             exec_incoming_publish(&publish).await?;
@@ -287,7 +287,7 @@ pub(crate) async fn exec_payload(
         }
         (biztype, data) => {
             return Err(crate::ServiceError::System(
-                crate::SystemError::MessageWrong(biztype, data),
+                crate::SystemError::MessageWrong(biztype, Box::new(data)),
             ));
         }
     }

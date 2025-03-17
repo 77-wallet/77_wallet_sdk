@@ -69,9 +69,9 @@ impl ChainTransaction {
             symbol: symbol.to_string(),
         };
 
-        Ok(AssetsEntity::update_balance(&*pool, &assets_id, balance)
+        AssetsEntity::update_balance(&*pool, &assets_id, balance)
             .await
-            .map_err(crate::ServiceError::Database)?)
+            .map_err(crate::ServiceError::Database)
     }
 
     pub async fn main_coin(chain_code: &str) -> Result<CoinEntity, crate::ServiceError> {
@@ -93,7 +93,7 @@ impl ChainTransaction {
 
         if chain_code == chain_code::BTC {
             let res = BillDao::on_going_bill(chain_code::BTC, from, pool.as_ref()).await?;
-            return Ok(res.len() > 0);
+            return Ok(!res.is_empty());
         };
 
         Ok(false)

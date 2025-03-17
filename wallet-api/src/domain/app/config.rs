@@ -3,7 +3,7 @@ use wallet_database::{
     entities::config::{
         config_key::{
             APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, KEYSTORE_KDF_ALGORITHM,
-            LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_PW_KDF_ALGORITHM, WALLET_TREE_STRATEGY,
+            LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
         },
         Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
@@ -79,7 +79,7 @@ impl ConfigDomain {
     pub async fn set_currency(currency: Option<Currency>) -> Result<(), crate::ServiceError> {
         let mut config = crate::app_state::APP_STATE.write().await;
         let currency = if let Some(currency) = currency
-            && &currency.currency != config.currency()
+            && currency.currency != config.currency()
         {
             config.set_fiat_from_str(&currency.currency);
             currency
@@ -213,21 +213,6 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_wallet_pw_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let wallet_pw_kdf_algorithm =
-            ConfigDao::find_by_key(WALLET_PW_KDF_ALGORITHM, pool.as_ref()).await?;
-        if let Some(wallet_pw_kdf_algorithm) = wallet_pw_kdf_algorithm {
-            let wallet_pw_kdf_algorithm =
-                wallet_database::entities::config::WalletPwKdfAlgorithm::try_from(
-                    wallet_pw_kdf_algorithm.value,
-                )?;
-            Ok(wallet_pw_kdf_algorithm.wallet_pw_kdf_algorithm)
-        } else {
-            Ok(KdfAlgorithm::Pbkdf2)
-        }
-    }
-
     pub(crate) async fn get_keystore_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let keystore_kdf_algorithm =
@@ -239,8 +224,8 @@ impl ConfigDomain {
                 )?;
             Ok(keystore_kdf_algorithm.keystore_kdf_algorithm)
         } else {
-            // Ok(KdfAlgorithm::Scrypt)
-            Ok(KdfAlgorithm::Argon2id)
+            Ok(KdfAlgorithm::Scrypt)
+            // Ok(KdfAlgorithm::Argon2id)
         }
     }
 
@@ -256,8 +241,8 @@ impl ConfigDomain {
                 )?;
             Ok(wallet_tree_strategy.wallet_tree_strategy)
         } else {
-            Ok(wallet_tree::WalletTreeStrategy::V2)
-            // Ok(wallet_tree::WalletTreeStrategy::V1)
+            // Ok(wallet_tree::WalletTreeStrategy::V2)
+            Ok(wallet_tree::WalletTreeStrategy::V1)
         }
     }
 
@@ -279,7 +264,7 @@ impl ConfigDomain {
         list: &[ChainUrlInfo],
     ) -> Result<(), crate::ServiceError> {
         let block_browser_url_list = list
-            .into_iter()
+            .iter()
             .map(|info| {
                 crate::request::init::BlockBrowserUrl::new(
                     info.chain_code.clone(),

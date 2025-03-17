@@ -103,7 +103,7 @@ impl AcctChange {
             chain_code.to_string(),
             symbol.to_string(),
             multisig_tx,
-            tx_kind_enum.clone(),
+            tx_kind_enum,
             notes.to_string(),
         )
         .with_queue_id(queue_id)

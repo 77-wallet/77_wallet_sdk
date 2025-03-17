@@ -178,24 +178,21 @@ impl BillKind {
 
     // 金额是否转出的交易类型(针对本地的交易)
     pub fn out_transfer_type(&self) -> bool {
-        match self {
+        matches!(
+            self,
             BillKind::Transfer
-            | BillKind::ServiceCharge
-            | BillKind::MultiSignTx
-            | BillKind::SigningFee
-            | BillKind::DeployMultiSign
-            | BillKind::FreezeBandwidth
-            | BillKind::FreezeEnergy => true,
-            _ => false,
-        }
+                | BillKind::ServiceCharge
+                | BillKind::MultiSignTx
+                | BillKind::SigningFee
+                | BillKind::DeployMultiSign
+                | BillKind::FreezeBandwidth
+                | BillKind::FreezeEnergy
+        )
     }
 
     // 哪些交易类型是转入的的(在freeze中)
     pub fn in_transfer_type(&self) -> bool {
-        match self {
-            BillKind::WithdrawUnFreeze | BillKind::WithdrawReward => true,
-            _ => false,
-        }
+        matches!(self, BillKind::WithdrawUnFreeze | BillKind::WithdrawReward)
     }
 }
 
@@ -411,12 +408,10 @@ impl NewBillEntity {
     pub fn get_owner(&self) -> String {
         if self.tx_kind.in_transfer_type() {
             self.from.clone()
+        } else if self.tx_type == 0 {
+            self.to.clone()
         } else {
-            if self.tx_type == 0 {
-                self.to.clone()
-            } else {
-                self.from.clone()
-            }
+            self.from.clone()
         }
     }
 }

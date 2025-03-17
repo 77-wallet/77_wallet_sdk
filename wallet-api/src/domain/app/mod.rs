@@ -4,9 +4,7 @@ use config::ConfigDomain;
 use wallet_database::{
     entities::{
         account::AccountEntity,
-        config::config_key::{
-            KEYSTORE_KDF_ALGORITHM, WALLET_PW_KDF_ALGORITHM, WALLET_TREE_STRATEGY,
-        },
+        config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
     },
     factory::RepositoryFactory,
     repositories::device::DeviceRepoTrait,
@@ -123,49 +121,27 @@ impl DeviceDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let mut repo = RepositoryFactory::repo(pool.clone());
 
-        let (wallet_pw_kdf_algorithm, keystore_kdf_algorithm, wallet_tree_strategy) =
-            if let Some(device) = DeviceRepoTrait::get_device_info(&mut repo).await?
-                && device.password.is_some()
-            {
-                let wallet_pw_kdf_algorithm =
-                    wallet_database::entities::config::WalletPwKdfAlgorithm {
-                        wallet_pw_kdf_algorithm: KdfAlgorithm::Pbkdf2,
-                    };
-                let keystore_kdf_algorithm =
-                    wallet_database::entities::config::KeystoreKdfAlgorithm {
-                        keystore_kdf_algorithm: KdfAlgorithm::Scrypt,
-                    };
-                let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
-                    wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V1,
-                };
-                (
-                    wallet_pw_kdf_algorithm,
-                    keystore_kdf_algorithm,
-                    wallet_tree_strategy,
-                )
-            } else {
-                let wallet_pw_kdf_algorithm =
-                    wallet_database::entities::config::WalletPwKdfAlgorithm {
-                        wallet_pw_kdf_algorithm: KdfAlgorithm::Pbkdf2,
-                    };
-                let keystore_kdf_algorithm =
-                    wallet_database::entities::config::KeystoreKdfAlgorithm {
-                        keystore_kdf_algorithm: KdfAlgorithm::Argon2id,
-                    };
-                let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
-                    wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V2,
-                };
-                (
-                    wallet_pw_kdf_algorithm,
-                    keystore_kdf_algorithm,
-                    wallet_tree_strategy,
-                )
+        let (keystore_kdf_algorithm, wallet_tree_strategy) = if let Some(device) =
+            DeviceRepoTrait::get_device_info(&mut repo).await?
+            && device.password.is_some()
+        {
+            let keystore_kdf_algorithm = wallet_database::entities::config::KeystoreKdfAlgorithm {
+                keystore_kdf_algorithm: KdfAlgorithm::Scrypt,
             };
-        ConfigDomain::set_config(
-            WALLET_PW_KDF_ALGORITHM,
-            &wallet_pw_kdf_algorithm.to_json_str()?,
-        )
-        .await?;
+            let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
+                wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V1,
+            };
+            (keystore_kdf_algorithm, wallet_tree_strategy)
+        } else {
+            let keystore_kdf_algorithm = wallet_database::entities::config::KeystoreKdfAlgorithm {
+                keystore_kdf_algorithm: KdfAlgorithm::Argon2id,
+            };
+            let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
+                wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V2,
+            };
+            (keystore_kdf_algorithm, wallet_tree_strategy)
+        };
+
         ConfigDomain::set_config(
             KEYSTORE_KDF_ALGORITHM,
             &keystore_kdf_algorithm.to_json_str()?,

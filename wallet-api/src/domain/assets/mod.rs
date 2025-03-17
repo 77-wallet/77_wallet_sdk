@@ -199,7 +199,7 @@ impl AssetsDomain {
     }
 
     pub async fn sync_address_balance(
-        assets: &Vec<AssetsEntity>,
+        assets: &[AssetsEntity],
     ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
@@ -262,7 +262,7 @@ impl AssetsDomain {
         // let mut tx = pool.begin().await.expect("开启事务失败");
         for (assets_id, balance) in results.iter() {
             // if let Err(e) = AssetsEntity::update_balance(tx.as_mut(), &assets_id, &balance).await {
-            if let Err(e) = AssetsEntity::update_balance(&*pool, &assets_id, &balance).await {
+            if let Err(e) = AssetsEntity::update_balance(&*pool, assets_id, balance).await {
                 tracing::error!("更新余额出错: {}", e);
             }
         }

@@ -30,7 +30,7 @@ pub(crate) fn get_default_chains_list() -> Result<&'static DefaultChainList, cra
         // Ok(rpc_json_data)
 
         let toml_content = include_str!("../../data/config/chain.toml");
-        let toml_data: DefaultChainList = wallet_utils::serde_func::toml_from_str(&toml_content)?;
+        let toml_data: DefaultChainList = wallet_utils::serde_func::toml_from_str(toml_content)?;
 
         Ok(toml_data)
     })

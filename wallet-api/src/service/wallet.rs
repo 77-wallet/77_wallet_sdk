@@ -11,7 +11,7 @@ use wallet_transport_backend::{
     consts::endpoint,
     request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
-use wallet_tree::api::KeystoreApi;
+use wallet_tree::{api::KeystoreApi, file_ops::RootData};
 use wallet_types::chain::{
     address::r#type::{AddressType, BTC_ADDRESS_TYPES},
     chain::ChainCode,
@@ -73,18 +73,6 @@ impl WalletService {
 
     pub(crate) async fn validate_password(self, password: &str) -> Result<(), crate::ServiceError> {
         WalletDomain::validate_password(password).await?;
-
-        // let Some(device) = self.repo.get_device_info().await? else {
-        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        // };
-        // let Some(password) = device.password else {
-        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordNotSet).into());
-        // };
-
-        // if password != encrypted_password {
-        //     return Err(crate::BusinessError::Wallet(crate::WalletError::PasswordIncorrect).into());
-        // }
-
         Ok(())
     }
 
@@ -281,7 +269,7 @@ impl WalletService {
         account_name: &str,
         is_default_name: bool,
         wallet_password: &str,
-        derive_password: Option<String>,
+        // derive_password: Option<String>,
     ) -> Result<CreateWalletRes, crate::ServiceError> {
         let start = std::time::Instant::now();
         let tx = &mut self.repo;
@@ -340,8 +328,7 @@ impl WalletService {
             wallet_tree,
             address,
             // &private_key,
-            &seed,
-            &phrase,
+            RootData::new(&phrase, &seed),
             &storage_path,
             wallet_password,
             algorithm,
@@ -455,7 +442,7 @@ impl WalletService {
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
             subkeys,
-            dirs.get_subs_dir(&address)?,
+            dirs.get_subs_dir(address)?,
             wallet_password,
             algorithm,
         )?;
@@ -542,7 +529,7 @@ impl WalletService {
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         let phrase = wallet_tree::api::KeystoreApi::load_phrase(
-            &wallet_tree,
+            &*wallet_tree,
             &root_dir,
             wallet_address,
             password,
@@ -736,9 +723,7 @@ impl WalletService {
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
         } else {
-            let file_name = "verify";
-            let file_path = dirs.root_dir.join(&file_name);
-            wallet_utils::file_func::remove_file(file_path)?;
+            KeystoreApi::remove_verify_file(&dirs.root_dir)?;
             tx.update_password(None).await?;
             None
         };
@@ -851,7 +836,7 @@ impl WalletService {
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
         let file_name = "verify";
-        let file_path = dirs.root_dir.join(&file_name);
+        let file_path = dirs.root_dir.join(file_name);
         wallet_utils::file_func::remove_file(file_path)?;
         Ok(())
     }

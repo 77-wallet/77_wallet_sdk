@@ -1,10 +1,10 @@
-pub mod legecy_adapter;
-pub mod modern_adapter;
+pub mod v1;
+pub mod v2;
 
 use serde::{Deserialize, Serialize};
 use wallet_types::chain::chain::ChainCode;
 
-use crate::{file_ops::IoStrategy, directory_structure::LayoutStrategy, naming::FileMeta};
+use crate::{directory_structure::LayoutStrategy, file_ops::IoStrategy, naming::FileMeta};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -16,41 +16,26 @@ pub enum WalletTreeStrategy {
 impl WalletTreeStrategy {
     pub fn get_wallet_tree(
         self,
-        wallet_dir: &std::path::PathBuf,
-        // ) -> Result<Box<dyn WalletTreeOps<Naming = dyn NamingStrategy>>, crate::Error> {
+        wallet_dir: &std::path::Path,
     ) -> Result<Box<dyn WalletTreeOps>, crate::Error> {
         Ok(match self {
-            WalletTreeStrategy::V1 => Box::new(
-                legecy_adapter::LegacyWalletTree::traverse(wallet_dir)?,
-                // ::traverse_directory_structure(wallet_dir)?,
-            ),
-            WalletTreeStrategy::V2 => {
-                Box::new(modern_adapter::ModernWalletTree::traverse(wallet_dir)?)
-            }
+            WalletTreeStrategy::V1 => Box::new(v1::LegacyWalletTree::traverse(wallet_dir)?),
+            WalletTreeStrategy::V2 => Box::new(v2::ModernWalletTree::traverse(wallet_dir)?),
         })
     }
 }
 
-// pub trait AnyWalletTree: for<'a> WalletTreeOps<dyn NamingStrategy + 'a> {}
-
-// impl<T> AnyWalletTree for T where T: for<'a> WalletTreeOps<dyn NamingStrategy + 'a> {}
-
 pub trait WalletTreeOps: std::any::Any + std::fmt::Debug + std::marker::Send {
-    // type Naming: NamingStrategy + 'static;
     fn layout(&self) -> Box<dyn LayoutStrategy>;
-    // fn naming(&self) -> Box<dyn NamingStrategy>;
-    // fn naming(&self) -> &Self::Naming;
-    // fn naming<'a>(&'a self) -> &Self::Naming<'_>;
 
     fn io(&self) -> Box<dyn IoStrategy>;
 
-    fn traverse(wallet_dir: &std::path::PathBuf) -> Result<Self, crate::Error>
+    fn traverse(wallet_dir: &std::path::Path) -> Result<Self, crate::Error>
     where
         Self: Sized;
 
     fn delete_subkey(
         &mut self,
-        // naming: Box<dyn NamingStrategy>,
         wallet_address: &str,
         address: &str,
         chain_code: &str,
@@ -83,7 +68,4 @@ pub trait AccountTrait: FileMeta + std::fmt::Debug + Send + Sync {
 
 pub trait RootTrait: std::fmt::Debug + Send + Sync {
     fn get_address(&self) -> &str;
-    fn get_phrase_filemeta(&self) -> Option<()>;
-    fn get_pk_filemeta(&self) -> Option<()>;
-    fn get_seed_filemeta(&self) -> Option<()>;
 }

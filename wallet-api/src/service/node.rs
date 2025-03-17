@@ -25,7 +25,7 @@ impl NodeService {
         http_url: Option<String>,
     ) -> Result<String, crate::ServiceError> {
         let tx = &mut self.repo;
-        let id = NodeDomain::gen_node_id(&name, chain_code);
+        let id = NodeDomain::gen_node_id(name, chain_code);
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
         let res = NodeRepoTrait::add(tx, req)
             .await

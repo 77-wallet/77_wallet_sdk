@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::{
-    naming::{legacy::LegacyNaming, FileMeta, FileType, NamingStrategy as _},
-    wallet_hierarchy::{legecy_adapter::LegacyWalletTree, WalletTreeOps},
+    naming::{v1::LegacyNaming, FileMeta, FileType, NamingStrategy as _},
+    wallet_hierarchy::{v1::LegacyWalletTree, WalletTreeOps},
 };
 
 use super::LayoutStrategy;
@@ -105,6 +105,7 @@ impl LayoutStrategy for LegacyLayout {
 
 impl LegacyLayout {
     /// 根据文件名解析 FileMeta
+    #[allow(dead_code)]
     fn parse_filename(&self, filename: &str) -> Result<Box<dyn FileMeta>, crate::Error> {
         LegacyNaming::decode("", filename)
     }
@@ -117,7 +118,7 @@ impl LegacyLayout {
 
 #[cfg(test)]
 mod tests {
-    use crate::naming::legacy::LegacyFileMeta;
+    use crate::naming::v1::LegacyFileMeta;
 
     use super::*;
     use std::env;
@@ -170,17 +171,7 @@ mod tests {
             .join("wallet_data")
             // .join("0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406")
             ;
-        // let base_path = PathBuf::from("./wallet_data/0x668fb1D3Df02391064CEe50F6A3ffdbAEOCDb406");
         let base_path = base_path.as_path();
-
-        // 创建测试目录结构
-        // let root_dir = base_path.join("root");
-        // fs::create_dir_all(&root_dir).unwrap();
-        // File::create(root_dir.join(format!("{}-pk", TEST_ADDRESS))).unwrap();
-
-        // let subs_dir = base_path.join("subs");
-        // fs::create_dir_all(&subs_dir).unwrap();
-        // File::create(subs_dir.join("eth-0x123-m%2F44%27%2F60%27%2F0%27%2F0%2F0-pk")).unwrap();
 
         // 扫描目录
         let layout = LegacyLayout;

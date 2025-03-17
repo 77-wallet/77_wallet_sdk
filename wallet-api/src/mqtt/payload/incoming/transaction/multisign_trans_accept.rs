@@ -8,10 +8,7 @@ use wallet_database::{
         multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1,
         multisig_signatures::MultisigSignatureDaoV1,
     },
-    entities::{
-        bill::BillKind,
-        multisig_queue::{MultisigQueueStatus, NewMultisigQueueEntity},
-    },
+    entities::multisig_queue::{MultisigQueueStatus, NewMultisigQueueEntity},
     factory::RepositoryFactory,
     repositories::multisig_queue::MultisigQueueRepo,
 };
@@ -65,7 +62,7 @@ impl From<&MultiSignTransAccept> for NewMultisigQueueEntity {
             fail_reason: "".to_string(),
             account_id: value.account_id.clone(),
             create_at: value.created_at,
-            transfer_type: BillKind::try_from(value.transfer_type).unwrap(),
+            transfer_type: value.transfer_type,
         }
     }
 }

@@ -17,9 +17,9 @@ use super::{AccountTrait, RootTrait, WalletBranchOps, WalletTreeOps};
 /// 表示钱包的目录结构，将钱包名称映射到其下的账户目录结构。
 #[derive(Debug, Default, PartialEq, Clone, Serialize)]
 pub struct LegacyWalletTree {
-    pub layout: crate::directory_structure::legacy::LegacyLayout,
-    pub naming: crate::naming::legacy::LegacyNaming,
-    pub io: crate::file_ops::legacy::LegacyIo,
+    pub layout: crate::directory_structure::v1::LegacyLayout,
+    pub naming: crate::naming::v1::LegacyNaming,
+    pub io: crate::file_ops::v1::LegacyIo,
     pub tree: LegacyWalletBranches,
 }
 
@@ -73,17 +73,6 @@ impl DerefMut for LegacyWalletBranches {
 }
 
 impl LegacyWalletTree {
-    // pub fn deprecate_subkeys(
-    //     mut self,
-    //     wallet_address: alloy::primitives::Address,
-    //     subs_path: std::path::PathBuf,
-    // ) -> Result<(), crate::Error> {
-    //     let wallet = self.get_mut_wallet_branch(&wallet_address.to_string())?;
-
-    //     wallet.deprecate_subkeys(&wallet_address.to_string(), subs_path)?;
-    //     Ok(())
-    // }
-
     // pub fn delete_subkeys(
     //     &mut self,
     //     wallet_address: &str,
@@ -143,7 +132,7 @@ impl LegacyWalletTree {
 
             tracing::info!("[traverse_directory_structure] path: {}", path.display());
             if path.is_dir() {
-                let wallet_name = path.file_name().unwrap().to_string_lossy().to_string();
+                let wallet_address = path.file_name().unwrap().to_string_lossy().to_string();
                 let root_dir = path.join("root");
                 let subs_dir = path.join("subs");
 
@@ -154,25 +143,25 @@ impl LegacyWalletTree {
                     "[traverse_directory_structure] root_dir: {}",
                     root_dir.display()
                 );
-                let Some(root_dir) = wallet_utils::file_func::read_dir(root_dir)?
+                if let Some(root_dir) = wallet_utils::file_func::read_dir(root_dir)?
                     .filter_map(Result::ok)
                     .map(|e| e.file_name())
                     .find(|e| e.to_string_lossy().ends_with("-phrase"))
-                else {
-                    continue;
+                {
+                    let pk_filename = root_dir.to_string_lossy().to_string();
+                    wallet_branch.add_root_from_filename(&pk_filename)?;
+                    tracing::info!(
+                        "[traverse_directory_structure] pk_filename: {}",
+                        pk_filename
+                    );
+                    tracing::info!(
+                        "[traverse_directory_structure] root_dir 2: {}",
+                        root_dir.to_string_lossy()
+                    );
+                } else {
+                    wallet_branch.root_info = RootKeystoreInfo::new(&wallet_address);
                 };
 
-                tracing::info!(
-                    "[traverse_directory_structure] root_dir 2: {}",
-                    root_dir.to_string_lossy()
-                );
-                let pk_filename = root_dir.to_string_lossy().to_string();
-
-                tracing::info!(
-                    "[traverse_directory_structure] pk_filename: {}",
-                    pk_filename
-                );
-                wallet_branch.add_root_from_filename(&pk_filename)?;
                 tracing::info!(
                     "[traverse_directory_structure] wallet_branch: {:?}",
                     wallet_branch
@@ -208,7 +197,7 @@ impl LegacyWalletTree {
                 // 将钱包分支添加到钱包树中
                 wallet_tree
                     .tree
-                    .insert(wallet_name.to_string(), wallet_branch);
+                    .insert(wallet_address.to_string(), wallet_branch);
             }
         }
 
@@ -216,13 +205,6 @@ impl LegacyWalletTree {
     }
 }
 
-// #[derive(Debug, PartialEq, Clone, Serialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct LegacyWalletBranch {
-//     // 根账户信息
-//     pub root_info: RootKeystoreInfo,
-//     pub accounts: Vec<SubsKeystoreInfo>,
-// }
 #[derive(Debug, PartialEq, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LegacyWalletBranch {
@@ -246,8 +228,7 @@ impl Default for LegacyWalletBranch {
 impl LegacyWalletBranch {
     // 根据文件名解析并添加密钥
     pub fn add_subkey_from_filename(&mut self, filename: &str) -> Result<(), crate::Error> {
-        let wallet_info =
-            crate::utils::file::extract_sub_address_and_derive_path_from_filename(filename)?;
+        let wallet_info = Self::extract_sub_address_and_derive_path_from_filename(filename)?;
         self.accounts.push(wallet_info);
 
         Ok(())
@@ -255,37 +236,67 @@ impl LegacyWalletBranch {
 
     // 根据文件名解析并添加密钥
     pub fn add_root_from_filename(&mut self, filename: &str) -> Result<(), crate::Error> {
-        let wallet_info =
-            crate::utils::file::extract_wallet_address_and_suffix_from_filename(filename)?;
+        let wallet_info = Self::extract_wallet_address_and_suffix_from_filename(filename)?;
 
         self.root_info = wallet_info;
         Ok(())
     }
 
-    // pub fn deprecate_subkeys(
-    //     &mut self,
-    //     wallet_address: &str,
-    //     subs_path: std::path::PathBuf,
-    // ) -> Result<(), crate::Error> {
-    //     if self.root_info.address == wallet_address {
-    //         for keystore_info in self.accounts.iter_mut() {
-    //             let old_pk_name = keystore_info.gen_name_with_derivation_path()?;
-    //             let old_path = subs_path.join(old_pk_name);
-    //             keystore_info.file_type = FileType::DeprecatedPk;
-    //             let new_pk_name = keystore_info.gen_name_with_derivation_path()?;
-    //             let new_path = subs_path.join(new_pk_name);
-    //             if let Err(e) = std::fs::rename(&old_path, new_path) {
-    //                 tracing::error!("[deprecate_subkeys] Rename {old_path:?} error: {e}");
-    //             };
-    //         }
-    //     }
-    //     Ok(())
-    // }
+    fn extract_sub_address_and_derive_path_from_filename(
+        filename: &str,
+    ) -> Result<SubsKeystoreInfo, crate::Error> {
+        let parts: Vec<&str> = filename.split('-').collect();
+        if parts.len() >= 4 {
+            let chain_code = parts[0];
+            let address = parts[1].to_string();
+            let encoded_derivation_path = parts[2].to_string();
+            let suffix = parts[3];
+
+            let file_type = if suffix.ends_with("pk") {
+                FileType::PrivateKey
+            } else {
+                return Err(crate::Error::FilenameInvalid);
+            };
+            let derivation_path =
+                wallet_utils::parse_func::derivation_path_percent_decode(&encoded_derivation_path)?
+                    .to_string();
+
+            Ok(SubsKeystoreInfo {
+                derivation_path,
+                address,
+                chain_code: chain_code.try_into()?,
+                file_type,
+            })
+        } else {
+            Err(crate::Error::FilenameInvalid)
+        }
+    }
+
+    fn extract_wallet_address_and_suffix_from_filename(
+        filename: &str,
+    ) -> Result<RootKeystoreInfo, crate::Error> {
+        let parts: Vec<&str> = filename.split('-').collect();
+        if parts.len() >= 2 {
+            let address = parts[0].to_string();
+            let suffix = parts[1];
+            if suffix.ends_with("phrase") {
+                FileType::Phrase
+            } else if suffix.ends_with("seed") {
+                FileType::Seed
+            } else {
+                return Err(crate::Error::FilenameInvalid);
+            };
+
+            Ok(RootKeystoreInfo { address })
+        } else {
+            Err(crate::Error::FilenameInvalid)
+        }
+    }
 
     pub fn delete_subkey(
         &mut self,
         wallet_address: &str,
-        subs_path: &std::path::PathBuf,
+        subs_path: &std::path::Path,
         address: &str,
         chain_code: &ChainCode,
     ) -> Result<(), crate::Error> {
@@ -340,35 +351,6 @@ impl LegacyWalletBranch {
             .find(|a| a.address == address && a.chain_code == *chain_code)
             .map(|info| info.to_owned())
     }
-
-    // pub fn get_root_pk_filename(wallet_address: &str) -> Result<String, crate::Error> {
-    //     RootKeystoreInfo::new(crate::utils::file::Suffix::pk(), wallet_address)
-    //         .gen_name_with_address()
-    // }
-
-    // pub fn get_root_seed_filename(wallet_address: &str) -> Result<String, crate::Error> {
-    //     RootKeystoreInfo::new(crate::utils::file::Suffix::seed(), wallet_address)
-    //         .gen_name_with_address()
-    // }
-
-    // pub fn get_root_phrase_filename(wallet_address: &str) -> Result<String, crate::Error> {
-    //     RootKeystoreInfo::new(crate::utils::file::Suffix::phrase(), wallet_address)
-    //         .gen_name_with_address()
-    // }
-
-    pub fn get_sub_pk_filename(
-        address: &str,
-        chain_code: &ChainCode,
-        raw_derivation_path: &str,
-    ) -> Result<String, crate::Error> {
-        SubsKeystoreInfo::new(
-            raw_derivation_path,
-            chain_code,
-            address,
-            FileType::DerivedData,
-        )
-        .gen_name_with_derivation_path()
-    }
 }
 
 // pub struct LegacyAdapter {
@@ -398,11 +380,11 @@ impl WalletTreeOps for LegacyWalletTree {
     fn io(&self) -> Box<dyn crate::file_ops::IoStrategy> {
         Box::new(self.io.clone())
     }
-    fn traverse(wallet_dir: &std::path::PathBuf) -> Result<Self, crate::Error>
+    fn traverse(wallet_dir: &std::path::Path) -> Result<Self, crate::Error>
     where
         Self: Sized,
     {
-        LegacyWalletTree::traverse_directory_structure(wallet_dir)
+        LegacyWalletTree::traverse_directory_structure(&wallet_dir.to_path_buf())
     }
 
     fn get_wallet_branch(
@@ -430,18 +412,16 @@ impl WalletTreeOps for LegacyWalletTree {
         address: &str,
         chain_code: &str,
         file_path: &dyn AsRef<std::path::Path>,
-        password: &str,
+        _password: &str,
     ) -> Result<(), crate::Error> {
         let wallet = self
             .tree
             .get_mut(wallet_address)
             .ok_or(crate::Error::LocalNoWallet)?;
 
-        // wallet.delete_subkey(wallet_address, file_path, address, chain_code)?;
-
         wallet.delete_subkey(
             wallet_address,
-            &file_path.as_ref().to_path_buf(),
+            file_path.as_ref(),
             address,
             &chain_code.try_into()?,
         )?;
@@ -473,27 +453,11 @@ impl WalletBranchOps for LegacyWalletBranch {
 #[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct RootKeystoreInfo {
     pub address: String,
-    // pub suffix: crate::utils::file::Suffix,
-    // pub phrase: Option<()>,
-    // pub pk: Option<()>,
-    // pub seed: Option<()>,
 }
 
 impl RootTrait for RootKeystoreInfo {
     fn get_address(&self) -> &str {
         &self.address
-    }
-
-    fn get_phrase_filemeta(&self) -> Option<()> {
-        Some(())
-    }
-
-    fn get_pk_filemeta(&self) -> Option<()> {
-        Some(())
-    }
-
-    fn get_seed_filemeta(&self) -> Option<()> {
-        Some(())
     }
 }
 
@@ -510,14 +474,12 @@ pub struct SubsKeystoreInfo {
     pub derivation_path: String,
     pub address: String,
     pub chain_code: ChainCode,
-    // pub suffix: crate::utils::file::Suffix,
     pub file_type: FileType,
 }
 
 impl SubsKeystoreInfo {
     pub fn new(
         derivation_path: &str,
-        // suffix: crate::utils::file::Suffix,
         chain_code: &ChainCode,
         address: &str,
         file_type: FileType,
@@ -525,8 +487,7 @@ impl SubsKeystoreInfo {
         Self {
             derivation_path: derivation_path.to_string(),
             address: address.to_string(),
-            chain_code: chain_code.clone(),
-            // suffix,
+            chain_code: *chain_code,
             file_type,
         }
     }
@@ -537,9 +498,7 @@ impl SubsKeystoreInfo {
 
         let name = format!(
             "{}-{}-{}-pk",
-            self.chain_code,
-            self.address,
-            derivation_path // self.suffix.gen_suffix()
+            self.chain_code, self.address, derivation_path
         );
         Ok(name)
     }

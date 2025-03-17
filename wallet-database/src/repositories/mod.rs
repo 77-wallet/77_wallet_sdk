@@ -114,7 +114,7 @@ pub enum ExecutorWrapper<'a> {
     Pool(&'a sqlx::Pool<sqlx::Sqlite>),
 }
 
-impl<'a> ExecutorWrapper<'a> {
+impl ExecutorWrapper<'_> {
     pub async fn execute<F, Fut, T>(self, query: F) -> Result<T, crate::Error>
     where
         F: for<'c> FnOnce(&'c mut sqlx::SqliteConnection) -> Fut,

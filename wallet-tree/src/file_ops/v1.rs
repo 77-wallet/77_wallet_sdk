@@ -1,7 +1,10 @@
 use serde::Serialize;
-use wallet_keystore::{wallet::prikey::PkWallet, KeystoreBuilder};
+use wallet_keystore::{
+    wallet::{phrase::PhraseWallet, prikey::PkWallet, seed::SeedWallet},
+    KeystoreBuilder,
+};
 
-use crate::naming::{legacy::LegacyNaming, FileType};
+use crate::naming::{v1::LegacyNaming, FileType};
 
 use super::IoStrategy;
 
@@ -9,7 +12,7 @@ use crate::naming::NamingStrategy as _;
 
 #[derive(Debug, Default, PartialEq, Clone, Serialize)]
 pub struct LegacyIo {
-    naming: std::marker::PhantomData<crate::naming::legacy::LegacyNaming>,
+    naming: std::marker::PhantomData<crate::naming::v1::LegacyNaming>,
 }
 
 impl IoStrategy for LegacyIo {
@@ -22,15 +25,15 @@ impl IoStrategy for LegacyIo {
         algorithm: wallet_keystore::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let rng = rand::thread_rng();
-        KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, &name).save()?;
+        KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, name).save()?;
         Ok(())
     }
 
     fn load_account(
         &self,
-        account_index_map: &wallet_utils::address::AccountIndexMap,
-        subs_dir: &dyn AsRef<std::path::Path>,
-        password: &str,
+        _account_index_map: &wallet_utils::address::AccountIndexMap,
+        _subs_dir: &dyn AsRef<std::path::Path>,
+        _password: &str,
     ) -> Result<super::AccountData, crate::Error> {
         todo!()
     }
@@ -50,10 +53,10 @@ impl IoStrategy for LegacyIo {
         )?;
         let seed_filename = LegacyNaming::encode(seed_meta)?;
 
-        let seed = crate::Keystore::load_data::<_, wallet_keystore::wallet::seed::SeedWallet>(
-            root_dir.as_ref().join(seed_filename),
-            password,
-        )?;
+        let seed: SeedWallet =
+            KeystoreBuilder::new_decrypt(root_dir.as_ref().join(seed_filename), password)
+                .load()?
+                .try_into()?;
 
         let phrase_meta = LegacyNaming::generate_filemeta(
             FileType::Phrase,
@@ -64,12 +67,12 @@ impl IoStrategy for LegacyIo {
         )?;
         let phrase_filename = LegacyNaming::encode(phrase_meta)?;
 
-        let phrase_wallet = crate::Keystore::load_data::<
-            _,
-            wallet_keystore::wallet::phrase::PhraseWallet,
-        >(root_dir.as_ref().join(phrase_filename), password)?;
+        let phrase_wallet: PhraseWallet =
+            KeystoreBuilder::new_decrypt(root_dir.as_ref().join(phrase_filename), password)
+                .load()?
+                .try_into()?;
 
-        Ok(super::RootData::new(phrase_wallet.phrase, seed.seed))
+        Ok(super::RootData::new(&phrase_wallet.phrase, &seed.seed))
     }
 
     fn load_subkey(
@@ -89,9 +92,7 @@ impl IoStrategy for LegacyIo {
             Some(derivation_path.to_string()),
         )?;
         let pk_filename = LegacyNaming::encode(pk_meta)?;
-        tracing::warn!("password: {:?}", password);
-        tracing::warn!("subs_dir: {:?}", subs_dir.as_ref());
-        tracing::warn!("pk_filename: {}", pk_filename);
+
         let data =
             KeystoreBuilder::new_decrypt(subs_dir.as_ref().join(pk_filename), password).load()?;
         let pk: PkWallet = data.try_into()?;
@@ -125,14 +126,25 @@ impl IoStrategy for LegacyIo {
         let seed_filename = LegacyNaming::encode(seed_meta)?;
         let phrase_filename = LegacyNaming::encode(phrase_meta)?;
 
-        crate::Keystore::store_data(
-            &seed_filename,
-            seed,
-            &file_path,
+        KeystoreBuilder::new_encrypt(
+            file_path,
             password,
+            seed,
+            rand::thread_rng(),
             algorithm.clone(),
-        )?;
-        crate::Keystore::store_data(&phrase_filename, phrase, &file_path, password, algorithm)?;
+            &seed_filename,
+        )
+        .save()?;
+
+        KeystoreBuilder::new_encrypt(
+            file_path,
+            password,
+            phrase,
+            rand::thread_rng(),
+            algorithm,
+            &phrase_filename,
+        )
+        .save()?;
         Ok(())
     }
 

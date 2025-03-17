@@ -49,8 +49,8 @@ impl AnnouncementEntity {
     }
 
     /// 辅助函数：构造字段的 CASE 语句
-    fn append_case<'a, 'b, F, T>(
-        query_builder: &'a mut sqlx::QueryBuilder<'b, sqlx::Sqlite>,
+    fn append_case<'b, F, T>(
+        query_builder: &mut sqlx::QueryBuilder<'b, sqlx::Sqlite>,
         field_name: &str,
         reqs: &'b [CreateAnnouncementVo],
         value_extractor: F,

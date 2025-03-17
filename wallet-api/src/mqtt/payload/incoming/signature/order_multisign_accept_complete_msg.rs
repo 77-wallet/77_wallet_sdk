@@ -71,7 +71,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-            let member = MultisigMemberDaoV1::find_records_by_id(&multi_account_id, pool.as_ref())
+            let member = MultisigMemberDaoV1::find_records_by_id(multi_account_id, pool.as_ref())
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
@@ -109,7 +109,7 @@ impl OrderMultiSignAcceptCompleteMsg {
     ) -> Result<(), crate::ServiceError> {
         let data = crate::notify::NotifyEvent::OrderMultiSignAcceptCompleteMsg(
             OrderMultiSignAcceptCompleteMsgFrontend {
-                status: status as i8,
+                status,
                 multisign_address: address.to_string(),
                 address_list,
                 accept_status,

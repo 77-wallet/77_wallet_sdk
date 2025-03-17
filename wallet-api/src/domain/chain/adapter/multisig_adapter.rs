@@ -503,7 +503,7 @@ impl MultisigAdapter {
             Self::Tron(chain) => {
                 let mut expiration = req.expiration.unwrap_or(1) * 3600;
                 if expiration == 86400 {
-                    expiration = expiration - 61
+                    expiration -= 61
                 }
 
                 if let Some(token) = token {
@@ -757,7 +757,7 @@ impl MultisigAdapter {
                     let params =
                         tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;
 
-                    let to = (!queue.to_addr.is_empty()).then(|| queue.to_addr.as_str());
+                    let to = (!queue.to_addr.is_empty()).then_some(queue.to_addr.as_str());
 
                     chain
                         .provider

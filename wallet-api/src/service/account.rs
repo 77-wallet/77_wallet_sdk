@@ -1,6 +1,6 @@
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{account::AccountEntity, assets::AssetsId, wallet::WalletEntity},
+    entities::{account::AccountEntity, assets::AssetsId},
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
         coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
@@ -89,7 +89,7 @@ impl AccountService {
         self,
         wallet_address: &str,
         wallet_password: &str,
-        derive_password: Option<String>,
+        // derive_password: Option<String>,
         derivation_path: Option<String>,
         index: Option<i32>,
         name: &str,
@@ -144,7 +144,6 @@ impl AccountService {
         // 获取该账户的最大索引，并加一
         let account_index_map = if let Some(index) = index {
             let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-            tracing::warn!("account index: {:#?}", index);
             if tx.has_account_id(&wallet.address, index.account_id).await? {
                 return Err(crate::ServiceError::Business(
                     crate::BusinessError::Account(crate::AccountError::AlreadyExist),
@@ -240,21 +239,9 @@ impl AccountService {
             algorithm,
         )?;
 
-        // let accounts = tx.list().await?;
-
-        // let mut device_bind_address_req =
-        //     wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
-        // for account in accounts {
-        //     device_bind_address_req.push(&account.chain_code, &account.address);
-        // }
-
         let device_bind_address_task_data =
             domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
-        // let device_bind_address_task_data = crate::domain::task_queue::BackendApiTaskData::new(
-        //     wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
-        //     &device_bind_address_req,
-        // )?;
         let uid = wallet.uid;
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new()
@@ -288,7 +275,7 @@ impl AccountService {
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
         let seed = wallet_tree::api::KeystoreApi::load_seed(
-            &wallet_tree,
+            &*wallet_tree,
             &root_dir,
             wallet_address,
             password,
@@ -409,11 +396,6 @@ impl AccountService {
         let deleted =
             AccountRepoTrait::physical_delete(&mut tx, wallet_address, account_id).await?;
 
-        // domain::multisig::MultisigDomain::unbind_deleted_account_multisig_relations(
-        //     &deleted, &device.sn,
-        // )
-        // .await?;
-
         let device_unbind_address_task =
             domain::app::DeviceDomain::gen_device_unbind_all_address_task_data(
                 &deleted,
@@ -429,30 +411,10 @@ impl AccountService {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        // let subs_path = dirs.get_subs_dir(wallet_address)?;
-
         wallet_tree.io().delete_account(
             &AccountIndexMap::from_account_id(account_id)?,
             &dirs.get_subs_dir(wallet_address)?,
         )?;
-
-        // for del in deleted {
-        //     wallet_tree.delete_subkey(
-        //         // naming,
-        //         wallet_address,
-        //         &del.address,
-        //         &del.chain_code,
-        //         &subs_path,
-        //         password,
-        //     )?;
-        //     // wallet_tree.delete_subkey(
-        //     //     wallet_address,
-        //     //     &subs_path,
-        //     //     &del.address,
-        //     //     &del.chain_code.as_str().try_into()?,
-        //     // )?;
-        //     req.push(&del.chain_code, &del.address);
-        // }
 
         Ok(())
     }
@@ -462,20 +424,14 @@ impl AccountService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::ServiceError> {
-        // let dirs = crate::manager::Context::get_global_dirs()?;
         WalletDomain::validate_password(old_password).await?;
-        tracing::info!("验证密码");
         let tx = &mut self.repo;
-        // let account_list = tx.list().await?;
 
         let indices = tx.get_all_account_indices().await?;
         let wallet_list = tx.wallet_list().await?;
 
-        tracing::info!("wallet_list: {:?}", wallet_list);
-        // tracing::info!("account_list: {:?}", account_list);
         for wallet in wallet_list {
             AccountDomain::set_root_password(&wallet.address, old_password, new_password).await?;
-            tracing::info!("设置 root 密码");
             for index in &indices {
                 let account_index_map = AccountIndexMap::from_account_id(*index)?;
                 AccountDomain::set_account_password(
@@ -485,19 +441,10 @@ impl AccountService {
                     new_password,
                 )
                 .await?;
-                tracing::info!("设置 account 密码");
-                // self.set_sub_password(
-                //     &account.address,
-                //     &account.chain_code,
-                //     old_password,
-                //     new_password,
-                // )
-                // .await?;
             }
         }
 
         AccountDomain::set_verify_password(new_password).await?;
-        tracing::info!("设置 verify 密码");
         Ok(())
     }
 
@@ -562,12 +509,8 @@ impl AccountService {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<crate::response_vo::account::GetAccountPrivateKeyRes, crate::ServiceError> {
+        WalletDomain::validate_password(password).await?;
         let tx = &mut self.repo;
-
-        // let Some(device) = tx.get_device_info().await? else {
-        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        // };
-        // WalletDomain::validate_password(password).await?;
 
         let account_list = tx
             .account_list_by_wallet_address_and_account_id_and_chain_codes(
@@ -579,7 +522,6 @@ impl AccountService {
         let chains = tx.get_chain_list().await?;
 
         let mut res = Vec::new();
-        tracing::info!("account_list: {}", account_list.len());
 
         let account_index_map = AccountIndexMap::from_account_id(account_id)?;
 
@@ -590,12 +532,6 @@ impl AccountService {
         )
         .await?;
         for account in account_list {
-            // let private_key = crate::domain::account::open_account_pk_with_password(
-            //     &account.chain_code,
-            //     &account.address,
-            //     password,
-            // )
-            // .await?;
             if let Some((_, pk)) = data.iter().find(|(meta, _)| {
                 meta.chain_code == account.chain_code
                     && meta.address == account.address

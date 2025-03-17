@@ -145,7 +145,7 @@ impl TaskManager {
                 delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为 120 秒（120,000 毫秒）
                 let jitter =
                     std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
-                delay = delay + jitter.as_millis() as u64; // 将延迟加上抖动
+                delay += jitter.as_millis() as u64; // 将延迟加上抖动
                 retry_count += 1;
                 tracing::debug!("[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}");
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
@@ -286,18 +286,18 @@ async fn handle_backend_api_task(
 
 async fn handle_mqtt_task(task: Box<MqttTask>, id: &str) -> Result<(), crate::ServiceError> {
     match *task {
-        MqttTask::OrderMultiSignAccept(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignCreated(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignCancel(data) => data.exec(&id).await?,
-        MqttTask::MultiSignTransAccept(data) => data.exec(&id).await?,
-        MqttTask::MultiSignTransCancel(data) => data.exec(&id).await?,
-        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(&id).await?,
-        MqttTask::AcctChange(data) => data.exec(&id).await?,
-        MqttTask::Init(data) => data.exec(&id).await?,
-        MqttTask::BulletinMsg(data) => data.exec(&id).await?,
-        MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignCreated(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignCancel(data) => data.exec(id).await?,
+        MqttTask::MultiSignTransAccept(data) => data.exec(id).await?,
+        MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
+        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
+        MqttTask::AcctChange(data) => data.exec(id).await?,
+        MqttTask::Init(data) => data.exec(id).await?,
+        MqttTask::BulletinMsg(data) => data.exec(id).await?,
+        MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(id).await?,
         // MqttTask::RpcChange(data) => data.exec(&id).await?,
     }
     Ok(())

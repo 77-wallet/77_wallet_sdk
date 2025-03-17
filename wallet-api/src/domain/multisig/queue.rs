@@ -223,7 +223,7 @@ impl MultisigQueueDomain {
 
     // Report the successful transaction queue back to the backend to update the raw data.
     pub async fn update_raw_data(queue_id: &str, pool: DbPool) -> Result<(), crate::ServiceError> {
-        let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool)
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
             .await?
             .to_string()?;
 

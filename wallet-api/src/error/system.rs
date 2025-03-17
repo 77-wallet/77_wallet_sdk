@@ -15,7 +15,7 @@ pub enum SystemError {
     #[error("Frontend notify sender not set")]
     FrontendNotifySenderUnset,
     #[error("Message wrong [biz_type]: {0:?}, [body]: {1:?}")]
-    MessageWrong(BizType, Body),
+    MessageWrong(BizType, Box<Body>),
     #[error("Mqtt client not init")]
     MqttClientNotInit,
     #[error("device not init")]

@@ -135,7 +135,7 @@ impl OrderMultiSignAccept {
         tracing::info!(
             event_name = %event_name,
             "Sync multisig for account {id}");
-        Self::send_system_notification(msg_id, name, address, &id).await?;
+        Self::send_system_notification(msg_id, name, address, id).await?;
 
         Self::send_to_frontend(
             name,

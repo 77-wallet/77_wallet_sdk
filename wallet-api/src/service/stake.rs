@@ -260,14 +260,11 @@ impl StackService {
     ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
         let mut result = Vec::new();
 
-        let res = chain
-            .provider
-            .delegated_resource(owner_address, &to)
-            .await?;
+        let res = chain.provider.delegated_resource(owner_address, to).await?;
 
         for delegate in res.delegated_resource {
             if let Some(types) = &resource_type {
-                if types.to_ascii_lowercase() == "bandwidth"
+                if types.eq_ignore_ascii_case("bandwidth")
                     && delegate.frozen_balance_for_bandwidth > 0
                 {
                     let resource_type = ops::stake::ResourceType::BANDWIDTH;
@@ -283,8 +280,7 @@ impl StackService {
                     result.push(r);
                 }
 
-                if types.to_ascii_lowercase() == "energy" && delegate.frozen_balance_for_energy > 0
-                {
+                if types.eq_ignore_ascii_case("energy") && delegate.frozen_balance_for_energy > 0 {
                     let resource_type = ops::stake::ResourceType::ENERGY;
                     let amount = delegate.value_trx(resource_type);
                     let resource_value = resource.resource_value(resource_type, amount)?;
@@ -353,17 +349,17 @@ impl StackService {
             ops::stake::ResourceType::BANDWIDTH => "",
             ops::stake::ResourceType::ENERGY => "ENERGY",
         };
-        let owner = account.frozen_v2_owner(&type_str);
+        let owner = account.frozen_v2_owner(type_str);
         resource.owner_freeze = TrxResource::new(owner + delegate, price);
 
         resource.can_unfreeze = owner;
 
         // 解冻中的金额
-        let un_freeze = account.un_freeze_amount(&type_str);
+        let un_freeze = account.un_freeze_amount(type_str);
         resource.un_freeze = TrxResource::new(un_freeze, price);
 
         // 可提取的
-        let can_withdraw = account.can_withdraw_unfreeze_amount(&type_str);
+        let can_withdraw = account.can_withdraw_unfreeze_amount(type_str);
         resource.pending_withdraw = TrxResource::new(can_withdraw, price);
 
         // 价格
@@ -506,11 +502,9 @@ impl StackService {
                     value,
                 ))
             }
-            _ => {
-                return Err(crate::BusinessError::Stake(
-                    crate::StakeError::UnSupportBillKind,
-                ))?
-            }
+            _ => Err(crate::BusinessError::Stake(
+                crate::StakeError::UnSupportBillKind,
+            ))?,
         }
     }
 }
@@ -957,7 +951,7 @@ impl StackService {
         let mut times = vec![];
         for address in to.iter() {
             let time = self
-                .min_time_for_delegate(&from, &address, resource_type, now)
+                .min_time_for_delegate(&from, address, resource_type, now)
                 .await?;
 
             if let Some(time) = time {
@@ -965,7 +959,7 @@ impl StackService {
             }
         }
 
-        let time = times.iter().min().unwrap_or(&0).clone();
+        let time = *times.iter().min().unwrap_or(&0);
 
         let days = if time > 0 {
             let diff_days = (time - now) as f64 / 86400000.0;
@@ -1028,7 +1022,7 @@ impl StackService {
             .await?;
 
         // check balance
-        let balance = self.chain.balance(&owner_address, None).await?;
+        let balance = self.chain.balance(owner_address, None).await?;
         let fee = txs
             .iter()
             .map(|item| item.conusmer.transaction_fee_i64())
@@ -1040,7 +1034,7 @@ impl StackService {
             ))?;
         }
 
-        let key = open_subpk_with_password(chain_code::TRON, owner_address, &password).await?;
+        let key = open_subpk_with_password(chain_code::TRON, owner_address, password).await?;
         let res = self.batch_exec(owner_address, key, bill_kind, txs).await?;
 
         let resource_value = resource.resource_value(resource_type, amount)?;
@@ -1189,7 +1183,7 @@ impl StackService {
         let accounts = self.page_address(page, page_size, &delegate_other.to_accounts);
         for to in accounts {
             let res = self
-                .process_delegate(&chain, &resource_type, &owner_address, &to, &resource)
+                .process_delegate(&chain, &resource_type, owner_address, &to, &resource)
                 .await?;
             data.extend(res);
         }
@@ -1204,7 +1198,7 @@ impl StackService {
         Ok(res)
     }
 
-    fn page_address(&self, page: i64, page_size: i64, accounts: &Vec<String>) -> Vec<String> {
+    fn page_address(&self, page: i64, page_size: i64, accounts: &[String]) -> Vec<String> {
         let start = (page) * page_size;
         let end = ((page + 1) * page_size) as usize;
 
@@ -1268,7 +1262,7 @@ impl StackService {
             "address": address
         });
         let res = backhand
-            .post_request::<_, SystemEnergyResp>("delegate/resource/limit", req, &aes_cbc_cryptor)
+            .post_request::<_, SystemEnergyResp>("delegate/resource/limit", req, aes_cbc_cryptor)
             .await?;
 
         Ok(res)

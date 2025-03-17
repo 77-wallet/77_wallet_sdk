@@ -126,8 +126,7 @@ impl ChainDomain {
 
             if local_backend_nodes
                 .iter()
-                .find(|node| node.chain_code == chain.chain_code)
-                .is_some()
+                .any(|node| node.chain_code == chain.chain_code)
             {
                 input.push(
                     wallet_database::entities::chain::ChainCreateVo::new(
@@ -140,8 +139,7 @@ impl ChainDomain {
                 );
             } else if default_nodes
                 .iter()
-                .find(|node| node.chain_code == chain.chain_code)
-                .is_some()
+                .any(|node| node.chain_code == chain.chain_code)
             {
                 input.push(
                     wallet_database::entities::chain::ChainCreateVo::new(

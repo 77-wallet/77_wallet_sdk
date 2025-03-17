@@ -18,7 +18,7 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
 
     let client_id = "test_data";
     // 获取项目根目录
-    let storage_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join(&client_id);
+    let storage_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join(client_id);
 
     // 创建测试目录
     if !storage_dir.exists() {
