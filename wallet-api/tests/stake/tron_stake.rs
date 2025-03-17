@@ -20,6 +20,7 @@ async fn test_freeze_fee() {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         resource: "bandwidth".to_string(),
         frozen_balance: 50,
+        signer: None,
     };
 
     let bill_kind = BillKind::FreezeBandwidth.to_i8() as i64;
@@ -37,6 +38,7 @@ async fn test_freeze() {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         resource: "bandwidth".to_string(),
         frozen_balance: 2895,
+        signer: None,
     };
     let password = "123456".to_string();
 
@@ -52,6 +54,7 @@ async fn test_unfreeze_fee() {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         resource: "bandwidth".to_string(),
         unfreeze_balance: 50,
+        signer: None,
     };
 
     let bill_kind = BillKind::UnFreezeBandwidth.to_i8() as i64;
@@ -70,6 +73,7 @@ async fn test_unfreeze() {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         resource: "energy".to_string(),
         unfreeze_balance: 10,
+        signer: None,
     };
 
     let password = "123456".to_string();
@@ -102,6 +106,7 @@ async fn test_cancel_all_fee() {
 
     let req = CancelAllUnFreezeReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        signer: None,
     };
 
     let bill_kind = BillKind::CancelAllUnFreeze.to_i8() as i64;
@@ -117,6 +122,7 @@ async fn test_cancel_all_unfreeze() {
 
     let req = CancelAllUnFreezeReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        signer: None,
     };
     let password = "123456".to_string();
 
@@ -130,6 +136,7 @@ async fn test_withdraw() {
 
     let req = WithdrawBalanceReq {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        signer: None,
     };
 
     let password = "123456".to_string();

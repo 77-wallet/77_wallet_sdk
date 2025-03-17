@@ -1,3 +1,4 @@
+use crate::mqtt::payload::incoming::transaction::MultiSignTransAccept;
 use wallet_database::entities::bill::BillKind;
 
 // biz_type = CONFIRMATION
@@ -23,6 +24,30 @@ pub struct ConfirmationFrontend {
     pub notes: String,
     pub bill_kind: BillKind,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+}
+impl TryFrom<&MultiSignTransAccept> for ConfirmationFrontend {
+    type Error = crate::ServiceError;
+
+    fn try_from(value: &MultiSignTransAccept) -> Result<Self, crate::ServiceError> {
+        let value = &value.queue;
+        Ok(Self {
+            id: value.id.to_string(),
+            from_addr: value.from_addr.to_string(),
+            to_addr: value.to_addr.to_string(),
+            value: value.value.to_string(),
+            expiration: value.expiration,
+            symbol: value.symbol.to_string(),
+            chain_code: value.chain_code.to_string(),
+            token_addr: value.token_addr.clone(),
+            msg_hash: value.msg_hash.to_string(),
+            tx_hash: value.tx_hash.to_string(),
+            raw_data: value.raw_data.to_string(),
+            status: value.status,
+            notes: value.notes.to_string(),
+            bill_kind: BillKind::try_from(value.transfer_type)?,
+            created_at: value.created_at.clone(),
+        })
+    }
 }
 
 // biz_type = MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG

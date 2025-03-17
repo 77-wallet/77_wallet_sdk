@@ -1,9 +1,10 @@
 use super::adapter::TransactionAdapter;
-use crate::request::transaction;
+use crate::request::transaction::{self, Signer};
 use wallet_chain_interact::{
     eth,
     sol::{self, SolFeeSetting},
     tron::{protocol::account::AccountResourceDetail, TronChain},
+    types::ChainPrivateKey,
 };
 use wallet_database::{
     dao::bill::BillDao,
@@ -111,11 +112,12 @@ impl ChainTransaction {
                 crate::BillError::ExistsUncomfrimationTx,
             ))?;
         };
-        // get private_key
-        let private_key = crate::domain::account::open_subpk_with_password(
-            &params.base.chain_code,
+
+        let private_key = ChainTransaction::get_key(
             &params.base.from,
+            &params.base.chain_code,
             &params.password,
+            &params.signer,
         )
         .await?;
 
@@ -297,6 +299,25 @@ impl ChainTransaction {
             ))?;
         }
         Ok(transfer_amount)
+    }
+
+    // 如果传入了signer 则使用signer的私钥
+    pub async fn get_key(
+        from: &str,
+        chain_code: &str,
+        password: &str,
+        signer: &Option<Signer>,
+    ) -> Result<ChainPrivateKey, crate::ServiceError> {
+        let address = if let Some(signer) = signer {
+            signer.address.clone()
+        } else {
+            from.to_string()
+        };
+
+        let key = crate::domain::account::open_subpk_with_password(chain_code, &address, &password)
+            .await?;
+
+        Ok(key)
     }
 
     // 后期加入缓存

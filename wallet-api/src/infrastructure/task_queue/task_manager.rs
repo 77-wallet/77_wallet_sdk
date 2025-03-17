@@ -57,16 +57,11 @@ impl TaskManager {
         // 在 TaskManager 的方法中启动
         tokio::spawn(async move {
             let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
-            // let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
-            // let mut first = true;
-            // loop {
-            // interval.tick().await;
+
             let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
             if let Err(e) = Self::check_handle(repo, &running_tasks).await {
                 tracing::error!("task check error: {}", e);
-                // continue;
-                // }
             }
         });
     }
@@ -74,7 +69,6 @@ impl TaskManager {
     /// 检查并发送任务的处理函数
     async fn check_handle(
         mut repo: wallet_database::repositories::ResourcesRepo,
-        // first: &mut bool,
         running_tasks: &RunningTasks,
     ) -> Result<(), crate::ServiceError> {
         let manager = crate::manager::Context::get_global_task_manager()?;
@@ -82,12 +76,10 @@ impl TaskManager {
         repo.delete_old(30).await?;
         let mut failed_queue = repo.failed_task_queue().await?;
         let pending_queue = repo.pending_task_queue().await?;
-        // if *first {
         let running_queue = repo.running_task_queue().await?;
         failed_queue.extend(running_queue);
-        // *first = false;
-        // }
         failed_queue.extend(pending_queue);
+
         let mut tasks = Vec::new();
 
         // 获取当前正在运行的任务
@@ -286,19 +278,19 @@ async fn handle_backend_api_task(
 
 async fn handle_mqtt_task(task: Box<MqttTask>, id: &str) -> Result<(), crate::ServiceError> {
     match *task {
-        MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignCreated(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignCancel(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransAccept(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
-        MqttTask::AcctChange(data) => data.exec(id).await?,
-        MqttTask::Init(data) => data.exec(id).await?,
-        MqttTask::BulletinMsg(data) => data.exec(id).await?,
-        MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(id).await?,
-        // MqttTask::RpcChange(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignAccept(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignCreated(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignCancel(data) => data.exec(&id).await?,
+        MqttTask::MultiSignTransAccept(data) => data.exec(&id).await?,
+        MqttTask::MultiSignTransCancel(data) => data.exec(&id).await?,
+        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(&id).await?,
+        MqttTask::AcctChange(data) => data.exec(&id).await?,
+        MqttTask::Init(data) => data.exec(&id).await?,
+        MqttTask::BulletinMsg(data) => data.exec(&id).await?,
+        MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(&id).await?,
+        MqttTask::PermissionAccept(data) => data.exec(&id).await?,
     }
     Ok(())
 }
@@ -319,6 +311,9 @@ async fn handle_common_task(
         CommonTask::RecoverMultisigAccountData(uid) => {
             domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid, None).await?;
             MultisigQueueDomain::recover_all_queue_data(&uid).await?;
+        }
+        CommonTask::RecoverPermission(uid) => {
+            domain::permission::PermissionDomain::recover_permission(vec![uid]).await?;
         }
         CommonTask::SyncNodesAndLinkToChains(data) => {
             let mut repo = RepositoryFactory::repo(pool.clone());

@@ -584,6 +584,7 @@ impl MultisigAccountService {
             base,
             password: password.to_string(),
             fee_setting: payer.fee_setting.unwrap_or_default(),
+            signer: None,
         };
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&payer.chain_code).await?;

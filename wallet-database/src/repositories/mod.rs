@@ -10,6 +10,7 @@ pub mod exchange_rate;
 pub mod multisig_account;
 pub mod multisig_queue;
 pub mod node;
+pub mod permission;
 pub mod stake;
 pub mod system_notification;
 pub mod task_queue;

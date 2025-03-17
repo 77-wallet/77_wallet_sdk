@@ -1,5 +1,7 @@
 use sqlx::types::chrono::{DateTime, Utc};
 
+use super::permission_user::PermissionUserEntity;
+
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
 pub struct MultisigSignatureEntity {
     pub id: i64,
@@ -28,6 +30,10 @@ impl MultisigSignatureEntities {
         self.0
             .iter()
             .any(|s| s.address == address && s.status == MultisigSignatureStatus::Approved.to_i8())
+    }
+
+    pub fn need_signed_num(&self, threshold: usize) -> usize {
+        (threshold as usize - self.0.len()).max(0)
     }
 }
 
@@ -85,12 +91,32 @@ impl NewSignatureEntity {
         }
     }
 
+    pub fn new_approve(queue_id: &str, address: &str, signature: String) -> Self {
+        NewSignatureEntity {
+            queue_id: queue_id.to_string(),
+            address: address.to_string(),
+            signature,
+            status: MultisigSignatureStatus::Approved,
+        }
+    }
+
     pub fn new_no_queue_id(address: &str, signature: &str) -> Self {
         NewSignatureEntity {
             queue_id: "".to_string(),
             address: address.to_string(),
             signature: signature.to_string(),
             status: MultisigSignatureStatus::Approved,
+        }
+    }
+}
+
+impl From<(&PermissionUserEntity, &str)> for NewSignatureEntity {
+    fn from(value: (&PermissionUserEntity, &str)) -> Self {
+        NewSignatureEntity {
+            queue_id: value.1.to_string(),
+            address: value.0.address.clone(),
+            signature: String::new(),
+            status: MultisigSignatureStatus::UnSigned,
         }
     }
 }

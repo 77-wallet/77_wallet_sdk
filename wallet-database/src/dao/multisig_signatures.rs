@@ -11,7 +11,7 @@ impl MultisigSignatureDaoV1 {
         params: &NewSignatureEntity,
         pool: crate::DbPool,
     ) -> Result<(), crate::DatabaseError> {
-        let queue = MultisigSignatureDaoV1::find_by_address_and_queue_id(
+        let queue = MultisigSignatureDaoV1::find_signature(
             &params.queue_id,
             &params.address,
             pool.as_ref(),
@@ -75,7 +75,7 @@ impl MultisigSignatureDaoV1 {
     }
 
     // 某一个地址是否进行了签名
-    pub async fn find_by_address_and_queue_id<'a, E>(
+    pub async fn find_signature<'a, E>(
         queue_id: &str,
         address: &str,
         pool: E,

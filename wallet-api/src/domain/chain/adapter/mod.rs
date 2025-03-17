@@ -6,6 +6,8 @@ use wallet_types::constant::chain_code;
 mod multisig_adapter;
 use super::rpc_need_header;
 pub use multisig_adapter::*;
+pub mod tron_tx;
+
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 const TIME_OUT: u64 = 30;

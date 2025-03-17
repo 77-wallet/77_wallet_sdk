@@ -13,13 +13,16 @@ pub mod endpoint {
         pub const SIGNED_ORDER_UPDATE_SIGNED_HASH: &str = "signed/order/updateSignedHash";
 
         // Create a multisig transaction queue
-        pub const SIGNED_TRAN_CREATE: &str = "signed/trans/create";
+        // pub const SIGNED_TRAN_CREATE: &str = "signed/trans/create";
+        pub const SIGNED_TRAN_CREATE: &str = "signed/trans/v2/create";
 
         // Sign a multisig transaction
         pub const SIGNED_TRAN_ACCEPT: &str = "signed/trans/accept";
 
         // Report the transaction hash of the executed multisig to the backend
         pub const SIGNED_TRAN_UPDATE_TRANS_HASH: &str = "signed/trans/updateTransdHash";
+
+        pub const PERMISSION_ACCEPT: &str = "permission/change";
     }
 
     pub const DEVICE_INIT: &str = "device/init";
@@ -47,43 +50,8 @@ pub mod endpoint {
     pub const ADDRESS_FIND_MULTI_SIGNED_DETAILS: &str = "address/findMultiSignedDetails";
 }
 
-// /// 测试环境
-// #[cfg(feature = "test")]
-// pub const BASE_URL: &str = "https://api.puke668.top";
-// #[cfg(feature = "test")]
-// pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
-
-// //开发环境
-// // #[cfg(not(feature = "test"))]
-// // pub const BASE_URL: &str = "https://api.puke668.top";
-// // #[cfg(not(feature = "test"))]
-// // pub const MQTT_URL: &str = "mqtt://126.214.108.58:11883";
-
-// #[cfg(not(feature = "test"))]
-// pub const BASE_URL: &str = "https://walletapi.puke668.top";
-// #[cfg(not(feature = "test"))]
-// pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
-
-// 代理的全局rpc节点
+/// 代理的全局rpc节点
 pub const BASE_RPC_URL: &str = "apprpc.88ai.fun";
-
-// // 开发环境
-// #[cfg(feature = "dev")]
-// pub const BASE_URL: &str = "https://walletapi.puke668.top";
-// #[cfg(feature = "dev")]
-// pub const MQTT_URL: &str = "mqtt://100.106.144.126:1883";
-
-// // 测试环境
-// #[cfg(feature = "test")]
-// pub const BASE_URL: &str = "https://test-api.puke668.top";
-// #[cfg(feature = "test")]
-// pub const MQTT_URL: &str = "mqtt://126.214.108.58:21883";
-
-// // 生产环境
-// #[cfg(feature = "prod")]
-// pub const BASE_URL: &str = "https://api.77wallet.org";
-// #[cfg(feature = "prod")]
-// pub const MQTT_URL: &str = "mqtt://8.210.206.245:10883";
 
 cfg_if::cfg_if! {
     // 默认使用开发环境 (dev)

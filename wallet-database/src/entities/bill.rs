@@ -121,6 +121,8 @@ pub enum BillKind {
     Vote = 20,
     // 奖励提取
     WithdrawReward = 21,
+    // 更新权限
+    UpdatgePermission = 22,
 }
 impl Serialize for BillKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -173,6 +175,7 @@ impl BillKind {
             ],
             BillKind::Vote => vec![BillKind::Vote.to_i8()],
             BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
+            BillKind::UpdatgePermission => vec![BillKind::UpdatgePermission.to_i8()],
         }
     }
 
@@ -222,6 +225,7 @@ impl TryFrom<i8> for BillKind {
             19 => Ok(BillKind::BatchUnDelegateEnergy),
             20 => Ok(BillKind::Vote),
             21 => Ok(BillKind::WithdrawReward),
+            22 => Ok(BillKind::UpdatgePermission),
             _ => Err(crate::Error::Other(format!(
                 "Invalid value for TxKind : {}",
                 value
@@ -344,7 +348,7 @@ impl NewBillEntity {
         }
     }
 
-    pub fn new_signed_bill(hash: String, from: String, chain_code: String, symbol: String) -> Self {
+    pub fn new_signed_bill(hash: String, from: String, chain_code: String) -> Self {
         // TODO 现在sol 链默认确认中的手续费 0.000005
         Self {
             hash,
@@ -352,7 +356,7 @@ impl NewBillEntity {
             to: "".to_string(),
             token: None,
             chain_code,
-            symbol,
+            symbol: "SOL".to_string(),
             status: 1,
             value: 0.0,
             transaction_fee: "0.000005".to_string(),

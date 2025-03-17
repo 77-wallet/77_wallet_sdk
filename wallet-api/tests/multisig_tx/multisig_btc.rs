@@ -1,8 +1,9 @@
-use crate::multisig_tx::get_manager;
 use wallet_api::{
     response_vo::{transaction::TransferParams, MultisigQueueFeeParams},
     MemberVo,
 };
+
+use crate::get_manager;
 
 #[tokio::test]
 async fn test_create_multisig_account() {
@@ -91,13 +92,13 @@ async fn test_create_transfer() {
         expiration: Some(1),
         chain_code: "btc".to_owned(),
         symbol: "BTC".to_owned(),
-        password,
         notes: Some("salary".to_string()),
         spend_all: true,
+        signer: None,
     };
 
     // 创建交易
-    let res = manager.create_multisig_queue(params).await;
+    let res = manager.create_multisig_queue(params, password).await;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("tx info of = {:?}", res);
 }

@@ -1,7 +1,8 @@
 use crate::{
     entities::multisig_queue::{
-        fail_reason::EXPIRED, MultisigQueueEntity, MultisigQueueStatus,
-        MultisigQueueWithAccountEntity, NewMultisigQueueEntity,
+        fail_reason::{EXPIRED, PERMISSION_CHANGE},
+        MultisigQueueEntity, MultisigQueueSimpleEntity, MultisigQueueStatus,
+        NewMultisigQueueEntity,
     },
     pagination::Pagination,
 };
@@ -21,8 +22,8 @@ impl MultisigQueueDaoV1 {
     {
         let sql = r#"Insert into multisig_queue 
             (id, from_addr,to_addr,value,expiration,symbol,chain_code,token_addr,msg_hash,
-             tx_hash,raw_data,status,notes,fail_reason,created_at,account_id,transfer_type)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             tx_hash,raw_data,status,notes,fail_reason,created_at,account_id,transfer_type,permission_id)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
                 on conflict (id)
                 do update set
                     is_del = excluded.is_del,
@@ -46,7 +47,8 @@ impl MultisigQueueDaoV1 {
             .bind(&params.fail_reason)
             .bind(params.create_at.to_rfc3339_opts(SecondsFormat::Secs, true))
             .bind(&params.account_id)
-            .bind(params.transfer_type.to_i8())
+            .bind(&params.transfer_type.to_i8())
+            .bind(&params.permission_id)
             .fetch_all(exec)
             .await?;
 
@@ -68,10 +70,25 @@ impl MultisigQueueDaoV1 {
         Ok(res)
     }
 
+    pub async fn find_with_extra<'a, E>(
+        id: &str,
+        pool: E,
+    ) -> Result<Option<MultisigQueueSimpleEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"select * from multisig_queue where id = ?"#;
+        let res = sqlx::query_as::<_, MultisigQueueSimpleEntity>(sql)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+        Ok(res)
+    }
+
     pub async fn find_by_id_with_account<'a, E>(
         id: &str,
         pool: E,
-    ) -> Result<Option<MultisigQueueWithAccountEntity>, crate::DatabaseError>
+    ) -> Result<Option<MultisigQueueSimpleEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -80,7 +97,7 @@ impl MultisigQueueDaoV1 {
                 from multisig_queue as q  
                 join multisig_account a on q.account_id = a.id
                 where q.id = ?"#;
-        let res = sqlx::query_as::<_, MultisigQueueWithAccountEntity>(sql)
+        let res = sqlx::query_as::<_, MultisigQueueSimpleEntity>(sql)
             .bind(id)
             .fetch_optional(pool)
             .await?;
@@ -95,7 +112,7 @@ impl MultisigQueueDaoV1 {
         page: i64,
         page_size: i64,
         pool: Arc<Pool<Sqlite>>,
-    ) -> Result<Pagination<MultisigQueueWithAccountEntity>, crate::DatabaseError> {
+    ) -> Result<Pagination<MultisigQueueSimpleEntity>, crate::DatabaseError> {
         let mut sql = "SELECT q.*, a.name, a.threshold, a.member_num, a.owner,a.initiator_addr 
                    FROM multisig_queue AS q 
                    JOIN multisig_account AS a ON q.account_id = a.id"
@@ -126,7 +143,48 @@ impl MultisigQueueDaoV1 {
         }
 
         sql.push_str(" ORDER BY q.created_at DESC");
-        let pagination = Pagination::<MultisigQueueWithAccountEntity>::init(page, page_size);
+        let pagination = Pagination::<MultisigQueueSimpleEntity>::init(page, page_size);
+
+        pagination.page(&*pool, &sql).await
+    }
+
+    // 0 待签名 1已签名 2待执行，确认中，4成功 5失败;待执行需要查询2中状态
+    pub async fn lists(
+        from: Option<&str>,
+        chain_code: Option<&str>,
+        status: i32,
+        page: i64,
+        page_size: i64,
+        pool: Arc<Pool<Sqlite>>,
+    ) -> Result<Pagination<MultisigQueueSimpleEntity>, crate::DatabaseError> {
+        let mut sql = "SELECT * FROM multisig_queue".to_string();
+
+        let mut conditions = Vec::new();
+        if status == 2 {
+            conditions.push(format!(
+                "status in ({},{}) ",
+                MultisigQueueStatus::PendingExecution.to_i8(),
+                MultisigQueueStatus::InConfirmation.to_i8()
+            ));
+        } else {
+            conditions.push(format!("status = {}", status));
+        }
+
+        if let Some(from_addr) = from {
+            conditions.push(format!("from_addr = '{}'", from_addr));
+        }
+
+        if let Some(chain) = chain_code {
+            conditions.push(format!("chain_code = '{}'", chain));
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+
+        sql.push_str(" ORDER BY created_at DESC");
+        let pagination = Pagination::<MultisigQueueSimpleEntity>::init(page, page_size);
 
         pagination.page(&*pool, &sql).await
     }
@@ -339,5 +397,23 @@ impl MultisigQueueDaoV1 {
             .await?;
 
         Ok(res)
+    }
+
+    pub async fn permission_fail<'a, E>(address: &str, exec: E) -> Result<(), crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"update multisig_queue set status = ?,fail_reason = ? where status in (?,?,?) and from_addr = ?"#;
+
+        let _res = sqlx::query(sql)
+            .bind(MultisigQueueStatus::Fail.to_i8())
+            .bind(PERMISSION_CHANGE)
+            .bind(MultisigQueueStatus::PendingSignature.to_i8())
+            .bind(MultisigQueueStatus::HasSignature.to_i8())
+            .bind(MultisigQueueStatus::PendingExecution.to_i8())
+            .bind(address)
+            .execute(exec)
+            .await?;
+        Ok(())
     }
 }

@@ -188,7 +188,7 @@ impl BackendApi {
             "rawData":raw_data
         });
 
-        self.post_request::<_, ()>("/signed/trans/cancel", req, aes_cbc_cryptor)
+        self.post_request::<_, ()>("signed/trans/cancel", req, aes_cbc_cryptor)
             .await
     }
 

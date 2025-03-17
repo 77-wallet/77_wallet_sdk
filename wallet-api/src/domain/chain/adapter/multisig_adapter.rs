@@ -1,4 +1,4 @@
-use super::TIME_OUT;
+use super::{tron_tx, TIME_OUT};
 use crate::{
     dispatch,
     domain::{
@@ -16,16 +16,14 @@ use wallet_chain_interact::{
     btc::{self, MultisigSignParams},
     eth::{self, operations},
     sol::{self, operations::SolInstructionOperation},
-    tron::{
-        self,
-        operations::{TronConstantOperation, TronTxOperation},
-    },
+    tron::{self, operations::TronTxOperation},
     types::{self, ChainPrivateKey},
     BillResourceConsume,
 };
 use wallet_database::entities::{
     assets::AssetsEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+    permission::PermissionEntity,
 };
 use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::chain::ChainCode as ChainType;
@@ -49,10 +47,6 @@ impl MultisigAdapter {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         match chain_code {
             ChainType::Bitcoin => {
-                // let auth = wallet_chain_interact::btc::provider::RpcAuth {
-                //     user: "hello-bitcoin".to_string(),
-                //     password: "123456".to_string(),
-                // };
                 let config = chain::btc::provider::ProviderConfig {
                     rpc_url: chian_node.rpc_url.clone(),
                     rpc_auth: None,
@@ -402,14 +396,16 @@ impl MultisigAdapter {
         }
     }
 
-    pub async fn build_multisig_tx(
+    pub async fn build_multisig_with_account(
         &self,
         req: &TransferParams,
         account: &MultisigAccountEntity,
-        decimal: u8,
-        token: Option<String>,
+        assets: &AssetsEntity,
         key: ChainPrivateKey,
     ) -> Result<types::MultisigTxResp, crate::ServiceError> {
+        let decimal = assets.decimals as u8;
+        let token = assets.token_address();
+
         let value = ChainTransaction::check_min_transfer(&req.value, decimal)?;
 
         match self {
@@ -501,65 +497,47 @@ impl MultisigAdapter {
                 Ok(args.get_raw_data(pda, tx_hash)?)
             }
             Self::Tron(chain) => {
-                let mut expiration = req.expiration.unwrap_or(1) * 3600;
-                if expiration == 86400 {
-                    expiration -= 61
+                let balance = chain.balance(&req.from, token.clone()).await?;
+                if balance < value {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
                 }
 
-                if let Some(token) = token {
-                    let mut params = tron::operations::transfer::ContractTransferOpt::new(
-                        &token,
-                        &req.from,
-                        &req.to,
-                        value,
-                        req.notes.clone(),
-                    )?;
-                    // query balance and check balance
-                    let balance = chain.balance(&req.from, Some(token)).await?;
-                    if balance < value {
-                        return Err(crate::BusinessError::Chain(
-                            crate::ChainError::InsufficientBalance,
-                        ))?;
-                    }
+                tron_tx::build_build_tx(req, token, value, &chain, account.threshold as i64, None)
+                    .await
+            }
+        }
+    }
 
-                    let provider = chain.get_provider();
-                    let constant = params.constant_contract(provider).await?;
-                    let consumer = provider
-                        .contract_fee(constant, account.threshold as u8, &req.from)
-                        .await?;
-                    params.set_fee_limit(consumer);
+    // 权限构建交易队列
+    pub async fn build_multisig_with_permission(
+        &self,
+        req: &TransferParams,
+        p: &PermissionEntity,
+        assets: &AssetsEntity,
+    ) -> Result<types::MultisigTxResp, crate::ServiceError> {
+        let decimal = assets.decimals as u8;
+        let token = assets.token_address();
 
-                    Ok(chain
-                        .build_multisig_transaction(params, expiration as u64)
-                        .await?)
-                } else {
-                    let params = tron::operations::transfer::TransferOpt::new(
-                        &req.from,
-                        &req.to,
-                        value,
-                        req.notes.clone(),
-                    )?;
+        let value = ChainTransaction::check_min_transfer(&req.value, decimal)?;
 
-                    // let fee = chain
-                    //     .simulate_simple_fee(
-                    //         &req.from,
-                    //         &req.to,
-                    //         account.threshold as u8,
-                    //         params.clone(),
-                    //     )
-                    //     .await?;
-                    // let fee = unit::u256_from_str(&fee.transaction_fee_i64().to_string())?;
-                    let balance = chain.balance(&req.from, None).await?;
-                    if balance < value {
-                        return Err(crate::BusinessError::Chain(
-                            crate::ChainError::InsufficientBalance,
-                        ))?;
-                    }
-
-                    Ok(chain
-                        .build_multisig_transaction(params, expiration as u64)
-                        .await?)
+        match self {
+            Self::Tron(chain) => {
+                let balance = chain.balance(&req.from, token.clone()).await?;
+                if balance < value {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
                 }
+
+                let permission_id = Some(p.active_id);
+                tron_tx::build_build_tx(req, token, value, &chain, p.threshold, permission_id).await
+            }
+            _ => {
+                return Err(crate::BusinessError::Permisison(
+                    crate::PermissionError::UnSupprtPermissionChain,
+                ))?
             }
         }
     }

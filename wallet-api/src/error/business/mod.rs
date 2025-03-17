@@ -10,6 +10,7 @@ pub mod device;
 pub mod exchange_rate;
 pub mod multisig_account;
 pub mod multisig_queue;
+pub mod permission;
 pub mod stake;
 pub mod wallet;
 
@@ -43,6 +44,8 @@ pub enum BusinessError {
     ChainNode(#[from] chain_node::ChainNodeError),
     #[error("Config: error: {0}")]
     Config(#[from] config::ConfigError),
+    #[error("chain node: error: {0}")]
+    Permisison(#[from] permission::PermissionError),
 }
 
 impl BusinessError {
@@ -62,6 +65,7 @@ impl BusinessError {
             BusinessError::ExchangeRate(msg) => msg.get_status_code(),
             BusinessError::ChainNode(msg) => msg.get_status_code(),
             BusinessError::Config(msg) => msg.get_status_code(),
+            BusinessError::Permisison(msg) => msg.get_status_code(),
         }
     }
 }

@@ -4,18 +4,18 @@ use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
 use crate::domain::multisig::MultisigDomain;
+use crate::domain::multisig::MultisigQueueDomain;
 use crate::domain::stake::EstimateTxComsumer;
 use crate::domain::stake::StakeArgs;
 use crate::domain::stake::StakeDomain;
 use crate::error::business::stake::StakeError;
-use crate::infrastructure::task_queue;
 use crate::manager::Context;
-use crate::mqtt::payload::incoming::transaction::MultiSignTransAccept;
 use crate::notify::event::other::Process;
 use crate::notify::event::other::TransactionProcessFrontend;
 use crate::notify::FrontendNotifyEvent;
 use crate::notify::NotifyEvent;
 use crate::request::stake;
+use crate::request::transaction::Signer;
 use crate::response_vo::account::AccountResource;
 use crate::response_vo::account::BalanceInfo;
 use crate::response_vo::account::Resource;
@@ -32,7 +32,6 @@ use crate::response_vo::TronFeeDetails;
 use crate::BusinessError;
 use wallet_chain_interact::tron;
 use wallet_chain_interact::tron::operations as ops;
-use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_chain_interact::tron::operations::stake::DelegateArgs;
 use wallet_chain_interact::tron::operations::stake::UnDelegateArgs;
 use wallet_chain_interact::tron::operations::RawTransactionParams;
@@ -46,14 +45,11 @@ use wallet_chain_interact::BillResourceConsume;
 use wallet_database::dao::bill::BillDao;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
-use wallet_database::entities::multisig_queue::MultisigQueueEntity;
 use wallet_database::entities::multisig_queue::NewMultisigQueueEntity;
-use wallet_database::entities::multisig_signatures::MultisigSignatureStatus;
-use wallet_database::entities::multisig_signatures::NewSignatureEntity;
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
-use wallet_transport_backend::consts::endpoint;
-use wallet_transport_backend::request::SignedTranCreateReq;
+use wallet_database::repositories::permission::PermissionRepo;
+use wallet_transport_backend::request::PermissionData;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 use wallet_types::constant::chain_code;
 use wallet_utils::serde_func;
@@ -75,12 +71,22 @@ impl StackService {
         Ok(Self { chain })
     }
 
+    // 获取私钥
+    pub async fn get_key(
+        &self,
+        from: &str,
+        signer: &Option<Signer>,
+        password: &str,
+    ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
+        ChainTransaction::get_key(&from, chain_code::TRON, password, signer).await
+    }
+
     async fn process_transaction<T>(
         &self,
         args: impl ops::TronTxOperation<T>,
         bill_kind: BillKind,
         from: &str,
-        password: &str,
+        key: ChainPrivateKey,
         value: i64,
         bill_value: f64,
     ) -> Result<String, crate::ServiceError> {
@@ -113,12 +119,11 @@ impl StackService {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let key = open_subpk_with_password(chain_code::TRON, from, password).await?;
         let hash = self.chain.exec_transaction_v1(resp, key).await?;
 
         let transaction_fee = consumer.transaction_fee();
-        // 写入本地交易数据
 
+        // 写入本地交易数据
         let value = if bill_value > 0.0 {
             bill_value
         } else {
@@ -376,7 +381,7 @@ impl StackService {
         &self,
         bill_kind: BillKind,
         content: String,
-    ) -> Result<(StakeArgs, String, f64), crate::ServiceError> {
+    ) -> Result<(StakeArgs, String, f64, Option<Signer>), crate::ServiceError> {
         match bill_kind {
             BillKind::FreezeBandwidth | BillKind::FreezeEnergy => {
                 let req = serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
@@ -386,6 +391,7 @@ impl StackService {
                     StakeArgs::Freeze(args),
                     req.owner_address.clone(),
                     req.frozen_balance as f64,
+                    req.signer.clone(),
                 ))
             }
             BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => {
@@ -396,6 +402,7 @@ impl StackService {
                     StakeArgs::UnFreeze(args),
                     req.owner_address.clone(),
                     req.unfreeze_balance as f64,
+                    req.signer.clone(),
                 ))
             }
             BillKind::CancelAllUnFreeze => {
@@ -405,12 +412,16 @@ impl StackService {
                 let bandwidth = account.un_freeze_amount("");
                 let energy = account.un_freeze_amount("ENERGY");
 
-                let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
+                let args = ops::stake::CancelAllFreezeBalanceArgs::new(
+                    &req.owner_address,
+                    req.signer.clone().map(|s| s.permission_id),
+                )?;
 
                 Ok((
                     StakeArgs::CancelAllUnFreeze(args),
                     req.owner_address.clone(),
                     (bandwidth + energy) as f64,
+                    req.signer.clone(),
                 ))
             }
             BillKind::WithdrawUnFreeze => {
@@ -423,12 +434,14 @@ impl StackService {
                     .await?;
                 let args = ops::stake::WithdrawUnfreezeArgs {
                     owner_address: req.owner_address.clone(),
+                    permission_id: req.signer.clone().map(|s| s.permission_id),
                 };
 
                 Ok((
                     StakeArgs::Withdraw(args),
                     req.owner_address.clone(),
                     can_widthdraw.to_sun() as f64,
+                    req.signer.clone(),
                 ))
             }
             BillKind::DelegateBandwidth | BillKind::DelegateEnergy => {
@@ -439,6 +452,7 @@ impl StackService {
                     StakeArgs::Delegate(args),
                     req.owner_address.clone(),
                     req.balance as f64,
+                    req.signer.clone(),
                 ))
             }
             BillKind::UnDelegateBandwidth | BillKind::UnDelegateEnergy => {
@@ -449,6 +463,7 @@ impl StackService {
                     StakeArgs::UnDelegate(args),
                     req.owner_address.clone(),
                     req.balance as f64,
+                    req.signer.clone(),
                 ))
             }
             BillKind::BatchDelegateBandwidth | BillKind::BatchDelegateEnergy => {
@@ -461,6 +476,7 @@ impl StackService {
                     StakeArgs::BatchDelegate(args),
                     req.owner_address.clone(),
                     value,
+                    req.signer.clone(),
                 ))
             }
             BillKind::BatchUnDelegateBandwidth | BillKind::BatchUnDelegateEnergy => {
@@ -472,6 +488,7 @@ impl StackService {
                     StakeArgs::BatchUnDelegate(args),
                     req.owner_address.clone(),
                     value,
+                    req.signer.clone(),
                 ))
             }
             BillKind::Vote => {
@@ -482,6 +499,7 @@ impl StackService {
                     StakeArgs::Votes(args),
                     req.owner_address.clone(),
                     req.get_votes() as f64,
+                    req.signer.clone(),
                 ))
             }
             BillKind::WithdrawReward => {
@@ -500,6 +518,7 @@ impl StackService {
                     StakeArgs::WithdrawReward(args),
                     req.owner_address.clone(),
                     value,
+                    req.signer.clone(),
                 ))
             }
             _ => Err(crate::BusinessError::Stake(
@@ -521,7 +540,7 @@ impl StackService {
         let currency = currency.currency();
         let token_currency = TokenCurrencyGetter::get_currency(currency, "tron", "TRX").await?;
 
-        let (args, account, _) = self.convert_stake_args(bill_kind, content).await?;
+        let (args, account, _, _) = self.convert_stake_args(bill_kind, content).await?;
 
         let consumer = args.exec(&account, &self.chain).await?;
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
@@ -551,8 +570,11 @@ impl StackService {
             ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
         };
 
+        let key = self
+            .get_key(&req.owner_address, &req.signer, password)
+            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password, req.frozen_balance, 0.0)
+            .process_transaction(args, bill_kind, &from, key, req.frozen_balance, 0.0)
             .await?;
 
         let resource_value = self
@@ -683,8 +705,11 @@ impl StackService {
 
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
+        let key = self
+            .get_key(&req.owner_address, &req.signer, password)
+            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password, 0, 0.0)
+            .process_transaction(args, bill_kind, &from, key, 0, 0.0)
             .await?;
 
         let resource_value = self
@@ -715,14 +740,20 @@ impl StackService {
 
         // 2.可以解质押的能量
         let energy = account.un_freeze_amount("ENERGY");
-        let args = ops::stake::CancelAllFreezeBalanceArgs::new(&req.owner_address)?;
+        let args = ops::stake::CancelAllFreezeBalanceArgs::new(
+            &req.owner_address,
+            req.signer.clone().map(|s| s.permission_id),
+        )?;
 
+        let key = self
+            .get_key(&req.owner_address, &req.signer, &password)
+            .await?;
         let tx_hash = self
             .process_transaction(
                 args,
                 BillKind::CancelAllUnFreeze,
                 &req.owner_address,
-                &password,
+                key,
                 0,
                 (bandwidth + energy) as f64,
             )
@@ -759,14 +790,19 @@ impl StackService {
 
         let args = ops::stake::WithdrawUnfreezeArgs {
             owner_address: req.owner_address.to_string(),
+            permission_id: req.signer.clone().map(|s| s.permission_id),
         };
+
+        let key = self
+            .get_key(&req.owner_address, &req.signer, &password)
+            .await?;
 
         let tx_hash = self
             .process_transaction(
                 args,
                 BillKind::WithdrawUnFreeze,
                 &req.owner_address,
-                &password,
+                key,
                 0,
                 can_widthdraw.to_sun() as f64,
             )
@@ -924,8 +960,11 @@ impl StackService {
         };
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
+        let key = self
+            .get_key(&req.owner_address, &req.signer, password)
+            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, password, 0, 0.0)
+            .process_transaction(args, bill_kind, &from, key, 0, 0.0)
             .await?;
 
         let resource_value = self
@@ -1138,8 +1177,11 @@ impl StackService {
             ops::stake::ResourceType::ENERGY => BillKind::UnDelegateEnergy,
         };
 
+        let key = self
+            .get_key(&req.owner_address, &req.signer, &password)
+            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, &password, 0, 0.0)
+            .process_transaction(args, bill_kind, &from, key, 0, 0.0)
             .await?;
 
         let resource_value = self
@@ -1407,15 +1449,12 @@ impl StackService {
 
         let bill_value = req.get_votes() as f64;
 
+        let key = self
+            .get_key(&req.owner_address, &req.signer, password)
+            .await?;
+
         let tx_hash = self
-            .process_transaction(
-                args,
-                BillKind::Vote,
-                &req.owner_address,
-                password,
-                0,
-                bill_value,
-            )
+            .process_transaction(args, BillKind::Vote, &req.owner_address, key, 0, bill_value)
             .await?;
 
         Ok(tx_hash)
@@ -1442,12 +1481,15 @@ impl StackService {
             ))?;
         }
 
+        let key = self
+            .get_key(&req.owner_address, &req.signer, password)
+            .await?;
         let tx_hash = self
             .process_transaction(
                 args,
                 BillKind::WithdrawReward,
                 &req.owner_address,
-                password,
+                key,
                 0,
                 0.0,
             )
@@ -1464,29 +1506,101 @@ impl StackService {
         expiration: i64,
         password: String,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut queue_repo = MultisigQueueRepo::new(pool.clone());
-
         let bill_kind = BillKind::try_from(bill_kind as i8)?;
         // 转换多签的参数
-        let (args, address, amount) = self.convert_stake_args(bill_kind, content).await?;
+        let (args, address, amount, signer) = self.convert_stake_args(bill_kind, content).await?;
+
+        // 走权限流程
+        if let Some(signer) = signer {
+            self.create_with_permission(
+                address, args, bill_kind, amount, expiration, password, signer,
+            )
+            .await
+        } else {
+            self.create_with_account(address, args, bill_kind, amount, expiration, password)
+                .await
+        }
+    }
+
+    async fn create_with_permission(
+        &self,
+        grantor_addr: String,
+        args: StakeArgs,
+        bill_kind: BillKind,
+        amount: f64,
+        expiration: i64,
+        password: String,
+        signer: Signer,
+    ) -> Result<String, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let to = args.get_to();
+
+        let permission =
+            PermissionRepo::permission_with_user(&pool, &grantor_addr, signer.permission_id, false)
+                .await?;
+
+        let Some(p) = permission else {
+            return Err(crate::BusinessError::Permisison(
+                crate::PermissionError::ActviesPermissionNotFound,
+            ))?;
+        };
+
+        let expiration = MultisigQueueDomain::sub_expiration(expiration);
+        let rs = args
+            .build_multisig_tx(&self.chain, expiration as u64)
+            .await?;
+
+        let mut queue = NewMultisigQueueEntity::new(
+            "".to_string(),
+            grantor_addr.to_string(),
+            to,
+            expiration as i64,
+            &rs.tx_hash,
+            &rs.raw_data,
+            bill_kind,
+            amount.to_string(),
+        );
+        queue.permission_id = p.permission.id.clone();
+
+        // 对多签队列进行签名
+        MultisigQueueDomain::batch_sign_with_permission(&mut queue, &password, &p, &pool).await?;
+
+        queue.compute_status(p.permission.threshold as i32);
+
+        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
+
+        let opt = PermissionData {
+            opt_address: signer.address.clone(),
+            users: p.users(),
+        };
+
+        // 上报后端
+        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, Some(opt)).await?;
+
+        Ok(rs.tx_hash)
+    }
+
+    async fn create_with_account(
+        &self,
+        address: String,
+        args: StakeArgs,
+        bill_kind: BillKind,
+        amount: f64,
+        expiration: i64,
+        password: String,
+    ) -> Result<String, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let to = args.get_to();
 
         let account = MultisigDomain::account_by_address(&address, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
 
-        let expiration = if expiration == 24 {
-            expiration * 3600 - 61
-        } else {
-            expiration * 3600
-        };
-
         // 构建多签交易
+        let expiration = MultisigQueueDomain::sub_expiration(expiration);
         let resp = args
             .build_multisig_tx(&self.chain, expiration as u64)
             .await?;
 
-        let expiration = (wallet_utils::time::now().timestamp() + expiration) as u64;
         let mut queue = NewMultisigQueueEntity::new(
             account.id.to_string(),
             address.to_string(),
@@ -1498,59 +1612,15 @@ impl StackService {
             amount.to_string(),
         );
 
-        let mut members = queue_repo.self_member_account_id(&account.id).await?;
-        members.prioritize_by_address(&account.initiator_addr);
+        let res = MultisigQueueDomain::tron_sign_and_create_queue(
+            &mut queue,
+            &account,
+            password,
+            pool.clone(),
+        )
+        .await?;
 
-        // sign num
-        let sign_num = members.0.len().min(account.threshold as usize);
-        for i in 0..sign_num {
-            let member = members.0.get(i).unwrap();
-            let key = crate::domain::account::open_subpk_with_password(
-                chain_code::TRON,
-                &member.address,
-                &password,
-            )
-            .await?;
-
-            let sign_result = TransactionOpt::sign_transaction(&resp.raw_data, key)?;
-            let sign = NewSignatureEntity::new(
-                &queue.id,
-                &member.address,
-                &sign_result.signature,
-                MultisigSignatureStatus::Approved,
-            );
-            queue.signatures.push(sign);
-        }
-
-        queue.status =
-            MultisigQueueEntity::compute_status(queue.signatures.len(), account.threshold as usize);
-        let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
-
-        // 上报后端
-        let withdraw_id = res.id.clone();
-        let sync_params =
-            MultiSignTransAccept::try_from(res)?.with_signature(queue.signatures.clone());
-
-        let raw_data = MultisigQueueRepo::multisig_queue_data(&withdraw_id, pool)
-            .await?
-            .to_string()?;
-        let req = SignedTranCreateReq {
-            withdraw_id,
-            address,
-            chain_code: chain_code::TRON.to_string(),
-            tx_str: wallet_utils::serde_func::serde_to_string(&sync_params)?,
-            raw_data,
-            tx_kind: bill_kind.to_i8(),
-        };
-
-        let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
-            task_queue::BackendApiTaskData {
-                endpoint: endpoint::multisig::SIGNED_TRAN_CREATE.to_string(),
-                body: serde_func::serde_to_value(&req)?,
-            },
-        ));
-        task_queue::Tasks::new().push(task).send().await?;
-
+        MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, None).await?;
         Ok(resp.tx_hash)
     }
 }

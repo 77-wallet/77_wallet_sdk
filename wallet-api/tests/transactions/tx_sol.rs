@@ -65,6 +65,7 @@ async fn test_transfer() {
         base,
         password: password.to_string(),
         fee_setting: "".to_string(),
+        signer: None,
     };
 
     let token_fee = wallet_manager.transfer(params).await;

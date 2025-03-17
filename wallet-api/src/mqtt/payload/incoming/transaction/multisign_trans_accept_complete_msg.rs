@@ -1,14 +1,7 @@
 use wallet_database::{
-    dao::{
-        multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1,
-        multisig_signatures::MultisigSignatureDaoV1,
-    },
     entities::multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
-    factory::RepositoryFactory,
     repositories::multisig_queue::MultisigQueueRepo,
 };
-
-use crate::domain::multisig::MultisigDomain;
 
 // 签名的结果同步给所有人
 use super::{MultiSignTransAcceptCompleteMsg, MultiSignTransAcceptCompleteMsgBody};
@@ -26,9 +19,7 @@ impl MultiSignTransAcceptCompleteMsg {
         for msg in body {
             let params: NewSignatureEntity = msg.try_into()?;
 
-            MultisigSignatureDaoV1::create_or_update(&params, pool.clone())
-                .await
-                .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
 
             let data = crate::notify::NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
             crate::notify::FrontendNotifyEvent::new(data).send().await?;
@@ -36,29 +27,23 @@ impl MultiSignTransAcceptCompleteMsg {
 
         // sync sign status
         if let Some(item) = body.first() {
-            if MultisigAccountDaoV1::find_by_address(&item.address, pool.as_ref())
-                .await
-                .map_err(crate::ServiceError::Database)?
-                .is_none()
-            {
-                let mut repo = RepositoryFactory::repo(pool.clone());
-                MultisigDomain::recover_multisig_data_by_address(&mut repo, &item.address).await?;
-            }
+            // if MultisigAccountDaoV1::find_by_address(&item.address, pool.as_ref())
+            //     .await
+            //     .map_err(crate::ServiceError::Database)?
+            //     .is_none()
+            // {
+            //     let mut repo = RepositoryFactory::repo(pool.clone());
+            //     MultisigDomain::recover_multisig_data_by_address(&mut repo, &item.address).await?;
+            // }
 
-            let account =
-                MultisigQueueDaoV1::find_by_id_with_account(&item.queue_id, pool.as_ref())
-                    .await
-                    .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            // let account =
+            //     MultisigQueueDaoV1::find_by_id_with_account(&item.queue_id, pool.as_ref())
+            //         .await
+            //         .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-            if let Some(account) = account {
-                MultisigQueueRepo::sync_sign_status(
-                    &item.queue_id,
-                    &account.account_id,
-                    account.threshold,
-                    account.status,
-                    pool.clone(),
-                )
-                .await?;
+            let queue = MultisigQueueRepo::find_by_id(&pool, &item.queue_id).await?;
+            if let Some(queue) = queue {
+                MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
             }
         }
 
@@ -82,27 +67,36 @@ impl TryFrom<&MultiSignTransAcceptCompleteMsgBody> for NewSignatureEntity {
 
 #[cfg(test)]
 mod test {
-    use crate::mqtt::payload::incoming::transaction::MultiSignTransAcceptCompleteMsg;
+    use crate::{
+        mqtt::payload::incoming::transaction::MultiSignTransAcceptCompleteMsg,
+        test::env::get_manager,
+    };
 
-    #[test]
-    fn test_() {
+    #[tokio::test]
+    async fn test_() {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+
         let raw = r#"
         [
                 {
-                    "address": "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB",
-                    "queue_id": "160055304875282432",
-                    "signature": "cde600c686b6ac9359c926a78cddaca34c3894629694225b60ade7b309abdd9e6e1f38b5d346ea99114eaaad9cbd390f7c8cea2dd3499d04065ab8641b9d831300",
+                    "address": "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1",
+                    "queueId": "236631132983136256",
+                    "signature": "74eb8147bb31e4f74c9a25f9fd8498bbf28326cf4e6d0cb804268fb6214181931995702713373bb2ae07ebb25728d9ec3c14b36807ab99e8ecf8711d7ab848ba01",
                     "status": 1
                 },
                 {
-                    "address": "TByQCQiBUtbLQNh6r1ZPNwBJC1jLgZjkuk",
-                    "queue_id": "160055304875282432",
-                    "signature": "bd2a584a46c1207b5bf0b0f8e7f9b9f3a40cc74911001b7fb47a71fd029c18f8241dc07de7b9fd1fe13b97d29bc2c42541f3406cf7f6d3a91d0e621810cfa01400",
-                    "status": 1
+                    "address": "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR",
+                    "queueId": "236631132983136256",
+                    "signature": "",
+                    "status": 0
                 }
             ]
         "#;
-        let res = serde_json::from_str::<MultiSignTransAcceptCompleteMsg>(&raw);
-        println!("res: {res:?}");
+        let res = serde_json::from_str::<MultiSignTransAcceptCompleteMsg>(&raw).unwrap();
+
+        let (_, _) = get_manager().await.unwrap();
+
+        res.exec("x").await.unwrap();
     }
 }

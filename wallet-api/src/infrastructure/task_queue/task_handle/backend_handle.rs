@@ -24,6 +24,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::DEVICE_BIND_ADDRESS,
         endpoint::DEVICE_UNBIND_ADDRESS,
         endpoint::SEND_MSG_CONFIRM,
+        endpoint::multisig::PERMISSION_ACCEPT,
     ]
     .iter()
     .cloned()
@@ -84,7 +85,7 @@ impl EndpointHandler for DefaultHandler {
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::ServiceError> {
         // 实现具体的处理逻辑
-        backend
+        let _res = backend
             .post_req_str::<serde_json::Value>(endpoint, &body, aes_cbc_cryptor)
             .await?;
         Ok(())

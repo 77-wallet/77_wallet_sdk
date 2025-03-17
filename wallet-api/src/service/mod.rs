@@ -13,6 +13,7 @@ pub mod mqtt;
 pub mod multisig_account;
 pub mod multisig_transaction;
 pub mod node;
+pub mod permission;
 pub mod stake;
 pub mod system_notification;
 pub mod transaction;

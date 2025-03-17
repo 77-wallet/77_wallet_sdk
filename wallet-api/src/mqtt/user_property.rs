@@ -26,8 +26,6 @@ impl UserProperty {
 
     pub fn to_vec(&self) -> Vec<(String, String)> {
         let up = vec![
-            // ("content".to_string(), self.content.clone()),
-            // ("clientId".to_string(), self.client_id.clone()),
             ("username".to_string(), self.username.clone()),
             ("password".to_string(), self.password.clone()),
             ("appVersion".to_string(), self.app_version.clone()),

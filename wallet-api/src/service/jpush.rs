@@ -1,5 +1,6 @@
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_transport_backend::{consts::endpoint::SEND_MSG_CONFIRM, request::SendMsgConfirmReq};
+use wallet_utils::serde_func;
 
 use crate::{
     infrastructure::task_queue::{BackendApiTask, Task, Tasks},
@@ -21,10 +22,9 @@ impl JPushService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut ids = Vec::new();
         for message in messages {
-            let payload = match wallet_utils::serde_func::serde_from_str::<
-                crate::mqtt::payload::incoming::Message,
-            >(message.as_str())
-            {
+            let payload = match serde_func::serde_from_str::<crate::mqtt::payload::incoming::Message>(
+                message.as_str(),
+            ) {
                 Ok(data) => data,
                 Err(e) => {
                     tracing::error!("[jpush_multi] serde_from_str error: {}", e);

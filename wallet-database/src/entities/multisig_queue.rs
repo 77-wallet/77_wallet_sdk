@@ -9,6 +9,7 @@ pub mod fail_reason {
     pub const SIGN_FAILED: &str = "sign_failed";
     pub const EXPIRED: &str = "expired";
     pub const CANCEL: &str = "cancel";
+    pub const PERMISSION_CHANGE: &str = "permission_change";
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
@@ -32,6 +33,7 @@ pub struct MultisigQueueEntity {
     pub updated_at: Option<DateTime<Utc>>,
     pub account_id: String,
     pub transfer_type: i8,
+    pub permission_id: String,
 }
 impl MultisigQueueEntity {
     pub fn token_address(&self) -> Option<String> {
@@ -39,17 +41,6 @@ impl MultisigQueueEntity {
             .as_ref()
             .filter(|token| !token.is_empty())
             .cloned()
-    }
-
-    // default status : pending signature
-    pub fn compute_status(sign_num: usize, threshold: usize) -> MultisigQueueStatus {
-        if sign_num > 0 && sign_num < threshold {
-            return MultisigQueueStatus::HasSignature;
-        } else if sign_num >= threshold {
-            return MultisigQueueStatus::PendingExecution;
-        }
-
-        MultisigQueueStatus::PendingSignature
     }
 
     pub fn can_cancel(&self) -> bool {
@@ -81,6 +72,15 @@ impl MultisigQueueStatus {
         }
     }
 
+    pub fn need_sync_status(&self) -> bool {
+        match self {
+            MultisigQueueStatus::Fail
+            | MultisigQueueStatus::Success
+            | MultisigQueueStatus::InConfirmation => false,
+            _ => true,
+        }
+    }
+
     pub fn from_i8(status: i8) -> MultisigQueueStatus {
         match status {
             0 => MultisigQueueStatus::PendingSignature,
@@ -96,15 +96,16 @@ impl MultisigQueueStatus {
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct MultisigQueueWithAccountEntity {
+pub struct MultisigQueueSimpleEntity {
     pub id: String,
     pub account_id: String,
-    pub name: String,
-    pub threshold: i32,
-    pub member_num: i32,
-    pub initiator_addr: String,
+    pub permission_id: String,
+    // #[sqlx(default)]
+    // pub extra_data: Option<ExtraData>,
+    // #[sqlx(default)]
+    // pub sign_num: Option<i64>,
+    // account 表
     #[sqlx(default)]
-    pub sign_num: Option<i64>,
     pub owner: i32,
     pub from_addr: String,
     pub to_addr: String,
@@ -141,8 +142,10 @@ pub struct NewMultisigQueueEntity {
     pub signatures: Vec<NewSignatureEntity>,
     pub create_at: DateTime<Utc>,
     pub transfer_type: BillKind,
+    pub permission_id: String,
 }
 impl NewMultisigQueueEntity {
+    // expiration 小时对应的秒
     pub fn new(
         account_id: String,
         from_addr: String,
@@ -154,7 +157,9 @@ impl NewMultisigQueueEntity {
         value: String,
     ) -> Self {
         let id = wallet_utils::snowflake::get_uid().unwrap();
-        // TODO trx 字符串以及 unwrap
+
+        let expiration = wallet_utils::time::now().timestamp() + expiration;
+
         Self {
             id: id.to_string(),
             account_id,
@@ -174,6 +179,7 @@ impl NewMultisigQueueEntity {
             signatures: vec![],
             create_at: wallet_utils::time::now(),
             transfer_type: bill_kind,
+            permission_id: String::new(),
         }
     }
 }
@@ -231,6 +237,16 @@ impl NewMultisigQueueEntity {
     fn is_expired(&self) -> bool {
         self.expiration < wallet_utils::time::now().timestamp()
     }
+
+    pub fn compute_status(&mut self, threshold: i32) {
+        let sign_num = self.signatures.len() as i32;
+
+        if sign_num > 0 && sign_num < threshold {
+            self.status = MultisigQueueStatus::HasSignature;
+        } else if sign_num >= threshold {
+            self.status = MultisigQueueStatus::PendingExecution;
+        }
+    }
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -240,15 +256,17 @@ pub struct MemberSignedResult {
     pub address: String,
     pub is_self: i8,
     pub singed: i8,
+    pub weight: i64,
     pub signature: String,
 }
 impl MemberSignedResult {
-    pub fn new(name: &str, address: &str, is_self: i8) -> Self {
+    pub fn new(name: &str, address: &str, is_self: i8, weight: i64) -> Self {
         Self {
             name: name.to_string(),
             address: address.to_string(),
             is_self,
             singed: 0,
+            weight,
             signature: "".to_string(),
         }
     }
@@ -268,11 +286,15 @@ impl MultisigQueueData {
     }
 
     pub fn to_string(&self) -> Result<String, crate::Error> {
-        Ok(wallet_utils::hex_func::bincode_encode(self)?)
+        Ok(wallet_utils::serde_func::serde_to_string(&self)?)
     }
 
+    // 优先从json字符串中解析、没有在从bincode解析、版本兼容
     pub fn from_string(data: &str) -> Result<Self, crate::Error> {
-        Ok(wallet_utils::hex_func::bincode_decode(data)?)
+        match wallet_utils::serde_func::serde_from_str::<MultisigQueueData>(data) {
+            Ok(res) => Ok(res),
+            Err(_) => Ok(wallet_utils::hex_func::bincode_decode(data)?),
+        }
     }
 }
 
@@ -303,6 +325,7 @@ impl From<MultisigQueueEntity> for NewMultisigQueueEntity {
             signatures: vec![],
             create_at: value.created_at,
             transfer_type: BillKind::try_from(value.transfer_type).unwrap_or(BillKind::Transfer),
+            permission_id: value.permission_id,
         }
     }
 }

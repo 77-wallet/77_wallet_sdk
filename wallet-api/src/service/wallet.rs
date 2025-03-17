@@ -507,7 +507,10 @@ impl WalletService {
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 device_bind_address_task_data,
             )))
-            .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
+            .push(Task::Common(CommonTask::RecoverMultisigAccountData(
+                uid.clone(),
+            )))
+            .push(Task::Common(CommonTask::RecoverPermission(uid)))
             .send()
             .await?;
 

@@ -133,6 +133,9 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
                         None => (notif, false).into(),
                     }
                 }
+                crate::system_notification::Notification::PermissionChange(_notification) => {
+                    (notif, true).into()
+                }
             };
             res.push(val);
         }

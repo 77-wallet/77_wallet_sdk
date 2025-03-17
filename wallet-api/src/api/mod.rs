@@ -9,6 +9,7 @@ pub mod device;
 pub mod multisig_account;
 pub mod multisig_transaction;
 pub mod node;
+pub mod permission;
 pub mod phrase;
 pub mod stake;
 pub mod system_notification;

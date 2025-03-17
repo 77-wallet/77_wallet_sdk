@@ -4,6 +4,7 @@ use wallet_transport_backend::{
     consts::endpoint::SEND_MSG_CONFIRM,
     request::{SendMsgConfirm, SendMsgConfirmReq},
 };
+use wallet_utils::serde_func;
 
 use crate::{
     infrastructure::task_queue::{BackendApiTask, MqttTask, Task, Tasks},
@@ -12,7 +13,8 @@ use crate::{
 };
 
 use super::payload::incoming::{
-    resource::TronSignFreezeDelegateVoteChange, transaction::AcctChange,
+    permission::PermissionAccept, resource::TronSignFreezeDelegateVoteChange,
+    transaction::AcctChange,
 };
 
 pub(crate) async fn exec_incoming(
@@ -20,7 +22,6 @@ pub(crate) async fn exec_incoming(
     packet: Packet,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match packet {
-        Packet::Connect(_, _, _) => {}
         Packet::ConnAck(conn_ack) => {
             exec_incoming_connack(client, conn_ack).await?;
         }
@@ -28,79 +29,59 @@ pub(crate) async fn exec_incoming(
             exec_incoming_publish(&publish).await?;
             client.ack(&publish).await?;
         }
-        Packet::PubAck(_) => {}
-        Packet::PingReq(_) => {}
         Packet::PingResp(_) => {
             let data = crate::notify::NotifyEvent::KeepAlive;
             if let Err(e) = crate::notify::FrontendNotifyEvent::new(data).send().await {
                 tracing::error!("[exec_incoming] send error: {e}");
             }
         }
-        Packet::Subscribe(_) => {}
-        Packet::SubAck(_) => {}
-        Packet::PubRec(_) => {}
-        Packet::PubRel(_) => {}
-        Packet::PubComp(_) => {}
-        Packet::Unsubscribe(_) => {}
-        Packet::UnsubAck(_) => {}
         Packet::Disconnect(_) => {
             let data = crate::notify::NotifyEvent::MqttDisconnected;
             crate::notify::FrontendNotifyEvent::new(data).send().await?;
         }
+        _ => {}
     }
 
     Ok(())
 }
 
-pub async fn exec_incoming_publish(
-    publish: &Publish,
-    // client: &rumqttc::v5::AsyncClient,
-) -> Result<(), anyhow::Error> {
+pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Error> {
     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    let Publish {
-        dup: _,
-        qos: _,
-        retain: _,
-        topic,
-        pkid: _,
-        payload,
-        properties: _,
-    } = &publish;
 
-    // let topic_ = String::from_utf8(topic.to_vec())?;
-    let crate::mqtt::constant::TopicClientId {
-        topic,
-        client_id: _,
-    } = super::constant::Topic::from_bytes(topic.to_vec())?;
-    match topic {
+    let topic = super::constant::Topic::from_bytes(publish.topic.to_vec())?;
+
+    match topic.topic {
         super::constant::Topic::Switch => {}
         #[cfg(feature = "token")]
         super::constant::Topic::Token => {
             let payload: crate::mqtt::payload::incoming::token::TokenPriceChange =
-                serde_json::from_slice(&payload)?;
+                serde_json::from_slice(&publish.payload)?;
             payload.exec().await?;
         }
         super::constant::Topic::RpcChange => {
-            let payload: super::payload::incoming::rpc::RpcChange = serde_json::from_slice(payload)?;
-            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await{
+            let payload: super::payload::incoming::rpc::RpcChange =
+                serde_json::from_slice(&publish.payload)?;
+
+            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await {
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
+
             payload.exec().await?;
         }
         super::constant::Topic::ChainChange => {
             let payload: super::payload::incoming::chain::ChainChange =
-                serde_json::from_slice(payload)?;
+                serde_json::from_slice(&publish.payload)?;
             payload.exec().await?;
         }
         super::constant::Topic::Order
         | super::constant::Topic::Common
-        | super::constant::Topic::BulletinInfo
-        // | super::constant::Topic::RpcChange 
-        => {
-            let payload: super::payload::incoming::Message = serde_json::from_slice(payload)?;
-            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await{
+        | super::constant::Topic::BulletinInfo => {
+            let payload: super::payload::incoming::Message =
+                serde_json::from_slice(&publish.payload)?;
+            if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await {
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
+
             let send_msg_confirm_req = BackendApiTask::new(
                 SEND_MSG_CONFIRM,
                 &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(&payload.msg_id, "MQTT")]),
@@ -110,14 +91,15 @@ pub async fn exec_incoming_publish(
                 .send()
                 .await?;
 
+            // 是否有相同的队列
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
                 .await?
                 .is_none()
             {
-                let event = wallet_utils::serde_func::serde_to_string(&payload.biz_type)?;
+                let event = serde_func::serde_to_string(&payload.biz_type)?;
                 if let Err(e) = exec_payload(payload).await {
                     tracing::error!("exec_payload error: {}", e);
-                    if let Err(e) = FrontendNotifyEvent::send_error(&event,e.to_string()).await {
+                    if let Err(e) = FrontendNotifyEvent::send_error(&event, e.to_string()).await {
                         tracing::error!("send_error error: {}", e);
                     }
                 };
@@ -133,19 +115,23 @@ pub(crate) async fn exec_payload(
 ) -> Result<(), crate::ServiceError> {
     let body = match payload.biz_type {
         super::payload::incoming::BizType::AcctChange => {
-            let data =
-                wallet_utils::serde_func::serde_from_value::<AcctChange>(payload.body.clone())?;
+            let data = serde_func::serde_from_value::<AcctChange>(payload.body.clone())?;
             super::payload::incoming::Body::AcctChange(data)
         }
 
         super::payload::incoming::BizType::TronSignFreezeDelegateVoteChange => {
-            let data = wallet_utils::serde_func::serde_from_value::<
-                TronSignFreezeDelegateVoteChange,
-            >(payload.body.clone())?;
+            let data = serde_func::serde_from_value::<TronSignFreezeDelegateVoteChange>(
+                payload.body.clone(),
+            )?;
             super::payload::incoming::Body::TronSignFreezeDelegateVoteChange(data)
         }
-        _ => wallet_utils::serde_func::serde_from_value(payload.body)?,
+        super::payload::incoming::BizType::PermissionAccept => {
+            let data = serde_func::serde_from_value::<PermissionAccept>(payload.body.clone())?;
+            super::payload::incoming::Body::PermissionAccept(data)
+        }
+        _ => serde_func::serde_from_value(payload.body)?,
     };
+
     match (payload.biz_type, body) {
         (
             super::payload::incoming::BizType::OrderMultiSignAccept,
@@ -281,6 +267,19 @@ pub(crate) async fn exec_payload(
                 .push_with_id(
                     &payload.msg_id,
                     Task::Mqtt(Box::new(MqttTask::TronSignFreezeDelegateVoteChange(data))),
+                )
+                .send()
+                .await?;
+        }
+        // 权限更新事件
+        (
+            super::payload::incoming::BizType::PermissionAccept,
+            super::payload::incoming::Body::PermissionAccept(data),
+        ) => {
+            Tasks::new()
+                .push_with_id(
+                    &payload.msg_id,
+                    Task::Mqtt(Box::new(MqttTask::PermissionAccept(data))),
                 )
                 .send()
                 .await?;

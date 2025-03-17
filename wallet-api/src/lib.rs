@@ -24,7 +24,7 @@ pub use error::{
         bill::BillError, chain::ChainError, chain_node::ChainNodeError, coin::CoinError,
         config::ConfigError, device::DeviceError, exchange_rate::ExchangeRate,
         multisig_account::MultisigAccountError, multisig_queue::MultisigQueueError,
-        stake::StakeError, wallet::WalletError, BusinessError,
+        permission::PermissionError, stake::StakeError, wallet::WalletError, BusinessError,
     },
     system::SystemError,
     Errors, ServiceError,

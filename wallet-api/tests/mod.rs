@@ -9,6 +9,7 @@ mod bill;
 mod config;
 mod multisig_account;
 mod multisig_tx;
+mod permission;
 mod phrase;
 mod stake;
 mod transactions;
