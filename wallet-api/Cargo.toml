@@ -83,7 +83,7 @@ tracing-subscriber.workspace = true
 
 
 # sysinfo = "0.30.12"
-tempfile = "3.10.1"
+tempfile = "3.19.0"
 
 async-trait = { workspace = true }
 
