@@ -1,9 +1,11 @@
 use multisig::*;
 use other::*;
+use permission::PermissionChangeFrontend;
 use transaction::*;
 
 pub(crate) mod multisig;
 pub(crate) mod other;
+pub(crate) mod permission;
 pub(crate) mod resource;
 pub(crate) mod transaction;
 
@@ -36,6 +38,8 @@ pub enum NotifyEvent {
 
     // 资源
     ResourceChange(resource::ResourceChangeFrontend),
+    // 权限变更事件
+    PermissionChanger(PermissionChangeFrontend),
 }
 
 impl NotifyEvent {
@@ -72,6 +76,9 @@ impl NotifyEvent {
 
             // 资源
             NotifyEvent::ResourceChange(_) => "RESOURCE_CHANGE".to_string(),
+
+            // 权限变更事件
+            NotifyEvent::PermissionChanger(_) => "PERMISSION_CHANGE".to_string(),
         }
     }
 }

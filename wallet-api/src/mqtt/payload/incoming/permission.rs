@@ -1,11 +1,13 @@
 use crate::{
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
+    notify::{event::permission::PermissionChangeFrontend, NotifyEvent},
     request::permission::PermissionReq,
     service::system_notification::SystemNotificationService,
     system_notification::{permission_change::PermissionChange, Notification},
 };
 use wallet_chain_interact::tron::{
-    operations::multisig::Permission, protocol::account::TronAccount,
+    operations::{multisig::Permission, permisions::PermissionTypes},
+    protocol::account::TronAccount,
 };
 use wallet_database::{
     entities::{
@@ -226,16 +228,29 @@ impl PermissionAccept {
         Ok(())
     }
 
+    // system notify and fronted event
     async fn system_notify(
         pool: &DbPool,
         permission: &PermissionEntity,
     ) -> Result<(), crate::ServiceError> {
+        // 1. system notify
         let repo = RepositoryFactory::repo(pool.clone());
         let system_notification_service = SystemNotificationService::new(repo);
 
         let notification = Notification::PermissionChange(PermissionChange::try_from(permission)?);
         system_notification_service
             .add_system_notification(&permission.id, notification, 0)
+            .await?;
+
+        // 2. event
+        let operations = PermissionTypes::from_hex(&permission.operations)?;
+        let event = NotifyEvent::PermissionChanger(PermissionChangeFrontend::new(
+            &permission.grantor_addr,
+            "new",
+            operations,
+        ));
+        crate::notify::FrontendNotifyEvent::new(event)
+            .send()
             .await?;
 
         Ok(())
