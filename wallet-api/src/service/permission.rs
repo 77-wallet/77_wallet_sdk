@@ -162,17 +162,16 @@ impl PermissionService {
     pub fn permission_list() -> Result<PermissionList, crate::ServiceError> {
         Ok(PermissionList::default())
     }
-    // trans permission
-    pub fn permission_trans() -> Result<Vec<i8>, crate::ServiceError> {
-        Ok(PermissionList::trans_permission())
-    }
 
     // account permission
     pub async fn account_permission(
         &self,
         address: String,
-    ) -> Result<AccountPermission, crate::ServiceError> {
+    ) -> Result<Option<AccountPermission>, crate::ServiceError> {
         let account = self.chain.account_info(&address).await?;
+        if account.address.is_empty() {
+            return Ok(None);
+        }
 
         let actives = account
             .active_permission
@@ -194,7 +193,7 @@ impl PermissionService {
             self.mark_address_book_name(&pool, &mut item.keys).await?;
         }
 
-        Ok(result)
+        Ok(Some(result))
     }
 
     // 我管理的权限

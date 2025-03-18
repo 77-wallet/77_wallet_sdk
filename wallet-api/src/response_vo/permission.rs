@@ -43,6 +43,8 @@ impl Default for PermissionList {
                 ContractType::TransferAssetContract.to_i8(),
                 ContractType::AssetIssueContract.to_i8(),
                 ContractType::UpdateAssetContract.to_i8(),
+                ContractType::ParticipateAssetIssueContract.to_i8(),
+                ContractType::UnfreezeAssetContract.to_i8(),
             ],
             contract: vec![
                 ContractType::CreateSmartContract.to_i8(),
@@ -68,23 +70,6 @@ impl Default for PermissionList {
                 ContractType::ExchangeTransactionContract.to_i8(),
             ],
         }
-    }
-}
-
-impl PermissionList {
-    // 与交易相关的权限，在交易里面使用
-    pub fn trans_permission() -> Vec<i8> {
-        vec![
-            ContractType::TransferContract.to_i8(),
-            ContractType::FreezeBalanceV2Contract.to_i8(),
-            ContractType::UnfreezeBalanceV2Contract.to_i8(),
-            ContractType::CancelAllUnfreezeV2Contract.to_i8(),
-            ContractType::WithdrawExpireUnfreezeContract.to_i8(),
-            ContractType::DelegateResourceContract.to_i8(),
-            ContractType::UnDelegateResourceContract.to_i8(),
-            ContractType::VoteWitnessContract.to_i8(),
-            ContractType::WithdrawBalanceContract.to_i8(),
-        ]
     }
 }
 

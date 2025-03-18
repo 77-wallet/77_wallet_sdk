@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
-use crate::request::transaction::{self, QueryBillReusltReq};
+use crate::request::transaction::{self, QueryBillResultReq};
 use crate::response_vo::{
     self,
     account::Balance,
@@ -102,7 +102,7 @@ impl TransactionService {
         Ok(TransactionResult { tx_hash })
     }
 
-    async fn handle_queue_memeber(
+    async fn handle_queue_member(
         bill: &BillEntity,
         pool: Arc<Pool<Sqlite>>,
     ) -> Option<Vec<MemberSignedResult>> {
@@ -117,8 +117,13 @@ impl TransactionService {
             Err(_) => return None,
         };
 
-        (MultisigQueueRepo::member_signed_result(&queue.account_id, &bill.queue_id, pool.clone())
-            .await)
+        (MultisigQueueRepo::signed_result(
+            &queue.id,
+            &queue.account_id,
+            &queue.permission_id,
+            pool.clone(),
+        )
+        .await)
             .ok()
     }
 
@@ -132,7 +137,7 @@ impl TransactionService {
             .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
         bill.value = wallet_utils::unit::truncate_to_8_decimals(&bill.value);
 
-        let sign = Self::handle_queue_memeber(&bill, pool.clone()).await;
+        let sign = Self::handle_queue_member(&bill, pool.clone()).await;
 
         let main_coin = CoinEntity::main_coin(&bill.chain_code, pool.as_ref())
             .await?
@@ -176,7 +181,7 @@ impl TransactionService {
     }
 
     pub async fn query_tx_result(
-        req: Vec<QueryBillReusltReq>,
+        req: Vec<QueryBillResultReq>,
     ) -> Result<Vec<BillEntity>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
@@ -193,7 +198,7 @@ impl TransactionService {
     }
 
     async fn sync_bill_info(
-        query_rx: &QueryBillReusltReq,
+        query_rx: &QueryBillResultReq,
         pool: wallet_database::DbPool,
     ) -> Result<BillEntity, crate::ServiceError> {
         let transaction =

@@ -14,22 +14,12 @@ async fn test_permission_list() {
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
 
-// 权限列表
-#[tokio::test]
-async fn test_permission_trans() {
-    let wallet_manager = get_manager().await;
-
-    let res = wallet_manager.permission_trans();
-
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
-}
-
 // 账户权限
 #[tokio::test]
 async fn test_permission_accounts() {
     let wallet_manager = get_manager().await;
 
-    let address = "TPc3p91LFi2qzK4CG8NJQTHJ46FEq1fqFY".to_string();
+    let address = "TFtvHtfuLo5xJJe9HpSAEaEi4bzT8Eeyu2".to_string();
     let res = wallet_manager.account_permission(address).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())

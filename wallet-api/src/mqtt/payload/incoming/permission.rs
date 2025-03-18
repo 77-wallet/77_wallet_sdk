@@ -173,7 +173,7 @@ impl PermissionAccept {
 
             // 消息重复通知,避免新增判断为
             if self.current.types == PermissionReq::UPDATE {
-                Self::system_notify(&pool, &permissions.permission, "update").await?;
+                Self::system_notify(&pool, &permissions.permission, PermissionReq::UPDATE).await?;
             }
             Ok(())
         } else {
@@ -184,7 +184,7 @@ impl PermissionAccept {
             if users.iter().any(|u| u.is_self == 1) {
                 PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?;
 
-                Self::system_notify(&pool, &permissions.permission, "new").await?;
+                Self::system_notify(&pool, &permissions.permission, PermissionReq::NEW).await?;
 
                 return Ok(());
             }
@@ -245,8 +245,9 @@ impl PermissionAccept {
         let system_notification_service = SystemNotificationService::new(repo);
 
         let notification = Notification::PermissionChange(PermissionChange::try_from(permission)?);
+        let id = wallet_utils::snowflake::get_uid()?.to_string();
         system_notification_service
-            .add_system_notification(&permission.id, notification, 0)
+            .add_system_notification(&id, notification, 0)
             .await?;
 
         // 2. event

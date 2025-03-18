@@ -14,13 +14,11 @@ impl crate::WalletManager {
         PermissionService::permission_list().into()
     }
 
-    // trans permission
-    pub fn permission_trans(&self) -> ReturnType<Vec<i8>> {
-        PermissionService::permission_trans().into()
-    }
-
     // account permission
-    pub async fn account_permission(&self, address: String) -> ReturnType<AccountPermission> {
+    pub async fn account_permission(
+        &self,
+        address: String,
+    ) -> ReturnType<Option<AccountPermission>> {
         PermissionService::new()
             .await?
             .account_permission(address)
