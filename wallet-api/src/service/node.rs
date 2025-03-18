@@ -8,7 +8,7 @@ use wallet_database::{
 };
 pub struct NodeService {
     pub repo: ResourcesRepo,
-    // keystore: wallet_keystore::Keystore
+    // keystore: wallet_crypto::Keystore
 }
 
 impl NodeService {

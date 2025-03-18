@@ -6,7 +6,7 @@ use crate::{
     system_notification::{permission_change::PermissionChange, Notification},
 };
 use wallet_chain_interact::tron::{
-    operations::{multisig::Permission, permisions::PermissionTypes},
+    operations::{multisig::Permission, permissions::PermissionTypes},
     protocol::account::TronAccount,
 };
 use wallet_database::{

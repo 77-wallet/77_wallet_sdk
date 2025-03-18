@@ -22,7 +22,7 @@ use alloy::primitives::map::HashSet;
 use wallet_chain_interact::{
     tron::{
         consts,
-        operations::{multisig::Permission, permisions::PermissionUpdateArgs, TronTxOperation},
+        operations::{multisig::Permission, permissions::PermissionUpdateArgs, TronTxOperation},
         TronChain,
     },
     BillResourceConsume,

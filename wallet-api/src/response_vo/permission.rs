@@ -1,4 +1,4 @@
-use wallet_chain_interact::tron::operations::permisions::{ContractType, PermissionTypes};
+use wallet_chain_interact::tron::operations::permissions::{ContractType, PermissionTypes};
 use wallet_database::entities::permission::PermissionWithUserEntity;
 
 #[derive(serde::Serialize)]

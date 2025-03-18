@@ -1,4 +1,4 @@
-use wallet_keystore::{KdfAlgorithm, KeystoreJson};
+use wallet_crypto::{KdfAlgorithm, KeystoreJson};
 use wallet_utils::address::AccountIndexMap;
 
 use crate::{file_ops::RootData, wallet_hierarchy::WalletTreeOps};

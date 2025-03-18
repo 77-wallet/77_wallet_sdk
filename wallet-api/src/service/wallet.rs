@@ -879,12 +879,12 @@ impl WalletService {
     // ) -> Result<(), crate::ServiceError> {
     //     // let service = Service::default();
     //     let dirs = crate::manager::Context::get_global_dirs()?;
-    //     let wallet_keystore::api::RootInfo {
+    //     let wallet_crypto::api::RootInfo {
     //         private_key,
     //         seed,
     //         address,
     //         phrase,
-    //     } = wallet_keystore::api::KeystoreApi::generate_master_key_info(
+    //     } = wallet_crypto::api::KeystoreApi::generate_master_key_info(
     //         language_code,
     //         phrase,
     //         salt,

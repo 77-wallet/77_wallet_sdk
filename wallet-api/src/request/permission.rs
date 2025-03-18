@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use wallet_chain_interact::tron::operations::{
     multisig::{Keys, Permission},
-    permisions::PermissionTypes,
+    permissions::PermissionTypes,
 };
 
 pub struct PermissionReq {

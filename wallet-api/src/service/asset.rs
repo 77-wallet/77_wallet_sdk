@@ -31,8 +31,8 @@ pub struct AssetsService {
     pub repo: ResourcesRepo,
     account_domain: AccountDomain,
     assets_domain: AssetsDomain,
-    coin_domain: CoinDomain, // keystore: wallet_keystore::Keystore
-                             // keystore: wallet_keystore::Keystore
+    coin_domain: CoinDomain, // keystore: wallet_crypto::Keystore
+                             // keystore: wallet_crypto::Keystore
 }
 
 impl AssetsService {

@@ -21,7 +21,7 @@ use crate::{
 
 pub struct AppService<T> {
     repo: T,
-    // keystore: wallet_keystore::Keystore
+    // keystore: wallet_crypto::Keystore
 }
 
 impl<

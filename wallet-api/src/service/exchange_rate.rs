@@ -8,7 +8,7 @@ use crate::domain::coin::CoinDomain;
 pub struct ExchangeRateService {
     pub repo: ResourcesRepo,
     pub coin_domain: CoinDomain,
-    // keystore: wallet_keystore::Keystore
+    // keystore: wallet_crypto::Keystore
 }
 
 impl ExchangeRateService {

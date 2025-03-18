@@ -4,7 +4,7 @@ use std::{
 };
 
 use serde::Serialize;
-use wallet_keystore::KeystoreBuilder;
+use wallet_crypto::KeystoreBuilder;
 
 use crate::{
     directory_structure::LayoutStrategy,
@@ -147,7 +147,7 @@ impl WalletTreeOps for ModernWalletTree {
                     password,
                     &wallet_utils::serde_func::serde_to_vec(&keystore_data)?,
                     rng,
-                    wallet_keystore::KdfAlgorithm::Argon2id,
+                    wallet_crypto::KdfAlgorithm::Argon2id,
                     &key_filename,
                 )
                 .save()?;

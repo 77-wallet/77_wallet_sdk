@@ -10,4 +10,4 @@ pub use error::Error;
 
 pub use crate::wallet_hierarchy::WalletTreeStrategy;
 pub use naming::v2::KeyMeta;
-pub use wallet_keystore::KdfAlgorithm;
+pub use wallet_crypto::KdfAlgorithm;
