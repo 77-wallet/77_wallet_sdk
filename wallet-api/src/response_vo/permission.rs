@@ -1,5 +1,5 @@
 use wallet_chain_interact::tron::operations::permisions::{ContractType, PermissionTypes};
-use wallet_database::entities::permission::PermissionWithuserEntity;
+use wallet_database::entities::permission::PermissionWithUserEntity;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -136,10 +136,10 @@ impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for
     }
 }
 
-impl TryFrom<&PermissionWithuserEntity> for PermissionResp {
+impl TryFrom<&PermissionWithUserEntity> for PermissionResp {
     type Error = crate::ServiceError;
 
-    fn try_from(value: &PermissionWithuserEntity) -> Result<Self, Self::Error> {
+    fn try_from(value: &PermissionWithUserEntity) -> Result<Self, Self::Error> {
         let operations = PermissionTypes::from_hex(&value.permission.operations)?;
 
         let keys = value

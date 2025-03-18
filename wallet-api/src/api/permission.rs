@@ -2,26 +2,26 @@ use super::ReturnType;
 use crate::{
     request::permission::PermissionReq,
     response_vo::{
-        permssion::{AccountPermission, ManagerPermissionResp, PermissionList},
+        permission::{AccountPermission, ManagerPermissionResp, PermissionList},
         EstimateFeeResp,
     },
-    service::permission::PermssionService,
+    service::permission::PermissionService,
 };
 
 impl crate::WalletManager {
     // all permission list
     pub fn permission_list(&self) -> ReturnType<PermissionList> {
-        PermssionService::permission_list().into()
+        PermissionService::permission_list().into()
     }
 
     // trans permission
-    pub fn permssion_trans(&self) -> ReturnType<Vec<i8>> {
-        PermssionService::permssion_trans().into()
+    pub fn permission_trans(&self) -> ReturnType<Vec<i8>> {
+        PermissionService::permission_trans().into()
     }
 
     // account permission
     pub async fn account_permission(&self, address: String) -> ReturnType<AccountPermission> {
-        PermssionService::new()
+        PermissionService::new()
             .await?
             .account_permission(address)
             .await?
@@ -30,9 +30,9 @@ impl crate::WalletManager {
 
     // 管理其账号的权限
     pub async fn manager_permission(&self) -> ReturnType<Vec<ManagerPermissionResp>> {
-        PermssionService::new()
+        PermissionService::new()
             .await?
-            .manager_permision()
+            .manager_permission()
             .await?
             .into()
     }
@@ -42,7 +42,7 @@ impl crate::WalletManager {
         req: PermissionReq,
         types: String,
     ) -> ReturnType<EstimateFeeResp> {
-        PermssionService::new()
+        PermissionService::new()
             .await?
             .modify_permission_fee(req, types)
             .await?
@@ -55,7 +55,7 @@ impl crate::WalletManager {
         types: String,
         password: String,
     ) -> ReturnType<String> {
-        PermssionService::new()
+        PermissionService::new()
             .await?
             .modify_permission(req, types, password)
             .await?
@@ -69,7 +69,7 @@ impl crate::WalletManager {
         password: String,
         expiration: i64,
     ) -> ReturnType<String> {
-        PermssionService::new()
+        PermissionService::new()
             .await?
             .build_multisig_permission(req, types, expiration, password)
             .await?

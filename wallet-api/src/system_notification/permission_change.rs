@@ -1,8 +1,9 @@
 use super::NotificationType;
 use wallet_chain_interact::tron::operations::permisions::PermissionTypes;
 use wallet_database::entities::permission::PermissionEntity;
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PermissionChange {
     // 授权方的地址
     pub grantor_addr: String,

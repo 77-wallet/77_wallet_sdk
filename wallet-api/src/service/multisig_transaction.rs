@@ -740,7 +740,7 @@ impl MultisigTransactionService {
                         )
                         .await?;
 
-                    if queue.transfer_type == BillKind::UpdatgePermission.to_i8() {
+                    if queue.transfer_type == BillKind::UpdatePermission.to_i8() {
                         consumer.set_extra_fee(100 * tron::consts::TRX_VALUE);
                     }
 

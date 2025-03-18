@@ -1,7 +1,7 @@
 use crate::{
     dao::{permission::PermissionDao, permission_user::PermissionUserDao},
     entities::{
-        permission::{PermissionEntity, PermissionWithuserEntity},
+        permission::{PermissionEntity, PermissionWithUserEntity},
         permission_user::PermissionUserEntity,
     },
     DbPool,
@@ -67,7 +67,7 @@ impl PermissionRepo {
     }
 
     // 新增权限以及成员
-    pub async fn upate_with_user(
+    pub async fn update_with_user(
         pool: &DbPool,
         permission: &PermissionEntity,
         users: &[PermissionUserEntity],
@@ -105,7 +105,7 @@ impl PermissionRepo {
         grantor_addr: &str,
         active_id: i64,
         include_del: bool,
-    ) -> Result<Option<PermissionWithuserEntity>, crate::Error> {
+    ) -> Result<Option<PermissionWithUserEntity>, crate::Error> {
         let permission = PermissionDao::find_by_grantor_active(
             grantor_addr,
             active_id,
@@ -117,7 +117,7 @@ impl PermissionRepo {
         if let Some(permission) = permission {
             let user = PermissionUserDao::find_by_permission(&permission.id, pool.as_ref()).await?;
 
-            Ok(Some(PermissionWithuserEntity { permission, user }))
+            Ok(Some(PermissionWithUserEntity { permission, user }))
         } else {
             Ok(None)
         }
@@ -126,7 +126,7 @@ impl PermissionRepo {
     // 所有的权限
     pub async fn all_permission_with_user(
         pool: &DbPool,
-    ) -> Result<Vec<PermissionWithuserEntity>, crate::Error> {
+    ) -> Result<Vec<PermissionWithUserEntity>, crate::Error> {
         let permissions = PermissionDao::all_permission(pool.as_ref()).await?;
 
         let mut result = vec![];
@@ -134,7 +134,7 @@ impl PermissionRepo {
             let users =
                 PermissionUserDao::find_by_permission(&permission.id, pool.as_ref()).await?;
 
-            result.push(PermissionWithuserEntity {
+            result.push(PermissionWithUserEntity {
                 permission,
                 user: users,
             });

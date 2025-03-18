@@ -12,7 +12,7 @@ use crate::{
     },
     request::permission::PermissionReq,
     response_vo::{
-        permssion::{
+        permission::{
             AccountPermission, Keys, ManagerPermissionResp, PermissionList, PermissionResp,
         },
         EstimateFeeResp, TronFeeDetails,
@@ -38,11 +38,11 @@ use wallet_database::{
 use wallet_transport_backend::api::permission::PermissionAcceptReq;
 use wallet_types::constant::chain_code;
 
-pub struct PermssionService {
+pub struct PermissionService {
     chain: TronChain,
 }
 
-impl PermssionService {
+impl PermissionService {
     pub async fn new() -> Result<Self, crate::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
         Ok(Self { chain })
@@ -72,7 +72,7 @@ impl PermssionService {
         password: &str,
     ) -> Result<String, crate::ServiceError> {
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
-            BillKind::UpdatgePermission,
+            BillKind::UpdatePermission,
             Process::Building,
         ));
         FrontendNotifyEvent::new(data).send().await?;
@@ -98,7 +98,7 @@ impl PermssionService {
 
         // 广播交易交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
-            BillKind::UpdatgePermission,
+            BillKind::UpdatePermission,
             Process::Broadcast,
         ));
         FrontendNotifyEvent::new(data).send().await?;
@@ -115,7 +115,7 @@ impl PermssionService {
             from.to_string(),
             args.get_to(),
             args.get_value(),
-            BillKind::UpdatgePermission,
+            BillKind::UpdatePermission,
             bill_consumer.to_json_str()?,
             transaction_fee,
         );
@@ -157,17 +157,17 @@ impl PermssionService {
     }
 }
 
-impl PermssionService {
+impl PermissionService {
     // all permission category
     pub fn permission_list() -> Result<PermissionList, crate::ServiceError> {
         Ok(PermissionList::default())
     }
-    // trans permssion
-    pub fn permssion_trans() -> Result<Vec<i8>, crate::ServiceError> {
+    // trans permission
+    pub fn permission_trans() -> Result<Vec<i8>, crate::ServiceError> {
         Ok(PermissionList::trans_permission())
     }
 
-    // account permisson
+    // account permission
     pub async fn account_permission(
         &self,
         address: String,
@@ -198,7 +198,7 @@ impl PermssionService {
     }
 
     // 我管理的权限
-    pub async fn manager_permision(
+    pub async fn manager_permission(
         &self,
     ) -> Result<Vec<ManagerPermissionResp>, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
@@ -401,7 +401,7 @@ impl PermssionService {
         password: String,
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let bill_kind = BillKind::UpdatgePermission;
+        let bill_kind = BillKind::UpdatePermission;
 
         let account = MultisigDomain::account_by_address(&req.grantor_addr, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;

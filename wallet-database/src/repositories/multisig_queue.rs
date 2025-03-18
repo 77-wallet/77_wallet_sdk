@@ -352,7 +352,7 @@ impl MultisigQueueRepo {
         ))
     }
 
-    pub async fn permision_update_fail(address: &str, pool: &DbPool) -> Result<(), crate::Error> {
+    pub async fn permission_update_fail(address: &str, pool: &DbPool) -> Result<(), crate::Error> {
         Ok(MultisigQueueDaoV1::permission_fail(address, pool.as_ref()).await?)
     }
 
