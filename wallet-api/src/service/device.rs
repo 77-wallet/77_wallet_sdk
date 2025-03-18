@@ -15,7 +15,7 @@ use crate::{
 
 pub struct DeviceService<T: DeviceRepoTrait> {
     pub repo: T,
-    // keystore: wallet_keystore::Keystore
+    // keystore: wallet_crypto::Keystore
 }
 
 impl<T: DeviceRepoTrait> DeviceService<T> {

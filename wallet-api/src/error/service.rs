@@ -7,7 +7,7 @@ pub enum ServiceError {
     #[error("Tree error: `{0}`")]
     Tree(#[from] wallet_tree::Error),
     #[error("Keystore error: `{0}`")]
-    Keystore(#[from] wallet_keystore::error::Error),
+    Keystore(#[from] wallet_crypto::error::Error),
     #[error("Utils error: `{0}`")]
     Utils(#[from] wallet_utils::error::Error),
     #[error("TransportBackend error: `{0}`")]

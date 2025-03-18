@@ -1,8 +1,6 @@
+use secrecy::{zeroize::Zeroize as _, ExposeSecret};
 use serde::Serialize;
-use wallet_keystore::{
-    wallet::{phrase::PhraseWallet, prikey::PkWallet, seed::SeedWallet},
-    KeystoreBuilder,
-};
+use wallet_crypto::{KeystoreBuilder, RecoverableData};
 
 use crate::naming::{v1::LegacyNaming, FileType};
 
@@ -22,7 +20,7 @@ impl IoStrategy for LegacyIo {
         data: &dyn AsRef<[u8]>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let rng = rand::thread_rng();
         KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, name).save()?;
@@ -71,8 +69,12 @@ impl IoStrategy for LegacyIo {
             KeystoreBuilder::new_decrypt(root_dir.as_ref().join(phrase_filename), password)
                 .load()?
                 .try_into()?;
+        let seed: &[u8] = seed.into_seed().expose_secret().as_ref();
 
-        Ok(super::RootData::new(&phrase_wallet.phrase, &seed.seed))
+        Ok(super::RootData::new(
+            &phrase_wallet.phrase.expose_secret(),
+            seed,
+        ))
     }
 
     fn load_subkey(
@@ -97,7 +99,8 @@ impl IoStrategy for LegacyIo {
             KeystoreBuilder::new_decrypt(subs_dir.as_ref().join(pk_filename), password).load()?;
         let pk: PkWallet = data.try_into()?;
 
-        Ok(pk.pkey())
+        let res: &[u8] = pk.pkey().expose_secret().as_ref();
+        Ok(res.to_vec())
     }
 
     fn store_root(
@@ -107,7 +110,7 @@ impl IoStrategy for LegacyIo {
         phrase: &str,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let phrase_meta = LegacyNaming::generate_filemeta(
             FileType::Phrase,
@@ -157,7 +160,7 @@ impl IoStrategy for LegacyIo {
         data: &dyn AsRef<[u8]>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let file_meta = LegacyNaming::generate_filemeta(
             FileType::DerivedData,
@@ -179,7 +182,7 @@ impl IoStrategy for LegacyIo {
         subkeys: Vec<super::BulkSubkey>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         for subkey in subkeys {
             let file_meta = LegacyNaming::generate_filemeta(
@@ -251,5 +254,101 @@ impl IoStrategy for LegacyIo {
         _file_path: &dyn AsRef<std::path::Path>,
     ) -> Result<(), crate::Error> {
         unimplemented!("Never call this method")
+    }
+}
+
+#[derive(Clone)]
+pub struct PhraseWallet {
+    /// The wallet's private key.
+    pub phrase: secrecy::SecretString,
+}
+
+impl Drop for PhraseWallet {
+    fn drop(&mut self) {
+        self.phrase.zeroize();
+    }
+}
+
+impl PhraseWallet {
+    /// Construct a new wallet with an external [`PrehashSigner`].
+    pub fn new(phrase: &str) -> Self {
+        PhraseWallet {
+            phrase: phrase.into(),
+        }
+    }
+}
+
+impl TryFrom<RecoverableData> for PhraseWallet {
+    type Error = crate::Error;
+
+    fn try_from(value: RecoverableData) -> Result<Self, Self::Error> {
+        Ok(Self::new(&value.into_string()?))
+    }
+}
+
+#[derive(Clone)]
+pub struct PkWallet {
+    pub pkey: secrecy::SecretSlice<u8>,
+}
+
+impl Drop for PkWallet {
+    fn drop(&mut self) {
+        self.pkey.zeroize();
+    }
+}
+
+impl PkWallet {
+    /// Construct a new wallet with an external [`PrehashSigner`].
+    pub fn new(pkey: &[u8]) -> Self {
+        PkWallet {
+            pkey: pkey.to_vec().into(),
+        }
+    }
+
+    /// Returns this wallet's signer.
+    pub fn pkey(&self) -> &secrecy::SecretSlice<u8> {
+        &self.pkey
+    }
+}
+
+impl TryFrom<RecoverableData> for PkWallet {
+    type Error = crate::Error;
+
+    fn try_from(value: RecoverableData) -> Result<Self, Self::Error> {
+        Ok(Self::new(&value.inner()))
+    }
+}
+
+#[derive(Clone)]
+pub struct SeedWallet {
+    /// The wallet's private key.
+    pub seed: secrecy::SecretSlice<u8>,
+}
+
+impl Drop for SeedWallet {
+    fn drop(&mut self) {
+        self.seed.zeroize();
+    }
+}
+
+impl SeedWallet {
+    /// Construct a new wallet with an external [`PrehashSigner`].
+    pub fn new(seed: &[u8]) -> Self {
+        SeedWallet {
+            seed: seed.to_vec().into(),
+        }
+    }
+
+    /// Consumes this wallet and returns its signer.
+    pub fn into_seed(&self) -> &secrecy::SecretSlice<u8> {
+        &self.seed
+    }
+}
+
+impl TryFrom<RecoverableData> for SeedWallet {
+    type Error = crate::Error;
+
+    fn try_from(value: RecoverableData) -> Result<Self, Self::Error> {
+        Ok(Self::new(&value.inner()))
     }
 }

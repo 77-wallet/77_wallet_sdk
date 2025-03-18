@@ -1,3 +1,4 @@
+use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
@@ -8,7 +9,6 @@ use wallet_database::{
         Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
-use wallet_keystore::KdfAlgorithm;
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 
 pub struct ConfigDomain;

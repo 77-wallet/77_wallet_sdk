@@ -22,7 +22,7 @@ pub struct CoinService {
     pub repo: ResourcesRepo,
     account_domain: AccountDomain,
     coin_domain: CoinDomain,
-    // keystore: wallet_keystore::Keystore
+    // keystore: wallet_crypto::Keystore
 }
 
 impl CoinService {

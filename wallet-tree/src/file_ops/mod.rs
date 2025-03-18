@@ -7,7 +7,7 @@ use std::{
     path::Path,
 };
 
-use wallet_keystore::{KdfAlgorithm, KeystoreBuilder, RecoverableData};
+use wallet_crypto::{KdfAlgorithm, KeystoreBuilder, RecoverableData};
 
 use crate::naming::v2::KeyMeta;
 
@@ -89,7 +89,7 @@ pub trait IoStrategy: Send + Sync {
         subkeys: Vec<BulkSubkey>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error>;
 
     fn delete_account(

@@ -1,6 +1,7 @@
 pub mod config;
 pub mod mqtt;
 use config::ConfigDomain;
+use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
     entities::{
         account::AccountEntity,
@@ -9,7 +10,6 @@ use wallet_database::{
     factory::RepositoryFactory,
     repositories::device::DeviceRepoTrait,
 };
-use wallet_keystore::KdfAlgorithm;
 
 use crate::{infrastructure::task_queue::BackendApiTaskData, service::device::APP_ID};
 

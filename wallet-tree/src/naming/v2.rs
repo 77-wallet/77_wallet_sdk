@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
-use wallet_keystore::RecoverableData;
+use wallet_crypto::RecoverableData;
 use wallet_utils::address::AccountIndexMap;
 
 use super::{FileMeta, FileType, NamingStrategy};

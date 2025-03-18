@@ -2,8 +2,8 @@
 pub enum Error {
     #[error("Core error: `{0}`")]
     Core(#[from] wallet_core::Error),
-    #[error("Keystore error: `{0}`")]
-    Keystore(#[from] wallet_keystore::error::Error),
+    #[error("Crypto error: `{0}`")]
+    Crypto(#[from] wallet_crypto::error::Error),
     #[error("The wallet key is not saved locally")]
     LocalNoWallet,
     #[error("Tree error: `{0}`")]

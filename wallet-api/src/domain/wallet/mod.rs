@@ -285,7 +285,7 @@ impl WalletDomain {
 
     //     // Verify that the provided mnemonic phrase and salt generate the expected address
     //     // TODO:
-    //     wallet_keystore::api::KeystoreApi::check_wallet_address(
+    //     wallet_crypto::api::KeystoreApi::check_wallet_address(
     //         language_code,
     //         &phrase,
     //         &salt,
@@ -303,7 +303,7 @@ impl WalletDomain {
 
     //     let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
     //     // Create a new root keystore with the new password
-    //     wallet_keystore::api::KeystoreApi::initialize_root_keystore(
+    //     wallet_crypto::api::KeystoreApi::initialize_root_keystore(
     //         wallet_tree,
     //         &wallet_address,
     //         &private_key,
@@ -323,7 +323,7 @@ impl WalletDomain {
     //                 .map_err(|e| crate::SystemError::Service(e.to_string()))?;
     //             let root_info = &wallet.get_root();
 
-    //             let seed = wallet_keystore::api::KeystoreApi::load_seed(
+    //             let seed = wallet_crypto::api::KeystoreApi::load_seed(
     //                 &wallet_tree,
     //                 &root_dir,
     //                 root_info.get_address(),
@@ -348,7 +348,7 @@ impl WalletDomain {
     //                         account.address_type(),
     //                         chain.network.as_str().into(),
     //                     )?;
-    //                     wallet_keystore::api::KeystoreApi::initialize_child_keystore(
+    //                     wallet_crypto::api::KeystoreApi::initialize_child_keystore(
     //                         &instance,
     //                         &seed,
     //                         &info.derivation_path,

@@ -26,7 +26,7 @@ use crate::{
 pub struct AccountService {
     pub repo: ResourcesRepo,
     pub wallet_domain: WalletDomain,
-    // keystore: wallet_keystore::Keystore
+    // keystore: wallet_crypto::Keystore
 }
 
 impl AccountService {

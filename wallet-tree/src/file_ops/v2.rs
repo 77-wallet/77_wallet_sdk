@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::Serialize;
-use wallet_keystore::KeystoreBuilder;
+use wallet_crypto::KeystoreBuilder;
 
 use crate::naming::{
     v2::{DerivedMetadata, KeyMeta, KeyMetas, KeystoreData, ModernNaming},
@@ -20,7 +20,7 @@ impl IoStrategy for ModernIo {
         data: &dyn AsRef<[u8]>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let rng = rand::thread_rng();
         KeystoreBuilder::new_encrypt(file_path, password, data, rng, algorithm, name).save()?;
@@ -125,7 +125,7 @@ impl IoStrategy for ModernIo {
         phrase: &str,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let data = super::RootData {
             phrase: phrase.to_string(),
@@ -151,7 +151,7 @@ impl IoStrategy for ModernIo {
         data: &dyn AsRef<[u8]>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let account_idx = account_index_map.account_id;
         let base_path = file_path.as_ref();
@@ -228,7 +228,7 @@ impl IoStrategy for ModernIo {
         subkeys: Vec<super::BulkSubkey>,
         file_path: &dyn AsRef<std::path::Path>,
         password: &str,
-        algorithm: wallet_keystore::KdfAlgorithm,
+        algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
         let start = std::time::Instant::now();
         let base_path = file_path.as_ref();

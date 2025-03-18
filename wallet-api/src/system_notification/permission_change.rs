@@ -1,5 +1,5 @@
 use super::NotificationType;
-use wallet_chain_interact::tron::operations::permisions::PermissionTypes;
+use wallet_chain_interact::tron::operations::permissions::PermissionTypes;
 use wallet_database::entities::permission::PermissionEntity;
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 

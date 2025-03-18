@@ -24,7 +24,7 @@ dotenv = "0.15"
 
 wallet-database = { workspace = true }
 wallet-utils = { workspace = true }
-wallet-keystore = { workspace = true }
+wallet-crypto = { workspace = true }
 wallet-tree = { workspace = true }
 wallet-oss = { workspace = true }
 # wallet-error = { workspace = true }
