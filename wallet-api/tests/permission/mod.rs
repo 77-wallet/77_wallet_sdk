@@ -38,22 +38,32 @@ async fn test_manager_permission() {
 async fn test_add_permission_fee() {
     let wallet_manager = get_manager().await;
 
-    let keys = vec![KeysReq {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        weight: 1,
-    }];
+    let keys = vec![
+        KeysReq {
+            address: "TJkMavCTA2qd7TLzWehtMnKnxkSeaWAdcq".to_string(),
+            weight: 1,
+        },
+        KeysReq {
+            address: "TE4xhjv6dvEbYxXGjP4ntnN3viSN9Nf8Qv".to_string(),
+            weight: 116,
+        },
+        KeysReq {
+            address: "TQsWaoYYwZ4EVj9wgDG4bfdjwYYRejQsTC".to_string(),
+            weight: 14,
+        },
+    ];
 
     let req = PermissionReq {
-        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        grantor_addr: "TQsWaoYYwZ4EVj9wgDG4bfdjwYYRejQsTC".to_string(),
         name: "转账、质押,12".to_string(),
-        active_id: None,
+        active_id: Some(8),
         threshold: 1,
         operations: vec![1, 2, 3, 5],
         keys,
     };
 
     let res = wallet_manager
-        .modify_permission_fee(req, "new".to_string())
+        .modify_permission_fee(req, "update".to_string())
         .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())

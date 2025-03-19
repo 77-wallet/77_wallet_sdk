@@ -131,7 +131,7 @@ impl TryFrom<&PermissionWithUserEntity> for PermissionResp {
         let keys = value
             .user
             .iter()
-            .map(|u| Keys::new(u.address.clone(), u.weight as i8, u.is_self))
+            .map(|u| Keys::new(u.address.clone(), u.weight as i32, u.is_self))
             .collect();
 
         Ok(PermissionResp {
@@ -150,11 +150,11 @@ pub struct Keys {
     pub name: String,
     pub address: String,
     pub is_self: i64,
-    weight: i8,
+    weight: i32,
 }
 
 impl Keys {
-    pub fn new(address: String, weight: i8, is_self: i64) -> Self {
+    pub fn new(address: String, weight: i32, is_self: i64) -> Self {
         Self {
             name: String::new(),
             address,

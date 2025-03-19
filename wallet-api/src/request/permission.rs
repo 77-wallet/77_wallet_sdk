@@ -20,8 +20,8 @@ impl PermissionReq {
     pub const DELETE: &'static str = "delete";
 
     pub fn check_threshold(&self) -> Result<(), crate::BusinessError> {
-        let weight = self.keys.iter().map(|k| k.weight).sum::<i8>();
-        if weight < self.threshold {
+        let weight = self.keys.iter().map(|k| k.weight).sum::<i32>();
+        if weight < self.threshold as i32 {
             return Err(crate::BusinessError::Permission(
                 crate::PermissionError::WeightLessThreshold,
             ))?;
@@ -62,5 +62,5 @@ impl TryFrom<&PermissionReq> for Permission {
 
 pub struct KeysReq {
     pub address: String,
-    pub weight: i8,
+    pub weight: i32,
 }
