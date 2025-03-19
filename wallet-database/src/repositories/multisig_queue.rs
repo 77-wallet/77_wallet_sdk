@@ -122,7 +122,7 @@ impl MultisigQueueRepo {
         if !account_id.is_empty() {
             Self::member_signed_result(account_id, queue_id, pool).await
         } else {
-            Self::permision_signed_reuslt(permission_id, queue_id, pool).await
+            Self::permission_signed_result(permission_id, queue_id, pool).await
         }
     }
 
@@ -154,7 +154,7 @@ impl MultisigQueueRepo {
     }
 
     // 权限的签名结果
-    pub async fn permision_signed_reuslt(
+    pub async fn permission_signed_result(
         permission_id: &str,
         queue_id: &str,
         pool: DbPool,

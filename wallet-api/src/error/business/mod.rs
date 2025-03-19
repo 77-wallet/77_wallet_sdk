@@ -45,7 +45,7 @@ pub enum BusinessError {
     #[error("Config: error: {0}")]
     Config(#[from] config::ConfigError),
     #[error("chain node: error: {0}")]
-    Permisison(#[from] permission::PermissionError),
+    Permission(#[from] permission::PermissionError),
 }
 
 impl BusinessError {
@@ -65,7 +65,7 @@ impl BusinessError {
             BusinessError::ExchangeRate(msg) => msg.get_status_code(),
             BusinessError::ChainNode(msg) => msg.get_status_code(),
             BusinessError::Config(msg) => msg.get_status_code(),
-            BusinessError::Permisison(msg) => msg.get_status_code(),
+            BusinessError::Permission(msg) => msg.get_status_code(),
         }
     }
 }

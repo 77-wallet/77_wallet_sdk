@@ -65,7 +65,7 @@ impl PermissionService {
         Ok(())
     }
 
-    async fn update_permision<T>(
+    async fn update_permission<T>(
         &self,
         from: &str,
         args: impl TronTxOperation<T>,
@@ -235,7 +235,7 @@ impl PermissionService {
         match types {
             PermissionReq::NEW => {
                 if args.actives.len() > 7 {
-                    return Err(crate::BusinessError::Permisison(
+                    return Err(crate::BusinessError::Permission(
                         crate::PermissionError::ActivesPermissionMore,
                     ))?;
                 };
@@ -289,8 +289,8 @@ impl PermissionService {
 
                     *permission = new_permission;
                 } else {
-                    return Err(crate::BusinessError::Permisison(
-                        crate::PermissionError::ActviesPermissionNotFound,
+                    return Err(crate::BusinessError::Permission(
+                        crate::PermissionError::ActivesPermissionNotFound,
                     ))?;
                 }
 
@@ -320,19 +320,19 @@ impl PermissionService {
                         .retain(|item| item.id.unwrap_or_default() != active_id);
 
                     if args.actives.len() == 0 {
-                        return Err(crate::BusinessError::Permisison(
+                        return Err(crate::BusinessError::Permission(
                             crate::PermissionError::MissActivesPermission,
                         ))?;
                     }
 
                     Ok(())
                 } else {
-                    return Err(crate::BusinessError::Permisison(
-                        crate::PermissionError::ActviesPermissionNotFound,
+                    return Err(crate::BusinessError::Permission(
+                        crate::PermissionError::ActivesPermissionNotFound,
                     ))?;
                 }
             }
-            _ => Err(crate::BusinessError::Permisison(
+            _ => Err(crate::BusinessError::Permission(
                 crate::PermissionError::UnSupportOpType(types.to_string()),
             ))?,
         }
@@ -379,7 +379,7 @@ impl PermissionService {
         }
 
         let tx_hash = self
-            .update_permision(&req.grantor_addr, args, &password)
+            .update_permission(&req.grantor_addr, args, &password)
             .await?;
 
         backend_params.hash = tx_hash.clone();
@@ -460,202 +460,3 @@ impl PermissionService {
         Ok(resp.tx_hash)
     }
 }
-
-// pub async fn add_permission_fee(
-//     &self,
-//     req: PermissionReq,
-// ) -> Result<EstimateFeeResp, crate::ServiceError> {
-//     let account = self.chain.account_info(&req.grantor_addr).await?;
-//     let mut args = PermissionUpdateArgs::try_from(&account)?;
-
-//     let permission = Permission::try_from(&req)?;
-//     args.actives.push(permission);
-
-//     let result = self.update_permission_fee(&req.grantor_addr, args).await?;
-
-//     Ok(result)
-// }
-
-// add new permission
-// pub async fn add_permission(
-//     &self,
-//     req: PermissionReq,
-//     password: String,
-// ) -> Result<String, crate::ServiceError> {
-//     // check
-//     let account = self.chain.account_info(&req.grantor_addr).await?;
-//     if account.active_permission.len() > 7 {
-//         return Err(crate::BusinessError::Permisison(
-//             crate::PermissionError::ActivesPermissionMore,
-//         ))?;
-//     };
-
-//     req.check_threshold()?;
-
-//     let mut args = PermissionUpdateArgs::try_from(&account)?;
-
-//     // 新增权限
-//     let permission = Permission::try_from(&req)?;
-//     let permission_accept =
-//         PermissionAccept::try_from((&permission, req.grantor_addr.as_str()))?;
-//     args.actives.push(permission);
-
-//     let tx_hash = self
-//         .update_permision(&req.grantor_addr, args, &password)
-//         .await?;
-
-//     // 上报后端
-//     self.upload_backend(permission_accept, tx_hash.clone(), "upsert".to_string())
-//         .await?;
-
-//     Ok(tx_hash)
-// }
-
-// pub async fn up_permission_fee(
-//     &self,
-//     req: PermissionReq,
-// ) -> Result<EstimateFeeResp, crate::ServiceError> {
-//     let account = self.chain.account_info(&req.grantor_addr).await?;
-
-//     let mut args = PermissionUpdateArgs::try_from(&account)?;
-
-//     let id = req.active_id.unwrap_or_default();
-//     let new_permission = Permission::try_from(&req)?;
-
-//     if let Some(permission) = args
-//         .actives
-//         .iter_mut()
-//         .find(|p| p.id.unwrap_or_default() == id)
-//     {
-//         *permission = new_permission;
-//     } else {
-//         return Err(crate::BusinessError::Permisison(
-//             crate::PermissionError::ActviesPermissionNotFound,
-//         ))?;
-//     }
-
-//     let result = self.update_permission_fee(&req.grantor_addr, args).await?;
-
-//     Ok(result)
-// }
-
-// update new permission
-// pub async fn up_permission(
-//     &self,
-//     req: PermissionReq,
-//     password: String,
-// ) -> Result<String, crate::ServiceError> {
-//     let account = self.chain.account_info(&req.grantor_addr).await?;
-//     req.check_threshold()?;
-
-//     let mut args = PermissionUpdateArgs::try_from(&account)?;
-
-//     // update permission
-//     let id = req.active_id.unwrap();
-//     let new_permission = Permission::try_from(&req)?;
-//     let permission = PermissionAccept::try_from((&new_permission, req.grantor_addr.as_str()))?;
-
-//     if let Some(permission) = args
-//         .actives
-//         .iter_mut()
-//         .find(|p| p.id.unwrap_or_default() == id)
-//     {
-//         *permission = new_permission;
-//     } else {
-//         return Err(crate::BusinessError::Permisison(
-//             crate::PermissionError::ActviesPermissionNotFound,
-//         ))?;
-//     }
-
-//     let tx_hash = self
-//         .update_permision(&req.grantor_addr, args, &password)
-//         .await?;
-
-//     // 上报后端
-//     self.upload_backend(permission, tx_hash.clone(), "upsert".to_string())
-//         .await?;
-
-//     Ok(tx_hash)
-// }
-
-// pub async fn del_permission_fee(
-//     &self,
-//     grantor_addr: String,
-//     active_id: i8,
-// ) -> Result<EstimateFeeResp, crate::ServiceError> {
-//     let account = self.chain.account_info(&grantor_addr).await?;
-
-//     let mut args = PermissionUpdateArgs::try_from(&account)?;
-
-//     // check exists
-//     let permission = args
-//         .actives
-//         .iter()
-//         .find(|a| a.id.unwrap_or_default() == active_id)
-//         .cloned();
-
-//     if let Some(_permission) = permission {
-//         // 删除权限
-//         args.actives
-//             .retain(|item| item.id.unwrap_or_default() != active_id);
-
-//         if args.actives.len() == 0 {
-//             return Err(crate::BusinessError::Permisison(
-//                 crate::PermissionError::MissActivesPermission,
-//             ))?;
-//         }
-
-//         let result = self.update_permission_fee(&grantor_addr, args).await?;
-//         Ok(result)
-//     } else {
-//         return Err(crate::BusinessError::Permisison(
-//             crate::PermissionError::ActviesPermissionNotFound,
-//         ))?;
-//     }
-// }
-
-// // update new permission
-// pub async fn del_permission(
-//     &self,
-//     grantor_addr: String,
-//     active_id: i8,
-//     password: String,
-// ) -> Result<String, crate::ServiceError> {
-//     let account = self.chain.account_info(&grantor_addr).await?;
-
-//     let mut args = PermissionUpdateArgs::try_from(&account)?;
-
-//     // check exists
-//     let permission = args
-//         .actives
-//         .iter()
-//         .find(|a| a.id.unwrap_or_default() == active_id)
-//         .cloned();
-
-//     if let Some(permission) = permission {
-//         // 删除权限
-//         args.actives
-//             .retain(|item| item.id.unwrap_or_default() != active_id);
-
-//         if args.actives.len() == 0 {
-//             return Err(crate::BusinessError::Permisison(
-//                 crate::PermissionError::MissActivesPermission,
-//             ))?;
-//         }
-
-//         let tx_hash = self
-//             .update_permision(&grantor_addr, args, &password)
-//             .await?;
-
-//         let mut permission = PermissionAccept::try_from((&permission, grantor_addr.as_str()))?;
-//         permission.permission.is_del = 1;
-//         self.upload_backend(permission, tx_hash.clone(), "delete".to_string())
-//             .await?;
-
-//         Ok(tx_hash)
-//     } else {
-//         return Err(crate::BusinessError::Permisison(
-//             crate::PermissionError::ActviesPermissionNotFound,
-//         ))?;
-//     }
-// }

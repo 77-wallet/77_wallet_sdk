@@ -101,8 +101,8 @@ impl PermissionDomain {
             }
         }
 
-        Err(crate::BusinessError::Permisison(
-            crate::PermissionError::ActviesPermissionNotFound,
+        Err(crate::BusinessError::Permission(
+            crate::PermissionError::ActivesPermissionNotFound,
         ))?
     }
 
