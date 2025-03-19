@@ -122,7 +122,7 @@ pub enum BillKind {
     // 奖励提取
     WithdrawReward = 21,
     // 更新权限
-    UpdatgePermission = 22,
+    UpdatePermission = 22,
 }
 impl Serialize for BillKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -175,7 +175,7 @@ impl BillKind {
             ],
             BillKind::Vote => vec![BillKind::Vote.to_i8()],
             BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
-            BillKind::UpdatgePermission => vec![BillKind::UpdatgePermission.to_i8()],
+            BillKind::UpdatePermission => vec![BillKind::UpdatePermission.to_i8()],
         }
     }
 
@@ -225,7 +225,7 @@ impl TryFrom<i8> for BillKind {
             19 => Ok(BillKind::BatchUnDelegateEnergy),
             20 => Ok(BillKind::Vote),
             21 => Ok(BillKind::WithdrawReward),
-            22 => Ok(BillKind::UpdatgePermission),
+            22 => Ok(BillKind::UpdatePermission),
             _ => Err(crate::Error::Other(format!(
                 "Invalid value for TxKind : {}",
                 value

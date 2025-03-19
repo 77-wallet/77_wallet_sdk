@@ -72,7 +72,7 @@ impl PermssionService {
         password: &str,
     ) -> Result<String, crate::ServiceError> {
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
-            BillKind::UpdatgePermission,
+            BillKind::UpdatePermission,
             Process::Building,
         ));
         FrontendNotifyEvent::new(data).send().await?;
@@ -98,7 +98,7 @@ impl PermssionService {
 
         // 广播交易交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
-            BillKind::UpdatgePermission,
+            BillKind::UpdatePermission,
             Process::Broadcast,
         ));
         FrontendNotifyEvent::new(data).send().await?;
@@ -115,7 +115,7 @@ impl PermssionService {
             from.to_string(),
             args.get_to(),
             args.get_value(),
-            BillKind::UpdatgePermission,
+            BillKind::UpdatePermission,
             bill_consumer.to_json_str()?,
             transaction_fee,
         );
@@ -401,7 +401,7 @@ impl PermssionService {
         password: String,
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let bill_kind = BillKind::UpdatgePermission;
+        let bill_kind = BillKind::UpdatePermission;
 
         let account = MultisigDomain::account_by_address(&req.grantor_addr, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
