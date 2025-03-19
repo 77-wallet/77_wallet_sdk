@@ -6,14 +6,14 @@ impl crate::WalletManager {
         &self,
         input: Vec<wallet_database::entities::announcement::CreateAnnouncementVo>,
     ) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resuource_repo())
+        AnnouncementService::new(self.repo_factory.resource_repo())
             .add(input)
             .await?
             .into()
     }
 
     pub async fn pull_announcement(&self) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resuource_repo())
+        AnnouncementService::new(self.repo_factory.resource_repo())
             .pull_announcement()
             .await?
             .into()
@@ -24,21 +24,21 @@ impl crate::WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<AnnouncementEntity>> {
-        AnnouncementService::new(self.repo_factory.resuource_repo())
+        AnnouncementService::new(self.repo_factory.resource_repo())
             .get_announcement_list(page, page_size)
             .await?
             .into()
     }
 
     pub async fn get_announcement_by_id(&self, id: &str) -> ReturnType<Option<AnnouncementEntity>> {
-        AnnouncementService::new(self.repo_factory.resuource_repo())
+        AnnouncementService::new(self.repo_factory.resource_repo())
             .get_announcement_by_id(id)
             .await?
             .into()
     }
 
     pub async fn read_announcement(&self, id: Option<&str>) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resuource_repo())
+        AnnouncementService::new(self.repo_factory.resource_repo())
             .read(id)
             .await?
             .into()

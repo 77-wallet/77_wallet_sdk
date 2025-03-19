@@ -4,7 +4,7 @@ use crate::service::asset::AssetsService;
 
 impl crate::WalletManager {
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .add_coin(
                 &req.wallet_address,
                 Some(req.account_id),
@@ -17,7 +17,7 @@ impl crate::WalletManager {
     }
 
     pub async fn add_regular_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .add_coin(
                 &req.wallet_address,
                 Some(req.account_id),
@@ -33,7 +33,7 @@ impl crate::WalletManager {
         &self,
         req: crate::request::coin::AddMultisigCoinReq,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .add_coin(&req.address, None, &req.symbol, None, Some(true))
             .await?
             .into()
@@ -46,7 +46,7 @@ impl crate::WalletManager {
         chain_code: &str,
         symbol: &str,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .detail(address, account_id, chain_code, symbol)
             .await?
             .into()
@@ -58,21 +58,21 @@ impl crate::WalletManager {
         account_id: u32,
         symbol: &str,
     ) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .remove_coin(wallet_address, Some(account_id), symbol, None)
             .await?
             .into()
     }
 
     pub async fn remove_regular_coin(&self, address: &str, symbol: &str) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .remove_coin(address, None, symbol, Some(false))
             .await?
             .into()
     }
 
     pub async fn remove_multisig_coin(&self, address: &str, symbol: &str) -> ReturnType<()> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .remove_coin(address, None, symbol, Some(true))
             .await?
             .into()
@@ -87,7 +87,7 @@ impl crate::WalletManager {
         keyword: Option<&str>,
         is_multisig: Option<bool>,
     ) -> ReturnType<crate::response_vo::coin::CoinInfoList> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .get_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await?
             .into()
@@ -98,7 +98,7 @@ impl crate::WalletManager {
         account_id: u32,
         wallet_address: Option<&str>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .get_all_account_assets(account_id, wallet_address)
             .await?
             .into()
@@ -110,7 +110,7 @@ impl crate::WalletManager {
         account_id: u32,
         wallet_address: &str,
     ) -> ReturnType<GetAccountAssetsRes> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .get_account_assets(account_id, wallet_address)
             .await?
             .into()
@@ -121,7 +121,7 @@ impl crate::WalletManager {
         &self,
         address: &str,
     ) -> ReturnType<GetAccountAssetsRes> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .get_multisig_account_assets(address)
             .await?
             .into()
@@ -134,7 +134,7 @@ impl crate::WalletManager {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> ReturnType<AccountChainAssetList> {
-        AssetsService::new(self.repo_factory.resuource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .get_account_chain_assets_v2(address, account_id, chain_code, is_multisig)
             .await?
             .into()
@@ -147,7 +147,7 @@ impl crate::WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        let res = AssetsService::new(self.repo_factory.resuource_repo())
+        let res = AssetsService::new(self.repo_factory.resource_repo())
             .sync_assets_by_addr(addr, chain_code, symbol)
             .await;
         if let Err(e) = res {
@@ -159,7 +159,7 @@ impl crate::WalletManager {
 
     // 单个地址某个币的资产
     pub async fn sync_single_assets(&self, address: &str, symbol: &str) -> ReturnType<()> {
-        let res = AssetsService::new(self.repo_factory.resuource_repo())
+        let res = AssetsService::new(self.repo_factory.resource_repo())
             .sync_single_assets(address, symbol)
             .await;
         if let Err(e) = res {
@@ -176,7 +176,7 @@ impl crate::WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        let res = AssetsService::new(self.repo_factory.resuource_repo())
+        let res = AssetsService::new(self.repo_factory.resource_repo())
             .sync_assets_by_wallet(wallet_address, account_id, symbol)
             .await;
         if let Err(e) = res {

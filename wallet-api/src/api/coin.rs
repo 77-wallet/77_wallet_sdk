@@ -12,7 +12,7 @@ impl crate::WalletManager {
         page_size: i64,
     ) -> ReturnType<wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>>
     {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .get_hot_coin_list(
                 wallet_address,
                 Some(account_id),
@@ -35,7 +35,7 @@ impl crate::WalletManager {
         page_size: i64,
     ) -> ReturnType<wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>>
     {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .get_hot_coin_list(
                 address,
                 None,
@@ -50,7 +50,7 @@ impl crate::WalletManager {
     }
 
     pub async fn pull_hot_coins(&self) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .pull_hot_coins()
             .await?
             .into()
@@ -60,7 +60,7 @@ impl crate::WalletManager {
         &self,
         symbols: Vec<String>,
     ) -> ReturnType<Vec<TokenPriceChangeRes>> {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .get_token_price(symbols)
             .await?
             .into()
@@ -71,7 +71,7 @@ impl crate::WalletManager {
         chain_code: &str,
         token_address: &str,
     ) -> ReturnType<crate::response_vo::coin::TokenInfo> {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .query_token_info(chain_code, token_address)
             .await?
             .into()
@@ -84,7 +84,7 @@ impl crate::WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .customize_coin(
                 address,
                 account_id,
@@ -104,7 +104,7 @@ impl crate::WalletManager {
         token_address: &str,
         protocol: Option<String>,
     ) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .customize_coin(
                 address,
                 None,
@@ -121,7 +121,7 @@ impl crate::WalletManager {
         &self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> ReturnType<TokenHistoryPrices> {
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .query_history_price(req)
             .await?
             .into()
@@ -148,7 +148,7 @@ impl crate::WalletManager {
             page_size,
         };
 
-        CoinService::new(self.repo_factory.resuource_repo())
+        CoinService::new(self.repo_factory.resource_repo())
             .query_popular_by_page(req)
             .await?
             .into()

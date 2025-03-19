@@ -7,7 +7,7 @@ impl crate::WalletManager {
         notification: crate::system_notification::Notification,
         status: i8,
     ) -> ReturnType<()> {
-        SystemNotificationService::new(self.repo_factory.resuource_repo())
+        SystemNotificationService::new(self.repo_factory.resource_repo())
             .add_system_notification(id, notification, status)
             .await?
             .into()
@@ -22,7 +22,7 @@ impl crate::WalletManager {
             crate::response_vo::system_notification::SystemNotification,
         >,
     > {
-        SystemNotificationService::new(self.repo_factory.resuource_repo())
+        SystemNotificationService::new(self.repo_factory.resource_repo())
             .get_system_notification_list(page, page_size)
             .await?
             .into()
@@ -33,7 +33,7 @@ impl crate::WalletManager {
         id: Option<String>,
         status: i8,
     ) -> ReturnType<()> {
-        SystemNotificationService::new(self.repo_factory.resuource_repo())
+        SystemNotificationService::new(self.repo_factory.resource_repo())
             .update_system_notification_status(id, status)
             .await?
             .into()

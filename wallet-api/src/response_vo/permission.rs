@@ -30,6 +30,7 @@ impl Default for PermissionList {
                 ContractType::FreezeBalanceV2Contract.to_i8(),
                 ContractType::UnfreezeBalanceV2Contract.to_i8(),
                 ContractType::WithdrawExpireUnfreezeContract.to_i8(),
+                ContractType::CancelAllUnfreezeV2Contract.to_i8(),
             ],
             resource: vec![
                 ContractType::DelegateResourceContract.to_i8(),
