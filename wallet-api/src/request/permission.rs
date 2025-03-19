@@ -22,7 +22,7 @@ impl PermissionReq {
     pub fn check_threshold(&self) -> Result<(), crate::BusinessError> {
         let weight = self.keys.iter().map(|k| k.weight).sum::<i8>();
         if weight < self.threshold {
-            return Err(crate::BusinessError::Permisison(
+            return Err(crate::BusinessError::Permission(
                 crate::PermissionError::WeightLessThreshold,
             ))?;
         }

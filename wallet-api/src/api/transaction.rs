@@ -1,5 +1,5 @@
 use super::ReturnType;
-use crate::request::transaction::{self, QueryBillReusltReq};
+use crate::request::transaction::{self, QueryBillResultReq};
 use crate::response_vo::CoinCurrency;
 use crate::response_vo::{
     self,
@@ -50,7 +50,7 @@ impl crate::WalletManager {
         owner: String,
         hashs: Vec<String>,
     ) -> ReturnType<Vec<BillEntity>> {
-        BillService::new(self.repo_factory.resuource_repo())
+        BillService::new(self.repo_factory.resource_repo())
             .list_by_hashs(owner, hashs)
             .await?
             .into()
@@ -71,7 +71,7 @@ impl crate::WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<BillEntity>> {
-        BillService::new(self.repo_factory.resuource_repo())
+        BillService::new(self.repo_factory.resource_repo())
             .bill_lists(
                 root_addr,
                 account_id,
@@ -113,7 +113,7 @@ impl crate::WalletManager {
     // 单笔查询交易并处理
     pub async fn query_tx_result(
         &self,
-        req: Vec<QueryBillReusltReq>,
+        req: Vec<QueryBillResultReq>,
     ) -> ReturnType<Vec<BillEntity>> {
         crate::service::transaction::TransactionService::query_tx_result(req)
             .await
@@ -121,7 +121,7 @@ impl crate::WalletManager {
     }
 
     pub async fn sync_bill(&self, chain_code: String, address: String) -> ReturnType<()> {
-        BillService::new(self.repo_factory.resuource_repo())
+        BillService::new(self.repo_factory.resource_repo())
             .sync_bill_by_address(&chain_code, &address)
             .await?
             .into()
@@ -132,7 +132,7 @@ impl crate::WalletManager {
         wallet_address: String,
         account_id: u32,
     ) -> ReturnType<()> {
-        BillService::new(self.repo_factory.resuource_repo())
+        BillService::new(self.repo_factory.resource_repo())
             .sync_bill_by_wallet_and_account(wallet_address, account_id)
             .await?
             .into()
@@ -144,7 +144,7 @@ impl crate::WalletManager {
         chain_code: String,
         symbol: String,
     ) -> ReturnType<CoinCurrency> {
-        BillService::new(self.repo_factory.resuource_repo())
+        BillService::new(self.repo_factory.resource_repo())
             .coin_currency_price(chain_code, symbol)
             .await
             .into()

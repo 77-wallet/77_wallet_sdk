@@ -11,13 +11,13 @@ pub enum PermissionError {
     MissActivesPermission,
     // 未找到对应的活跃权限
     #[error("actives permission not found")]
-    ActviesPermissionNotFound,
+    ActivesPermissionNotFound,
     // 不支持的操作类型(delete update new)
     #[error("un support op type: = {0}")]
     UnSupportOpType(String),
     // 链不支持权限
     #[error("un support permission chain")]
-    UnSupprtPermissionChain,
+    UnSupportPermissionChain,
 }
 
 impl PermissionError {
@@ -26,9 +26,9 @@ impl PermissionError {
             PermissionError::ActivesPermissionMore => 4300,
             PermissionError::WeightLessThreshold => 4301,
             PermissionError::MissActivesPermission => 4302,
-            PermissionError::ActviesPermissionNotFound => 4303,
+            PermissionError::ActivesPermissionNotFound => 4303,
             PermissionError::UnSupportOpType(_) => 4304,
-            PermissionError::UnSupprtPermissionChain => 4305,
+            PermissionError::UnSupportPermissionChain => 4305,
         }
     }
 }

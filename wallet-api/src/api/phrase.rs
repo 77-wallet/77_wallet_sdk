@@ -26,7 +26,7 @@ impl crate::WalletManager {
         // passing in the language code and word count.
         // The result is then converted into the response type `GeneratePhraseRes`.
 
-        WalletService::new(self.repo_factory.resuource_repo())
+        WalletService::new(self.repo_factory.resource_repo())
             .generate_phrase(language_code, count)?
             .into()
     }
@@ -56,7 +56,7 @@ impl crate::WalletManager {
         // passing in the language code, keyword, and mode.
         // The result is then converted into the response type `QueryPhraseRes`.
 
-        WalletService::new(self.repo_factory.resuource_repo())
+        WalletService::new(self.repo_factory.resource_repo())
             .query_phrases(language_code, keyword, mode)?
             .into()
     }
@@ -80,7 +80,7 @@ impl crate::WalletManager {
         language_code: u8,
         phrases: Vec<&str>,
     ) -> ReturnType<Vec<String>> {
-        WalletService::new(self.repo_factory.resuource_repo())
+        WalletService::new(self.repo_factory.resource_repo())
             .exact_query_phrase(language_code, phrases)?
             .into()
     }

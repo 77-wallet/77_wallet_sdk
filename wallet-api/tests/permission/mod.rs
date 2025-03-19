@@ -6,7 +6,7 @@ use wallet_api::{
 
 // 权限列表
 #[tokio::test]
-async fn test_permssion_list() {
+async fn test_permission_list() {
     let wallet_manager = get_manager().await;
 
     let res = wallet_manager.permission_list();
@@ -14,22 +14,12 @@ async fn test_permssion_list() {
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
 
-// 权限列表
-#[tokio::test]
-async fn test_permssion_trans() {
-    let wallet_manager = get_manager().await;
-
-    let res = wallet_manager.permssion_trans();
-
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
-}
-
 // 账户权限
 #[tokio::test]
-async fn test_permssion_accounts() {
+async fn test_permission_accounts() {
     let wallet_manager = get_manager().await;
 
-    let address = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string();
+    let address = "TFtvHtfuLo5xJJe9HpSAEaEi4bzT8Eeyu2".to_string();
     let res = wallet_manager.account_permission(address).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
@@ -98,7 +88,7 @@ async fn test_add_permission() {
 
 // 修改权限
 #[tokio::test]
-async fn test_up_permision() {
+async fn test_up_permission() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![

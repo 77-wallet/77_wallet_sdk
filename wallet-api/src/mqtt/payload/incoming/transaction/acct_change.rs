@@ -131,13 +131,7 @@ impl AcctChange {
         }
 
         // 添加或更新资产余额
-        Self::upsert_than_sync_assets(
-            from_addr, to_addr, // address,
-            chain_code, symbol,
-            // multisig_tx,
-            // tx_kind_enum,
-        )
-        .await?;
+        Self::upsert_than_sync_assets(from_addr, to_addr, chain_code, symbol).await?;
 
         Self::create_system_notification(
             msg_id,

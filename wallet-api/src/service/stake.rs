@@ -1540,8 +1540,8 @@ impl StackService {
                 .await?;
 
         let Some(p) = permission else {
-            return Err(crate::BusinessError::Permisison(
-                crate::PermissionError::ActviesPermissionNotFound,
+            return Err(crate::BusinessError::Permission(
+                crate::PermissionError::ActivesPermissionNotFound,
             ))?;
         };
 

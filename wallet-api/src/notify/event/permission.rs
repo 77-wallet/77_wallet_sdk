@@ -1,4 +1,5 @@
 #[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PermissionChangeFrontend {
     // 授权方的地址
     pub grantor_addr: String,

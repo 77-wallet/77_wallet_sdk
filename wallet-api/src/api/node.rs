@@ -9,7 +9,7 @@ impl crate::WalletManager {
         ws_url: &str,
         http_url: Option<String>,
     ) -> ReturnType<String> {
-        NodeService::new(self.repo_factory.resuource_repo())
+        NodeService::new(self.repo_factory.resource_repo())
             .add_node(name, chain_code, rpc_url, ws_url, http_url)
             .await
             .into()
@@ -19,7 +19,7 @@ impl crate::WalletManager {
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::chain::NodeListRes>> {
-        NodeService::new(self.repo_factory.resuource_repo())
+        NodeService::new(self.repo_factory.resource_repo())
             .get_node_list(chain_code)
             .await
             .into()
@@ -30,7 +30,7 @@ impl crate::WalletManager {
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::chain::NodeDynData>> {
-        NodeService::new(self.repo_factory.resuource_repo())
+        NodeService::new(self.repo_factory.resource_repo())
             .get_node_dynamic_data(chain_code)
             .await
             .into()

@@ -535,8 +535,8 @@ impl MultisigAdapter {
                 tron_tx::build_build_tx(req, token, value, &chain, p.threshold, permission_id).await
             }
             _ => {
-                return Err(crate::BusinessError::Permisison(
-                    crate::PermissionError::UnSupprtPermissionChain,
+                return Err(crate::BusinessError::Permission(
+                    crate::PermissionError::UnSupportPermissionChain,
                 ))?
             }
         }

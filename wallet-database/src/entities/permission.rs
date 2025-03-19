@@ -27,12 +27,12 @@ impl PermissionEntity {
     }
 }
 
-pub struct PermissionWithuserEntity {
+pub struct PermissionWithUserEntity {
     pub permission: PermissionEntity,
     pub user: Vec<PermissionUserEntity>,
 }
 
-impl PermissionWithuserEntity {
+impl PermissionWithUserEntity {
     // check whether user has changed
     pub fn user_has_changed(&self, user: &[PermissionUserEntity]) -> bool {
         if self.permission.member != user.len() as i64 {

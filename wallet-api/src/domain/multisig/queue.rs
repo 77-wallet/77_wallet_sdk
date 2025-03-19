@@ -24,7 +24,7 @@ use wallet_database::{
             NewMultisigQueueEntity,
         },
         multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
-        permission::PermissionWithuserEntity,
+        permission::PermissionWithUserEntity,
         wallet::WalletEntity,
     },
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
@@ -326,7 +326,7 @@ impl MultisigQueueDomain {
     pub async fn batch_sign_with_permission(
         queue: &mut NewMultisigQueueEntity,
         password: &str,
-        p: &PermissionWithuserEntity,
+        p: &PermissionWithUserEntity,
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
         // sign num

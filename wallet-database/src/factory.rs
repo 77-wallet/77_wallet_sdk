@@ -25,7 +25,7 @@ impl RepositoryFactory {
         crate::repositories::ResourcesRepo::new(pool)
     }
 
-    pub fn resuource_repo(&self) -> crate::repositories::ResourcesRepo {
+    pub fn resource_repo(&self) -> crate::repositories::ResourcesRepo {
         crate::repositories::ResourcesRepo::new(self.db_pool.clone())
     }
 

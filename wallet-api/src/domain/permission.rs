@@ -15,7 +15,7 @@ use wallet_types::constant::chain_code;
 pub struct PermissionDomain;
 
 impl PermissionDomain {
-    pub async fn mark_user_isself(
+    pub async fn mark_user_is_self(
         pool: &DbPool,
         users: &mut [PermissionUserEntity],
     ) -> Result<(), crate::ServiceError> {
@@ -54,7 +54,7 @@ impl PermissionDomain {
     }
 
     // retain the permissions to self.
-    pub async fn self_contain_permiison(
+    pub async fn self_contain_permission(
         pool: &DbPool,
         account: &TronAccount,
         address: &str,
@@ -101,8 +101,8 @@ impl PermissionDomain {
             }
         }
 
-        Err(crate::BusinessError::Permisison(
-            crate::PermissionError::ActviesPermissionNotFound,
+        Err(crate::BusinessError::Permission(
+            crate::PermissionError::ActivesPermissionNotFound,
         ))?
     }
 
@@ -113,7 +113,7 @@ impl PermissionDomain {
     ) -> Result<(), crate::ServiceError> {
         // 标记那些是自己
         for p in permissions.iter_mut() {
-            Self::mark_user_isself(pool, &mut p.users).await?;
+            Self::mark_user_is_self(pool, &mut p.users).await?;
         }
 
         let mut p = vec![];
@@ -133,7 +133,7 @@ impl PermissionDomain {
         let account = chain.account_info(grantor_addr).await?;
 
         let new_permission =
-            PermissionDomain::self_contain_permiison(&pool, &account, grantor_addr).await?;
+            PermissionDomain::self_contain_permission(&pool, &account, grantor_addr).await?;
 
         if new_permission.len() > 0 {
             PermissionDomain::del_add_update(&pool, new_permission, grantor_addr).await?;

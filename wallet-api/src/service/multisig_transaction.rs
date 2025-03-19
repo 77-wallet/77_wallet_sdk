@@ -131,8 +131,8 @@ impl MultisigTransactionService {
                 .await?;
 
         let Some(p) = permission else {
-            return Err(crate::BusinessError::Permisison(
-                crate::PermissionError::ActviesPermissionNotFound,
+            return Err(crate::BusinessError::Permission(
+                crate::PermissionError::ActivesPermissionNotFound,
             ))?;
         };
 
@@ -407,7 +407,7 @@ impl MultisigTransactionService {
             }
             MultisigSignatureStatus::Approved => {
                 if !queue.account_id.is_empty() {
-                    Self::signe_account(queue, pool, sign_addr, password, status).await
+                    Self::signed_account(queue, pool, sign_addr, password, status).await
                 } else {
                     Self::signed_permission(queue, pool, sign_addr, password, status).await
                 }
@@ -415,7 +415,7 @@ impl MultisigTransactionService {
         }
     }
 
-    async fn signe_account(
+    async fn signed_account(
         queue: &MultisigQueueEntity,
         pool: DbPool,
         sign_addr: Vec<String>,
@@ -485,24 +485,36 @@ impl MultisigTransactionService {
         let mut result = vec![];
 
         let permission = PermissionRepo::find_by_id(&pool, &queue.permission_id).await?;
+
         // 当前已签名的数量
+        let sign_list = MultisigQueueRepo::signed_result(
+            &queue.id,
+            &queue.account_id,
+            &queue.permission_id,
+            pool.clone(),
+        )
+        .await?;
 
-        let sign_list = MultisigQueueRepo::get_signed_list(&pool, &queue.id).await?;
-
-        let need_sign = sign_list.need_signed_num(permission.threshold as usize);
+        // 需要签名的阈值
+        let total_weight = sign_list.iter().map(|s| s.weight).sum::<i64>();
+        let need_sign = (permission.threshold - total_weight).max(0);
         if need_sign == 0 {
             return Ok(result);
         }
 
-        let mut signed_num = 0;
+        // let mut signed_num = 0;
 
         // 批量执行签名
         for i in 0..sign_addr.len() {
             let address = sign_addr.get(i).unwrap();
             // filter already signed
-            if sign_list.contains_address(address) {
+            if sign_list
+                .iter()
+                .find(|item| item.address == *address && !item.signature.is_empty())
+                .is_some()
+            {
                 continue;
-            };
+            }
 
             let key =
                 ChainTransaction::get_key(&address, &queue.chain_code, password, &None).await?;
@@ -523,10 +535,10 @@ impl MultisigTransactionService {
                 domain::bill::BillDomain::create_bill(tx).await?;
             }
 
-            signed_num += 1;
-            if signed_num >= need_sign {
-                break;
-            }
+            // signed_num += 1;
+            // if signed_num >= need_sign {
+            //     break;
+            // }
         }
 
         Ok(result)
@@ -550,7 +562,7 @@ impl MultisigTransactionService {
 
         let assets =
             ChainTransaction::assets(&queue.chain_code, &queue.symbol, &queue.from_addr).await?;
-        let transfer_amcount = wallet_utils::unit::convert_to_u256(&queue.value, assets.decimals)?;
+        let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, assets.decimals)?;
 
         let bill_kind = BillKind::try_from(queue.transfer_type)?;
 
@@ -681,12 +693,12 @@ impl MultisigTransactionService {
                     .await?;
 
                 // 根据交易类型来判断是否需要将amount 进行验证
-                let transfer_amcount = if bill_kind.out_transfer_type() {
-                    transfer_amcount
+                let transfer_amount = if bill_kind.out_transfer_type() {
+                    transfer_amount
                 } else {
                     alloy::primitives::U256::ZERO
                 };
-                if transfer_balance < transfer_amcount {
+                if transfer_balance < transfer_amount {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientBalance,
                     ))?;
@@ -744,7 +756,7 @@ impl MultisigTransactionService {
                         consumer.set_extra_fee(100 * tron::consts::TRX_VALUE);
                     }
 
-                    let value = transfer_amcount.to::<i64>();
+                    let value = transfer_amount.to::<i64>();
                     if account.balance < consumer.transaction_fee_i64() + value {
                         return Err(crate::BusinessError::Chain(
                             crate::ChainError::InsufficientFeeBalance,

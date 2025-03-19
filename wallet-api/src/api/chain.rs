@@ -4,56 +4,56 @@ use crate::{api::ReturnType, response_vo::chain::ChainAssets, service::chain::Ch
 
 impl crate::WalletManager {
     pub async fn add_chain(&self, name: &str, chain_code: &str) -> ReturnType<()> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .add(name, chain_code, &[], "")
             .await?
             .into()
     }
 
     pub async fn set_chain_node(&self, chain_code: &str, node_id: &str) -> ReturnType<()> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .set_chain_node(chain_code, node_id)
             .await?
             .into()
     }
 
     pub async fn get_market_chain_list(&self) -> ReturnType<Vec<String>> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .get_market_chain_list()
             .await?
             .into()
     }
 
     pub async fn sync_chains(&self) -> ReturnType<bool> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .sync_chains()
             .await?
             .into()
     }
 
     pub async fn sync_wallet_chain_data(&self, wallet_password: &str) -> ReturnType<()> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .sync_wallet_chain_data(wallet_password)
             .await?
             .into()
     }
 
     pub async fn get_hot_chain_list(&self) -> ReturnType<Vec<ChainEntity>> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .get_hot_chain_list()
             .await?
             .into()
     }
 
     pub async fn get_setting_chain_list(&self) -> ReturnType<Vec<ChainWithNode>> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .get_chain_list_with_node_info()
             .await?
             .into()
     }
 
     pub async fn get_protocol_list(&self, chain_code: &str) -> ReturnType<Option<ChainEntity>> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .get_protocol_list(chain_code)
             .await?
             .into()
@@ -65,7 +65,7 @@ impl crate::WalletManager {
         account_id: u32,
         symbol: &str,
     ) -> ReturnType<Vec<ChainAssets>> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .get_chain_assets_list(wallet_address, Some(account_id), symbol, None)
             .await?
             .into()
@@ -76,7 +76,7 @@ impl crate::WalletManager {
         address: &str,
         symbol: &str,
     ) -> ReturnType<Vec<ChainAssets>> {
-        ChainService::new(self.repo_factory.resuource_repo())
+        ChainService::new(self.repo_factory.resource_repo())
             .get_chain_assets_list(address, None, symbol, Some(true))
             .await?
             .into()

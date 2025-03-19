@@ -11,7 +11,7 @@ use wallet_chain_interact::tron::{
 };
 use wallet_database::{
     entities::{
-        permission::{PermissionEntity, PermissionWithuserEntity},
+        permission::{PermissionEntity, PermissionWithUserEntity},
         permission_user::PermissionUserEntity,
     },
     factory::RepositoryFactory,
@@ -116,7 +116,7 @@ impl PermissionAccept {
             self.recover_all_old_permission(pool.clone(), &account)
                 .await?;
 
-            MultisigQueueRepo::permision_update_fail(&self.grantor_addr, &pool).await?;
+            MultisigQueueRepo::permission_update_fail(&self.grantor_addr, &pool).await?;
         } else {
             let address = &self.grantor_addr;
             let permissions =
@@ -137,7 +137,7 @@ impl PermissionAccept {
     ) -> Result<(), crate::ServiceError> {
         // 权限是否包含自己
         let new_permission =
-            PermissionDomain::self_contain_permiison(&pool, &account, &self.grantor_addr).await?;
+            PermissionDomain::self_contain_permission(&pool, &account, &self.grantor_addr).await?;
 
         if new_permission.len() > 0 {
             // 删除原来的,新增
@@ -159,7 +159,7 @@ impl PermissionAccept {
         permissions: NewPermissionUser,
     ) -> Result<(), crate::ServiceError> {
         // 查询出原来的权限
-        let old_permisson = PermissionRepo::permission_with_user(
+        let old_permission = PermissionRepo::permission_with_user(
             &pool,
             &permissions.permission.grantor_addr,
             permissions.permission.active_id,
@@ -168,17 +168,23 @@ impl PermissionAccept {
         .await?;
 
         // 存在走更新流程
-        if let Some(old_permission) = old_permisson {
-            self.update(pool, permissions, old_permission).await
+        if let Some(old_permission) = old_permission {
+            self.update(&pool, &permissions, old_permission).await?;
+
+            // 消息重复通知,避免新增判断为
+            if self.current.types == PermissionReq::UPDATE {
+                Self::system_notify(&pool, &permissions.permission, PermissionReq::UPDATE).await?;
+            }
+            Ok(())
         } else {
             tracing::warn!("add new permission");
             let mut users = permissions.users.clone();
 
-            PermissionDomain::mark_user_isself(&pool, &mut users).await?;
+            PermissionDomain::mark_user_is_self(&pool, &mut users).await?;
             if users.iter().any(|u| u.is_self == 1) {
                 PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?;
 
-                Self::system_notify(&pool, &permissions.permission).await?;
+                Self::system_notify(&pool, &permissions.permission, PermissionReq::NEW).await?;
 
                 return Ok(());
             }
@@ -189,37 +195,37 @@ impl PermissionAccept {
 
     async fn update(
         &self,
-        pool: DbPool,
-        permissions: NewPermissionUser,
-        old_permission: PermissionWithuserEntity,
+        pool: &DbPool,
+        permissions: &NewPermissionUser,
+        old_permission: PermissionWithUserEntity,
     ) -> Result<(), crate::ServiceError> {
         // 是否成员发生了变化
         if old_permission.user_has_changed(&permissions.users) {
             tracing::warn!("update user ");
-            self.udpate_user_change(pool.clone(), &permissions, &old_permission.permission.id)
+            self.update_user_change(pool.clone(), &permissions, &old_permission.permission.id)
                 .await?;
         } else {
-            tracing::warn!("only update permisson");
+            tracing::warn!("only update permission");
             PermissionRepo::update_permission(&pool, &permissions.permission).await?;
         }
 
-        MultisigQueueRepo::permision_update_fail(&self.grantor_addr, &pool).await?;
+        MultisigQueueRepo::permission_update_fail(&self.grantor_addr, &pool).await?;
         Ok(())
     }
 
-    async fn udpate_user_change(
+    async fn update_user_change(
         &self,
         pool: DbPool,
         permissions: &NewPermissionUser,
         id: &str,
     ) -> Result<(), crate::ServiceError> {
         let mut users = permissions.users.clone();
-        PermissionDomain::mark_user_isself(&pool, &mut users).await?;
+        PermissionDomain::mark_user_is_self(&pool, &mut users).await?;
 
         // 成员变化是否把自己移除了(没有is_self = 1的数据)
         if users.iter().any(|u| u.is_self == 1) {
             tracing::warn!("change user ");
-            PermissionRepo::upate_with_user(&pool, &permissions.permission, &users).await?;
+            PermissionRepo::update_with_user(&pool, &permissions.permission, &users).await?;
         } else {
             tracing::warn!(" not self delete ");
             PermissionRepo::delete_one(&pool, id).await?;
@@ -232,21 +238,23 @@ impl PermissionAccept {
     async fn system_notify(
         pool: &DbPool,
         permission: &PermissionEntity,
+        types: &str,
     ) -> Result<(), crate::ServiceError> {
         // 1. system notify
         let repo = RepositoryFactory::repo(pool.clone());
         let system_notification_service = SystemNotificationService::new(repo);
 
         let notification = Notification::PermissionChange(PermissionChange::try_from(permission)?);
+        let id = wallet_utils::snowflake::get_uid()?.to_string();
         system_notification_service
-            .add_system_notification(&permission.id, notification, 0)
+            .add_system_notification(&id, notification, 0)
             .await?;
 
         // 2. event
         let operations = PermissionTypes::from_hex(&permission.operations)?;
         let event = NotifyEvent::PermissionChanger(PermissionChangeFrontend::new(
             &permission.grantor_addr,
-            "new",
+            types,
             operations,
         ));
         crate::notify::FrontendNotifyEvent::new(event)
@@ -262,7 +270,7 @@ mod test {
     use crate::{mqtt::payload::incoming::permission::PermissionAccept, test::env::get_manager};
 
     #[tokio::test]
-    async fn new_permision() -> anyhow::Result<()> {
+    async fn new_permission() -> anyhow::Result<()> {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await?;
 
