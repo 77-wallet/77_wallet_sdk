@@ -27,10 +27,13 @@ impl crate::WalletManager {
     }
 
     // 管理其账号的权限
-    pub async fn manager_permission(&self) -> ReturnType<Vec<ManagerPermissionResp>> {
+    pub async fn manager_permission(
+        &self,
+        grantor_addr: String,
+    ) -> ReturnType<Vec<ManagerPermissionResp>> {
         PermissionService::new()
             .await?
-            .manager_permission()
+            .manager_permission(grantor_addr)
             .await?
             .into()
     }

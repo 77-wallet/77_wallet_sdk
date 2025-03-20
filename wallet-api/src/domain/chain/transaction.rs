@@ -20,7 +20,7 @@ use wallet_types::constant::chain_code;
 use wallet_utils::unit;
 
 // sol 默认计算单元
-pub const DEFALUT_UNITS: u64 = 100_000;
+pub const DEFAULT_UNITS: u64 = 100_000;
 
 pub struct ChainTransaction;
 
@@ -106,7 +106,7 @@ impl ChainTransaction {
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
-        //  check ongong tx
+        //  check ongoing tx
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
             return Err(crate::BusinessError::Bill(
                 crate::BillError::ExistsUncomfrimationTx,
@@ -314,7 +314,7 @@ impl ChainTransaction {
             from.to_string()
         };
 
-        let key = crate::domain::account::open_subpk_with_password(chain_code, &address, &password)
+        let key = crate::domain::account::open_subpk_with_password(chain_code, &address, password)
             .await?;
 
         Ok(key)

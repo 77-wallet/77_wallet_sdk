@@ -135,30 +135,6 @@ impl crate::WalletManager {
             .into()
     }
 
-    // #[allow(clippy::too_many_arguments)]
-    // #[deprecated]
-    // pub async fn reset_root(
-    //     &self,
-    //     language_code: u8,
-    //     phrase: &str,
-    //     salt: &str,
-    //     address: &str,
-    //     new_password: &str,
-    //     subkey_password: Option<String>,
-    // ) -> ReturnType<()> {
-    //     WalletService::new(self.repo_factory.resuource_repo())
-    //         .reset_root(
-    //             language_code,
-    //             phrase,
-    //             salt,
-    //             address,
-    //             new_password,
-    //             subkey_password,
-    //         )
-    //         .await?
-    //         .into()
-    // }
-
     pub async fn recover_multisig_data(&self, wallet_address: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resource_repo())
             .recover_multisig_data(wallet_address)

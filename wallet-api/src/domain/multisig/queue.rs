@@ -279,6 +279,7 @@ impl MultisigQueueDomain {
                 &member.address,
                 &sign_result.signature,
                 MultisigSignatureStatus::Approved,
+                None,
             );
             queue.signatures.push(sign);
         }
@@ -307,15 +308,19 @@ impl MultisigQueueDomain {
         for i in 0..sign_num {
             let member = members.0.get(i).unwrap();
             let key =
-                ChainTransaction::get_key(&member.address, &queue.chain_code, &password, &None)
+                ChainTransaction::get_key(&member.address, &queue.chain_code, password, &None)
                     .await?;
 
             let sign_res = adapter
-                .sign_multisig_tx(&account, &member.address, key, &queue.raw_data)
+                .sign_multisig_tx(account, &member.address, key, &queue.raw_data)
                 .await?;
 
-            let sign =
-                NewSignatureEntity::new_approve(&queue.id, &member.address, sign_res.signature);
+            let sign = NewSignatureEntity::new_approve(
+                &queue.id,
+                &member.address,
+                sign_res.signature,
+                None,
+            );
             queue.signatures.push(sign);
         }
 
@@ -337,7 +342,7 @@ impl MultisigQueueDomain {
             .collect::<Vec<NewSignatureEntity>>();
 
         // 需要执行几次签名
-        let sign_num = p.user.len().min(p.permission.threshold as usize);
+        let sign_num = p.total_weight().min(p.permission.threshold as i32);
         let mut signed = 0;
 
         for user in signatures.iter_mut() {
@@ -348,7 +353,7 @@ impl MultisigQueueDomain {
                 .is_some()
             {
                 let key =
-                    ChainTransaction::get_key(&user.address, &queue.chain_code, &password, &None)
+                    ChainTransaction::get_key(&user.address, &queue.chain_code, password, &None)
                         .await?;
 
                 let res = TransactionOpt::sign_transaction(&queue.raw_data, key)?;
@@ -356,7 +361,7 @@ impl MultisigQueueDomain {
                 user.signature = res.signature;
                 user.status = MultisigSignatureStatus::Approved;
 
-                signed += 1;
+                signed += user.weight.unwrap_or(1);
             }
 
             if signed >= sign_num {

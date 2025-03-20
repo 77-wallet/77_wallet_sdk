@@ -153,7 +153,7 @@ impl PermissionService {
         let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let backend = crate::Context::get_global_backend_api()?;
 
-        Ok(backend.permission_accept(params, &aes_cbc_cryptor).await?)
+        Ok(backend.permission_accept(params, aes_cbc_cryptor).await?)
     }
 }
 
@@ -176,7 +176,7 @@ impl PermissionService {
         let actives = account
             .active_permission
             .iter()
-            .map(|p| PermissionResp::try_from(p))
+            .map(PermissionResp::try_from)
             .collect::<Result<Vec<PermissionResp>, _>>()?;
 
         let mut result = AccountPermission {
@@ -199,10 +199,11 @@ impl PermissionService {
     // 我管理的权限
     pub async fn manager_permission(
         &self,
+        grantor_addr: String,
     ) -> Result<Vec<ManagerPermissionResp>, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let permissions = PermissionRepo::all_permission_with_user(&pool).await?;
+        let permissions = PermissionRepo::all_permission_with_user(&pool, &grantor_addr).await?;
 
         let mut result: Vec<ManagerPermissionResp> = vec![];
 
@@ -319,7 +320,7 @@ impl PermissionService {
                     args.actives
                         .retain(|item| item.id.unwrap_or_default() != active_id);
 
-                    if args.actives.len() == 0 {
+                    if args.actives.is_empty() {
                         return Err(crate::BusinessError::Permission(
                             crate::PermissionError::MissActivesPermission,
                         ))?;
@@ -327,9 +328,9 @@ impl PermissionService {
 
                     Ok(())
                 } else {
-                    return Err(crate::BusinessError::Permission(
+                    Err(crate::BusinessError::Permission(
                         crate::PermissionError::ActivesPermissionNotFound,
-                    ))?;
+                    ))?
                 }
             }
             _ => Err(crate::BusinessError::Permission(
@@ -347,7 +348,7 @@ impl PermissionService {
         let account = self.chain.account_info(&req.grantor_addr).await?;
         let mut args = PermissionUpdateArgs::try_from(&account)?;
 
-        let _ = self.build_args(&mut args, &types, &req, None)?;
+        self.build_args(&mut args, &types, &req, None)?;
 
         self.update_permission_fee(&req.grantor_addr, args).await
     }

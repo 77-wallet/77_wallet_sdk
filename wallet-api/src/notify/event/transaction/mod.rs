@@ -45,7 +45,7 @@ impl TryFrom<&MultiSignTransAccept> for ConfirmationFrontend {
             status: value.status,
             notes: value.notes.to_string(),
             bill_kind: BillKind::try_from(value.transfer_type)?,
-            created_at: value.created_at.clone(),
+            created_at: value.created_at,
         })
     }
 }

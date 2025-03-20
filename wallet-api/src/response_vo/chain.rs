@@ -12,8 +12,6 @@ pub mod assets_struct {
         pub status: u8,
         pub balance: String,
         pub usdt_balance: String,
-        // pub unit_price: String,
-        // pub unit
         pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
         pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     }

@@ -130,7 +130,7 @@ impl CoinService {
             }
         }
 
-        data.mark_multichain_assets();
+        data.mark_multi_chain_assets();
 
         let res = wallet_database::pagination::Pagination {
             page,

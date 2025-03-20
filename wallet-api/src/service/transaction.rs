@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::request::transaction::{self, QueryBillResultReq};
@@ -9,6 +7,7 @@ use crate::response_vo::{
     transaction::{BillDetailVo, TransactionResult},
 };
 use sqlx::{Pool, Sqlite};
+use std::sync::Arc;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::dao::bill::BillDao;
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
@@ -40,16 +39,20 @@ impl TransactionService {
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;
 
-        let assets =
-            domain::chain::transaction::ChainTransaction::assets(chain_code, symbol, address)
-                .await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let balance = adapter.balance(address, assets.token_address()).await?;
-        let format_balance = unit::format_to_string(balance, assets.decimals)?;
+        let coin = CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
+            .await?
+            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
+                symbol.to_string(),
+            )))?;
+
+        let balance = adapter.balance(address, coin.token_address()).await?;
+        let format_balance = unit::format_to_string(balance, coin.decimals)?;
 
         let balance = Balance {
             balance: format_balance.clone(),
-            decimals: assets.decimals,
+            decimals: coin.decimals,
             original_balance: balance.to_string(),
         };
 

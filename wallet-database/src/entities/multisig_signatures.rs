@@ -75,6 +75,8 @@ pub struct NewSignatureEntity {
     pub address: String,
     pub signature: String,
     pub status: MultisigSignatureStatus,
+    // 如果是权限的签名,有值，其他的默认None
+    pub weight: Option<i32>,
 }
 impl NewSignatureEntity {
     pub fn new(
@@ -82,30 +84,39 @@ impl NewSignatureEntity {
         address: &str,
         signature: &str,
         status: MultisigSignatureStatus,
+        weight: Option<i32>,
     ) -> Self {
         NewSignatureEntity {
             queue_id: queue_id.to_string(),
             address: address.to_string(),
             signature: signature.to_string(),
             status,
+            weight,
         }
     }
 
-    pub fn new_approve(queue_id: &str, address: &str, signature: String) -> Self {
+    pub fn new_approve(
+        queue_id: &str,
+        address: &str,
+        signature: String,
+        weight: Option<i32>,
+    ) -> Self {
         NewSignatureEntity {
             queue_id: queue_id.to_string(),
             address: address.to_string(),
             signature,
             status: MultisigSignatureStatus::Approved,
+            weight,
         }
     }
 
-    pub fn new_no_queue_id(address: &str, signature: &str) -> Self {
+    pub fn new_no_queue_id(address: &str, signature: &str, weight: Option<i32>) -> Self {
         NewSignatureEntity {
             queue_id: "".to_string(),
             address: address.to_string(),
             signature: signature.to_string(),
             status: MultisigSignatureStatus::Approved,
+            weight,
         }
     }
 }
@@ -117,10 +128,12 @@ impl From<(&PermissionUserEntity, &str)> for NewSignatureEntity {
             address: value.0.address.clone(),
             signature: String::new(),
             status: MultisigSignatureStatus::UnSigned,
+            weight: Some(value.0.weight as i32),
         }
     }
 }
 
+// 这里缺失weight字段
 impl TryFrom<MultisigSignatureEntity> for NewSignatureEntity {
     type Error = crate::Error;
     fn try_from(value: MultisigSignatureEntity) -> Result<Self, Self::Error> {
@@ -129,6 +142,7 @@ impl TryFrom<MultisigSignatureEntity> for NewSignatureEntity {
             address: value.address,
             signature: value.signature,
             status: MultisigSignatureStatus::try_from(value.status as i32)?,
+            weight: None,
         })
     }
 }

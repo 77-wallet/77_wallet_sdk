@@ -441,7 +441,7 @@ impl AssetsService {
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)
             .await?;
-        res.mark_multichain_assets();
+        res.mark_multi_chain_assets();
         Ok(res)
     }
 

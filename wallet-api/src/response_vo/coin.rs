@@ -44,8 +44,8 @@ impl DerefMut for CoinInfoList {
     }
 }
 impl CoinInfoList {
-    // 标记多链资产的 is_multichain 属性
-    pub(crate) fn mark_multichain_assets(&mut self) {
+    // 标记多链资产的 is_multi_chain 属性
+    pub(crate) fn mark_multi_chain_assets(&mut self) {
         // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
         let mut symbol_chain_map: std::collections::HashMap<String, HashSet<String>> =
             std::collections::HashMap::new();
@@ -60,7 +60,7 @@ impl CoinInfoList {
             }
         }
 
-        // 再次遍历 self，设置 is_multichain 标记
+        // 再次遍历 self，设置 is_multi_chain 标记
         for asset in self.iter_mut() {
             if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
                 asset.is_multichain = chain_codes.len() > 1;
@@ -200,12 +200,12 @@ impl TokenCurrencies {
 
     pub async fn calculate_chain_assets_list(
         &self,
-        datas: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
+        data: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
         chains: Vec<ChainEntity>,
     ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
         let mut res = Vec::new();
 
-        for assets in datas {
+        for assets in data {
             if let Some(chain) = chains
                 .iter()
                 .find(|chain| chain.chain_code == assets.chain_code)
@@ -215,12 +215,12 @@ impl TokenCurrencies {
                     .await?;
 
                 let btc_address_type_opt: AddressType = assets.address_type().try_into()?;
-                let address_catogary = btc_address_type_opt.into();
+                let address_category = btc_address_type_opt.into();
 
                 let name = if assets.chain_code == "btc"
-                    && let AddressCategory::Btc(address_catogary) = address_catogary
+                    && let AddressCategory::Btc(address_category) = address_category
                 {
-                    address_catogary.to_string()
+                    address_category.to_string()
                 } else {
                     chain.name.clone()
                 };
@@ -230,11 +230,9 @@ impl TokenCurrencies {
                     name,
                     address: assets.address,
                     token_address: assets.token_address,
-                    // address_catogary,
                     balance,
                     symbol: assets.symbol,
                     is_multisig: assets.is_multisig,
-                    // is_multichain: false,
                 })
             }
         }

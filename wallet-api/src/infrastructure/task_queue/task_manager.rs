@@ -278,19 +278,19 @@ async fn handle_backend_api_task(
 
 async fn handle_mqtt_task(task: Box<MqttTask>, id: &str) -> Result<(), crate::ServiceError> {
     match *task {
-        MqttTask::OrderMultiSignAccept(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignCreated(data) => data.exec(&id).await?,
-        MqttTask::OrderMultiSignCancel(data) => data.exec(&id).await?,
-        MqttTask::MultiSignTransAccept(data) => data.exec(&id).await?,
-        MqttTask::MultiSignTransCancel(data) => data.exec(&id).await?,
-        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(&id).await?,
-        MqttTask::AcctChange(data) => data.exec(&id).await?,
-        MqttTask::Init(data) => data.exec(&id).await?,
-        MqttTask::BulletinMsg(data) => data.exec(&id).await?,
-        MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(&id).await?,
-        MqttTask::PermissionAccept(data) => data.exec(&id).await?,
+        MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignCreated(data) => data.exec(id).await?,
+        MqttTask::OrderMultiSignCancel(data) => data.exec(id).await?,
+        MqttTask::MultiSignTransAccept(data) => data.exec(id).await?,
+        MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
+        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
+        MqttTask::AcctChange(data) => data.exec(id).await?,
+        MqttTask::Init(data) => data.exec(id).await?,
+        MqttTask::BulletinMsg(data) => data.exec(id).await?,
+        MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(id).await?,
+        MqttTask::PermissionAccept(data) => data.exec(id).await?,
     }
     Ok(())
 }

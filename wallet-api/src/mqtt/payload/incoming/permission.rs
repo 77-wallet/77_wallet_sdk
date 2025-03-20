@@ -46,7 +46,7 @@ pub struct CurrentOp {
 
 impl PermissionAccept {
     pub fn to_json_val(&self) -> Result<serde_json::Value, crate::ServiceError> {
-        Ok(serde_func::serde_to_value(&self)?)
+        Ok(serde_func::serde_to_value(self)?)
     }
 }
 
@@ -77,7 +77,7 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
             chain_code: chain_code::TRON.to_string(),
             operations: permission.operations.clone().unwrap_or_default().clone(),
             is_del: 0,
-            created_at: time.clone(),
+            created_at: time,
             updated_at: None,
         };
 
@@ -91,7 +91,7 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
                 permission_id: p.id.clone(),
                 is_self: 0,
                 weight: key.weight as i64,
-                created_at: time.clone(),
+                created_at: time,
                 updated_at: None,
             };
             users.push(user);
@@ -137,9 +137,9 @@ impl PermissionAccept {
     ) -> Result<(), crate::ServiceError> {
         // 权限是否包含自己
         let new_permission =
-            PermissionDomain::self_contain_permission(&pool, &account, &self.grantor_addr).await?;
+            PermissionDomain::self_contain_permission(&pool, account, &self.grantor_addr).await?;
 
-        if new_permission.len() > 0 {
+        if new_permission.is_empty() {
             // 删除原来的,新增
             tracing::warn!("recover_all_old_permission :new");
             PermissionDomain::del_add_update(&pool, new_permission, &self.grantor_addr).await?;
@@ -202,14 +202,14 @@ impl PermissionAccept {
         // 是否成员发生了变化
         if old_permission.user_has_changed(&permissions.users) {
             tracing::warn!("update user ");
-            self.update_user_change(pool.clone(), &permissions, &old_permission.permission.id)
+            self.update_user_change(pool.clone(), permissions, &old_permission.permission.id)
                 .await?;
         } else {
             tracing::warn!("only update permission");
-            PermissionRepo::update_permission(&pool, &permissions.permission).await?;
+            PermissionRepo::update_permission(pool, &permissions.permission).await?;
         }
 
-        MultisigQueueRepo::permission_update_fail(&self.grantor_addr, &pool).await?;
+        MultisigQueueRepo::permission_update_fail(&self.grantor_addr, pool).await?;
         Ok(())
     }
 

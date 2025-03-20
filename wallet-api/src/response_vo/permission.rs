@@ -108,7 +108,7 @@ impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for
         let (operations, id) = if value.permission_name == "owner" {
             (None, None)
         } else {
-            let operations = PermissionTypes::from_hex(&value.operations.as_ref().unwrap())?;
+            let operations = PermissionTypes::from_hex(value.operations.as_ref().unwrap())?;
             (Some(operations), value.id)
         };
 
@@ -117,7 +117,7 @@ impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for
             threshold: value.threshold as i8,
             active_id: id,
             operations,
-            keys: value.keys.iter().map(|k| Keys::from(k)).collect(),
+            keys: value.keys.iter().map(Keys::from).collect(),
         })
     }
 }
@@ -169,7 +169,7 @@ impl From<&wallet_chain_interact::tron::operations::multisig::Keys> for Keys {
         Keys {
             name: String::new(),
             address: value.address.clone(),
-            weight: value.weight.clone(),
+            weight: value.weight,
             is_self: 0,
         }
     }

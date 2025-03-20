@@ -59,6 +59,7 @@ impl TryFrom<&MultiSignTransAcceptCompleteMsgBody> for NewSignatureEntity {
             address: value.address.to_string(),
             signature: value.signature.to_string(),
             status,
+            weight: None,
         })
     }
 

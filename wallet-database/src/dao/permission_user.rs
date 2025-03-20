@@ -28,10 +28,7 @@ impl PermissionUserDao {
                 param.permission_id,
                 param.is_self,
                 param.weight,
-                param
-                    .created_at
-                    .to_rfc3339_opts(SecondsFormat::Secs, true)
-                    .to_string(),
+                param.created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
             ));
         }
 
@@ -49,7 +46,7 @@ impl PermissionUserDao {
     {
         let sql = r#"select * from permission_user where permission_id = ?"#;
 
-        let result = sqlx::query_as::<_, PermissionUserEntity>(&sql)
+        let result = sqlx::query_as::<_, PermissionUserEntity>(sql)
             .bind(permission_id)
             .fetch_all(exec)
             .await?;
@@ -66,7 +63,7 @@ impl PermissionUserDao {
     {
         let sql = r#"select * from permission_user where permission_id = ? and is_self = 1"#;
 
-        let result = sqlx::query_as::<_, PermissionUserEntity>(&sql)
+        let result = sqlx::query_as::<_, PermissionUserEntity>(sql)
             .bind(permission_id)
             .fetch_all(exec)
             .await?;
@@ -83,7 +80,7 @@ impl PermissionUserDao {
     {
         let sql = r#"delete from permission_user where permission_id = ?"#;
 
-        sqlx::query(&sql).bind(permission_id).execute(exec).await?;
+        sqlx::query(sql).bind(permission_id).execute(exec).await?;
 
         Ok(())
     }
@@ -97,7 +94,7 @@ impl PermissionUserDao {
     {
         let sql = r#"delete from permission_user where grantor_addr = ?"#;
 
-        sqlx::query(&sql).bind(grantor_addr).execute(exec).await?;
+        sqlx::query(sql).bind(grantor_addr).execute(exec).await?;
 
         Ok(())
     }

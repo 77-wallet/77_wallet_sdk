@@ -47,7 +47,7 @@ impl MultisigQueueDaoV1 {
             .bind(&params.fail_reason)
             .bind(params.create_at.to_rfc3339_opts(SecondsFormat::Secs, true))
             .bind(&params.account_id)
-            .bind(&params.transfer_type.to_i8())
+            .bind(params.transfer_type.to_i8())
             .bind(&params.permission_id)
             .fetch_all(exec)
             .await?;

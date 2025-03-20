@@ -10,21 +10,19 @@ async fn test_build_freeze() {
     let manager = get_manager().await;
 
     let singer = Signer {
-        address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        permission_id: 4,
+        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        permission_id: 2,
     };
 
     let req = FreezeBalanceReq {
-        owner_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        owner_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
         resource: "energy".to_string(),
         frozen_balance: 50,
         signer: Some(singer),
     };
 
-    let bill_kind = BillKind::DelegateEnergy.to_i8() as i64;
+    let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;
     let content = serde_json::to_string(&req).unwrap();
-
-    // let content = r#"{"ownerAddress":"TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY","receiverAddress":"TTD5EM94SmLPSTyvzjiisjB71QCD4vHQcm","balance":5,"resource":"ENERGY","lock":false,"lockPeriod":0,"signer":{"address":"TVx7Pi8Ftgzd7AputaoLidBR3Vb9xKfhqY","permissionId":2}}"#.to_string();
 
     let password = "123456".to_string();
     let res = manager

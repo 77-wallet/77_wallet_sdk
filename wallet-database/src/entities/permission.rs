@@ -40,17 +40,18 @@ impl PermissionWithUserEntity {
         }
 
         for old_user in self.user.iter() {
-            if user
-                .iter()
-                .find(|u| u.address == old_user.address)
-                .is_none()
-            {
+            if !user.iter().any(|u| u.address == old_user.address) {
                 return true;
             }
         }
         false
     }
+
     pub fn users(&self) -> Vec<String> {
         self.user.iter().map(|u| u.address.clone()).collect()
+    }
+
+    pub fn total_weight(&self) -> i32 {
+        self.user.iter().map(|u| u.weight as i32).sum::<i32>()
     }
 }

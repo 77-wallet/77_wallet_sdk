@@ -164,14 +164,6 @@ fn serialize_f64_as_string<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    // if x.fract() == 0.0 {
-    //     // 如果小数部分是 0，则序列化为整数
-    //     s.serialize_str(&(*x as i64).to_string())
-    // } else {
-    //     // 否则序列化为浮点数
-    //     s.serialize_str(&x.to_string())
-    // }
-
     let rounded = if x.fract() == 0.0 {
         *x // 如果是整数，直接返回
     } else {
@@ -196,19 +188,6 @@ where
         None => serializer.serialize_f64(0.0),
     }
 }
-
-// fn _serialize_f64_as_int<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
-// where
-//     S: serde::Serializer,
-// {
-//     if x.fract() == 0.0 {
-//         // 如果小数部分是 0，则序列化为整数
-//         s.serialize_i64(*x as i64)
-//     } else {
-//         // 否则序列化为浮点数
-//         s.serialize_f64(*x)
-//     }
-// }
 
 impl BalanceInfo {
     pub fn new(amount: f64, unit_price: Option<f64>, currency: &str) -> Self {
@@ -272,13 +251,13 @@ pub struct DerivedAddressesList {
 
 impl DerivedAddressesList {
     pub fn new(
-        adddress: &str,
+        address: &str,
         derivation_path: &str,
         chain_code: &str,
         address_type: AddressCategory,
     ) -> Self {
         Self {
-            address: adddress.to_string(),
+            address: address.to_string(),
             derivation_path: derivation_path.to_string(),
             chain_code: chain_code.to_string(),
             address_type,

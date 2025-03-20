@@ -86,7 +86,7 @@ impl MultisigTransactionService {
         MultisigDomain::validate_queue(&account)?;
 
         let key =
-            ChainTransaction::get_key(&req.from, &req.chain_code, &password, &req.signer).await?;
+            ChainTransaction::get_key(&req.from, &req.chain_code, password, &req.signer).await?;
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
         let rs = adapter
@@ -102,7 +102,7 @@ impl MultisigTransactionService {
 
         if queue.chain_code != chain_code::SOLANA {
             // 对多签队列进行签名
-            MultisigQueueDomain::batch_sign_queue(&mut queue, &password, &account, &adapter, &pool)
+            MultisigQueueDomain::batch_sign_queue(&mut queue, password, &account, &adapter, &pool)
                 .await?;
         }
 
@@ -397,7 +397,7 @@ impl MultisigTransactionService {
             MultisigSignatureStatus::Rejected | MultisigSignatureStatus::UnSigned => {
                 let mut result = vec![];
                 for address in sign_addr {
-                    let params = NewSignatureEntity::new(&queue.id, &address, "", status);
+                    let params = NewSignatureEntity::new(&queue.id, &address, "", status, None);
 
                     MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
 
@@ -451,7 +451,7 @@ impl MultisigTransactionService {
             let rs = instance
                 .sign_multisig_tx(&multisig_account, address, key, &queue.raw_data)
                 .await?;
-            let params = NewSignatureEntity::new(&queue.id, address, &rs.signature, status);
+            let params = NewSignatureEntity::new(&queue.id, address, &rs.signature, status, None);
 
             MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
             result.push(params);
@@ -502,26 +502,23 @@ impl MultisigTransactionService {
             return Ok(result);
         }
 
-        // let mut signed_num = 0;
-
         // 批量执行签名
         for i in 0..sign_addr.len() {
             let address = sign_addr.get(i).unwrap();
             // filter already signed
             if sign_list
                 .iter()
-                .find(|item| item.address == *address && !item.signature.is_empty())
-                .is_some()
+                .any(|item| item.address == *address && !item.signature.is_empty())
             {
                 continue;
             }
 
             let key =
-                ChainTransaction::get_key(&address, &queue.chain_code, password, &None).await?;
+                ChainTransaction::get_key(address, &queue.chain_code, password, &None).await?;
 
             let res =
                 tron::operations::multisig::TransactionOpt::sign_transaction(&queue.raw_data, key)?;
-            let params = NewSignatureEntity::new(&queue.id, address, &res.signature, status);
+            let params = NewSignatureEntity::new(&queue.id, address, &res.signature, status, None);
 
             MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
             result.push(params);

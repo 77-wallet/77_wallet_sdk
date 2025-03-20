@@ -73,12 +73,12 @@ impl MultisigQueueStatus {
     }
 
     pub fn need_sync_status(&self) -> bool {
-        match self {
+        !matches!(
+            self,
             MultisigQueueStatus::Fail
-            | MultisigQueueStatus::Success
-            | MultisigQueueStatus::InConfirmation => false,
-            _ => true,
-        }
+                | MultisigQueueStatus::Success
+                | MultisigQueueStatus::InConfirmation
+        )
     }
 
     pub fn from_i8(status: i8) -> MultisigQueueStatus {
@@ -239,7 +239,11 @@ impl NewMultisigQueueEntity {
     }
 
     pub fn compute_status(&mut self, threshold: i32) {
-        let sign_num = self.signatures.len() as i32;
+        let sign_num = self
+            .signatures
+            .iter()
+            .map(|s| s.weight.unwrap_or(1))
+            .sum::<i32>();
 
         if sign_num > 0 && sign_num < threshold {
             self.status = MultisigQueueStatus::HasSignature;

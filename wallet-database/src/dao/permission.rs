@@ -18,12 +18,12 @@ impl PermissionDao {
                 VALUES
             (?,?, ?, ?, ?, ?, ?, ?, ?, ?,?)"#;
 
-        sqlx::query(&sql)
+        sqlx::query(sql)
             .bind(&permission.id)
             .bind(&permission.name)
             .bind(&permission.grantor_addr)
             .bind(&permission.types)
-            .bind(&permission.active_id)
+            .bind(permission.active_id)
             .bind(permission.threshold)
             .bind(permission.member)
             .bind(&permission.chain_code)
@@ -61,15 +61,15 @@ impl PermissionDao {
     "#;
         tracing::warn!("{:#?}", permission);
 
-        sqlx::query(&sql)
+        sqlx::query(sql)
             .bind(&permission.name)
             .bind(permission.threshold)
             .bind(permission.member)
             .bind(&permission.chain_code)
             .bind(&permission.operations)
-            .bind(&permission.is_del)
+            .bind(permission.is_del)
             .bind(&permission.grantor_addr)
-            .bind(&permission.active_id)
+            .bind(permission.active_id)
             .execute(exec)
             .await?;
 
@@ -78,13 +78,18 @@ impl PermissionDao {
 
     pub async fn all_permission<'a, E>(
         exec: E,
+        grantor_addr: &str,
     ) -> Result<Vec<PermissionEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "select * from permission where is_del = 0";
+        let sql = r#"SELECT * FROM permission p WHERE EXISTS 
+        (
+            SELECT 1 FROM permission_user u WHERE u.permission_id = p.id AND u.address = ? 
+        ) and p.is_del = 0;"#;
 
-        let result = sqlx::query_as::<_, PermissionEntity>(&sql)
+        let result = sqlx::query_as::<_, PermissionEntity>(sql)
+            .bind(grantor_addr)
             .fetch_all(exec)
             .await?;
 
@@ -107,7 +112,7 @@ impl PermissionDao {
             r#"select * from permission where grantor_addr = ? and active_id = ? and is_del = 0"#
         };
 
-        let result = sqlx::query_as::<_, PermissionEntity>(&sql)
+        let result = sqlx::query_as::<_, PermissionEntity>(sql)
             .bind(grantor_addr)
             .bind(active_id)
             .bind(include_del)
@@ -131,7 +136,7 @@ impl PermissionDao {
             r#"select * from permission where id = ? and is_del = 0"#
         };
 
-        let result = sqlx::query_as::<_, PermissionEntity>(&sql)
+        let result = sqlx::query_as::<_, PermissionEntity>(sql)
             .bind(id)
             .bind(include_del)
             .fetch_optional(exec)
@@ -170,7 +175,7 @@ impl PermissionDao {
     {
         let sql = r#"delete from permission where grantor_addr = ?"#;
 
-        sqlx::query(&sql).bind(grantor_addr).execute(exec).await?;
+        sqlx::query(sql).bind(grantor_addr).execute(exec).await?;
 
         Ok(())
     }
@@ -181,7 +186,7 @@ impl PermissionDao {
     {
         let sql = r#"delete from permission where id = ?"#;
 
-        sqlx::query(&sql).bind(id).execute(exec).await?;
+        sqlx::query(sql).bind(id).execute(exec).await?;
 
         Ok(())
     }

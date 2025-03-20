@@ -102,7 +102,7 @@ impl MultisigQueueRepo {
         pool: &DbPool,
         queue_id: &str,
     ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
-        Ok(MultisigQueueDaoV1::find_by_id(&queue_id, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref()).await?)
     }
 
     pub async fn update_fail(
@@ -110,7 +110,7 @@ impl MultisigQueueRepo {
         queue_id: &str,
         reason: &str,
     ) -> Result<(), crate::Error> {
-        Ok(MultisigQueueDaoV1::update_fail(&queue_id, reason, pool.as_ref()).await?)
+        Ok(MultisigQueueDaoV1::update_fail(queue_id, reason, pool.as_ref()).await?)
     }
 
     pub async fn signed_result(
@@ -216,9 +216,9 @@ impl MultisigQueueRepo {
 
         // 多签的账号或者权限的账号
         let status = if !queue.account_id.is_empty() {
-            MultisigQueueRepo::compute_status_by_account(&queue, &pool).await?
+            MultisigQueueRepo::compute_status_by_account(queue, &pool).await?
         } else {
-            MultisigQueueRepo::compute_status_by_permission(&queue, &pool).await?
+            MultisigQueueRepo::compute_status_by_permission(queue, &pool).await?
         };
 
         match status {
@@ -251,7 +251,7 @@ impl MultisigQueueRepo {
     fn compute_status(signed: Vec<MemberSignedResult>, threshold: i64) -> MultisigQueueStatus {
         let mut status = MultisigQueueStatus::HasSignature;
         let mut remain_num = 0;
-        let mut apporved_num = 0;
+        let mut approved_num = 0;
 
         for sign in signed {
             if sign.is_self == 1 && sign.singed == MultisigSignatureStatus::UnSigned.to_i8() {
@@ -265,15 +265,15 @@ impl MultisigQueueRepo {
 
             // 已经同意签名的数量
             if sign.singed == MultisigSignatureStatus::Approved.to_i8() {
-                apporved_num += sign.weight;
+                approved_num += sign.weight;
             }
         }
 
-        if apporved_num >= threshold {
+        if approved_num >= threshold {
             status = MultisigQueueStatus::PendingExecution;
         } else {
             // 如果剩余的未签名数量 + 同意签名的数量 < 阈值 则这个交易队列失败
-            if remain_num + apporved_num < threshold {
+            if remain_num + approved_num < threshold {
                 status = MultisigQueueStatus::Fail;
             }
         }

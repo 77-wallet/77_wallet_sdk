@@ -5,7 +5,7 @@ use crate::{
         self,
         chain::{
             pare_fee_setting,
-            transaction::{ChainTransaction, DEFALUT_UNITS},
+            transaction::{ChainTransaction, DEFAULT_UNITS},
             TransferResp,
         },
     },
@@ -221,7 +221,7 @@ impl TransactionAdapter {
 
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFALUT_UNITS);
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
                 ChainTransaction::check_sol_transaction_fee(
                     remain_balance,
@@ -435,7 +435,7 @@ impl TransactionAdapter {
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
 
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFALUT_UNITS);
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
                 let res = response_vo::CommonFeeDetails::new(
                     fee_setting.transaction_fee(),

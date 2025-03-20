@@ -3,7 +3,7 @@ use crate::{
     dispatch,
     domain::{
         self,
-        chain::transaction::{ChainTransaction, DEFALUT_UNITS},
+        chain::transaction::{ChainTransaction, DEFAULT_UNITS},
     },
     response_vo::{
         self, CommonFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams, TronFeeDetails,
@@ -360,7 +360,7 @@ impl MultisigAdapter {
                     .create_transaction_fee(&args.transaction_message, base_fee)
                     .await?;
 
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFALUT_UNITS);
+                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
                 let fee =
                     CommonFeeDetails::new(fee_setting.transaction_fee(), token_currency, currency);
@@ -403,7 +403,7 @@ impl MultisigAdapter {
         assets: &AssetsEntity,
         key: ChainPrivateKey,
     ) -> Result<types::MultisigTxResp, crate::ServiceError> {
-        let decimal = assets.decimals as u8;
+        let decimal = assets.decimals;
         let token = assets.token_address();
 
         let value = ChainTransaction::check_min_transfer(&req.value, decimal)?;
@@ -504,7 +504,7 @@ impl MultisigAdapter {
                     ))?;
                 }
 
-                tron_tx::build_build_tx(req, token, value, &chain, account.threshold as i64, None)
+                tron_tx::build_build_tx(req, token, value, chain, account.threshold as i64, None)
                     .await
             }
         }
@@ -517,7 +517,7 @@ impl MultisigAdapter {
         p: &PermissionEntity,
         assets: &AssetsEntity,
     ) -> Result<types::MultisigTxResp, crate::ServiceError> {
-        let decimal = assets.decimals as u8;
+        let decimal = assets.decimals;
         let token = assets.token_address();
 
         let value = ChainTransaction::check_min_transfer(&req.value, decimal)?;
@@ -532,13 +532,11 @@ impl MultisigAdapter {
                 }
 
                 let permission_id = Some(p.active_id);
-                tron_tx::build_build_tx(req, token, value, &chain, p.threshold, permission_id).await
+                tron_tx::build_build_tx(req, token, value, chain, p.threshold, permission_id).await
             }
-            _ => {
-                return Err(crate::BusinessError::Permission(
-                    crate::PermissionError::UnSupportPermissionChain,
-                ))?
-            }
+            _ => Err(crate::BusinessError::Permission(
+                crate::PermissionError::UnSupportPermissionChain,
+            ))?,
         }
     }
 

@@ -15,68 +15,6 @@ pub struct GetAccountAssetsRes {
     pub account_total_assets: BalanceInfo,
 }
 
-// impl TryFrom<(TokenCurrency, &AssetsEntity)> for BalanceInfo {
-//     type Error = crate::ServiceError;
-
-//     fn try_from(
-//         (token_currency, assets): (TokenCurrency, &AssetsEntity),
-//     ) -> Result<Self, Self::Error> {
-//         let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
-//         let config = crate::config::CONFIG.read().await;
-//         let currency = config.currency();
-
-//         let price = wallet_types::Decimal::from_f64_retain(token_currency.get_price(currency))
-//             .unwrap_or_default();
-//         let fiat_balance = price * balance;
-
-//         Ok(BalanceInfo {
-//             amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
-//             currency: currency.to_string(),
-//             unit_price: Some(wallet_utils::conversion::decimal_to_f64(&price)?),
-//             fiat_value: Some(wallet_utils::conversion::decimal_to_f64(&fiat_balance)?),
-//         })
-//     }
-// }
-
-// impl TryFrom<Vec<AssetsEntity>> for GetAccountAssetsRes {
-//     type Error = crate::Error;
-
-//     fn try_from(value: Vec<AssetsEntity>) -> Result<Self, Self::Error> {
-//         let mut account_total_assets = wallet_types::Decimal::default();
-
-//         for assets in value {
-//             let AssetsEntity {
-//                 name,
-//                 symbol,
-//                 decimals,
-//                 address,
-//                 chain_code,
-//                 token_address,
-//                 protocol,
-//                 status,
-//                 is_multisig,
-//                 balance,
-//                 created_at,
-//                 updated_at,
-//             } = assets;
-
-//             let unit_price = crate::service_impl::asset::AssetService::get_current_coin_unit_price(
-//                 &symbol,
-//                 &chain_code,
-//             );
-
-//             let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
-
-//             let value = unit_price * balance;
-//             account_total_assets += value;
-//         }
-
-//         Ok(GetAccountAssetsRes {
-//             account_total_assets,
-//         })
-//     }
-// }
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetChainAssetsRes {
@@ -101,40 +39,9 @@ pub struct CoinAssets {
     pub status: u8,
     pub balance: BalanceInfo,
     pub is_multisig: i8,
-    // pub balance: String,
-    // pub _balance: String,
-    // pub unit_price: String,
-    // pub unit
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
-
-// impl TryFrom<AssetsEntity> for CoinAssets {
-//     type Error = crate::ServiceError;
-//     fn try_from(value: AssetsEntity) -> Result<Self, Self::Error> {
-//         let balance = wallet_utils::parse_func::decimal_from_str(&value.balance)?;
-//         let config = crate::config::CONFIG.read().await;
-//         let currency = config.currency();
-
-//         Ok(Self {
-//             name: value.name,
-//             symbol: value.symbol,
-//             decimals: value.decimals,
-//             address: value.address,
-//             chain_code: value.chain_code,
-//             token_address: value.token_address,
-//             status: value.status,
-//             balance: BalanceInfo {
-//                 amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
-//                 currency: currency.to_string(),
-//                 unit_price: None,
-//                 fiat_value: None,
-//             },
-//             created_at: value.created_at,
-//             updated_at: value.updated_at,
-//         })
-//     }
-// }
 
 impl From<(BalanceInfo, AssetsEntity)> for CoinAssets {
     fn from((balance, value): (BalanceInfo, AssetsEntity)) -> Self {
@@ -161,10 +68,8 @@ pub struct AccountChainAsset {
     pub symbol: String,
     pub name: String,
     pub balance: BalanceInfo,
-    // pub usdt_balance: String,
     pub is_multichain: bool,
     pub is_multisig: i8,
-    // pub chains: Vec<ChainAssets>,
 }
 
 #[derive(Debug, serde::Serialize, Default)]

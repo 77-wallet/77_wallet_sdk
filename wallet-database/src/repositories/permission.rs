@@ -78,13 +78,13 @@ impl PermissionRepo {
             .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         // 修改原permission
-        PermissionDao::update(&permission, tx.as_mut()).await?;
+        PermissionDao::update(permission, tx.as_mut()).await?;
 
         // 删除原来的成员
         PermissionUserDao::delete_by_permission(&permission.id, tx.as_mut()).await?;
 
         // 批量新增
-        PermissionUserDao::batch_add(&users, tx.as_mut()).await?;
+        PermissionUserDao::batch_add(users, tx.as_mut()).await?;
 
         tx.commit()
             .await
@@ -126,8 +126,9 @@ impl PermissionRepo {
     // 所有的权限
     pub async fn all_permission_with_user(
         pool: &DbPool,
+        grantor_addr: &str,
     ) -> Result<Vec<PermissionWithUserEntity>, crate::Error> {
-        let permissions = PermissionDao::all_permission(pool.as_ref()).await?;
+        let permissions = PermissionDao::all_permission(pool.as_ref(), grantor_addr).await?;
 
         let mut result = vec![];
         for permission in permissions {

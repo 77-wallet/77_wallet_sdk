@@ -78,7 +78,7 @@ impl StackService {
         signer: &Option<Signer>,
         password: &str,
     ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
-        ChainTransaction::get_key(&from, chain_code::TRON, password, signer).await
+        ChainTransaction::get_key(from, chain_code::TRON, password, signer).await
     }
 
     async fn process_transaction<T>(
@@ -144,7 +144,7 @@ impl StackService {
         Ok(hash)
     }
 
-    // 批量构建交易并发送通知到前端(return:raw_transactin and to_address)
+    // 批量构建交易并发送通知到前端(return:raw_transaction and to_address)
     async fn batch_build_transaction<T>(
         &self,
         args: Vec<impl ops::TronTxOperation<T>>,
@@ -835,7 +835,7 @@ impl StackService {
         // 解锁中的不包括带提取的
         res.unfreeze_num = account.unfreeze_v2.len() as i64 - res.pending_withdraw;
 
-        // bandwitdh
+        // bandwidth
         res.bandwidth.total_resource = resource.net_limit + resource.free_net_limit;
         res.bandwidth.limit_resource =
             (res.bandwidth.total_resource - resource.free_net_used - resource.net_used).max(0);
@@ -1554,7 +1554,7 @@ impl StackService {
             "".to_string(),
             grantor_addr.to_string(),
             to,
-            expiration as i64,
+            expiration,
             &rs.tx_hash,
             &rs.raw_data,
             bill_kind,
@@ -1605,7 +1605,7 @@ impl StackService {
             account.id.to_string(),
             address.to_string(),
             to,
-            expiration as i64,
+            expiration,
             &resp.tx_hash,
             &resp.raw_data,
             bill_kind,

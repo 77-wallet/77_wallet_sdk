@@ -280,18 +280,6 @@ mod test {
         let protocol = None;
         // let decimals = 6;
 
-        // json
-        // let json = r#"
-        // {
-        //     "wallet_address": "0x9e2BEf062f301C85589E342d569058Fd4a1334d7",
-        //     "account_id": 1,
-        //     "chain_code": "eth",
-        //     "symbol": "ATLA",
-        //     "token_address": "0x45e9F834539bC2a0936f184779cED638c9B26459",
-        //     "protocol": "ERC20"
-        // }
-        //     "#;
-
         // let chain_code = "tron";
         // let token_address = "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd";
         // let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
