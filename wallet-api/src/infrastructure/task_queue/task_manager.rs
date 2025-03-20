@@ -308,13 +308,18 @@ async fn handle_common_task(
         CommonTask::QueryQueueResult(data) => {
             domain::multisig::MultisigQueueDomain::sync_queue_status(&data.id).await?
         }
-        CommonTask::RecoverMultisigAccountData(uid) => {
-            domain::multisig::MultisigDomain::recover_uid_multisig_data(&uid, None).await?;
-            MultisigQueueDomain::recover_all_queue_data(&uid).await?;
+        CommonTask::RecoverMultisigAccountData(body) => {
+            domain::multisig::MultisigDomain::recover_uid_multisig_data(&body.uid, None).await?;
+            if let Some(address) = &body.tron_address {
+                domain::permission::PermissionDomain::recover_permission(vec![address.clone()])
+                    .await?;
+            }
+
+            MultisigQueueDomain::recover_all_queue_data(&body.uid).await?;
         }
-        CommonTask::RecoverPermission(address) => {
-            domain::permission::PermissionDomain::recover_permission(vec![address]).await?;
-        }
+        // CommonTask::RecoverPermission(address) => {
+        //     domain::permission::PermissionDomain::recover_permission(vec![address]).await?;
+        // }
         CommonTask::SyncNodesAndLinkToChains(data) => {
             let mut repo = RepositoryFactory::repo(pool.clone());
             let chain_codes = ChainRepoTrait::get_chain_list_all_status(&mut repo)

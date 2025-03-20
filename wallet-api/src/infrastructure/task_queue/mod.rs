@@ -102,9 +102,24 @@ pub(crate) enum MqttTask {
 pub(crate) enum CommonTask {
     QueryCoinPrice(TokenQueryPriceReq),
     QueryQueueResult(QueueTaskEntity),
-    RecoverMultisigAccountData(String),
-    RecoverPermission(String),
+    RecoverMultisigAccountData(RecoverDataBody),
+    // RecoverPermission(String),
     SyncNodesAndLinkToChains(Vec<NodeEntity>),
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct RecoverDataBody {
+    pub uid: String,
+    // 波场恢复权限使用的地址
+    pub tron_address: Option<String>,
+}
+impl RecoverDataBody {
+    pub fn new(uid: &str) -> Self {
+        Self {
+            uid: uid.to_string(),
+            tron_address: None,
+        }
+    }
 }
 
 pub(crate) struct TaskItem {
@@ -301,12 +316,15 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 )?;
                 Ok(Task::Common(CommonTask::QueryQueueResult(req)))
             }
-            TaskName::RecoverMultisigAccountData => Ok(Task::Common(
-                CommonTask::RecoverMultisigAccountData(value.request_body.clone()),
-            )),
-            TaskName::RecoverPermission => Ok(Task::Common(CommonTask::RecoverPermission(
-                value.request_body.clone(),
-            ))),
+            TaskName::RecoverMultisigAccountData => {
+                let req = wallet_utils::serde_func::serde_from_str::<RecoverDataBody>(
+                    &value.request_body,
+                )?;
+                Ok(Task::Common(CommonTask::RecoverMultisigAccountData(req)))
+            }
+            // TaskName::RecoverPermission => Ok(Task::Common(CommonTask::RecoverPermission(
+            //     value.request_body.clone(),
+            // ))),
             TaskName::SyncNodesAndLinkToChains => {
                 let req = wallet_utils::serde_func::serde_from_str::<Vec<NodeEntity>>(
                     &value.request_body,
@@ -367,7 +385,7 @@ impl Task {
                 CommonTask::QueryQueueResult(_) => TaskName::QueryQueueResult,
                 CommonTask::RecoverMultisigAccountData(_) => TaskName::RecoverMultisigAccountData,
                 CommonTask::SyncNodesAndLinkToChains(_) => TaskName::SyncNodesAndLinkToChains,
-                CommonTask::RecoverPermission(_) => TaskName::RecoverPermission,
+                // CommonTask::RecoverPermission(_) => TaskName::RecoverPermission,
             },
         }
     }
@@ -437,10 +455,10 @@ impl Task {
                 CommonTask::QueryQueueResult(queue) => {
                     Some(wallet_utils::serde_func::serde_to_string(queue)?)
                 }
-                CommonTask::RecoverMultisigAccountData(recover_multisig_account_data) => {
-                    Some(recover_multisig_account_data.to_string())
+                CommonTask::RecoverMultisigAccountData(recover_data) => {
+                    Some(wallet_utils::serde_func::serde_to_string(recover_data)?)
                 }
-                CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
+                // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
                 CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => Some(
                     wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?,
                 ),

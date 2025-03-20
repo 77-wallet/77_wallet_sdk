@@ -30,7 +30,9 @@ use crate::{
         multisig::MultisigDomain,
         wallet::WalletDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+    infrastructure::task_queue::{
+        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, Task, Tasks,
+    },
     response_vo::{
         account::BalanceInfo,
         chain::ChainCodeAndName,
@@ -504,7 +506,13 @@ impl WalletService {
         let device_bind_address_task_data =
             domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
-        let mut tasks = Tasks::new()
+        // 恢复多签账号、多签队列
+        let mut recover_data = RecoverDataBody::new(&uid);
+        if let Some(tron_address) = tron_address {
+            recover_data.tron_address = Some(tron_address);
+        };
+
+        Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 keys_init_task_data,
             )))
@@ -518,13 +526,10 @@ impl WalletService {
                 device_bind_address_task_data,
             )))
             .push(Task::Common(CommonTask::RecoverMultisigAccountData(
-                uid.clone(),
-            )));
-
-        if let Some(tron_address) = tron_address {
-            tasks = tasks.push(Task::Common(CommonTask::RecoverPermission(tron_address)));
-        };
-        tasks.send().await?;
+                recover_data,
+            )))
+            .send()
+            .await?;
 
         tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(CreateWalletRes {
@@ -777,8 +782,10 @@ impl WalletService {
         };
 
         for uid in rest_uids {
+            let body = RecoverDataBody::new(&uid);
+
             Tasks::new()
-                .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)))
+                .push(Task::Common(CommonTask::RecoverMultisigAccountData(body)))
                 .send()
                 .await?;
         }

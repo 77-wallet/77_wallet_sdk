@@ -19,7 +19,7 @@ use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     domain::{self, account::AccountDomain, app::config::ConfigDomain, wallet::WalletDomain},
-    infrastructure::task_queue::{BackendApiTask, CommonTask, Task, Tasks},
+    infrastructure::task_queue::{BackendApiTask, CommonTask, RecoverDataBody, Task, Tasks},
     response_vo::account::DerivedAddressesList,
 };
 
@@ -251,20 +251,20 @@ impl AccountService {
         let device_bind_address_task_data =
             domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
 
-        let uid = wallet.uid;
+        // 恢复多签账号、多签队列
+        let mut body = RecoverDataBody::new(&wallet.uid);
+        if let Some(tron_address) = tron_address {
+            body.tron_address = Some(tron_address);
+        };
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
-        let mut tasks = Tasks::new()
+        Tasks::new()
             .push(task)
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 device_bind_address_task_data,
             )))
-            .push(Task::Common(CommonTask::RecoverMultisigAccountData(uid)));
-
-        if let Some(tron_address) = tron_address {
-            tasks = tasks.push(Task::Common(CommonTask::RecoverPermission(tron_address)));
-        }
-
-        tasks.send().await?;
+            .push(Task::Common(CommonTask::RecoverMultisigAccountData(body)))
+            .send()
+            .await?;
 
         tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(())

@@ -262,30 +262,11 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_recover_multisig_data_by_id() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (_, _) = get_manager().await?;
-
-        // 前端的uid
-        let id = "218406973127921664";
-        let start_time = std::time::Instant::now();
-
-        let res = crate::domain::multisig::MultisigDomain::recover_multisig_account_by_id(id).await;
-        let elapsed_time = start_time.elapsed();
-        tracing::info!(
-            "test_recover_multisig_data elapsed time: {:?}",
-            elapsed_time
-        );
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_recover_queue_data() -> Result<()> {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await?;
 
-        let uid = "137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358";
+        let uid = "c38b1a38043f9698454961b1bd6d063aba3368139f3db17b38f758546c759377";
         let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data(uid).await;
         tracing::info!("res: {res:?}");
 
