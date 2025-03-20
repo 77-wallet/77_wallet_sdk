@@ -25,6 +25,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::DEVICE_UNBIND_ADDRESS,
         endpoint::SEND_MSG_CONFIRM,
         endpoint::multisig::PERMISSION_ACCEPT,
+        endpoint::UPLOAD_PERMISSION_TRANS,
     ]
     .iter()
     .cloned()

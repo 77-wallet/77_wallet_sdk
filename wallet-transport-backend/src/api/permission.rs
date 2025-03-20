@@ -1,3 +1,5 @@
+use crate::request::PermissionData;
+
 use super::BackendApi;
 
 // 权限变更请求参数
@@ -8,13 +10,13 @@ pub struct PermissionAcceptReq {
     pub grantor_addr: String,
     pub sender_user: Vec<String>,
     pub back_user: Vec<String>,
-    pub current: CurrentPemission,
+    pub current: CurrentPermission,
     pub multi_sign_id: String,
 }
 
 #[derive(serde::Serialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct CurrentPemission {
+pub struct CurrentPermission {
     // 上次的成员
     pub original_user: Vec<String>,
     // 修改后的成员
@@ -37,6 +39,17 @@ pub struct GetPermissionBackReq {
 #[serde(rename_all = "camelCase")]
 pub struct PermissionBackupResp {
     pub list: Vec<String>,
+}
+
+// 单签交易执行完成后需要同步到服务端
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TransPermission {
+    pub address: String,
+    pub chain_code: String,
+    pub tx_kind: i8,
+    pub hash: String,
+    pub permission_data: PermissionData,
 }
 
 impl BackendApi {
@@ -66,5 +79,19 @@ impl BackendApi {
             .await?;
 
         Ok(result)
+    }
+
+    pub async fn trans_upload(
+        &self,
+        req: TransPermission,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+    ) -> Result<(), crate::Error> {
+        let endpoint = "permission/uploadTrans";
+
+        let _result = self
+            .post_request::<_, bool>(endpoint, &req, aes_cbc_cryptor)
+            .await;
+
+        Ok(())
     }
 }

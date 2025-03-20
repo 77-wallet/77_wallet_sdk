@@ -383,13 +383,10 @@ impl MultisigQueueDomain {
     ) -> Result<(), crate::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone()).await?;
 
-        // let accept_params = MultiSignTransAccept::try_from(&raw_data)?;
-
         let req = SignedTranCreateReq {
             withdraw_id: raw_data.queue.id.clone(),
             address: raw_data.queue.from_addr.clone(),
             chain_code: raw_data.queue.chain_code.clone(),
-            // tx_str: wallet_utils::serde_func::serde_to_string(&accept_params)?,
             raw_data: raw_data.to_string()?,
             tx_kind: raw_data.queue.transfer_type as i8,
             permission_data: opt_data,

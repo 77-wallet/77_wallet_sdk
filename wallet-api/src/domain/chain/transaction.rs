@@ -1,5 +1,8 @@
 use super::adapter::TransactionAdapter;
-use crate::request::transaction::{self, Signer};
+use crate::{
+    infrastructure::task_queue::{self, BackendApiTaskData},
+    request::transaction::{self, Signer},
+};
 use wallet_chain_interact::{
     eth,
     sol::{self, SolFeeSetting},
@@ -14,8 +17,14 @@ use wallet_database::{
         bill::BillKind,
         coin::CoinEntity,
     },
+    repositories::permission::PermissionRepo,
 };
-use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
+use wallet_transport_backend::{
+    api::{permission::TransPermission, BackendApi},
+    consts::endpoint,
+    request::PermissionData,
+    response_vo::chain::GasOracle,
+};
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
 
@@ -106,10 +115,11 @@ impl ChainTransaction {
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         //  check ongoing tx
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
             return Err(crate::BusinessError::Bill(
-                crate::BillError::ExistsUncomfrimationTx,
+                crate::BillError::ExistsUnConfirmationTx,
             ))?;
         };
 
@@ -122,14 +132,14 @@ impl ChainTransaction {
         .await?;
 
         // user assets
-        let assets = ChainTransaction::assets(
-            &params.base.chain_code,
-            &params.base.symbol,
-            &params.base.from,
-        )
-        .await?;
-        params.base.with_token(assets.token_address());
-        params.base.with_decimals(assets.decimals);
+        let coin =
+            CoinEntity::get_coin(&params.base.chain_code, &params.base.symbol, pool.as_ref())
+                .await?
+                .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
+                    params.base.symbol.to_string(),
+                )))?;
+        params.base.with_token(coin.token_address());
+        params.base.with_decimals(coin.decimals);
 
         let resp = adapter.transfer(&params, private_key).await?;
 
@@ -146,6 +156,37 @@ impl ChainTransaction {
             let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
             let _ = backend.delegate_complete(cryptor, &request_id).await;
         }
+
+        // 如果使用了权限，上报给后端
+        if let Some(signer) = params.signer {
+            let permission = PermissionRepo::permission_with_user(
+                &pool,
+                &params.base.from,
+                signer.permission_id,
+                false,
+            )
+            .await?
+            .ok_or(crate::BusinessError::Permission(
+                crate::PermissionError::ActivesPermissionNotFound,
+            ))?;
+
+            let params = TransPermission {
+                address: params.base.from,
+                chain_code: params.base.chain_code,
+                tx_kind: bill_kind.to_i8(),
+                hash: resp.tx_hash.clone(),
+                permission_data: PermissionData {
+                    opt_address: signer.address.to_string(),
+                    users: permission.users(),
+                },
+            };
+
+            let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+                BackendApiTaskData::new(endpoint::UPLOAD_PERMISSION_TRANS, &params)?,
+            ));
+            let _ = task_queue::Tasks::new().push(task).send().await;
+        }
+
         Ok(resp.tx_hash)
     }
 
