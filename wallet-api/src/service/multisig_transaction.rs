@@ -16,6 +16,7 @@ use wallet_chain_interact::{btc, eth, sol, tron, BillResourceConsume};
 use wallet_database::dao::multisig_member::MultisigMemberDaoV1;
 use wallet_database::dao::multisig_queue::MultisigQueueDaoV1;
 use wallet_database::entities::bill::{BillKind, NewBillEntity};
+use wallet_database::entities::coin::CoinEntity;
 use wallet_database::entities::multisig_queue::{
     fail_reason, MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity, QueueTaskEntity,
 };
@@ -557,9 +558,12 @@ impl MultisigTransactionService {
         let signs = MultisigQueueRepo::get_signed_list(&pool, queue_id).await?;
         let signs_list = signs.get_order_sign_str();
 
-        let assets =
-            ChainTransaction::assets(&queue.chain_code, &queue.symbol, &queue.from_addr).await?;
-        let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, assets.decimals)?;
+        let coin = CoinEntity::get_coin(&queue.chain_code, &queue.symbol, pool.as_ref())
+            .await?
+            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
+                queue.symbol.to_string(),
+            )))?;
+        let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, coin.decimals)?;
 
         let bill_kind = BillKind::try_from(queue.transfer_type)?;
 

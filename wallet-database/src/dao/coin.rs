@@ -438,31 +438,4 @@ impl CoinEntity {
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
-
-    // pub fn get_main_coin(chain_code: &str) -> MainCoin {
-    //     // TODO 主币获取逻辑
-    //     match chain_code {
-    //         "eth" | "eth_test" => MainCoin {
-    //             symbol: "ETH".to_string(),
-    //             decimal: 18,
-    //         },
-    //         "bnb" | "bnb_test" => MainCoin {
-    //             symbol: "BNB".to_string(),
-    //             decimal: 18,
-    //         },
-    //         "tron" | "tron_test" => MainCoin {
-    //             symbol: "TRX".to_string(),
-    //             decimal: 6,
-    //         },
-    //         "sol" | "sol_test" => MainCoin {
-    //             symbol: "SOL".to_string(),
-    //             decimal: 9,
-    //         },
-    //         "btc" | "btc_test" => MainCoin {
-    //             symbol: "BTC".to_string(),
-    //             decimal: 8,
-    //         },
-    //         _ => panic!("not support this chain_code: {}", chain_code),
-    //     }
-    // }
 }
