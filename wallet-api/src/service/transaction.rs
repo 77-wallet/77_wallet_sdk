@@ -1,5 +1,6 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
+use crate::domain::coin::CoinDomain;
 use crate::request::transaction::{self, QueryBillResultReq};
 use crate::response_vo::{
     self,
@@ -71,14 +72,10 @@ impl TransactionService {
     pub async fn transaction_fee(
         mut params: transaction::BaseTransferReq,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let assets = domain::chain::transaction::ChainTransaction::assets(
-            &params.chain_code,
-            &params.symbol,
-            &params.from,
-        )
-        .await?;
-        params.with_decimals(assets.decimals);
-        params.with_token(assets.token_address());
+        let coin = CoinDomain::get_coin(&params.chain_code, &params.symbol).await?;
+
+        params.with_decimals(coin.decimals);
+        params.with_token(coin.token_address());
 
         let main_coin =
             domain::chain::transaction::ChainTransaction::main_coin(&params.chain_code).await?;

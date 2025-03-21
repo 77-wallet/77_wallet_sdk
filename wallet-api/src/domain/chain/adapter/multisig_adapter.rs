@@ -624,7 +624,7 @@ impl MultisigAdapter {
     pub async fn estimate_fee(
         &self,
         queue: &MultisigQueueEntity,
-        assets: &AssetsEntity,
+        coin: &CoinEntity,
         backend: &wallet_transport_backend::api::BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,
@@ -642,7 +642,7 @@ impl MultisigAdapter {
         match self {
             Self::Ethereum(chain) => {
                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
-                let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
+                let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let multisig_account = domain::multisig::MultisigDomain::account_by_address(
                     &queue.from_addr,
                     true,
@@ -662,7 +662,7 @@ impl MultisigAdapter {
                     &queue.to_addr,
                     value,
                 )?
-                .with_token(assets.token_address())?
+                .with_token(coin.token_address())?
                 .exec_params(
                     &multisig_account.initiator_addr,
                     queue.raw_data.clone(),
@@ -714,10 +714,10 @@ impl MultisigAdapter {
             }
             Self::Tron(chain) => {
                 let signature_num = sign_list.len() as u8;
-                let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
+                let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-                let consumer = if let Some(token) = assets.token_address() {
+                let consumer = if let Some(token) = coin.token_address() {
                     let params = tron::operations::transfer::ContractTransferOpt::new(
                         &token,
                         &queue.from_addr,

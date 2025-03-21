@@ -356,29 +356,18 @@ impl MultisigTransactionService {
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
 
-        let assets = domain::chain::transaction::ChainTransaction::assets(
-            &queue.chain_code,
-            &queue.symbol,
-            &queue.from_addr,
-        )
-        .await?;
+        let coin = CoinDomain::get_coin(&queue.chain_code, &queue.symbol).await?;
 
         // 签名数
         let signs = MultisigQueueRepo::get_signed_list(&pool, queue_id).await?;
         let sign_list = signs.get_order_sign_str();
 
         let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
-        let main_coin = ChainTransaction::main_coin(&assets.chain_code).await?;
+        let main_coin = ChainTransaction::main_coin(&queue.chain_code).await?;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
         let fee = instance
-            .estimate_fee(
-                &queue,
-                &assets,
-                backend,
-                sign_list,
-                main_coin.symbol.as_str(),
-            )
+            .estimate_fee(&queue, &coin, backend, sign_list, main_coin.symbol.as_str())
             .await?;
 
         let fee_resp =
