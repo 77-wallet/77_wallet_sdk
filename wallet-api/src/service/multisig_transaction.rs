@@ -151,7 +151,7 @@ impl MultisigTransactionService {
 
         if queue.chain_code != chain_code::SOLANA {
             // 对多签队列进行签名
-            MultisigQueueDomain::batch_sign_with_permission(&mut queue, &password, &p, &pool)
+            MultisigQueueDomain::batch_sign_with_permission(&mut queue, password, &p, &pool)
                 .await?;
         }
 
@@ -447,7 +447,7 @@ impl MultisigTransactionService {
             };
 
             let key =
-                ChainTransaction::get_key(&address, &queue.chain_code, password, &None).await?;
+                ChainTransaction::get_key(address, &queue.chain_code, password, &None).await?;
 
             let rs = instance
                 .sign_multisig_tx(&multisig_account, address, key, &queue.raw_data)

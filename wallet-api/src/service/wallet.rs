@@ -171,7 +171,7 @@ impl WalletService {
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
-        let datas: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
+        let exports: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
         let seed = WalletDomain::get_seed(dirs, wallet_address, wallet_password).await?;
 
         let wallet = tx
@@ -181,7 +181,7 @@ impl WalletService {
 
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         let mut accounts = Vec::new();
-        for data in datas {
+        for data in exports {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
                 &data.derivation_path,
             )?;
@@ -865,82 +865,16 @@ impl WalletService {
 
     pub async fn recover_multisig_data(
         self,
-        wallet_address: &str,
+        _wallet_address: &str,
     ) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo;
-        MultisigDomain::recover_multisig_account_and_queue_data(&mut tx, wallet_address).await?;
+        // 在创建钱包时，skd已经在任务里面添加了task 来恢复，这里没有必要给到前端一个接口再去执行一遍重复的逻辑
+        // let mut tx = self.repo;
+        // MultisigDomain::recover_multisig_account_and_queue_data(&mut tx, wallet_address).await?;
 
         Ok(())
     }
 
-    // #[allow(clippy::too_many_arguments)]
-    // #[deprecated]
-    // pub async fn reset_root(
-    //     &mut self,
-    //     language_code: u8,
-    //     phrase: &str,
-    //     salt: &str,
-    //     _address: &str,
-    //     new_password: &str,
-    //     subkey_password: Option<String>,
-    // ) -> Result<(), crate::ServiceError> {
-    //     // let service = Service::default();
-    //     let dirs = crate::manager::Context::get_global_dirs()?;
-    //     let wallet_crypto::api::RootInfo {
-    //         private_key,
-    //         seed,
-    //         address,
-    //         phrase,
-    //     } = wallet_crypto::api::KeystoreApi::generate_master_key_info(
-    //         language_code,
-    //         phrase,
-    //         salt,
-    //     )
-    //     .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-    //     let address = address.to_string();
-
-    //     // Get the path to the root directory for the given wallet name.
-    //     let root_path = dirs.get_root_dir(&address)?;
-
-    //     // Get the path to the subkeys directory for the given wallet name.
-    //     let subs_path = dirs.get_subs_dir(&address)?;
-
-    //     // Traverse the directory structure to obtain the current wallet tree.
-    //     let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
-    //     let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-
-    //     // Call the reset_root function from the wallet manager handler,
-    //     // passing in the root path, subs path, wallet tree, wallet name,
-    //     // language code, phrase, salt, address, new password, and subkey password.
-    //     let req = crate::request::wallet::ResetRootReq {
-    //         language_code,
-    //         phrase: phrase.to_string(),
-    //         salt: salt.to_string(),
-    //         wallet_address: address.to_string(),
-    //         new_password: new_password.to_string(),
-    //         subkey_password,
-    //     };
-
-    //     self.wallet_domain
-    //         .reset_root(
-    //             &mut self.repo,
-    //             root_path,
-    //             subs_path,
-    //             wallet_tree,
-    //             private_key,
-    //             seed,
-    //             req,
-    //         )
-    //         .await?;
-
-    //     Ok(())
-    // }
-
-    pub async fn upgrade_algorithm(
-        &self,
-        password: &str,
-        // algorithm: u8,
-    ) -> Result<(), crate::ServiceError> {
+    pub async fn upgrade_algorithm(&self, password: &str) -> Result<(), crate::ServiceError> {
         WalletDomain::upgrade_algorithm(password).await?;
         Ok(())
     }

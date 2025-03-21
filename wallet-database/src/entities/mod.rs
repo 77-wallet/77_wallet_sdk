@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 pub mod account;
 pub mod address_book;
 pub mod announcement;

@@ -194,7 +194,7 @@ async fn test_build_multisig_queue() {
 async fn test_recover_data() {
     let _wallet_manager = get_manager().await;
 
-    let uids = vec!["137eb624118a0224f491d94f153c2ad3b6e55661dbf687d8a8ba8c59aa7ab358".to_string()];
+    let uids = vec!["TL55jNbXWeM6se5fpKBQTTmH45HZ7stvW3".to_string()];
     domain::permission::PermissionDomain::recover_permission(uids)
         .await
         .unwrap();

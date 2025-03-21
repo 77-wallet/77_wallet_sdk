@@ -30,18 +30,18 @@ impl PermissionDomain {
     }
 
     // 恢复权限数据
-    pub async fn recover_permission(addresss: Vec<String>) -> Result<(), crate::ServiceError> {
-        let bakend = crate::Context::get_global_backend_api()?;
+    pub async fn recover_permission(addresses: Vec<String>) -> Result<(), crate::ServiceError> {
+        let backend = crate::Context::get_global_backend_api()?;
 
         let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        for address in addresss {
+        for address in addresses {
             let req = GetPermissionBackReq {
                 address: Some(address),
                 uid: None,
             };
-            let result = bakend.get_permission_backup(req, aes_cbc_cryptor).await?;
+            let result = backend.get_permission_backup(req, aes_cbc_cryptor).await?;
 
             for item in result.list {
                 if let Err(e) = Self::handel_one_item(&pool, &item).await {
@@ -133,10 +133,10 @@ impl PermissionDomain {
         let account = chain.account_info(grantor_addr).await?;
 
         let new_permission =
-            PermissionDomain::self_contain_permission(&pool, &account, grantor_addr).await?;
+            PermissionDomain::self_contain_permission(pool, &account, grantor_addr).await?;
 
-        if new_permission.len() > 0 {
-            PermissionDomain::del_add_update(&pool, new_permission, grantor_addr).await?;
+        if !new_permission.is_empty() {
+            PermissionDomain::del_add_update(pool, new_permission, grantor_addr).await?;
         }
 
         Ok(())

@@ -72,7 +72,7 @@ impl IoStrategy for LegacyIo {
         let seed: &[u8] = seed.into_seed().expose_secret().as_ref();
 
         Ok(super::RootData::new(
-            &phrase_wallet.phrase.expose_secret(),
+            phrase_wallet.phrase.expose_secret(),
             seed,
         ))
     }

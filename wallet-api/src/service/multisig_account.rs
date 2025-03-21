@@ -280,7 +280,7 @@ impl MultisigAccountService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         // 同步部署中多签账号的状态
-        let _r = domain::multisig::MultisigDomain::sync_multisg_status(pool.clone()).await;
+        let _r = domain::multisig::MultisigDomain::sync_multisig_status(pool.clone()).await;
 
         let mut res = self
             .repo

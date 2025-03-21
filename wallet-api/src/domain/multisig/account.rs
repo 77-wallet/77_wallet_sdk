@@ -59,7 +59,8 @@ impl MultisigDomain {
         Ok(())
     }
 
-    pub(crate) async fn recover_multisig_account_and_queue_data(
+    // 供前端使用的目前先不使用
+    pub(crate) async fn _recover_multisig_account_and_queue_data(
         repo: &mut ResourcesRepo,
         wallet_address: &str,
     ) -> Result<(), crate::ServiceError> {
@@ -94,6 +95,7 @@ impl MultisigDomain {
         .await?;
         Ok(())
     }
+
     pub(crate) async fn recover_multisig_data_by_address(
         repo: &mut ResourcesRepo,
         multisig_account_address: &str,
@@ -149,7 +151,7 @@ impl MultisigDomain {
             let Some(raw_data) = multisig_raw_data.raw_data else {
                 continue;
             };
-            if let Err(e) = Self::handle_one_mutlisg_data(
+            if let Err(e) = Self::handle_one_multisig_data(
                 &raw_data,
                 pool.clone(),
                 uid_list,
@@ -176,7 +178,7 @@ impl MultisigDomain {
         Ok(())
     }
 
-    pub async fn handle_one_mutlisg_data(
+    pub async fn handle_one_multisig_data(
         raw_data: &str,
         pool: DbPool,
         uid_list: &std::collections::HashSet<String>,
@@ -204,7 +206,7 @@ impl MultisigDomain {
             && data.account.pay_status != MultisigAccountPayStatus::Paid.to_i8()
             && data.account.pay_status != MultisigAccountPayStatus::PaidFail.to_i8()
         {
-            Self::hanle_pay_status(&mut data.account, false).await?;
+            Self::handle_pay_status(&mut data.account, false).await?;
             flag = true;
         }
 
@@ -253,13 +255,13 @@ impl MultisigDomain {
     }
 
     // 同步部署中多签账号的状态
-    pub async fn sync_multisg_status(pool: DbPool) -> Result<(), crate::ServiceError> {
+    pub async fn sync_multisig_status(pool: DbPool) -> Result<(), crate::ServiceError> {
         let mut pending_account = MultisigAccountDaoV1::pending_account(pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
         for account in pending_account.iter_mut() {
-            let staus_update = account.status;
+            let status_update = account.status;
             let pay_status_up = account.pay_status;
 
             if account.status == MultisigAccountStatus::OnChianPending.to_i8() {
@@ -269,12 +271,12 @@ impl MultisigDomain {
             }
 
             if account.pay_status == MultisigAccountPayStatus::PaidPending.to_i8() {
-                if let Err(e) = Self::hanle_pay_status(account, true).await {
+                if let Err(e) = Self::handle_pay_status(account, true).await {
                     tracing::error!("Multisig pay status sync faild {}", e);
                 }
             }
 
-            if pay_status_up != account.pay_status || staus_update != account.status {
+            if pay_status_up != account.pay_status || status_update != account.status {
                 let rs = MultisigAccountDaoV1::update_status(
                     &account.id,
                     Some(account.status),
@@ -292,7 +294,7 @@ impl MultisigDomain {
     }
 
     // 多签支付状态
-    pub async fn hanle_pay_status(
+    pub async fn handle_pay_status(
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
     ) -> Result<(), crate::ServiceError> {
@@ -508,7 +510,7 @@ impl MultisigDomain {
         Ok(res)
     }
 
-    // Report the successful mutlisig account back to the backend to update the raw data.
+    // Report the successful multisig account back to the backend to update the raw data.
     pub async fn update_raw_data(
         account_id: &str,
         pool: DbPool,

@@ -1,6 +1,5 @@
-use sqlx::types::chrono::{DateTime, Utc};
-
 use super::permission_user::PermissionUserEntity;
+use sqlx::types::chrono::{DateTime, Utc};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
 pub struct MultisigSignatureEntity {
