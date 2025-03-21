@@ -11,11 +11,11 @@ async fn test_build_freeze() {
 
     let singer = Signer {
         address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        permission_id: 2,
+        permission_id: 3,
     };
 
     let req = FreezeBalanceReq {
-        owner_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        owner_address: "TKKjkyjSMZ9iy8ATJsLp1X4yNqr39Q5v8Q".to_string(),
         resource: "energy".to_string(),
         frozen_balance: 50,
         signer: Some(singer),

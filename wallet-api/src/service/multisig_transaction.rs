@@ -125,7 +125,7 @@ impl MultisigTransactionService {
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let assets = ChainTransaction::assets(&req.chain_code, &req.symbol, &req.from).await?;
+        let coin = CoinDomain::get_coin(&req.chain_code, &req.symbol).await?;
 
         let permission =
             PermissionRepo::permission_with_user(&pool, &req.from, signer.permission_id, false)
@@ -139,13 +139,13 @@ impl MultisigTransactionService {
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&req.chain_code).await?;
         let rs = adapter
-            .build_multisig_with_permission(&req, &p.permission, &assets)
+            .build_multisig_with_permission(&req, &p.permission, &coin)
             .await?;
 
         let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
             .with_raw_data(&rs.raw_data)
-            .with_token(assets.token_address())
+            .with_token(coin.token_address())
             .set_id();
         queue.permission_id = p.permission.id.clone();
 

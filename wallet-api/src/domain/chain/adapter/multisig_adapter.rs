@@ -21,7 +21,7 @@ use wallet_chain_interact::{
     BillResourceConsume,
 };
 use wallet_database::entities::{
-    assets::AssetsEntity, multisig_account::MultisigAccountEntity,
+    assets::AssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
     permission::PermissionEntity,
 };
@@ -515,10 +515,10 @@ impl MultisigAdapter {
         &self,
         req: &TransferParams,
         p: &PermissionEntity,
-        assets: &AssetsEntity,
+        coin: &CoinEntity,
     ) -> Result<types::MultisigTxResp, crate::ServiceError> {
-        let decimal = assets.decimals;
-        let token = assets.token_address();
+        let decimal = coin.decimals;
+        let token = coin.token_address();
 
         let value = ChainTransaction::check_min_transfer(&req.value, decimal)?;
 
