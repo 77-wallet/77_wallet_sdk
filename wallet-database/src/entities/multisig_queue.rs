@@ -242,6 +242,7 @@ impl NewMultisigQueueEntity {
         let sign_num = self
             .signatures
             .iter()
+            .filter(|s| !s.signature.is_empty())
             .map(|s| s.weight.unwrap_or(1))
             .sum::<i32>();
 
