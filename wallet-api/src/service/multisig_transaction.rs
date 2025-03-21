@@ -1,6 +1,7 @@
 use crate::domain::chain::adapter::{ChainAdapterFactory, MultisigAdapter};
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::chain::TransferResp;
+use crate::domain::coin::CoinDomain;
 use crate::domain::multisig::{MultisigDomain, MultisigQueueDomain};
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
@@ -16,7 +17,6 @@ use wallet_chain_interact::{btc, eth, sol, tron, BillResourceConsume};
 use wallet_database::dao::multisig_member::MultisigMemberDaoV1;
 use wallet_database::dao::multisig_queue::MultisigQueueDaoV1;
 use wallet_database::entities::bill::{BillKind, NewBillEntity};
-use wallet_database::entities::coin::CoinEntity;
 use wallet_database::entities::multisig_queue::{
     fail_reason, MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity, QueueTaskEntity,
 };
@@ -497,7 +497,12 @@ impl MultisigTransactionService {
         .await?;
 
         // 需要签名的阈值
-        let total_weight = sign_list.iter().map(|s| s.weight).sum::<i64>();
+        let total_weight = sign_list
+            .iter()
+            .filter(|s| !s.signature.is_empty())
+            .map(|s| s.weight)
+            .sum::<i64>();
+
         let need_sign = (permission.threshold - total_weight).max(0);
         if need_sign == 0 {
             return Ok(result);
@@ -532,11 +537,6 @@ impl MultisigTransactionService {
                 );
                 domain::bill::BillDomain::create_bill(tx).await?;
             }
-
-            // signed_num += 1;
-            // if signed_num >= need_sign {
-            //     break;
-            // }
         }
 
         Ok(result)
@@ -558,11 +558,8 @@ impl MultisigTransactionService {
         let signs = MultisigQueueRepo::get_signed_list(&pool, queue_id).await?;
         let signs_list = signs.get_order_sign_str();
 
-        let coin = CoinEntity::get_coin(&queue.chain_code, &queue.symbol, pool.as_ref())
-            .await?
-            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                queue.symbol.to_string(),
-            )))?;
+        let coin = CoinDomain::get_coin(&queue.chain_code, &queue.symbol).await?;
+
         let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, coin.decimals)?;
 
         let bill_kind = BillKind::try_from(queue.transfer_type)?;
@@ -707,16 +704,9 @@ impl MultisigTransactionService {
 
                 let account = provider.account_info(&queue.from_addr).await?;
                 let consumer = if let Some(token) = queue.token_address() {
-                    let assets = domain::chain::transaction::ChainTransaction::assets(
-                        &queue.chain_code,
-                        &queue.symbol,
-                        &queue.from_addr,
-                    )
-                    .await?;
-
                     let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-                    let value = unit::convert_to_u256(&queue.value, assets.decimals)?;
+                    let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                     let transfer_params = tron::operations::transfer::ContractTransferOpt::new(
                         &token,
                         &queue.from_addr,

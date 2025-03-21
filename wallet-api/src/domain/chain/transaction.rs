@@ -1,5 +1,6 @@
 use super::adapter::TransactionAdapter;
 use crate::{
+    domain::coin::CoinDomain,
     infrastructure::task_queue::{self, BackendApiTaskData},
     request::transaction::{self, Signer},
 };
@@ -115,7 +116,6 @@ impl ChainTransaction {
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
         //  check ongoing tx
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
             return Err(crate::BusinessError::Bill(
@@ -131,13 +131,7 @@ impl ChainTransaction {
         )
         .await?;
 
-        // user assets
-        let coin =
-            CoinEntity::get_coin(&params.base.chain_code, &params.base.symbol, pool.as_ref())
-                .await?
-                .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                    params.base.symbol.to_string(),
-                )))?;
+        let coin = CoinDomain::get_coin(&params.base.chain_code, &params.base.symbol).await?;
         params.base.with_token(coin.token_address());
         params.base.with_decimals(coin.decimals);
 
@@ -159,6 +153,7 @@ impl ChainTransaction {
 
         // 如果使用了权限，上报给后端
         if let Some(signer) = params.signer {
+            let pool = crate::Context::get_global_sqlite_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 &params.base.from,

@@ -311,10 +311,6 @@ impl TransactionAdapter {
                     if let Some(signer) = &params.signer {
                         param = param.with_permission(signer.permission_id);
                     }
-
-                    // tracing::warn!("params {:#?}", param);
-                    // assert!(false);
-
                     let provider = chain.get_provider();
                     let account = provider.account_info(&param.from).await?;
                     if account.balance <= 0 {

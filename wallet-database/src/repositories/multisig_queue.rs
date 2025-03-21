@@ -58,7 +58,7 @@ impl MultisigQueueRepo {
 
                 match exists {
                     Some(s) => {
-                        if !s.signature.is_empty() {
+                        if s.signature.is_empty() {
                             MultisigSignatureDaoV1::update_status(signature, tx.as_mut()).await?
                         }
                     }
@@ -193,7 +193,7 @@ impl MultisigQueueRepo {
 
         match signature {
             Some(s) => {
-                if !s.signature.is_empty() {
+                if s.signature.is_empty() {
                     MultisigSignatureDaoV1::update_status(params, pool.as_ref()).await?
                 }
             }

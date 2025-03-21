@@ -2,7 +2,7 @@ pub mod token_price;
 use crate::response_vo::coin::{TokenCurrencies, TokenCurrencyId, TokenPriceChangeRes};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
-    entities::coin::{CoinData, CoinId},
+    entities::coin::{CoinData, CoinEntity, CoinId},
     repositories::{coin::CoinRepoTrait, exchange_rate::ExchangeRateRepoTrait, ResourcesRepo},
 };
 use wallet_transport_backend::{request::TokenQueryPriceReq, response_vo::coin::TokenCurrency};
@@ -18,6 +18,21 @@ impl Default for CoinDomain {
 impl CoinDomain {
     pub fn new() -> Self {
         Self {}
+    }
+
+    pub async fn get_coin(
+        chain_code: &str,
+        symbol: &str,
+    ) -> Result<CoinEntity, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let coin = CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
+            .await?
+            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
+                symbol.to_string(),
+            )))?;
+
+        Ok(coin)
     }
 
     /// 查询代币汇率
