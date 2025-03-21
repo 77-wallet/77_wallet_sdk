@@ -385,7 +385,7 @@ pub async fn open_subpk_with_password(
     address: &str,
     password: &str,
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
-    super::wallet::WalletDomain::validate_password(password).await?;
+    // super::wallet::WalletDomain::validate_password(password).await?;
 
     let db = crate::manager::Context::get_global_sqlite_pool()?;
     let dirs = crate::manager::Context::get_global_dirs()?;
