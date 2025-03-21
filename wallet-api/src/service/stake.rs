@@ -86,9 +86,10 @@ impl StackService {
         args: impl ops::TronTxOperation<T>,
         bill_kind: BillKind,
         from: &str,
-        key: ChainPrivateKey,
         value: i64,
         bill_value: f64,
+        signer: &Option<Signer>,
+        password: &str,
     ) -> Result<String, crate::ServiceError> {
         // 构建交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -96,6 +97,8 @@ impl StackService {
             Process::Building,
         ));
         FrontendNotifyEvent::new(data).send().await?;
+
+        let key = self.get_key(&from, signer, password).await?;
 
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
         // 验证余额
@@ -570,11 +573,16 @@ impl StackService {
             ops::stake::ResourceType::ENERGY => BillKind::FreezeEnergy,
         };
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, password)
-            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, key, req.frozen_balance, 0.0)
+            .process_transaction(
+                args,
+                bill_kind,
+                &from,
+                req.frozen_balance,
+                0.0,
+                &req.signer,
+                password,
+            )
             .await?;
 
         let resource_value = self
@@ -705,11 +713,8 @@ impl StackService {
 
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, password)
-            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, key, 0, 0.0)
+            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, password)
             .await?;
 
         let resource_value = self
@@ -745,17 +750,15 @@ impl StackService {
             req.signer.clone().map(|s| s.permission_id),
         )?;
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, &password)
-            .await?;
         let tx_hash = self
             .process_transaction(
                 args,
                 BillKind::CancelAllUnFreeze,
                 &req.owner_address,
-                key,
                 0,
                 (bandwidth + energy) as f64,
+                &req.signer,
+                &password,
             )
             .await?;
 
@@ -793,18 +796,15 @@ impl StackService {
             permission_id: req.signer.clone().map(|s| s.permission_id),
         };
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, &password)
-            .await?;
-
         let tx_hash = self
             .process_transaction(
                 args,
                 BillKind::WithdrawUnFreeze,
                 &req.owner_address,
-                key,
                 0,
                 can_widthdraw.to_sun() as f64,
+                &req.signer,
+                &password,
             )
             .await?;
 
@@ -960,11 +960,8 @@ impl StackService {
         };
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, password)
-            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, key, 0, 0.0)
+            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, &password)
             .await?;
 
         let resource_value = self
@@ -1177,11 +1174,8 @@ impl StackService {
             ops::stake::ResourceType::ENERGY => BillKind::UnDelegateEnergy,
         };
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, &password)
-            .await?;
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, key, 0, 0.0)
+            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, &password)
             .await?;
 
         let resource_value = self
@@ -1449,12 +1443,16 @@ impl StackService {
 
         let bill_value = req.get_votes() as f64;
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, password)
-            .await?;
-
         let tx_hash = self
-            .process_transaction(args, BillKind::Vote, &req.owner_address, key, 0, bill_value)
+            .process_transaction(
+                args,
+                BillKind::Vote,
+                &req.owner_address,
+                0,
+                bill_value,
+                &req.signer,
+                password,
+            )
             .await?;
 
         Ok(tx_hash)
@@ -1481,17 +1479,15 @@ impl StackService {
             ))?;
         }
 
-        let key = self
-            .get_key(&req.owner_address, &req.signer, password)
-            .await?;
         let tx_hash = self
             .process_transaction(
                 args,
                 BillKind::WithdrawReward,
                 &req.owner_address,
-                key,
                 0,
                 0.0,
+                &req.signer,
+                password,
             )
             .await?;
 
