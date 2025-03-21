@@ -6,7 +6,7 @@ use wallet_database::{
     dao::bill::BillDao,
     entities::{account::AccountEntity, bill::BillEntity},
     pagination::Pagination,
-    repositories::{account::AccountRepoTrait, bill::BillRepoTrait},
+    repositories::{account::AccountRepoTrait, bill::BillRepoTrait, permission::PermissionRepo},
 };
 
 pub struct BillService<T: BillRepoTrait + AccountRepoTrait> {
@@ -46,7 +46,19 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
                 )
                 .await?;
 
-            account.iter().map(|item| item.address.clone()).collect()
+            let mut address = account
+                .iter()
+                .map(|item| item.address.clone())
+                .collect::<Vec<String>>();
+
+            // 兼容权限里面的地址
+            let pool = crate::Context::get_global_sqlite_pool()?;
+            let users = PermissionRepo::permission_by_users(&pool, &address).await?;
+
+            for user in users {
+                address.push(user.grantor_addr.clone());
+            }
+            address
         };
 
         // 过滤最小金额

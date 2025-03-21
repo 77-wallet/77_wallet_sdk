@@ -96,6 +96,39 @@ impl PermissionDao {
         Ok(result)
     }
 
+    pub async fn permission_by_uses<'a, E>(
+        exec: E,
+        users: &Vec<String>,
+    ) -> Result<Vec<PermissionEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // 如果没有用户，直接返回空向量
+        if users.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // 根据用户数量构造占位符,
+        let placeholders = users.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT * FROM permission p WHERE EXISTS (
+            SELECT 1 FROM permission_user u 
+            WHERE u.permission_id = p.id 
+              AND u.address in ({})
+        ) AND p.is_del = 0;",
+            placeholders
+        );
+
+        // 创建查询并依次绑定每个用户地址
+        let mut query = sqlx::query_as::<_, PermissionEntity>(&sql);
+        for user in users {
+            query = query.bind(user.clone());
+        }
+
+        let result = query.fetch_all(exec).await?;
+        Ok(result)
+    }
+
     // 1 包含删除 0包含
     pub async fn find_by_grantor_active<'a, E>(
         grantor_addr: &str,
@@ -144,27 +177,6 @@ impl PermissionDao {
 
         Ok(result)
     }
-
-    // pub async fn delete<'a, E>(
-    //     grantor_addr: &str,
-    //     active_id: i64,
-    //     exec: E,
-    // ) -> Result<(), crate::DatabaseError>
-    // where
-    //     E: Executor<'a, Database = Sqlite>,
-    // {
-    //     let sql = r#"delete from permission
-    //         where
-    //             grantor_addr = ? and active_id = ?"#;
-
-    //     let _c = sqlx::query(&sql)
-    //         .bind(grantor_addr)
-    //         .bind(active_id)
-    //         .execute(exec)
-    //         .await?;
-
-    //     Ok(())
-    // }
 
     pub async fn delete_by_grantor_addr<'a, E>(
         grantor_addr: &str,

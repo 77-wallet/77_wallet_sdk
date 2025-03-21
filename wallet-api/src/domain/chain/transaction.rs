@@ -357,7 +357,7 @@ impl ChainTransaction {
     }
 
     // 后期加入缓存
-    pub async fn account_resorce(
+    pub async fn account_resource(
         chain: &TronChain,
         owner_address: &str,
     ) -> Result<AccountResourceDetail, crate::ServiceError> {

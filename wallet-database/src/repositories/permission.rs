@@ -217,4 +217,11 @@ impl PermissionRepo {
     ) -> Result<Vec<PermissionUserEntity>, crate::Error> {
         Ok(PermissionUserDao::self_users(permission_id, pool.as_ref()).await?)
     }
+
+    pub async fn permission_by_users(
+        pool: &DbPool,
+        users: &Vec<String>,
+    ) -> Result<Vec<PermissionEntity>, crate::Error> {
+        Ok(PermissionDao::permission_by_uses(pool.as_ref(), users).await?)
+    }
 }

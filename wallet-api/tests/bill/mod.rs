@@ -32,11 +32,11 @@ async fn bill_lists() {
     let wallet_manager = get_manager().await;
 
     let root_addr: Option<String> = None;
-    let account_id: Option<u32> = None;
-    let addr = Some("TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string());
-    let chain_code: Option<String> = Some("tron".to_string());
+    let account_id: Option<u32> = Some(1);
+    let addr = None;
+    let chain_code: Option<String> = None;
     // let symbol = Some("TRX".to_string());
-    let symbol = Some("TRX".to_string());
+    let symbol = None;
     let is_multisig = None;
     let filter_min_value = Some(false);
     let start_time = None;
