@@ -1,6 +1,7 @@
 use crate::get_manager;
-use wallet_api::request::stake::{
-    CancelAllUnFreezeReq, FreezeBalanceReq, UnFreezeBalanceReq, WithdrawBalanceReq,
+use wallet_api::request::{
+    stake::{CancelAllUnFreezeReq, FreezeBalanceReq, UnFreezeBalanceReq, WithdrawBalanceReq},
+    transaction::Signer,
 };
 use wallet_database::entities::bill::BillKind;
 
@@ -34,11 +35,17 @@ async fn test_freeze_fee() {
 #[tokio::test]
 async fn test_freeze() {
     let manager = get_manager().await;
+
+    let signer = Signer {
+        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        permission_id: 3,
+    };
+
     let req = FreezeBalanceReq {
-        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        resource: "bandwidth".to_string(),
-        frozen_balance: 2895,
-        signer: None,
+        owner_address: "TQHq9gP34tLiE2Eg1MeAQjhN6KA6oLRBos".to_string(),
+        resource: "energy".to_string(),
+        frozen_balance: 10,
+        signer: Some(signer),
     };
     let password = "123456".to_string();
 

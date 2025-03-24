@@ -9,6 +9,8 @@ use crate::domain::stake::EstimateTxComsumer;
 use crate::domain::stake::StakeArgs;
 use crate::domain::stake::StakeDomain;
 use crate::error::business::stake::StakeError;
+use crate::infrastructure::task_queue;
+use crate::infrastructure::task_queue::BackendApiTaskData;
 use crate::manager::Context;
 use crate::notify::event::other::Process;
 use crate::notify::event::other::TransactionProcessFrontend;
@@ -49,6 +51,8 @@ use wallet_database::entities::multisig_queue::NewMultisigQueueEntity;
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_database::repositories::permission::PermissionRepo;
+use wallet_transport_backend::api::permission::TransPermission;
+use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::request::PermissionData;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 use wallet_types::constant::chain_code;
@@ -143,6 +147,33 @@ impl StackService {
             transaction_fee,
         );
         domain::bill::BillDomain::create_bill(entity).await?;
+
+        // if use permission upload backend
+        if let Some(signer) = signer {
+            let pool = crate::Context::get_global_sqlite_pool()?;
+            let permission =
+                PermissionRepo::permission_with_user(&pool, from, signer.permission_id, false)
+                    .await?
+                    .ok_or(crate::BusinessError::Permission(
+                        crate::PermissionError::ActivesPermissionNotFound,
+                    ))?;
+
+            let params = TransPermission {
+                address: from.to_string(),
+                chain_code: chain_code::TRON.to_string(),
+                tx_kind: bill_kind.to_i8(),
+                hash: hash.clone(),
+                permission_data: PermissionData {
+                    opt_address: signer.address.to_string(),
+                    users: permission.users(),
+                },
+            };
+
+            let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+                BackendApiTaskData::new(endpoint::UPLOAD_PERMISSION_TRANS, &params)?,
+            ));
+            let _ = task_queue::Tasks::new().push(task).send().await;
+        }
 
         Ok(hash)
     }
