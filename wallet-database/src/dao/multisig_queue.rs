@@ -354,6 +354,15 @@ impl MultisigQueueDaoV1 {
         Ok(rows)
     }
 
+    pub async fn delete_by_id<'a, E>(id: &str, exec: E) -> Result<(), crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "DELETE FROM multisig_queue WHERE id = $1";
+        sqlx::query(sql).bind(id).execute(exec).await?;
+        Ok(())
+    }
+
     pub async fn physical_del_multi_multisig_queue<'a, E>(
         exec: E,
         ids: &[&str],

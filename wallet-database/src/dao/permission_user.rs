@@ -98,4 +98,24 @@ impl PermissionUserDao {
 
         Ok(())
     }
+
+    pub async fn update_self_mark<'a, E>(
+        grantor_addr: &str,
+        address: &str,
+        exec: E,
+    ) -> Result<(), crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql =
+            r#"update permission_user set is_self = 0 where grantor_addr = ? and address = ?"#;
+
+        sqlx::query(sql)
+            .bind(grantor_addr)
+            .bind(address)
+            .execute(exec)
+            .await?;
+
+        Ok(())
+    }
 }

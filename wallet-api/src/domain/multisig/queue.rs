@@ -9,7 +9,7 @@ use crate::{
     response_vo::multisig_transaction::ExtraData,
 };
 use serde_json::json;
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, time::Duration};
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
     dao::{
@@ -163,10 +163,7 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
-    pub async fn insert(
-        pool: Arc<sqlx::Pool<sqlx::Sqlite>>,
-        data: MultisigQueueData,
-    ) -> Result<(), crate::ServiceError> {
+    pub async fn insert(pool: DbPool, data: MultisigQueueData) -> Result<(), crate::ServiceError> {
         let MultisigQueueData { queue, signatures } = data;
         let id = queue.id.clone();
 
@@ -194,7 +191,17 @@ impl MultisigQueueDomain {
         }
 
         let queue = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut params).await?;
-        MultisigQueueRepo::sync_sign_status(&queue, params.status.to_i8(), pool.clone()).await?;
+        if let Err(_e) =
+            MultisigQueueRepo::sync_sign_status(&queue, params.status.to_i8(), pool.clone()).await
+        {
+            if !queue.permission_id.is_empty() {
+                tracing::warn!(
+                    "recover permission queue faild, perrmision not found and delete queue queue_id = {},permision_id = {}",
+                    queue.id,queue.permission_id
+                );
+                MultisigQueueRepo::delete_queue(&pool, &queue.id).await?;
+            }
+        };
 
         if report {
             Self::update_raw_data(&id, pool.clone()).await?;

@@ -47,11 +47,17 @@ impl PermissionWithUserEntity {
         false
     }
 
+    // all user to string
     pub fn users(&self) -> Vec<String> {
         self.user.iter().map(|u| u.address.clone()).collect()
     }
 
     pub fn total_weight(&self) -> i32 {
         self.user.iter().map(|u| u.weight as i32).sum::<i32>()
+    }
+
+    // 是否有自己的地址
+    pub fn has_self_addr(&self) -> bool {
+        self.user.iter().any(|u| u.is_self == 1)
     }
 }

@@ -215,7 +215,7 @@ impl MultisigQueueRepo {
         }
 
         // 多签的账号或者权限的账号
-        let status = if !queue.account_id.is_empty() {
+        let (status, reason) = if !queue.account_id.is_empty() {
             MultisigQueueRepo::compute_status_by_account(queue, &pool).await?
         } else {
             MultisigQueueRepo::compute_status_by_permission(queue, &pool).await?
@@ -223,7 +223,7 @@ impl MultisigQueueRepo {
 
         match status {
             MultisigQueueStatus::Fail => {
-                MultisigQueueDaoV1::update_fail(&queue.id, SIGN_FAILED, pool.as_ref()).await?
+                MultisigQueueDaoV1::update_fail(&queue.id, &reason, pool.as_ref()).await?
             }
             _ => MultisigQueueDaoV1::update_status(&queue.id, status, pool.as_ref()).await?,
         }
@@ -235,7 +235,7 @@ impl MultisigQueueRepo {
     async fn compute_status_by_account(
         queue: &MultisigQueueEntity,
         pool: &DbPool,
-    ) -> Result<MultisigQueueStatus, crate::Error> {
+    ) -> Result<(MultisigQueueStatus, String), crate::Error> {
         let account = MultisigAccountDaoV1::find_by_id(&queue.account_id, pool.as_ref())
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
@@ -245,7 +245,10 @@ impl MultisigQueueRepo {
             MultisigQueueRepo::member_signed_result(&queue.account_id, &queue.id, pool.clone())
                 .await?;
 
-        Ok(Self::compute_status(signed, account.threshold as i64))
+        Ok((
+            Self::compute_status(signed, account.threshold as i64),
+            SIGN_FAILED.to_string(),
+        ))
     }
 
     fn compute_status(signed: Vec<MemberSignedResult>, threshold: i64) -> MultisigQueueStatus {
@@ -283,10 +286,14 @@ impl MultisigQueueRepo {
     async fn compute_status_by_permission(
         queue: &MultisigQueueEntity,
         pool: &DbPool,
-    ) -> Result<MultisigQueueStatus, crate::Error> {
+    ) -> Result<(MultisigQueueStatus, String), crate::Error> {
         let permission = PermissionDao::find_by_id(&queue.permission_id, false, pool.as_ref())
             .await?
             .ok_or(crate::DatabaseError::ReturningNone)?;
+
+        // let Some(permission) = permission else {
+        //     return Ok((MultisigQueueStatus::Fail, PERMISSION_CHANGE.to_string()));
+        // };
 
         // fetch all user sign result
         let signed = MultisigQueueRepo::signed_result(
@@ -297,7 +304,10 @@ impl MultisigQueueRepo {
         )
         .await?;
 
-        Ok(Self::compute_status(signed, permission.threshold))
+        Ok((
+            Self::compute_status(signed, permission.threshold),
+            SIGN_FAILED.to_string(),
+        ))
     }
 
     pub async fn self_member_account_id(
@@ -363,5 +373,29 @@ impl MultisigQueueRepo {
     ) -> Result<Option<MultisigQueueEntity>, crate::Error> {
         let queue = MultisigQueueDaoV1::ongoing_queue(pool.as_ref(), chain_code, address).await?;
         Ok(queue)
+    }
+
+    // delete queue and signature
+    pub async fn delete_queue(pool: &DbPool, queue_id: &str) -> Result<(), crate::Error> {
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // delete permission
+        MultisigQueueDaoV1::delete_by_id(queue_id, tx.as_mut()).await?;
+
+        // delete all signature
+        MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(
+            tx.as_mut(),
+            vec![queue_id.to_string()],
+        )
+        .await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
     }
 }

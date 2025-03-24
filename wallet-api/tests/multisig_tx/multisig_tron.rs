@@ -113,7 +113,7 @@ async fn test_queue_info() {
 async fn test_sign_transaction() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "241667135510810624".to_owned();
+    let queue_id = "241724363966124032".to_owned();
     let status = 1;
     let password = "123456".to_string();
     let sign = wallet_manager
@@ -139,7 +139,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "241687388475232256".to_string();
+    let id = "241724363966124032".to_string();
 
     let password = "123456".to_string();
     let fee = None;

@@ -65,7 +65,7 @@ async fn create_wallet() {
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
-    let wallet_name = "0x2a0b986566B39382ba5Fc4cda7c5F762425f2Bc5";
+    let wallet_name = "0x655128b428d294CCEa874a2B05aE090055C89b59";
     let account_name = "账户";
     let root_password = "123456";
     let req = wallet_api::CreateAccountReq::new(
@@ -73,15 +73,18 @@ async fn create_account() {
         root_password,
         None,
         None,
-        None,
+        Some(0),
         account_name,
         true,
     );
 
-    for _i in 0..2 {
-        let resp = wallet_manager.create_account(req.clone()).await;
-        tracing::info!("create_account {:?}", resp);
-    }
+    let resp = wallet_manager.create_account(req).await;
+    tracing::info!("create_account {:?}", resp);
+
+    // for _i in 0..2 {
+    //     let resp = wallet_manager.create_account(req.clone()).await;
+    //     tracing::info!("create_account {:?}", resp);
+    // }
 }
 
 #[tokio::test]
@@ -130,4 +133,18 @@ async fn test_show_key() {
 
     tracing::info!("address = {}", keypair.address());
     tracing::info!("key = {}", keypair.private_key().unwrap());
+}
+
+#[tokio::test]
+async fn test_delete_account() {
+    let wallet_manager = get_manager().await;
+
+    let wallet_address = "0x655128b428d294CCEa874a2B05aE090055C89b59";
+    let account_id = 1;
+
+    let c = wallet_manager
+        .physical_delete_account(wallet_address, account_id, "123456")
+        .await;
+
+    tracing::info!("response {:?}", c)
 }

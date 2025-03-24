@@ -78,7 +78,7 @@ impl PermissionDao {
 
     pub async fn all_permission<'a, E>(
         exec: E,
-        grantor_addr: &str,
+        user_addr: &str,
     ) -> Result<Vec<PermissionEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -89,7 +89,7 @@ impl PermissionDao {
         ) and p.is_del = 0;"#;
 
         let result = sqlx::query_as::<_, PermissionEntity>(sql)
-            .bind(grantor_addr)
+            .bind(user_addr)
             .fetch_all(exec)
             .await?;
 

@@ -28,6 +28,7 @@ use crate::{
         assets::AssetsDomain,
         coin::CoinDomain,
         multisig::MultisigDomain,
+        permission::PermissionDomain,
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{
@@ -720,6 +721,7 @@ impl WalletService {
 
     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
+
         tx.begin_transaction().await?;
         let wallet = tx.wallet_detail_by_address(address).await?;
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
@@ -780,6 +782,12 @@ impl WalletService {
                 .send()
                 .await?;
         };
+
+        // find tron address and del permission
+        let tron_address = accounts.iter().find(|a| a.chain_code == chain_code::TRON);
+        if let Some(address) = tron_address {
+            PermissionDomain::delete_by_address(&pool, &address.address).await?;
+        }
 
         for uid in rest_uids {
             let body = RecoverDataBody::new(&uid);

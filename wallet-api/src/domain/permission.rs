@@ -141,4 +141,43 @@ impl PermissionDomain {
 
         Ok(())
     }
+
+    // 根据地址删除权限(在删除钱包或者删除账号的时候，处理账号状态)
+    pub async fn delete_by_address(
+        pool: &DbPool,
+        address: &str,
+    ) -> Result<(), crate::ServiceError> {
+        // 1.all permission  about the address
+        let mut permissions = PermissionRepo::all_permission_with_user(pool, address).await?;
+
+        // 有当前地址的标记为is_self == 0
+        permissions.iter_mut().for_each(|permission| {
+            permission
+                .user
+                .iter_mut()
+                .filter(|u| u.address == address)
+                .for_each(|u| u.is_self = 0)
+        });
+
+        // 2. handel permission
+        for permission in permissions.iter() {
+            if permission.has_self_addr() {
+                // 修改成员变量的is_self
+                for u in permission.user.iter() {
+                    if u.address == address {
+                        PermissionRepo::update_self_mark(
+                            pool,
+                            &permission.permission.grantor_addr,
+                            &u.address,
+                        )
+                        .await?;
+                    }
+                }
+            } else {
+                PermissionRepo::delete_all(pool, &permission.permission.grantor_addr).await?;
+            }
+        }
+
+        Ok(())
+    }
 }

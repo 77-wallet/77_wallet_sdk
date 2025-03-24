@@ -217,25 +217,11 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
-        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        let wallet_address = "0x655128b428d294CCEa874a2B05aE090055C89b59";
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         let res = wallet_manager.physical_delete_wallet(wallet_address).await;
         tracing::info!("res: {res:?}");
 
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_recover_multisig_data() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-
-        // 前端的uid
-        let wallet_address = "0xd2066F50186e64D844bb665B564Bf093716170A6";
-
-        let res = wallet_manager.recover_multisig_data(wallet_address).await;
-
-        tracing::info!("res: {res:?}");
         Ok(())
     }
 
@@ -261,12 +247,13 @@ mod test {
         Ok(())
     }
 
+    // 恢复多签队列数据
     #[tokio::test]
     async fn test_recover_queue_data() -> Result<()> {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await?;
 
-        let uid = "c38b1a38043f9698454961b1bd6d063aba3368139f3db17b38f758546c759377";
+        let uid = "82675b4111f0c0ae77b0f7e421e507245e190fd5297b53932270deb88604e31f";
         let res = crate::domain::multisig::MultisigQueueDomain::recover_queue_data(uid).await;
         tracing::info!("res: {res:?}");
 

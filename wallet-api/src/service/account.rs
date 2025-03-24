@@ -18,7 +18,10 @@ use wallet_types::{
 use wallet_utils::address::AccountIndexMap;
 
 use crate::{
-    domain::{self, account::AccountDomain, app::config::ConfigDomain, wallet::WalletDomain},
+    domain::{
+        self, account::AccountDomain, app::config::ConfigDomain, permission::PermissionDomain,
+        wallet::WalletDomain,
+    },
     infrastructure::task_queue::{BackendApiTask, CommonTask, RecoverDataBody, Task, Tasks},
     response_vo::account::DerivedAddressesList,
 };
@@ -418,6 +421,13 @@ impl AccountService {
             )
             .await?;
 
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        // delete permission
+        for account in deleted.iter() {
+            if account.chain_code == chain_code::TRON {
+                PermissionDomain::delete_by_address(&pool, &account.address).await?;
+            }
+        }
         let device_unbind_address_task =
             Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
         Tasks::new().push(device_unbind_address_task).send().await?;
