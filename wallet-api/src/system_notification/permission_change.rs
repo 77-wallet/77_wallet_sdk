@@ -15,13 +15,13 @@ pub struct PermissionChange {
     pub notification_type: NotificationType,
 }
 
-impl TryFrom<&PermissionEntity> for PermissionChange {
+impl TryFrom<(&PermissionEntity, &str)> for PermissionChange {
     type Error = crate::ServiceError;
-    fn try_from(value: &PermissionEntity) -> Result<Self, crate::ServiceError> {
+    fn try_from(value: (&PermissionEntity, &str)) -> Result<Self, crate::ServiceError> {
         Ok(PermissionChange {
-            grantor_addr: value.grantor_addr.to_owned(),
-            types: "new".to_string(),
-            operations: PermissionTypes::from_hex(&value.operations)?,
+            grantor_addr: value.0.grantor_addr.to_owned(),
+            types: value.1.to_string(),
+            operations: PermissionTypes::from_hex(&value.0.operations)?,
             notification_type: NotificationType::PermissionChange,
         })
     }

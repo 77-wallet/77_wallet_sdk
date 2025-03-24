@@ -314,6 +314,7 @@ impl PermissionService {
                         params.current.original_user = users.clone();
                         params.current.types = PermissionReq::DELETE.to_string();
                         params.current.name = req.name.to_string();
+                        params.current.active_id = active_id as i64;
                     }
 
                     // 删除权限

@@ -135,19 +135,33 @@ impl PermissionAccept {
         pool: DbPool,
         account: &TronAccount,
     ) -> Result<(), crate::ServiceError> {
+        // 查询原来的数据并发送一个通知
+        let old_permission = PermissionRepo::find_by_grantor_and_active(
+            &pool,
+            &self.grantor_addr,
+            self.current.active_id,
+            true,
+        )
+        .await?;
+
         // 权限是否包含自己
         let new_permission =
             PermissionDomain::self_contain_permission(&pool, account, &self.grantor_addr).await?;
 
-        if new_permission.is_empty() {
+        if !new_permission.is_empty() {
             // 删除原来的,新增
             tracing::warn!("recover_all_old_permission :new");
             PermissionDomain::del_add_update(&pool, new_permission, &self.grantor_addr).await?;
         } else {
             tracing::warn!("recover_all_old_permission :delete");
-            // 删除原来所有的权限
+            // 删除原来所有的权限;
             PermissionRepo::delete_all(&pool, &self.grantor_addr).await?;
         }
+
+        // 系统通知发送
+        if let Some(permission) = old_permission {
+            Self::system_notify(&pool, &permission, PermissionReq::DELETE).await?;
+        };
 
         Ok(())
     }
@@ -244,11 +258,14 @@ impl PermissionAccept {
         let repo = RepositoryFactory::repo(pool.clone());
         let system_notification_service = SystemNotificationService::new(repo);
 
-        let notification = Notification::PermissionChange(PermissionChange::try_from(permission)?);
-        let id = wallet_utils::snowflake::get_uid()?.to_string();
-        system_notification_service
-            .add_system_notification(&id, notification, 0)
-            .await?;
+        if types != PermissionReq::DELETE {
+            let notification =
+                Notification::PermissionChange(PermissionChange::try_from((permission, types))?);
+            let id = wallet_utils::snowflake::get_uid()?.to_string();
+            system_notification_service
+                .add_system_notification(&id, notification, 0)
+                .await?;
+        }
 
         // 2. event
         let operations = PermissionTypes::from_hex(&permission.operations)?;
