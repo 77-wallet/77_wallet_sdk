@@ -33,14 +33,17 @@ pub struct PermissionWithUserEntity {
 }
 
 impl PermissionWithUserEntity {
-    // check whether user has changed
+    // check whether user has changed include weight
     pub fn user_has_changed(&self, user: &[PermissionUserEntity]) -> bool {
         if self.permission.member != user.len() as i64 {
             return true;
         }
 
         for old_user in self.user.iter() {
-            if !user.iter().any(|u| u.address == old_user.address) {
+            if !user
+                .iter()
+                .any(|u| u.address == old_user.address && u.weight == old_user.weight)
+            {
                 return true;
             }
         }
