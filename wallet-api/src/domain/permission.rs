@@ -174,6 +174,7 @@ impl PermissionDomain {
                     }
                 }
             } else {
+                tracing::info!("delete permission {:?}", permission);
                 PermissionRepo::delete_all(pool, &permission.permission.grantor_addr).await?;
             }
         }
