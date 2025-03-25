@@ -1,4 +1,4 @@
-use super::chain::adapter::ChainAdapterFactory;
+use super::{chain::adapter::ChainAdapterFactory, multisig::MultisigQueueDomain};
 use crate::mqtt::payload::incoming::permission::NewPermissionUser;
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
@@ -6,7 +6,7 @@ use wallet_database::{
         account::{self, AccountEntity},
         permission_user::PermissionUserEntity,
     },
-    repositories::permission::PermissionRepo,
+    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
     DbPool,
 };
 use wallet_transport_backend::api::permission::GetPermissionBackReq;
@@ -178,6 +178,18 @@ impl PermissionDomain {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn queue_fail_and_upload(
+        pool: &DbPool,
+        grantor_addr: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let result = MultisigQueueRepo::permission_update_fail(grantor_addr, &pool).await?;
+
+        for queue in result {
+            MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
+        }
         Ok(())
     }
 }

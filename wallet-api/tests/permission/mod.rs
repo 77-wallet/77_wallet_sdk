@@ -29,7 +29,7 @@ async fn test_permission_accounts() {
 #[tokio::test]
 async fn test_manager_permission() {
     let wallet_manager = get_manager().await;
-    let address = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let address = "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string();
     let res = wallet_manager.manager_permission(address).await;
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
@@ -108,14 +108,18 @@ async fn test_up_permission() {
             weight: 1,
         },
         KeysReq {
-            address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+            address: "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string(),
+            weight: 1,
+        },
+        KeysReq {
+            address: "TNcRALWJNRtM5zfLQFvbiuycue9ZcxFFjQ".to_string(),
             weight: 1,
         },
     ];
 
     let req = PermissionReq {
-        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "update_stake".to_string(),
+        grantor_addr: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        name: "update name".to_string(),
         active_id: Some(2),
         threshold: 2,
         operations: vec![1, 54, 55, 59, 56, 57, 58],

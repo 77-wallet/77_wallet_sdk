@@ -22,8 +22,8 @@ async fn test_fee() {
     let wallet_manager = get_manager().await;
 
     let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
-    let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
-    let value = "10";
+    let to = "TP6WfoVEG8PayHXP5Kmrww961kMLRv9VJv";
+    let value = "500";
     let chain_code = "tron";
     let symbol = "TRX";
     // let symbol = "USDT";
@@ -46,19 +46,19 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "TKKjkyjSMZ9iy8ATJsLp1X4yNqr39Q5v8Q";
-    let to = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
-    let value = "10";
+    let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
+    let to = "THKqKTZd3mP7EJBLkGDBY3Rom3uk2vMRS1";
+    let value = "2";
     let symbol = "TRX";
     let chain_code = "tron";
     let password = "123456";
     // let password = "1111111";
     let notes = "test".to_string();
 
-    let signer = Signer {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        permission_id: 3,
-    };
+    // let signer = Signer {
+    //     address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+    //     permission_id: 3,
+    // };
     let mut base = transaction::BaseTransferReq::new(
         from.to_string(),
         to.to_string(),
@@ -72,7 +72,7 @@ async fn test_transfer() {
         base,
         password: password.to_string(),
         fee_setting: "".to_string(),
-        signer: Some(signer),
+        signer: None,
     };
 
     let transfer = wallet_manager.transfer(params).await;

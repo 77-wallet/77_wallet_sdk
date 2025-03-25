@@ -27,6 +27,7 @@ impl PermissionEntity {
     }
 }
 
+#[derive(Debug)]
 pub struct PermissionWithUserEntity {
     pub permission: PermissionEntity,
     pub user: Vec<PermissionUserEntity>,

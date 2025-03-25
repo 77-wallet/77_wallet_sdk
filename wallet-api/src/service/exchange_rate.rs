@@ -8,7 +8,6 @@ use crate::domain::coin::CoinDomain;
 pub struct ExchangeRateService {
     pub repo: ResourcesRepo,
     pub coin_domain: CoinDomain,
-    // keystore: wallet_crypto::Keystore
 }
 
 impl ExchangeRateService {
@@ -53,29 +52,4 @@ impl ExchangeRateService {
         tx.commit_transaction().await?;
         Ok(())
     }
-    // pub async fn init(self) -> Result<(), crate::ServiceError> {
-    //     let mut tx = self.repo;
-    //     let coins = tx.coin_list(None, None).await?;
-    //     let mut exchange_rate_ids = std::collections::HashMap::new();
-    //     for coin in &coins {
-    //         let token_currency =
-    //             crate::service::get_current_coin_unit_price_option(&coin.symbol, &coin.chain_code)
-    //                 .await?;
-    //         if let Some(token_currency) = token_currency {
-    //             let price = token_currency.price;
-    //             let exchange_rate_id = ExchangeRateId {
-    //                 currency: coin.symbol.clone(),
-    //                 chain_code: coin.chain_code.clone(),
-    //                 symbol: coin.symbol.clone(),
-    //             };
-    //             exchange_rate_ids.insert(exchange_rate_id, price);
-    //         }
-    //     }
-
-    //     for (exchange_rate_id, price) in exchange_rate_ids.into_iter() {
-    //         tx.upsert(exchange_rate_id, price).await?;
-    //     }
-
-    //     Ok(())
-    // }
 }

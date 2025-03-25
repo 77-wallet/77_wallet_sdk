@@ -15,7 +15,7 @@ use wallet_database::{
         permission_user::PermissionUserEntity,
     },
     factory::RepositoryFactory,
-    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
+    repositories::permission::PermissionRepo,
     DbPool,
 };
 use wallet_types::constant::chain_code;
@@ -116,7 +116,7 @@ impl PermissionAccept {
             self.recover_all_old_permission(pool.clone(), &account)
                 .await?;
 
-            MultisigQueueRepo::permission_update_fail(&self.grantor_addr, &pool).await?;
+            PermissionDomain::queue_fail_and_upload(&pool, &self.grantor_addr).await?;
         } else {
             let address = &self.grantor_addr;
             let permissions =
@@ -223,7 +223,7 @@ impl PermissionAccept {
             PermissionRepo::update_permission(pool, &permissions.permission).await?;
         }
 
-        MultisigQueueRepo::permission_update_fail(&self.grantor_addr, pool).await?;
+        PermissionDomain::queue_fail_and_upload(&pool, &self.grantor_addr).await?;
         Ok(())
     }
 

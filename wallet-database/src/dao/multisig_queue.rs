@@ -408,21 +408,24 @@ impl MultisigQueueDaoV1 {
         Ok(res)
     }
 
-    pub async fn permission_fail<'a, E>(address: &str, exec: E) -> Result<(), crate::DatabaseError>
+    pub async fn permission_fail<'a, E>(
+        address: &str,
+        exec: E,
+    ) -> Result<Vec<MultisigQueueEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"update multisig_queue set status = ?,fail_reason = ? where status in (?,?,?) and from_addr = ?"#;
+        let sql = r#"update multisig_queue set status = ?,fail_reason = ? where status in (?,?,?) and from_addr = ?  RETURNING *"#;
 
-        let _res = sqlx::query(sql)
+        let res = sqlx::query_as::<_, MultisigQueueEntity>(sql)
             .bind(MultisigQueueStatus::Fail.to_i8())
             .bind(PERMISSION_CHANGE)
             .bind(MultisigQueueStatus::PendingSignature.to_i8())
             .bind(MultisigQueueStatus::HasSignature.to_i8())
             .bind(MultisigQueueStatus::PendingExecution.to_i8())
             .bind(address)
-            .execute(exec)
+            .fetch_all(exec)
             .await?;
-        Ok(())
+        Ok(res)
     }
 }

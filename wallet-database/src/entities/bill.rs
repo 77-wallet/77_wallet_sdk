@@ -85,7 +85,7 @@ pub enum BillKind {
     DeployMultiSign = 2,
     // 服务费
     ServiceCharge = 3,
-    // 多签交易
+    // 多签交易(not used)
     MultiSignTx = 4,
     // 多签交易签名费
     SigningFee = 5,
