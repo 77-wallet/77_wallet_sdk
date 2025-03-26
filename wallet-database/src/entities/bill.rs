@@ -422,14 +422,14 @@ impl NewBillEntity {
     }
 
     pub fn get_owner(&self) -> String {
-        if !self.signer.is_empty() && self.tx_type == 1 {
-            let owner = self.signer.first();
-            if let Some(owner) = self.signer.first() {
-                return owner.to_string();
-            } else {
-                return self.from.clone();
-            }
-        }
+        // if !self.signer.is_empty() && self.tx_type == 1 {
+        //     let owner = self.signer.first();
+        //     if let Some(owner) = self.signer.first() {
+        //         return owner.to_string();
+        //     } else {
+        //         return self.from.clone();
+        //     }
+        // }
 
         if self.tx_kind.in_transfer_type() {
             self.from.clone()

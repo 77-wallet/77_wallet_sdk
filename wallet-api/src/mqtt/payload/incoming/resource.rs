@@ -93,6 +93,8 @@ pub struct TronSignFreezeDelegateVoteChange {
     // 投票的节点信息
     #[serde(default)]
     pub votes: Vec<Vote>,
+    #[serde(default)]
+    pub signer: Vec<String>,
 }
 
 impl TronSignFreezeDelegateVoteChange {
@@ -140,6 +142,7 @@ impl TronSignFreezeDelegateVoteChange {
             net_used,
             energy_used,
             ref votes,
+            ref signer,
             ..
         } = self;
         let mut _status = if status { 2 } else { 3 };
@@ -178,7 +181,8 @@ impl TronSignFreezeDelegateVoteChange {
         .with_block_height(&block_height.to_string())
         .with_transaction_fee(&transaction_fee.to_string())
         .with_transaction_time(timestamp)
-        .with_resource_consume(&consumer);
+        .with_resource_consume(&consumer)
+        .with_signer(signer.clone());
         BillDao::create(bill_params, pool.as_ref()).await?;
 
         if !queue_id.is_empty() {

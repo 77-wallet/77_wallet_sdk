@@ -76,13 +76,13 @@ async fn test_add_permission() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![KeysReq {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        address: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(),
         weight: 1,
     }];
 
     let req = PermissionReq {
-        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "wode".to_string(),
+        grantor_addr: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        name: "picker".to_string(),
         active_id: None,
         threshold: 1,
         operations: vec![0, 2, 5, 12, 16, 48, 58],
@@ -91,7 +91,7 @@ async fn test_add_permission() {
     let password = "123456".to_string();
 
     let res = wallet_manager
-        .modify_permission(req, "update".to_string(), password)
+        .modify_permission(req, "new".to_string(), password)
         .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
