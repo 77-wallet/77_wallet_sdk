@@ -1,3 +1,5 @@
+// connect property
+
 pub struct UserProperty {
     #[allow(dead_code)]
     pub(crate) content: String,
@@ -25,12 +27,10 @@ impl UserProperty {
     }
 
     pub fn to_vec(&self) -> Vec<(String, String)> {
-        let up = vec![
+        vec![
             ("username".to_string(), self.username.clone()),
             ("password".to_string(), self.password.clone()),
             ("appVersion".to_string(), self.app_version.clone()),
-        ];
-
-        up
+        ]
     }
 }
