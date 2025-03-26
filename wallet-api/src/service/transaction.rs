@@ -24,6 +24,7 @@ use wallet_database::entities::multisig_account::{
 };
 use wallet_database::entities::multisig_queue::{MemberSignedResult, MultisigQueueStatus};
 use wallet_database::pagination::Pagination;
+use wallet_database::repositories::address_book::AddressBookRepo;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_utils::unit;
 
@@ -106,6 +107,31 @@ impl TransactionService {
         bill: &BillEntity,
         pool: Arc<Pool<Sqlite>>,
     ) -> Option<Vec<MemberSignedResult>> {
+        if !bill.signer.is_empty() {
+            let signer = bill
+                .signer
+                .split(",")
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>();
+
+            let mut result = vec![];
+            for address in signer.iter() {
+                let book = AddressBookRepo::find_by_address_chain(&pool, address, &bill.chain_code)
+                    .await
+                    .ok()
+                    .flatten();
+                let name = if let Some(book) = book {
+                    book.name
+                } else {
+                    String::new()
+                };
+
+                let member = MemberSignedResult::new(&name, address, 0, 1);
+                result.push(member);
+            }
+            return Some(result);
+        }
+
         if bill.transfer_type != 1 || bill.queue_id.is_empty() {
             return None;
         }

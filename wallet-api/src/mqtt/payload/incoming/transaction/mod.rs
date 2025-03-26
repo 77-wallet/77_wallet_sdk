@@ -202,6 +202,8 @@ pub struct AcctChange {
     // 能量消耗
     #[serde(default)]
     pub energy_used: Option<u64>,
+    #[serde(default)]
+    pub signer: Vec<String>,
 }
 
 impl AcctChange {

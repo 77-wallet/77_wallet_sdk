@@ -6,6 +6,7 @@ use super::has_expiration;
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct BillEntity {
+    pub id: i32,
     pub hash: String,
     pub chain_code: String,
     pub symbol: String,
@@ -31,6 +32,7 @@ pub struct BillEntity {
     pub block_height: String,
     pub queue_id: String,
     pub notes: String,
+    pub signer: String,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
@@ -254,6 +256,7 @@ pub struct NewBillEntity {
     pub queue_id: String,
     pub block_height: String,
     pub notes: String,
+    pub signer: Vec<String>,
 }
 impl NewBillEntity {
     pub fn new(
@@ -287,6 +290,7 @@ impl NewBillEntity {
             resource_consume: "".to_string(),
             transaction_time: 0,
             block_height: "0".to_string(),
+            signer: vec![],
         }
     }
 
@@ -314,6 +318,7 @@ impl NewBillEntity {
             queue_id: "".to_string(),
             block_height: "0".to_string(),
             notes: "".to_string(),
+            signer: vec![],
         }
     }
 
@@ -345,6 +350,7 @@ impl NewBillEntity {
             queue_id: "".to_string(),
             block_height: "0".to_string(),
             notes: "".to_string(),
+            signer: vec![],
         }
     }
 
@@ -368,6 +374,7 @@ impl NewBillEntity {
             queue_id: "".to_string(),
             block_height: "0".to_string(),
             notes: "sign multisig tx transaction".to_string(),
+            signer: vec![],
         }
     }
 
@@ -409,7 +416,21 @@ impl NewBillEntity {
         self
     }
 
+    pub fn with_signer(mut self, signer: Vec<String>) -> Self {
+        self.signer = signer;
+        self
+    }
+
     pub fn get_owner(&self) -> String {
+        if !self.signer.is_empty() && self.tx_type == 1 {
+            let owner = self.signer.first();
+            if let Some(owner) = self.signer.first() {
+                return owner.to_string();
+            } else {
+                return self.from.clone();
+            }
+        }
+
         if self.tx_kind.in_transfer_type() {
             self.from.clone()
         } else if self.tx_type == 0 {

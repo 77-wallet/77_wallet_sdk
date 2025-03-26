@@ -75,6 +75,7 @@ impl BillDomain {
             queue_id: item.queue_id.unwrap_or("".to_string()),
             block_height: item.block_height.to_string(),
             notes: item.notes,
+            signer: item.signer,
         };
 
         BillDomain::create_bill(new_entity).await?;
