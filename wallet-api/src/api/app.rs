@@ -140,6 +140,13 @@ impl crate::WalletManager {
             .await?
             .into()
     }
+
+    pub async fn request(&self, endpoint: &str, body: String) -> ReturnType<serde_json::Value> {
+        AppService::new(self.repo_factory.resource_repo())
+            .request_backend(endpoint, body)
+            .await?
+            .into()
+    }
 }
 
 #[cfg(test)]

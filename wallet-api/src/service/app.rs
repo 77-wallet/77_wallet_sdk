@@ -346,4 +346,20 @@ impl<
         backend.app_install_save(cryptor, req).await?;
         Ok(())
     }
+
+    pub async fn request_backend(
+        self,
+        endpoint: &str,
+        body: String,
+    ) -> Result<serde_json::Value, crate::ServiceError> {
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+
+        let body = wallet_utils::serde_func::serde_to_value(body)?;
+
+        let result = backend
+            .post_req_str::<serde_json::Value>(endpoint, &body, &cryptor)
+            .await?;
+        Ok(result)
+    }
 }
