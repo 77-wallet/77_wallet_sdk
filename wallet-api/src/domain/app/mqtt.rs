@@ -1,3 +1,4 @@
+use crate::infrastructure::mqtt::{init::init_mqtt_processor, property::UserProperty};
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{config_key::APP_VERSION, AppVersion},
@@ -6,7 +7,7 @@ use wallet_database::{
 
 use super::DeviceDomain;
 
-pub(crate) struct MqttDomain {}
+pub(crate) struct MqttDomain;
 
 impl MqttDomain {
     pub(crate) async fn init(repo: &mut ResourcesRepo) -> Result<(), crate::ServiceError> {
@@ -28,20 +29,16 @@ impl MqttDomain {
             )))?;
 
         let app_version = AppVersion::try_from(app_version.value)?;
-        crate::mqtt::init_mqtt_processor(
+
+        init_mqtt_processor(UserProperty::new(
+            &content,
+            &client_id,
             &device.sn,
             &md5_sn,
-            crate::mqtt::user_property::UserProperty::new(
-                // &package_id.unwrap_or("77wallet".to_string()),
-                &content,
-                &client_id,
-                &device.sn,
-                &md5_sn,
-                &app_version.app_version,
-            ),
-            crate::mqtt::wrap_handle_eventloop,
-        )
+            &app_version.app_version,
+        ))
         .await?;
+
         Ok(())
     }
 

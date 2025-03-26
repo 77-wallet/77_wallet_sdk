@@ -88,17 +88,3 @@ pub(crate) struct TopicClientId {
     #[allow(dead_code)]
     pub(crate) client_id: Option<String>,
 }
-
-#[cfg(test)]
-mod test {
-    use super::Topic;
-
-    #[test]
-    fn test_dese() {
-        let data = serde_json::json!("wallet/common");
-
-        let res = serde_json::from_value::<Topic>(data);
-
-        println!("res: {:?}", res);
-    }
-}
