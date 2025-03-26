@@ -1,10 +1,9 @@
 #[derive(Debug, Clone)]
 pub struct TopicData {
     pub qos: rumqttc::v5::mqttbytes::QoS,
-    pub last_updated: std::time::SystemTime, // 例如: 记录上次更新的时间
+    pub last_updated: std::time::SystemTime,
     #[allow(dead_code)]
-    pub is_active: bool, // 例如: 记录该主题是否处于活动状态
-                                             // 你可以在这里添加更多与topic相关的字段
+    pub is_active: bool,
 }
 
 // 用于排序的结构体，包含 topic 和 last_updated

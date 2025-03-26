@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use crate::{
     request::{TokenQueryByContractAddressReq, TokenQueryByPageReq},
-    response_vo::coin::{CoinInfos, TokenPriceInfos, TokenQueryByContractAddressRes, TokenRates},
+    response_vo::coin::{
+        CoinInfos, TokenPopularByPages, TokenPriceInfos, TokenQueryByContractAddressRes, TokenRates,
+    },
 };
 
 use super::BackendApi;
@@ -174,7 +176,7 @@ impl BackendApi {
         &self,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         req: &crate::request::TokenQueryPopularByPageReq,
-    ) -> Result<wallet_types::valueobject::TokenPopularByPages, crate::Error> {
+    ) -> Result<TokenPopularByPages, crate::Error> {
         let res = self
             .client
             .post("token/queryPopularByPage")
