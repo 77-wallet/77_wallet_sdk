@@ -74,7 +74,7 @@ pub struct TokenQueryByContractAddressRes {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct TokenPriceInfos {
-    pub list: Vec<wallet_types::valueobject::TokenPriceChangeBody>,
+    pub list: Vec<TokenPriceChangeBody>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -124,4 +124,45 @@ pub struct TokenRate {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct TokenRates {
     pub list: Vec<TokenRate>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenPriceChangeBody {
+    pub id: Option<String>,
+    // 链码
+    pub chain_code: String,
+    // 代币编码
+    #[serde(rename = "code")]
+    pub symbol: String,
+    // 默认代币
+    pub default_token: Option<bool>,
+    // 启用状态
+    pub enable: bool,
+    // 市值
+    pub market_value: f64,
+    // 主币
+    pub master: bool,
+    // 代币名称
+    pub name: Option<String>,
+    // 单价(usdt)
+    pub price: f64,
+    // 波动
+    pub price_percentage: Option<f64>,
+    // 可以状态
+    pub status: bool,
+    // 代币合约地址
+    #[serde(rename = "contractAddress")]
+    pub token_address: Option<String>,
+    // 24小时交易量
+    pub day_change_amount: Option<f64>,
+    // 精度
+    pub unit: Option<u8>,
+    // 代币别名
+    pub aname: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct TokenPopularByPages {
+    pub list: Vec<TokenPriceChangeBody>,
 }

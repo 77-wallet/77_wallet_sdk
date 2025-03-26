@@ -9,6 +9,7 @@ pub mod domain;
 mod error;
 pub(crate) mod infrastructure;
 mod manager;
+mod messaging;
 pub mod mqtt;
 pub mod notify;
 pub mod request;
