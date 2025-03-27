@@ -4,6 +4,7 @@ use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
 };
 use crate::infrastructure::SharedCache;
+use crate::messaging::mqtt::subscribed::Topics;
 use crate::notify::FrontendNotifyEvent;
 use crate::service::node::NodeService;
 use std::collections::HashMap;
@@ -112,7 +113,7 @@ pub struct Context {
     pub(crate) oss_client: wallet_oss::oss_client::OssClient,
     pub(crate) frontend_notify: Arc<RwLock<FrontendNotifySender>>,
     pub(crate) task_manager: TaskManager,
-    pub(crate) mqtt_topics: Arc<RwLock<crate::mqtt::topic::Topics>>,
+    pub(crate) mqtt_topics: Arc<RwLock<Topics>>,
     pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
     pub(crate) device: Arc<DeviceInfo>,
     pub(crate) cache: Arc<SharedCache>,
@@ -186,7 +187,7 @@ impl Context {
             frontend_notify,
             oss_client,
             task_manager,
-            mqtt_topics: Arc::new(RwLock::new(crate::mqtt::topic::Topics::new())),
+            mqtt_topics: Arc::new(RwLock::new(Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
@@ -259,8 +260,7 @@ impl Context {
     }
 
     pub(crate) fn get_global_mqtt_topics(
-    ) -> Result<&'static std::sync::Arc<RwLock<crate::mqtt::topic::Topics>>, crate::SystemError>
-    {
+    ) -> Result<&'static std::sync::Arc<RwLock<Topics>>, crate::SystemError> {
         Ok(&Context::get_context()?.mqtt_topics)
     }
 

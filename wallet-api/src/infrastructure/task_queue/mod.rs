@@ -1,5 +1,6 @@
 mod task_handle;
 pub(crate) mod task_manager;
+use crate::messaging::mqtt::topics;
 use wallet_database::{
     entities::{
         multisig_queue::QueueTaskEntity,
@@ -9,20 +10,6 @@ use wallet_database::{
     repositories::task_queue::TaskQueueRepoTrait,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
-
-use crate::mqtt::payload::incoming::{
-    announcement::BulletinMsg,
-    init::Init,
-    permission::PermissionAccept,
-    resource::TronSignFreezeDelegateVoteChange,
-    signature::{
-        OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
-        OrderMultiSignCreated, OrderMultiSignServiceComplete,
-    },
-    transaction::{
-        AcctChange, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg, MultiSignTransCancel,
-    },
-};
 
 pub struct TaskDomain<T> {
     phantom: std::marker::PhantomData<T>,
@@ -84,19 +71,19 @@ impl BackendApiTaskData {
 }
 
 pub(crate) enum MqttTask {
-    OrderMultiSignAccept(OrderMultiSignAccept),
-    OrderMultiSignAcceptCompleteMsg(OrderMultiSignAcceptCompleteMsg),
-    OrderMultiSignServiceComplete(OrderMultiSignServiceComplete),
-    OrderMultiSignCreated(OrderMultiSignCreated),
-    OrderMultiSignCancel(OrderMultiSignCancel),
-    MultiSignTransAccept(MultiSignTransAccept),
-    MultiSignTransCancel(MultiSignTransCancel),
-    MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsg),
-    AcctChange(AcctChange),
-    Init(Init),
-    BulletinMsg(BulletinMsg),
-    TronSignFreezeDelegateVoteChange(TronSignFreezeDelegateVoteChange),
-    PermissionAccept(PermissionAccept),
+    OrderMultiSignAccept(topics::OrderMultiSignAccept),
+    OrderMultiSignAcceptCompleteMsg(topics::OrderMultiSignAcceptCompleteMsg),
+    OrderMultiSignServiceComplete(topics::OrderMultiSignServiceComplete),
+    OrderMultiSignCreated(topics::OrderMultiSignCreated),
+    OrderMultiSignCancel(topics::OrderMultiSignCancel),
+    MultiSignTransAccept(topics::MultiSignTransAccept),
+    MultiSignTransCancel(topics::MultiSignTransCancel),
+    MultiSignTransAcceptCompleteMsg(topics::MultiSignTransAcceptCompleteMsg),
+    AcctChange(topics::AcctChange),
+    Init(topics::Init),
+    BulletinMsg(topics::BulletinMsg),
+    TronSignFreezeDelegateVoteChange(topics::TronSignFreezeDelegateVoteChange),
+    PermissionAccept(topics::PermissionAccept),
 }
 
 pub(crate) enum CommonTask {
@@ -229,76 +216,79 @@ impl TryFrom<&TaskQueueEntity> for Task {
             }
             TaskName::InitMqtt => Ok(Task::Initialization(InitializationTask::InitMqtt)),
             TaskName::OrderMultiSignAccept => {
-                let req = wallet_utils::serde_func::serde_from_str::<OrderMultiSignAccept>(
+                let req = wallet_utils::serde_func::serde_from_str::<topics::OrderMultiSignAccept>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(req))))
             }
             TaskName::MultiSignTransCancel => {
-                let req = wallet_utils::serde_func::serde_from_str::<MultiSignTransCancel>(
+                let req = wallet_utils::serde_func::serde_from_str::<topics::MultiSignTransCancel>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(req))))
             }
             TaskName::OrderMultiSignAcceptCompleteMsg => {
                 let req = wallet_utils::serde_func::serde_from_str::<
-                    OrderMultiSignAcceptCompleteMsg,
+                    topics::OrderMultiSignAcceptCompleteMsg,
                 >(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(
                     MqttTask::OrderMultiSignAcceptCompleteMsg(req),
                 )))
             }
             TaskName::OrderMultiSignServiceComplete => {
-                let req = wallet_utils::serde_func::serde_from_str::<OrderMultiSignServiceComplete>(
-                    &value.request_body,
-                )?;
+                let req = wallet_utils::serde_func::serde_from_str::<
+                    topics::OrderMultiSignServiceComplete,
+                >(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(
                     MqttTask::OrderMultiSignServiceComplete(req),
                 )))
             }
             TaskName::OrderMultiSignCreated => {
-                let req = wallet_utils::serde_func::serde_from_str::<OrderMultiSignCreated>(
+                let req = wallet_utils::serde_func::serde_from_str::<topics::OrderMultiSignCreated>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderMultiSignCreated(req))))
             }
             TaskName::OrderMultiSignCancel => {
-                let req = wallet_utils::serde_func::serde_from_str::<OrderMultiSignCancel>(
+                let req = wallet_utils::serde_func::serde_from_str::<topics::OrderMultiSignCancel>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderMultiSignCancel(req))))
             }
             TaskName::MultiSignTransAccept => {
-                let req = wallet_utils::serde_func::serde_from_str::<MultiSignTransAccept>(
+                let req = wallet_utils::serde_func::serde_from_str::<topics::MultiSignTransAccept>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::MultiSignTransAccept(req))))
             }
             TaskName::MultiSignTransAcceptCompleteMsg => {
                 let req = wallet_utils::serde_func::serde_from_str::<
-                    MultiSignTransAcceptCompleteMsg,
+                    topics::MultiSignTransAcceptCompleteMsg,
                 >(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(
                     MqttTask::MultiSignTransAcceptCompleteMsg(req),
                 )))
             }
             TaskName::AcctChange => {
-                let req =
-                    wallet_utils::serde_func::serde_from_str::<AcctChange>(&value.request_body)?;
+                let req = wallet_utils::serde_func::serde_from_str::<topics::AcctChange>(
+                    &value.request_body,
+                )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::AcctChange(req))))
             }
             TaskName::Init => {
-                let req = wallet_utils::serde_func::serde_from_str::<Init>(&value.request_body)?;
+                let req =
+                    wallet_utils::serde_func::serde_from_str::<topics::Init>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::Init(req))))
             }
             TaskName::BulletinMsg => {
-                let req =
-                    wallet_utils::serde_func::serde_from_str::<BulletinMsg>(&value.request_body)?;
+                let req = wallet_utils::serde_func::serde_from_str::<topics::BulletinMsg>(
+                    &value.request_body,
+                )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::BulletinMsg(req))))
             }
             TaskName::TronSignFreezeDelegateVoteChange => {
                 let req = wallet_utils::serde_func::serde_from_str::<
-                    TronSignFreezeDelegateVoteChange,
+                    topics::TronSignFreezeDelegateVoteChange,
                 >(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(
                     MqttTask::TronSignFreezeDelegateVoteChange(req),
@@ -332,7 +322,7 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 Ok(Task::Common(CommonTask::SyncNodesAndLinkToChains(req)))
             }
             TaskName::PermissionAccept => {
-                let req = wallet_utils::serde_func::serde_from_str::<PermissionAccept>(
+                let req = wallet_utils::serde_func::serde_from_str::<topics::PermissionAccept>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::PermissionAccept(req))))

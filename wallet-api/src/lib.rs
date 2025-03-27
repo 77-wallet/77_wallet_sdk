@@ -10,7 +10,7 @@ mod error;
 pub(crate) mod infrastructure;
 mod manager;
 mod messaging;
-pub mod mqtt;
+// pub mod mqtt;
 pub mod notify;
 pub mod request;
 mod response;

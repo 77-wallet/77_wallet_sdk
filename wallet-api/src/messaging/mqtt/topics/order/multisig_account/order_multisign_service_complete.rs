@@ -1,0 +1,142 @@
+use wallet_database::{
+    dao::multisig_account::MultisigAccountDaoV1,
+    entities::multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
+};
+
+use crate::{
+    domain::{self, multisig::MultisigDomain},
+    notify::event::{multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront},
+};
+
+// 部署完成后，服务费hash以及部署hash的同步。
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderMultiSignServiceComplete {
+    // 多签账户id
+    multisig_account_id: String,
+    // 多签账号结果 true 多签账号或服务费执行完成  false 失败
+    status: bool,
+    // 1: 多签账号手续费 2: 服务费
+    r#type: u8,
+}
+
+impl OrderMultiSignServiceComplete {
+    pub(crate) fn name(&self) -> String {
+        "ORDER_MULTI_SIGN_SERVICE_COMPLETE".to_string()
+    }
+}
+
+impl OrderMultiSignServiceComplete {
+    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+        let event_name = self.name();
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        tracing::info!(
+            event_name = %event_name,
+            ?self,
+            "Starting to process OrderMultiSignServiceComplete"
+        );
+        let OrderMultiSignServiceComplete {
+            ref multisig_account_id,
+            status,
+            r#type,
+        } = self;
+
+        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+            .is_none()
+        {
+            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
+        }
+
+        let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
+            .await
+            .map_err(crate::ServiceError::Database)?
+        else {
+            tracing::error!(
+                event_name = %event_name,
+                multisig_account_id = %multisig_account_id,
+                "Multisig account not found");
+            let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
+
+            let data = crate::notify::NotifyEvent::Err(ErrFront {
+                event: self.name(),
+                message: err.to_string(),
+            });
+            crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            return Err(err);
+        };
+
+        let multi_account_id = account.id;
+
+        // 更新订单结果
+
+        // 更新多签账户手续费状态
+        if r#type == 1 {
+            let status_i8 = if status {
+                // service.query_tx_result(&tx_hash).await?;
+                MultisigAccountStatus::OnChain.to_i8()
+            } else {
+                MultisigAccountStatus::OnChainFail.to_i8()
+            };
+            MultisigAccountDaoV1::update_status(
+                &multi_account_id,
+                Some(status_i8),
+                None,
+                pool.as_ref(),
+            )
+            .await
+            .map_err(crate::ServiceError::Database)?;
+        }
+        // 更新多签账户服务费状态
+        else if r#type == 2 {
+            let pay_status = if status {
+                MultisigAccountPayStatus::Paid.to_i8()
+            } else {
+                MultisigAccountPayStatus::PaidFail.to_i8()
+            };
+            MultisigAccountDaoV1::update_status(
+                &multi_account_id,
+                None,
+                Some(pay_status),
+                pool.as_ref(),
+            )
+            .await
+            .map_err(crate::ServiceError::Database)?;
+        }
+
+        let _r =
+            domain::multisig::account::MultisigDomain::update_raw_data(&multi_account_id, pool)
+                .await;
+
+        let data = crate::notify::NotifyEvent::OrderMultiSignServiceComplete(
+            OrderMultiSignServiceCompleteFrontend {
+                multisign_address: account.address,
+                status,
+                r#type,
+            },
+        );
+        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::messaging::mqtt::topics::OrderMultiSignServiceComplete;
+
+    #[test]
+    fn test_() {
+        let raw = r#"
+        {
+            "hash": "dc91c064567fa7276d5888c7973e44f74c64a9b89b9517346ca677f550929cf1",
+            "status": true,
+            "type": 1,
+            "orderId": "66b328e9eafe8b248415bbb3"
+        }
+        "#;
+        let res = serde_json::from_str::<OrderMultiSignServiceComplete>(&raw);
+        println!("res: {res:?}");
+    }
+}

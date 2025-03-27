@@ -11,13 +11,6 @@ impl MqttAsyncClient {
     pub fn client(&self) -> AsyncClient {
         self.client.clone()
     }
-
-    // pub async fn publish(&self, topic: &str, qos: QoS, payload: &str) {
-    //     self.client
-    //         .publish(topic, qos, false, payload.as_bytes().to_vec())
-    //         .await
-    //         .unwrap();
-    // }
 }
 pub struct MqttClientBuilder {
     client_id: String,

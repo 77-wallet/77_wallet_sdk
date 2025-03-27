@@ -7,27 +7,6 @@ use wallet_database::{
 };
 use wallet_transport_backend::response_vo::coin::TokenPriceChangeBody;
 
-/*
-{
-    "clientId": "104.2.0.125C00",
-    "sn": "104.2.0.125C00",
-    "deviceType": "ANDROID",
-    "bizType": "TOKEN_PRICE_CHANGE",
-    "body": {
-        "chainCode": "polygon",
-        "code": "chain",
-        "defaultToken": false,
-        "enable": true,
-        "marketValue": 6644971.07,
-        "master": false,
-        "name": "Chain Games",
-        "price": 0.021205427084188898,
-        "status": false,
-        "tokenAddress": "0xd55fce7cdab84d84f2ef3f99816d765a2a94a509",
-        "unit": 18,
-    }
-}
-*/
 // biz_type = TOKEN_PRICE_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

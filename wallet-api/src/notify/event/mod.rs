@@ -1,3 +1,4 @@
+use crate::messaging::mqtt::topics::{BulletinMsg, ChainChange, Init};
 use multisig::*;
 use other::*;
 use permission::PermissionChangeFrontend;
@@ -21,8 +22,8 @@ pub enum NotifyEvent {
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsgFrontend),
     AcctChange(AcctChangeFrontend),
     TokenPriceChange(crate::response_vo::coin::TokenPriceChangeRes),
-    Init(crate::mqtt::payload::incoming::init::Init),
-    BulletinMsg(crate::mqtt::payload::incoming::announcement::BulletinMsg),
+    Init(Init),
+    BulletinMsg(BulletinMsg),
 
     FetchBulletinMsg,
     MqttConnected,
@@ -34,7 +35,7 @@ pub enum NotifyEvent {
 
     // 执行交易的过程
     TransactionProcess(TransactionProcessFrontend),
-    ChainChange(ChainChangeFrontend),
+    ChainChange(ChainChange),
 
     // 资源
     ResourceChange(resource::ResourceChangeFrontend),
