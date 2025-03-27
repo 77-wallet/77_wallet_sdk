@@ -8,7 +8,9 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     factory::RepositoryFactory,
-    repositories::account::AccountRepoTrait,
+    repositories::{
+        account::AccountRepoTrait, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
+    },
 };
 
 use crate::{
@@ -146,6 +148,7 @@ impl AcctChange {
             transfer_type,
             status,
             address,
+            queue_id,
         )
         .await?;
 
@@ -209,6 +212,7 @@ impl AcctChange {
         transfer_type: i8,
         status: bool,
         address: &str,
+        queue_id: &str,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = RepositoryFactory::repo(pool.clone());
@@ -315,39 +319,62 @@ impl AcctChange {
                     }
                 };
                 tracing::warn!("multisig account: address: {address}");
-                if MultisigAccountDaoV1::find_by_address(address, pool.as_ref())
+
+                let queue = MultisigQueueRepo::find_by_id(&pool, queue_id)
                     .await
-                    .map_err(crate::ServiceError::Database)?
-                    .is_none()
-                {
-                    let mut repo = RepositoryFactory::repo(pool.clone());
-                    MultisigDomain::recover_multisig_data_by_address(&mut repo, address).await?;
-                }
+                    .map_err(crate::ServiceError::Database)?;
 
-                if let Some(multisig_account) =
-                    MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
-                {
-                    tracing::warn!("multisig account: name: {}", multisig_account.name);
-                    let notif = Notification::new_transaction_notification(
-                        AccountType::Multisig,
-                        &multisig_account.name,
-                        address,
-                        value,
-                        symbol,
-                        &transaction_status,
-                        tx_hash,
-                        &notification_type,
-                    );
-                    let req = notif.gen_create_system_notification_entity(
-                        msg_id,
-                        0,
-                        Some("tx_hash".to_string()),
-                        Some(tx_hash.to_string()),
-                    )?;
-
-                    reqs.push(req);
+                let Some(account) = queue else {
+                    tracing::warn!("multisig queue not found");
+                    return Ok(());
                 };
 
+                let name = if !account.permission_id.is_empty() {
+                    let permission =
+                        PermissionRepo::find_by_id(&pool, &account.permission_id).await?;
+                    permission.name
+                } else if !account.account_id.is_empty() {
+                    if MultisigAccountDaoV1::find_by_address(address, pool.as_ref())
+                        .await
+                        .map_err(crate::ServiceError::Database)?
+                        .is_none()
+                    {
+                        let mut repo = RepositoryFactory::repo(pool.clone());
+                        MultisigDomain::recover_multisig_data_by_address(&mut repo, address)
+                            .await?;
+                    };
+                    let Some(multisig_account) =
+                        MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
+                    else {
+                        tracing::warn!("multisig account not found");
+                        return Ok(());
+                    };
+
+                    multisig_account.name
+                } else {
+                    tracing::warn!("multisig account not found");
+                    return Ok(());
+                };
+
+                tracing::warn!("multisig account: name: {}", name);
+                let notif = Notification::new_transaction_notification(
+                    AccountType::Multisig,
+                    &name,
+                    address,
+                    value,
+                    symbol,
+                    &transaction_status,
+                    tx_hash,
+                    &notification_type,
+                );
+                let req = notif.gen_create_system_notification_entity(
+                    msg_id,
+                    0,
+                    Some("tx_hash".to_string()),
+                    Some(tx_hash.to_string()),
+                )?;
+
+                reqs.push(req);
                 reqs
             }
             _ => {
