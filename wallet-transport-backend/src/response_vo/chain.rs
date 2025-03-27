@@ -29,6 +29,14 @@ pub struct ChainList {
     pub list: Vec<ChainUrlInfo>,
 }
 
+impl From<&Vec<ChainUrlInfo>> for ChainList {
+    fn from(value: &Vec<ChainUrlInfo>) -> Self {
+        Self {
+            list: value.to_owned(),
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct DefaultChainList {
     pub list: Vec<String>,
