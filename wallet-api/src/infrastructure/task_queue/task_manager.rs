@@ -9,7 +9,7 @@ use crate::{
         multisig::MultisigQueueDomain,
         node::NodeDomain,
     },
-    notify::FrontendNotifyEvent,
+    messaging::notify::FrontendNotifyEvent,
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
 };
 use dashmap::DashSet;

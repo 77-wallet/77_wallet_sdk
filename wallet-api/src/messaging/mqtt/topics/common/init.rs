@@ -5,6 +5,7 @@ use wallet_transport_backend::request::{TokenQueryByContractAddressReq, TokenQue
 
 use crate::{
     infrastructure::task_queue::{CommonTask, Task, Tasks},
+    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
     service::asset::AssetsService,
 };
 
@@ -152,8 +153,8 @@ impl Init {
             }
         }
 
-        let data = crate::notify::NotifyEvent::Init(self);
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::Init(self);
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

@@ -4,8 +4,7 @@ use wallet_utils::serde_func;
 
 use crate::{
     infrastructure::task_queue::{BackendApiTask, Task, Tasks},
-    messaging::mqtt::Message,
-    notify::FrontendNotifyEvent,
+    messaging::{mqtt::Message, notify::FrontendNotifyEvent},
 };
 
 pub struct JPushService {}

@@ -5,7 +5,10 @@ use wallet_database::{
 
 use crate::{
     domain::{self, multisig::MultisigDomain},
-    notify::event::{multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront},
+    messaging::notify::{
+        event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront,
+        FrontendNotifyEvent,
+    },
 };
 
 // 部署完成后，服务费hash以及部署hash的同步。
@@ -59,11 +62,11 @@ impl OrderMultiSignServiceComplete {
                 "Multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
 
-            let data = crate::notify::NotifyEvent::Err(ErrFront {
+            let data = NotifyEvent::Err(ErrFront {
                 event: self.name(),
                 message: err.to_string(),
             });
-            crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send().await?;
             return Err(err);
         };
 
@@ -109,14 +112,13 @@ impl OrderMultiSignServiceComplete {
             domain::multisig::account::MultisigDomain::update_raw_data(&multi_account_id, pool)
                 .await;
 
-        let data = crate::notify::NotifyEvent::OrderMultiSignServiceComplete(
-            OrderMultiSignServiceCompleteFrontend {
+        let data =
+            NotifyEvent::OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend {
                 multisign_address: account.address,
                 status,
                 r#type,
-            },
-        );
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            });
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

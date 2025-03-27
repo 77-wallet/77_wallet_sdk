@@ -1,6 +1,8 @@
+use crate::{
+    domain::app::config::ConfigDomain,
+    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+};
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
-
-use crate::domain::app::config::ConfigDomain;
 
 // biz_type = CHAIN_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -13,8 +15,8 @@ impl ChainChange {
         let ChainChange(body) = &self;
         ConfigDomain::set_block_browser_url(body).await?;
 
-        let data = crate::notify::NotifyEvent::ChainChange(self);
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::ChainChange(self);
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

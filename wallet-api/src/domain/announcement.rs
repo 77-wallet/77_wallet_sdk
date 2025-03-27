@@ -1,3 +1,4 @@
+use crate::messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
 use wallet_database::repositories::{announcement::AnnouncementRepoTrait, device::DeviceRepoTrait};
 
 pub struct AnnouncementDomain;
@@ -46,8 +47,8 @@ impl AnnouncementDomain {
         } else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         }
-        let data = crate::notify::NotifyEvent::FetchBulletinMsg;
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::FetchBulletinMsg;
+        FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
 }

@@ -1,5 +1,5 @@
 use tokio_stream::StreamExt as _;
-use wallet_api::{notify::FrontendNotifyEvent, test::env::get_manager};
+use wallet_api::{test::env::get_manager, FrontendNotifyEvent};
 
 // create wallet
 #[tokio::main(flavor = "multi_thread")]

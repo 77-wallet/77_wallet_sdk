@@ -1,5 +1,13 @@
+// 发送给前端事件的
+use event::NotifyEvent;
+use other::{DebugFront, ErrFront};
+
 pub(crate) mod event;
-pub(crate) use event::NotifyEvent;
+pub(crate) mod multisig;
+pub(crate) mod other;
+pub(crate) mod permission;
+pub(crate) mod resource;
+pub(crate) mod transaction;
 
 #[derive(Debug)]
 pub struct FrontendNotifyEvent {
@@ -9,7 +17,7 @@ pub struct FrontendNotifyEvent {
 
 impl FrontendNotifyEvent {
     pub(crate) fn new(data: NotifyEvent) -> Self {
-        crate::notify::FrontendNotifyEvent {
+        FrontendNotifyEvent {
             event: data.event_name(),
             data,
         }
@@ -19,8 +27,8 @@ impl FrontendNotifyEvent {
         message: T,
     ) -> Result<(), crate::ServiceError> {
         let message = wallet_utils::serde_func::serde_to_value(message)?;
-        let data = crate::notify::NotifyEvent::Debug(event::other::DebugFront { message });
-        match crate::notify::FrontendNotifyEvent::new(data).send().await {
+        let data = NotifyEvent::Debug(DebugFront { message });
+        match FrontendNotifyEvent::new(data).send().await {
             Ok(_) => tracing::debug!("[mqtt] send debug message ok"),
             Err(e) => tracing::error!("[mqtt] send debug message error: {e}"),
         };
@@ -32,11 +40,11 @@ impl FrontendNotifyEvent {
         message: T,
     ) -> Result<(), crate::ServiceError> {
         let message = wallet_utils::serde_func::serde_to_string(&message)?;
-        let data = crate::notify::NotifyEvent::Err(event::other::ErrFront {
+        let data = NotifyEvent::Err(ErrFront {
             event: event.to_string(),
             message,
         });
-        match crate::notify::FrontendNotifyEvent::new(data).send().await {
+        match FrontendNotifyEvent::new(data).send().await {
             Ok(_) => tracing::debug!("[mqtt] send err message ok"),
             Err(e) => tracing::error!("[mqtt] send err message error: {e}"),
         };

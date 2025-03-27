@@ -13,6 +13,7 @@ use wallet_database::{
 
 use crate::{
     domain::{self, multisig::MultisigDomain},
+    messaging::notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
     service::{
         account::AccountService, asset::AssetsService,
         system_notification::SystemNotificationService,
@@ -204,27 +205,25 @@ impl AcctChange {
         .await?;
 
         // 发送账变通知
-        let data = crate::notify::NotifyEvent::AcctChange(
-            crate::notify::event::transaction::AcctChangeFrontend {
-                tx_hash: tx_hash.to_string(),
-                chain_code: chain_code.to_string(),
-                symbol: symbol.to_string(),
-                transfer_type,
-                tx_kind,
-                from_addr: from_addr.to_string(),
-                to_addr: to_addr.to_string(),
-                token: token.clone(),
-                value,
-                transaction_fee,
-                transaction_time: transaction_time.to_string(),
-                status,
-                is_multisig,
-                queue_id: queue_id.to_string(),
-                block_height,
-                notes: notes.to_string(),
-            },
-        );
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::AcctChange(AcctChangeFrontend {
+            tx_hash: tx_hash.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
+            transfer_type,
+            tx_kind,
+            from_addr: from_addr.to_string(),
+            to_addr: to_addr.to_string(),
+            token: token.clone(),
+            value,
+            transaction_fee,
+            transaction_time: transaction_time.to_string(),
+            status,
+            is_multisig,
+            queue_id: queue_id.to_string(),
+            block_height,
+            notes: notes.to_string(),
+        });
+        FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
 

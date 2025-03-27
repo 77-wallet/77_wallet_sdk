@@ -8,8 +8,10 @@ use wallet_utils::serde_func;
 
 use crate::{
     infrastructure::task_queue::{BackendApiTask, MqttTask, Task, Tasks},
-    messaging::mqtt::topics::OutgoingPayload,
-    notify::FrontendNotifyEvent,
+    messaging::{
+        mqtt::topics::OutgoingPayload,
+        notify::{event::NotifyEvent, FrontendNotifyEvent},
+    },
     service::{app::AppService, device::DeviceService},
 };
 
@@ -35,14 +37,14 @@ pub(crate) async fn exec_incoming(
             client.ack(&publish).await?;
         }
         Packet::PingResp(_) => {
-            let data = crate::notify::NotifyEvent::KeepAlive;
-            if let Err(e) = crate::notify::FrontendNotifyEvent::new(data).send().await {
+            let data = NotifyEvent::KeepAlive;
+            if let Err(e) = FrontendNotifyEvent::new(data).send().await {
                 tracing::error!("[exec_incoming] send error: {e}");
             }
         }
         Packet::Disconnect(_) => {
-            let data = crate::notify::NotifyEvent::MqttDisconnected;
-            crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            let data = NotifyEvent::MqttDisconnected;
+            FrontendNotifyEvent::new(data).send().await?;
         }
         _ => {}
     }
@@ -296,8 +298,8 @@ async fn exec_incoming_connack(
             .await?;
     }
 
-    let data = crate::notify::NotifyEvent::MqttConnected;
-    crate::notify::FrontendNotifyEvent::new(data).send().await?;
+    let data = NotifyEvent::MqttConnected;
+    FrontendNotifyEvent::new(data).send().await?;
     Ok(())
 }
 

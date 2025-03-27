@@ -1,6 +1,9 @@
 use wallet_database::entities::announcement::CreateAnnouncementVo;
 
-use crate::service::announcement::AnnouncementService;
+use crate::{
+    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+    service::announcement::AnnouncementService,
+};
 
 /*
 {
@@ -123,8 +126,8 @@ impl BulletinMsg {
                 }
             }
         }
-        let data = crate::notify::NotifyEvent::BulletinMsg(self);
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::BulletinMsg(self);
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

@@ -1,6 +1,8 @@
 use crate::{
     domain::multisig::MultisigDomain,
-    notify::event::multisig::OrderMultiSignCreatedFrontend,
+    messaging::notify::{
+        event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend, FrontendNotifyEvent,
+    },
     service::system_notification::SystemNotificationService,
     system_notification::{Notification, NotificationType},
 };
@@ -125,13 +127,12 @@ impl OrderMultiSignCreated {
                 .await?;
         }
 
-        let data =
-            crate::notify::NotifyEvent::OrderMultiSignCreated(OrderMultiSignCreatedFrontend {
-                multisig_account_id: multisig_account_id.to_string(),
-                multisig_account_address: multisig_account_address.to_string(),
-                address_type: address_type.to_string(),
-            });
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::OrderMultiSignCreated(OrderMultiSignCreatedFrontend {
+            multisig_account_id: multisig_account_id.to_string(),
+            multisig_account_address: multisig_account_address.to_string(),
+            address_type: address_type.to_string(),
+        });
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

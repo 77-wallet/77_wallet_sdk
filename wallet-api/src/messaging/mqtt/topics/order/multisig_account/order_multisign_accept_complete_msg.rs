@@ -5,7 +5,10 @@ use wallet_database::{
 
 use crate::{
     domain::multisig::MultisigDomain,
-    notify::event::{multisig::OrderMultiSignAcceptCompleteMsgFrontend, other::ErrFront},
+    messaging::notify::{
+        event::NotifyEvent, multisig::OrderMultiSignAcceptCompleteMsgFrontend, other::ErrFront,
+        FrontendNotifyEvent,
+    },
 };
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -51,11 +54,11 @@ impl OrderMultiSignAcceptCompleteMsg {
             tracing::error!(event_name = %event_name, multisig_account_id = %multisig_account_id, "multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
 
-            let data = crate::notify::NotifyEvent::Err(ErrFront {
+            let data = NotifyEvent::Err(ErrFront {
                 event: event_name,
                 message: err.to_string(),
             });
-            crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            FrontendNotifyEvent::new(data).send().await?;
             return Err(err);
         };
 
@@ -124,15 +127,14 @@ impl OrderMultiSignAcceptCompleteMsg {
         address_list: Vec<wallet_transport_backend::ConfirmedAddress>,
         accept_status: bool,
     ) -> Result<(), crate::ServiceError> {
-        let data = crate::notify::NotifyEvent::OrderMultiSignAcceptCompleteMsg(
-            OrderMultiSignAcceptCompleteMsgFrontend {
+        let data =
+            NotifyEvent::OrderMultiSignAcceptCompleteMsg(OrderMultiSignAcceptCompleteMsgFrontend {
                 status,
                 multisign_address: address.to_string(),
                 address_list,
                 accept_status,
-            },
-        );
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            });
+        FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
 }

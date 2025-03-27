@@ -5,7 +5,7 @@ use crate::infrastructure::task_queue::{
 };
 use crate::infrastructure::SharedCache;
 use crate::messaging::mqtt::subscribed::Topics;
-use crate::notify::FrontendNotifyEvent;
+use crate::messaging::notify::FrontendNotifyEvent;
 use crate::service::node::NodeService;
 use std::collections::HashMap;
 use std::path::PathBuf;
