@@ -29,6 +29,13 @@ pub struct ChainChangeFront {
     pub message: serde_json::Value,
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainChangeFrontend {
+    pub has_new_chain: bool,
+    pub chains: Vec<wallet_transport_backend::response_vo::chain::ChainUrlInfo>,
+}
+
 // 执行交易的过程给前端发送交易的类型
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

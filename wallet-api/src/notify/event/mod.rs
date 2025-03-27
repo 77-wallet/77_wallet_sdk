@@ -34,7 +34,7 @@ pub enum NotifyEvent {
 
     // 执行交易的过程
     TransactionProcess(TransactionProcessFrontend),
-    ChainChange(crate::mqtt::payload::incoming::chain::ChainChange),
+    ChainChange(ChainChangeFrontend),
 
     // 资源
     ResourceChange(resource::ResourceChangeFrontend),

@@ -32,7 +32,13 @@ impl ChainChange {
         let ChainChange(body) = &self;
         ConfigDomain::set_block_browser_url(body).await?;
 
-        let data = crate::notify::NotifyEvent::ChainChange(self);
+        let has_new_chain =
+            crate::domain::chain::ChainDomain::upsert_multi_chain_than_toggle(body.into()).await?;
+        let data = crate::notify::event::other::ChainChangeFrontend {
+            has_new_chain,
+            chains: self.0,
+        };
+        let data = crate::notify::NotifyEvent::ChainChange(data);
         crate::notify::FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
