@@ -1,10 +1,13 @@
-use crate::{api::ReturnType, service::system_notification::SystemNotificationService};
+use crate::{
+    api::ReturnType, messaging::system_notification::Notification,
+    service::system_notification::SystemNotificationService,
+};
 
 impl crate::WalletManager {
     pub async fn add_system_notification(
         &self,
         id: &str,
-        notification: crate::system_notification::Notification,
+        notification: Notification,
         status: i8,
     ) -> ReturnType<()> {
         SystemNotificationService::new(self.repo_factory.resource_repo())
@@ -42,10 +45,12 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::system_notification::{
-        AccountType, Notification, NotificationType, TransactionStatus,
+    use crate::{
+        messaging::system_notification::{
+            AccountType, Notification, NotificationType, TransactionStatus,
+        },
+        test::env::get_manager,
     };
-    use crate::test::env::get_manager;
     use anyhow::Result;
     use wallet_database::entities::bill::BillKind;
     // 添加这个引用

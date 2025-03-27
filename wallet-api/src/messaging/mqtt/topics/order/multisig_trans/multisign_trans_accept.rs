@@ -1,9 +1,9 @@
 use crate::{
-    messaging::notify::{
-        event::NotifyEvent, transaction::ConfirmationFrontend, FrontendNotifyEvent,
+    messaging::{
+        notify::{event::NotifyEvent, transaction::ConfirmationFrontend, FrontendNotifyEvent},
+        system_notification::{Notification, NotificationType},
     },
     service::system_notification::SystemNotificationService,
-    system_notification::{Notification, NotificationType},
 };
 use wallet_database::{
     entities::{

@@ -13,12 +13,14 @@ use wallet_database::{
 
 use crate::{
     domain::{self, multisig::MultisigDomain},
-    messaging::notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
+    messaging::{
+        notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
+        system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
+    },
     service::{
         account::AccountService, asset::AssetsService,
         system_notification::SystemNotificationService,
     },
-    system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
 };
 
 // biz_type = ACCT_CHANGE
