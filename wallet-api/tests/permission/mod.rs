@@ -167,20 +167,28 @@ async fn test_build_multisig_queue() {
 
     let keys = vec![
         KeysReq {
-            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+            address: "TDEmB5MnTQBSm6LLtMsuG4RJ8ajZsoacbG".to_string(),
             weight: 1,
         },
         KeysReq {
-            address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+            address: "TRkW3hXjPsMMeksVPeAYg3rw5egSdA49uZ".to_string(),
+            weight: 1,
+        },
+        KeysReq {
+            address: "TTbAVnrXbhrMGXYxPH9sfJYpYFujn1QBJf".to_string(),
+            weight: 1,
+        },
+        KeysReq {
+            address: "TYD6wPezLZKAqHEH5SexzX9kAocYibB3er".to_string(),
             weight: 1,
         },
     ];
 
     let req = PermissionReq {
-        grantor_addr: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        grantor_addr: "TTbAVnrXbhrMGXYxPH9sfJYpYFujn1QBJf".to_string(),
         name: "stake".to_string(),
-        active_id: Some(4),
-        threshold: 1,
+        active_id: Some(2),
+        threshold: 4,
         operations: vec![1, 54, 55, 59, 56, 57, 58],
         keys,
     };

@@ -18,7 +18,11 @@ use crate::{
     pagination::Pagination,
     DbPool,
 };
+use once_cell::sync::Lazy;
 use sqlx::{Pool, Sqlite};
+use tokio::sync::Mutex;
+
+static CREATE_QUEUE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub struct MultisigQueueRepo {
     repo: ResourcesRepo,
@@ -184,6 +188,8 @@ impl MultisigQueueRepo {
         params: &NewSignatureEntity,
         pool: &DbPool,
     ) -> Result<(), crate::Error> {
+        // 防止mqtt 消息进来导致并发问题
+        let _lock = CREATE_QUEUE_LOCK.lock().await;
         let signature = MultisigSignatureDaoV1::find_signature(
             &params.queue_id,
             &params.address,

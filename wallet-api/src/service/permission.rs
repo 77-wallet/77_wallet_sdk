@@ -454,8 +454,6 @@ impl PermissionService {
         backend_params.back_user = new_users.into_iter().collect();
         backend_params.multi_sign_id = res.id.clone();
 
-        tracing::warn!("{:#?}", backend_params);
-
         MultisigQueueDomain::upload_queue_backend(res.id, &pool, Some(backend_params), None)
             .await?;
 

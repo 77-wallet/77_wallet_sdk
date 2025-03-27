@@ -81,23 +81,26 @@ mod test {
         let raw = r#"
         [
                 {
-                    "address": "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1",
-                    "queueId": "236631132983136256",
-                    "signature": "74eb8147bb31e4f74c9a25f9fd8498bbf28326cf4e6d0cb804268fb6214181931995702713373bb2ae07ebb25728d9ec3c14b36807ab99e8ecf8711d7ab848ba01",
+                    "address": "TYD6wPezLZKAqHEH5SexzX9kAocYibB3er",
+                    "queueId": "243784320156831744",
+                    "signature": "88fb989a0fa51ba6aef4f5861317b19ec36e8c097c9a364eed14186e455a5205775a3e4591347516a08d6e8ab7051d52a788108fd951e352a0229e4fd3ea89e300",
                     "status": 1
-                },
-                {
-                    "address": "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR",
-                    "queueId": "236631132983136256",
-                    "signature": "",
-                    "status": 0
                 }
             ]
         "#;
         let res = serde_json::from_str::<MultiSignTransAcceptCompleteMsg>(&raw).unwrap();
 
         let (_, _) = get_manager().await.unwrap();
+        let mut handles = Vec::new();
+        for _i in 0..4 {
+            let item = res.clone();
+            let c = tokio::spawn(async { item.exec("x").await.unwrap() });
+            handles.push(c);
+        }
 
-        res.exec("x").await.unwrap();
+        for handle in handles {
+            // handle.await 返回一个 Result<T, JoinError>
+            handle.await.unwrap();
+        }
     }
 }
