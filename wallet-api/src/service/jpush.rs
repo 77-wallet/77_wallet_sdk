@@ -4,6 +4,7 @@ use wallet_utils::serde_func;
 
 use crate::{
     infrastructure::task_queue::{BackendApiTask, Task, Tasks},
+    messaging::mqtt::Message,
     notify::FrontendNotifyEvent,
 };
 
@@ -22,9 +23,7 @@ impl JPushService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut ids = Vec::new();
         for message in messages {
-            let payload = match serde_func::serde_from_str::<crate::mqtt::payload::incoming::Message>(
-                message.as_str(),
-            ) {
+            let payload = match serde_func::serde_from_str::<Message>(message.as_str()) {
                 Ok(data) => data,
                 Err(e) => {
                     tracing::error!("[jpush_multi] serde_from_str error: {}", e);
@@ -41,7 +40,7 @@ impl JPushService {
                 .await?
                 .is_none()
             {
-                if let Err(e) = crate::mqtt::handle::exec_payload(payload).await {
+                if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
                     if let Err(e) =
                         FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
                     {
@@ -69,19 +68,20 @@ impl JPushService {
 
 #[cfg(test)]
 mod test {
+    use crate::messaging::mqtt::{topics::OrderMultiSignAcceptCompleteMsg, Message};
+
     #[test]
     fn test_() {
         let message = "{\"clientId\":\"wenjing\",\"sn\":\"device457\",\"deviceType\":\"ANDROID\",\"bizType\":\"ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG\",\"body\":{\"status\":1,\"multisigAccountId\":\"order-1\",\"addressList\":[],\"acceptStatus\":false,\"acceptAddressList\":[\"THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB\"]}}";
 
-        let _payload: crate::mqtt::payload::incoming::Message =
-            wallet_utils::serde_func::serde_from_str(message).unwrap();
+        let _payload: Message = wallet_utils::serde_func::serde_from_str(message).unwrap();
     }
 
     #[test]
     fn test_2() {
         let message = "{\"status\":1,\"multisigAccountId\":\"order-1\",\"addressList\":[],\"acceptStatus\":false,\"acceptAddressList\":[\"THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB\"]}";
 
-        let _payload: crate::mqtt::payload::incoming::signature::OrderMultiSignAcceptCompleteMsg =
+        let _payload: OrderMultiSignAcceptCompleteMsg =
             wallet_utils::serde_func::serde_from_str(message).unwrap();
     }
 }

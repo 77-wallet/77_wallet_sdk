@@ -1,6 +1,5 @@
+use crate::messaging::mqtt::topics::{TronSignFreezeDelegateVoteChange, Vote};
 use wallet_database::entities::bill::BillKind;
-
-use crate::mqtt::payload::incoming::resource::{TronSignFreezeDelegateVoteChange, Vote};
 
 // biz_type = RESOURCE_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

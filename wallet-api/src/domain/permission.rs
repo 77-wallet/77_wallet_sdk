@@ -1,5 +1,6 @@
+use crate::messaging::mqtt::topics::NewPermissionUser;
+
 use super::{chain::adapter::ChainAdapterFactory, multisig::MultisigQueueDomain};
-use crate::mqtt::payload::incoming::permission::NewPermissionUser;
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
     entities::{

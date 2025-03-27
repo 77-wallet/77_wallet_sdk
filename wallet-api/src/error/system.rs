@@ -1,4 +1,4 @@
-use crate::mqtt::payload::incoming::{BizType, Body};
+use crate::messaging::mqtt::message::{BizType, Body};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SystemError {

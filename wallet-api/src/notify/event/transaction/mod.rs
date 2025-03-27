@@ -1,4 +1,4 @@
-use crate::mqtt::payload::incoming::transaction::MultiSignTransAccept;
+use crate::messaging::mqtt::topics::{MultiSignTransAccept, MultiSignTransAcceptCompleteMsgBody};
 use wallet_database::entities::bill::BillKind;
 
 // biz_type = CONFIRMATION
@@ -51,8 +51,7 @@ impl TryFrom<&MultiSignTransAccept> for ConfirmationFrontend {
 }
 
 // biz_type = MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG
-pub(crate) type MultiSignTransAcceptCompleteMsgFrontend =
-    crate::mqtt::payload::incoming::transaction::MultiSignTransAcceptCompleteMsgBody;
+pub(crate) type MultiSignTransAcceptCompleteMsgFrontend = MultiSignTransAcceptCompleteMsgBody;
 
 // biz_type = ACCT_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

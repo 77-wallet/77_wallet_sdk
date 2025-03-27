@@ -5,7 +5,7 @@ use crate::{
         chain::{adapter::MultisigAdapter, transaction::ChainTransaction},
     },
     infrastructure::task_queue::{self, BackendApiTask, BackendApiTaskData, Task, Tasks},
-    mqtt::payload::incoming::transaction::MultiSignTransAcceptCompleteMsgBody,
+    messaging::mqtt::topics::MultiSignTransAcceptCompleteMsgBody,
     response_vo::multisig_transaction::ExtraData,
 };
 use serde_json::json;
