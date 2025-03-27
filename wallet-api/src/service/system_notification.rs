@@ -4,6 +4,8 @@ use wallet_database::{
     repositories::system_notification::SystemNotificationRepoTrait,
 };
 
+use crate::messaging::system_notification::Notification;
+
 pub struct SystemNotificationService<T: SystemNotificationRepoTrait> {
     pub repo: T,
 }
@@ -16,7 +18,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
     pub async fn add_system_notification(
         self,
         id: &str,
-        notification: crate::system_notification::Notification,
+        notification: Notification,
         status: i8,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
@@ -32,7 +34,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
     pub async fn add_system_notification_with_key_value(
         self,
         id: &str,
-        notification: crate::system_notification::Notification,
+        notification: Notification,
         status: i8,
         key: Option<String>,
         value: Option<String>,
@@ -90,52 +92,43 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let data = list.data;
         let mut res = Vec::new();
         for notif in data {
-            let no: crate::system_notification::Notification =
-                wallet_utils::serde_func::serde_from_str(&notif.content)?;
+            let no: Notification = wallet_utils::serde_func::serde_from_str(&notif.content)?;
             let val = match no {
-                crate::system_notification::Notification::Multisig(notification) => {
-                    match MultisigAccountDaoV1::find_by_id(
-                        &notification.multisig_account_id,
-                        &*pool,
-                    )
-                    .await?
-                    {
-                        Some(_) => (notif, true).into(),
-                        None => (notif, false).into(),
-                    }
-                }
-                crate::system_notification::Notification::Confirmation(notification) => {
-                    match MultisigAccountDaoV1::find_by_id(
-                        &notification.multisig_account_id,
-                        &*pool,
-                    )
-                    .await?
-                    {
-                        Some(_) => (notif, true).into(),
-                        None => (notif, false).into(),
-                    }
-                }
-                crate::system_notification::Notification::Transaction(transaction_notification) => {
+                Notification::Multisig(notification) => match MultisigAccountDaoV1::find_by_id(
+                    &notification.multisig_account_id,
+                    &*pool,
+                )
+                .await?
+                {
+                    Some(_) => (notif, true).into(),
+                    None => (notif, false).into(),
+                },
+                Notification::Confirmation(notification) => match MultisigAccountDaoV1::find_by_id(
+                    &notification.multisig_account_id,
+                    &*pool,
+                )
+                .await?
+                {
+                    Some(_) => (notif, true).into(),
+                    None => (notif, false).into(),
+                },
+                Notification::Transaction(transaction_notification) => {
                     let hash = transaction_notification.transaction_hash;
                     match BillDao::get_one_by_hash(&hash, &*pool).await? {
                         Some(_) => (notif, true).into(),
                         None => (notif, false).into(),
                     }
                 }
-                crate::system_notification::Notification::Resource(notification) => {
-                    match MultisigAccountDaoV1::find_by_id(
-                        &notification.multisig_account_id,
-                        &*pool,
-                    )
-                    .await?
-                    {
-                        Some(_) => (notif, true).into(),
-                        None => (notif, false).into(),
-                    }
-                }
-                crate::system_notification::Notification::PermissionChange(_notification) => {
-                    (notif, true).into()
-                }
+                Notification::Resource(notification) => match MultisigAccountDaoV1::find_by_id(
+                    &notification.multisig_account_id,
+                    &*pool,
+                )
+                .await?
+                {
+                    Some(_) => (notif, true).into(),
+                    None => (notif, false).into(),
+                },
+                Notification::PermissionChange(_notification) => (notif, true).into(),
             };
             res.push(val);
         }

@@ -11,9 +11,11 @@ use wallet_database::{
 
 use crate::{
     domain,
-    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+    messaging::{
+        notify::{event::NotifyEvent, FrontendNotifyEvent},
+        system_notification::{Notification, NotificationType},
+    },
     service::{asset::AssetsService, system_notification::SystemNotificationService},
-    system_notification::{Notification, NotificationType},
 };
 
 // biz_type = TRON_SIGN_FREEZE_DELEGATE_VOTE_CHANGE

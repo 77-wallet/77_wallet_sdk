@@ -10,11 +10,11 @@ use wallet_database::{
 
 use crate::{
     manager::Context,
-    messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignAcceptFrontend, FrontendNotifyEvent,
+    messaging::{
+        notify::{event::NotifyEvent, multisig::OrderMultiSignAcceptFrontend, FrontendNotifyEvent},
+        system_notification::{Notification, NotificationType},
     },
     service::system_notification::SystemNotificationService,
-    system_notification::{Notification, NotificationType},
 };
 
 // 后台将多签账号的数据同步给其他参数方消息(第一步)

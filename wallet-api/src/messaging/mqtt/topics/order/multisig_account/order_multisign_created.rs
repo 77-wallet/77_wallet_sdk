@@ -1,10 +1,12 @@
 use crate::{
     domain::multisig::MultisigDomain,
-    messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend, FrontendNotifyEvent,
+    messaging::{
+        notify::{
+            event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend, FrontendNotifyEvent,
+        },
+        system_notification::{Notification, NotificationType},
     },
     service::system_notification::SystemNotificationService,
-    system_notification::{Notification, NotificationType},
 };
 use wallet_database::{dao::multisig_account::MultisigAccountDaoV1, factory::RepositoryFactory};
 

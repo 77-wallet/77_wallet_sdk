@@ -1,11 +1,11 @@
 use crate::{
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
-    messaging::notify::{
-        event::NotifyEvent, permission::PermissionChangeFrontend, FrontendNotifyEvent,
+    messaging::{
+        notify::{event::NotifyEvent, permission::PermissionChangeFrontend, FrontendNotifyEvent},
+        system_notification::{permission_change::PermissionChange, Notification},
     },
     request::permission::PermissionReq,
     service::system_notification::SystemNotificationService,
-    system_notification::{permission_change::PermissionChange, Notification},
 };
 use wallet_chain_interact::tron::{
     operations::{multisig::Permission, permissions::PermissionTypes},
