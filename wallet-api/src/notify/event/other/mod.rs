@@ -32,7 +32,9 @@ pub struct ChainChangeFront {
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainChangeFrontend {
+    /// 是否有新启用的链
     pub has_new_chain: bool,
+    /// 链数据
     pub chains: Vec<wallet_transport_backend::response_vo::chain::ChainUrlInfo>,
 }
 

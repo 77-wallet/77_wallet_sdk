@@ -17,10 +17,14 @@ pub struct ChainUrlInfo {
     pub address_url: Option<String>,
     /// 查看链上hash URL
     pub hash_url: Option<String>,
+    /// 链编码
     #[serde(rename = "code")]
     pub chain_code: String,
+    /// 启用/禁用：true启用，false禁用
     pub enable: bool,
+    /// 链名称
     pub name: String,
+    /// 主币编码
     pub master_token_code: Option<String>,
 }
 
