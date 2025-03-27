@@ -1,7 +1,10 @@
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 
 use crate::{
-    domain::multisig::MultisigDomain, notify::event::multisig::OrderMultisignCanceledFrontend,
+    domain::multisig::MultisigDomain,
+    messaging::notify::{
+        event::NotifyEvent, multisig::OrderMultisignCanceledFrontend, FrontendNotifyEvent,
+    },
 };
 
 // 发起方取消多签账号消息，参与方同步自己多签账号的状态
@@ -40,14 +43,12 @@ impl OrderMultiSignCancel {
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-            let data = crate::notify::NotifyEvent::OrderMultisignCanceled(
-                OrderMultisignCanceledFrontend {
-                    multisig_account_id: multisig_account.id,
-                    multisig_account_address: multisig_account.address,
-                    address_type: multisig_account.address_type,
-                },
-            );
-            crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            let data = NotifyEvent::OrderMultisignCanceled(OrderMultisignCanceledFrontend {
+                multisig_account_id: multisig_account.id,
+                multisig_account_address: multisig_account.address,
+                address_type: multisig_account.address_type,
+            });
+            FrontendNotifyEvent::new(data).send().await?;
         }
 
         Ok(())

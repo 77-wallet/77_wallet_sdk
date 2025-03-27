@@ -1,4 +1,7 @@
-use crate::infrastructure::mqtt::client::MqttClientBuilder;
+use crate::{
+    infrastructure::mqtt::client::MqttClientBuilder,
+    messaging::notify::{event::NotifyEvent, other::ConnectionErrorFrontend, FrontendNotifyEvent},
+};
 
 use super::{client::MqttAsyncClient, property::UserProperty};
 use rumqttc::v5::EventLoop;
@@ -47,12 +50,10 @@ async fn handle_eventloop(tx: UnboundedSender<rumqttc::v5::Event>, mut eventloop
                 tracing::error!("[mqtt] connection error = {err:?}");
                 // if connect error  ,sleep 5s and reconnect
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                let data = crate::notify::NotifyEvent::ConnectionError(
-                    crate::notify::event::other::ConnectionErrorFrontend {
-                        message: err.to_string(),
-                    },
-                );
-                match crate::notify::FrontendNotifyEvent::new(data).send().await {
+                let data = NotifyEvent::ConnectionError(ConnectionErrorFrontend {
+                    message: err.to_string(),
+                });
+                match FrontendNotifyEvent::new(data).send().await {
                     Ok(_) => tracing::debug!("[mqtt] sender send ok"),
                     Err(e) => tracing::error!("[mqtt] sender send error: {e}"),
                 };

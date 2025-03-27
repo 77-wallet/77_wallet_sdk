@@ -3,6 +3,8 @@ use wallet_database::{
     repositories::multisig_queue::MultisigQueueRepo,
 };
 
+use crate::messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
+
 // 多签交易队列的创建 同步给所有人
 // biz_type = MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -53,8 +55,8 @@ impl MultiSignTransAcceptCompleteMsg {
 
             MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
 
-            let data = crate::notify::NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
-            crate::notify::FrontendNotifyEvent::new(data).send().await?;
+            let data = NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
+            FrontendNotifyEvent::new(data).send().await?;
         }
 
         // sync sign status

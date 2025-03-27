@@ -1,6 +1,8 @@
 use crate::{
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
-    notify::{event::permission::PermissionChangeFrontend, NotifyEvent},
+    messaging::notify::{
+        event::NotifyEvent, permission::PermissionChangeFrontend, FrontendNotifyEvent,
+    },
     request::permission::PermissionReq,
     service::system_notification::SystemNotificationService,
     system_notification::{permission_change::PermissionChange, Notification},
@@ -274,9 +276,7 @@ impl PermissionAccept {
             types,
             operations,
         ));
-        crate::notify::FrontendNotifyEvent::new(event)
-            .send()
-            .await?;
+        FrontendNotifyEvent::new(event).send().await?;
 
         Ok(())
     }

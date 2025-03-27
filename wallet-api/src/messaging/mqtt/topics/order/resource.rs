@@ -11,6 +11,7 @@ use wallet_database::{
 
 use crate::{
     domain,
+    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
     service::{asset::AssetsService, system_notification::SystemNotificationService},
     system_notification::{Notification, NotificationType},
 };
@@ -187,8 +188,8 @@ impl TronSignFreezeDelegateVoteChange {
         )
         .await?;
 
-        let data = crate::notify::NotifyEvent::ResourceChange(self.into());
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::ResourceChange(self.into());
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

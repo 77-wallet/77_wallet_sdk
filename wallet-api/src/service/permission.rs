@@ -6,9 +6,10 @@ use crate::{
         coin::TokenCurrencyGetter,
         multisig::{MultisigDomain, MultisigQueueDomain},
     },
-    notify::{
-        event::other::{Process, TransactionProcessFrontend},
-        FrontendNotifyEvent, NotifyEvent,
+    messaging::notify::{
+        event::NotifyEvent,
+        other::{Process, TransactionProcessFrontend},
+        FrontendNotifyEvent,
     },
     request::permission::PermissionReq,
     response_vo::{

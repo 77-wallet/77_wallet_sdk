@@ -1,4 +1,7 @@
 use crate::{
+    messaging::notify::{
+        event::NotifyEvent, transaction::ConfirmationFrontend, FrontendNotifyEvent,
+    },
     service::system_notification::SystemNotificationService,
     system_notification::{Notification, NotificationType},
 };
@@ -88,10 +91,8 @@ impl MultiSignTransAccept {
 
         self.system_notify(&queue, pool).await?;
 
-        let data = crate::notify::NotifyEvent::Confirmation(
-            crate::notify::event::transaction::ConfirmationFrontend::try_from(&self)?,
-        );
-        crate::notify::FrontendNotifyEvent::new(data).send().await?;
+        let data = NotifyEvent::Confirmation(ConfirmationFrontend::try_from(&self)?);
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }
