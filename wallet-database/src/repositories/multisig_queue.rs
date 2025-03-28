@@ -407,4 +407,29 @@ impl MultisigQueueRepo {
 
         Ok(())
     }
+
+    // delete queue and signature
+    pub async fn delete_queue_by_permission(
+        pool: &DbPool,
+        permission_id: &str,
+    ) -> Result<(), crate::Error> {
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // delete permission
+        let queues = MultisigQueueDaoV1::delete_by_permission(permission_id, tx.as_mut()).await?;
+
+        let ids = queues.iter().map(|q| q.id.clone()).collect::<Vec<String>>();
+
+        // delete all signature
+        MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(tx.as_mut(), ids).await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
+    }
 }
