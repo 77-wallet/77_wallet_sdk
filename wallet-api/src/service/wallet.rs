@@ -785,6 +785,7 @@ impl WalletService {
 
         // find tron address and del permission
         let tron_address = accounts.iter().find(|a| a.chain_code == chain_code::TRON);
+        tracing::warn!("tron address = {:?}", tron_address);
         if let Some(address) = tron_address {
             PermissionDomain::delete_by_address(&pool, &address.address).await?;
         }

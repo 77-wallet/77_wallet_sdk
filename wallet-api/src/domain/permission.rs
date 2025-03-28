@@ -150,6 +150,8 @@ impl PermissionDomain {
         // 1.all permission  about the address
         let mut permissions = PermissionRepo::all_permission_with_user(pool, address).await?;
 
+        tracing::warn!("exec delete by wallet address = {}", address);
+
         // 有当前地址的标记为is_self == 0
         permissions.iter_mut().for_each(|permission| {
             permission
@@ -158,10 +160,12 @@ impl PermissionDomain {
                 .filter(|u| u.address == address)
                 .for_each(|u| u.is_self = 0)
         });
+        tracing::warn!("permission = {:?}", permissions);
 
         // 2. handel permission
         for permission in permissions.iter() {
             if permission.has_self_addr() {
+                tracing::warn!("do update");
                 // 修改成员变量的is_self
                 for u in permission.user.iter() {
                     if u.address == address {
