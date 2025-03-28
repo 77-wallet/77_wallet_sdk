@@ -109,9 +109,10 @@ impl crate::WalletManager {
         &self,
         account_id: u32,
         wallet_address: &str,
+        chain_code: Option<String>,
     ) -> ReturnType<GetAccountAssetsRes> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .get_account_assets(account_id, wallet_address)
+            .get_account_assets(account_id, wallet_address, chain_code)
             .await?
             .into()
     }
@@ -371,9 +372,12 @@ mod test {
         wallet_manager.set_currency("USD").await;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
-        let address = "0x35159Ffd3Ba9b8748E16A929612e5212a4394F48";
+        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
-        let account_asset = wallet_manager.get_account_assets(1, address).await;
+        let chain_code = Some("sol".to_string());
+        let account_asset = wallet_manager
+            .get_account_assets(1, address, chain_code)
+            .await;
         tracing::info!("account_asset: {account_asset:?}");
         let res = wallet_utils::serde_func::serde_to_string(&account_asset).unwrap();
         tracing::info!("res: {res}");

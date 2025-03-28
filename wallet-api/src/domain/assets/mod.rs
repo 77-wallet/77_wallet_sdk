@@ -73,13 +73,21 @@ impl AssetsDomain {
         repo: &mut ResourcesRepo,
         account_id: u32,
         wallet_address: &str,
+        chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntity>, crate::ServiceError> {
         let tx = repo;
+        let chain_codes = if let Some(chain_code) = chain_code {
+            vec![chain_code]
+        } else {
+            Vec::new()
+        };
+
         let accounts = tx
-            .get_account_list_by_wallet_address_and_account_id(
+            .account_list_by_wallet_address_and_account_id_and_chain_codes(
                 Some(wallet_address),
                 Some(account_id),
+                chain_codes,
             )
             .await?;
         let addresses = accounts.into_iter().map(|info| info.address).collect();

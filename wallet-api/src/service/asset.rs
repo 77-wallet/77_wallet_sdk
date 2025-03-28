@@ -70,11 +70,12 @@ impl AssetsService {
         &mut self,
         account_id: u32,
         wallet_address: &str,
+        chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
         let tx = &mut self.repo;
         let mut data = self
             .assets_domain
-            .get_account_assets_entity(tx, account_id, wallet_address, Some(false))
+            .get_account_assets_entity(tx, account_id, wallet_address, chain_code, Some(false))
             .await?;
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 

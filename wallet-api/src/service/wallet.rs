@@ -644,8 +644,15 @@ impl WalletService {
             for account in account_list.iter_mut() {
                 let mut account_assets_entity = self
                     .assets_domain
-                    .get_account_assets_entity(tx, account.account_id, &wallet_info.address, None)
+                    .get_account_assets_entity(
+                        tx,
+                        account.account_id,
+                        &wallet_info.address,
+                        chain_code.clone(),
+                        None,
+                    )
                     .await?;
+
                 let account_total_assets = token_currencies
                     .calculate_account_total_assets(&mut account_assets_entity)
                     .await?;
