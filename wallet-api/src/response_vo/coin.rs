@@ -205,20 +205,12 @@ impl TokenCurrencies {
     ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
         let mut res = Vec::new();
 
-        // // 计算所有币种的总数
-        // for assets in data {
-        //     let balance = self
-        //         .calculate_to_balance(&assets.balance, &assets.symbol, &assets.chain_code)
-        //         .await?;
-
-        // }
-        // let all_coin_num = data
-        // .iter()
-        // .map(|assets|
-
-        // {let balance = wallet_types::Decimal::from_str("1996.733");
-        //     assets.balance.clone()})
-        // .sum::<wallet_types::Decimal>();
+        // 计算所有币种的总数
+        let mut sum = f64::default();
+        for assets in &data {
+            let balance = wallet_utils::parse_func::f64_from_str(&assets.balance)?;
+            sum += balance;
+        }
 
         for assets in data {
             if let Some(chain) = chains
@@ -240,6 +232,7 @@ impl TokenCurrencies {
                     chain.name.clone()
                 };
 
+                let asset_quantity_ratio = balance.amount / sum;
                 res.push(crate::response_vo::chain::ChainAssets {
                     chain_code: assets.chain_code,
                     name,
@@ -248,7 +241,7 @@ impl TokenCurrencies {
                     balance,
                     symbol: assets.symbol,
                     is_multisig: assets.is_multisig,
-                    // asset_quantity_ratio
+                    asset_quantity_ratio,
                 })
             }
         }
