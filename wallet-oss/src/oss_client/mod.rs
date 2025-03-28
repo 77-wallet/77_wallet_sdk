@@ -97,17 +97,19 @@ impl OssClient {
 mod tests {
     use super::*;
 
-    pub const ACCESS_KEY_ID: &str = "xxxxxxx";
-    pub const ACCESS_KEY_SECRET: &str = "xxxxxxx";
-    pub const BUCKET_NAME: &str = "xxxxxxx";
-    pub const ENDPOINT: &str = "https://xxxxxxx";
+    pub const ACCESS_KEY_ID: &str = "LTAI5tFE2vXoF27vcHaJiyyd";
+    pub const ACCESS_KEY_SECRET: &str = "6GDaBRqk9nmAQV46BgHnSWAml88tRX";
+    pub const BUCKET_NAME: &str = "ossbuk23";
+    pub const ENDPOINT: &str = "https://oss-cn-hongkong.aliyuncs.com";
 
     #[tokio::test]
     async fn test_oss_client() {
         let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT, BUCKET_NAME);
         println!("oss_client: {oss_client:#?}");
         let file_path = "./test.txt";
+        let file_path = "./sdk:2025-03-27 09:35:47.txt";
         let file_name = "test.txt";
+        let file_name = "sdk:2025-03-27 09:35:47.txt";
         let result = oss_client.upload_local_file(file_path, file_name).await;
         println!("result: {result:?}");
         assert!(result.is_ok());
@@ -129,6 +131,7 @@ mod tests {
         let _file_name = "test.txt";
         // let _file_name = "sdk:2024-10-07 10:36:00.txt";
         // let _file_name = "sdk:2025-02-21 07:47:16.txt";
+        let _file_name = "sdk:2025-03-27 09:35:47.txt";
         let result = oss_client.get_object(_file_name).await.unwrap();
         println!(
             "file content: {}",
@@ -141,6 +144,7 @@ mod tests {
         let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT, BUCKET_NAME);
         let file_name = "test.txt";
         // let file_name = "sdk:2025-02-19 23:17:00.txt";
+        let file_name = "sdk:2025-03-27 09:35:47.txt";
         let result = oss_client.get_object_metadata(file_name).await.unwrap();
         println!("result: {:?}", result);
     }

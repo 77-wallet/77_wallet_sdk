@@ -16,3 +16,5 @@ config.toml
 example.toml
 wallet.toml
 config.yaml
+
+*/sdk*
