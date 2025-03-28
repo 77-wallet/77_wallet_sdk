@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
+#[derive(
+    Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone, Hash, PartialEq, Eq,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionUserEntity {
     pub id: Option<i64>,

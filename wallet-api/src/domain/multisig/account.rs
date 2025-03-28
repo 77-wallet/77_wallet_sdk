@@ -571,21 +571,18 @@ impl MultisigDomain {
                 .await
                 .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
-        // member也不能删除,因为可能还有其他的账户参与了多签
         wallet_database::dao::multisig_member::MultisigMemberDaoV1::physical_del_multisig_member(
             account_id, &*pool,
         )
         .await
         .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
-        // queue也不能删除,因为可能还有其他的账户参与了多签
         let queues = MultisigQueueDaoV1::physical_del_multisig_queue(account_id, &*pool)
             .await
             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
             .into_iter()
             .map(|queue| queue.id)
             .collect();
-        // signatures也不能删除,因为可能还有其他的账户参与了多签
         wallet_database::dao::multisig_signatures::MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(&*pool,queues, )
     .await
     .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;

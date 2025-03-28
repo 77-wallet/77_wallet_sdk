@@ -139,8 +139,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_object_metadata() {
         let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT, BUCKET_NAME);
-        // let file_name = "test.txt";
-        let file_name = "sdk:2025-02-19 23:17:00.txt";
+        let file_name = "test.txt";
+        // let file_name = "sdk:2025-02-19 23:17:00.txt";
         let result = oss_client.get_object_metadata(file_name).await.unwrap();
         println!("result: {:?}", result);
     }
