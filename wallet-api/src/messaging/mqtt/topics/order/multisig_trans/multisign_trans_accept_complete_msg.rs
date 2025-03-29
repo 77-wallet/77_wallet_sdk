@@ -5,7 +5,7 @@ use wallet_database::{
 
 use crate::messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
 
-// 多签交易队列的创建 同步给所有人
+//  多签交易签名同步给其他成员
 // biz_type = MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -38,8 +38,22 @@ impl From<&NewSignatureEntity> for MultiSignTransAcceptCompleteMsgBody {
     }
 }
 
-// 签名的结果同步给所有人
+impl TryFrom<&MultiSignTransAcceptCompleteMsgBody> for NewSignatureEntity {
+    fn try_from(value: &MultiSignTransAcceptCompleteMsgBody) -> Result<Self, Self::Error> {
+        let status: MultisigSignatureStatus = (value.status as i32).try_into()?;
+        Ok(Self {
+            queue_id: value.queue_id.to_string(),
+            address: value.address.to_string(),
+            signature: value.signature.to_string(),
+            status,
+            weight: None,
+        })
+    }
 
+    type Error = crate::ServiceError;
+}
+
+// 签名的结果同步给所有人
 impl MultiSignTransAcceptCompleteMsg {
     pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
@@ -83,21 +97,6 @@ impl MultiSignTransAcceptCompleteMsg {
 
         Ok(())
     }
-}
-
-impl TryFrom<&MultiSignTransAcceptCompleteMsgBody> for NewSignatureEntity {
-    fn try_from(value: &MultiSignTransAcceptCompleteMsgBody) -> Result<Self, Self::Error> {
-        let status: MultisigSignatureStatus = (value.status as i32).try_into()?;
-        Ok(Self {
-            queue_id: value.queue_id.to_string(),
-            address: value.address.to_string(),
-            signature: value.signature.to_string(),
-            status,
-            weight: None,
-        })
-    }
-
-    type Error = crate::ServiceError;
 }
 
 #[cfg(test)]

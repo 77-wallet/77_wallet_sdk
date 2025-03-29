@@ -177,7 +177,7 @@ impl Notification {
         })
     }
 
-    pub(crate) fn new_resource_notification(
+    pub(crate) fn _new_resource_notification(
         account_address: &str,
         account_name: &str,
         multisig_account_id: &str,

@@ -8,7 +8,6 @@ use super::{
     },
     other::{ConnectionErrorFrontend, DebugFront, ErrFront, TransactionProcessFrontend},
     permission::PermissionChangeFrontend,
-    resource::ResourceChangeFrontend,
     transaction::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
@@ -42,7 +41,7 @@ pub enum NotifyEvent {
     ChainChange(ChainChange),
 
     // 资源
-    ResourceChange(ResourceChangeFrontend),
+    // ResourceChange(ResourceChangeFrontend),
     // 权限变更事件
     PermissionChanger(PermissionChangeFrontend),
 }
@@ -80,7 +79,7 @@ impl NotifyEvent {
             NotifyEvent::TransactionProcess(_) => "TRANSACTION_PROCESS".to_string(),
 
             // 资源
-            NotifyEvent::ResourceChange(_) => "RESOURCE_CHANGE".to_string(),
+            // NotifyEvent::ResourceChange(_) => "RESOURCE_CHANGE".to_string(),
 
             // 权限变更事件
             NotifyEvent::PermissionChanger(_) => "PERMISSION_CHANGE".to_string(),

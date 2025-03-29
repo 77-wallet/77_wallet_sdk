@@ -372,11 +372,11 @@ mod cal_tests {
     }
 }
 
-pub struct EstimateTxComsumer {
+pub struct EstimateTxConsumer {
     pub bandwidth: i64,
     pub energy: i64,
 }
-impl EstimateTxComsumer {
+impl EstimateTxConsumer {
     // 获取交易需要消耗的资源，TODO: 根据不同的网络来获取对应的代币地址
     pub async fn new(_chain: &TronChain) -> Result<Self, crate::ServiceError> {
         // let contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";

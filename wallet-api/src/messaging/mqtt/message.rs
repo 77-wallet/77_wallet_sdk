@@ -2,7 +2,7 @@ use crate::messaging::mqtt::topics::{
     AcctChange, BulletinMsg, Init, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
-    RpcChange, TronSignFreezeDelegateVoteChange,
+    RpcChange,
 };
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -91,7 +91,7 @@ pub enum Body {
     RpcChange(RpcChange),
 
     /// 资源
-    TronSignFreezeDelegateVoteChange(TronSignFreezeDelegateVoteChange),
+    // TronSignFreezeDelegateVoteChange(TronSignFreezeDelegateVoteChange),
     /// 权限更新
     PermissionAccept(PermissionAccept),
 }

@@ -89,7 +89,7 @@ pub enum TaskName {
     Init,
     OrderMultiSignCreated,
     BulletinMsg,
-    TronSignFreezeDelegateVoteChange,
+    // TronSignFreezeDelegateVoteChange,
     PermissionAccept,
     // RpcChange,
     // common

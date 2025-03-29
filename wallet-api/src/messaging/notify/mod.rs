@@ -6,7 +6,7 @@ pub(crate) mod event;
 pub(crate) mod multisig;
 pub(crate) mod other;
 pub(crate) mod permission;
-pub(crate) mod resource;
+// pub(crate) mod resource;
 pub(crate) mod transaction;
 
 #[derive(Debug)]

@@ -185,31 +185,31 @@ mod test {
                 .await;
         }
 
-        {
-            let account_name = "Default Account";
-            let account_address = "TRX1234567890123456789012345678901234";
-            let multisig_account_id = "multisig123456";
-            let r#type = BillKind::BatchDelegateBandwidth;
-            let status = true;
-            let transaction_hash = "0x1234567890123456789012345678901234567890";
-            let notification_type = &NotificationType::ResourceChange;
+        // {
+        // let account_name = "Default Account";
+        // let account_address = "TRX1234567890123456789012345678901234";
+        // let multisig_account_id = "multisig123456";
+        // let r#type = BillKind::BatchDelegateBandwidth;
+        // let status = true;
+        // let transaction_hash = "0x1234567890123456789012345678901234567890";
+        // let notification_type = &NotificationType::ResourceChange;
 
-            let notification = Notification::new_resource_notification(
-                account_address,
-                account_name,
-                multisig_account_id,
-                r#type,
-                status,
-                transaction_hash,
-                notification_type,
-            );
+        // let notification = Notification::new_resource_notification(
+        //     account_address,
+        //     account_name,
+        //     multisig_account_id,
+        //     r#type,
+        //     status,
+        //     transaction_hash,
+        //     notification_type,
+        // );
 
-            tracing::info!("notification: {notification:?}");
-            let status = 4;
-            let _res = wallet_manager
-                .add_system_notification("1241", notification, status)
-                .await;
-        }
+        // tracing::info!("notification: {notification:?}");
+        // let status = 4;
+        // let _res = wallet_manager
+        //     .add_system_notification("1241", notification, status)
+        //     .await;
+        // }
 
         let res = wallet_manager.get_system_notification_list(0, 10).await;
         tracing::info!("res: {res:#?}");

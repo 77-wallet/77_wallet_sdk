@@ -17,10 +17,7 @@ use crate::{
 
 use super::{
     message::{BizType, Body},
-    topics::{
-        AcctChange, ChainChange, PermissionAccept, RpcChange, Topic,
-        TronSignFreezeDelegateVoteChange,
-    },
+    topics::{AcctChange, ChainChange, PermissionAccept, RpcChange, Topic},
     Message,
 };
 
@@ -118,13 +115,12 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
             let data = serde_func::serde_from_value::<AcctChange>(payload.body.clone())?;
             Body::AcctChange(data)
         }
-
-        BizType::TronSignFreezeDelegateVoteChange => {
-            let data = serde_func::serde_from_value::<TronSignFreezeDelegateVoteChange>(
-                payload.body.clone(),
-            )?;
-            Body::TronSignFreezeDelegateVoteChange(data)
-        }
+        // BizType::TronSignFreezeDelegateVoteChange => {
+        //     let data = serde_func::serde_from_value::<TronSignFreezeDelegateVoteChange>(
+        //         payload.body.clone(),
+        //     )?;
+        //     Body::TronSignFreezeDelegateVoteChange(data)
+        // }
         BizType::PermissionAccept => {
             let data = serde_func::serde_from_value::<PermissionAccept>(payload.body.clone())?;
             Body::PermissionAccept(data)
@@ -229,18 +225,18 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
                 .send()
                 .await?;
         }
-        (
-            BizType::TronSignFreezeDelegateVoteChange,
-            Body::TronSignFreezeDelegateVoteChange(data),
-        ) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::TronSignFreezeDelegateVoteChange(data))),
-                )
-                .send()
-                .await?;
-        }
+        // (
+        //     BizType::TronSignFreezeDelegateVoteChange,
+        //     Body::TronSignFreezeDelegateVoteChange(data),
+        // ) => {
+        //     Tasks::new()
+        //         .push_with_id(
+        //             &payload.msg_id,
+        //             Task::Mqtt(Box::new(MqttTask::TronSignFreezeDelegateVoteChange(data))),
+        //         )
+        //         .send()
+        //         .await?;
+        // }
         // 权限更新事件
         (BizType::PermissionAccept, Body::PermissionAccept(data)) => {
             Tasks::new()
