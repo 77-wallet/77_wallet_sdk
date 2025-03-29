@@ -405,7 +405,8 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // let str = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"0x1457a81B300cB106187Dd227b0319E2a851BAb24","isMultisig":0,"status":true,"symbol":"eth","toAddr":"0x7B3123AA8Cf1137Da498f3d581aD3B16a9DC55a9","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":0,"txHash":"0xb8fb5be8584735a0fbb2a9fd8e3a1b7fd1f003203c719d23561c5e679bb5490d","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
-        let str1 = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1","isMultisig":0,"status":true,"symbol":"eth","toAddr":"TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":1,"txHash":"ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
+        // let str1 = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1","isMultisig":0,"status":true,"symbol":"eth","toAddr":"TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":1,"txHash":"ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
+        let str1 = r#"{"blockHeight":70835889,"chainCode":"tron","fromAddr":"TGtSVaqXzzGM2XgbUvgZzZeNqFwp1VvyXS","isMultisig":0,"queueId":"","signer":["TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn"],"status":true,"symbol":"trx","toAddr":"TLCdjLpnWynE7pyT34PQHwv7mXP3GAEPaZ","transactionFee":0.269,"transactionTime":"2025-03-28 11:21:51","transferType":1,"txHash":"6b699d41b3dc42c9e6a461780b48117a6d9a099daffac4dad57324655277d5f8","txKind":1,"value":1,"valueUsdt":0.22988765032767838}"#;
         let changet = serde_json::from_str::<AcctChange>(&str1).unwrap();
 
         let res = changet.exec("1").await;
