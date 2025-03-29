@@ -289,7 +289,7 @@ async fn handle_mqtt_task(task: Box<MqttTask>, id: &str) -> Result<(), crate::Se
         MqttTask::AcctChange(data) => data.exec(id).await?,
         MqttTask::Init(data) => data.exec(id).await?,
         MqttTask::BulletinMsg(data) => data.exec(id).await?,
-        MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(id).await?,
+        // MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(id).await?,
         MqttTask::PermissionAccept(data) => data.exec(id).await?,
     }
     Ok(())

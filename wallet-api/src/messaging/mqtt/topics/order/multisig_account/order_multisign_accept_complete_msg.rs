@@ -10,7 +10,7 @@ use crate::{
         FrontendNotifyEvent,
     },
 };
-
+// 参与放同意参与多签
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderMultiSignAcceptCompleteMsg {

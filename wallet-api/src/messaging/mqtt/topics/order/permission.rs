@@ -1,11 +1,9 @@
 use crate::{
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
-    messaging::{
-        notify::{event::NotifyEvent, permission::PermissionChangeFrontend, FrontendNotifyEvent},
-        system_notification::{permission_change::PermissionChange, Notification},
+    messaging::notify::{
+        event::NotifyEvent, permission::PermissionChangeFrontend, FrontendNotifyEvent,
     },
     request::permission::PermissionReq,
-    service::system_notification::SystemNotificationService,
 };
 use wallet_chain_interact::tron::{
     operations::{multisig::Permission, permissions::PermissionTypes},
@@ -16,7 +14,6 @@ use wallet_database::{
         permission::{PermissionEntity, PermissionWithUserEntity},
         permission_user::PermissionUserEntity,
     },
-    factory::RepositoryFactory,
     repositories::permission::PermissionRepo,
     DbPool,
 };
@@ -152,17 +149,15 @@ impl PermissionAccept {
 
         if !new_permission.is_empty() {
             // 删除原来的,新增
-            tracing::warn!("recover_all_old_permission :new");
             PermissionDomain::del_add_update(&pool, new_permission, &self.grantor_addr).await?;
         } else {
-            tracing::warn!("recover_all_old_permission :delete");
             // 删除原来所有的权限;
             PermissionRepo::delete_all(&pool, &self.grantor_addr).await?;
         }
 
         // 系统通知发送
         if let Some(permission) = old_permission {
-            Self::system_notify(&pool, &permission, PermissionReq::DELETE).await?;
+            Self::frontend_event(&permission, PermissionReq::DELETE).await?;
         };
 
         Ok(())
@@ -189,18 +184,17 @@ impl PermissionAccept {
 
             // 消息重复通知,避免新增判断为
             if self.current.types == PermissionReq::UPDATE {
-                Self::system_notify(&pool, &permissions.permission, PermissionReq::UPDATE).await?;
+                Self::frontend_event(&permissions.permission, PermissionReq::UPDATE).await?;
             }
             Ok(())
         } else {
-            tracing::warn!("add new permission");
             let mut users = permissions.users.clone();
 
             PermissionDomain::mark_user_is_self(&pool, &mut users).await?;
             if users.iter().any(|u| u.is_self == 1) {
                 PermissionRepo::add_with_user(&pool, &permissions.permission, &users).await?;
 
-                Self::system_notify(&pool, &permissions.permission, PermissionReq::NEW).await?;
+                Self::frontend_event(&permissions.permission, PermissionReq::NEW).await?;
 
                 return Ok(());
             }
@@ -217,11 +211,9 @@ impl PermissionAccept {
     ) -> Result<(), crate::ServiceError> {
         // 是否成员发生了变化
         if old_permission.user_has_changed(&permissions.users) {
-            tracing::warn!("update user ");
             self.update_user_change(pool.clone(), permissions, &old_permission.permission.id)
                 .await?;
         } else {
-            tracing::warn!("only update permission");
             PermissionRepo::update_permission(pool, &permissions.permission).await?;
         }
 
@@ -251,23 +243,22 @@ impl PermissionAccept {
     }
 
     // system notify and fronted event
-    async fn system_notify(
-        pool: &DbPool,
+    async fn frontend_event(
         permission: &PermissionEntity,
         types: &str,
     ) -> Result<(), crate::ServiceError> {
         // 1. system notify
-        let repo = RepositoryFactory::repo(pool.clone());
-        let system_notification_service = SystemNotificationService::new(repo);
+        // let repo = RepositoryFactory::repo(pool.clone());
+        // let system_notification_service = SystemNotificationService::new(repo);
 
-        if types != PermissionReq::DELETE {
-            let notification =
-                Notification::PermissionChange(PermissionChange::try_from((permission, types))?);
-            let id = wallet_utils::snowflake::get_uid()?.to_string();
-            system_notification_service
-                .add_system_notification(&id, notification, 0)
-                .await?;
-        }
+        // if types != PermissionReq::DELETE {
+        //     let notification =
+        //         Notification::PermissionChange(PermissionChange::try_from((permission, types))?);
+        //     let id = wallet_utils::snowflake::get_uid()?.to_string();
+        //     system_notification_service
+        //         .add_system_notification(&id, notification, 0)
+        //         .await?;
+        // }
 
         // 2. event
         let operations = PermissionTypes::from_hex(&permission.operations)?;

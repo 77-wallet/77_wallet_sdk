@@ -5,7 +5,7 @@ use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
 use crate::domain::multisig::MultisigDomain;
 use crate::domain::multisig::MultisigQueueDomain;
-use crate::domain::stake::EstimateTxComsumer;
+use crate::domain::stake::EstimateTxConsumer;
 use crate::domain::stake::StakeArgs;
 use crate::domain::stake::StakeDomain;
 use crate::error::business::stake::StakeError;
@@ -875,7 +875,7 @@ impl StackService {
             (res.bandwidth.total_resource - resource.free_net_used - resource.net_used).max(0);
 
         // 一笔交易的资源消耗
-        let consumer = EstimateTxComsumer::new(&chain).await?;
+        let consumer = EstimateTxConsumer::new(&chain).await?;
         res.bandwidth.consumer = consumer.bandwidth;
         res.energy.consumer = consumer.energy;
 

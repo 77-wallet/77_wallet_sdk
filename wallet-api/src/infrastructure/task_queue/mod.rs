@@ -82,7 +82,7 @@ pub(crate) enum MqttTask {
     AcctChange(topics::AcctChange),
     Init(topics::Init),
     BulletinMsg(topics::BulletinMsg),
-    TronSignFreezeDelegateVoteChange(topics::TronSignFreezeDelegateVoteChange),
+    // TronSignFreezeDelegateVoteChange(topics::TronSignFreezeDelegateVoteChange),
     PermissionAccept(topics::PermissionAccept),
 }
 
@@ -286,14 +286,14 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::BulletinMsg(req))))
             }
-            TaskName::TronSignFreezeDelegateVoteChange => {
-                let req = wallet_utils::serde_func::serde_from_str::<
-                    topics::TronSignFreezeDelegateVoteChange,
-                >(&value.request_body)?;
-                Ok(Task::Mqtt(Box::new(
-                    MqttTask::TronSignFreezeDelegateVoteChange(req),
-                )))
-            }
+            // TaskName::TronSignFreezeDelegateVoteChange => {
+            //     let req = wallet_utils::serde_func::serde_from_str::<
+            //         topics::TronSignFreezeDelegateVoteChange,
+            //     >(&value.request_body)?;
+            //     Ok(Task::Mqtt(Box::new(
+            //         MqttTask::TronSignFreezeDelegateVoteChange(req),
+            //     )))
+            // }
             TaskName::QueryCoinPrice => {
                 let req = wallet_utils::serde_func::serde_from_str::<TokenQueryPriceReq>(
                     &value.request_body,
@@ -365,9 +365,9 @@ impl Task {
                 MqttTask::AcctChange(_) => TaskName::AcctChange,
                 MqttTask::Init(_) => TaskName::Init,
                 MqttTask::BulletinMsg(_) => TaskName::BulletinMsg,
-                MqttTask::TronSignFreezeDelegateVoteChange(_) => {
-                    TaskName::TronSignFreezeDelegateVoteChange
-                }
+                // MqttTask::TronSignFreezeDelegateVoteChange(_) => {
+                //     TaskName::TronSignFreezeDelegateVoteChange
+                // }
                 MqttTask::PermissionAccept(_) => TaskName::PermissionAccept,
             },
             Task::Common(common_task) => match common_task {
@@ -429,11 +429,11 @@ impl Task {
                 MqttTask::BulletinMsg(bulletin_msg) => {
                     Some(wallet_utils::serde_func::serde_to_string(bulletin_msg)?)
                 }
-                MqttTask::TronSignFreezeDelegateVoteChange(
-                    tron_sign_freeze_delegate_vote_change,
-                ) => Some(wallet_utils::serde_func::serde_to_string(
-                    tron_sign_freeze_delegate_vote_change,
-                )?),
+                // MqttTask::TronSignFreezeDelegateVoteChange(
+                //     tron_sign_freeze_delegate_vote_change,
+                // ) => Some(wallet_utils::serde_func::serde_to_string(
+                //     tron_sign_freeze_delegate_vote_change,
+                // )?),
                 MqttTask::PermissionAccept(req) => {
                     Some(wallet_utils::serde_func::serde_to_string(req)?)
                 }

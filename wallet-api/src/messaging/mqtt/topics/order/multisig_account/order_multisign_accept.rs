@@ -6,6 +6,7 @@ use wallet_database::{
     },
     factory::RepositoryFactory,
     repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
+    DbPool,
 };
 
 use crate::{
@@ -23,9 +24,7 @@ use crate::{
 pub struct OrderMultiSignAccept {
     /// uuid
     pub(crate) id: String,
-    /// order_id
-    // pub(crate) order_id: String,
-    /// 钱包名称
+    // order_id
     pub(crate) name: String,
     /// 发起方地址
     pub(crate) initiator_addr: String,
@@ -36,7 +35,8 @@ pub struct OrderMultiSignAccept {
     /// 签名阀值
     pub(crate) threshold: i32,
     pub(crate) address_type: String,
-    pub(crate) memeber: Vec<wallet_database::entities::multisig_member::MemberVo>,
+    #[serde(rename = "memeber")]
+    pub(crate) member: Vec<MemberVo>,
 }
 
 impl OrderMultiSignAccept {
@@ -51,7 +51,7 @@ impl OrderMultiSignAccept {
 
 impl OrderMultiSignAccept {
     pub fn member_lists(&self) -> Vec<String> {
-        self.memeber
+        self.member
             .iter()
             .map(|i| i.address.to_string())
             .collect::<Vec<String>>()
@@ -79,7 +79,7 @@ impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
             chain_code: value.chain_code.to_owned(),
             threshold: value.threshold,
             address_type: value.address_type.to_string(),
-            memeber: list,
+            member: list,
         }
     }
 }
@@ -100,7 +100,7 @@ impl OrderMultiSignAccept {
         Ok(is_cancel.status)
     }
 
-    pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,
@@ -108,28 +108,17 @@ impl OrderMultiSignAccept {
             "Starting to process OrderMultiSignAccept"
         );
 
-        let OrderMultiSignAccept {
-            ref id,
-            ref name,
-            ref initiator_addr,
-            ref address,
-            ref chain_code,
-            threshold,
-            ref address_type,
-            ref memeber,
-        } = self;
-
         let pool = Context::get_global_sqlite_pool()?;
         let mut repo = RepositoryFactory::repo(pool.clone());
         // 查询后端接口，判断是否账户已被取消
-        if Self::check_if_cancelled(id).await? {
+        if Self::check_if_cancelled(&self.id).await? {
             tracing::warn!(
                 event_name = %event_name,
-                "Multisig Account {id} has been canceled");
+                "Multisig Account {} has been canceled",self.id);
             return Ok(());
         }
 
-        let account = AccountRepoTrait::detail(&mut repo, address).await?;
+        let account = AccountRepoTrait::detail(&mut repo, &self.address).await?;
 
         let uid_list = repo
             .uid_list()
@@ -139,14 +128,14 @@ impl OrderMultiSignAccept {
             .collect();
 
         let mut params = NewMultisigAccountEntity::new(
-            Some(id.to_string()),
-            name.to_string(),
-            initiator_addr.to_string(),
-            address.to_string(),
-            chain_code.to_string(),
-            threshold,
-            address_type.to_string(),
-            memeber.to_owned(),
+            Some(self.id.clone()),
+            self.name.clone(),
+            self.initiator_addr.to_string(),
+            self.address.to_string(),
+            self.address.to_string(),
+            self.threshold,
+            self.address_type.to_string(),
+            self.member.to_owned(),
             &uid_list,
         );
 
@@ -159,24 +148,16 @@ impl OrderMultiSignAccept {
         Self::update_member_info(&mut repo, &mut params).await?;
         tracing::info!(
             event_name = %event_name,
-            "Update member info for account {id}");
+            "Update member info for account {}",self.id);
 
-        Self::sync_multisig_account(params).await?;
+        Self::crate_multisig_account(&pool, params).await?;
 
         tracing::info!(
             event_name = %event_name,
-            "Sync multisig for account {id}");
-        Self::send_system_notification(msg_id, name, address, id).await?;
+            "Sync multisig for account {}",self.id);
+        // Self::send_system_notification(msg_id, name, address, id).await?;
 
-        Self::send_to_frontend(
-            name,
-            initiator_addr,
-            address,
-            chain_code,
-            threshold,
-            memeber,
-        )
-        .await?;
+        Self::send_to_frontend(&self).await?;
         Ok(())
     }
 
@@ -207,7 +188,33 @@ impl OrderMultiSignAccept {
         Ok(())
     }
 
-    async fn send_system_notification(
+    async fn send_to_frontend(accept: &OrderMultiSignAccept) -> Result<(), crate::ServiceError> {
+        let data = NotifyEvent::OrderMultiSignAccept(OrderMultiSignAcceptFrontend {
+            name: accept.name.to_string(),
+            initiator_addr: accept.initiator_addr.to_string(),
+            address: accept.address.to_string(),
+            chain_code: accept.chain_code.to_string(),
+            threshold: accept.threshold,
+            member: accept.member.to_vec(),
+        });
+        FrontendNotifyEvent::new(data).send().await?;
+        Ok(())
+    }
+
+    async fn crate_multisig_account(
+        pool: &DbPool,
+        params: NewMultisigAccountEntity,
+    ) -> Result<(), crate::ServiceError> {
+        let account = MultisigAccountDaoV1::find_by_id(&params.id, pool.as_ref()).await?;
+        if account.is_none() {
+            // 创建多签账户以及多签成员
+            MultisigAccountDaoV1::create_account_with_member(&params, pool.clone()).await?;
+            tracing::info!("Multisig account {} created.", params.id);
+        }
+        Ok(())
+    }
+
+    async fn _send_system_notification(
         msg_id: &str,
         account_name: &str,
         account_address: &str,
@@ -226,39 +233,6 @@ impl OrderMultiSignAccept {
         system_notification_service
             .add_system_notification(msg_id, notification, 0)
             .await?;
-        Ok(())
-    }
-
-    async fn send_to_frontend(
-        name: &str,
-        initiator_addr: &str,
-        address: &str,
-        chain_code: &str,
-        threshold: i32,
-        memeber: &[MemberVo],
-    ) -> Result<(), crate::ServiceError> {
-        let data = NotifyEvent::OrderMultiSignAccept(OrderMultiSignAcceptFrontend {
-            name: name.to_string(),
-            initiator_addr: initiator_addr.to_string(),
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-            threshold,
-            memeber: memeber.to_vec(),
-        });
-        FrontendNotifyEvent::new(data).send().await?;
-        Ok(())
-    }
-
-    async fn sync_multisig_account(
-        params: NewMultisigAccountEntity,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = Context::get_global_sqlite_pool()?;
-        let account = MultisigAccountDaoV1::find_by_id(&params.id, pool.as_ref()).await?;
-        if account.is_none() {
-            // 创建多签账户以及多签成员
-            MultisigAccountDaoV1::create_account_with_member(&params, pool.clone()).await?;
-            tracing::info!("Multisig account {} created.", params.id);
-        }
         Ok(())
     }
 }

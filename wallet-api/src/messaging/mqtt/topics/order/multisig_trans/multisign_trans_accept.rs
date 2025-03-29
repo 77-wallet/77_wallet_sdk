@@ -21,6 +21,7 @@ use wallet_database::{
     DbPool,
 };
 
+// 创建多签交易同步给其他的参与方
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiSignTransAccept {

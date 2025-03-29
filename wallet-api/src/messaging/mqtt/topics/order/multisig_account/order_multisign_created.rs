@@ -1,14 +1,10 @@
 use crate::{
     domain::multisig::MultisigDomain,
-    messaging::{
-        notify::{
-            event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend, FrontendNotifyEvent,
-        },
-        system_notification::{Notification, NotificationType},
+    messaging::notify::{
+        event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend, FrontendNotifyEvent,
     },
-    service::system_notification::SystemNotificationService,
 };
-use wallet_database::{dao::multisig_account::MultisigAccountDaoV1, factory::RepositoryFactory};
+use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 
 /*
     {
@@ -54,7 +50,7 @@ impl OrderMultiSignCreated {
 }
 
 impl OrderMultiSignCreated {
-    pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         tracing::info!(
@@ -107,26 +103,19 @@ impl OrderMultiSignCreated {
                 account.chain_code.clone(),
             )
             .await?;
-            let notification = Notification::new_multisig_notification(
-                &account.name,
-                multisig_account_address,
-                multisig_account_id,
-                NotificationType::DeployCompletion,
-            );
-            // 通知创建
-            // let r#type = SystemNotificationType::MultisigCreated;
-            // let content = Content::MultisigUpgrade {
-            //     multisig_account_id: multisig_account_id.to_string(),
-            //     multisig_account_address: multisig_account_address.to_string(),
-            //     multisig_account_name: account.name.to_string(),
-            //     status: 1,
-            // };
-            let repo = RepositoryFactory::repo(pool.clone());
-            let system_notification_service = SystemNotificationService::new(repo);
+            // let notification = Notification::new_multisig_notification(
+            //     &account.name,
+            //     multisig_account_address,
+            //     multisig_account_id,
+            //     NotificationType::DeployCompletion,
+            // );
 
-            system_notification_service
-                .add_system_notification(msg_id, notification, 0)
-                .await?;
+            // let repo = RepositoryFactory::repo(pool.clone());
+            // let system_notification_service = SystemNotificationService::new(repo);
+
+            // system_notification_service
+            //     .add_system_notification(msg_id, notification, 0)
+            //     .await?;
         }
 
         let data = NotifyEvent::OrderMultiSignCreated(OrderMultiSignCreatedFrontend {

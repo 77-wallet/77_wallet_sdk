@@ -12,7 +12,8 @@ pub struct OrderMultiSignAcceptFrontend {
     pub(crate) chain_code: String,
     /// 签名阀值
     pub(crate) threshold: i32,
-    pub(crate) memeber: Vec<wallet_database::entities::multisig_member::MemberVo>,
+    #[serde(rename = "memeber")]
+    pub(crate) member: Vec<wallet_database::entities::multisig_member::MemberVo>,
 }
 
 // biz_type = ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG
