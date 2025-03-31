@@ -262,13 +262,15 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
-        let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
+        // let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
+        let wallet_address = "0xb11581fe85c1fB85f173ad26d6158F4F19C135bf";
         // let chain_code = "eth";
         // let chain_code = "sol";
         // let chain_code = "btc";
         // let chain_code = "bnb";
         // let chain_code = "eth";
-        let chain_code = "sol";
+        // let chain_code = "sol";
+        let chain_code = "tron";
         // let symbol = "ATLA";
         // let token_address = Some("0x45e9F834539bC2a0936f184779cED638c9B26459".to_string());
         // let protocol = Some("ERC20".to_string());
@@ -285,7 +287,8 @@ mod test {
         // let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
         // let token_address = "0x55d398326f99059fF775485246999027B3197955";
         // let token_address = "0x55d398326f99059ff775485246999027b3197955";
-        let token_address = "So11111111111111111111111111111111111111112";
+        // let token_address = "So11111111111111111111111111111111111111112";
+        let token_address = "TF17BgPaZYbz8oxbjhriubPDsA7ArKoLX3";
         // let token_address = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 

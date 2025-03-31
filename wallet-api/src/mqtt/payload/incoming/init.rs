@@ -46,6 +46,7 @@ pub struct InitBody {
     #[serde(deserialize_with = "wallet_utils::serde_func::deserialize_uppercase")]
     pub code: String,
     // 合约地址
+    #[serde(rename = "contractAddress")]
     pub token_address: Option<String>,
     // 代币精度
     // pub decimals: Option<u8>,
@@ -104,9 +105,9 @@ impl Init {
             // TODO: 处理余额计算
             let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), decimals)?;
 
+            let format_balance = wallet_utils::unit::format_to_string(balance, decimals)?;
             match assets {
                 Some(_assets) => {
-                    let format_balance = wallet_utils::unit::format_to_string(balance, decimals)?;
                     assets_service
                         .repo
                         .update_balance(
@@ -131,7 +132,8 @@ impl Init {
                     if let Some(main_code) = &main_code {
                         assets = assets
                             .with_name(&main_code.name)
-                            .with_protocol(main_code.protocol.clone());
+                            .with_protocol(main_code.protocol.clone())
+                            .with_balance(&format_balance);
                     }
 
                     // 查询币价
