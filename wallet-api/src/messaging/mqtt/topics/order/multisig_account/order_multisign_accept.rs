@@ -132,7 +132,7 @@ impl OrderMultiSignAccept {
             self.name.clone(),
             self.initiator_addr.to_string(),
             self.address.to_string(),
-            self.address.to_string(),
+            self.chain_code.to_string(),
             self.threshold,
             self.address_type.to_string(),
             self.member.to_owned(),
