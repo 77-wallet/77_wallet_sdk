@@ -280,4 +280,11 @@ impl MultisigAccountRepo {
         MultisigAccountDaoV1::logic_del_multisig_account(id, &*self.repo.db_pool).await?;
         Ok(())
     }
+
+    pub async fn pending_handle(
+        pool: &DbPool,
+        status: MultisigAccountStatus,
+    ) -> Result<i32, crate::Error> {
+        Ok(MultisigAccountDaoV1::pending_handle(pool.as_ref(), status).await?)
+    }
 }

@@ -428,4 +428,21 @@ impl MultisigQueueDaoV1 {
             .await?;
         Ok(res)
     }
+
+    pub async fn pending_handle<'a, E>(
+        exec: E,
+    ) -> Result<Vec<MultisigQueueEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from multisig_queue where status in (?,?)";
+
+        let res = sqlx::query_as::<_, MultisigQueueEntity>(sql)
+            .bind(MultisigQueueStatus::PendingSignature.to_i8())
+            .bind(MultisigQueueStatus::PendingExecution.to_i8())
+            .fetch_all(exec)
+            .await?;
+
+        Ok(res)
+    }
 }

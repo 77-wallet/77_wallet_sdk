@@ -1,7 +1,7 @@
 use super::multisig_member::MultisigMemberDaoV1;
 use crate::{
     entities::multisig_account::{
-        MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
+        MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
         NewMultisigAccountEntity,
     },
     pagination::Pagination,
@@ -500,5 +500,32 @@ impl MultisigAccountDaoV1 {
         Ok(sqlx::query_as::<sqlx::Sqlite, MultisigAccountEntity>(&sql)
             .fetch_all(exec)
             .await?)
+    }
+
+    pub async fn pending_handle<'a, E>(
+        exec: E,
+        status: MultisigAccountStatus,
+    ) -> Result<i32, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = if status == MultisigAccountStatus::Confirmed {
+            format!(
+                "SELECT count(*) FROM multisig_account WHERE status = {} and owner != {}",
+                status.to_i8(),
+                MultiAccountOwner::Participant.to_i8()
+            )
+        } else {
+            format!(
+                "SELECT count(*) FROM multisig_account WHERE status = {}",
+                status.to_i8()
+            )
+        };
+
+        let count: i32 = sqlx::query_scalar(&sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::DatabaseError::Sqlx(e))?;
+        Ok(count)
     }
 }

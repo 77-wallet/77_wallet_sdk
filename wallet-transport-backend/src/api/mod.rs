@@ -63,6 +63,25 @@ impl BackendApi {
     }
 
     // 发送一个字符串的请求.
+    pub async fn post_req_string<T>(
+        &self,
+        endpoint: &str,
+        body: String,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+    ) -> Result<T, crate::Error>
+    where
+        T: serde::de::DeserializeOwned + serde::Serialize,
+    {
+        let res = self
+            .client
+            .post(endpoint)
+            .body(body)
+            .send::<BackendResponse>()
+            .await?;
+        res.process::<T>(aes_cbc_cryptor)
+    }
+
+    // 发送一个字符串的请求.
     pub async fn post_req_str<T>(
         &self,
         endpoint: &str,
