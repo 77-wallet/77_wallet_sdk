@@ -1,4 +1,8 @@
-use crate::{api::ReturnType, response_vo::app::GetConfigRes, service::app::AppService};
+use crate::{
+    api::ReturnType,
+    response_vo::app::{GetConfigRes, GlobalMsg},
+    service::app::AppService,
+};
 use wallet_database::entities::config::{ConfigEntity, MinValueSwitchConfig};
 use wallet_transport_backend::response_vo::app::{
     AppVersionRes, GetFiatRes, GetOfficialWebsiteRes,
@@ -141,9 +145,18 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn request(&self, endpoint: &str, body: String) -> ReturnType<serde_json::Value> {
+    // app 自己请求后端
+    pub async fn request(&self, endpoint: String, body: String) -> ReturnType<serde_json::Value> {
         AppService::new(self.repo_factory.resource_repo())
-            .request_backend(endpoint, body)
+            .request_backend(&endpoint, body)
+            .await?
+            .into()
+    }
+
+    // 全局的msg
+    pub async fn global_msg(&self) -> ReturnType<GlobalMsg> {
+        AppService::new(self.repo_factory.resource_repo())
+            .global_msg()
             .await?
             .into()
     }

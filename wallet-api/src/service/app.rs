@@ -1,8 +1,13 @@
 use wallet_database::{
     dao::config::ConfigDao,
-    entities::config::{config_key::LANGUAGE, ConfigEntity, MinValueSwitchConfig},
+    entities::{
+        config::{config_key::LANGUAGE, ConfigEntity, MinValueSwitchConfig},
+        multisig_account::MultisigAccountStatus,
+        multisig_queue::MultisigQueueStatus,
+    },
     repositories::{
         announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
+        multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
         system_notification::SystemNotificationRepoTrait, wallet::WalletRepoTrait,
     },
 };
@@ -16,7 +21,7 @@ use crate::{
     infrastructure::task_queue::{
         BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
     },
-    response_vo::app::GetConfigRes,
+    response_vo::app::{GetConfigRes, GlobalMsg},
 };
 
 pub struct AppService<T> {
@@ -355,11 +360,44 @@ impl<
         let backend = crate::manager::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
-        let body = wallet_utils::serde_func::serde_to_value(body)?;
-
         let result = backend
-            .post_req_str::<serde_json::Value>(endpoint, &body, &cryptor)
+            .post_req_string::<serde_json::Value>(endpoint, body, &cryptor)
             .await?;
         Ok(result)
+    }
+
+    pub async fn global_msg(&self) -> Result<GlobalMsg, crate::ServiceError> {
+        let mut msg = GlobalMsg::default();
+
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let queues = MultisigQueueRepo::pending_handle(&pool).await?;
+        for queue in queues.iter() {
+            if !queue.permission_id.is_empty() {
+                msg.pending_multisig_trans += 1;
+                continue;
+            }
+
+            // 多签交易需要判断是否是发起者：多签的发起者才可以执行交易
+            if queue.status == MultisigQueueStatus::PendingExecution.to_i8() {
+                msg.pending_multisig_trans += 1;
+                continue;
+            }
+
+            if MultisigAccountRepo::found_one_id(&queue.account_id, &pool)
+                .await?
+                .is_some()
+            {
+                msg.pending_multisig_trans += 1;
+            };
+        }
+
+        msg.pending_deploy_multisig =
+            MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Confirmed).await?;
+
+        msg.pending_agree_multisig =
+            MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Pending).await?;
+
+        Ok(msg)
     }
 }
