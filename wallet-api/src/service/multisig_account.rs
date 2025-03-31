@@ -398,7 +398,6 @@ impl MultisigAccountService {
 
         // only my address
         let mut self_address = self.repo.self_address_by_id(id).await?;
-
         // do update confirm status
         self.repo
             .update_confirm_status(
