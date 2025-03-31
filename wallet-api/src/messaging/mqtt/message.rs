@@ -12,7 +12,7 @@ pub(crate) struct Message {
     pub(crate) msg_id: String,
     // 业务类型(一个枚举值)
     pub(crate) biz_type: BizType,
-    // 业务数据 T 泛型
+    // 业务数据
     pub(crate) body: serde_json::Value,
     // 客户端标识
     #[allow(dead_code)]
