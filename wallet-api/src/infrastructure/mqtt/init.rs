@@ -68,11 +68,10 @@ pub async fn exec_event(
 ) -> Result<(), crate::ServiceError> {
     while let Some(event) = rx.next().await {
         #[cfg(not(feature = "prod"))]
-        tracing::info!("[mqtt] event: {event:?}");
+        tracing::info!("[mqtt] receive event: {event:?}");
 
         let res = match event {
             rumqttc::v5::Event::Incoming(packet) => {
-                // crate::mqtt::handle::exec_incoming(&client, packet).await
                 crate::messaging::mqtt::handle::exec_incoming(&client, packet).await
             }
             rumqttc::v5::Event::Outgoing(_) => Ok(()),
