@@ -1,4 +1,4 @@
-#![feature(try_trait_v2, let_chains, async_closure)]
+#![feature(try_trait_v2, let_chains)]
 #![allow(unreachable_code)]
 #![allow(clippy::too_many_arguments)]
 pub mod api;
@@ -10,6 +10,7 @@ mod error;
 pub(crate) mod infrastructure;
 mod manager;
 mod messaging;
+pub use messaging::notify::event::NotifyEvent;
 pub use messaging::notify::FrontendNotifyEvent;
 // pub mod mqtt;
 // pub mod notify;
