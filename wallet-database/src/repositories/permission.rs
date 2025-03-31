@@ -184,6 +184,25 @@ impl PermissionRepo {
         Ok(())
     }
 
+    pub async fn delete_all_by_id(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // delete permission
+        PermissionDao::delete_by_id(id, tx.as_mut()).await?;
+
+        // delete all users
+        PermissionUserDao::delete_by_permission(id, tx.as_mut()).await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
+    }
+
     // 删除成员以及权限
     pub async fn delete_one(pool: &DbPool, id: &str) -> Result<(), crate::Error> {
         let mut tx = pool

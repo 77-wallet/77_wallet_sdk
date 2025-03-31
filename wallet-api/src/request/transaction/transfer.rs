@@ -112,6 +112,7 @@ impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
             resource_consume: "".to_string(),
             transaction_time: 0,
             block_height: "0".to_string(),
+            signer: vec![],
         };
         Ok(res)
     }

@@ -8,7 +8,9 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     factory::RepositoryFactory,
-    repositories::account::AccountRepoTrait,
+    repositories::{
+        account::AccountRepoTrait, multisig_queue::MultisigQueueRepo, permission::PermissionRepo,
+    },
 };
 
 use crate::{
@@ -76,6 +78,7 @@ impl AcctChange {
             ref notes,
             net_used,
             energy_used,
+            signer,
         } = self;
 
         let mut _status = if status { 2 } else { 3 };
@@ -113,7 +116,8 @@ impl AcctChange {
         .with_block_height(&block_height.to_string())
         .with_transaction_fee(&transaction_fee.to_string())
         .with_transaction_time(timestamp)
-        .with_resource_consume(&consumer);
+        .with_resource_consume(&consumer)
+        .with_signer(signer);
         BillDao::create(bill_params, pool.as_ref()).await?;
 
         if !queue_id.is_empty() {
@@ -144,6 +148,7 @@ impl AcctChange {
             transfer_type,
             status,
             address,
+            queue_id,
         )
         .await?;
 
@@ -207,6 +212,7 @@ impl AcctChange {
         transfer_type: i8,
         status: bool,
         address: &str,
+        queue_id: &str,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = RepositoryFactory::repo(pool.clone());
@@ -313,39 +319,62 @@ impl AcctChange {
                     }
                 };
                 tracing::warn!("multisig account: address: {address}");
-                if MultisigAccountDaoV1::find_by_address(address, pool.as_ref())
+
+                let queue = MultisigQueueRepo::find_by_id(&pool, queue_id)
                     .await
-                    .map_err(crate::ServiceError::Database)?
-                    .is_none()
-                {
-                    let mut repo = RepositoryFactory::repo(pool.clone());
-                    MultisigDomain::recover_multisig_data_by_address(&mut repo, address).await?;
-                }
+                    .map_err(crate::ServiceError::Database)?;
 
-                if let Some(multisig_account) =
-                    MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
-                {
-                    tracing::warn!("multisig account: name: {}", multisig_account.name);
-                    let notif = Notification::new_transaction_notification(
-                        AccountType::Multisig,
-                        &multisig_account.name,
-                        address,
-                        value,
-                        symbol,
-                        &transaction_status,
-                        tx_hash,
-                        &notification_type,
-                    );
-                    let req = notif.gen_create_system_notification_entity(
-                        msg_id,
-                        0,
-                        Some("tx_hash".to_string()),
-                        Some(tx_hash.to_string()),
-                    )?;
-
-                    reqs.push(req);
+                let Some(account) = queue else {
+                    tracing::warn!("multisig queue not found");
+                    return Ok(());
                 };
 
+                let name = if !account.permission_id.is_empty() {
+                    let permission =
+                        PermissionRepo::find_by_id(&pool, &account.permission_id).await?;
+                    permission.name
+                } else if !account.account_id.is_empty() {
+                    if MultisigAccountDaoV1::find_by_address(address, pool.as_ref())
+                        .await
+                        .map_err(crate::ServiceError::Database)?
+                        .is_none()
+                    {
+                        let mut repo = RepositoryFactory::repo(pool.clone());
+                        MultisigDomain::recover_multisig_data_by_address(&mut repo, address)
+                            .await?;
+                    };
+                    let Some(multisig_account) =
+                        MultisigAccountDaoV1::find_by_address(address, pool.as_ref()).await?
+                    else {
+                        tracing::warn!("multisig account not found");
+                        return Ok(());
+                    };
+
+                    multisig_account.name
+                } else {
+                    tracing::warn!("multisig account not found");
+                    return Ok(());
+                };
+
+                tracing::warn!("multisig account: name: {}", name);
+                let notif = Notification::new_transaction_notification(
+                    AccountType::Multisig,
+                    &name,
+                    address,
+                    value,
+                    symbol,
+                    &transaction_status,
+                    tx_hash,
+                    &notification_type,
+                );
+                let req = notif.gen_create_system_notification_entity(
+                    msg_id,
+                    0,
+                    Some("tx_hash".to_string()),
+                    Some(tx_hash.to_string()),
+                )?;
+
+                reqs.push(req);
                 reqs
             }
             _ => {
@@ -376,7 +405,8 @@ mod test {
         let (_, _) = get_manager().await?;
 
         // let str = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"0x1457a81B300cB106187Dd227b0319E2a851BAb24","isMultisig":0,"status":true,"symbol":"eth","toAddr":"0x7B3123AA8Cf1137Da498f3d581aD3B16a9DC55a9","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":0,"txHash":"0xb8fb5be8584735a0fbb2a9fd8e3a1b7fd1f003203c719d23561c5e679bb5490d","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
-        let str1 = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1","isMultisig":0,"status":true,"symbol":"eth","toAddr":"TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":1,"txHash":"ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
+        // let str1 = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1","isMultisig":0,"status":true,"symbol":"eth","toAddr":"TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":1,"txHash":"ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
+        let str1 = r#"{"blockHeight":70835889,"chainCode":"tron","fromAddr":"TGtSVaqXzzGM2XgbUvgZzZeNqFwp1VvyXS","isMultisig":0,"queueId":"","signer":["TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn"],"status":true,"symbol":"trx","toAddr":"TLCdjLpnWynE7pyT34PQHwv7mXP3GAEPaZ","transactionFee":0.269,"transactionTime":"2025-03-28 11:21:51","transferType":1,"txHash":"6b699d41b3dc42c9e6a461780b48117a6d9a099daffac4dad57324655277d5f8","txKind":1,"value":1,"valueUsdt":0.22988765032767838}"#;
         let changet = serde_json::from_str::<AcctChange>(&str1).unwrap();
 
         let res = changet.exec("1").await;

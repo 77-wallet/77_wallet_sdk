@@ -18,7 +18,11 @@ use crate::{
     pagination::Pagination,
     DbPool,
 };
+use once_cell::sync::Lazy;
 use sqlx::{Pool, Sqlite};
+use tokio::sync::Mutex;
+
+static CREATE_QUEUE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub struct MultisigQueueRepo {
     repo: ResourcesRepo,
@@ -184,6 +188,8 @@ impl MultisigQueueRepo {
         params: &NewSignatureEntity,
         pool: &DbPool,
     ) -> Result<(), crate::Error> {
+        // 防止mqtt 消息进来导致并发问题
+        let _lock = CREATE_QUEUE_LOCK.lock().await;
         let signature = MultisigSignatureDaoV1::find_signature(
             &params.queue_id,
             &params.address,
@@ -404,5 +410,29 @@ impl MultisigQueueRepo {
 
     pub async fn pending_handle(pool: &DbPool) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
         Ok(MultisigQueueDaoV1::pending_handle(pool.as_ref()).await?)
+    }
+    // delete queue and signature
+    pub async fn delete_queue_by_permission(
+        pool: &DbPool,
+        permission_id: &str,
+    ) -> Result<(), crate::Error> {
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        // delete permission
+        let queues = MultisigQueueDaoV1::delete_by_permission(permission_id, tx.as_mut()).await?;
+
+        let ids = queues.iter().map(|q| q.id.clone()).collect::<Vec<String>>();
+
+        // delete all signature
+        MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(tx.as_mut(), ids).await?;
+
+        tx.commit()
+            .await
+            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+
+        Ok(())
     }
 }

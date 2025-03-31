@@ -6,8 +6,8 @@ use crate::get_manager;
 async fn bill_detail() {
     let wallet_manager = get_manager().await;
 
-    let hash = "04c47bce8ef92ba8b00db758642f24aa2f1b3703abedf2a10b7fadb9c82011f8";
-    let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
+    let hash = "9b3b41e2223e128fb86c953fa1bde4e62b22fdaf26fb6f0ff44e5c9e35e5e834";
+    let owner = "TQHq9gP34tLiE2Eg1MeAQjhN6KA6oLRBos";
     let detail = wallet_manager.bill_detail(&hash, &owner).await;
 
     tracing::info!("result {}", serde_json::to_string(&detail).unwrap());

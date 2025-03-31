@@ -217,7 +217,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
-        let wallet_address = "0x2154Fcc3C1CEC3eB158Ed8984934bFD332b32A3d";
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         let res = wallet_manager.physical_delete_wallet(wallet_address).await;
         tracing::info!("res: {res:?}");
@@ -353,10 +353,11 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let list = wallet_manager.get_wallet_list(None, None, None).await;
+        let chain_code = Some("tron".to_string());
+        let list = wallet_manager.get_wallet_list(None, chain_code, None).await;
         let res = serde_json::to_string(&list).unwrap();
         tracing::info!("res: {res:?}");
-        tracing::info!("list: {list:?}");
+        tracing::info!("list: {list:#?}");
         Ok(())
     }
 

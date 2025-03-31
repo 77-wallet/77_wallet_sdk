@@ -363,6 +363,22 @@ impl MultisigQueueDaoV1 {
         Ok(())
     }
 
+    pub async fn delete_by_permission<'a, E>(
+        permission_id: &str,
+        exec: E,
+    ) -> Result<Vec<MultisigQueueEntity>, crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "DELETE FROM multisig_queue WHERE permission_id = $1";
+
+        let rows = sqlx::query_as::<_, MultisigQueueEntity>(sql)
+            .bind(permission_id)
+            .fetch_all(exec)
+            .await?;
+        Ok(rows)
+    }
+
     pub async fn physical_del_multi_multisig_queue<'a, E>(
         exec: E,
         ids: &[&str],

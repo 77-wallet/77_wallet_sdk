@@ -36,6 +36,7 @@ pub enum NotifyEvent {
     // 执行交易的过程
     TransactionProcess(TransactionProcessFrontend),
     ChainChange(ChainChange),
+    ChainChange(ChainChangeFrontend),
 
     // 资源
     ResourceChange(resource::ResourceChangeFrontend),

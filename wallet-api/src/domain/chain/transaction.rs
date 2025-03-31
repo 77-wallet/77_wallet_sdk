@@ -143,14 +143,6 @@ impl ChainTransaction {
         new_bill.resource_consume = resp.resource_consume()?;
         new_bill.transaction_fee = resp.fee;
 
-        crate::domain::bill::BillDomain::create_bill(new_bill).await?;
-
-        if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::manager::Context::get_global_backend_api()?;
-            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-            let _ = backend.delegate_complete(cryptor, &request_id).await;
-        }
-
         // 如果使用了权限，上报给后端
         if let Some(signer) = params.signer {
             let pool = crate::Context::get_global_sqlite_pool()?;
@@ -165,6 +157,8 @@ impl ChainTransaction {
                 crate::PermissionError::ActivesPermissionNotFound,
             ))?;
 
+            let users = permission.users();
+
             let params = TransPermission {
                 address: params.base.from,
                 chain_code: params.base.chain_code,
@@ -172,7 +166,7 @@ impl ChainTransaction {
                 hash: resp.tx_hash.clone(),
                 permission_data: PermissionData {
                     opt_address: signer.address.to_string(),
-                    users: permission.users(),
+                    users: users.clone(),
                 },
             };
 
@@ -180,6 +174,16 @@ impl ChainTransaction {
                 BackendApiTaskData::new(endpoint::UPLOAD_PERMISSION_TRANS, &params)?,
             ));
             let _ = task_queue::Tasks::new().push(task).send().await;
+
+            new_bill.signer = users;
+        }
+
+        crate::domain::bill::BillDomain::create_bill(new_bill).await?;
+
+        if let Some(request_id) = params.base.request_resource_id {
+            let backend = crate::manager::Context::get_global_backend_api()?;
+            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+            let _ = backend.delegate_complete(cryptor, &request_id).await;
         }
 
         Ok(resp.tx_hash)

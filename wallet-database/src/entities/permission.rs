@@ -1,7 +1,9 @@
 use super::permission_user::PermissionUserEntity;
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone)]
+#[derive(
+    Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow, Clone, Hash, PartialEq, Eq,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionEntity {
     pub id: String,
@@ -27,7 +29,7 @@ impl PermissionEntity {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub struct PermissionWithUserEntity {
     pub permission: PermissionEntity,
     pub user: Vec<PermissionUserEntity>,

@@ -151,3 +151,66 @@ impl From<&NewSignatureEntity> for MultiSignTransAcceptCompleteMsgBody {
         }
     }
 }
+<<<<<<< HEAD
+=======
+
+// biz_type = ACCT_CHANGE
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AcctChange {
+    // 交易hash
+    pub tx_hash: String,
+    // 链码
+    pub chain_code: String,
+    // 币种符号
+    #[serde(deserialize_with = "wallet_utils::serde_func::deserialize_uppercase")]
+    pub symbol: String,
+    // 交易方式 0转入 1转出 2初始化
+    pub transfer_type: i8,
+    // 交易类型 1:普通交易，2:部署多签账号 3:服务费
+    pub tx_kind: i8,
+    // 发起方
+    pub from_addr: String,
+    // 接收方
+    #[serde(default)]
+    pub to_addr: String,
+    // 合约地址
+    #[serde(default)]
+    pub token: Option<String>,
+    // 交易额
+    #[serde(default)]
+    pub value: f64,
+    // 手续费
+    pub transaction_fee: f64,
+    // 交易时间
+    #[serde(default)]
+    pub transaction_time: String,
+    // 交易状态 true-成功 false-失败
+    pub status: bool,
+    // 是否多签 1-是，0-否
+    #[serde(default)]
+    pub is_multisig: i32,
+    // 队列id
+    #[serde(default)]
+    pub queue_id: String,
+    // 块高
+    pub block_height: i64,
+    // 备注
+    #[serde(default)]
+    pub notes: String,
+    // 带宽消耗
+    #[serde(default)]
+    pub net_used: u64,
+    // 能量消耗
+    #[serde(default)]
+    pub energy_used: Option<u64>,
+    #[serde(default)]
+    pub signer: Vec<String>,
+}
+
+impl AcctChange {
+    pub(crate) fn name(&self) -> String {
+        "ACCT_CHANGE".to_string()
+    }
+}
+>>>>>>> 5ee5d29d40d7e8ef75d078f32abb952c83729127

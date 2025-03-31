@@ -271,11 +271,14 @@ impl BillDao {
             queue_id,
             block_height,
             notes,
+            signer,
         } = tx;
         let token = token.unwrap_or_default();
         let tx_kind = tx_kind.to_i8();
         let multisig_tx = if multisig_tx { 1 } else { 0 };
         let time = sqlx::types::chrono::Utc::now().timestamp();
+        let signer = signer.join(",");
+        let signer = signer.trim_end_matches(",");
 
         // 一笔代币转账两次账变通知、如果第一次是手续费的通知，symbol 为空，等第二次代币的通知在修改symbol
         // TODO 此处需要优化 不能简单的判断value = 0,在部署多签账号的时候有问题
@@ -298,7 +301,7 @@ impl BillDao {
             format!(
                 "('{hash}','{chain_code}','{symbol}','{tx_type}','{tx_kind}','{owner}','{from}','{to}',
                 '{token}','{value}','{transaction_fee}','{resource_consume}','{transaction_time}','{status}',
-                '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}'
+                '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}','{signer}'
             )",
             )
         };
@@ -307,7 +310,7 @@ impl BillDao {
             (
                 hash,chain_code,symbol,transfer_type,tx_kind,owner,from_addr,to_addr,token,value,
                 transaction_fee,resource_consume,transaction_time,status,is_multisig,block_height,queue_id,notes,
-                created_at,updated_at
+                created_at,updated_at,signer
             ) 
                 values {}
                 on conflict (hash,transfer_type,owner)

@@ -137,7 +137,7 @@ impl StackService {
             args.get_value()
         };
         let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
-        let entity = NewBillEntity::new_stake_bill(
+        let mut entity = NewBillEntity::new_stake_bill(
             hash.clone(),
             from.to_string(),
             args.get_to(),
@@ -146,7 +146,6 @@ impl StackService {
             bill_consumer.to_json_str()?,
             transaction_fee,
         );
-        domain::bill::BillDomain::create_bill(entity).await?;
 
         // if use permission upload backend
         if let Some(signer) = signer {
@@ -158,6 +157,7 @@ impl StackService {
                         crate::PermissionError::ActivesPermissionNotFound,
                     ))?;
 
+            let users = permission.users();
             let params = TransPermission {
                 address: from.to_string(),
                 chain_code: chain_code::TRON.to_string(),
@@ -165,7 +165,7 @@ impl StackService {
                 hash: hash.clone(),
                 permission_data: PermissionData {
                     opt_address: signer.address.to_string(),
-                    users: permission.users(),
+                    users: users.clone(),
                 },
             };
 
@@ -173,7 +173,10 @@ impl StackService {
                 BackendApiTaskData::new(endpoint::UPLOAD_PERMISSION_TRANS, &params)?,
             ));
             let _ = task_queue::Tasks::new().push(task).send().await;
+            entity.signer = users;
         }
+
+        domain::bill::BillDomain::create_bill(entity).await?;
 
         Ok(hash)
     }

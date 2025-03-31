@@ -76,13 +76,13 @@ async fn test_add_permission() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![KeysReq {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        address: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(),
         weight: 1,
     }];
 
     let req = PermissionReq {
-        grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        name: "wode".to_string(),
+        grantor_addr: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        name: "picker".to_string(),
         active_id: None,
         threshold: 1,
         operations: vec![0, 2, 5, 12, 16, 48, 58],
@@ -91,7 +91,7 @@ async fn test_add_permission() {
     let password = "123456".to_string();
 
     let res = wallet_manager
-        .modify_permission(req, "update".to_string(), password)
+        .modify_permission(req, "new".to_string(), password)
         .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
@@ -167,20 +167,28 @@ async fn test_build_multisig_queue() {
 
     let keys = vec![
         KeysReq {
-            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+            address: "TDEmB5MnTQBSm6LLtMsuG4RJ8ajZsoacbG".to_string(),
             weight: 1,
         },
         KeysReq {
-            address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+            address: "TRkW3hXjPsMMeksVPeAYg3rw5egSdA49uZ".to_string(),
+            weight: 1,
+        },
+        KeysReq {
+            address: "TTbAVnrXbhrMGXYxPH9sfJYpYFujn1QBJf".to_string(),
+            weight: 1,
+        },
+        KeysReq {
+            address: "TYD6wPezLZKAqHEH5SexzX9kAocYibB3er".to_string(),
             weight: 1,
         },
     ];
 
     let req = PermissionReq {
-        grantor_addr: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        grantor_addr: "TTbAVnrXbhrMGXYxPH9sfJYpYFujn1QBJf".to_string(),
         name: "stake".to_string(),
-        active_id: Some(4),
-        threshold: 1,
+        active_id: Some(2),
+        threshold: 4,
         operations: vec![1, 54, 55, 59, 56, 57, 58],
         keys,
     };
