@@ -1355,6 +1355,9 @@ impl StackService {
 
         // request resource
         let res = backhand.delegate_order(cryptor, &account, energy).await?;
+        if !res.energy_status {
+            return Err(BusinessError::Stake(StakeError::DelegateEnergyFailed))?;
+        }
 
         let duration = tokio::time::Duration::from_millis(500);
 
