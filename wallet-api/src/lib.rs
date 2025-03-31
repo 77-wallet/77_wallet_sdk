@@ -1,4 +1,4 @@
-#![feature(try_trait_v2, let_chains)]
+#![feature(try_trait_v2, let_chains, async_closure)]
 #![allow(unreachable_code)]
 #![allow(clippy::too_many_arguments)]
 pub mod api;
