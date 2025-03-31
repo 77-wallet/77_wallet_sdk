@@ -366,7 +366,7 @@ impl<
         Ok(result)
     }
 
-    pub async fn global_msg(&self) -> Result<GlobalMsg, crate::ServiceError> {
+    pub async fn global_msg(self) -> Result<GlobalMsg, crate::ServiceError> {
         let mut msg = GlobalMsg::default();
 
         let pool = crate::Context::get_global_sqlite_pool()?;
