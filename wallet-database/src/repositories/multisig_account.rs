@@ -284,7 +284,7 @@ impl MultisigAccountRepo {
     pub async fn pending_handle(
         pool: &DbPool,
         status: MultisigAccountStatus,
-    ) -> Result<i32, crate::Error> {
+    ) -> Result<Vec<MultisigAccountEntity>, crate::Error> {
         Ok(MultisigAccountDaoV1::pending_handle(pool.as_ref(), status).await?)
     }
 }

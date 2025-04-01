@@ -21,7 +21,7 @@ use crate::{
     infrastructure::task_queue::{
         BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
     },
-    response_vo::app::{GetConfigRes, GlobalMsg},
+    response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
 pub struct AppService<T> {
@@ -393,10 +393,18 @@ impl<
         }
 
         msg.pending_deploy_multisig =
-            MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Confirmed).await?;
+            MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Confirmed)
+                .await?
+                .into_iter()
+                .map(|f| MultisigAccountBase::from(f))
+                .collect();
 
         msg.pending_agree_multisig =
-            MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Pending).await?;
+            MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Pending)
+                .await?
+                .into_iter()
+                .map(|f| MultisigAccountBase::from(f))
+                .collect();
 
         Ok(msg)
     }
