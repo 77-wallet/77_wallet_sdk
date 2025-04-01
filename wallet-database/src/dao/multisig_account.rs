@@ -505,27 +505,28 @@ impl MultisigAccountDaoV1 {
     pub async fn pending_handle<'a, E>(
         exec: E,
         status: MultisigAccountStatus,
-    ) -> Result<i32, crate::DatabaseError>
+    ) -> Result<Vec<MultisigAccountEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = if status == MultisigAccountStatus::Confirmed {
             format!(
-                "SELECT count(*) FROM multisig_account WHERE status = {} and owner != {}",
+                "SELECT * FROM multisig_account WHERE status = {} and owner != {}",
                 status.to_i8(),
                 MultiAccountOwner::Participant.to_i8()
             )
         } else {
             format!(
-                "SELECT count(*) FROM multisig_account WHERE status = {}",
+                "SELECT * FROM multisig_account WHERE status = {}",
                 status.to_i8()
             )
         };
 
-        let count: i32 = sqlx::query_scalar(&sql)
-            .fetch_one(exec)
+        let res = sqlx::query_as::<_, MultisigAccountEntity>(&sql)
+            .fetch_all(exec)
             .await
             .map_err(|e| crate::DatabaseError::Sqlx(e))?;
-        Ok(count)
+
+        Ok(res)
     }
 }
