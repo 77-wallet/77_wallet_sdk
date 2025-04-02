@@ -162,7 +162,7 @@ impl SystemNotificationEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn delete_system_notification<'a, E>(exec: E, id: String) -> Result<(), crate::Error>
+    pub async fn delete_system_notification<'a, E>(exec: E, id: &str) -> Result<(), crate::Error>
     where
         E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
     {
