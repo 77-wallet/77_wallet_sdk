@@ -615,7 +615,18 @@ impl WalletService {
         account_id: Option<u32>,
     ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
         let tx = &mut self.repo;
-        let chains: ChainCodeAndName = tx.get_chain_list().await?.into();
+        let chains = tx.get_chain_list().await?;
+        let chain_codes = if let Some(chain_code) = chain_code {
+            vec![chain_code]
+        } else {
+            chains
+                .iter()
+                .map(|chain| chain.chain_code.clone())
+                .collect()
+        };
+
+        let chains: ChainCodeAndName = chains.into();
+
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
         // let service = Service::default();
         let wallet_list = if let Some(wallet_address) = &wallet_address {
@@ -632,7 +643,7 @@ impl WalletService {
             let list = tx
                 .account_list_by_wallet_address_and_chain_code(
                     Some(&wallet_info.address),
-                    chain_code.clone(),
+                    chain_codes.clone(),
                     account_id,
                 )
                 .await?;
@@ -648,7 +659,7 @@ impl WalletService {
                         tx,
                         account.account_id,
                         &wallet_info.address,
-                        chain_code.clone(),
+                        chain_codes.clone(),
                         None,
                     )
                     .await?;

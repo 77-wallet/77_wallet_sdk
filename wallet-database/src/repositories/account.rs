@@ -217,22 +217,18 @@ pub trait AccountRepoTrait: super::TransactionTrait {
     async fn account_list_by_wallet_address_and_chain_code(
         &mut self,
         wallet_address: Option<&str>,
-        chain_code: Option<String>,
+        chain_codes: Vec<String>,
         account_id: Option<u32>,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        let chain_code = if let Some(chain_code) = chain_code {
-            vec![chain_code]
-        } else {
-            vec![]
-        };
+
         crate::execute_with_executor!(
             executor,
             AccountEntity::account_list,
             wallet_address,
             None,
             None,
-            chain_code,
+            chain_codes,
             account_id
         )
     }

@@ -73,9 +73,19 @@ impl AssetsService {
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
         let tx = &mut self.repo;
+        let chains = tx.get_chain_list().await?;
+        let chain_codes = if let Some(chain_code) = chain_code {
+            vec![chain_code]
+        } else {
+            chains
+                .iter()
+                .map(|chain| chain.chain_code.clone())
+                .collect()
+        };
+
         let mut data = self
             .assets_domain
-            .get_account_assets_entity(tx, account_id, wallet_address, chain_code, Some(false))
+            .get_account_assets_entity(tx, account_id, wallet_address, chain_codes, Some(false))
             .await?;
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 

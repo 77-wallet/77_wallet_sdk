@@ -353,7 +353,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let chain_code = Some("tron".to_string());
+        // let chain_code = Some("tron".to_string());
+        let chain_code = None;
         let list = wallet_manager.get_wallet_list(None, chain_code, None).await;
         let res = serde_json::to_string(&list).unwrap();
         tracing::info!("res: {res:?}");

@@ -119,7 +119,10 @@ impl AcctChange {
         .with_resource_consume(&consumer)
         .with_signer(signer);
         BillDao::create(bill_params, pool.as_ref()).await?;
-
+        tracing::info!(
+            event_name = %event_name,
+            "BillDao::create bill_params"
+        );
         if !queue_id.is_empty() {
             let q_status = if _status == 2 {
                 MultisigQueueStatus::Success
@@ -133,10 +136,17 @@ impl AcctChange {
             domain::multisig::queue::MultisigQueueDomain::update_raw_data(queue_id, pool.clone())
                 .await?;
         }
-
+        tracing::info!(
+            event_name = %event_name,
+            "MultisigQueueDaoV1::update_status_and_tx_hash"
+        );
         // 添加或更新资产余额
         Self::upsert_than_sync_assets(from_addr, to_addr, chain_code, symbol).await?;
 
+        tracing::info!(
+            event_name = %event_name,
+            "Self::upsert_than_sync_assets"
+        );
         Self::create_system_notification(
             msg_id,
             tx_hash,
@@ -185,6 +195,13 @@ impl AcctChange {
     ) -> Result<(), crate::ServiceError> {
         let asset_list = vec![from_addr.to_string(), to_addr.to_string()];
 
+        tracing::info!(
+            event_name = "AcctChange.upsert_than_sync_assets",
+            ?asset_list,
+            ?chain_code,
+            ?symbol,
+            "Start upsert_than_sync_assets"
+        );
         if !asset_list.is_empty() {
             let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -406,7 +423,8 @@ mod test {
 
         // let str = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"0x1457a81B300cB106187Dd227b0319E2a851BAb24","isMultisig":0,"status":true,"symbol":"eth","toAddr":"0x7B3123AA8Cf1137Da498f3d581aD3B16a9DC55a9","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":0,"txHash":"0xb8fb5be8584735a0fbb2a9fd8e3a1b7fd1f003203c719d23561c5e679bb5490d","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
         // let str1 = r#"{"blockHeight":21391939,"chainCode":"eth","fromAddr":"TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1","isMultisig":0,"status":true,"symbol":"eth","toAddr":"TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1","token":"","transactionFee":0,"transactionTime":"2024-12-13 06:56:35","transferType":1,"txHash":"ef0e324526c8647a9a480ff41fd8271c85742061c223d522c11a4e18c3c1a87a","txKind":1,"value":0.00011,"valueUsdt":0.42906098761791545}"#;
-        let str1 = r#"{"blockHeight":70835889,"chainCode":"tron","fromAddr":"TGtSVaqXzzGM2XgbUvgZzZeNqFwp1VvyXS","isMultisig":0,"queueId":"","signer":["TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn"],"status":true,"symbol":"trx","toAddr":"TLCdjLpnWynE7pyT34PQHwv7mXP3GAEPaZ","transactionFee":0.269,"transactionTime":"2025-03-28 11:21:51","transferType":1,"txHash":"6b699d41b3dc42c9e6a461780b48117a6d9a099daffac4dad57324655277d5f8","txKind":1,"value":1,"valueUsdt":0.22988765032767838}"#;
+        // let str1 = r#"{"blockHeight":70835889,"chainCode":"tron","fromAddr":"TGtSVaqXzzGM2XgbUvgZzZeNqFwp1VvyXS","isMultisig":0,"queueId":"","signer":["TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn"],"status":true,"symbol":"trx","toAddr":"TLCdjLpnWynE7pyT34PQHwv7mXP3GAEPaZ","transactionFee":0.269,"transactionTime":"2025-03-28 11:21:51","transferType":1,"txHash":"6b699d41b3dc42c9e6a461780b48117a6d9a099daffac4dad57324655277d5f8","txKind":1,"value":1,"valueUsdt":0.22988765032767838}"#;
+        let str1 = r#"{"txHash":"0x19fa3bd522cd9dd181c8cd14adb6cc626ce322c4296d9ff255a322201762c0a9","chainCode":"eth","symbol":"USDT","transferType":1,"txKind":1,"fromAddr":"0xd8Dda100cD442D755407E3D976b9DFfE24e11164","toAddr":"0x6E39F7A298A6523B5785e103e007f9bD37C9DCF2","token":"0xdAC17F958D2ee523a2206206994597C13D831ec7","value":2.12565,"transactionFee":0.000032147019247989,"transactionTime":"2025-04-01 03:18:47","status":true,"isMultisig":0,"queueId":"","blockHeight":22171324,"notes":""}"#;
         let changet = serde_json::from_str::<AcctChange>(&str1).unwrap();
 
         let res = changet.exec("1").await;
