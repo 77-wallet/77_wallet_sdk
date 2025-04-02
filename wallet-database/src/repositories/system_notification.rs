@@ -104,4 +104,13 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, SystemNotificationEntity::count_status_zero,)
     }
+
+    async fn delete_system_notification(&mut self, id: &str) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(
+            executor,
+            SystemNotificationEntity::delete_system_notification,
+            id
+        )
+    }
 }
