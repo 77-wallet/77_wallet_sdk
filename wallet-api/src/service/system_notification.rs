@@ -92,7 +92,13 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let data = list.data;
         let mut res = Vec::new();
         for notif in data {
-            let no: Notification = wallet_utils::serde_func::serde_from_str(&notif.content)?;
+            let no: Notification = match wallet_utils::serde_func::serde_from_str(&notif.content) {
+                Ok(v) => v,
+                Err(_) => {
+                    tx.delete_system_notification(&notif.id).await?;
+                    continue;
+                }
+            };
             let val = match no {
                 Notification::Multisig(notification) => match MultisigAccountDaoV1::find_by_id(
                     &notification.multisig_account_id,
