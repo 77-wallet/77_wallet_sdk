@@ -74,7 +74,7 @@ pub struct TransactionNotification {
     account_name: String,
     account_address: String,
     pub(crate) transaction_amount: f64,
-    pub(crate) currency: String,
+    pub(crate) symbol: String,
     #[serde(default)]
     pub(crate) chain_code: String,
     transaction_status: TransactionStatus,
@@ -173,7 +173,7 @@ impl Notification {
             account_name: account_name.to_string(),
             account_address: account_address.to_string(),
             transaction_amount,
-            currency: currency.to_string(),
+            symbol: currency.to_string(),
             chain_code: chain_code.to_string(),
             transaction_status: transaction_status.clone(),
             transaction_hash: transaction_hash.to_string(),
