@@ -888,7 +888,7 @@ impl StackService {
 
         // energy
         res.energy.total_resource = resource.energy_limit;
-        res.energy.limit_resource = resource.energy_limit - resource.energy_used;
+        res.energy.limit_resource = (resource.energy_limit - resource.energy_used).max(0);
         self.fill_resource_info(
             &mut res.energy,
             &account,
