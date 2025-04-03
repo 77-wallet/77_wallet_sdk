@@ -86,8 +86,13 @@ impl MultisigTransactionService {
         let account = MultisigDomain::account_by_address(&req.from, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
 
-        let key =
-            ChainTransaction::get_key(&req.from, &req.chain_code, password, &req.signer).await?;
+        let key = ChainTransaction::get_key(
+            &account.initiator_addr,
+            &account.chain_code,
+            password,
+            &req.signer,
+        )
+        .await?;
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
         let rs = adapter
