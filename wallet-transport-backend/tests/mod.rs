@@ -15,7 +15,7 @@ mod transaction;
 pub fn init(
 ) -> Result<(wallet_utils::cbc::AesCbcCryptor, BackendApi), wallet_transport_backend::Error> {
     wallet_utils::init_test_log();
-    let base_url = "https://xxxxxxx";
+    let base_url = "https://xxxx.top";
     Ok((
         create_aes_cryptor(),
         BackendApi::new(Some(base_url.to_string()), None)?,

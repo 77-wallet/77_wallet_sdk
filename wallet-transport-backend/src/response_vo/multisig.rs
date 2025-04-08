@@ -1,19 +1,47 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MultisigServiceFee {
-    pub id: String,
-    pub name: String,
-    pub code: String,
-    pub chain_code: String,
-    pub free: f64,
-    pub price: f64,
-}
+// #[derive(Deserialize, Debug, Serialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct MultisigServiceFee {
+//     pub id: String,
+//     pub name: String,
+//     pub code: String,
+//     pub chain_code: String,
+//     pub free: f64,
+//     pub price: f64,
+// }
+
+// #[derive(Deserialize, Debug, Serialize)]
+// #[deprecated = "Use MultisigServiceFeeInfo instead"]
+// pub struct MultisigServiceFees {
+//     pub list: Vec<MultisigServiceFee>,
+// }
 
 #[derive(Deserialize, Debug, Serialize)]
-pub struct MultisigServiceFees {
-    pub list: Vec<MultisigServiceFee>,
+#[serde(rename_all = "camelCase")]
+pub struct MultisigServiceFeeInfo {
+    // 名称
+    pub name: String,
+    // 编码
+    pub code: String,
+    // 链编码
+    pub chain_code: String,
+    // 符号
+    pub fee_token_code: String,
+    // 手续费(抵扣后的手续费)
+    pub free: f64,
+    // 单价
+    pub price: f64,
+    // 是否使用积分
+    pub use_score: bool,
+    // 剩余积分
+    pub score: i32,
+    // 当前花费后剩余的积分
+    pub current_cost_score: i32,
+    // 抵扣前的手续费
+    pub old_free: f64,
+    // 积分交易ID
+    pub score_trans_id: String,
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -134,6 +162,7 @@ pub struct SignedUpdateRechargeHashReq {
     pub receive_chain_code: String,
     pub receive_address: String,
     pub raw_data: String,
+    pub score_trans_id: String,
 }
 
 #[derive(Deserialize, Debug, Serialize)]

@@ -493,20 +493,16 @@ impl SignedFindAddressReq {
 #[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedFeeListReq {
-    // #[serde(default)]
-    // pub name: String,
-    // #[serde(default)]
-    // pub code: String,
     #[serde(default)]
     pub chain_code: String,
+    pub address: String,
 }
 
 impl SignedFeeListReq {
-    pub fn new(chain_code: &str) -> Self {
+    pub fn new(chain_code: &str, address: &str) -> Self {
         Self {
-            // name: Default::default(),
-            // code: Default::default(),
             chain_code: chain_code.to_string(),
+            address: address.to_string(),
         }
     }
 }

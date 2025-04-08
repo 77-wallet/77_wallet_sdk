@@ -298,6 +298,11 @@ impl MultisigDomain {
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
     ) -> Result<(), crate::ServiceError> {
+        if data.fee_hash == MultisigAccountEntity::NONE_TRANS_HASH {
+            data.pay_status = MultisigAccountPayStatus::Paid.to_i8();
+            return Ok(());
+        }
+
         if !data.fee_chain.is_empty() && !data.fee_hash.is_empty() {
             let adapter = ChainAdapterFactory::get_transaction_adapter(&data.fee_chain).await?;
             if let Some(tx_result) = adapter.query_tx_res(&data.fee_hash).await? {

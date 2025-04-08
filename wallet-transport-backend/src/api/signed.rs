@@ -3,13 +3,10 @@ use serde_json::json;
 use super::BackendApi;
 use crate::{
     response::BackendResponse,
-    response_vo::{
-        address::AddressUidList,
-        multisig::{DepositAddress, MultisigServiceFees},
-    },
-    FindAddressRawDataRes, MultisigAccountIsCancelRes, SignedCreateOrderReq, SignedOrderAcceptReq,
-    SignedSaveAddressReq, SignedUpdateRechargeHashReq, SignedUpdateSignedHashReq,
-    SingedOrderCancelReq,
+    response_vo::{address::AddressUidList, multisig::DepositAddress},
+    FindAddressRawDataRes, MultisigAccountIsCancelRes, MultisigServiceFeeInfo,
+    SignedCreateOrderReq, SignedOrderAcceptReq, SignedSaveAddressReq, SignedUpdateRechargeHashReq,
+    SignedUpdateSignedHashReq, SingedOrderCancelReq,
 };
 
 impl BackendApi {
@@ -43,14 +40,15 @@ impl BackendApi {
         res.process(aes_cbc_cryptor)
     }
 
-    pub async fn signed_fee_list(
+    pub async fn signed_fee_info(
         &self,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         req: crate::request::SignedFeeListReq,
-    ) -> Result<MultisigServiceFees, crate::Error> {
+    ) -> Result<MultisigServiceFeeInfo, crate::Error> {
         let res = self
             .client
-            .post("/signed/order/feeList")
+            // .post("/signed/order/feeList")
+            .post("signed/order/feeInfo")
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;

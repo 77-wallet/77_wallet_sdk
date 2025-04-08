@@ -330,29 +330,14 @@ impl MultisigAccountService {
     pub async fn get_multisig_service_fee(
         self,
         chain_code: &str,
+        address: &str,
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         // service fee
-        let req = SignedFeeListReq::new(chain_code);
-        let res = self.backend.signed_fee_list(cryptor, req).await?;
+        let req = SignedFeeListReq::new(chain_code, address);
+        let res = self.backend.signed_fee_info(cryptor, req).await?;
 
-        if res.list.is_empty() {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::ServiceFeeNotConfig,
-            ))?;
-        }
-
-        let fee = res.list.first().unwrap();
-        // address
-        // let req = SignedFindAddressReq::new(chain_code);
-        // let res = self.backend.signed_find_address(req).await?;
-
-        let fee = MultisigFeeVo {
-            symbol: "USDT".to_string(),
-            fee: fee.price.to_string(),
-            // address: res.address,
-        };
-        Ok(fee)
+        Ok(MultisigFeeVo::from(res))
     }
 
     pub async fn check_participant_exists(
@@ -557,36 +542,8 @@ impl MultisigAccountService {
         payer: transaction::ServiceFeePayer,
         password: &str,
     ) -> Result<(String, String), crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-
-        // fetch address
-        let req = SignedFindAddressReq::new(&payer.chain_code);
-        let address = backend.signed_find_address(cryptor, req).await?;
-        let to = &address.address;
-
-        // fetch value
-        let req = SignedFeeListReq::new(&multisig_account.chain_code);
-        let amount = backend.signed_fee_list(cryptor, req).await?;
-        let amount = amount.list.first().unwrap();
-        let value = amount.price.to_string();
-
-        // transfer parameter
-        let base = transaction::BaseTransferReq::new(
-            payer.from,
-            to.to_string(),
-            value.clone(),
-            payer.chain_code.clone(),
-            payer.symbol,
-        );
-        let params = transaction::TransferReq {
-            base,
-            password: password.to_string(),
-            fee_setting: payer.fee_setting.unwrap_or_default(),
-            signer: None,
-        };
-
         let adapter = ChainAdapterFactory::get_transaction_adapter(&payer.chain_code).await?;
+
         // 如果交易hash存在，验证交易是否成功了避免重复
         if !multisig_account.fee_hash.is_empty() {
             let tx = adapter.query_tx_res(&multisig_account.fee_hash).await?;
@@ -606,7 +563,42 @@ impl MultisigAccountService {
             }
         }
 
-        let tx_hash = ChainTransaction::transfer(params, BillKind::ServiceCharge, &adapter).await?;
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+
+        // fetch address
+        let req = SignedFindAddressReq::new(&payer.chain_code);
+        let address = backend.signed_find_address(cryptor, req).await?;
+        let to = &address.address;
+
+        // fetch value
+        let req = SignedFeeListReq::new(&multisig_account.chain_code, &payer.from);
+        let amount = backend.signed_fee_info(cryptor, req).await?;
+        tracing::warn!("amcount {:#?}", amount);
+
+        let tx_hash = if amount.free != 0.0 {
+            let value = amount.free.to_string();
+
+            // transfer parameter
+            let base = transaction::BaseTransferReq::new(
+                payer.from,
+                to.to_string(),
+                value.clone(),
+                payer.chain_code.clone(),
+                payer.symbol,
+            );
+            let params = transaction::TransferReq {
+                base,
+                password: password.to_string(),
+                fee_setting: payer.fee_setting.unwrap_or_default(),
+                signer: None,
+            };
+
+            ChainTransaction::transfer(params, BillKind::ServiceCharge, &adapter).await?
+        } else {
+            // 服务费为0的传入固定的hash
+            MultisigAccountEntity::NONE_TRANS_HASH.to_string()
+        };
 
         // sync to backend
         let mut raw_data = self.repo.multisig_data(&multisig_account.id).await?;
@@ -621,6 +613,7 @@ impl MultisigAccountService {
             receive_chain_code: payer.chain_code,
             receive_address: to.to_string(),
             raw_data: raw_data.to_string()?,
+            score_trans_id: amount.score_trans_id,
         };
         let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
             endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_RECHARGE_HASH.to_string(),
@@ -628,10 +621,13 @@ impl MultisigAccountService {
         }));
         Tasks::new().push(task).send().await?;
 
-        Ok((
-            tx_hash,
-            MultisigAccountPayStatus::PaidPending.to_i8().to_string(),
-        ))
+        let status = if amount.free != 0.0 {
+            MultisigAccountPayStatus::PaidPending
+        } else {
+            MultisigAccountPayStatus::Paid
+        };
+
+        Ok((tx_hash, status.to_i8().to_string()))
     }
 
     async fn _deploy_account(

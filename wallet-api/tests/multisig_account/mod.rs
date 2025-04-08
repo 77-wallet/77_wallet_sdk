@@ -1,11 +1,10 @@
+use crate::get_manager;
 use sqlx::types::chrono::{TimeZone, Utc};
 use wallet_api::request::transaction::ServiceFeePayer;
 use wallet_database::entities::{
     multisig_account::{MultisigAccountData, MultisigAccountEntity},
     multisig_member::{MultisigMemberEntities, MultisigMemberEntity},
 };
-
-use crate::get_manager;
 
 #[tokio::test]
 async fn test_fetch_deposit_address() {
@@ -20,7 +19,10 @@ async fn test_get_service_fee() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    let info = wallet_manager.get_multisig_service_fee(chain_code).await;
+    let address = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let info = wallet_manager
+        .get_multisig_service_fee(chain_code, address)
+        .await;
 
     tracing::info!("{}", serde_json::to_string(&info).unwrap());
 }
@@ -38,14 +40,14 @@ async fn test_deploy_multisig_fee() {
 async fn test_deploy_multisig_account() {
     let wallet_manager = get_manager().await;
 
-    let account_id = "227548537003577344".to_string();
+    let account_id = "247864445341143040".to_string();
 
     let fee_setting = r#"{"gasLimit": 262975,"baseFee": "3329262291","priorityFee": "0","maxFeePerGas": "3995114749"}"#.to_string();
     let fee_setting = Some(fee_setting);
     // let fee_setting = None;
 
     let payer = ServiceFeePayer {
-        from: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
+        from: "TTdwFNWHxXBv6hN8F2qCA3X6ztB6V5g6z7".to_string(),
         chain_code: "tron".to_string(),
         symbol: "TRX".to_string(),
         fee_setting: fee_setting.clone(),

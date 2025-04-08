@@ -46,6 +46,9 @@ pub struct MultisigAccountEntity {
 }
 
 impl MultisigAccountEntity {
+    // 无交易
+    pub const NONE_TRANS_HASH: &str = "NONE_TRANS";
+
     pub fn address_type(&self) -> Option<String> {
         (!self.address_type.is_empty()).then(|| self.address_type.clone())
     }

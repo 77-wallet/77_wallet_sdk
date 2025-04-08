@@ -7,13 +7,13 @@ use crate::get_manager;
 #[tokio::test]
 async fn test_create_multisig_account() {
     let wallet_manager = get_manager().await;
-    let address = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string();
+    let address = "TTdwFNWHxXBv6hN8F2qCA3X6ztB6V5g6z7".to_string();
     let chain_code = "tron".to_string();
 
-    let threshold = 2;
+    let threshold = 1;
     let member1 = MemberVo::new(
         "account_1".to_string(),
-        "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
+        "TTdwFNWHxXBv6hN8F2qCA3X6ztB6V5g6z7".to_string(),
     );
 
     let member2 = MemberVo::new(

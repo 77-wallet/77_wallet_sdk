@@ -3,6 +3,7 @@ use wallet_database::entities::{
     multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntity,
     multisig_queue::MultisigQueueEntity,
 };
+use wallet_transport_backend::MultisigServiceFeeInfo;
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +26,19 @@ pub struct MultisigAccountList {
 pub struct MultisigFeeVo {
     pub symbol: String,
     pub fee: String,
-    // pub address: String,
+    pub old_fee: String,
+    pub score_trans_id: String,
+}
+
+impl From<MultisigServiceFeeInfo> for MultisigFeeVo {
+    fn from(value: MultisigServiceFeeInfo) -> Self {
+        Self {
+            symbol: value.fee_token_code.to_uppercase(),
+            fee: value.free.to_string(),
+            old_fee: value.old_free.to_string(),
+            score_trans_id: value.score_trans_id,
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
