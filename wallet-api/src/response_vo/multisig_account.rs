@@ -27,6 +27,7 @@ pub struct MultisigFeeVo {
     pub symbol: String,
     pub fee: String,
     pub old_fee: String,
+    pub remain_score: i32,
     pub score_trans_id: String,
 }
 
@@ -37,6 +38,7 @@ impl From<MultisigServiceFeeInfo> for MultisigFeeVo {
             fee: value.free.to_string(),
             old_fee: value.old_free.to_string(),
             score_trans_id: value.score_trans_id,
+            remain_score: value.score,
         }
     }
 }
