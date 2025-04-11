@@ -199,6 +199,11 @@ impl BillKind {
     pub fn in_transfer_type(&self) -> bool {
         matches!(self, BillKind::WithdrawUnFreeze | BillKind::WithdrawReward)
     }
+
+    // 这个交易类型是否需要创建系统通知
+    pub fn needs_system_notify(&self) -> bool {
+        matches!(self, BillKind::Transfer)
+    }
 }
 
 impl TryFrom<i8> for BillKind {
@@ -422,15 +427,6 @@ impl NewBillEntity {
     }
 
     pub fn get_owner(&self) -> String {
-        // if !self.signer.is_empty() && self.tx_type == 1 {
-        //     let owner = self.signer.first();
-        //     if let Some(owner) = self.signer.first() {
-        //         return owner.to_string();
-        //     } else {
-        //         return self.from.clone();
-        //     }
-        // }
-
         if self.tx_kind.in_transfer_type() {
             self.from.clone()
         } else if self.tx_type == 0 {

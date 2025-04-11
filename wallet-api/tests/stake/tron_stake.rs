@@ -36,16 +36,17 @@ async fn test_freeze_fee() {
 async fn test_freeze() {
     let manager = get_manager().await;
 
-    let signer = Signer {
+    let _signer = Signer {
         address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         permission_id: 3,
     };
+    let _signer = None;
 
     let req = FreezeBalanceReq {
-        owner_address: "TQHq9gP34tLiE2Eg1MeAQjhN6KA6oLRBos".to_string(),
+        owner_address: "TQxvQRkXzb1FqSPBTZ1KvGXmQ6QHnPZGAi".to_string(),
         resource: "energy".to_string(),
         frozen_balance: 10,
-        signer: Some(signer),
+        signer: _signer,
     };
     let password = "123456".to_string();
 

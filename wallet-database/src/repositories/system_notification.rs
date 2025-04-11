@@ -1,6 +1,7 @@
 use crate::{
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     pagination::Pagination,
+    DbPool,
 };
 
 #[async_trait::async_trait]
@@ -112,5 +113,22 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
             SystemNotificationEntity::delete_system_notification,
             id
         )
+    }
+}
+
+pub struct SystemNotificationRepo;
+
+impl SystemNotificationRepo {
+    pub async fn find_by_id(
+        id: &str,
+        pool: &DbPool,
+    ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
+        let req = crate::entities::system_notification::QueryReq {
+            key: None,
+            value: None,
+            id: Some(id.to_string()),
+        };
+
+        Ok(SystemNotificationEntity::detail(pool.as_ref(), &req).await?)
     }
 }
