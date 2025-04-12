@@ -1,4 +1,4 @@
-use crate::messaging::mqtt::message::{BizType, Body};
+use crate::messaging::mqtt::message::BizType;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SystemError {
@@ -13,7 +13,7 @@ pub enum SystemError {
     #[error("Frontend notify sender not set")]
     FrontendNotifySenderUnset,
     #[error("Message wrong [biz_type]: {0:?}, [body]: {1:?}")]
-    MessageWrong(BizType, Box<Body>),
+    MessageWrong(BizType, serde_json::Value),
     #[error("Mqtt client not init")]
     MqttClientNotInit,
     #[error("device not init")]

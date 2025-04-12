@@ -82,7 +82,6 @@ pub(crate) enum MqttTask {
     AcctChange(topics::AcctChange),
     Init(topics::Init),
     BulletinMsg(topics::BulletinMsg),
-    // TronSignFreezeDelegateVoteChange(topics::TronSignFreezeDelegateVoteChange),
     PermissionAccept(topics::PermissionAccept),
 }
 

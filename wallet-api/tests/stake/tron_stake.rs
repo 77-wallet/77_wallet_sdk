@@ -180,7 +180,7 @@ async fn test_withdraw() {
 async fn test_system_resource() {
     let manager = get_manager().await;
 
-    let address = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let address = "TTD5EM94SmLPSTyvzjiisjB71QCD4vHQcm".to_string();
     let res = manager.system_resource(address).await;
     tracing::info!("system resource = {}", serde_json::to_string(&res).unwrap());
 }

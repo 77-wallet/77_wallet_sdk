@@ -7,26 +7,26 @@ use crate::get_manager;
 #[tokio::test]
 async fn test_create_multisig_account() {
     let wallet_manager = get_manager().await;
-    let address = "TTdwFNWHxXBv6hN8F2qCA3X6ztB6V5g6z7".to_string();
+    let address = "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string();
     let chain_code = "tron".to_string();
 
-    let threshold = 1;
+    let threshold = 2;
     let member1 = MemberVo::new(
         "account_1".to_string(),
-        "TTdwFNWHxXBv6hN8F2qCA3X6ztB6V5g6z7".to_string(),
+        "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
     );
 
     let member2 = MemberVo::new(
         "account_0".to_string(),
-        "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(),
     );
 
-    // let member3 = MemberVo::new(
-    //     "account_3".to_string(),
-    //     "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-    // );
+    let member3 = MemberVo::new(
+        "account_3".to_string(),
+        "TF5qaPzkzB9s8o8omFP4wNwW1Gxtcx4zQr".to_string(),
+    );
 
-    let member_list = vec![member1, member2];
+    let member_list = vec![member1, member2, member3];
 
     let res = wallet_manager
         .create_multisig_account(
@@ -64,21 +64,22 @@ async fn test_create_transfer() {
 
     let password = "123456".to_string();
 
-    let signer = Signer {
+    let _signer = Signer {
         address: "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string(),
         permission_id: 2,
     };
+    let signer = None;
 
     let params = TransferParams {
-        from: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_owned(),
-        to: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_owned(),
+        from: "TGzSQ8e6M9kTX6bj7jVRLeHxrAECyXx11a".to_owned(),
+        to: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_owned(),
         value: "5".to_owned(),
         expiration: Some(5),
         chain_code: "tron".to_owned(),
         symbol: "TRX".to_owned(),
         notes: Some("salary".to_string()),
         spend_all: false,
-        signer: Some(signer),
+        signer,
     };
 
     // 创建交易
@@ -139,7 +140,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "243784320156831744".to_string();
+    let id = "249333464401317888".to_string();
 
     let password = "123456".to_string();
     let fee = None;
@@ -167,7 +168,7 @@ async fn test_check_ongoing() {
 async fn test_cancel_queue() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "236235581254930432".to_string();
+    let queue_id = "249304140675682304".to_string();
     let rs = wallet_manager.cancel_queue(queue_id).await;
 
     tracing::info!("res {}", serde_json::to_string(&rs).unwrap());

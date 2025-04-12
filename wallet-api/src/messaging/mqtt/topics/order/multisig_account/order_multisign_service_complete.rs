@@ -1,6 +1,9 @@
 use wallet_database::{
     dao::multisig_account::MultisigAccountDaoV1,
-    entities::multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
+    entities::multisig_account::{
+        MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
+    },
+    DbPool,
 };
 
 use crate::{
@@ -38,37 +41,14 @@ impl OrderMultiSignServiceComplete {
             ?self,
             "Starting to process OrderMultiSignServiceComplete"
         );
+
         let OrderMultiSignServiceComplete {
             ref multisig_account_id,
             status,
             r#type,
         } = self;
 
-        if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::ServiceError::Database)?
-            .is_none()
-        {
-            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
-        }
-
-        let Some(account) = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
-            .await
-            .map_err(crate::ServiceError::Database)?
-        else {
-            tracing::error!(
-                event_name = %event_name,
-                multisig_account_id = %multisig_account_id,
-                "Multisig account not found");
-            let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
-
-            let data = NotifyEvent::Err(ErrFront {
-                event: self.name(),
-                message: err.to_string(),
-            });
-            FrontendNotifyEvent::new(data).send().await?;
-            return Err(err);
-        };
+        let account = Self::get_account_or_recover(multisig_account_id, &pool, &event_name).await?;
 
         let multi_account_id = account.id;
 
@@ -89,6 +69,38 @@ impl OrderMultiSignServiceComplete {
         FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
+    }
+
+    async fn get_account_or_recover(
+        multisig_account_id: &str,
+        pool: &DbPool,
+        event_name: &str,
+    ) -> Result<MultisigAccountEntity, crate::ServiceError> {
+        // 第一次查询
+        let mut account =
+            MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref()).await?;
+        if account.is_none() {
+            MultisigDomain::recover_multisig_account_by_id(multisig_account_id).await?;
+
+            account = MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref()).await?;
+        }
+        // 判断最终是否查询到数据
+        if let Some(account) = account {
+            Ok(account)
+        } else {
+            tracing::error!(
+                event_name = %event_name,
+                multisig_account_id = %multisig_account_id,
+                "Multisig account not found"
+            );
+            let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
+            let data = NotifyEvent::Err(ErrFront {
+                event: event_name.to_string(),
+                message: err.to_string(),
+            });
+            FrontendNotifyEvent::new(data).send().await?;
+            Err(err)
+        }
     }
 
     fn get_status(types: u8, status: bool) -> (Option<i8>, Option<i8>) {

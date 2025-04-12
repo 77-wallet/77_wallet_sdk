@@ -16,8 +16,13 @@ use crate::{
 };
 
 use super::{
-    message::{BizType, Body},
-    topics::{AcctChange, ChainChange, PermissionAccept, RpcChange, Topic},
+    message::BizType,
+    topics::{
+        AcctChange, BulletinMsg, ChainChange, Init, MultiSignTransAccept,
+        MultiSignTransAcceptCompleteMsg, MultiSignTransCancel, OrderMultiSignAccept,
+        OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel, OrderMultiSignCreated,
+        OrderMultiSignServiceComplete, PermissionAccept, RpcChange, Topic,
+    },
     Message,
 };
 
@@ -110,149 +115,72 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
 }
 
 pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceError> {
-    let body = match payload.biz_type {
-        BizType::AcctChange => {
-            let data = serde_func::serde_from_value::<AcctChange>(payload.body.clone())?;
-            Body::AcctChange(data)
+    match payload.biz_type {
+        BizType::OrderMultiSignAccept => {
+            exec_task::<OrderMultiSignAccept, _>(&payload, MqttTask::OrderMultiSignAccept).await?
         }
-        // BizType::TronSignFreezeDelegateVoteChange => {
-        //     let data = serde_func::serde_from_value::<TronSignFreezeDelegateVoteChange>(
-        //         payload.body.clone(),
-        //     )?;
-        //     Body::TronSignFreezeDelegateVoteChange(data)
-        // }
+        BizType::OrderMultiSignAcceptCompleteMsg => {
+            exec_task::<OrderMultiSignAcceptCompleteMsg, _>(
+                &payload,
+                MqttTask::OrderMultiSignAcceptCompleteMsg,
+            )
+            .await?
+        }
+        BizType::OrderMultiSignServiceComplete => {
+            exec_task::<OrderMultiSignServiceComplete, _>(
+                &payload,
+                MqttTask::OrderMultiSignServiceComplete,
+            )
+            .await?
+        }
+        BizType::OrderMultiSignCancel => {
+            exec_task::<OrderMultiSignCancel, _>(&payload, MqttTask::OrderMultiSignCancel).await?
+        }
+        BizType::MultiSignTransAccept => {
+            exec_task::<MultiSignTransAccept, _>(&payload, MqttTask::MultiSignTransAccept).await?
+        }
+        BizType::MultiSignTransAcceptCompleteMsg => {
+            exec_task::<MultiSignTransAcceptCompleteMsg, _>(
+                &payload,
+                MqttTask::MultiSignTransAcceptCompleteMsg,
+            )
+            .await?
+        }
+        BizType::AcctChange => exec_task::<AcctChange, _>(&payload, MqttTask::AcctChange).await?,
+        BizType::Init => exec_task::<Init, _>(&payload, MqttTask::Init).await?,
+        BizType::OrderMultiSignCreated => {
+            exec_task::<OrderMultiSignCreated, _>(&payload, MqttTask::OrderMultiSignCreated).await?
+        }
+        BizType::BulletinMsg => {
+            exec_task::<BulletinMsg, _>(&payload, MqttTask::BulletinMsg).await?
+        }
+        BizType::MultiSignTransCancel => {
+            exec_task::<MultiSignTransCancel, _>(&payload, MqttTask::MultiSignTransCancel).await?
+        }
         BizType::PermissionAccept => {
-            let data = serde_func::serde_from_value::<PermissionAccept>(payload.body.clone())?;
-            Body::PermissionAccept(data)
+            exec_task::<PermissionAccept, _>(&payload, MqttTask::PermissionAccept).await?
         }
-        _ => serde_func::serde_from_value(payload.body)?,
-    };
-
-    match (payload.biz_type, body) {
-        (BizType::OrderMultiSignAccept, Body::OrderMultiSignAccept(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::OrderMultiSignAcceptCompleteMsg, Body::OrderMultiSignAcceptCompleteMsg(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::OrderMultiSignAcceptCompleteMsg(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::OrderMultiSignServiceComplete, Body::OrderMultiSignServiceComplete(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::OrderMultiSignServiceComplete(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::OrderMultiSignCancel, Body::OrderMultiSignCancel(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::OrderMultiSignCancel(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::MultiSignTransAccept, Body::MultiSignTransAccept(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::MultiSignTransAccept(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::MultiSignTransAcceptCompleteMsg, Body::MultiSignTransAcceptCompleteMsg(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::MultiSignTransAcceptCompleteMsg(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::AcctChange, Body::AcctChange(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::AcctChange(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::Init, Body::Init(data)) => {
-            Tasks::new()
-                .push_with_id(&payload.msg_id, Task::Mqtt(Box::new(MqttTask::Init(data))))
-                .send()
-                .await?;
-        }
-        (BizType::OrderMultiSignCreated, Body::OrderMultiSignCreated(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::OrderMultiSignCreated(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::BulletinMsg, Body::BulletinMsg(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::BulletinMsg(data))),
-                )
-                .send()
-                .await?;
-        }
-        (BizType::MultiSignTransCancel, Body::MultiSignTransCancel(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(data))),
-                )
-                .send()
-                .await?;
-        }
-        // (
-        //     BizType::TronSignFreezeDelegateVoteChange,
-        //     Body::TronSignFreezeDelegateVoteChange(data),
-        // ) => {
-        //     Tasks::new()
-        //         .push_with_id(
-        //             &payload.msg_id,
-        //             Task::Mqtt(Box::new(MqttTask::TronSignFreezeDelegateVoteChange(data))),
-        //         )
-        //         .send()
-        //         .await?;
-        // }
-        // 权限更新事件
-        (BizType::PermissionAccept, Body::PermissionAccept(data)) => {
-            Tasks::new()
-                .push_with_id(
-                    &payload.msg_id,
-                    Task::Mqtt(Box::new(MqttTask::PermissionAccept(data))),
-                )
-                .send()
-                .await?;
-        }
-        (biztype, data) => {
+        // 如果没有匹配到任何已知的 BizType，则返回错误
+        biztype => {
             return Err(crate::ServiceError::System(
-                crate::SystemError::MessageWrong(biztype, Box::new(data)),
+                crate::SystemError::MessageWrong(biztype, payload.body),
             ));
         }
     }
+
+    Ok(())
+}
+
+async fn exec_task<T, F>(payload: &Message, task_ctor: F) -> Result<(), crate::ServiceError>
+where
+    T: serde::de::DeserializeOwned,
+    F: FnOnce(T) -> MqttTask,
+{
+    let data = serde_func::serde_from_value::<T>(payload.body.clone())?;
+    Tasks::new()
+        .push_with_id(&payload.msg_id, Task::Mqtt(Box::new(task_ctor(data))))
+        .send()
+        .await?;
     Ok(())
 }
 
@@ -1100,3 +1028,146 @@ mod tests {
         Ok(())
     }
 }
+
+// let body = match payload.biz_type {
+//     BizType::AcctChange => {
+//         let data = serde_func::serde_from_value::<AcctChange>(payload.body.clone())?;
+//         Body::AcctChange(data)
+//     }
+//     BizType::MultiSignTransAccept => {
+//         let data = serde_func::serde_from_value::<OrderMultiSignAccept>(payload.body.clone())?;
+//         Body::OrderMultiSignAccept(data)
+//     }
+//     BizType::PermissionAccept => {
+//         let data = serde_func::serde_from_value::<PermissionAccept>(payload.body.clone())?;
+//         Body::PermissionAccept(data)
+//     }
+//     _ => serde_func::serde_from_value(payload.body)?,
+// };
+
+// match (payload.biz_type, body) {
+//     (BizType::OrderMultiSignAccept, Body::OrderMultiSignAccept(data)) => {
+//         let data = serde_func::serde_from_value::<OrderMultiSignAccept>(payload.body.clone())?;
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::OrderMultiSignAcceptCompleteMsg, Body::OrderMultiSignAcceptCompleteMsg(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignAcceptCompleteMsg(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::OrderMultiSignServiceComplete, Body::OrderMultiSignServiceComplete(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignServiceComplete(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::OrderMultiSignCancel, Body::OrderMultiSignCancel(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignCancel(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::MultiSignTransAccept, Body::MultiSignTransAccept(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::MultiSignTransAccept(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::MultiSignTransAcceptCompleteMsg, Body::MultiSignTransAcceptCompleteMsg(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::MultiSignTransAcceptCompleteMsg(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::AcctChange, Body::AcctChange(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::AcctChange(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::Init, Body::Init(data)) => {
+//         Tasks::new()
+//             .push_with_id(&payload.msg_id, Task::Mqtt(Box::new(MqttTask::Init(data))))
+//             .send()
+//             .await?;
+//     }
+//     (BizType::OrderMultiSignCreated, Body::OrderMultiSignCreated(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignCreated(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::BulletinMsg, Body::BulletinMsg(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::BulletinMsg(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (BizType::MultiSignTransCancel, Body::MultiSignTransCancel(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     // (
+//     //     BizType::TronSignFreezeDelegateVoteChange,
+//     //     Body::TronSignFreezeDelegateVoteChange(data),
+//     // ) => {
+//     //     Tasks::new()
+//     //         .push_with_id(
+//     //             &payload.msg_id,
+//     //             Task::Mqtt(Box::new(MqttTask::TronSignFreezeDelegateVoteChange(data))),
+//     //         )
+//     //         .send()
+//     //         .await?;
+//     // }
+//     // 权限更新事件
+//     (BizType::PermissionAccept, Body::PermissionAccept(data)) => {
+//         Tasks::new()
+//             .push_with_id(
+//                 &payload.msg_id,
+//                 Task::Mqtt(Box::new(MqttTask::PermissionAccept(data))),
+//             )
+//             .send()
+//             .await?;
+//     }
+//     (biztype, data) => {
+//         return Err(crate::ServiceError::System(
+//             crate::SystemError::MessageWrong(biztype, Box::new(data)),
+//         ));
+//     }
+// }

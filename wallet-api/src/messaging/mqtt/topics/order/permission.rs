@@ -18,7 +18,6 @@ use wallet_database::{
     DbPool,
 };
 use wallet_types::constant::chain_code;
-use wallet_utils::serde_func;
 
 // biz_type = PERMISSION_ACCEPT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -43,11 +42,11 @@ pub struct CurrentOp {
     operations: String,
 }
 
-impl PermissionAccept {
-    pub fn to_json_val(&self) -> Result<serde_json::Value, crate::ServiceError> {
-        Ok(serde_func::serde_to_value(self)?)
-    }
-}
+// impl PermissionAccept {
+//     pub fn to_json_val(&self) -> Result<serde_json::Value, crate::ServiceError> {
+//         Ok(serde_func::serde_to_value(self)?)
+//     }
+// }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub struct NewPermissionUser {

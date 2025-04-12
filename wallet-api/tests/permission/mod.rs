@@ -81,8 +81,8 @@ async fn test_add_permission() {
     }];
 
     let req = PermissionReq {
-        grantor_addr: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        name: "picker".to_string(),
+        grantor_addr: "TQxvQRkXzb1FqSPBTZ1KvGXmQ6QHnPZGAi".to_string(),
+        name: "????".to_string(),
         active_id: None,
         threshold: 1,
         operations: vec![0, 2, 5, 12, 16, 48, 58],

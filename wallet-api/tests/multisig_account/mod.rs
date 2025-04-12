@@ -40,16 +40,16 @@ async fn test_deploy_multisig_fee() {
 async fn test_deploy_multisig_account() {
     let wallet_manager = get_manager().await;
 
-    let account_id = "247864445341143040".to_string();
+    let account_id = "249341508602433536".to_string();
 
     let fee_setting = r#"{"gasLimit": 262975,"baseFee": "3329262291","priorityFee": "0","maxFeePerGas": "3995114749"}"#.to_string();
     let fee_setting = Some(fee_setting);
     // let fee_setting = None;
 
     let payer = ServiceFeePayer {
-        from: "TTdwFNWHxXBv6hN8F2qCA3X6ztB6V5g6z7".to_string(),
+        from: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
         chain_code: "tron".to_string(),
-        symbol: "TRX".to_string(),
+        symbol: "USDT".to_string(),
         fee_setting: fee_setting.clone(),
         request_resource_id: None,
     };
@@ -78,7 +78,7 @@ async fn test_multisig_account_list() {
 async fn test_cancel_account() {
     let wallet_manager = get_manager().await;
 
-    let id = "233276907775463424".to_string();
+    let id = "249304140675682304".to_string();
     let list = wallet_manager.cancel_multisig(id).await;
     println!("{:?}", list);
 }

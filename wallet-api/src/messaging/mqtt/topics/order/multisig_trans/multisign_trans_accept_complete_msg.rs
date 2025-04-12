@@ -75,20 +75,6 @@ impl MultiSignTransAcceptCompleteMsg {
 
         // sync sign status
         if let Some(item) = body.first() {
-            // if MultisigAccountDaoV1::find_by_address(&item.address, pool.as_ref())
-            //     .await
-            //     .map_err(crate::ServiceError::Database)?
-            //     .is_none()
-            // {
-            //     let mut repo = RepositoryFactory::repo(pool.clone());
-            //     MultisigDomain::recover_multisig_data_by_address(&mut repo, &item.address).await?;
-            // }
-
-            // let account =
-            //     MultisigQueueDaoV1::find_by_id_with_account(&item.queue_id, pool.as_ref())
-            //         .await
-            //         .map_err(|e| crate::ServiceError::Database(e.into()))?;
-
             let queue = MultisigQueueRepo::find_by_id(&pool, &item.queue_id).await?;
             if let Some(queue) = queue {
                 MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
