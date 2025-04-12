@@ -71,7 +71,7 @@ async fn test_create_transfer() {
     let signer = None;
 
     let params = TransferParams {
-        from: "TGzSQ8e6M9kTX6bj7jVRLeHxrAECyXx11a".to_owned(),
+        from: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_owned(),
         to: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_owned(),
         value: "5".to_owned(),
         expiration: Some(5),
@@ -114,7 +114,7 @@ async fn test_queue_info() {
 async fn test_sign_transaction() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "245321650747346944".to_owned();
+    let queue_id = "249578734124929024".to_owned();
     let status = 1;
     let password = "123456".to_string();
     let sign = wallet_manager
@@ -140,7 +140,7 @@ async fn test_multisig_transfer_fee() {
 #[tokio::test]
 async fn test_execute() {
     let wallet_manager = get_manager().await;
-    let id = "249333464401317888".to_string();
+    let id = "249578734124929024".to_string();
 
     let password = "123456".to_string();
     let fee = None;

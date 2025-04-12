@@ -9,16 +9,17 @@ use wallet_database::entities::bill::BillKind;
 async fn test_build_freeze() {
     let manager = get_manager().await;
 
-    let singer = Signer {
+    let _singer = Signer {
         address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         permission_id: 3,
     };
+    let _signer = None;
 
     let req = FreezeBalanceReq {
-        owner_address: "TKKjkyjSMZ9iy8ATJsLp1X4yNqr39Q5v8Q".to_string(),
+        owner_address: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
         resource: "energy".to_string(),
         frozen_balance: 50,
-        signer: Some(singer),
+        signer: _signer,
     };
 
     let bill_kind = BillKind::FreezeEnergy.to_i8() as i64;

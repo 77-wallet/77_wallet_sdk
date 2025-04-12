@@ -1,4 +1,4 @@
-use crate::messaging::mqtt::topics::{BulletinMsg, ChainChange, Init};
+use crate::messaging::mqtt::topics::{BulletinMsg, Init};
 
 use super::{
     multisig::{
@@ -6,7 +6,10 @@ use super::{
         OrderMultiSignCreatedFrontend, OrderMultiSignServiceCompleteFrontend,
         OrderMultisignCanceledFrontend,
     },
-    other::{ConnectionErrorFrontend, DebugFront, ErrFront, TransactionProcessFrontend},
+    other::{
+        ChainChangeFrontend, ConnectionErrorFrontend, DebugFront, ErrFront,
+        TransactionProcessFrontend,
+    },
     permission::PermissionChangeFrontend,
     transaction::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
@@ -38,7 +41,7 @@ pub enum NotifyEvent {
 
     // 执行交易的过程
     TransactionProcess(TransactionProcessFrontend),
-    ChainChange(ChainChange),
+    ChainChange(ChainChangeFrontend),
 
     // 资源
     // ResourceChange(ResourceChangeFrontend),

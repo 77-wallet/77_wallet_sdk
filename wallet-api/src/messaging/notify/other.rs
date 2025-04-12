@@ -22,11 +22,13 @@ pub struct ConnectionErrorFrontend {
     pub message: String,
 }
 
-// biz_type = DEBUG
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ChainChangeFront {
-    pub message: serde_json::Value,
+pub struct ChainChangeFrontend {
+    /// 是否有新启用的链
+    pub has_new_chain: bool,
+    /// 链数据
+    pub chains: Vec<wallet_transport_backend::response_vo::chain::ChainUrlInfo>,
 }
 
 // 执行交易的过程给前端发送交易的类型

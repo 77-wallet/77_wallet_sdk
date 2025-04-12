@@ -85,7 +85,7 @@ async fn test_add_permission() {
         name: "????".to_string(),
         active_id: None,
         threshold: 1,
-        operations: vec![0, 2, 5, 12, 16, 48, 58],
+        operations: vec![1, 0, 2, 5, 12, 16, 48, 58],
         keys,
     };
     let password = "123456".to_string();
@@ -167,28 +167,20 @@ async fn test_build_multisig_queue() {
 
     let keys = vec![
         KeysReq {
-            address: "TDEmB5MnTQBSm6LLtMsuG4RJ8ajZsoacbG".to_string(),
+            address: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(),
             weight: 1,
         },
         KeysReq {
-            address: "TRkW3hXjPsMMeksVPeAYg3rw5egSdA49uZ".to_string(),
-            weight: 1,
-        },
-        KeysReq {
-            address: "TTbAVnrXbhrMGXYxPH9sfJYpYFujn1QBJf".to_string(),
-            weight: 1,
-        },
-        KeysReq {
-            address: "TYD6wPezLZKAqHEH5SexzX9kAocYibB3er".to_string(),
+            address: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
             weight: 1,
         },
     ];
 
     let req = PermissionReq {
-        grantor_addr: "TTbAVnrXbhrMGXYxPH9sfJYpYFujn1QBJf".to_string(),
-        name: "stake".to_string(),
+        grantor_addr: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
+        name: "picker2.0".to_string(),
         active_id: Some(2),
-        threshold: 4,
+        threshold: 2,
         operations: vec![1, 54, 55, 59, 56, 57, 58],
         keys,
     };
@@ -196,7 +188,7 @@ async fn test_build_multisig_queue() {
     let expiration = 5;
 
     let res = wallet_manager
-        .build_multisig_queue(req, "update".to_string(), password, expiration)
+        .build_multisig_queue(req, "new".to_string(), password, expiration)
         .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());

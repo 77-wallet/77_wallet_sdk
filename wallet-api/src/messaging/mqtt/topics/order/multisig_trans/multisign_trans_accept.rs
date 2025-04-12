@@ -1,9 +1,5 @@
-use crate::{
-    messaging::{
-        notify::{event::NotifyEvent, transaction::ConfirmationFrontend, FrontendNotifyEvent},
-        system_notification::{Notification, NotificationType},
-    },
-    service::system_notification::SystemNotificationService,
+use crate::messaging::notify::{
+    event::NotifyEvent, transaction::ConfirmationFrontend, FrontendNotifyEvent,
 };
 use wallet_database::{
     entities::{
@@ -13,12 +9,7 @@ use wallet_database::{
             MultisigSignatureEntity, MultisigSignatureStatus, NewSignatureEntity,
         },
     },
-    factory::RepositoryFactory,
-    repositories::{
-        multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
-        permission::PermissionRepo,
-    },
-    DbPool,
+    repositories::multisig_queue::MultisigQueueRepo,
 };
 
 // 创建多签交易同步给其他的参与方
@@ -90,7 +81,7 @@ impl MultiSignTransAccept {
         // 同步签名的状态
         MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
 
-        self.system_notify(&queue, pool).await?;
+        // self.system_notify(&queue, pool).await?;
 
         let data = NotifyEvent::Confirmation(ConfirmationFrontend::try_from(&self)?);
         FrontendNotifyEvent::new(data).send().await?;
@@ -99,53 +90,53 @@ impl MultiSignTransAccept {
     }
 
     // 系统通知
-    async fn system_notify(
-        &self,
-        queue: &MultisigQueueEntity,
-        pool: DbPool,
-    ) -> Result<(), crate::ServiceError> {
-        let repo = RepositoryFactory::repo(pool.clone());
+    // async fn system_notify(
+    //     &self,
+    //     queue: &MultisigQueueEntity,
+    //     pool: DbPool,
+    // ) -> Result<(), crate::ServiceError> {
+    //     let repo = RepositoryFactory::repo(pool.clone());
 
-        let bill_kind = BillKind::try_from(queue.transfer_type)?;
-        let notification = if !queue.account_id.is_empty() {
-            let account = MultisigAccountRepo::found_one_id(&queue.account_id, &pool).await?;
+    //     let bill_kind = BillKind::try_from(queue.transfer_type)?;
+    //     let notification = if !queue.account_id.is_empty() {
+    //         let account = MultisigAccountRepo::found_one_id(&queue.account_id, &pool).await?;
 
-            if let Some(account) = account {
-                Some(Notification::new_confirmation_notification(
-                    &account.name,
-                    &account.address,
-                    &queue.account_id,
-                    bill_kind,
-                    NotificationType::Confirmation,
-                ))
-            } else {
-                None
-            }
-        } else {
-            let permission = PermissionRepo::find_option(&pool, &queue.permission_id).await?;
+    //         if let Some(account) = account {
+    //             Some(Notification::new_confirmation_notification(
+    //                 &account.name,
+    //                 &account.address,
+    //                 &queue.account_id,
+    //                 bill_kind,
+    //                 NotificationType::Confirmation,
+    //             ))
+    //         } else {
+    //             None
+    //         }
+    //     } else {
+    //         let permission = PermissionRepo::find_option(&pool, &queue.permission_id).await?;
 
-            if let Some(permission) = permission {
-                Some(Notification::new_confirmation_notification(
-                    &permission.name,
-                    &permission.grantor_addr,
-                    &queue.permission_id,
-                    bill_kind,
-                    NotificationType::Confirmation,
-                ))
-            } else {
-                None
-            }
-        };
+    //         if let Some(permission) = permission {
+    //             Some(Notification::new_confirmation_notification(
+    //                 &permission.name,
+    //                 &permission.grantor_addr,
+    //                 &queue.permission_id,
+    //                 bill_kind,
+    //                 NotificationType::Confirmation,
+    //             ))
+    //         } else {
+    //             None
+    //         }
+    //     };
 
-        if let Some(notification) = notification {
-            let system_notification_service = SystemNotificationService::new(repo);
-            system_notification_service
-                .add_system_notification(&queue.id, notification, 0)
-                .await?;
-        }
+    //     if let Some(notification) = notification {
+    //         let system_notification_service = SystemNotificationService::new(repo);
+    //         system_notification_service
+    //             .add_system_notification(&queue.id, notification, 0)
+    //             .await?;
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 #[cfg(test)]
