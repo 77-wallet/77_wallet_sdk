@@ -33,19 +33,6 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 });
 
 impl BackendTaskHandle {
-    pub fn is_default_endpoint(endpoint: &str) -> bool {
-        DEFAULT_ENDPOINTS.contains(&endpoint)
-    }
-
-    /// 获取对应的处理策略
-    fn get_handler(endpoint: &str) -> Box<dyn EndpointHandler + Send + Sync> {
-        if Self::is_default_endpoint(endpoint) {
-            Box::new(DefaultHandler)
-        } else {
-            Box::new(SpecialHandler)
-        }
-    }
-
     pub async fn do_handle(
         endpoint: &str,
         body: serde_json::Value,
@@ -58,6 +45,19 @@ impl BackendTaskHandle {
             .await?;
 
         Ok(())
+    }
+
+    fn is_default_endpoint(endpoint: &str) -> bool {
+        DEFAULT_ENDPOINTS.contains(&endpoint)
+    }
+
+    /// 获取对应的处理策略
+    fn get_handler(endpoint: &str) -> Box<dyn EndpointHandler + Send + Sync> {
+        if Self::is_default_endpoint(endpoint) {
+            Box::new(DefaultHandler)
+        } else {
+            Box::new(SpecialHandler)
+        }
     }
 }
 

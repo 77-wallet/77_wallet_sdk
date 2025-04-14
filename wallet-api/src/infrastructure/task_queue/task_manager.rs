@@ -1,23 +1,12 @@
 use super::{
-    task_handle::backend_handle::BackendTaskHandle, BackendApiTask, CommonTask, InitializationTask,
-    MqttTask, Task,
-};
-use crate::{
-    domain::{
-        self,
-        app::{config::ConfigDomain, mqtt::MqttDomain},
-        multisig::MultisigQueueDomain,
-        node::NodeDomain,
-    },
-    messaging::notify::FrontendNotifyEvent,
-    service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
+    handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task, Task,
 };
 use dashmap::DashSet;
 use rand::Rng as _;
 use std::sync::Arc;
 use tokio_stream::StreamExt as _;
-use wallet_database::repositories::{chain::ChainRepoTrait, task_queue::TaskQueueRepoTrait};
-use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
+use wallet_database::entities::task_queue::TaskQueueEntity;
+use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
@@ -125,7 +114,6 @@ impl TaskManager {
         let mut retry_count = 0;
         let mut delay = 200; // 初始延迟设为 200 毫秒
 
-        // while retry_count <= 10 {
         loop {
             if let Err(e) = Self::handle_task(&task, retry_count).await {
                 tracing::error!(?task, "[task_process] error: {}", e);
@@ -146,10 +134,6 @@ impl TaskManager {
             // 成功处理任务
             break;
         }
-
-        // if retry_count >= 10 {
-        //     tracing::error!("Task {} failed after max retries", task_id);
-        // }
 
         running_tasks.remove(&task_id);
     }
@@ -185,150 +169,4 @@ impl TaskManager {
 
         Ok(())
     }
-}
-
-async fn handle_initialization_task(
-    task: InitializationTask,
-    pool: Arc<sqlx::Pool<sqlx::Sqlite>>,
-) -> Result<(), crate::ServiceError> {
-    match task {
-        InitializationTask::PullAnnouncement => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let announcement_service = AnnouncementService::new(repo);
-            let res = announcement_service.pull_announcement().await;
-
-            res?;
-        }
-        InitializationTask::PullHotCoins => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let mut coin_service = CoinService::new(repo);
-            coin_service.pull_hot_coins().await?;
-            let repo = RepositoryFactory::repo(pool.clone());
-            let coin_service = CoinService::new(repo);
-            coin_service.init_token_price().await?;
-        }
-        InitializationTask::InitTokenPrice => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let coin_service = CoinService::new(repo);
-
-            coin_service.init_token_price().await?;
-        }
-        InitializationTask::ProcessUnconfirmMsg => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let device_service = DeviceService::new(repo);
-            let Some(device) = device_service.get_device_info().await? else {
-                tracing::error!("get device info failed");
-                return Ok(());
-            };
-            let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-            tokio::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
-                loop {
-                    interval.tick().await;
-
-                    if let Err(e) = MqttDomain::process_unconfirm_msg(&client_id).await {
-                        if let Err(e) = FrontendNotifyEvent::send_error(
-                            "InitializationTask::ProcessUnconfirmMsg",
-                            e.to_string(),
-                        )
-                        .await
-                        {
-                            tracing::error!("send_error error: {}", e);
-                        }
-                        tracing::error!("process unconfirm msg error:{}", e);
-                    };
-                    tracing::warn!("处理未确认消息");
-                }
-            });
-        }
-        InitializationTask::SetBlockBrowserUrl => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let mut app_service = crate::service::app::AppService::new(repo);
-            app_service.set_block_browser_url().await?;
-        }
-        InitializationTask::SetFiat => {
-            ConfigDomain::init_currency().await?;
-        }
-        InitializationTask::RecoverQueueData => {
-            MultisigQueueDomain::recover_all_uid_queue_data().await?;
-        }
-        InitializationTask::InitMqtt => {
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            tracing::debug!("init mqtt start");
-            domain::app::mqtt::MqttDomain::init(&mut repo).await?;
-            tracing::debug!("init mqtt end");
-        }
-    }
-    Ok(())
-}
-
-async fn handle_backend_api_task(
-    task: BackendApiTask,
-    backend_api: &wallet_transport_backend::api::BackendApi,
-    aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-) -> Result<(), crate::ServiceError> {
-    match task {
-        BackendApiTask::BackendApi(data) => {
-            BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api, aes_cbc_cryptor)
-                .await?;
-        }
-    }
-    Ok(())
-}
-
-async fn handle_mqtt_task(task: Box<MqttTask>, id: &str) -> Result<(), crate::ServiceError> {
-    match *task {
-        MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignCreated(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignCancel(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransAccept(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
-        MqttTask::AcctChange(data) => data.exec(id).await?,
-        MqttTask::Init(data) => data.exec(id).await?,
-        MqttTask::BulletinMsg(data) => data.exec(id).await?,
-        // MqttTask::TronSignFreezeDelegateVoteChange(data) => data.exec(id).await?,
-        MqttTask::PermissionAccept(data) => data.exec(id).await?,
-    }
-    Ok(())
-}
-
-async fn handle_common_task(
-    task: CommonTask,
-    pool: Arc<sqlx::Pool<sqlx::Sqlite>>,
-) -> Result<(), crate::ServiceError> {
-    match task {
-        CommonTask::QueryCoinPrice(data) => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let coin_service = CoinService::new(repo);
-            coin_service.query_token_price(data).await?;
-        }
-        CommonTask::QueryQueueResult(data) => {
-            domain::multisig::MultisigQueueDomain::sync_queue_status(&data.id).await?
-        }
-        CommonTask::RecoverMultisigAccountData(body) => {
-            domain::multisig::MultisigDomain::recover_uid_multisig_data(&body.uid, None).await?;
-            if let Some(address) = &body.tron_address {
-                domain::permission::PermissionDomain::recover_permission(vec![address.clone()])
-                    .await?;
-            }
-
-            MultisigQueueDomain::recover_all_queue_data(&body.uid).await?;
-        }
-        // CommonTask::RecoverPermission(address) => {
-        //     domain::permission::PermissionDomain::recover_permission(vec![address]).await?;
-        // }
-        CommonTask::SyncNodesAndLinkToChains(data) => {
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            let chain_codes = ChainRepoTrait::get_chain_list_all_status(&mut repo)
-                .await?
-                .into_iter()
-                .map(|chain| chain.chain_code)
-                .collect();
-            NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &data).await?;
-        }
-    }
-    Ok(())
 }
