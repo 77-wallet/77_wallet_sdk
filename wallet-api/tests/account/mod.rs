@@ -55,6 +55,7 @@ async fn create_wallet() {
         true,
         password,
         None,
+        None,
     );
     let res = wallet_manager.create_wallet(req).await;
 

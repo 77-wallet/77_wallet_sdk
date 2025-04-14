@@ -109,6 +109,7 @@ impl FindConfigByKey {
     }
 }
 
+// 上报uid
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeysInitReq {
@@ -118,6 +119,7 @@ pub struct KeysInitReq {
     pub app_id: Option<String>,
     pub device_type: Option<String>,
     pub name: String,
+    pub parent_uid: String,
 }
 
 impl KeysInitReq {
@@ -128,6 +130,7 @@ impl KeysInitReq {
         app_id: Option<String>,
         device_type: Option<String>,
         name: &str,
+        parent_uid: Option<String>,
     ) -> Self {
         Self {
             uid: uid.to_string(),
@@ -136,6 +139,7 @@ impl KeysInitReq {
             app_id,
             device_type,
             name: name.to_string(),
+            parent_uid: parent_uid.unwrap_or_default(),
         }
     }
 }

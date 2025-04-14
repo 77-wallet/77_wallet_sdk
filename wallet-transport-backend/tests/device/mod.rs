@@ -114,6 +114,7 @@ async fn test_keys_init() -> Result<(), wallet_transport_backend::Error> {
         device_type: Some("ANDROID".to_string()),
         app_id: Some("asad".to_string()),
         name: "asad".to_string(),
+        parent_uid: "".to_string(),
     };
     let res = backend_api.keys_init(&aes_cbc_cryptor, &req).await.unwrap();
 

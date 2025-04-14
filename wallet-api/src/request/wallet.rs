@@ -17,6 +17,7 @@ pub struct CreateWalletReq {
     pub is_default_name: bool,
     pub wallet_password: String,
     pub derive_password: Option<String>,
+    pub parent_uid: Option<String>,
 }
 
 impl CreateWalletReq {
@@ -29,6 +30,7 @@ impl CreateWalletReq {
         is_default_name: bool,
         wallet_password: &str,
         derive_password: Option<String>,
+        parent_uid: Option<String>,
     ) -> Self {
         Self {
             language_code,
@@ -39,6 +41,7 @@ impl CreateWalletReq {
             is_default_name,
             wallet_password: wallet_password.to_string(),
             derive_password,
+            parent_uid,
         }
     }
 }

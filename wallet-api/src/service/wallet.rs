@@ -140,6 +140,7 @@ impl WalletService {
                     device.app_id.clone(),
                     Some(device.device_type.clone()),
                     wallet_name,
+                    None,
                 );
                 let keys_init_task_data = BackendApiTaskData::new(
                     wallet_transport_backend::consts::endpoint::KEYS_INIT,
@@ -275,7 +276,7 @@ impl WalletService {
         account_name: &str,
         is_default_name: bool,
         wallet_password: &str,
-        // derive_password: Option<String>,
+        parent_uid: Option<String>,
     ) -> Result<CreateWalletRes, crate::ServiceError> {
         let start = std::time::Instant::now();
         let tx = &mut self.repo;
@@ -482,6 +483,7 @@ impl WalletService {
             device.app_id,
             Some(device.device_type),
             wallet_name,
+            parent_uid,
         );
         let keys_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::KEYS_INIT,

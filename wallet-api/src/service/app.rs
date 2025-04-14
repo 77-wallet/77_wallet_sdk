@@ -167,6 +167,7 @@ impl<
                     device.app_id.clone(),
                     Some(device.device_type.clone()),
                     &wallet.name,
+                    None,
                 );
                 let keys_init_task_data = BackendApiTaskData::new(
                     wallet_transport_backend::consts::endpoint::KEYS_INIT,

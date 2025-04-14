@@ -8,7 +8,10 @@ use wallet_transport_backend::{
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
 
-use crate::domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain};
+use crate::{
+    domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain},
+    FrontendNotifyEvent,
+};
 pub struct BackendTaskHandle;
 
 static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
@@ -121,7 +124,19 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend
                     .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
                     .await;
+
+                // TODO 先单独在这里发送事件，后期修改为统一处理
+                #[cfg(not(feature = "prod"))]
+                if let Err(ref e) = res {
+                    let message = serde_json::json!({
+                        "event": "keys_init_fail",
+                        "message": e.to_string(),
+                    });
+                    let _r = FrontendNotifyEvent::send_debug(message).await;
+                }
+
                 res?;
+
                 let req: wallet_transport_backend::request::KeysInitReq =
                     wallet_utils::serde_func::serde_from_value(body)?;
                 use wallet_database::repositories::wallet::WalletRepoTrait as _;
