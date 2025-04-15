@@ -59,7 +59,7 @@ impl crate::WalletManager {
                 &req.account_name,
                 req.is_default_name,
                 &req.wallet_password,
-                req.parent_uid, // req.derive_password,
+                req.invite_code, // req.derive_password,
             )
             .await?
             .into()

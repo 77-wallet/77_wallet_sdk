@@ -375,13 +375,16 @@ impl<
         let queues = MultisigQueueRepo::pending_handle(&pool).await?;
         for queue in queues.iter() {
             if !queue.permission_id.is_empty() {
-                msg.pending_multisig_trans += 1;
+                msg.pending_multisig_trans
+                    .push(MultisigAccountBase::from(queue));
+
                 continue;
             }
 
             // 多签交易需要判断是否是发起者：多签的发起者才可以执行交易
             if queue.status == MultisigQueueStatus::PendingExecution.to_i8() {
-                msg.pending_multisig_trans += 1;
+                msg.pending_multisig_trans
+                    .push(MultisigAccountBase::from(queue));
                 continue;
             }
 
@@ -389,7 +392,8 @@ impl<
                 .await?
                 .is_some()
             {
-                msg.pending_multisig_trans += 1;
+                msg.pending_multisig_trans
+                    .push(MultisigAccountBase::from(queue));
             };
         }
 

@@ -1,5 +1,6 @@
 use wallet_database::entities::{
-    device::DeviceEntity, multisig_account::MultisigAccountEntity, wallet::WalletEntity,
+    device::DeviceEntity, multisig_account::MultisigAccountEntity,
+    multisig_queue::MultisigQueueEntity, wallet::WalletEntity,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -23,8 +24,8 @@ pub struct UnreadCount {
 #[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalMsg {
-    // 待处理的交易
-    pub pending_multisig_trans: i32,
+    // 待处理的交易(通用了 account base 结构)
+    pub pending_multisig_trans: Vec<MultisigAccountBase>,
     // 待部署的多签
     pub pending_deploy_multisig: Vec<MultisigAccountBase>,
     // 同意的多签数量
@@ -43,6 +44,15 @@ impl From<MultisigAccountEntity> for MultisigAccountBase {
         MultisigAccountBase {
             id: entity.id,
             address: entity.address,
+        }
+    }
+}
+
+impl From<&MultisigQueueEntity> for MultisigAccountBase {
+    fn from(entity: &MultisigQueueEntity) -> Self {
+        MultisigAccountBase {
+            id: entity.id.clone(),
+            address: entity.from_addr.clone(),
         }
     }
 }

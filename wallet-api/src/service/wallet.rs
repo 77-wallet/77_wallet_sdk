@@ -276,7 +276,7 @@ impl WalletService {
         account_name: &str,
         is_default_name: bool,
         wallet_password: &str,
-        parent_uid: Option<String>,
+        invite_code: Option<String>,
     ) -> Result<CreateWalletRes, crate::ServiceError> {
         let start = std::time::Instant::now();
         let tx = &mut self.repo;
@@ -483,7 +483,7 @@ impl WalletService {
             device.app_id,
             Some(device.device_type),
             wallet_name,
-            parent_uid,
+            invite_code,
         );
         let keys_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::KEYS_INIT,

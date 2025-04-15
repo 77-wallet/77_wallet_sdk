@@ -119,7 +119,7 @@ pub struct KeysInitReq {
     pub app_id: Option<String>,
     pub device_type: Option<String>,
     pub name: String,
-    pub parent_uid: String,
+    pub invite_code: String,
 }
 
 impl KeysInitReq {
@@ -130,7 +130,7 @@ impl KeysInitReq {
         app_id: Option<String>,
         device_type: Option<String>,
         name: &str,
-        parent_uid: Option<String>,
+        invite_code: Option<String>,
     ) -> Self {
         Self {
             uid: uid.to_string(),
@@ -139,7 +139,7 @@ impl KeysInitReq {
             app_id,
             device_type,
             name: name.to_string(),
-            parent_uid: parent_uid.unwrap_or_default(),
+            invite_code: invite_code.unwrap_or_default(),
         }
     }
 }
