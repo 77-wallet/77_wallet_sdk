@@ -82,7 +82,7 @@ impl MultisigAccountEntity {
 pub enum MultisigAccountStatus {
     // 等待确认
     Pending = 1,
-    // 确认完成
+    // 确认完成(待部署)
     Confirmed,
     // 上链(成功)
     OnChain,

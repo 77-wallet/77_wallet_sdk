@@ -29,6 +29,7 @@ impl From<&InitDeviceReq> for DeviceInitReq {
             meid: value.meid.to_owned(),
             iccid: value.iccid.to_owned(),
             mem: value.mem.to_owned(),
+            invitee: value.invitee,
         }
     }
 }

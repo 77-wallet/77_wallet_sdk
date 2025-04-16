@@ -35,7 +35,7 @@ pub struct DeviceInitReq {
     pub meid: Option<String>,
     pub iccid: Option<String>,
     pub mem: Option<String>,
-    // pub app_id: Option<String>,
+    pub invitee: bool,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

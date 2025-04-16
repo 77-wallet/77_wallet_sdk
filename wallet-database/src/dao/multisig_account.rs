@@ -517,8 +517,9 @@ impl MultisigAccountDaoV1 {
             )
         } else {
             format!(
-                "SELECT * FROM multisig_account WHERE status = {}",
-                status.to_i8()
+                "SELECT * FROM multisig_account WHERE status = {} and owner = {}",
+                status.to_i8(),
+                MultiAccountOwner::Participant.to_i8()
             )
         };
 
