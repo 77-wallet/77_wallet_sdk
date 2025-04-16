@@ -97,6 +97,7 @@ impl ChainService {
         let mut req = TokenQueryPriceReq(Vec::new());
         let coins = tx.default_coin_list().await?;
 
+        let mut address_init_task_data = Vec::new();
         for wallet in account_wallet_mapping {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
@@ -120,7 +121,7 @@ impl ChainService {
                     let instance: wallet_chain_instance::instance::ChainObject =
                         (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
 
-                    let (account_address, derivation_path) =
+                    let (account_address, derivation_path, task_data) =
                         AccountDomain::create_account_with_account_id(
                             &mut tx,
                             &seed,
@@ -132,6 +133,7 @@ impl ChainService {
                             false,
                         )
                         .await?;
+                    address_init_task_data.push(task_data);
 
                     let keypair = instance
                         .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
@@ -197,6 +199,13 @@ impl ChainService {
             )))
             .send()
             .await?;
+
+        for task in address_init_task_data {
+            Tasks::new()
+                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
+                .send()
+                .await?;
+        }
 
         Ok(())
     }

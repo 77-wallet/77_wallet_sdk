@@ -183,6 +183,7 @@ impl WalletService {
 
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         let mut accounts = Vec::new();
+        let mut address_init_task_data = Vec::new();
         for data in exports {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
                 &data.derivation_path,
@@ -198,7 +199,7 @@ impl WalletService {
                 chain.network.as_str().into(),
             )?;
 
-            let (account, _) = AccountDomain::create_account_with_derivation_path(
+            let (account, _, task_data) = AccountDomain::create_account_with_derivation_path(
                 &mut tx,
                 &seed,
                 &instance,
@@ -210,6 +211,7 @@ impl WalletService {
                 is_default_name,
             )
             .await?;
+            address_init_task_data.push(task_data);
 
             let keypair = instance
                 .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
@@ -235,6 +237,13 @@ impl WalletService {
             wallet_password,
             algorithm,
         )?;
+
+        for task in address_init_task_data {
+            Tasks::new()
+                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
+                .send()
+                .await?;
+        }
         Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
     }
 
@@ -356,6 +365,7 @@ impl WalletService {
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
+        let mut address_init_task_data = Vec::new();
         for account_id in account_ids {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
@@ -384,7 +394,7 @@ impl WalletService {
                     let instance: wallet_chain_instance::instance::ChainObject =
                         (&code, &btc_address_type, network.into()).try_into()?;
 
-                    let (account_address, derivation_path) =
+                    let (account_address, derivation_path, task_data) =
                         AccountDomain::create_account_with_account_id(
                             tx,
                             &seed,
@@ -396,6 +406,7 @@ impl WalletService {
                             is_default_name,
                         )
                         .await?;
+                    address_init_task_data.push(task_data);
 
                     let keypair = instance
                         .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
@@ -533,6 +544,13 @@ impl WalletService {
             )))
             .send()
             .await?;
+
+        for task in address_init_task_data {
+            Tasks::new()
+                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
+                .send()
+                .await?;
+        }
 
         tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(CreateWalletRes {
