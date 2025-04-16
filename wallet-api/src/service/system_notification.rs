@@ -119,7 +119,10 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
                     None => (notif, false).into(),
                 },
                 Notification::Transaction(transaction_notification) => {
-                    if transaction_notification.chain_code.is_empty() {
+                    if transaction_notification.chain_code.is_empty()
+                        | transaction_notification.to_addr.is_empty()
+                        | transaction_notification.from_addr.is_empty()
+                    {
                         tx.delete_system_notification(&notif.id).await?;
                         continue;
                     }

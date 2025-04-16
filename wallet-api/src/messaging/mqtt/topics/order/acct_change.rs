@@ -211,11 +211,11 @@ impl AcctChange {
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
         // 交易方式 0转入 1转出 2初始化
-        let address = match acct_change.transfer_type {
-            0 => acct_change.to_addr.as_str(),
-            1 => acct_change.from_addr.as_str(),
-            _ => return Ok(()),
-        };
+        // let address = match acct_change.transfer_type {
+        //     0 => acct_change.to_addr.as_str(),
+        //     1 => acct_change.from_addr.as_str(),
+        //     _ => return Ok(()),
+        // };
 
         // check system notification exists
         if SystemNotificationRepo::find_by_id(msg_id, pool)
@@ -239,7 +239,8 @@ impl AcctChange {
         let notify = Notification::new_transaction_notification(
             account_type,
             "",
-            address,
+            &acct_change.from_addr,
+            &acct_change.to_addr,
             acct_change.value,
             &acct_change.symbol,
             &acct_change.chain_code,
