@@ -1331,9 +1331,11 @@ impl StackService {
         let req = serde_json::json!({
             "address": address
         });
-        let res = backhand
+        let mut res = backhand
             .post_request::<_, SystemEnergyResp>("delegate/resource/limit", req, aes_cbc_cryptor)
             .await?;
+
+        res.left_times = res.left_times + res.left_award_energy_times;
 
         Ok(res)
     }
