@@ -8,6 +8,8 @@ pub enum WalletError {
     PasswordIncorrect,
     #[error("Password not set")]
     PasswordNotSet,
+    #[error("Wallet not init")]
+    NotInit,
 }
 
 impl WalletError {
@@ -17,6 +19,7 @@ impl WalletError {
             WalletError::NotFound => 3101,
             WalletError::PasswordIncorrect => 3102,
             WalletError::PasswordNotSet => 3103,
+            WalletError::NotInit => 3104,
         }
     }
 }

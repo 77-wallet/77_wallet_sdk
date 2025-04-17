@@ -93,6 +93,22 @@ impl WalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn wallet_detail_by_uid<'a, E>(
+        exec: E,
+        uid: &str,
+    ) -> Result<Option<WalletEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM wallet WHERE uid = ? AND status = 1;";
+
+        sqlx::query_as::<sqlx::Sqlite, WalletEntity>(sql)
+            .bind(uid)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn wallet_detail_by_wallet_name<'a, E>(
         exec: E,
 
