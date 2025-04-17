@@ -125,9 +125,9 @@ impl BillDao {
         sql.push(')');
 
         if let Some(types) = transfer_type {
-            let kind = BillKind::try_from(types as i8)?.get_kinds();
-            let kinds_str = any_in_collection(kind, "','");
-            sql.push_str(format!(" AND tx_kind  in ('{}')", kinds_str).as_str());
+            // let kind = BillKind::try_from(types as i8)?.get_kinds();
+            // let kinds_str = any_in_collection(kind, "','");
+            sql.push_str(format!(" AND tx_kind  = {}", types).as_str());
         }
 
         if let Some(chain_code) = chain_code {
