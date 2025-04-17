@@ -452,7 +452,7 @@ impl CoinService {
         let account_addresses = account_addresses
             .pop()
             .ok_or(crate::ServiceError::Business(
-                crate::BusinessError::Account(crate::AccountError::NotFound),
+                crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())),
             ))?;
 
         tracing::debug!(

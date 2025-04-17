@@ -505,9 +505,9 @@ impl AccountService {
             account_id: None,
             status: Some(1),
         };
-        let account = AccountEntity::detail(db.as_ref(), &req)
-            .await?
-            .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound))?;
+        let account = AccountEntity::detail(db.as_ref(), &req).await?.ok_or(
+            crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())),
+        )?;
 
         // Get the path to the subkeys directory for the given wallet name.
         let subs_dir = dirs.get_subs_dir(&account.wallet_address)?;

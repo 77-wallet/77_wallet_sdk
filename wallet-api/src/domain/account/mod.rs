@@ -385,9 +385,12 @@ pub async fn open_subpk_with_password(
 
     let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-    let account = AccountEntity::detail(db.as_ref(), &req)
-        .await?
-        .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound))?;
+    let account =
+        AccountEntity::detail(db.as_ref(), &req)
+            .await?
+            .ok_or(crate::BusinessError::Account(
+                crate::AccountError::NotFound(address.to_string()),
+            ))?;
 
     let wallet = WalletEntity::detail(db.as_ref(), &account.wallet_address)
         .await?

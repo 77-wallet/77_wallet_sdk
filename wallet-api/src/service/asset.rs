@@ -114,7 +114,9 @@ impl AssetsService {
                     address, account_id, chain_code,
                 )
                 .await?
-                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound))?;
+                .ok_or(crate::BusinessError::Account(
+                    crate::AccountError::NotFound(address.to_string()),
+                ))?;
             account.address
         } else {
             address.to_string()

@@ -62,7 +62,9 @@ impl ChainTransaction {
         let account =
             AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
                 .await?
-                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound))?;
+                .ok_or(crate::BusinessError::Account(
+                    crate::AccountError::NotFound(address.to_string()),
+                ))?;
         Ok(account)
     }
 
