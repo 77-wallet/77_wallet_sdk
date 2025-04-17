@@ -113,6 +113,7 @@ mod test {
                 "default_name",
                 "default_address",
                 "default_address",
+                "default_address",
                 1.0,
                 "TRX",
                 "tron",
@@ -134,6 +135,7 @@ mod test {
                 "default_name",
                 "default_address",
                 "default_address",
+                "default_address",
                 1.0,
                 "TRX",
                 "tron",
@@ -153,6 +155,7 @@ mod test {
             let notification = Notification::new_transaction_notification(
                 AccountType::Multisig,
                 "default_name",
+                "default_address",
                 "default_address",
                 "default_address",
                 1.0,

@@ -72,6 +72,7 @@ pub struct SigConfirmationNotification {
 pub struct TransactionNotification {
     account_type: AccountType,
     account_name: String,
+    account_address: String,
     #[serde(default)]
     pub(crate) from_addr: String,
     #[serde(default)]
@@ -163,6 +164,7 @@ impl Notification {
     pub fn new_transaction_notification(
         account_type: AccountType,
         account_name: &str,
+        account_address: &str,
         from_addr: &str,
         to_addr: &str,
         transaction_amount: f64,
@@ -175,6 +177,7 @@ impl Notification {
         Notification::Transaction(TransactionNotification {
             account_type,
             account_name: account_name.to_string(),
+            account_address: account_address.to_string(),
             from_addr: from_addr.to_string(),
             to_addr: to_addr.to_string(),
             transaction_amount,
