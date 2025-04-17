@@ -2,7 +2,7 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::{
         config::{config_key::LANGUAGE, ConfigEntity, MinValueSwitchConfig},
-        multisig_account::MultisigAccountStatus,
+        multisig_account::{MultiAccountOwner, MultisigAccountStatus},
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
@@ -383,18 +383,19 @@ impl<
 
             // 多签交易需要判断是否是发起者：多签的发起者才可以执行交易
             if queue.status == MultisigQueueStatus::PendingExecution.to_i8() {
-                msg.pending_multisig_trans
-                    .push(MultisigAccountBase::from(queue));
+                if let Some(account) =
+                    MultisigAccountRepo::found_one_id(&queue.account_id, &pool).await?
+                {
+                    if account.owner != MultiAccountOwner::Participant.to_i8() {
+                        msg.pending_multisig_trans
+                            .push(MultisigAccountBase::from(queue));
+                    }
+                }
                 continue;
             }
 
-            if MultisigAccountRepo::found_one_id(&queue.account_id, &pool)
-                .await?
-                .is_some()
-            {
-                msg.pending_multisig_trans
-                    .push(MultisigAccountBase::from(queue));
-            };
+            msg.pending_multisig_trans
+                .push(MultisigAccountBase::from(queue));
         }
 
         msg.pending_deploy_multisig =

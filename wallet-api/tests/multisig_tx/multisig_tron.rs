@@ -71,9 +71,9 @@ async fn test_create_transfer() {
     let signer = None;
 
     let params = TransferParams {
-        from: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_owned(),
-        to: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_owned(),
-        value: "5".to_owned(),
+        from: "TGsmKYhTD8TQWphrJH6YgREYHMK7k6fBhj".to_owned(),
+        to: "TXjTCY6MvvTpxiNaHdkYsRk5FUZ4kh3fUh".to_owned(),
+        value: "99.574".to_owned(),
         expiration: Some(5),
         chain_code: "tron".to_owned(),
         symbol: "TRX".to_owned(),
