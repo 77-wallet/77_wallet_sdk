@@ -73,6 +73,10 @@ pub struct TransactionNotification {
     account_type: AccountType,
     account_name: String,
     account_address: String,
+    #[serde(default)]
+    pub(crate) from_addr: String,
+    #[serde(default)]
+    pub(crate) to_addr: String,
     pub(crate) transaction_amount: f64,
     pub(crate) symbol: String,
     #[serde(default)]
@@ -161,6 +165,8 @@ impl Notification {
         account_type: AccountType,
         account_name: &str,
         account_address: &str,
+        from_addr: &str,
+        to_addr: &str,
         transaction_amount: f64,
         currency: &str,
         chain_code: &str,
@@ -172,6 +178,8 @@ impl Notification {
             account_type,
             account_name: account_name.to_string(),
             account_address: account_address.to_string(),
+            from_addr: from_addr.to_string(),
+            to_addr: to_addr.to_string(),
             transaction_amount,
             symbol: currency.to_string(),
             chain_code: chain_code.to_string(),

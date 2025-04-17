@@ -240,6 +240,8 @@ impl AcctChange {
             account_type,
             "",
             address,
+            &acct_change.from_addr,
+            &acct_change.to_addr,
             acct_change.value,
             &acct_change.symbol,
             &acct_change.chain_code,
