@@ -317,7 +317,7 @@ impl StackService {
                     let r = resp::DelegateListResp::new(
                         &delegate,
                         resource,
-                        delegate.expire_time_for_energy,
+                        delegate.expire_time_for_bandwidth,
                     )?;
                     result.push(r);
                 }

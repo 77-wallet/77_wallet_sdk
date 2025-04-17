@@ -185,8 +185,8 @@ async fn test_batch_un_delegate() {
 async fn test_delegate_to_other() {
     let manager = get_manager().await;
 
-    let owner_address = "TW94Y61N5k1SvVEsdTrE8Qi6GZK3gT9Vcr".to_string();
-    let typs = Some("energy".to_string());
+    let owner_address = "TKLQSZK4TnS48bQwTX5PrUyZ8yopA3gR4D".to_string();
+    let typs = Some("bandwidth".to_string());
     // let typs = None;
     let res = manager.delegate_to_other(owner_address, typs, 0, 10).await;
 
