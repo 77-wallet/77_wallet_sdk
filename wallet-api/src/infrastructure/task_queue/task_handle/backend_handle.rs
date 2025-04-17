@@ -135,7 +135,6 @@ impl EndpointHandler for SpecialHandler {
                     });
                     let _r = FrontendNotifyEvent::send_debug(message).await;
                 }
-
                 res?;
 
                 let req: wallet_transport_backend::request::KeysInitReq =
@@ -154,18 +153,18 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
             }
             endpoint::ADDRESS_INIT => {
-                let res = backend
-                    .post_req_str::<()>(endpoint, &body, aes_cbc_cryptor)
-                    .await;
-                res?;
-                use wallet_database::repositories::account::AccountRepoTrait as _;
                 let req: wallet_transport_backend::request::AddressInitReq =
-                    wallet_utils::serde_func::serde_from_value(body)?;
+                    wallet_utils::serde_func::serde_from_value(body.clone())?;
 
                 let wallet = repo.wallet_detail_by_uid(&req.uid).await?;
                 match wallet {
                     Some(wallet) => {
                         if wallet.is_init == 1 {
+                            let res = backend
+                                .post_req_str::<()>(endpoint, &body, aes_cbc_cryptor)
+                                .await;
+                            res?;
+                            use wallet_database::repositories::account::AccountRepoTrait as _;
                             repo.account_init(&req.address, &req.chain_code).await?;
                         } else {
                             return Err(
