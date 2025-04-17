@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
+use wallet_database::repositories::wallet::WalletRepoTrait;
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
@@ -160,7 +161,24 @@ impl EndpointHandler for SpecialHandler {
                 use wallet_database::repositories::account::AccountRepoTrait as _;
                 let req: wallet_transport_backend::request::AddressInitReq =
                     wallet_utils::serde_func::serde_from_value(body)?;
-                repo.account_init(&req.address, &req.chain_code).await?;
+
+                let wallet = repo.wallet_detail_by_uid(&req.uid).await?;
+                match wallet {
+                    Some(wallet) => {
+                        if wallet.is_init == 1 {
+                            repo.account_init(&req.address, &req.chain_code).await?;
+                        } else {
+                            return Err(
+                                crate::BusinessError::Wallet(crate::WalletError::NotInit).into()
+                            );
+                        }
+                    }
+                    None => {
+                        return Err(
+                            crate::BusinessError::Wallet(crate::WalletError::NotFound).into()
+                        );
+                    }
+                }
             }
             endpoint::TOKEN_CUSTOM_TOKEN_INIT => {
                 let res = backend

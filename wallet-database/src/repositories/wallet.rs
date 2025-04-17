@@ -100,6 +100,14 @@ pub trait WalletRepoTrait: super::TransactionTrait {
         )
     }
 
+    async fn wallet_detail_by_uid(
+        &mut self,
+        uid: &str,
+    ) -> Result<Option<WalletEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, WalletEntity::wallet_detail_by_uid, uid)
+    }
+
     async fn wallet_list(&mut self) -> Result<Vec<WalletEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, WalletEntity::list,)
