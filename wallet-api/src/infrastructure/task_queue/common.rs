@@ -13,6 +13,7 @@ use crate::{
         permission::PermissionDomain,
     },
     service::coin::CoinService,
+    FrontendNotifyEvent, NotifyEvent,
 };
 
 pub(crate) enum CommonTask {
@@ -86,6 +87,10 @@ pub(crate) async fn handle_common_task(
             }
 
             MultisigQueueDomain::recover_all_queue_data(&body.uid).await?;
+
+            // 恢复完成后发送事件给前端
+            let data = NotifyEvent::RecoverComplete;
+            FrontendNotifyEvent::new(data).send().await?;
         }
         CommonTask::SyncNodesAndLinkToChains(data) => {
             let mut repo = RepositoryFactory::repo(pool.clone());

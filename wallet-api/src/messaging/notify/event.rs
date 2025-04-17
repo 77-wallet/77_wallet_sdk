@@ -47,6 +47,9 @@ pub enum NotifyEvent {
     // ResourceChange(ResourceChangeFrontend),
     // 权限变更事件
     PermissionChanger(PermissionChangeFrontend),
+
+    // 恢复多签数据完成
+    RecoverComplete,
 }
 
 impl NotifyEvent {
@@ -86,6 +89,8 @@ impl NotifyEvent {
 
             // 权限变更事件
             NotifyEvent::PermissionChanger(_) => "PERMISSION_CHANGE".to_string(),
+            // 恢复多签数据完成
+            NotifyEvent::RecoverComplete => "RECOVER_COMPLETE".to_string(),
         }
     }
 }
