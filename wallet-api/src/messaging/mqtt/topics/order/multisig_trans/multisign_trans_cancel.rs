@@ -1,3 +1,4 @@
+use crate::{FrontendNotifyEvent, NotifyEvent};
 use wallet_database::{
     entities::multisig_queue::fail_reason, repositories::multisig_queue::MultisigQueueRepo,
 };
@@ -37,6 +38,9 @@ impl MultiSignTransCancel {
         }
 
         MultisigQueueRepo::update_fail(&pool, &self.withdraw_id, fail_reason::CANCEL).await?;
+
+        let data = NotifyEvent::RecoverComplete;
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

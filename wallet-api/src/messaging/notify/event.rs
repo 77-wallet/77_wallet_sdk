@@ -1,5 +1,3 @@
-use crate::messaging::mqtt::topics::{BulletinMsg, Init};
-
 use super::{
     multisig::{
         OrderMultiSignAcceptCompleteMsgFrontend, OrderMultiSignAcceptFrontend,
@@ -15,6 +13,7 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
+use crate::messaging::mqtt::topics::{BulletinMsg, Init};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
@@ -47,9 +46,10 @@ pub enum NotifyEvent {
     // ResourceChange(ResourceChangeFrontend),
     // 权限变更事件
     PermissionChanger(PermissionChangeFrontend),
-
     // 恢复多签数据完成
     RecoverComplete,
+    // 多签交易取消
+    MultisigTransCancel,
 }
 
 impl NotifyEvent {
@@ -84,13 +84,11 @@ impl NotifyEvent {
             NotifyEvent::Err(_) => "ERR".to_string(),
             NotifyEvent::TransactionProcess(_) => "TRANSACTION_PROCESS".to_string(),
 
-            // 资源
-            // NotifyEvent::ResourceChange(_) => "RESOURCE_CHANGE".to_string(),
-
             // 权限变更事件
             NotifyEvent::PermissionChanger(_) => "PERMISSION_CHANGE".to_string(),
             // 恢复多签数据完成
             NotifyEvent::RecoverComplete => "RECOVER_COMPLETE".to_string(),
+            NotifyEvent::MultisigTransCancel => "MULTISIG_TRANS_CANCE".to_string(),
         }
     }
 }
