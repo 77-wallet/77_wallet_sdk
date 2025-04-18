@@ -511,13 +511,13 @@ impl MultisigAccountDaoV1 {
     {
         let sql = if status == MultisigAccountStatus::Confirmed {
             format!(
-                "SELECT * FROM multisig_account WHERE status = {} and owner != {}",
+                "SELECT * FROM multisig_account WHERE status = {} and owner != {} and is_del = 0",
                 status.to_i8(),
                 MultiAccountOwner::Participant.to_i8()
             )
         } else {
             format!(
-                "SELECT * FROM multisig_account WHERE status = {} and owner = {}",
+                "SELECT * FROM multisig_account WHERE status = {} and owner = {} and is_del = 0",
                 status.to_i8(),
                 MultiAccountOwner::Participant.to_i8()
             )
