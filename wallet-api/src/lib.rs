@@ -12,13 +12,10 @@ mod manager;
 mod messaging;
 pub use messaging::notify::event::NotifyEvent;
 pub use messaging::notify::FrontendNotifyEvent;
-// pub mod mqtt;
-// pub mod notify;
 pub mod request;
 mod response;
 pub mod response_vo;
 pub mod service;
-// mod system_notification;
 pub mod test;
 
 pub use error::{
@@ -34,7 +31,6 @@ pub use error::{
 };
 
 pub use config::*;
-
 pub use manager::{Context, WalletManager};
 pub use request::assets::GetChain;
 pub use request::{
