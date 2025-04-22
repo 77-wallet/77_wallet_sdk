@@ -47,8 +47,8 @@ async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
     let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
-    let to = "TTdwFNWHxXBv6hN8F2qCA3X6ztB6V5g6z7";
-    let value = "200";
+    let to = "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ";
+    let value = "800";
     let symbol = "TRX";
     let chain_code = "tron";
     let password = "123456";

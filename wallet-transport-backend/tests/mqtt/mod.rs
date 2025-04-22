@@ -1,6 +1,4 @@
-use wallet_transport_backend::request::{
-    SendMsgConfirm, SendMsgConfirmReq, SendMsgQueryUnconfirmMsgReq,
-};
+use wallet_transport_backend::request::{QueryUnconfirmMsgReq, SendMsgConfirm, SendMsgConfirmReq};
 
 use crate::init;
 
@@ -30,10 +28,10 @@ async fn test_send_msg_query_unconfirm_msg() -> Result<(), wallet_transport_back
 
     let client_id = "7552bd49a9407eb98164c129d11da7e2".to_string();
 
-    let req = SendMsgQueryUnconfirmMsgReq { client_id };
+    let req = QueryUnconfirmMsgReq { client_id };
 
     let res = backend_api
-        .send_msg_query_unconfirm_msg(&aes_cbc_cryptor, &req)
+        .query_unconfirm_msg(&aes_cbc_cryptor, &req)
         .await
         .unwrap();
 

@@ -114,7 +114,7 @@ async fn test_queue_info() {
 async fn test_sign_transaction() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "249578734124929024".to_owned();
+    let queue_id = "253214949810245632".to_owned();
     let status = 1;
     let password = "123456".to_string();
     let sign = wallet_manager

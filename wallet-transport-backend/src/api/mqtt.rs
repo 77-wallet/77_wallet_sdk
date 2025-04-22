@@ -17,11 +17,11 @@ impl BackendApi {
         res.process(aes_cbc_cryptor)
     }
 
-    pub async fn send_msg_query_unconfirm_msg(
+    pub async fn query_unconfirm_msg(
         &self,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-        req: &crate::request::SendMsgQueryUnconfirmMsgReq,
-    ) -> Result<crate::response_vo::mqtt::SendMsgQueryUnconfirmMsgRes, crate::Error> {
+        req: &crate::request::QueryUnconfirmMsgReq,
+    ) -> Result<crate::response_vo::mqtt::UnconfirmMsgRes, crate::Error> {
         let res = self
             .client
             .post("sendMsg/queryUnConfirmMsg")

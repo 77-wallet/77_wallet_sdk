@@ -637,7 +637,7 @@ impl SendMsgConfirm {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SendMsgQueryUnconfirmMsgReq {
+pub struct QueryUnconfirmMsgReq {
     pub client_id: String,
 }
 

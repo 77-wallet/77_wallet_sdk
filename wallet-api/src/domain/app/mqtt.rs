@@ -47,9 +47,9 @@ impl MqttDomain {
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let data = backend_api
-            .send_msg_query_unconfirm_msg(
+            .query_unconfirm_msg(
                 cryptor,
-                &wallet_transport_backend::request::SendMsgQueryUnconfirmMsgReq {
+                &wallet_transport_backend::request::QueryUnconfirmMsgReq {
                     client_id: client_id.to_string(),
                 },
             )

@@ -69,8 +69,8 @@ impl MultiSignTransAcceptCompleteMsg {
 
             MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
 
-            let data = NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
-            FrontendNotifyEvent::new(data).send().await?;
+            // let data = NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
+            // FrontendNotifyEvent::new(data).send().await?;
         }
 
         // sync sign status
@@ -79,6 +79,12 @@ impl MultiSignTransAcceptCompleteMsg {
             if let Some(queue) = queue {
                 MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
             }
+        }
+
+        // 最后同步消息给到前端。
+        for msg in body {
+            let data = NotifyEvent::MultiSignTransAcceptCompleteMsg(msg.to_owned());
+            FrontendNotifyEvent::new(data).send().await?;
         }
 
         Ok(())
