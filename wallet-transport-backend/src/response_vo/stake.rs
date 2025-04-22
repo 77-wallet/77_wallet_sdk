@@ -29,6 +29,8 @@ pub struct SystemEnergyResp {
     pub status: bool,
     // 剩余奖励的次数
     pub left_award_energy_times: i64,
+    // 平台剩余奖励次数
+    pub left_platform_energy_times: i64,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

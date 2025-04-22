@@ -517,7 +517,8 @@ impl MultisigAccountDaoV1 {
             )
         } else {
             format!(
-                "SELECT * FROM multisig_account WHERE status = {} and owner = {} and is_del = 0",
+                "SELECT * FROM multisig_account a WHERE a.status = {}  AND a.owner = {} AND a.is_del = 0 
+            AND EXISTS (SELECT 1 FROM multisig_member m WHERE m.account_id = a.id AND m.confirmed = 0 AND m.is_self = 1)",
                 status.to_i8(),
                 MultiAccountOwner::Participant.to_i8()
             )

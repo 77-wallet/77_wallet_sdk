@@ -398,6 +398,7 @@ impl<
                 .push(MultisigAccountBase::from(queue));
         }
 
+        // 多签账号状态
         msg.pending_deploy_multisig =
             MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Confirmed)
                 .await?
