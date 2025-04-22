@@ -1,5 +1,4 @@
 use crate::domain;
-use crate::domain::account::open_subpk_with_password;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::domain::coin::TokenCurrencyGetter;
@@ -1082,6 +1081,7 @@ impl StackService {
         password: &str,
         args: Vec<impl ops::TronTxOperation<T>>,
         amount: i64,
+        signer: &Option<Signer>,
     ) -> Result<BatchDelegateResp, crate::ServiceError> {
         let resource = ChainTransaction::account_resource(&self.chain, owner_address).await?;
         let chain_param = self.chain.get_provider().chain_params().await?;
@@ -1104,7 +1104,7 @@ impl StackService {
             ))?;
         }
 
-        let key = open_subpk_with_password(chain_code::TRON, owner_address, password).await?;
+        let key = self.get_key(owner_address, signer, password).await?;
         let res = self.batch_exec(owner_address, key, bill_kind, txs).await?;
 
         let resource_value = resource.resource_value(resource_type, amount)?;
@@ -1148,6 +1148,7 @@ impl StackService {
             &password,
             args,
             amount,
+            &req.signer,
         )
         .await
     }
@@ -1182,6 +1183,7 @@ impl StackService {
             &password,
             args,
             amount,
+            &req.signer,
         )
         .await
     }
