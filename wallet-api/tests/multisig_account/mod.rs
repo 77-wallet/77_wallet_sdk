@@ -19,9 +19,10 @@ async fn test_get_service_fee() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    let address = "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string();
+    let pay_chain = "tron".to_string();
+    let pay_address = "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string();
     let info = wallet_manager
-        .get_multisig_service_fee(chain_code, address)
+        .get_multisig_service_fee(pay_chain, chain_code, pay_address)
         .await;
 
     tracing::info!("{}", serde_json::to_string(&info).unwrap());
@@ -78,7 +79,7 @@ async fn test_multisig_account_list() {
 async fn test_cancel_account() {
     let wallet_manager = get_manager().await;
 
-    let id = "253618590442459136".to_string();
+    let id = "253619469224644608".to_string();
     let list = wallet_manager.cancel_multisig(id).await;
     println!("{:?}", list);
 }

@@ -331,21 +331,22 @@ impl MultisigAccountService {
 
     pub async fn get_multisig_service_fee(
         self,
-        chain_code: &str,
-        address: &str,
+        pay_chain: &str,
+        account_chain: &str,
+        pay_address: &str,
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let account_with_wallet = AccountRepo::account_with_wallet(address, chain_code, pool)
+        let account_with_wallet = AccountRepo::account_with_wallet(pay_address, pay_chain, pool)
             .await?
             .ok_or(crate::BusinessError::Account(
-                crate::AccountError::NotFound(address.to_string()),
+                crate::AccountError::NotFound(pay_address.to_string()),
             ))?;
 
         // service fee
-        let req = SignedFeeListReq::new(chain_code, address, account_with_wallet.uid);
+        let req = SignedFeeListReq::new(account_chain, pay_address, account_with_wallet.uid);
         let res = self.backend.signed_fee_info(cryptor, req).await?;
 
         Ok(MultisigFeeVo::from(res))

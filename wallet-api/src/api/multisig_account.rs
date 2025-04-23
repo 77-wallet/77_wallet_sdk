@@ -126,11 +126,12 @@ impl crate::WalletManager {
     /// Gets the multisig service fee for the specified chain code.
     pub async fn get_multisig_service_fee(
         &self,
-        chain_code: String,
-        address: String,
+        pay_chain: String,
+        account_chain: String,
+        pay_address: String,
     ) -> ReturnType<MultisigFeeVo> {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
-            .get_multisig_service_fee(&chain_code, &address)
+            .get_multisig_service_fee(&pay_chain, &account_chain, &pay_address)
             .await
             .into()
     }
