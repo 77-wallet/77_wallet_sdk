@@ -10,10 +10,34 @@ use crate::{
 pub struct JPushService {}
 
 impl JPushService {
-    pub async fn jpush(_message: &str) -> Result<(), crate::ServiceError> {
-        // todo : 有些消息数据过大导致极光推送失败，缩减消息体后数据格式不匹配
-        // 现在不做处理等待 pull_confirm 去获取。
+    pub async fn jpush(message: &str) -> Result<(), crate::ServiceError> {
         // Self::jpush_multi(vec![message.to_string()], "JG").await?;
+        match serde_func::serde_from_str::<Message>(message) {
+            Ok(data) => {
+                let backend_api = crate::manager::Context::get_global_backend_api()?;
+                let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+
+                let data = backend_api
+                    .get_unconfirm_by_msg_id(
+                        cryptor,
+                        &wallet_transport_backend::request::GetUnconfirmById {
+                            msg_id: data.msg_id.to_string(),
+                        },
+                    )
+                    .await?;
+
+                if let Some(msg) = data.body {
+                    Self::jpush_multi(vec![msg], "JG").await?;
+                };
+            }
+            Err(e) => {
+                tracing::error!("[jpush] serde_from_str error: {}", e);
+                if let Err(e) = FrontendNotifyEvent::send_error("jpush", e.to_string()).await {
+                    tracing::error!("send_error error: {}", e);
+                }
+            }
+        };
+
         Ok(())
     }
 
@@ -36,6 +60,10 @@ impl JPushService {
                     continue;
                 }
             };
+
+            tracing::info!("payload {:?}", payload);
+            assert!(false);
+
             let id = payload.msg_id.clone();
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
                 .await?

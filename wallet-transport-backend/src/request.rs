@@ -645,6 +645,12 @@ pub struct QueryUnconfirmMsgReq {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetUnconfirmById {
+    pub msg_id: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChainRpcListReq {
     pub chain_code: Vec<String>,
 }

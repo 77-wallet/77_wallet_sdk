@@ -54,3 +54,14 @@ async fn test_request_invite_summary() {
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
 }
+
+#[tokio::test]
+async fn test_jpush() {
+    let wallet_manager = get_manager().await;
+
+    let message = r#"{"appId":"1a1018970a21904461d","bizType":"ORDER_MULTI_SIGN_ACCEPT","clientId":"26f1ac7a78715eabba2fbe60656479e1","deviceType":"IOS","sn":"debug_655_c4648ead14c15e4221cca81352fca2db2b187fe4d5ebb674d092587224ec82fb","body":{"address":"bc1pccvmtcnqlvgqjpwy40un52rungy6jdrqkfxvjttyafchc29w028sacknc7","id":"253579709500231680"},"msgId":"680865cd8849743638fa1e1e"}"#;
+
+    let res = wallet_manager.process_jpush_message(message).await;
+
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+}
