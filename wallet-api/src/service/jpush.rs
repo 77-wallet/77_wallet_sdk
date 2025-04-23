@@ -10,8 +10,10 @@ use crate::{
 pub struct JPushService {}
 
 impl JPushService {
-    pub async fn jpush(message: &str) -> Result<(), crate::ServiceError> {
-        Self::jpush_multi(vec![message.to_string()], "JG").await?;
+    pub async fn jpush(_message: &str) -> Result<(), crate::ServiceError> {
+        // todo : 有些消息数据过大导致极光推送失败，缩减消息体后数据格式不匹配
+        // 现在不做处理等待 pull_confirm 去获取。
+        // Self::jpush_multi(vec![message.to_string()], "JG").await?;
         Ok(())
     }
 

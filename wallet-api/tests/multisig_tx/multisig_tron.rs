@@ -1,32 +1,31 @@
+use crate::get_manager;
 use wallet_api::{
     request::transaction::Signer, response_vo::transaction::TransferParams, MemberVo,
 };
 
-use crate::get_manager;
-
 #[tokio::test]
 async fn test_create_multisig_account() {
     let wallet_manager = get_manager().await;
-    let address = "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string();
+    let address = "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string();
     let chain_code = "tron".to_string();
 
     let threshold = 2;
     let member1 = MemberVo::new(
         "account_1".to_string(),
-        "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
+        "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string(),
     );
 
     let member2 = MemberVo::new(
         "account_0".to_string(),
-        "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(),
+        "TBvkY3wjbWguq9ihLDotoZ7sydyuSwgisc".to_string(),
     );
 
-    let member3 = MemberVo::new(
-        "account_3".to_string(),
-        "TF5qaPzkzB9s8o8omFP4wNwW1Gxtcx4zQr".to_string(),
-    );
+    // let member3 = MemberVo::new(
+    //     "account_3".to_string(),
+    //     "TF5qaPzkzB9s8o8omFP4wNwW1Gxtcx4zQr".to_string(),
+    // );
 
-    let member_list = vec![member1, member2, member3];
+    let member_list = vec![member1, member2];
 
     let res = wallet_manager
         .create_multisig_account(
