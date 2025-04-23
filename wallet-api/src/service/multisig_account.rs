@@ -1,4 +1,5 @@
 use crate::domain;
+use crate::domain::assets::AssetsDomain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransaction;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
@@ -500,7 +501,7 @@ impl MultisigAccountService {
             let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
             // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
-            domain::assets::AssetsDomain::init_default_multisig_assets(
+            AssetsDomain::init_default_multisig_assets(
                 resp.multisig_address.clone(),
                 multisig_account.chain_code.clone(),
             )
