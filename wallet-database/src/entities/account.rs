@@ -99,3 +99,13 @@ pub struct AccountWalletMapping {
     pub wallet_address: String,
     pub uid: String,
 }
+
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountWithWalletEntity {
+    pub account_id: u32,
+    pub address: String,
+    pub address_type: String,
+    pub wallet_address: String,
+    pub uid: String,
+}

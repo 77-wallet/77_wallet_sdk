@@ -1,4 +1,9 @@
-use crate::entities::account::{AccountEntity, AccountWalletMapping, CreateAccountVo};
+use crate::{
+    entities::account::{
+        AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
+    },
+    DbPool,
+};
 
 // use super::TransactionTrait;
 
@@ -280,5 +285,15 @@ pub trait AccountRepoTrait: super::TransactionTrait {
             AccountEntity::count_unique_account_ids,
             wallet_address
         )
+    }
+}
+
+impl AccountRepo {
+    pub async fn account_with_wallet(
+        address: &str,
+        chain_code: &str,
+        pool: DbPool,
+    ) -> Result<Option<AccountWithWalletEntity>, crate::Error> {
+        AccountEntity::account_with_wallet(address, chain_code, pool.as_ref()).await
     }
 }

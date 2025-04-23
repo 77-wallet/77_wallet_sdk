@@ -500,13 +500,15 @@ pub struct SignedFeeListReq {
     #[serde(default)]
     pub chain_code: String,
     pub address: String,
+    pub uid: String,
 }
 
 impl SignedFeeListReq {
-    pub fn new(chain_code: &str, address: &str) -> Self {
+    pub fn new(chain_code: &str, address: &str, uid: String) -> Self {
         Self {
             chain_code: chain_code.to_string(),
             address: address.to_string(),
+            uid,
         }
     }
 }

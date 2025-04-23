@@ -22,6 +22,7 @@ use wallet_database::entities::multisig_account::{
 use wallet_database::entities::multisig_member::{MemberVo, MultisigMemberEntities};
 use wallet_database::entities::wallet::WalletEntity;
 use wallet_database::pagination::Pagination;
+use wallet_database::repositories::account::AccountRepo;
 use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::{
     api::BackendApi,
@@ -334,8 +335,17 @@ impl MultisigAccountService {
         address: &str,
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let account_with_wallet = AccountRepo::account_with_wallet(address, chain_code, pool)
+            .await?
+            .ok_or(crate::BusinessError::Account(
+                crate::AccountError::NotFound(address.to_string()),
+            ))?;
+
         // service fee
-        let req = SignedFeeListReq::new(chain_code, address);
+        let req = SignedFeeListReq::new(chain_code, address, account_with_wallet.uid);
         let res = self.backend.signed_fee_info(cryptor, req).await?;
 
         Ok(MultisigFeeVo::from(res))
@@ -573,7 +583,19 @@ impl MultisigAccountService {
         let to = &address.address;
 
         // fetch value
-        let req = SignedFeeListReq::new(&multisig_account.chain_code, &payer.from);
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let account_with_wallet =
+            AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, pool)
+                .await?
+                .ok_or(crate::BusinessError::Account(
+                    crate::AccountError::NotFound(payer.from.to_string()),
+                ))?;
+
+        let req = SignedFeeListReq::new(
+            &multisig_account.chain_code,
+            &payer.from,
+            account_with_wallet.uid,
+        );
         let amount = backend.signed_fee_info(cryptor, req).await?;
         tracing::warn!("amcount {:#?}", amount);
 

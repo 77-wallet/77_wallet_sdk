@@ -1,4 +1,6 @@
-use crate::entities::account::{AccountEntity, AccountWalletMapping, CreateAccountVo};
+use crate::entities::account::{
+    AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
+};
 use sqlx::{Executor, Sqlite};
 
 impl AccountEntity {
@@ -421,6 +423,35 @@ impl AccountEntity {
             .fetch_all(exec)
             .await
             .map(|rows| rows.into_iter().map(|(id,)| id).collect())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn account_with_wallet<'a, E>(
+        address: &str,
+        chain_code: &str,
+        executor: E,
+    ) -> Result<Option<AccountWithWalletEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT 
+                account.*,
+                wallet.uid
+            FROM 
+                account
+            LEFT JOIN 
+                wallet
+            ON 
+                account.wallet_address = wallet.address
+            WHERE 
+                account.address = $1 AND account.chain_code = $2;
+            "#;
+        sqlx::query_as::<_, AccountWithWalletEntity>(sql)
+            .bind(address)
+            .bind(chain_code)
+            .fetch_optional(executor)
+            .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
 }

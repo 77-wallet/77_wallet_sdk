@@ -19,7 +19,7 @@ async fn test_get_service_fee() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    let address = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let address = "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string();
     let info = wallet_manager
         .get_multisig_service_fee(chain_code, address)
         .await;
