@@ -155,31 +155,36 @@ impl<
     pub async fn set_app_id(mut self, app_id: &str) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
         tx.update_app_id(app_id).await?;
-        let device = tx.get_device_info().await?;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::ServiceError::Business(
+                crate::DeviceError::Uninitialized.into(),
+            ));
+        };
+        tracing::info!("device = {:?}", device);
         let wallet_list = tx.wallet_list().await?;
         for wallet in wallet_list {
-            if let Some(device) = &device {
-                let client_id = crate::domain::app::DeviceDomain::client_id_by_device(device)?;
-                let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-                    &wallet.uid,
-                    &device.sn,
-                    Some(client_id),
-                    device.app_id.clone(),
-                    Some(device.device_type.clone()),
-                    &wallet.name,
-                    None,
-                );
-                let keys_init_task_data = BackendApiTaskData::new(
-                    wallet_transport_backend::consts::endpoint::KEYS_INIT,
-                    &keys_init_req,
-                )?;
-                Tasks::new()
-                    .push(Task::BackendApi(BackendApiTask::BackendApi(
-                        keys_init_task_data,
-                    )))
-                    .send()
-                    .await?;
-            }
+            let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
+            let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+                &wallet.uid,
+                &device.sn,
+                Some(client_id),
+                Some(app_id.to_string()),
+                // device.app_id.clone(),
+                Some(device.device_type.clone()),
+                &wallet.name,
+                None,
+            );
+            let keys_init_task_data = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::KEYS_INIT,
+                &keys_init_req,
+            )?;
+            tracing::info!("keys_init_task_data = {:?}", keys_init_task_data);
+            Tasks::new()
+                .push(Task::BackendApi(BackendApiTask::BackendApi(
+                    keys_init_task_data,
+                )))
+                .send()
+                .await?;
         }
 
         Ok(())

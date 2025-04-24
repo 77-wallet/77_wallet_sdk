@@ -15,7 +15,7 @@ pub async fn init_mqtt_processor<'a>(
     user_property: UserProperty,
 ) -> Result<&'a MqttAsyncClient, crate::ServiceError> {
     MQTT_PROCESSOR
-        .get_or_try_init(async || {
+        .get_or_try_init(|| async {
             let url = crate::manager::Context::get_global_mqtt_url().await?;
             let Some(url) = url.as_ref() else {
                 return Err(crate::ServiceError::System(

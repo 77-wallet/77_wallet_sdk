@@ -21,7 +21,7 @@ pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
 
 async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
     INIT_DATA
-        .get_or_try_init(async || init_some_data().await)
+        .get_or_try_init(|| async { init_some_data().await })
         .await
 }
 
@@ -96,7 +96,7 @@ pub(crate) async fn init_context<'a>(
     config: crate::Config,
 ) -> Result<&'a Context, crate::ServiceError> {
     let context = CONTEXT
-        .get_or_try_init::<crate::ServiceError, _, _>(async || {
+        .get_or_try_init::<crate::ServiceError, _, _>(|| async {
             let context = Context::new(sn, device_type, dirs, frontend_notify, config).await?;
             Ok(context)
         })
