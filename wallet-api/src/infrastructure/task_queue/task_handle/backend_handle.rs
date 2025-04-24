@@ -24,6 +24,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::multisig::SIGNED_TRAN_CREATE,
         endpoint::multisig::SIGNED_TRAN_ACCEPT,
         endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH,
+        endpoint::multisig::SIGNED_ORDER_SAVE_RAW_DATA,
         endpoint::DEVICE_DELETE,
         endpoint::DEVICE_BIND_ADDRESS,
         endpoint::DEVICE_UNBIND_ADDRESS,
@@ -270,7 +271,9 @@ impl EndpointHandler for SpecialHandler {
             _ => {
                 // 未知的 endpoint
                 tracing::warn!("unknown endpoint: {}", endpoint);
-                return Ok(());
+                Err(crate::ServiceError::System(
+                    crate::SystemError::BackendEndpointNotFound,
+                ))?;
             }
         }
 

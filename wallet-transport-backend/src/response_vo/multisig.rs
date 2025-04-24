@@ -136,7 +136,6 @@ impl SignedUpdateSignedHashReq {
         salt: &str,
         authority_addr: &str,
         tx_str: String,
-        raw_data: String,
     ) -> Self {
         let element = SignedElement {
             salt: salt.to_string(),
@@ -148,7 +147,7 @@ impl SignedUpdateSignedHashReq {
             multi_sig_address: multisig_address.to_string(),
             multi_sig_elements: element,
             tx_str,
-            raw_data,
+            raw_data: "".to_string(),
         }
     }
 }

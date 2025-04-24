@@ -23,6 +23,9 @@ pub mod endpoint {
         pub const SIGNED_TRAN_UPDATE_TRANS_HASH: &str = "signed/trans/updateTransdHash";
 
         pub const PERMISSION_ACCEPT: &str = "permission/change";
+
+        // report raw_data to backend
+        pub const SIGNED_ORDER_SAVE_RAW_DATA: &str = "signed/order/saveRawData";
     }
 
     pub const UPLOAD_PERMISSION_TRANS: &str = "permission/uploadTrans";

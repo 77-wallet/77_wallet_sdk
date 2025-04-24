@@ -18,4 +18,6 @@ pub enum SystemError {
     MqttClientNotInit,
     #[error("device not init")]
     DeviceNotInit,
+    #[error("backend endpoint not found")]
+    BackendEndpointNotFound,
 }

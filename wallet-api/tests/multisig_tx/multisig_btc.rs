@@ -8,25 +8,25 @@ use crate::get_manager;
 #[tokio::test]
 async fn test_create_multisig_account() {
     let wallet_manager = get_manager().await;
-    let address = "bcrt1qwmactnqqvl6d3ddxudatqxvvys33275zqls052".to_string();
+    let address = "bc1qmtz5a8a5d5jj369fkzhcnqq8ccf7g6alpw5dw0".to_string();
     let chain_code = "btc".to_string();
     let threshold = 2;
 
     let member1 = MemberVo::new(
         "alice".to_string(),
-        "bcrt1qwmactnqqvl6d3ddxudatqxvvys33275zqls052".to_string(),
+        "bc1qmtz5a8a5d5jj369fkzhcnqq8ccf7g6alpw5dw0".to_string(),
     );
 
     let member2 = MemberVo::new(
         "bob".to_string(),
-        "2N3w6RypEQBGpDLd7Dq57TmYTZLZwoV3ft2".to_string(),
+        "bc1qgqjkv0lr0x4vqjt9lk87knhwu7uh0h3jhxp6ec".to_string(),
     );
 
-    let member3 = MemberVo::new(
-        "charlie".to_string(),
-        "bcrt1p8xnk9fmtdsrar7yt9aczejqk4jyfxynsn4fd6gqxpkh8j958caashk0tcp".to_string(),
-    );
-    let member_list = vec![member1, member2, member3];
+    // let member3 = MemberVo::new(
+    //     "charlie".to_string(),
+    //     "bcrt1p8xnk9fmtdsrar7yt9aczejqk4jyfxynsn4fd6gqxpkh8j958caashk0tcp".to_string(),
+    // );
+    let member_list = vec![member1, member2];
 
     // let address_type = "Legacy".to_string();
     // let address_type = "Nested SegWit".to_string();

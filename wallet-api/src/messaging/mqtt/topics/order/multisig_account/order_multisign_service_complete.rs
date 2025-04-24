@@ -1,7 +1,7 @@
 use wallet_database::{
     dao::multisig_account::MultisigAccountDaoV1,
     entities::multisig_account::{
-        MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
+        MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
     },
     DbPool,
 };
@@ -58,7 +58,10 @@ impl OrderMultiSignServiceComplete {
             .await
             .map_err(crate::ServiceError::Database)?;
 
-        let _r = MultisigDomain::update_raw_data(&multi_account_id, pool).await;
+        // 不是发起方更重新上报状态
+        if account.owner != MultiAccountOwner::Participant.to_i8() {
+            let _r = MultisigDomain::update_raw_data(&multi_account_id, pool).await;
+        }
 
         let data =
             NotifyEvent::OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend {
