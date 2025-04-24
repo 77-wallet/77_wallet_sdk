@@ -545,6 +545,19 @@ impl MultisigAccountService {
             ]);
             let _ = self.repo.update_by_id(account_id, params).await?;
         }
+
+        // 最后更新raw_data
+        let raw_data = self.repo.multisig_data(&multisig_account.id).await?;
+        let body = serde_json::json!({
+            "businessId":&multisig_account.id.clone(),
+            "rawData":raw_data.to_string()?
+        });
+        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+            endpoint: endpoint::multisig::SIGNED_ORDER_SAVE_RAW_DATA.to_string(),
+            body,
+        }));
+        Tasks::new().push(task).send().await?;
+
         Ok(())
     }
 
@@ -598,7 +611,6 @@ impl MultisigAccountService {
             account_with_wallet.uid,
         );
         let amount = backend.signed_fee_info(cryptor, req).await?;
-        tracing::warn!("amcount {:#?}", amount);
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();
@@ -625,18 +637,18 @@ impl MultisigAccountService {
         };
 
         // sync to backend
-        let mut raw_data = self.repo.multisig_data(&multisig_account.id).await?;
-        raw_data.account.fee_chain = payer.chain_code.clone();
-        raw_data.account.updated_at = Some(wallet_utils::time::now());
-        raw_data.account.fee_hash = tx_hash.clone();
-
+        // let mut raw_data = self.repo.multisig_data(&multisig_account.id).await?;
+        // raw_data.account.fee_chain = payer.chain_code.clone();
+        // raw_data.account.updated_at = Some(wallet_utils::time::now());
+        // raw_data.account.fee_hash = tx_hash.clone();
+        // 改版后最后统一上报 raw_data
         let req = SignedUpdateRechargeHashReq {
             order_id: multisig_account.id.to_string(),
             hash: tx_hash.clone(),
             product_code: amount.code.clone(),
             receive_chain_code: payer.chain_code,
             receive_address: to.to_string(),
-            raw_data: raw_data.to_string()?,
+            raw_data: "".to_string(),
             score_trans_id: amount.score_trans_id,
         };
         let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
@@ -698,10 +710,9 @@ impl MultisigAccountService {
             authority_addr: account.authority_addr.clone(),
         };
 
-        let mut raw_data = self.repo.multisig_data(&account.id).await?;
-        raw_data.account.deploy_hash = hash.clone();
-        raw_data.account.status = MultisigAccountStatus::OnChianPending.to_i8();
-
+        // let mut raw_data = self.repo.multisig_data(&account.id).await?;
+        // raw_data.account.deploy_hash = hash.clone();
+        // raw_data.account.status = MultisigAccountStatus::OnChianPending.to_i8();
         let req = SignedUpdateSignedHashReq::new(
             &account.id,
             &hash,
@@ -709,7 +720,6 @@ impl MultisigAccountService {
             &account.salt,
             &account.authority_addr,
             multisig_args.to_json_str()?,
-            raw_data.to_string()?,
         );
         let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
             endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_SIGNED_HASH.to_string(),
