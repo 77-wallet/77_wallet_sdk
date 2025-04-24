@@ -4,7 +4,7 @@ use crate::{
 };
 
 use super::{client::MqttAsyncClient, property::UserProperty};
-use rumqttc::v5::EventLoop;
+use rumqttc::v5::{Event, EventLoop};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::StreamExt as _;
 
@@ -68,7 +68,9 @@ pub async fn exec_event(
 ) -> Result<(), crate::ServiceError> {
     while let Some(event) = rx.next().await {
         #[cfg(not(feature = "prod"))]
-        tracing::info!("[mqtt] receive event: {event:?}");
+        if filter_log_event(&event) {
+            tracing::info!("[mqtt] receive event: {event:?}");
+        }
 
         let res = match event {
             rumqttc::v5::Event::Incoming(packet) => {
@@ -82,4 +84,20 @@ pub async fn exec_event(
         }
     }
     Ok(())
+}
+
+// 过滤ping 和 pong 的日志
+fn filter_log_event(event: &Event) -> bool {
+    match event {
+        Event::Incoming(packet) => match packet {
+            rumqttc::v5::Incoming::PingReq(_) => false,
+            rumqttc::v5::Incoming::PingResp(_) => false,
+            _ => true,
+        },
+        Event::Outgoing(outgoing) => match outgoing {
+            rumqttc::Outgoing::PingReq => false,
+            rumqttc::Outgoing::PingResp => false,
+            _ => true,
+        },
+    }
 }

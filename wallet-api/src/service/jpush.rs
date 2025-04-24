@@ -61,9 +61,6 @@ impl JPushService {
                 }
             };
 
-            tracing::info!("payload {:?}", payload);
-            assert!(false);
-
             let id = payload.msg_id.clone();
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
                 .await?
