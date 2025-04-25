@@ -19,9 +19,9 @@ use super::{
     message::BizType,
     topics::{
         AcctChange, BulletinMsg, ChainChange, Init, MultiSignTransAccept,
-        MultiSignTransAcceptCompleteMsg, MultiSignTransCancel, OrderMultiSignAccept,
-        OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel, OrderMultiSignCreated,
-        OrderMultiSignServiceComplete, PermissionAccept, RpcChange, Topic,
+        MultiSignTransAcceptCompleteMsg, MultiSignTransCancel, MultiSignTransExecute,
+        OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
+        OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept, RpcChange, Topic,
     },
     Message,
 };
@@ -159,6 +159,9 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         }
         BizType::PermissionAccept => {
             exec_task::<PermissionAccept, _>(&payload, MqttTask::PermissionAccept).await?
+        }
+        BizType::MultiSignTransExecute => {
+            exec_task::<MultiSignTransExecute, _>(&payload, MqttTask::MultiSignTransExecute).await?
         }
         // 目前这个业务不做任何处理
         BizType::OrderMultiSignAllMemberAccepted => (),
@@ -1029,147 +1032,51 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_acct_exec() -> anyhow::Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (_, _) = get_manager().await?;
+
+        use rumqttc::v5::mqttbytes::v5::Publish;
+        use serde_json::json;
+
+        // 模拟 JSON 数据
+        let json_data = json!({
+            "appId": "xxx",
+             "bizType": "MULTI_SIGN_TRANS_EXECUTE",
+            "body": {
+                 "withdrawId": "254342466625474560"
+            },
+            "clientId": "0e567a03c12ca24c5925790ccb348d1f",
+            "deviceType": "ANDROID",
+            "sn": "guangxiang1",
+            "msgId": "680b2ca2db87aa7fc92529e9"
+        });
+
+        // 将 JSON 数据转换为 payload
+        let payload = serde_json::to_vec(&json_data).expect("Failed to serialize JSON");
+
+        // 创建模拟的 Publish 数据包
+        let publish = Publish {
+            dup: false,
+            qos: rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
+            retain: false,
+            topic: "wallet/order".into(),
+            pkid: 0,
+            payload: payload.into(),
+            properties: Default::default(),
+        };
+
+        // 调用 exec_incoming_publish 并断言结果
+        let result = exec_incoming_publish(&publish).await;
+        assert!(
+            result.is_ok(),
+            "exec_incoming_publish failed: {:?}",
+            result.err()
+        );
+
+        Ok(())
+    }
 }
-
-// let body = match payload.biz_type {
-//     BizType::AcctChange => {
-//         let data = serde_func::serde_from_value::<AcctChange>(payload.body.clone())?;
-//         Body::AcctChange(data)
-//     }
-//     BizType::MultiSignTransAccept => {
-//         let data = serde_func::serde_from_value::<OrderMultiSignAccept>(payload.body.clone())?;
-//         Body::OrderMultiSignAccept(data)
-//     }
-//     BizType::PermissionAccept => {
-//         let data = serde_func::serde_from_value::<PermissionAccept>(payload.body.clone())?;
-//         Body::PermissionAccept(data)
-//     }
-//     _ => serde_func::serde_from_value(payload.body)?,
-// };
-
-// match (payload.biz_type, body) {
-//     (BizType::OrderMultiSignAccept, Body::OrderMultiSignAccept(data)) => {
-//         let data = serde_func::serde_from_value::<OrderMultiSignAccept>(payload.body.clone())?;
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::OrderMultiSignAcceptCompleteMsg, Body::OrderMultiSignAcceptCompleteMsg(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignAcceptCompleteMsg(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::OrderMultiSignServiceComplete, Body::OrderMultiSignServiceComplete(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignServiceComplete(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::OrderMultiSignCancel, Body::OrderMultiSignCancel(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignCancel(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::MultiSignTransAccept, Body::MultiSignTransAccept(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::MultiSignTransAccept(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::MultiSignTransAcceptCompleteMsg, Body::MultiSignTransAcceptCompleteMsg(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::MultiSignTransAcceptCompleteMsg(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::AcctChange, Body::AcctChange(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::AcctChange(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::Init, Body::Init(data)) => {
-//         Tasks::new()
-//             .push_with_id(&payload.msg_id, Task::Mqtt(Box::new(MqttTask::Init(data))))
-//             .send()
-//             .await?;
-//     }
-//     (BizType::OrderMultiSignCreated, Body::OrderMultiSignCreated(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::OrderMultiSignCreated(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::BulletinMsg, Body::BulletinMsg(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::BulletinMsg(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (BizType::MultiSignTransCancel, Body::MultiSignTransCancel(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     // (
-//     //     BizType::TronSignFreezeDelegateVoteChange,
-//     //     Body::TronSignFreezeDelegateVoteChange(data),
-//     // ) => {
-//     //     Tasks::new()
-//     //         .push_with_id(
-//     //             &payload.msg_id,
-//     //             Task::Mqtt(Box::new(MqttTask::TronSignFreezeDelegateVoteChange(data))),
-//     //         )
-//     //         .send()
-//     //         .await?;
-//     // }
-//     // 权限更新事件
-//     (BizType::PermissionAccept, Body::PermissionAccept(data)) => {
-//         Tasks::new()
-//             .push_with_id(
-//                 &payload.msg_id,
-//                 Task::Mqtt(Box::new(MqttTask::PermissionAccept(data))),
-//             )
-//             .send()
-//             .await?;
-//     }
-//     (biztype, data) => {
-//         return Err(crate::ServiceError::System(
-//             crate::SystemError::MessageWrong(biztype, Box::new(data)),
-//         ));
-//     }
-// }

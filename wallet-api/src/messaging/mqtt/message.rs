@@ -5,6 +5,8 @@ use crate::messaging::mqtt::topics::{
     RpcChange,
 };
 
+use super::topics::multisign_trans_execute::MultiSignTransExecute;
+
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Message {
@@ -70,6 +72,8 @@ pub enum BizType {
     PermissionAccept,
     // 所有签名已经完成
     OrderMultiSignAllMemberAccepted,
+    //
+    MultiSignTransExecute,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -97,4 +101,5 @@ pub enum Body {
     /// 权限更新
     PermissionAccept(PermissionAccept),
     OrderMultiSignAllMemberAccepted,
+    OrderMultiTransExecute(MultiSignTransExecute),
 }
