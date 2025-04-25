@@ -144,3 +144,18 @@ rpc_url = "https://apprpc.safew.cc/btc"
 http_url = ""
 network = "mainnet"
 active = true
+
+
+[[nodes.ltc.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/ltc"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.doge.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/doge"
+http_url = ""
+network = "mainnet"
+active = true
