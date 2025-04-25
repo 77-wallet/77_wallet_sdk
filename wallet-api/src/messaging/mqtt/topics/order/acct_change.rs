@@ -180,7 +180,18 @@ impl AcctChange {
         MultisigQueueRepo::update_status_hash(&change.queue_id, status, &change.tx_hash, pool)
             .await?;
 
-        Ok(MultisigQueueDomain::update_raw_data(&change.queue_id, pool.clone()).await?)
+        // 多签队列不存在可以允许 不上报忽略
+        let rs = MultisigQueueDomain::update_raw_data(&change.queue_id, pool.clone()).await;
+        match rs {
+            Ok(_) => {}
+            Err(e) => {
+                if !matches!(e, crate::ServiceError::Database(_)) {};
+                return Err(e);
+                tracing::error!(%e, "update_raw_data error");
+            }
+        }
+
+        Ok(())
     }
 
     async fn sync_assets(acct_change: &AcctChange) -> Result<(), crate::ServiceError> {
