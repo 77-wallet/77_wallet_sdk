@@ -448,4 +448,12 @@ impl MultisigQueueRepo {
     pub async fn pending_handle(pool: &DbPool) -> Result<Vec<MultisigQueueEntity>, crate::Error> {
         Ok(MultisigQueueDaoV1::pending_handle(pool.as_ref()).await?)
     }
+
+    pub async fn update_status(
+        queue_id: &str,
+        status: MultisigQueueStatus,
+        pool: &DbPool,
+    ) -> Result<(), crate::Error> {
+        Ok(MultisigQueueDaoV1::update_status(queue_id, status, pool.as_ref()).await?)
+    }
 }

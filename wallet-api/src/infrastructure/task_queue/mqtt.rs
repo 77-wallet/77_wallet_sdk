@@ -11,6 +11,7 @@ pub(crate) enum MqttTask {
     MultiSignTransAccept(topics::MultiSignTransAccept),
     MultiSignTransCancel(topics::MultiSignTransCancel),
     MultiSignTransAcceptCompleteMsg(topics::MultiSignTransAcceptCompleteMsg),
+    MultiSignTransExecute(topics::MultiSignTransExecute),
     AcctChange(topics::AcctChange),
     Init(topics::Init),
     BulletinMsg(topics::BulletinMsg),
@@ -37,6 +38,7 @@ impl MqttTask {
             MqttTask::BulletinMsg(_) => TaskName::BulletinMsg,
 
             MqttTask::PermissionAccept(_) => TaskName::PermissionAccept,
+            MqttTask::MultiSignTransExecute(_) => TaskName::MultiSignTransExecute,
         }
     }
 
@@ -76,6 +78,9 @@ impl MqttTask {
             MqttTask::PermissionAccept(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
+            MqttTask::MultiSignTransExecute(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
         };
         Ok(res)
     }
@@ -98,6 +103,7 @@ pub(crate) async fn handle_mqtt_task(
         MqttTask::Init(data) => data.exec(id).await?,
         MqttTask::BulletinMsg(data) => data.exec(id).await?,
         MqttTask::PermissionAccept(data) => data.exec(id).await?,
+        MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
     }
     Ok(())
 }

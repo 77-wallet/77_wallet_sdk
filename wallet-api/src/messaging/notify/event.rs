@@ -50,6 +50,8 @@ pub enum NotifyEvent {
     RecoverComplete,
     // 多签交易取消
     MultisigTransCancel,
+    // 多签交易执行
+    MultiSignTransExecute,
 }
 
 impl NotifyEvent {
@@ -89,6 +91,8 @@ impl NotifyEvent {
             // 恢复多签数据完成
             NotifyEvent::RecoverComplete => "RECOVER_COMPLETE".to_string(),
             NotifyEvent::MultisigTransCancel => "MULTISIG_TRANS_CANCE".to_string(),
+            // 多签交易执行
+            NotifyEvent::MultiSignTransExecute => "MULTI_SIGN_TRANS_EXECUTE".to_string(),
         }
     }
 }
