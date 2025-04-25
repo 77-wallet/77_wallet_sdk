@@ -13,7 +13,7 @@ pub mod permission;
 pub mod phrase;
 pub mod stake;
 pub mod system_notification;
-use crate::response::Response;
+use crate::{response::Response, service::device::DeviceService};
 
 #[cfg(not(feature = "result"))]
 pub type ReturnType<T> = Response<T>;
@@ -66,7 +66,10 @@ impl super::WalletManager {
             .into()
     }
 
-    pub async fn init(&self) -> ReturnType<()> {
+    pub async fn init(&self, req: crate::InitDeviceReq) -> ReturnType<()> {
+        DeviceService::new(self.repo_factory.resource_repo())
+            .init_device(req)
+            .await?;
         self.init_data().await.into()
     }
 }

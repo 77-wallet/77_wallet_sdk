@@ -17,7 +17,7 @@ async fn test_device_init() -> Result<(), wallet_transport_backend::Error> {
         meid: Some("6".to_string()),
         iccid: Some("7".to_string()),
         mem: Some("8".to_string()),
-        invitee: false,
+        // invitee: false,
     };
     let res = backend_api
         .device_init(&aes_cbc_cryptor, &req)

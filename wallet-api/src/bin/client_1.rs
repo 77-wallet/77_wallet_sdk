@@ -17,15 +17,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
-    if wallet_manager
-        .init_device(test_params.device_req)
-        .await
-        .code
-        != 200
-    {
+    if wallet_manager.init(test_params.device_req).await.code != 200 {
+        tracing::error!("init failed");
         return Ok(());
     };
-    wallet_manager.init_data().await?;
 
     let wallet = wallet_manager
         .create_wallet(test_params.create_wallet_req)

@@ -14,8 +14,8 @@ pub struct InitDeviceReq {
     pub app_id: Option<String>,
     pub package_id: Option<String>,
     pub app_version: String,
-    // 是否通过邀请进入的。
-    pub invitee: bool,
+    // // 是否通过邀请进入的。
+    // pub invitee: bool,
 }
 
 impl From<&InitDeviceReq> for DeviceInitReq {
@@ -29,7 +29,7 @@ impl From<&InitDeviceReq> for DeviceInitReq {
             meid: value.meid.to_owned(),
             iccid: value.iccid.to_owned(),
             mem: value.mem.to_owned(),
-            invitee: value.invitee,
+            // invitee: value.invitee,
         }
     }
 }
