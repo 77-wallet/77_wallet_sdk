@@ -4,12 +4,8 @@ use std::collections::HashMap;
 pub(crate) struct DefaultChain {
     pub(crate) name: String,
     pub(crate) chain_code: String,
-    // pub(crate) node_name: String,
-    // pub(crate) rpc_url: String,
-    // pub(crate) http_url: String,
     pub(crate) protocols: Vec<String>,
     pub(crate) main_symbol: String,
-    // pub(crate) network: String,
     pub(crate) active: bool,
 }
 
@@ -23,12 +19,6 @@ static INIT_CHAINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<Default
 
 pub(crate) fn get_default_chains_list() -> Result<&'static DefaultChainList, crate::ServiceError> {
     INIT_CHAINS_INFO.get_or_try_init(|| {
-        // let mut res = std::collections::HashMap::new();
-        // let rpc_json = include_str!("../../data/default_chain_list/rpc.json");
-        // let rpc_json_data: DefaultChainList = wallet_utils::serde_func::serde_from_str(rpc_json)?;
-
-        // Ok(rpc_json_data)
-
         let toml_content = include_str!("../../data/config/chain.toml");
         let toml_data: DefaultChainList = wallet_utils::serde_func::toml_from_str(toml_content)?;
 

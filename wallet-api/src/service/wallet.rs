@@ -12,13 +12,7 @@ use wallet_transport_backend::{
     request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
 use wallet_tree::{api::KeystoreApi, file_ops::RootData};
-use wallet_types::{
-    chain::{
-        address::r#type::{AddressType, BTC_ADDRESS_TYPES},
-        chain::ChainCode,
-    },
-    constant::chain_code,
-};
+use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
 use crate::{
     domain::{
@@ -370,29 +364,20 @@ impl WalletService {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
             for chain_code in &default_chain_list {
-                let btc_address_types = if chain_code == "btc" {
-                    BTC_ADDRESS_TYPES.to_vec()
-                } else {
-                    vec![AddressType::Other]
-                };
-
                 let code: ChainCode = chain_code.as_str().try_into()?;
-                for btc_address_type in btc_address_types {
-                    let Some(chain) =
-                        // ChainDomain::chain_node_info_left_join(tx, chain_code).await?
-                    tx.chain_node_info_left_join(chain_code).await?
-                    else {
-                        tracing::warn!("[create_wallet] chain not found: {chain_code}");
-                        continue;
-                    };
-                    // TODO：后续想好的办法
-                    let network = if chain.network.is_empty() {
-                        "mainnet"
-                    } else {
-                        chain.network.as_str()
-                    };
+
+                // 不同的创建不同的地址类型
+                let address_types = WalletDomain::address_type_by_chain(code);
+
+                let Some(chain) = tx.chain_node_info_left_join(chain_code).await? else {
+                    tracing::warn!("[create_wallet] chain not found: {chain_code}");
+                    continue;
+                };
+                let network = chain.get_network();
+
+                for address_type in address_types {
                     let instance: wallet_chain_instance::instance::ChainObject =
-                        (&code, &btc_address_type, network.into()).try_into()?;
+                        (&code, &address_type, network.into()).try_into()?;
 
                     let (account_address, derivation_path, task_data) =
                         AccountDomain::create_account_with_account_id(
@@ -420,6 +405,7 @@ impl WalletService {
                         pk,
                     );
                     subkeys.push(subkey);
+                    // 创建默认资产
                     for coin in &coins {
                         if chain_code == &coin.chain_code {
                             let assets_id = AssetsId::new(

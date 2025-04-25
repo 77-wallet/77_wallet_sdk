@@ -247,9 +247,19 @@ impl AccountDomain {
             &chain_code,
             &account_name,
         );
-        if let AddressType::Btc(address_type) = address_type {
-            req = req.with_address_type(address_type.as_ref());
-        };
+
+        match address_type {
+            AddressType::Btc(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
+            AddressType::Ltc(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
+            AddressType::Dog(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
+            _ => {}
+        }
         repo.upsert_multi_account(vec![req]).await?;
         Ok((address, account_name, derivation_path))
     }

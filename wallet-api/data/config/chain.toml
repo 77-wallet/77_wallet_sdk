@@ -37,3 +37,17 @@ main_symbol = "BTC"
 # node_name = "Platform Node"
 protocols = []
 active = true
+
+[chains.ltc]
+name = "Litecoin"
+chain_code = "ltc"
+main_symbol = "LTC"
+protocols = []
+active = true
+
+[chains.doge]
+name = "Doge"
+chain_code = "doge"
+main_symbol = "Doge"
+protocols = []
+active = true

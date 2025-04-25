@@ -64,6 +64,17 @@ async fn create_wallet() {
 }
 
 #[tokio::test]
+async fn delete_wallet() {
+    let wallet_manager = get_manager().await;
+
+    let addr = "0xEa80C3E12F7AB803f2bf35d79501172D505F2D98";
+
+    let res = wallet_manager.physical_delete_wallet(&addr).await;
+
+    println!("创建的钱包{:?}", res);
+}
+
+#[tokio::test]
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";

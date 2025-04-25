@@ -96,6 +96,10 @@ impl ChainDomain {
     pub(crate) async fn upsert_multi_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::ServiceError> {
+        // TODO 开发注释：避后端不支持对应的节点
+
+        return Ok(false);
+
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 

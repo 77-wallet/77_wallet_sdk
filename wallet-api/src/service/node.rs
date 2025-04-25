@@ -80,6 +80,9 @@ impl NodeService {
     pub async fn init_chain_info(&mut self) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
         let list = crate::default_data::chain::get_default_chains_list()?;
+
+        tracing::warn!("list {:#?}", list);
+
         let mut chain_codes = Vec::new();
         for (chain_code, default_chain) in &list.chains {
             let status = if default_chain.active { 1 } else { 0 };
