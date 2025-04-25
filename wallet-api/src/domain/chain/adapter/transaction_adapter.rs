@@ -147,15 +147,14 @@ impl TransactionAdapter {
                 let balance = chain.balance(&params.base.from, None).await?;
 
                 // check balance
-                let remain_balance =
-                    domain::chain::transaction::ChainTransaction::check_eth_balance(
-                        &params.base.from,
-                        balance,
-                        params.base.token_address.as_deref(),
-                        chain,
-                        transfer_amount,
-                    )
-                    .await?;
+                let remain_balance = ChainTransaction::check_eth_balance(
+                    &params.base.from,
+                    balance,
+                    params.base.token_address.as_deref(),
+                    chain,
+                    transfer_amount,
+                )
+                .await?;
 
                 let fee = fee_setting.transaction_fee();
                 // check transaction_fee

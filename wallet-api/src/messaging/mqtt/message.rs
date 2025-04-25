@@ -68,6 +68,8 @@ pub enum BizType {
     TronSignFreezeDelegateVoteChange,
     // 权限更新
     PermissionAccept,
+    // 所有签名已经完成
+    OrderMultiSignAllMemberAccepted,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -94,4 +96,5 @@ pub enum Body {
     // TronSignFreezeDelegateVoteChange(TronSignFreezeDelegateVoteChange),
     /// 权限更新
     PermissionAccept(PermissionAccept),
+    OrderMultiSignAllMemberAccepted,
 }
