@@ -421,12 +421,23 @@ impl<
         Ok(msg)
     }
 
-    pub async fn set_invite_code(self, invite_code: &str) -> Result<(), crate::ServiceError> {
+    pub async fn set_invite_code(
+        self,
+        invite_code: Option<&str>,
+    ) -> Result<(), crate::ServiceError> {
         let api = crate::manager::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        // let req = wallet_transport_backend::request::SetInviteCodeReq::new(invite_code);
-        // api.set_invite_code(cryptor, req).await?;
-        // TODO: 调用后端接口
+        let mut tx = self.repo;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::ServiceError::Business(
+                crate::DeviceError::Uninitialized.into(),
+            ));
+        };
+        let req = wallet_transport_backend::request::SetInviteeStatusReq {
+            sn: device.sn,
+            invitee: invite_code.is_some(),
+        };
+        api.set_invite_code(cryptor, req).await?;
         Ok(())
     }
 }

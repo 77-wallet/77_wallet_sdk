@@ -99,4 +99,19 @@ impl BackendApi {
         let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
         res.process(aes_cbc_cryptor)
     }
+
+    pub async fn set_invite_code(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        req: crate::request::SetInviteeStatusReq,
+    ) -> Result<(), crate::Error> {
+        let res = self
+            .client
+            .post("/device/editDeviceInviteeStatus")
+            .json(req)
+            .send::<serde_json::Value>()
+            .await?;
+        let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
+        res.process(aes_cbc_cryptor)
+    }
 }

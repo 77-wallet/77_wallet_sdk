@@ -162,7 +162,7 @@ impl crate::WalletManager {
     }
 
     /// 设置邀请码
-    pub async fn set_invite_code(&self, invite_code: &str) -> ReturnType<()> {
+    pub async fn set_invite_code(&self, invite_code: Option<&str>) -> ReturnType<()> {
         AppService::new(self.repo_factory.resource_repo())
             .set_invite_code(invite_code)
             .await?

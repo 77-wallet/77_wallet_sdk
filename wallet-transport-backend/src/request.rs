@@ -35,6 +35,13 @@ pub struct DeviceInitReq {
     pub meid: Option<String>,
     pub iccid: Option<String>,
     pub mem: Option<String>,
+    // pub invitee: bool,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetInviteeStatusReq {
+    pub sn: String,
     pub invitee: bool,
 }
 
