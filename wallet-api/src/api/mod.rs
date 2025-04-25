@@ -65,6 +65,10 @@ impl super::WalletManager {
             .await
             .into()
     }
+
+    pub async fn init(&self) -> ReturnType<()> {
+        self.init_data().await.into()
+    }
 }
 
 #[cfg(test)]
