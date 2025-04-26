@@ -3,7 +3,10 @@ use wallet_database::{
     repositories::multisig_queue::MultisigQueueRepo,
 };
 
-use crate::messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
+use crate::{
+    domain::multisig::MultisigQueueDomain,
+    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+};
 
 //  多签交易签名同步给其他成员
 // biz_type = MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG
@@ -78,6 +81,8 @@ impl MultiSignTransAcceptCompleteMsg {
             let queue = MultisigQueueRepo::find_by_id(&pool, &item.queue_id).await?;
             if let Some(queue) = queue {
                 MultisigQueueRepo::sync_sign_status(&queue, queue.status, pool.clone()).await?;
+
+                MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;
             }
         }
 
