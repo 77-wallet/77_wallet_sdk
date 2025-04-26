@@ -2,7 +2,7 @@ use crate::{
     domain::{
         self,
         bill::BillDomain,
-        chain::{adapter::MultisigAdapter, transaction::ChainTransaction},
+        chain::{adapter::MultisigAdapter, transaction::ChainTransDomain},
     },
     infrastructure::task_queue::{self, BackendApiTask, BackendApiTaskData, Task, Tasks},
     messaging::mqtt::topics::MultiSignTransAcceptCompleteMsgBody,
@@ -315,7 +315,7 @@ impl MultisigQueueDomain {
         for i in 0..sign_num {
             let member = members.0.get(i).unwrap();
             let key =
-                ChainTransaction::get_key(&member.address, &queue.chain_code, password, &None)
+                ChainTransDomain::get_key(&member.address, &queue.chain_code, password, &None)
                     .await?;
 
             let sign_res = adapter
@@ -360,7 +360,7 @@ impl MultisigQueueDomain {
                 .is_some()
             {
                 let key =
-                    ChainTransaction::get_key(&user.address, &queue.chain_code, password, &None)
+                    ChainTransDomain::get_key(&user.address, &queue.chain_code, password, &None)
                         .await?;
 
                 let res = TransactionOpt::sign_transaction(&queue.raw_data, key)?;

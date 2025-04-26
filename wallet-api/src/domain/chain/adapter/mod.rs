@@ -20,6 +20,8 @@ macro_rules! dispatch {
             Self::Ethereum(chain) => chain.$method($($arg),*).await,
             Self::Solana(chain) => chain.$method($($arg),*).await,
             Self::Tron(chain) => chain.$method($($arg),*).await,
+            Self::Ltc(chain) => chain.$method($($arg),*).await,
+            Self::Doge(chain) => chain.$method($($arg),*).await,
         }
     };
 }

@@ -9,6 +9,8 @@ pub enum Error {
     Utils(#[from] wallet_utils::Error),
     #[error("{0}")]
     Other(String),
+    #[error("data Not Found: {0}")]
+    NotFound(String),
 }
 
 impl Error {

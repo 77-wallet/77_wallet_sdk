@@ -5,7 +5,7 @@ use crate::{
         self,
         chain::{
             pare_fee_setting,
-            transaction::{ChainTransaction, DEFAULT_UNITS},
+            transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
     },
@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use wallet_chain_interact::{
     self as chain,
     btc::{self},
-    eth,
+    dog, eth, ltc,
     sol::{self, operations::SolInstructionOperation},
     tron::{
         self,
@@ -27,7 +27,10 @@ use wallet_chain_interact::{
     BillResourceConsume,
 };
 use wallet_transport::client::{HttpClient, RpcClient};
-use wallet_types::chain::chain::ChainCode as ChainType;
+use wallet_types::chain::{
+    address::r#type::{DogAddressType, LtcAddressType},
+    chain::ChainCode as ChainType,
+};
 use wallet_utils::unit;
 
 pub enum TransactionAdapter {
@@ -35,6 +38,8 @@ pub enum TransactionAdapter {
     Ethereum(chain::eth::EthChain),
     Solana(chain::sol::SolanaChain),
     Tron(chain::tron::TronChain),
+    Ltc(chain::ltc::LtcChain),
+    Doge(chain::dog::DogChain),
 }
 
 impl TransactionAdapter {
@@ -79,7 +84,30 @@ impl TransactionAdapter {
                 let tron_chain = chain::tron::TronChain::new(provider)?;
                 Ok(TransactionAdapter::Tron(tron_chain))
             }
-            _ => panic!("not support chain"),
+            ChainType::Dogcoin => {
+                let config = chain::dog::provider::ProviderConfig {
+                    rpc_url: rpc_url.to_string(),
+                    rpc_auth: None,
+                    http_url: rpc_url.to_string(),
+                    http_api_key: None,
+                    access_key: None,
+                };
+
+                let doge = chain::dog::DogChain::new(config, network, header_opt, timeout)?;
+                Ok(TransactionAdapter::Doge(doge))
+            }
+            ChainType::Litecoin => {
+                let config = chain::ltc::provider::ProviderConfig {
+                    rpc_url: rpc_url.to_string(),
+                    rpc_auth: None,
+                    http_url: rpc_url.to_string(),
+                    http_api_key: None,
+                    access_key: None,
+                };
+
+                let doge = chain::ltc::LtcChain::new(config, network, header_opt, timeout)?;
+                Ok(TransactionAdapter::Ltc(doge))
+            }
         }
     }
 }
@@ -138,7 +166,7 @@ impl TransactionAdapter {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, crate::ServiceError> {
         let transfer_amount =
-            ChainTransaction::check_min_transfer(&params.base.value, params.base.decimals)?;
+            ChainTransDomain::check_min_transfer(&params.base.value, params.base.decimals)?;
 
         match self {
             Self::Ethereum(chain) => {
@@ -147,7 +175,7 @@ impl TransactionAdapter {
                 let balance = chain.balance(&params.base.from, None).await?;
 
                 // check balance
-                let remain_balance = ChainTransaction::check_eth_balance(
+                let remain_balance = ChainTransDomain::check_eth_balance(
                     &params.base.from,
                     balance,
                     params.base.token_address.as_deref(),
@@ -175,7 +203,7 @@ impl TransactionAdapter {
                 ))
             }
             Self::BitCoin(chain) => {
-                let account = domain::chain::transaction::ChainTransaction::account(
+                let account = domain::chain::transaction::ChainTransDomain::account(
                     &params.base.chain_code,
                     &params.base.from,
                 )
@@ -192,14 +220,58 @@ impl TransactionAdapter {
                 let tx = chain
                     .transfer(params, private_key)
                     .await
-                    .map_err(ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(ChainTransDomain::handle_btc_fee_error)?;
+
+                Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
+            }
+            Self::Ltc(chain) => {
+                let account =
+                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+
+                let address_type = LtcAddressType::try_from(account.address_type())?;
+
+                let params = ltc::operations::transfer::TransferArg::new(
+                    &params.base.from,
+                    &params.base.to,
+                    &params.base.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(params.base.spend_all);
+
+                let tx = chain
+                    .transfer(params, private_key)
+                    .await
+                    .map_err(ChainTransDomain::handle_btc_fee_error)?;
+
+                Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
+            }
+            Self::Doge(chain) => {
+                let account =
+                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+
+                let address_type = DogAddressType::try_from(account.address_type())?;
+
+                let params = dog::operations::transfer::TransferArg::new(
+                    &params.base.from,
+                    &params.base.to,
+                    &params.base.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(params.base.spend_all);
+
+                let tx = chain
+                    .transfer(params, private_key)
+                    .await
+                    .map_err(ChainTransDomain::handle_btc_fee_error)?;
 
                 Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
             }
             Self::Solana(chain) => {
                 // check balance
                 let balance = chain.balance(&params.base.from, None).await?;
-                let remain_balance = ChainTransaction::check_sol_balance(
+                let remain_balance = ChainTransDomain::check_sol_balance(
                     &params.base.from,
                     balance,
                     params.base.token_address.as_deref(),
@@ -220,9 +292,9 @@ impl TransactionAdapter {
 
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+                ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
-                ChainTransaction::check_sol_transaction_fee(
+                ChainTransDomain::check_sol_transaction_fee(
                     remain_balance,
                     fee_setting.original_fee(),
                 )?;
@@ -370,12 +442,8 @@ impl TransactionAdapter {
                     ))?;
                 }
 
-                let gas_oracle = domain::chain::transaction::ChainTransaction::gas_oracle(
-                    &req.chain_code,
-                    &chain.provider,
-                    backend,
-                )
-                .await?;
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend).await?;
 
                 let params = eth::operations::TransferOpt::new(
                     &req.from,
@@ -390,11 +458,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&fee)
             }
             Self::BitCoin(chain) => {
-                let account = domain::chain::transaction::ChainTransaction::account(
-                    &req.chain_code,
-                    &req.from,
-                )
-                .await?;
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
                 let params = btc::operations::transfer::TransferArg::new(
                     &req.from,
                     &req.to,
@@ -407,7 +471,59 @@ impl TransactionAdapter {
                 let fee = chain
                     .estimate_fee(params, None)
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
+
+                let res = response_vo::CommonFeeDetails::new(
+                    fee.transaction_fee_f64(),
+                    token_currency,
+                    currency,
+                );
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Ltc(chain) => {
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+
+                let address_type = LtcAddressType::try_from(account.address_type())?;
+
+                let params = ltc::operations::transfer::TransferArg::new(
+                    &req.from,
+                    &req.to,
+                    &req.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(req.spend_all);
+
+                let fee = chain
+                    .estimate_fee(params)
+                    .await
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
+
+                let res = response_vo::CommonFeeDetails::new(
+                    fee.transaction_fee_f64(),
+                    token_currency,
+                    currency,
+                );
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Doge(chain) => {
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+
+                let address_type = DogAddressType::try_from(account.address_type())?;
+
+                let params = dog::operations::transfer::TransferArg::new(
+                    &req.from,
+                    &req.to,
+                    &req.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(req.spend_all);
+
+                let fee = chain
+                    .estimate_fee(params)
+                    .await
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
 
                 let res = response_vo::CommonFeeDetails::new(
                     fee.transaction_fee_f64(),
@@ -430,7 +546,7 @@ impl TransactionAdapter {
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
 
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+                ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
                 let res = response_vo::CommonFeeDetails::new(
                     fee_setting.transaction_fee(),

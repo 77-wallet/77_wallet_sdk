@@ -1,3 +1,4 @@
+use alloy::primitives::bytes::buf::Chain;
 use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
@@ -436,6 +437,12 @@ pub async fn open_subpk_with_password(
         }
         ChainCode::Bitcoin => {
             wallet_chain_interact::btc::wif_private_key(&key, chain.network.as_str().into())?
+        }
+        ChainCode::Dogcoin => {
+            wallet_chain_interact::dog::wif_private_key(&key, chain.network.as_str().into())?
+        }
+        ChainCode::Litecoin => {
+            wallet_chain_interact::ltc::wif_private_key(&key, chain.network.as_str().into())?
         }
         _ => hex::encode(key),
     };

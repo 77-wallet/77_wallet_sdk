@@ -95,7 +95,6 @@ impl AccountService {
         self,
         wallet_address: &str,
         wallet_password: &str,
-        // derive_password: Option<String>,
         derivation_path: Option<String>,
         index: Option<i32>,
         name: &str,
@@ -169,18 +168,17 @@ impl AccountService {
 
         let mut address_init_task_data = Vec::new();
         for chain_code in &chains {
-            let btc_address_types = if chain_code == "btc" {
-                BTC_ADDRESS_TYPES.to_vec()
-            } else {
-                vec![AddressType::Other]
-            };
             let code: ChainCode = chain_code.as_str().try_into()?;
-            for btc_address_type in btc_address_types {
-                let Some(chain) = tx.detail_with_node(chain_code).await? else {
-                    continue;
-                };
+            // 不同的创建不同的地址类型
+            let address_types = WalletDomain::address_type_by_chain(code);
+
+            let Some(chain) = tx.detail_with_node(chain_code).await? else {
+                continue;
+            };
+
+            for address_type in address_types {
                 let instance: wallet_chain_instance::instance::ChainObject =
-                    (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
+                    (&code, &address_type, chain.network.as_str().into()).try_into()?;
 
                 let (account_address, derivation_path, task_data) =
                     AccountDomain::create_account_with_derivation_path(
