@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
-use wallet_database::repositories::wallet::WalletRepoTrait;
+use wallet_database::repositories::{device::DeviceRepoTrait as _, wallet::WalletRepoTrait};
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
@@ -90,6 +90,21 @@ impl EndpointHandler for DefaultHandler {
         backend: &BackendApi,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let Some(device) = repo.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+
+        if device.is_init != 1 {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        }
+        let invite_code = ConfigDomain::get_invite_code().await?;
+        if invite_code.status.is_none() {
+            return Err(
+                crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into(),
+            );
+        }
         // 实现具体的处理逻辑
         let _res = backend
             .post_req_str::<serde_json::Value>(endpoint, &body, aes_cbc_cryptor)
@@ -123,6 +138,13 @@ impl EndpointHandler for SpecialHandler {
                 repo.device_init().await?;
             }
             endpoint::KEYS_INIT => {
+                let invite_code = ConfigDomain::get_invite_code().await?;
+                if invite_code.status.is_none() {
+                    return Err(crate::BusinessError::Device(
+                        crate::DeviceError::InviteStatusNotConfirmed,
+                    )
+                    .into());
+                }
                 let res = backend
                     .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
                     .await;
@@ -142,6 +164,29 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body)?;
                 use wallet_database::repositories::wallet::WalletRepoTrait as _;
                 repo.wallet_init(&req.uid).await?;
+            }
+            endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
+                let Some(device) = repo.get_device_info().await? else {
+                    return Err(
+                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
+                    );
+                };
+
+                if device.is_init != 1 {
+                    return Err(
+                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
+                    );
+                }
+
+                let req: wallet_transport_backend::request::SetInviteeStatusReq =
+                    wallet_utils::serde_func::serde_from_value(body.clone())?;
+                let res = backend
+                    .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
+                    .await;
+
+                res?;
+                let invite_code = ConfigDomain::get_invite_code().await?;
+                ConfigDomain::set_invite_code(Some(req.invitee), invite_code.code).await?;
             }
             endpoint::LANGUAGE_INIT => {
                 backend

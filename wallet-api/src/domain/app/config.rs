@@ -3,10 +3,10 @@ use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, KEYSTORE_KDF_ALGORITHM,
-            LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
+            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, INVITE_CODE,
+            KEYSTORE_KDF_ALGORITHM, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
         },
-        Currency, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
+        Currency, InviteCode, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
     },
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
@@ -72,6 +72,16 @@ impl ConfigDomain {
             let mut config = crate::app_state::APP_STATE.write().await;
             config.set_official_website(Some(official_website));
         }
+
+        Ok(())
+    }
+
+    pub async fn set_invite_code(
+        status: Option<bool>,
+        code: Option<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let config = InviteCode { code, status };
+        ConfigDomain::set_config(INVITE_CODE, &config.to_json_str()?).await?;
 
         Ok(())
     }
@@ -210,6 +220,18 @@ impl ConfigDomain {
             Ok(currency.currency)
         } else {
             Ok(String::from("USD"))
+        }
+    }
+
+    pub(crate) async fn get_invite_code() -> Result<InviteCode, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let invite_code = ConfigDao::find_by_key(INVITE_CODE, pool.as_ref()).await?;
+        if let Some(invite_code) = invite_code {
+            let invite_code =
+                wallet_database::entities::config::InviteCode::try_from(invite_code.value)?;
+            Ok(invite_code)
+        } else {
+            Err(crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into())
         }
     }
 

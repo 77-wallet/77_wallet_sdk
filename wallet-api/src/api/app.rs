@@ -162,7 +162,7 @@ impl crate::WalletManager {
     }
 
     /// 设置邀请码
-    pub async fn set_invite_code(&self, invite_code: Option<&str>) -> ReturnType<()> {
+    pub async fn set_invite_code(&self, invite_code: Option<String>) -> ReturnType<()> {
         AppService::new(self.repo_factory.resource_repo())
             .set_invite_code(invite_code)
             .await?
@@ -287,7 +287,9 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
-        let res = wallet_manager.set_invite_code(Some("43434")).await;
+        let res = wallet_manager
+            .set_invite_code(Some("43434".to_string()))
+            .await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())

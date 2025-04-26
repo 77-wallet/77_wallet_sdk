@@ -423,21 +423,31 @@ impl<
 
     pub async fn set_invite_code(
         self,
-        invite_code: Option<&str>,
+        invite_code: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let api = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let mut tx = self.repo;
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::ServiceError::Business(
                 crate::DeviceError::Uninitialized.into(),
             ));
         };
+
         let req = wallet_transport_backend::request::SetInviteeStatusReq {
             sn: device.sn,
             invitee: invite_code.is_some(),
         };
-        api.set_invite_code(cryptor, req).await?;
+
+        let task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS,
+            &req,
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .send()
+            .await?;
+
+        ConfigDomain::set_invite_code(None, invite_code).await?;
+
         Ok(())
     }
 }
