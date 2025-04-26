@@ -337,6 +337,8 @@ impl NewBillEntity {
         bill_consumer: String,
         transaction_fee: String,
     ) -> Self {
+        let tx_type = if bill_kind.in_transfer_type() { 0 } else { 1 };
+
         Self {
             hash,
             from,
@@ -350,7 +352,7 @@ impl NewBillEntity {
             resource_consume: bill_consumer,
             transaction_time: 0,
             multisig_tx: false,
-            tx_type: 1,
+            tx_type,
             tx_kind: bill_kind,
             queue_id: "".to_string(),
             block_height: "0".to_string(),
