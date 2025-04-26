@@ -53,6 +53,7 @@ pub mod endpoint {
     pub const VERSION_DOWNLOAD: &str = "version/download";
 
     pub const ADDRESS_FIND_MULTI_SIGNED_DETAILS: &str = "address/findMultiSignedDetails";
+    pub const DEVICE_EDIT_DEVICE_INVITEE_STATUS: &str = "device/editDeviceInviteeStatus";
 }
 
 /// 代理的全局rpc节点

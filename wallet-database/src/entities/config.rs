@@ -12,6 +12,7 @@ pub mod config_key {
     pub const KEYSTORE_KDF_ALGORITHM: &str = "keystore_kdf_algorithm";
     pub const WALLET_TREE_STRATEGY: &str = "wallet_tree_strategy";
     pub const APP_VERSION: &str = "app_version";
+    pub const INVITE_CODE: &str = "invite_code";
 }
 
 pub(crate) const USD: &str = "USD";
@@ -38,6 +39,25 @@ impl OfficialWebsite {
 }
 
 impl TryFrom<String> for OfficialWebsite {
+    type Error = crate::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(wallet_utils::serde_func::serde_from_str(&value)?)
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct InviteCode {
+    pub code: Option<String>,
+    pub status: Option<bool>,
+}
+
+impl InviteCode {
+    pub fn to_json_str(&self) -> Result<String, crate::Error> {
+        Ok(wallet_utils::serde_func::serde_to_string(self)?)
+    }
+}
+
+impl TryFrom<String> for InviteCode {
     type Error = crate::Error;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Ok(wallet_utils::serde_func::serde_from_str(&value)?)
