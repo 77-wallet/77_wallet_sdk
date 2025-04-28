@@ -2,10 +2,7 @@ use crate::domain;
 use crate::domain::assets::AssetsDomain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransDomain;
-<<<<<<< HEAD
 use crate::domain::multisig::MultisigDomain;
-=======
->>>>>>> f3f332f (ltc transaction)
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
 use crate::messaging::mqtt::topics::OrderMultiSignAccept;
 use crate::request::transaction;
