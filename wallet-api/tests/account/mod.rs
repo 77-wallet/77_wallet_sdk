@@ -67,7 +67,7 @@ async fn create_wallet() {
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
-    let wallet_name = "0x0E1E806fdB77Eb4a67F3c3CCCBA58d62F4325077";
+    let wallet_name = "0x7F2A20beC3a5980C8105E642b9cC0FBEd73D3190";
     let account_name = "账户";
     let root_password = "123456";
     let req = wallet_api::CreateAccountReq::new(
@@ -75,7 +75,7 @@ async fn create_account() {
         root_password,
         None,
         None,
-        Some(1),
+        Some(0),
         account_name,
         false,
     );
@@ -92,7 +92,7 @@ async fn create_account() {
 #[tokio::test]
 async fn physical_delete() {
     let wallet_manager = get_manager().await;
-    let wallet_address = "0x0E1E806fdB77Eb4a67F3c3CCCBA58d62F4325077";
+    let wallet_address = "0x7F2A20beC3a5980C8105E642b9cC0FBEd73D3190";
     let account_id = 1;
     let root_password = "123456";
 

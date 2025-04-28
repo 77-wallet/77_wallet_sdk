@@ -436,7 +436,10 @@ impl MultisigQueueRepo {
         let ids = queues.iter().map(|q| q.id.clone()).collect::<Vec<String>>();
 
         // delete all signature
-        MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(tx.as_mut(), ids).await?;
+        if !ids.is_empty() {
+            MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(tx.as_mut(), ids)
+                .await?;
+        }
 
         tx.commit()
             .await
