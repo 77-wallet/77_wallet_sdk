@@ -16,9 +16,9 @@ async fn test_build_freeze() {
     let _signer = None;
 
     let req = FreezeBalanceReq {
-        owner_address: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
-        resource: "energy".to_string(),
-        frozen_balance: 50,
+        owner_address: "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
+        resource: "bandwidth".to_string(),
+        frozen_balance: 300,
         signer: _signer,
     };
 

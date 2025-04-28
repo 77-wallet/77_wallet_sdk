@@ -146,10 +146,11 @@ impl crate::WalletManager {
         &self,
         account: String,
         resource_type: String,
+        is_multisig: Option<bool>,
     ) -> ReturnType<ResourceResp> {
         StackService::new()
             .await?
-            .can_delegated_max(account, resource_type)
+            .can_delegated_max(account, resource_type, is_multisig)
             .await?
             .into()
     }

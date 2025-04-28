@@ -34,6 +34,7 @@ use crate::BusinessError;
 use wallet_chain_interact::tron;
 use wallet_chain_interact::tron::operations as ops;
 use wallet_chain_interact::tron::operations::stake::DelegateArgs;
+use wallet_chain_interact::tron::operations::stake::ResourceType;
 use wallet_chain_interact::tron::operations::stake::UnDelegateArgs;
 use wallet_chain_interact::tron::operations::RawTransactionParams;
 use wallet_chain_interact::tron::params::ResourceConsumer;
@@ -952,6 +953,7 @@ impl StackService {
         &self,
         account: String,
         resource_type: String,
+        is_multisig: Option<bool>,
     ) -> Result<resp::ResourceResp, crate::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
@@ -961,8 +963,23 @@ impl StackService {
             .can_delegate_resource(account.as_str(), resource_type)
             .await?;
 
-        let value = res.to_sun();
-        let resource_value = self.resource_value(&account, value, resource_type).await?;
+        let mut value = res.to_sun();
+
+        let resource = ChainTransaction::account_resource(&self.chain, &account).await?;
+        let price = match resource_type {
+            ResourceType::BANDWIDTH => resource.net_price(),
+            ResourceType::ENERGY => resource.energy_price(),
+        };
+
+        let mut resource_value = (price * value as f64 * 100.0).round() / 100.0;
+
+        // 多签的代理带宽在进行扣减
+        if matches!(is_multisig, Some(true)) {
+            // 默认扣减 3个签名的长度 在加 锁定期的长度
+            let reduce = (3 * 67 + 5) as f64;
+            value = value - (reduce / price) as i64;
+            resource_value = (resource_value - (3 * 67 + 5) as f64).max(0.0);
+        }
 
         Ok(resp::ResourceResp::new(
             value,

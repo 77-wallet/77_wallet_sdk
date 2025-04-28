@@ -43,9 +43,9 @@ async fn test_freeze() {
     let _signer = None;
 
     let req = FreezeBalanceReq {
-        owner_address: "TQxvQRkXzb1FqSPBTZ1KvGXmQ6QHnPZGAi".to_string(),
-        resource: "energy".to_string(),
-        frozen_balance: 10,
+        owner_address: "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
+        resource: "bandwidth".to_string(),
+        frozen_balance: 300,
         signer: _signer,
     };
     let password = "123456".to_string();
