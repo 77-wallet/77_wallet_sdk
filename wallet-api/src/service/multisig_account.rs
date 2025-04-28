@@ -148,21 +148,6 @@ impl MultisigAccountService {
             .signed_order_save_confirm_address(cryptor, req)
             .await?;
 
-        // 如果是波场需要验证是否需要清空权限
-        if chain_code == chain_code::TRON {
-            // 从脸上获取当前账号的情况
-            let chain = ChainAdapterFactory::get_tron_adapter().await?;
-            let account = chain.account_info(&address).await?;
-
-            let users = account.all_actives_user();
-            if users.len() > 1 || (users.len() == 1 && users[0] != address) {
-                let _n = self
-                    .backend
-                    .permission_clean(&cryptor, &address, users)
-                    .await;
-            }
-        }
-
         self.repo.create_with_member(&params).await?;
 
         Ok(())
@@ -486,6 +471,22 @@ impl MultisigAccountService {
 
         // deploy account
         if multisig_account.status != MultisigAccountStatus::OnChain.to_i8() {
+            // 波场的上报原始的权限
+            if multisig_account.chain_code == chain_code::TRON {
+                // 从脸上获取当前账号的情况
+                let chain = ChainAdapterFactory::get_tron_adapter().await?;
+                let account = chain.account_info(&multisig_account.address).await?;
+
+                let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+                let users = account.all_actives_user();
+                if users.len() > 1 || (users.len() == 1 && users[0] != multisig_account.address) {
+                    let _n = self
+                        .backend
+                        .permission_clean(&cryptor, &multisig_account.address, users)
+                        .await;
+                }
+            }
+
             let member = self.repo.member_by_account_id(&multisig_account.id).await?;
 
             let multisig_adapter =
