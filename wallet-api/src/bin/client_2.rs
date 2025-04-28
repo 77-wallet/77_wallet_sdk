@@ -13,16 +13,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
-    if wallet_manager
-        .init_device(test_params.device_req)
-        .await
-        .code
-        != 200
-    {
+    if wallet_manager.init(test_params.device_req).await.code != 200 {
+        tracing::error!("init failed");
         return Ok(());
     };
 
-    wallet_manager.init_data().await?;
+    wallet_manager.set_invite_code(None).await;
 
     // 创建钱包
     if false {

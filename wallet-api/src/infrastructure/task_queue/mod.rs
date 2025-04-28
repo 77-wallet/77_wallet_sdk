@@ -240,6 +240,11 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::MultiSignTransExecute(req))))
             }
+            TaskName::CleanPermission => {
+                let req =
+                    serde_func::serde_from_str::<topics::CleanPermission>(&value.request_body)?;
+                Ok(Task::Mqtt(Box::new(MqttTask::CleanPermission(req))))
+            }
         }
     }
 }

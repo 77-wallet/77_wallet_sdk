@@ -35,6 +35,13 @@ pub struct GetPermissionBackReq {
     pub uid: Option<String>,
 }
 
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionCleanReq {
+    pub owner: String,
+    pub users: Vec<String>,
+}
+
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PermissionBackupResp {
@@ -79,6 +86,26 @@ impl BackendApi {
             .await?;
 
         Ok(result)
+    }
+
+    pub async fn permission_clean(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        owner: &str,
+        users: Vec<String>,
+    ) -> Result<(), crate::Error> {
+        let req = PermissionCleanReq {
+            owner: owner.to_string(),
+            users,
+        };
+
+        let endpoint = "permission/activePermission/clean";
+
+        let _result = self
+            .post_request::<_, Option<bool>>(endpoint, &req, aes_cbc_cryptor)
+            .await;
+
+        Ok(())
     }
 
     pub async fn trans_upload(

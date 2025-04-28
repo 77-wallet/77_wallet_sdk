@@ -16,6 +16,7 @@ pub(crate) enum MqttTask {
     Init(topics::Init),
     BulletinMsg(topics::BulletinMsg),
     PermissionAccept(topics::PermissionAccept),
+    CleanPermission(topics::CleanPermission),
 }
 
 impl MqttTask {
@@ -39,6 +40,7 @@ impl MqttTask {
 
             MqttTask::PermissionAccept(_) => TaskName::PermissionAccept,
             MqttTask::MultiSignTransExecute(_) => TaskName::MultiSignTransExecute,
+            MqttTask::CleanPermission(_) => TaskName::CleanPermission,
         }
     }
 
@@ -65,22 +67,19 @@ impl MqttTask {
             MqttTask::MultiSignTransAcceptCompleteMsg(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
-            MqttTask::OrderMultiSignCreated(order_multi_sign_created) => Some(
-                wallet_utils::serde_func::serde_to_string(order_multi_sign_created)?,
-            ),
-            MqttTask::AcctChange(acct_change) => {
-                Some(wallet_utils::serde_func::serde_to_string(acct_change)?)
+            MqttTask::OrderMultiSignCreated(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
+            MqttTask::AcctChange(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::Init(init) => Some(wallet_utils::serde_func::serde_to_string(init)?),
-            MqttTask::BulletinMsg(bulletin_msg) => {
-                Some(wallet_utils::serde_func::serde_to_string(bulletin_msg)?)
-            }
+            MqttTask::BulletinMsg(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::PermissionAccept(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
             MqttTask::MultiSignTransExecute(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
+            MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
         };
         Ok(res)
     }
@@ -104,6 +103,7 @@ pub(crate) async fn handle_mqtt_task(
         MqttTask::BulletinMsg(data) => data.exec(id).await?,
         MqttTask::PermissionAccept(data) => data.exec(id).await?,
         MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
+        MqttTask::CleanPermission(data) => data.exec(id).await?,
     }
     Ok(())
 }

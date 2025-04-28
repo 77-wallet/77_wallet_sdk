@@ -6,6 +6,8 @@ async fn test_phrase() {
 
     let phrase = wallet_manager.generate_phrase(1, 12);
 
-    //
-    tracing::info!("{phrase:?}")
+    if let Some(res) = phrase.result {
+        let output = res.phrases.join(" ");
+        tracing::info!("{}", output);
+    }
 }

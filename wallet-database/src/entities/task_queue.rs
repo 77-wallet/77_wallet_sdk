@@ -92,6 +92,7 @@ pub enum TaskName {
     BulletinMsg,
     // TronSignFreezeDelegateVoteChange,
     PermissionAccept,
+    CleanPermission,
     // RpcChange,
     // common
     QueryCoinPrice,

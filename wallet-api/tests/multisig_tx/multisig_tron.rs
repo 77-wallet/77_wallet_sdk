@@ -6,18 +6,18 @@ use wallet_api::{
 #[tokio::test]
 async fn test_create_multisig_account() {
     let wallet_manager = get_manager().await;
-    let address = "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string();
+    let address = "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string();
     let chain_code = "tron".to_string();
 
     let threshold = 2;
     let member1 = MemberVo::new(
         "account_1".to_string(),
-        "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string(),
+        "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
     );
 
     let member2 = MemberVo::new(
         "account_0".to_string(),
-        "TBvkY3wjbWguq9ihLDotoZ7sydyuSwgisc".to_string(),
+        "TLK9t3ht5GE1oYPx8pdoG1PScQdJgS7Pwb".to_string(),
     );
 
     // let member3 = MemberVo::new(
@@ -127,7 +127,7 @@ async fn test_sign_transaction() {
 async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
-    let queue_id = "213839824367521792".to_owned();
+    let queue_id = "255392028073005056".to_owned();
     let fee = wallet_manager
         .estimate_multisig_transfer_fee(queue_id)
         .await;

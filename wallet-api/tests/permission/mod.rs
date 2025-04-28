@@ -76,12 +76,12 @@ async fn test_add_permission() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![KeysReq {
-        address: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(),
+        address: "TLK9t3ht5GE1oYPx8pdoG1PScQdJgS7Pwb".to_string(),
         weight: 1,
     }];
 
     let req = PermissionReq {
-        grantor_addr: "TQxvQRkXzb1FqSPBTZ1KvGXmQ6QHnPZGAi".to_string(),
+        grantor_addr: "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
         name: "????".to_string(),
         active_id: None,
         threshold: 1,
@@ -177,7 +177,7 @@ async fn test_build_multisig_queue() {
     ];
 
     let req = PermissionReq {
-        grantor_addr: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
+        grantor_addr: "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
         name: "picker2.0".to_string(),
         active_id: Some(2),
         threshold: 2,

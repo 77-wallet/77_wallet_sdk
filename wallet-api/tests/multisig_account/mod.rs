@@ -41,14 +41,14 @@ async fn test_deploy_multisig_fee() {
 async fn test_deploy_multisig_account() {
     let wallet_manager = get_manager().await;
 
-    let account_id = "253985346562428928".to_string();
+    let account_id = "255390516227739648".to_string();
 
     let fee_setting = r#"{"gasLimit": 262975,"baseFee": "3329262291","priorityFee": "0","maxFeePerGas": "3995114749"}"#.to_string();
     let fee_setting = Some(fee_setting);
     // let fee_setting = None;
 
     let payer = ServiceFeePayer {
-        from: "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string(),
+        from: "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
         chain_code: "tron".to_string(),
         symbol: "USDT".to_string(),
         fee_setting: fee_setting.clone(),

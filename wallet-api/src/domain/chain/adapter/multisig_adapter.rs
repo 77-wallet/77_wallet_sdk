@@ -21,9 +21,9 @@ use wallet_chain_interact::{
     BillResourceConsume,
 };
 use wallet_database::entities::{
-    assets::AssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
-    permission::PermissionEntity,
+    assets::AssetsEntity, bill::BillKind, coin::CoinEntity,
+    multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
+    multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
 };
 use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::chain::ChainCode as ChainType;
@@ -717,7 +717,7 @@ impl MultisigAdapter {
                 let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-                let consumer = if let Some(token) = coin.token_address() {
+                let mut consumer = if let Some(token) = coin.token_address() {
                     let params = tron::operations::transfer::ContractTransferOpt::new(
                         &token,
                         &queue.from_addr,
@@ -747,6 +747,11 @@ impl MultisigAdapter {
                     main_symbol,
                 )
                 .await?;
+
+                if queue.transfer_type == BillKind::UpdatePermission.to_i8() {
+                    let chain = chain.provider.chain_params().await?;
+                    consumer.set_extra_fee(chain.update_account_fee());
+                }
 
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)

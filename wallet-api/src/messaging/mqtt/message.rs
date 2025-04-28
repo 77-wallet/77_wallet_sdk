@@ -5,7 +5,7 @@ use crate::messaging::mqtt::topics::{
     RpcChange,
 };
 
-use super::topics::multisign_trans_execute::MultiSignTransExecute;
+use super::topics::{multisign_trans_execute::MultiSignTransExecute, CleanPermission};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -72,8 +72,10 @@ pub enum BizType {
     PermissionAccept,
     // 所有签名已经完成
     OrderMultiSignAllMemberAccepted,
-    //
+    // 多签交易执行事件(修改成员交易队列的状态)
     MultiSignTransExecute,
+    // 多签账号部署需要清空原来账号的权限
+    CleanPermission,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -102,4 +104,5 @@ pub enum Body {
     PermissionAccept(PermissionAccept),
     OrderMultiSignAllMemberAccepted,
     OrderMultiTransExecute(MultiSignTransExecute),
+    CleanPermission(CleanPermission),
 }

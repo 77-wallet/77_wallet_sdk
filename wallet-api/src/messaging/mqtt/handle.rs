@@ -18,7 +18,7 @@ use crate::{
 use super::{
     message::BizType,
     topics::{
-        AcctChange, BulletinMsg, ChainChange, Init, MultiSignTransAccept,
+        AcctChange, BulletinMsg, ChainChange, CleanPermission, Init, MultiSignTransAccept,
         MultiSignTransAcceptCompleteMsg, MultiSignTransCancel, MultiSignTransExecute,
         OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
         OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept, RpcChange, Topic,
@@ -165,6 +165,9 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         }
         // 目前这个业务不做任何处理
         BizType::OrderMultiSignAllMemberAccepted => (),
+        BizType::CleanPermission => {
+            exec_task::<CleanPermission, _>(&payload, MqttTask::CleanPermission).await?
+        }
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
             return Err(crate::ServiceError::System(
