@@ -977,7 +977,7 @@ impl StackService {
         if matches!(is_multisig, Some(true)) {
             // 默认扣减 3个签名的长度 在加 锁定期的长度
             let reduce = (3 * 67 + 5) as f64;
-            value = value - (reduce / price) as i64;
+            value = (value - (reduce / price) as i64).max(0);
             resource_value = (resource_value - (3 * 67 + 5) as f64).max(0.0);
         }
 
