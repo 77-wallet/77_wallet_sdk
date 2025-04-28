@@ -157,5 +157,5 @@ active = true
 node_name = "77 Official Nodes"
 rpc_url = "https://apprpc.safew.cc/doge"
 http_url = ""
-network = "mainnet"
+network = "testnet"
 active = true

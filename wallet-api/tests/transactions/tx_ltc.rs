@@ -22,7 +22,7 @@ async fn test_fee() {
     let wallet_manager = get_manager().await;
 
     let from = "LPksEuS2ZeN89BwKQkJw4HAAivrruFDn3j";
-    let to = "ltc1q4qj00nf5ye30a6ctfgegczfsjja0749ysthwms";
+    let to = "ltc1pwwjsndarfzcppq69ax5ghce4q074c2856rcy094tz55du05uxlkqs940d9";
     let value = "0.001";
     let chain_code = "ltc";
     let symbol = "LTC";
@@ -46,7 +46,7 @@ async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
     let from = "LPksEuS2ZeN89BwKQkJw4HAAivrruFDn3j";
-    let to = "ltc1q4qj00nf5ye30a6ctfgegczfsjja0749ysthwms";
+    let to = "ltc1pwwjsndarfzcppq69ax5ghce4q074c2856rcy094tz55du05uxlkqs940d9";
     let value = "0.001";
     let chain_code = "ltc";
     let symbol = "LTC";
