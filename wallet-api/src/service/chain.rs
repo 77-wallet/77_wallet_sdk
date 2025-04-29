@@ -297,11 +297,9 @@ impl ChainService {
                 }
             }
         }
-
         let datas = tx
             .get_assets_by_address(account_addresses, None, Some(symbol), is_multisig)
             .await?;
-
         let chains = tx.get_chain_list().await?;
         let res = token_currencies
             .calculate_chain_assets_list(datas, chains)
