@@ -11,13 +11,13 @@ async fn test_create_multisig_account() {
 
     let threshold = 2;
     let member1 = MemberVo::new(
-        "account_1".to_string(),
+        "发起人".to_string(),
         "TLK9t3ht5GE1oYPx8pdoG1PScQdJgS7Pwb".to_string(),
     );
 
     let member2 = MemberVo::new(
         "account_0".to_string(),
-        "TPJpRdGsED9VEffUnFoaXyYtkpn2MXxtow".to_string(),
+        "TKhMzoBGDcesv6LW5huJmJNeoTkc8AGcim".to_string(),
     );
 
     // let member3 = MemberVo::new(

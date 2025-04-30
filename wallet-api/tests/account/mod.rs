@@ -67,7 +67,7 @@ async fn create_wallet() {
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
-    let wallet_name = "0x7F2A20beC3a5980C8105E642b9cC0FBEd73D3190";
+    let wallet_name = "0xBbE4d4C84c21d54AE2bdc1Ce9a18A6b2bE1b03FA";
     let account_name = "账户";
     let root_password = "123456";
     let req = wallet_api::CreateAccountReq::new(
@@ -75,7 +75,7 @@ async fn create_account() {
         root_password,
         None,
         None,
-        Some(0),
+        Some(1),
         account_name,
         false,
     );
