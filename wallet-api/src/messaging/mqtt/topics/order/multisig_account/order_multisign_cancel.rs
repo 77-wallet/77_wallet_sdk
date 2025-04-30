@@ -1,10 +1,10 @@
-use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
+use wallet_database::{
+    dao::multisig_account::MultisigAccountDaoV1,
+    repositories::multisig_account::MultisigAccountRepo,
+};
 
-use crate::{
-    domain::multisig::MultisigDomain,
-    messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultisignCanceledFrontend, FrontendNotifyEvent,
-    },
+use crate::messaging::notify::{
+    event::NotifyEvent, multisig::OrderMultisignCanceledFrontend, FrontendNotifyEvent,
 };
 
 // 发起方取消多签账号消息，参与方同步自己多签账号的状态
@@ -35,7 +35,7 @@ impl OrderMultiSignCancel {
             ref multisig_account_id,
         } = self;
 
-        let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
+        let account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool).await?;
         if account.is_none() {
             return Err(crate::BusinessError::MultisigAccount(
                 crate::MultisigAccountError::NotFound,

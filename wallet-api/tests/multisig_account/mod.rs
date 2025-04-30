@@ -79,7 +79,7 @@ async fn test_multisig_account_list() {
 async fn test_cancel_account() {
     let wallet_manager = get_manager().await;
 
-    let id = "253661045695057920".to_string();
+    let id = "256181501216034816".to_string();
     let list = wallet_manager.cancel_multisig(id).await;
     println!("{:?}", list);
 }
