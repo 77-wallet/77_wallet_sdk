@@ -171,7 +171,7 @@ mod test {
         let keyword = None;
         // let chain_code = Some("btc");
         let chain_code = None;
-        let wallet_address = "0x97d6f3B342395C939e978Fe8C07c9DEeD960111A";
+        let wallet_address = "0x535D377eE677Cfe452e98A6fc332B8CD8777a79C";
         let res = wallet_manager
             .get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000)
             .await;
@@ -263,7 +263,7 @@ mod test {
 
         // let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
         // let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
-        let wallet_address = "0xb11581fe85c1fB85f173ad26d6158F4F19C135bf";
+        let wallet_address = "0x535D377eE677Cfe452e98A6fc332B8CD8777a79C";
         // let chain_code = "eth";
         // let chain_code = "sol";
         // let chain_code = "btc";

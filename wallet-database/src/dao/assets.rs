@@ -194,7 +194,7 @@ impl AssetsEntity {
             Some(true) => {
                 let mut sql = base_sql("multisig_account");
                 add_dynamic_conditions(&mut sql);
-                sql
+                format!("{sql} AND acc.is_del = 0")
             }
             Some(false) => {
                 let mut sql = base_sql("account");
