@@ -36,10 +36,15 @@ impl OrderMultiSignCancel {
         } = self;
 
         let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
+        if account.is_none() {
+            return Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotFound,
+            ))?;
+        }
 
         // check
         if let Some(multisig_account) = account {
-            MultisigAccountDaoV1::logic_del_multisig_account(multisig_account_id, &*pool)
+            MultisigAccountDaoV1::delete_in_status(multisig_account_id, &*pool)
                 .await
                 .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
@@ -52,5 +57,21 @@ impl OrderMultiSignCancel {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{messaging::mqtt::topics::OrderMultiSignCancel, test::env::get_manager};
+
+    #[tokio::test]
+    async fn test_() {
+        wallet_utils::init_test_log();
+        let (_, _) = get_manager().await.unwrap();
+
+        let raw = r#"{"multisigAccountId": "254779032997072896"}"#;
+        let res = serde_json::from_str::<OrderMultiSignCancel>(&raw).unwrap();
+
+        let _c = res.exec("x").await.unwrap();
     }
 }

@@ -465,6 +465,24 @@ impl MultisigAccountDaoV1 {
         Ok(())
     }
 
+    pub async fn delete_in_status<'a, E>(id: &str, exec: E) -> Result<(), crate::DatabaseError>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "UPDATE multisig_account SET is_del = 1 WHERE id = $1 and pay_status in (?,?) and status not in (?,?)"
+            .to_string();
+        sqlx::query(&sql)
+            .bind(id)
+            .bind(MultisigAccountPayStatus::Unpaid.to_i8())
+            .bind(MultisigAccountPayStatus::PaidFail.to_i8())
+            .bind(MultisigAccountStatus::OnChain.to_i8())
+            .bind(MultisigAccountStatus::OnChianPending.to_i8())
+            .execute(exec)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn physical_del_multisig_account<'a, E>(
         id: &str,
         exec: E,
