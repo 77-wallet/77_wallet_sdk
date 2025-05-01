@@ -21,7 +21,7 @@ impl crate::WalletManager {
         member_list: Vec<MemberVo>,
         address_type: Option<String>,
     ) -> ReturnType<()> {
-        tracing::warn!("接收到前端参数{:?}", member_list);
+        // tracing::warn!("接收到前端参数{:?}", member_list);
 
         let service = MultisigAccountService::new(self.repo_factory.multisig_account_repo())?;
         service
