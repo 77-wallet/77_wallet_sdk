@@ -111,12 +111,12 @@ impl OrderMultiSignAccept {
         let pool = Context::get_global_sqlite_pool()?;
         let mut repo = RepositoryFactory::repo(pool.clone());
         // 查询后端接口，判断是否账户已被取消
-        if Self::check_if_cancelled(&self.id).await? {
-            tracing::warn!(
-                event_name = %event_name,
-                "Multisig Account {} has been canceled",self.id);
-            return Ok(());
-        }
+        // if Self::check_if_cancelled(&self.id).await? {
+        //     tracing::warn!(
+        //         event_name = %event_name,
+        //         "Multisig Account {} has been canceled",self.id);
+        //     return Ok(());
+        // }
 
         let account = AccountRepoTrait::detail(&mut repo, &self.address).await?;
 
