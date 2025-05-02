@@ -469,7 +469,7 @@ impl MultisigAccountDaoV1 {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "UPDATE multisig_account SET is_del = 1 WHERE id = $1 and pay_status in (?,?) and status not in (?,?)"
+        let sql = "UPDATE multisig_account SET is_del = 1 WHERE id = $1 and pay_status in ($2,$3) and status not in ($4,$5)"
             .to_string();
         sqlx::query(&sql)
             .bind(id)

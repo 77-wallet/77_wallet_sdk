@@ -69,7 +69,7 @@ mod test {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await.unwrap();
 
-        let raw = r#"{"multisigAccountId": "254779032997072896"}"#;
+        let raw = r#"{"multisigAccountId": "256890128948137984"}"#;
         let res = serde_json::from_str::<OrderMultiSignCancel>(&raw).unwrap();
 
         let _c = res.exec("x").await.unwrap();

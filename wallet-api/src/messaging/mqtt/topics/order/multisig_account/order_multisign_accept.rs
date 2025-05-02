@@ -85,7 +85,7 @@ impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
 }
 
 impl OrderMultiSignAccept {
-    async fn check_if_cancelled(id: &str) -> Result<bool, crate::ServiceError> {
+    async fn _check_if_cancelled(id: &str) -> Result<bool, crate::ServiceError> {
         tracing::info!("Checking if multisig account {} is cancelled...", id);
         let backend_api = crate::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;

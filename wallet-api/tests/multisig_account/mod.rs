@@ -118,7 +118,7 @@ async fn test_check_participant_exists() {
 async fn test_confirm_participation() {
     let wallet_manager = get_manager().await;
 
-    let id = "245308480033001472".to_string();
+    let id = "256890128948137984".to_string();
     let info = wallet_manager.confirm_participation(id).await;
 
     tracing::info!("{}", serde_json::to_string(&info).unwrap());
