@@ -73,7 +73,7 @@ impl OrderMultiSignAcceptCompleteMsg {
         Ok(())
     }
 
-    async fn all_members_confirmed(
+    pub async fn all_members_confirmed(
         address_list: &[wallet_transport_backend::ConfirmedAddress],
         multi_account_id: &str,
         status: i8,

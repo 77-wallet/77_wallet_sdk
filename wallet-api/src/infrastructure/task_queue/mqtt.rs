@@ -7,6 +7,7 @@ pub(crate) enum MqttTask {
     OrderMultiSignAcceptCompleteMsg(topics::OrderMultiSignAcceptCompleteMsg),
     OrderMultiSignServiceComplete(topics::OrderMultiSignServiceComplete),
     OrderMultiSignCreated(topics::OrderMultiSignCreated),
+    OrderAllConfirmed(topics::OrderAllConfirmed),
     OrderMultiSignCancel(topics::OrderMultiSignCancel),
     MultiSignTransAccept(topics::MultiSignTransAccept),
     MultiSignTransCancel(topics::MultiSignTransCancel),
@@ -41,6 +42,7 @@ impl MqttTask {
             MqttTask::PermissionAccept(_) => TaskName::PermissionAccept,
             MqttTask::MultiSignTransExecute(_) => TaskName::MultiSignTransExecute,
             MqttTask::CleanPermission(_) => TaskName::CleanPermission,
+            MqttTask::OrderAllConfirmed(_) => TaskName::OrderAllConfirmed,
         }
     }
 
@@ -79,6 +81,9 @@ impl MqttTask {
             MqttTask::MultiSignTransExecute(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
+            MqttTask::OrderAllConfirmed(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
             MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
         };
         Ok(res)
@@ -104,6 +109,7 @@ pub(crate) async fn handle_mqtt_task(
         MqttTask::PermissionAccept(data) => data.exec(id).await?,
         MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
         MqttTask::CleanPermission(data) => data.exec(id).await?,
+        MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
     }
     Ok(())
 }

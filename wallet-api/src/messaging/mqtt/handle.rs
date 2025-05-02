@@ -20,8 +20,9 @@ use super::{
     topics::{
         AcctChange, BulletinMsg, ChainChange, CleanPermission, Init, MultiSignTransAccept,
         MultiSignTransAcceptCompleteMsg, MultiSignTransCancel, MultiSignTransExecute,
-        OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg, OrderMultiSignCancel,
-        OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept, RpcChange, Topic,
+        OrderAllConfirmed, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
+        OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete,
+        PermissionAccept, RpcChange, Topic,
     },
     Message,
 };
@@ -164,7 +165,9 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
             exec_task::<MultiSignTransExecute, _>(&payload, MqttTask::MultiSignTransExecute).await?
         }
         // 目前这个业务不做任何处理
-        BizType::OrderMultiSignAllMemberAccepted => (),
+        BizType::OrderMultiSignAllMemberAccepted => {
+            exec_task::<OrderAllConfirmed, _>(&payload, MqttTask::OrderAllConfirmed).await?
+        }
         BizType::CleanPermission => {
             exec_task::<CleanPermission, _>(&payload, MqttTask::CleanPermission).await?
         }

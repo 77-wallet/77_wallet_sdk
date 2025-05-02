@@ -8,3 +8,5 @@ mod order_multisign_created;
 pub use order_multisign_created::*;
 mod order_multisign_service_complete;
 pub use order_multisign_service_complete::*;
+pub mod order_all_confirmed;
+pub use order_all_confirmed::*;

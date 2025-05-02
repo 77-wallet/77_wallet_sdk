@@ -100,4 +100,5 @@ pub enum TaskName {
     RecoverMultisigAccountData,
     SyncNodesAndLinkToChains,
     // RecoverPermission,
+    OrderAllConfirmed,
 }

@@ -245,6 +245,11 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     serde_func::serde_from_str::<topics::CleanPermission>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::CleanPermission(req))))
             }
+            TaskName::OrderAllConfirmed => {
+                let req =
+                    serde_func::serde_from_str::<topics::OrderAllConfirmed>(&value.request_body)?;
+                Ok(Task::Mqtt(Box::new(MqttTask::OrderAllConfirmed(req))))
+            }
         }
     }
 }
