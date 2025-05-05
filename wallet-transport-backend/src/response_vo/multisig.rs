@@ -164,22 +164,39 @@ pub struct SignedUpdateRechargeHashReq {
     pub score_trans_id: String,
 }
 
+// 改版后 v2 接口 address-list
 #[derive(Deserialize, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedSaveAddressReq {
     pub order_id: String,
     pub target_chain_code: String,
     pub target_address: String,
-    pub address_list: Vec<String>,
+    // v1
+    // pub address_list: Vec<String>,
+    // v2
+    pub address_list: Vec<AddressList>,
     pub tx_str: String,
     pub raw_data: String,
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct AddressList {
+    // 参与方名称
+    pub name: String,
+    // 参与方地址
+    pub address: String,
+    pub pubkey: String,
+    // 确认状态
+    pub confirmed: i8,
+    pub uid: String,
+}
+
 impl SignedSaveAddressReq {
     pub fn new(
         order_id: &str,
         target_chain_code: &str,
         target_address: &str,
-        address_list: Vec<String>,
+        address_list: Vec<AddressList>,
         tx_str: &str,
         raw_data: String,
     ) -> Self {

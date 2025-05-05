@@ -164,7 +164,6 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         BizType::MultiSignTransExecute => {
             exec_task::<MultiSignTransExecute, _>(&payload, MqttTask::MultiSignTransExecute).await?
         }
-        // 目前这个业务不做任何处理
         BizType::OrderMultiSignAllMemberAccepted => {
             exec_task::<OrderAllConfirmed, _>(&payload, MqttTask::OrderAllConfirmed).await?
         }

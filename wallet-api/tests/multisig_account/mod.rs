@@ -79,7 +79,7 @@ async fn test_multisig_account_list() {
 async fn test_cancel_account() {
     let wallet_manager = get_manager().await;
 
-    let id = "256181501216034816".to_string();
+    let id = "257922832858746880".to_string();
     let list = wallet_manager.cancel_multisig(id).await;
     println!("{:?}", list);
 }
@@ -118,7 +118,7 @@ async fn test_check_participant_exists() {
 async fn test_confirm_participation() {
     let wallet_manager = get_manager().await;
 
-    let id = "256890128948137984".to_string();
+    let id = "257926276604628992".to_string();
     let info = wallet_manager.confirm_participation(id).await;
 
     tracing::info!("{}", serde_json::to_string(&info).unwrap());

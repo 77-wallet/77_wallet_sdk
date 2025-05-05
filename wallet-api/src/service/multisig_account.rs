@@ -31,7 +31,9 @@ use wallet_transport_backend::{
     SignedOrderAcceptReq, SignedSaveAddressReq, SignedUpdateRechargeHashReq,
     SignedUpdateSignedHashReq,
 };
-use wallet_transport_backend::{ConfirmedAddress, OrderMultisigUpdateArg, SingedOrderCancelReq};
+use wallet_transport_backend::{
+    AddressList, ConfirmedAddress, OrderMultisigUpdateArg, SingedOrderCancelReq,
+};
 use wallet_types::chain::address::category::BtcAddressCategory;
 use wallet_types::chain::address::r#type::BtcAddressType;
 use wallet_types::constant::chain_code;
@@ -136,11 +138,24 @@ impl MultisigAccountService {
 
         let raw_data = params.to_multisig_account_data().to_string()?;
         let sync_account_params = OrderMultiSignAccept::from(&params);
+
+        let address_list = sync_account_params
+            .member
+            .iter()
+            .map(|a| AddressList {
+                name: a.name.clone(),
+                address: a.address.clone(),
+                pubkey: a.pubkey.clone(),
+                confirmed: a.confirmed.clone(),
+                uid: a.uid.clone(),
+            })
+            .collect::<Vec<AddressList>>();
+
         let req = SignedSaveAddressReq::new(
             &params.id,
             &params.chain_code,
             &params.initiator_addr,
-            sync_account_params.member_lists(),
+            address_list,
             &sync_account_params.to_json_str()?,
             raw_data,
         );

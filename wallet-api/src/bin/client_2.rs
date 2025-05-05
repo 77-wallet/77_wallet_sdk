@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wallet_manager.set_invite_code(None).await;
 
     // 创建钱包
-    if true {
+    if false {
         let _wallet = wallet_manager
             .create_wallet(test_params.create_wallet_req)
             .await

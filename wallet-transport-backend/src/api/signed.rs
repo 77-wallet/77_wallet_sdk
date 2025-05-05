@@ -88,9 +88,11 @@ impl BackendApi {
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         req: SignedSaveAddressReq,
     ) -> Result<Option<String>, crate::Error> {
+        // /signed/order/saveConfirmAddress
+        //
         let res = self
             .client
-            .post("/signed/order/saveConfirmAddress")
+            .post("signed/order/v2/initMultiAddress")
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;

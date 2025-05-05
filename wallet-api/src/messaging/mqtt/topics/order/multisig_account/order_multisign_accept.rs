@@ -49,14 +49,14 @@ impl OrderMultiSignAccept {
     }
 }
 
-impl OrderMultiSignAccept {
-    pub fn member_lists(&self) -> Vec<String> {
-        self.member
-            .iter()
-            .map(|i| i.address.to_string())
-            .collect::<Vec<String>>()
-    }
-}
+// impl OrderMultiSignAccept {
+//     pub fn member_lists(&self) -> Vec<String> {
+//         self.member
+//             .iter()
+//             .map(|i| i.address.to_string())
+//             .collect::<Vec<String>>()
+//     }
+// }
 
 impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
     fn from(value: &NewMultisigAccountEntity) -> Self {

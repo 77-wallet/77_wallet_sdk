@@ -27,25 +27,25 @@ impl OrderAllConfirmed {
             "Starting to process OrderAllConfirmed"
         );
 
-        // let account =
-        //     MultisigDomain::check_multisig_account_exists(&self.multisig_account_id).await?;
+        let account =
+            MultisigDomain::check_multisig_account_exists(&self.multisig_account_id).await?;
 
-        // let Some(_account) = account else {
-        //     tracing::warn!(
-        //         "[OrderAllConfirmed] faild account not found {}",
-        //         self.multisig_account_id
-        //     );
-        //     return Ok(());
-        // };
+        let Some(_account) = account else {
+            tracing::warn!(
+                "[OrderAllConfirmed] faild account not found {}",
+                self.multisig_account_id
+            );
+            return Ok(());
+        };
 
-        // if _account.status == MultisigAccountStatus::Pending.to_i8() {
-        //     OrderMultiSignAcceptCompleteMsg::all_members_confirmed(
-        //         &self.members,
-        //         &self.multisig_account_id,
-        //         1,
-        //     )
-        //     .await?;
-        // }
+        if _account.status == MultisigAccountStatus::Pending.to_i8() {
+            OrderMultiSignAcceptCompleteMsg::all_members_confirmed(
+                &self.members,
+                &self.multisig_account_id,
+                1,
+            )
+            .await?;
+        }
 
         Ok(())
     }
@@ -60,7 +60,7 @@ mod test {
         wallet_utils::init_test_log();
         let (_, _) = get_manager().await.unwrap();
 
-        let raw = r#"{"noticeTitle":"多签账户等待您部署","noticeContent":"多签账户等待您部署","multisigAccountId":"256946775234056192","members":[{"name":"发起人","address":"TSwxhEpTdpGRM4MUqd6Gjojh8jdrUUPsRC","pubkey":"044784B00BF046B69D4D77C18AA9805219E41C117D91E249076866EAB8FE25B1BCC03D6FD0C1D68B09071A719EE95B2CD8A7E8FACD9B7BD85D8B17EBE6B92C1622","status":1,"uid":"dd8e4970ef357c64e325a8a1afb76ba8884f276b0f4a807926e4337bf5fa62ca"},{"name":"2","address":"TV7NLrNDhmB7r7KWuCxxFJ1ipUrzUpzAXW","pubkey":"","status":0,"uid":"52e024f827487016441466927be7eccb23347786c0b0a91834301ddc9cf15434"},{"name":"3","address":"TAY1AH4wrxjB4g7zvZDzJuDxLYMGn9duZX","pubkey":"","status":0,"uid":"968e6d5bb60ddd784fa298d2bd5034ecb7d0b9b09a15699d2b2884554f507e58"}]}"#;
+        let raw = r#"{"multisigAccountId":"257922832858746880","members":[{"address":"TKfzG9aNQ5vBNwQHGB3w7cCHkGZ6YQBcT9","pubkey":"0400D477DEE2BBDB5424E09DF5937099D61BBBC4087F27D1362D6368196987350981F7480663450DCF081A4A207101C25F8FEF5E3096F7211D4C12B112C337C009","status":1,"uid":"8d102007bae33499ccf614475195fa16bf2bdaa5778b8b1be3d3ce224ad8a451"},{"address":"TKKjkyjSMZ9iy8ATJsLp1X4yNqr39Q5v8Q","pubkey":"0494CB36619B3BEA08AF584CD66A343650930579AD88A00DD8EDE771579BBBF45AADB1E58677BD9ADAE6663F3195055890F527E457FB462F3E112E298B13AEE2AC","status":1,"uid":"3a0f935b5a44dd58812efde1a5175b975bc1368531f69e76315a98cbdb921923"}]}"#;
         let res = serde_json::from_str::<OrderAllConfirmed>(&raw).unwrap();
 
         let _c = res.exec("x").await.unwrap();
