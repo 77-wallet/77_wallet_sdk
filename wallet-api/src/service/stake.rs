@@ -965,7 +965,7 @@ impl StackService {
 
         let mut value = res.to_sun();
 
-        let resource = ChainTransaction::account_resource(&self.chain, &account).await?;
+        let resource = ChainTransDomain::account_resource(&self.chain, &account).await?;
         let price = match resource_type {
             ResourceType::BANDWIDTH => resource.net_price(),
             ResourceType::ENERGY => resource.energy_price(),
