@@ -93,7 +93,7 @@ impl TaskManager {
 
         tokio::spawn(async move {
             while let Some(tasks) = rx.next().await {
-                tracing::debug!("[task_process] tasks: {tasks:?}");
+                tracing::info!("[task_process] tasks: {tasks:?}");
                 for task in tasks {
                     let task_id = task.id.clone();
 

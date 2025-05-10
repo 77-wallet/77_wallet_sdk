@@ -257,6 +257,7 @@ impl AccountService {
 
         let device_bind_address_task_data =
             domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
+        tracing::info!("创建账户绑定地址任务： {:?}", device_bind_address_task_data);
 
         // 恢复多签账号、多签队列
         let mut body = RecoverDataBody::new(&wallet.uid);
