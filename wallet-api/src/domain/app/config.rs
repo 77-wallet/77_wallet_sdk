@@ -223,16 +223,24 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_invite_code() -> Result<InviteCode, crate::ServiceError> {
+    pub(crate) async fn get_invite_code() -> Result<Option<InviteCode>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let invite_code = ConfigDao::find_by_key(INVITE_CODE, pool.as_ref()).await?;
-        if let Some(invite_code) = invite_code {
-            let invite_code =
-                wallet_database::entities::config::InviteCode::try_from(invite_code.value)?;
-            Ok(invite_code)
-        } else {
-            Err(crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into())
-        }
+        invite_code
+            .map(|invite_code| {
+                let invite_code =
+                    wallet_database::entities::config::InviteCode::try_from(invite_code.value)?;
+                Ok(invite_code)
+            })
+            .transpose()
+
+        // if let Some(invite_code) = invite_code {
+        //     let invite_code =
+        //         wallet_database::entities::config::InviteCode::try_from(invite_code.value)?;
+        //     Ok(invite_code)
+        // } else {
+        //     Err(crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into())
+        // }
     }
 
     pub(crate) async fn get_keystore_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {

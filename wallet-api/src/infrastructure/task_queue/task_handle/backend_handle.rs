@@ -99,12 +99,12 @@ impl EndpointHandler for DefaultHandler {
         if device.is_init != 1 {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         }
-        let invite_code = ConfigDomain::get_invite_code().await?;
-        if invite_code.status.is_none() {
-            return Err(
-                crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into(),
-            );
-        }
+        // let invite_code = ConfigDomain::get_invite_code().await?;
+        // if invite_code.status.is_none() {
+        //     return Err(
+        //         crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into(),
+        //     );
+        // }
         // 实现具体的处理逻辑
         let _res = backend
             .post_req_str::<serde_json::Value>(endpoint, &body, aes_cbc_cryptor)
@@ -138,13 +138,13 @@ impl EndpointHandler for SpecialHandler {
                 repo.device_init().await?;
             }
             endpoint::KEYS_INIT => {
-                let invite_code = ConfigDomain::get_invite_code().await?;
-                if invite_code.status.is_none() {
-                    return Err(crate::BusinessError::Device(
-                        crate::DeviceError::InviteStatusNotConfirmed,
-                    )
-                    .into());
-                }
+                // let invite_code = ConfigDomain::get_invite_code().await?;
+                // if invite_code.status.is_none() {
+                //     return Err(crate::BusinessError::Device(
+                //         crate::DeviceError::InviteStatusNotConfirmed,
+                //     )
+                //     .into());
+                // }
                 let res = backend
                     .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
                     .await;
@@ -185,8 +185,12 @@ impl EndpointHandler for SpecialHandler {
                     .await;
 
                 res?;
-                let invite_code = ConfigDomain::get_invite_code().await?;
-                ConfigDomain::set_invite_code(Some(req.invitee), invite_code.code).await?;
+                let code = ConfigDomain::get_invite_code()
+                    .await?
+                    .map(|c| c.code)
+                    .flatten();
+
+                ConfigDomain::set_invite_code(Some(req.invitee), code).await?;
             }
             endpoint::LANGUAGE_INIT => {
                 backend
