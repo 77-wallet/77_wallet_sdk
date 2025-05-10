@@ -79,7 +79,6 @@ impl DeviceDomain {
             wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
 
         let accounts = AccountEntity::account_list(&*pool, None, None, None, vec![], None).await?;
-        tracing::info!("查询本地所有账户： {:?}", accounts);
 
         let multisig_accounts =
             wallet_database::dao::multisig_account::MultisigAccountDaoV1::find_owner_on_chain_account(&*pool)
