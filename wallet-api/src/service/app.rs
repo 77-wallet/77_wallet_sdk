@@ -432,11 +432,13 @@ impl<
             ));
         };
 
+        let is_invite = invite_code.is_some();
         let req = wallet_transport_backend::request::SetInviteeStatusReq {
             sn: device.sn,
-            invitee: invite_code.is_some(),
+            invitee: is_invite,
         };
 
+        ConfigDomain::set_invite_code(Some(is_invite), invite_code).await?;
         let task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS,
             &req,
@@ -445,8 +447,6 @@ impl<
             .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
             .send()
             .await?;
-
-        ConfigDomain::set_invite_code(None, invite_code).await?;
 
         Ok(())
     }
