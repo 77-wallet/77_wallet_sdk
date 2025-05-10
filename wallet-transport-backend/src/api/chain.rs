@@ -1,4 +1,5 @@
 use crate::{
+    consts::endpoint::CHAIN_LIST,
     request::ChainRpcListReq,
     response::BackendResponse,
     response_vo::chain::{ChainInfos, ChainList},
@@ -26,7 +27,7 @@ impl BackendApi {
     ) -> Result<ChainList, crate::Error> {
         let res = self
             .client
-            .post("chain/list")
+            .post(CHAIN_LIST)
             .send::<BackendResponse>()
             .await?;
 

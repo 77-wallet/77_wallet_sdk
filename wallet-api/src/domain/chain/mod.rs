@@ -96,6 +96,7 @@ impl ChainDomain {
     pub(crate) async fn upsert_multi_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::ServiceError> {
+        tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -111,7 +112,17 @@ impl ChainDomain {
         let mut chain_codes = Vec::new();
         let mut has_new_chain = false;
         let account_list = AccountRepoTrait::list(&mut repo).await?;
+        let app_version = super::app::config::ConfigDomain::get_app_version()
+            .await?
+            .app_version;
         for chain in chains.list {
+            match super::app::config::ConfigDomain::compare_versions(
+                &app_version,
+                &chain.app_version_code,
+            ) {
+                std::cmp::Ordering::Less => continue,
+                std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {}
+            };
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
             };
