@@ -226,7 +226,6 @@ impl ConfigDomain {
     pub(crate) async fn get_invite_code() -> Result<Option<InviteCode>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let invite_code = ConfigDao::find_by_key(INVITE_CODE, pool.as_ref()).await?;
-
         invite_code
             .map(|invite_code| {
                 let invite_code =
