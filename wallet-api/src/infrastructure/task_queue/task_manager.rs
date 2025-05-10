@@ -70,15 +70,13 @@ impl TaskManager {
         failed_queue.extend(pending_queue);
 
         let mut tasks = Vec::new();
-        tracing::info!("之前失败的任务队列: {:#?}", failed_queue);
-        tracing::info!("初始化时正在运行的任务: {:#?}", running_tasks);
+
         // 获取当前正在运行的任务
         for task in failed_queue {
             if !running_tasks.contains(&task.id) {
                 tasks.push(task);
             }
         }
-        tracing::warn!("最终初始化时需要运行的任务: {:#?}", tasks);
 
         if let Err(e) = manager.get_task_sender().send(tasks) {
             tracing::error!("send task queue error: {}", e);
@@ -95,7 +93,7 @@ impl TaskManager {
 
         tokio::spawn(async move {
             while let Some(tasks) = rx.next().await {
-                tracing::info!("[task_process] tasks: {tasks:?}");
+                tracing::debug!("[task_process] tasks: {tasks:?}");
                 for task in tasks {
                     let task_id = task.id.clone();
 
