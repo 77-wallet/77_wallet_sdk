@@ -162,7 +162,7 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "SELECT * FROM task_queue WHERE request_body LIKE ? AND status != 2";
+        let sql = "SELECT * FROM task_queue WHERE request_body LIKE ?";
 
         let pattern = format!("%{}%", keyword);
 

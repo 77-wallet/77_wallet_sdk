@@ -22,17 +22,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
 
-    let res = wallet_manager
-        .set_invite_code(Some("I1912683353004912640".to_string()))
-        .await;
-    let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-    tracing::info!("res: {res:?}");
+    // let res = wallet_manager
+    //     .set_invite_code(Some("I1912683353004912640".to_string()))
+    //     .await;
+    // let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+    // tracing::info!("res: {res:?}");
 
-    let wallet = wallet_manager
-        .create_wallet(test_params.create_wallet_req)
-        .await
-        .result;
-    tracing::warn!("wallet: {wallet:#?}");
+    // let wallet = wallet_manager
+    //     .create_wallet(test_params.create_wallet_req)
+    //     .await
+    //     .result;
+    // tracing::warn!("wallet: {wallet:#?}");
 
     // let sync_res = wallet_manager.sync_assets(vec![], None, vec![]).await;
     // tracing::info!("sync res: {sync_res:#?}");

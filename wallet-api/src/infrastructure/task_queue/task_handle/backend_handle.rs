@@ -29,7 +29,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH,
         endpoint::multisig::SIGNED_ORDER_SAVE_RAW_DATA,
         endpoint::DEVICE_DELETE,
-        endpoint::DEVICE_BIND_ADDRESS,
+        // endpoint::DEVICE_BIND_ADDRESS,
         endpoint::DEVICE_UNBIND_ADDRESS,
         endpoint::SEND_MSG_CONFIRM,
         endpoint::multisig::PERMISSION_ACCEPT,
