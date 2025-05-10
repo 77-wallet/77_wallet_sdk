@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
-use wallet_database::repositories::{device::DeviceRepoTrait as _, wallet::WalletRepoTrait};
+use wallet_database::{
+    entities::task_queue::TaskQueueEntity,
+    repositories::{device::DeviceRepoTrait as _, wallet::WalletRepoTrait},
+};
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
@@ -316,6 +319,31 @@ impl EndpointHandler for SpecialHandler {
                     .post_req_str::<String>(endpoint, &body, aes_cbc_cryptor)
                     .await?;
                 ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
+            }
+            endpoint::DEVICE_BIND_ADDRESS => {
+                let tasks = TaskQueueEntity::get_tasks_with_request_body(
+                    &*pool.clone(),
+                    endpoint::DEVICE_BIND_ADDRESS,
+                )
+                .await?;
+
+                if let Some(latest_task) = tasks.iter().max_by_key(|task| task.created_at) {
+                    let latest_id = &latest_task.id;
+
+                    for task in tasks.iter() {
+                        if task.id == *latest_id {
+                            // 只对最新任务执行请求
+                            tracing::info!("执行最新的绑定任务: {:?}", task);
+                            backend
+                                .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
+                                .await?;
+                        } else {
+                            // 其余任务直接删除
+                            tracing::warn!("删除过期的绑定任务: {:?}", task);
+                            TaskQueueEntity::delete(&*pool, &task.id).await?;
+                        }
+                    }
+                }
             }
             _ => {
                 // 未知的 endpoint

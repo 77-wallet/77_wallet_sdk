@@ -155,6 +155,24 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn get_tasks_with_request_body<'a, E>(
+        exec: E,
+        keyword: &str,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "SELECT * FROM task_queue WHERE request_body LIKE ? AND status != 2";
+
+        let pattern = format!("%{}%", keyword);
+
+        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+            .bind(pattern)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn list<'a, E>(exec: E, status: u8) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
