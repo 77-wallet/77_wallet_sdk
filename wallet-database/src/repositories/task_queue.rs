@@ -45,6 +45,18 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, TaskQueueEntity::update_status, id, 2)
     }
 
+    async fn get_tasks_with_request_body(
+        &mut self,
+        request_body: &str,
+    ) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(
+            executor,
+            TaskQueueEntity::get_tasks_with_request_body,
+            request_body
+        )
+    }
+
     async fn task_failed(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::update_status, id, 3)
