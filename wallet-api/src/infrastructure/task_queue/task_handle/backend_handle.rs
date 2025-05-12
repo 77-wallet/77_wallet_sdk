@@ -345,34 +345,11 @@ impl EndpointHandler for SpecialHandler {
                         .push(&multisig_account.chain_code, &multisig_account.address);
                 }
 
-                let body = wallet_utils::serde_func::serde_to_value(body)?;
+                let body = wallet_utils::serde_func::serde_to_value(device_bind_address_req)?;
 
                 backend
                     .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
                     .await?;
-                // let tasks = TaskQueueEntity::get_tasks_with_request_body(
-                //     &*pool.clone(),
-                //     endpoint::DEVICE_BIND_ADDRESS,
-                // )
-                // .await?;
-
-                // if let Some(latest_task) = tasks.iter().max_by_key(|task| task.created_at) {
-                //     let latest_id = &latest_task.id;
-
-                //     for task in tasks.iter() {
-                //         if task.id == *latest_id {
-                //             // 只对最新任务执行请求
-                //             tracing::info!("执行最新的绑定任务: {:?}", task);
-                //             backend
-                //                 .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
-                //                 .await?;
-                //         } else {
-                //             // 其余任务直接删除
-                //             tracing::warn!("删除过期的绑定任务: {:?}", task);
-                //             TaskQueueEntity::delete(&*pool, &task.id).await?;
-                //         }
-                //     }
-                // }
             }
             _ => {
                 // 未知的 endpoint
