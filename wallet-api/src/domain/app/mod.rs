@@ -3,10 +3,7 @@ pub mod mqtt;
 use config::ConfigDomain;
 use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
-    entities::{
-        account::AccountEntity,
-        config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
-    },
+    entities::config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
     factory::RepositoryFactory,
     repositories::device::DeviceRepoTrait,
 };
@@ -71,29 +68,10 @@ impl DeviceDomain {
     }
 
     pub(crate) async fn gen_device_bind_address_task_data(
-        sn: &str,
     ) -> Result<BackendApiTaskData, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
-
-        let mut device_bind_address_req =
-            wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
-
-        let accounts = AccountEntity::account_list(&*pool, None, None, None, vec![], None).await?;
-
-        let multisig_accounts =
-            wallet_database::dao::multisig_account::MultisigAccountDaoV1::find_owner_on_chain_account(&*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-
-        for account in accounts {
-            device_bind_address_req.push(&account.chain_code, &account.address);
-        }
-        for multisig_account in multisig_accounts {
-            device_bind_address_req.push(&multisig_account.chain_code, &multisig_account.address);
-        }
         let device_bind_address_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
-            &device_bind_address_req,
+            &(),
         )?;
         Ok(device_bind_address_task_data)
     }

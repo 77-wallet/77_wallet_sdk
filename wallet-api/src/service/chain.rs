@@ -17,7 +17,7 @@ use wallet_database::{
     },
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait, ResourcesRepo, TransactionTrait as _,
+        coin::CoinRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -87,9 +87,7 @@ impl ChainService {
     ) -> Result<(), crate::error::ServiceError> {
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
-        let Some(device) = DeviceRepoTrait::get_device_info(&mut tx).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
+
         domain::wallet::WalletDomain::validate_password(wallet_password).await?;
         let chain_list = ChainRepoTrait::get_chain_node_list(&mut tx).await?;
 
@@ -189,7 +187,7 @@ impl ChainService {
         }
 
         let device_bind_address_task_data =
-            DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
+            DeviceDomain::gen_device_bind_address_task_data().await?;
 
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new()

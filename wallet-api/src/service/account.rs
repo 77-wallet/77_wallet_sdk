@@ -104,9 +104,7 @@ impl AccountService {
         let start = std::time::Instant::now();
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
+
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let wallet = tx
@@ -256,7 +254,7 @@ impl AccountService {
         )?;
 
         let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
+            domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
 
         // 恢复多签账号、多签队列
         let mut body = RecoverDataBody::new(&wallet.uid);

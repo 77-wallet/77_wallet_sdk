@@ -518,7 +518,7 @@ impl WalletService {
             BackendApiTaskData::new(endpoint::DEVICE_DELETE, &device_delete_req)?;
 
         let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data(&device.sn).await?;
+            domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
 
         // 恢复多签账号、多签队列
         let mut recover_data = RecoverDataBody::new(&uid);
