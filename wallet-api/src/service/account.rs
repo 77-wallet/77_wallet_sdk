@@ -101,7 +101,6 @@ impl AccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::ServiceError> {
-        let start = std::time::Instant::now();
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
 
@@ -277,7 +276,6 @@ impl AccountService {
                 .await?;
         }
 
-        tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(())
     }
 
