@@ -6,6 +6,7 @@ use wallet_types::constant::chain_code;
 mod multisig_adapter;
 use super::rpc_need_header;
 pub use multisig_adapter::*;
+pub mod ton_tx;
 pub mod tron_tx;
 
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
@@ -22,6 +23,7 @@ macro_rules! dispatch {
             Self::Tron(chain) => chain.$method($($arg),*).await,
             Self::Ltc(chain) => chain.$method($($arg),*).await,
             Self::Doge(chain) => chain.$method($($arg),*).await,
+            Self::Ton(chain) => chain.$method($($arg),*).await,
         }
     };
 }

@@ -1,4 +1,4 @@
-use super::TIME_OUT;
+use super::{ton_tx, TIME_OUT};
 use crate::{
     dispatch,
     domain::{
@@ -19,6 +19,7 @@ use wallet_chain_interact::{
     btc::{self},
     dog, eth, ltc,
     sol::{self, operations::SolInstructionOperation},
+    ton,
     tron::{
         self,
         operations::{TronConstantOperation as _, TronTxOperation},
@@ -28,7 +29,7 @@ use wallet_chain_interact::{
 };
 use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::{
-    address::r#type::{DogAddressType, LtcAddressType},
+    address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
     chain::ChainCode as ChainType,
 };
 use wallet_utils::unit;
@@ -40,6 +41,7 @@ pub enum TransactionAdapter {
     Tron(chain::tron::TronChain),
     Ltc(chain::ltc::LtcChain),
     Doge(chain::dog::DogChain),
+    Ton(chain::ton::chain::TonChain),
 }
 
 impl TransactionAdapter {
@@ -52,10 +54,6 @@ impl TransactionAdapter {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         match chain_code {
             ChainType::Bitcoin => {
-                // let auth = wallet_chain_interact::btc::provider::RpcAuth {
-                //     user: "hello-bitcoin".to_string(),
-                //     password: "123456".to_string(),
-                // };
                 let config = chain::btc::provider::ProviderConfig {
                     rpc_url: rpc_url.to_string(),
                     rpc_auth: None,
@@ -107,6 +105,14 @@ impl TransactionAdapter {
 
                 let doge = chain::ltc::LtcChain::new(config, network, header_opt, timeout)?;
                 Ok(TransactionAdapter::Ltc(doge))
+            }
+            ChainType::Ton => {
+                let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
+                let provider = ton::provider::Provider::new(http_client);
+
+                let ton = chain::ton::chain::TonChain::new(provider)?;
+
+                Ok(TransactionAdapter::Ton(ton))
             }
         }
     }
@@ -412,6 +418,20 @@ impl TransactionAdapter {
                     Ok(resp)
                 }
             }
+            Self::Ton(chain) => {
+                let address_type = TonAddressType::V4R2;
+
+                let msg_cell =
+                    ton_tx::build_ext_cell(&params.base, &chain.provider, address_type).await?;
+
+                let fee = chain
+                    .estimate_fee(msg_cell.clone(), &params.base.from, address_type)
+                    .await?;
+
+                let tx_hash = chain.exec(msg_cell, private_key, address_type).await?;
+
+                Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))
+            }
         }
     }
 
@@ -595,6 +615,20 @@ impl TransactionAdapter {
                 .await?;
 
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Ton(chain) => {
+                let address_type = TonAddressType::V4R2;
+
+                let msg_cell = ton_tx::build_ext_cell(&req, &chain.provider, address_type).await?;
+
+                let fee = chain
+                    .estimate_fee(msg_cell.clone(), &req.from, address_type)
+                    .await?;
+
+                let res =
+                    response_vo::CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency);
+
                 wallet_utils::serde_func::serde_to_string(&res)
             }
         };

@@ -1,4 +1,3 @@
-use alloy::primitives::bytes::buf::Chain;
 use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
