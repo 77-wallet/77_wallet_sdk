@@ -175,3 +175,25 @@ protocol = ""
 default = true
 popular = true
 active = true
+
+[[coins]]
+name = "Ton"
+chain_code = "ton"
+symbol = "Ton"
+decimals = 9
+token_address = ""
+protocol = ""
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "Ton"
+chain_code = "ton"
+symbol = "USDT"
+decimals = 8
+token_address = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+protocol = ""
+default = true
+popular = true
+active = true

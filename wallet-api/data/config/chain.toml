@@ -51,3 +51,10 @@ chain_code = "doge"
 main_symbol = "Doge"
 protocols = []
 active = true
+
+[chains.ton]
+name = "Ton"
+chain_code = "ton"
+main_symbol = "TON"
+protocols = []
+active = true
