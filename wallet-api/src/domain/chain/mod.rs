@@ -96,28 +96,41 @@ impl ChainDomain {
     pub(crate) async fn upsert_multi_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::ServiceError> {
-        return Ok(true);
-
+        tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        // 本地后端节点
-        let local_backend_nodes =
-            wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(0)).await?;
+        // // 本地后端节点
+        // let local_backend_nodes =
+        //     wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(0)).await?;
 
-        // 本地配置节点
-        let default_nodes =
-            wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(1)).await?;
+        // // 本地配置节点
+        // let default_nodes =
+        //     wallet_database::repositories::node::NodeRepoTrait::list(&mut repo, Some(1)).await?;
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
         let mut has_new_chain = false;
         let account_list = AccountRepoTrait::list(&mut repo).await?;
+        let app_version = super::app::config::ConfigDomain::get_app_version()
+            .await?
+            .app_version;
         for chain in chains.list {
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
             };
-            let status = if chain.enable { 1 } else { 0 };
+
+            let status = match (
+                super::app::config::ConfigDomain::compare_versions(
+                    &app_version,
+                    &chain.app_version_code,
+                ),
+                chain.enable,
+            ) {
+                (std::cmp::Ordering::Less, _) => 0,
+                (_, true) => 1,
+                (_, false) => 0,
+            };
 
             if account_list
                 .iter()
@@ -126,33 +139,43 @@ impl ChainDomain {
                 has_new_chain = true;
             }
 
-            if local_backend_nodes
-                .iter()
-                .any(|node| node.chain_code == chain.chain_code)
-            {
-                input.push(
-                    wallet_database::entities::chain::ChainCreateVo::new(
-                        &chain.name,
-                        &chain.chain_code,
-                        &[],
-                        &master_token_code,
-                    )
-                    .with_status(status),
-                );
-            } else if default_nodes
-                .iter()
-                .any(|node| node.chain_code == chain.chain_code)
-            {
-                input.push(
-                    wallet_database::entities::chain::ChainCreateVo::new(
-                        &chain.name,
-                        &chain.chain_code,
-                        &[],
-                        &master_token_code,
-                    )
-                    .with_status(status),
-                );
-            }
+            // if local_backend_nodes
+            //     .iter()
+            //     .any(|node| node.chain_code == chain.chain_code)
+            // {
+            //     input.push(
+            //         wallet_database::entities::chain::ChainCreateVo::new(
+            //             &chain.name,
+            //             &chain.chain_code,
+            //             &[],
+            //             &master_token_code,
+            //         )
+            //         .with_status(status),
+            //     );
+            // } else if default_nodes
+            //     .iter()
+            //     .any(|node| node.chain_code == chain.chain_code)
+            // {
+            //     input.push(
+            //         wallet_database::entities::chain::ChainCreateVo::new(
+            //             &chain.name,
+            //             &chain.chain_code,
+            //             &[],
+            //             &master_token_code,
+            //         )
+            //         .with_status(status),
+            //     );
+            // }
+
+            input.push(
+                wallet_database::entities::chain::ChainCreateVo::new(
+                    &chain.name,
+                    &chain.chain_code,
+                    &[],
+                    &master_token_code,
+                )
+                .with_status(status),
+            );
             if status == 1 {
                 chain_codes.push(chain.chain_code);
             }

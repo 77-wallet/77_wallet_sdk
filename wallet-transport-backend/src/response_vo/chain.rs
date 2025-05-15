@@ -26,6 +26,8 @@ pub struct ChainUrlInfo {
     pub name: String,
     /// 主币编码
     pub master_token_code: Option<String>,
+    /// 版本
+    pub app_version_code: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
