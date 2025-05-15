@@ -37,6 +37,7 @@ pub struct GlobalMsg {
 pub struct MultisigAccountBase {
     pub id: String,
     pub address: String,
+    pub status: Option<i32>,
 }
 
 impl From<MultisigAccountEntity> for MultisigAccountBase {
@@ -44,6 +45,7 @@ impl From<MultisigAccountEntity> for MultisigAccountBase {
         MultisigAccountBase {
             id: entity.id,
             address: entity.address,
+            status: None,
         }
     }
 }
@@ -53,6 +55,7 @@ impl From<&MultisigQueueEntity> for MultisigAccountBase {
         MultisigAccountBase {
             id: entity.id.clone(),
             address: entity.from_addr.clone(),
+            status: Some(entity.status as i32),
         }
     }
 }
