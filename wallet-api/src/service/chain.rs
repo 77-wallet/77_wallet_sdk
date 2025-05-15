@@ -75,8 +75,10 @@ impl ChainService {
     pub async fn sync_chains(self) -> Result<bool, crate::error::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let app_version = ConfigDomain::get_app_version().await?;
 
-        let chain_list = backend.chain_list(cryptor).await?;
+        let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
+        let chain_list = backend.chain_list(cryptor, req).await?;
 
         ChainDomain::upsert_multi_chain_than_toggle(chain_list).await
     }
