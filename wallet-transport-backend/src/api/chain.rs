@@ -1,5 +1,6 @@
 use crate::{
-    request::ChainRpcListReq,
+    consts::endpoint::CHAIN_LIST,
+    request::{ChainListReq, ChainRpcListReq},
     response::BackendResponse,
     response_vo::chain::{ChainInfos, ChainList},
 };
@@ -23,10 +24,12 @@ impl BackendApi {
     pub async fn chain_list(
         &self,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        req: ChainListReq,
     ) -> Result<ChainList, crate::Error> {
         let res = self
             .client
-            .post("chain/list")
+            .post(CHAIN_LIST)
+            .json(req)
             .send::<BackendResponse>()
             .await?;
 

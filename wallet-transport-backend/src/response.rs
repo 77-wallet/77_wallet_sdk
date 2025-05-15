@@ -26,6 +26,7 @@ impl BackendResponse {
                             .map_err(crate::Error::Utils)?,
                         None => wallet_utils::serde_func::serde_to_value(None::<T>)?,
                     };
+                    tracing::debug!("backend response: {:?}", res);
                     Ok(wallet_utils::serde_func::serde_from_value(res)?)
                 } else {
                     if let Some(code) = ok.code {
