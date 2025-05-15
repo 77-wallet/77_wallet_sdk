@@ -202,11 +202,7 @@ impl<
         // let tx = &mut self.repo;
         let backend_api = crate::manager::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-
-        let app_version = ConfigDomain::get_app_version().await?;
-
-        let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
-        let list = backend_api.chain_list(cryptor, req).await?.list;
+        let list = backend_api.chain_list(cryptor).await?.list;
         ConfigDomain::set_block_browser_url(&list).await?;
         Ok(())
     }

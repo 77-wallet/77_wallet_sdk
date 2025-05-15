@@ -667,15 +667,3 @@ impl ChainRpcListReq {
         Self { chain_code }
     }
 }
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChainListReq {
-    pub app_version_code: String,
-}
-
-impl ChainListReq {
-    pub fn new(app_version_code: String) -> Self {
-        Self { app_version_code }
-    }
-}

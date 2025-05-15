@@ -101,13 +101,9 @@ impl NodeService {
                 chain_codes.push(chain_code.to_string());
             }
         }
-        let app_version = domain::app::config::ConfigDomain::get_app_version().await?;
-
         ChainDomain::toggle_chains(tx, &chain_codes).await?;
-        let chain_list_req = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
-            &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
-        )?;
+        let chain_list_req =
+            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::CHAIN_LIST, &())?;
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(chain_list_req)))
             .send()

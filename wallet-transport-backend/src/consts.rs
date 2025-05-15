@@ -44,7 +44,7 @@ pub mod endpoint {
     pub const APP_INSTALL_DOWNLOAD: &str = "app/install/download";
     pub const VERSION_VIEW: &str = "version/view";
     // pub const CHAIN_DEFAULT_LIST: &str = "chain/defaultList";
-    pub const CHAIN_LIST: &str = "chain/v2/list";
+    pub const CHAIN_LIST: &str = "chain/list";
     pub const CHAIN_RPC_LIST: &str = "chain/rpcList";
     pub const MQTT_INIT: &str = "mqtt/init";
 
