@@ -4,4 +4,5 @@ mod tx_doge;
 mod tx_eth;
 mod tx_ltc;
 mod tx_sol;
+mod tx_ton;
 mod tx_tron;

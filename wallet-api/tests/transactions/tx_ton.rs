@@ -6,10 +6,8 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "0x0Bb5c82158760F1C1c73722e4aD51EE24f1559c3";
-    // let addr = "0x5985CE40d3dACf7c1352e464691BC7fb03215928";
-    let chain_code = "bnb";
-    // let symbol = "STK";
+    let addr = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw";
+    let chain_code = "ton";
     let symbol = "USDT";
 
     let balance = wallet_manager
@@ -24,11 +22,11 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "0x5d38C9d80A89f9A6464fC34E8bbCfEB2aD56dAc9";
-    let to = "0xF7d5c082Ce49922913404b56168EBa82Dda4c1F7";
-    let value = "0.0001";
-    let chain_code = "bnb";
-    let symbol = "BNB";
+    let from = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw";
+    let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
+    let value = "0.01";
+    let chain_code = "ton";
+    let symbol = "USDT";
 
     let params = transaction::BaseTransferReq::new(
         from.to_string(),
@@ -47,13 +45,12 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3";
-    let to = "0xF7d5c082Ce49922913404b56168EBa82Dda4c1F7";
-    let value = "0.0001";
-    let chain_code = "bnb";
-    let symbol = "BNB";
+    let from = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw";
+    let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
+    let value = "0.01";
+    let chain_code = "ton";
+    let symbol = "USDT";
     let password = "123456";
-    // let notes = "test";
 
     let base = transaction::BaseTransferReq::new(
         from.to_string(),

@@ -305,7 +305,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 and chain_code = $1";
+        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1  and token_address = '' and chain_code = $1";
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)

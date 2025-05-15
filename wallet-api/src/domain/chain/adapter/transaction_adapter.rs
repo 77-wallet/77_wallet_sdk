@@ -419,7 +419,15 @@ impl TransactionAdapter {
                 }
             }
             Self::Ton(chain) => {
-                let address_type = TonAddressType::V4R2;
+                let account =
+                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+
+                let address_type = match account.address_type() {
+                    Some(ty) => TonAddressType::try_from(ty.as_str())?,
+                    None => Err(crate::ServiceError::Types(
+                        wallet_types::error::Error::MissAddressType,
+                    ))?,
+                };
 
                 let msg_cell =
                     ton_tx::build_ext_cell(&params.base, &chain.provider, address_type).await?;
@@ -618,7 +626,14 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Ton(chain) => {
-                let address_type = TonAddressType::V4R2;
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+
+                let address_type = match account.address_type() {
+                    Some(ty) => TonAddressType::try_from(ty.as_str())?,
+                    None => Err(crate::ServiceError::Types(
+                        wallet_types::error::Error::MissAddressType,
+                    ))?,
+                };
 
                 let msg_cell = ton_tx::build_ext_cell(&req, &chain.provider, address_type).await?;
 

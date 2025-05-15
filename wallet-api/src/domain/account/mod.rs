@@ -258,6 +258,9 @@ impl AccountDomain {
             AddressType::Dog(address_type) => {
                 req = req.with_address_type(address_type.as_ref());
             }
+            AddressType::Ton(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
             _ => {}
         }
         repo.upsert_multi_account(vec![req]).await?;

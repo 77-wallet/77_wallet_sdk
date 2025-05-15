@@ -14,11 +14,11 @@ pub async fn build_ext_cell(
 ) -> Result<Cell, crate::ServiceError> {
     if let Some(token) = req.token_address.clone() {
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
-        let arg = TokenTransferOpt::new(&req.from, &req.to, &token, value)?;
+        let arg = TokenTransferOpt::new(&req.from, &req.to, &token, value, req.spend_all)?;
 
         Ok(arg.build_trans(address_type, provider).await?)
     } else {
-        let arg = TransferOpt::new(&req.from, &req.to, &req.value)?;
+        let arg = TransferOpt::new(&req.from, &req.to, &req.value, req.spend_all)?;
 
         Ok(arg.build_trans(address_type, provider).await?)
     }

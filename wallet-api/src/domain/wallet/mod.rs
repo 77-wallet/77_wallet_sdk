@@ -8,7 +8,9 @@ use wallet_database::{
 };
 use wallet_tree::{api::KeystoreApi, KdfAlgorithm, WalletTreeStrategy};
 use wallet_types::chain::{
-    address::r#type::{AddressType, BTC_ADDRESS_TYPES, DOG_ADDRESS_TYPES, LTC_ADDRESS_TYPES},
+    address::r#type::{
+        AddressType, BTC_ADDRESS_TYPES, DOG_ADDRESS_TYPES, LTC_ADDRESS_TYPES, TON_ADDRESS_TYPES,
+    },
     chain::ChainCode,
 };
 
@@ -399,6 +401,7 @@ impl WalletDomain {
             ChainCode::Bitcoin => BTC_ADDRESS_TYPES.to_vec(),
             ChainCode::Dogcoin => DOG_ADDRESS_TYPES.to_vec(),
             ChainCode::Litecoin => LTC_ADDRESS_TYPES.to_vec(),
+            ChainCode::Ton => TON_ADDRESS_TYPES.to_vec(),
             _ => vec![AddressType::Other],
         }
     }

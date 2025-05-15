@@ -67,8 +67,7 @@ impl TransactionService {
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address());
 
-        let main_coin =
-            domain::chain::transaction::ChainTransDomain::main_coin(&params.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(&params.chain_code).await?;
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
         let fee = adapter
