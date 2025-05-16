@@ -2,7 +2,10 @@ use crate::{
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
     response_vo,
 };
-use wallet_chain_interact::{btc::ParseBtcAddress, eth::FeeSetting, BillResourceConsume};
+use wallet_chain_interact::{
+    btc::ParseBtcAddress, eth::FeeSetting, ton::address::parse_addr_from_bs64_url,
+    BillResourceConsume,
+};
 use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
 use wallet_transport_backend::request::ChainRpcListReq;
 use wallet_types::chain::network;
@@ -85,6 +88,9 @@ pub fn check_address(
                     crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
                 })?
         }
+        wallet_types::chain::chain::ChainCode::Ton => parse_addr_from_bs64_url(address)
+            .map(|_| true)
+            .map_err(|_| crate::BusinessError::Account(crate::AccountError::AddressNotCorrect))?,
         _ => panic!("not support chain"),
     };
     Ok(())
