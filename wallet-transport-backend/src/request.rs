@@ -632,14 +632,22 @@ pub struct SendMsgConfirm {
     // MQTT(1,"MQTT推送"),
     // API(2,"API接口"),
     // JG(3,"极光推送"),
-    pub source: String,
+    pub source: MsgConfirmSource,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum MsgConfirmSource {
+    Mqtt,
+    Api,
+    Jg,
 }
 
 impl SendMsgConfirm {
-    pub fn new(id: &str, source: &str) -> Self {
+    pub fn new(id: &str, source: MsgConfirmSource) -> Self {
         Self {
             id: id.to_string(),
-            source: source.to_string(),
+            source,
         }
     }
 }

@@ -1,4 +1,6 @@
-use wallet_transport_backend::request::{QueryUnconfirmMsgReq, SendMsgConfirm, SendMsgConfirmReq};
+use wallet_transport_backend::request::{
+    MsgConfirmSource, QueryUnconfirmMsgReq, SendMsgConfirm, SendMsgConfirmReq,
+};
 
 use crate::init;
 
@@ -9,7 +11,7 @@ async fn test_send_msg_confirm() -> Result<(), wallet_transport_backend::Error> 
     let req = SendMsgConfirmReq {
         list: vec![SendMsgConfirm {
             id: "676059fcab8ff576d42076ef".to_string(),
-            source: "MQTT".to_string(),
+            source: MsgConfirmSource::Mqtt,
         }],
     };
     let res = backend_api

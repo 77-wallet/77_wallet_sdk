@@ -1,5 +1,8 @@
 use wallet_database::entities::task_queue::TaskQueueEntity;
-use wallet_transport_backend::{consts::endpoint::SEND_MSG_CONFIRM, request::SendMsgConfirmReq};
+use wallet_transport_backend::{
+    consts::endpoint::SEND_MSG_CONFIRM,
+    request::{MsgConfirmSource, SendMsgConfirmReq},
+};
 use wallet_utils::serde_func;
 
 use crate::{
@@ -27,7 +30,15 @@ impl JPushService {
                     .await?;
 
                 if let Some(msg) = data.body {
-                    Self::jpush_multi(vec![msg], "JG").await?;
+                    let ids = Self::jpush_multi(vec![msg], MsgConfirmSource::Jg).await?;
+                    if !ids.is_empty() {
+                        let send_msg_confirm_req =
+                            BackendApiTask::new(SEND_MSG_CONFIRM, &SendMsgConfirmReq::new(ids))?;
+                        Tasks::new()
+                            .push(Task::BackendApi(send_msg_confirm_req))
+                            .send()
+                            .await?;
+                    }
                 };
             }
             Err(e) => {
@@ -43,8 +54,8 @@ impl JPushService {
 
     pub async fn jpush_multi(
         messages: Vec<String>,
-        source: &str,
-    ) -> Result<(), crate::ServiceError> {
+        source: MsgConfirmSource,
+    ) -> Result<Vec<wallet_transport_backend::request::SendMsgConfirm>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut ids = Vec::new();
         for message in messages {
@@ -76,19 +87,12 @@ impl JPushService {
                 };
             };
             ids.push(wallet_transport_backend::request::SendMsgConfirm::new(
-                &id, source,
+                &id,
+                source.clone(),
             ));
         }
-        if !ids.is_empty() {
-            let send_msg_confirm_req =
-                BackendApiTask::new(SEND_MSG_CONFIRM, &SendMsgConfirmReq::new(ids))?;
-            Tasks::new()
-                .push(Task::BackendApi(send_msg_confirm_req))
-                .send()
-                .await?;
-        }
 
-        Ok(())
+        Ok(ids)
     }
 }
 
