@@ -2,7 +2,7 @@ use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
 use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
 use wallet_transport_backend::{
     consts::endpoint::SEND_MSG_CONFIRM,
-    request::{SendMsgConfirm, SendMsgConfirmReq},
+    request::{MsgConfirmSource, SendMsgConfirm, SendMsgConfirmReq},
 };
 use wallet_utils::serde_func;
 
@@ -89,7 +89,10 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
 
             let send_msg_confirm_req = BackendApiTask::new(
                 SEND_MSG_CONFIRM,
-                &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(&payload.msg_id, "MQTT")]),
+                &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(
+                    &payload.msg_id,
+                    MsgConfirmSource::Mqtt,
+                )]),
             )?;
             Tasks::new()
                 .push(Task::BackendApi(send_msg_confirm_req))

@@ -1,5 +1,6 @@
 use crate::infrastructure::mqtt::{init::init_mqtt_processor, property::UserProperty};
 use wallet_database::repositories::{device::DeviceRepoTrait, ResourcesRepo};
+use wallet_transport_backend::request::MsgConfirmSource;
 
 use super::DeviceDomain;
 
@@ -44,8 +45,17 @@ impl MqttDomain {
             )
             .await?
             .list;
-        crate::service::jpush::JPushService::jpush_multi(data, "API").await?;
-
+        let ids =
+            crate::service::jpush::JPushService::jpush_multi(data, MsgConfirmSource::Api).await?;
+        if !ids.is_empty() {
+            let api = crate::Context::get_global_backend_api()?;
+            let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+            api.send_msg_confirm(
+                aes_cbc_cryptor,
+                &wallet_transport_backend::request::SendMsgConfirmReq::new(ids),
+            )
+            .await?;
+        }
         Ok(())
     }
 }
