@@ -101,6 +101,7 @@ impl TaskManager {
                     if running_tasks.insert(task_id.clone()) {
                         let running_tasks_clone = Arc::clone(&running_tasks);
                         tokio::spawn(Self::process_single_task(task, running_tasks_clone));
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                     }
                 }
             }
