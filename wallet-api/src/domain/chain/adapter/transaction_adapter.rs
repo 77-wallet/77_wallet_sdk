@@ -419,6 +419,16 @@ impl TransactionAdapter {
                 }
             }
             Self::Ton(chain) => {
+                // 验证余额
+                let balance = chain
+                    .balance(&params.base.from, params.base.token_address.clone())
+                    .await?;
+                if balance < transfer_amount {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
+                }
+
                 let account =
                     ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
 
@@ -435,6 +445,24 @@ impl TransactionAdapter {
                 let fee = chain
                     .estimate_fee(msg_cell.clone(), &params.base.from, address_type)
                     .await?;
+
+                let mut trans_fee = U256::from(fee.get_fee());
+                if params.base.token_address.is_none() {
+                    trans_fee += transfer_amount;
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                } else {
+                    let balance = chain.balance(&params.base.from, None).await?;
+
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                }
 
                 let tx_hash = chain.exec(msg_cell, private_key, address_type).await?;
 
