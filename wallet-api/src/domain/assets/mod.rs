@@ -277,6 +277,37 @@ impl AssetsDomain {
         Ok(results)
     }
 
+    pub(crate) async fn init_default_assets(
+        coins: &[CoinEntity],
+        address: &str,
+        chain_code: &str,
+        req: &mut TokenQueryPriceReq,
+        tx: &mut ResourcesRepo,
+    ) -> Result<(), crate::ServiceError> {
+        for coin in coins {
+            if chain_code == &coin.chain_code {
+                let assets_id = AssetsId::new(address, &coin.chain_code, &coin.symbol);
+                let assets = CreateAssetsVo::new(
+                    assets_id,
+                    coin.decimals,
+                    coin.token_address.clone(),
+                    coin.protocol.clone(),
+                    0,
+                )
+                .with_name(&coin.name)
+                .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                if coin.price.is_empty() {
+                    req.insert(
+                        chain_code,
+                        &assets.token_address.clone().unwrap_or_default(),
+                    );
+                }
+                tx.upsert_assets(assets).await?;
+            }
+        }
+        Ok(())
+    }
+
     // 根据地址和链初始化多签账号里面的资产
     // address :multisig account address ,
     pub async fn init_default_multisig_assets(

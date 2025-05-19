@@ -193,7 +193,7 @@ impl WalletService {
                 chain.network.as_str().into(),
             )?;
 
-            let (account, _, task_data) = AccountDomain::create_account_with_derivation_path(
+            let (account, _, task_data) = AccountDomain::create_account(
                 &mut tx,
                 &seed,
                 &instance,
@@ -380,10 +380,11 @@ impl WalletService {
                         (&code, &address_type, network.into()).try_into()?;
 
                     let (account_address, derivation_path, task_data) =
-                        AccountDomain::create_account_with_account_id(
+                        AccountDomain::create_account(
                             tx,
                             &seed,
                             &instance,
+                            None,
                             &account_index_map,
                             &uid,
                             address,
@@ -406,31 +407,14 @@ impl WalletService {
                     );
                     subkeys.push(subkey);
                     // 创建默认资产
-                    for coin in &coins {
-                        if chain_code == &coin.chain_code {
-                            let assets_id = AssetsId::new(
-                                &account_address.address,
-                                &coin.chain_code,
-                                &coin.symbol,
-                            );
-                            let assets = CreateAssetsVo::new(
-                                assets_id,
-                                coin.decimals,
-                                coin.token_address.clone(),
-                                coin.protocol.clone(),
-                                0,
-                            )
-                            .with_name(&coin.name)
-                            .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                            if coin.price.is_empty() {
-                                req.insert(
-                                    chain_code,
-                                    &assets.token_address.clone().unwrap_or_default(),
-                                );
-                            }
-                            tx.upsert_assets(assets).await?;
-                        }
-                    }
+                    AssetsDomain::init_default_assets(
+                        &coins,
+                        &account_address.address,
+                        chain_code,
+                        &mut req,
+                        tx,
+                    )
+                    .await?;
                 }
             }
         }

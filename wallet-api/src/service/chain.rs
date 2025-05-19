@@ -3,8 +3,10 @@ use crate::{
         self,
         account::AccountDomain,
         app::{config::ConfigDomain, DeviceDomain},
+        assets::AssetsDomain,
         chain::ChainDomain,
         coin::CoinDomain,
+        wallet::WalletDomain,
     },
     infrastructure::task_queue::{BackendApiTask, CommonTask, Task, Tasks},
     response_vo::chain::ChainAssets,
@@ -111,21 +113,19 @@ impl ChainService {
 
             let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
             for chain in chain_list.iter() {
-                let btc_address_types = if chain.chain_code == "btc" {
-                    BTC_ADDRESS_TYPES.to_vec()
-                } else {
-                    vec![AddressType::Other]
-                };
                 let code: ChainCode = chain.chain_code.as_str().try_into()?;
-                for btc_address_type in btc_address_types {
+                let address_types = WalletDomain::address_type_by_chain(code);
+
+                for address_type in address_types {
                     let instance: wallet_chain_instance::instance::ChainObject =
-                        (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
+                        (&code, &address_type, chain.network.as_str().into()).try_into()?;
 
                     let (account_address, derivation_path, task_data) =
-                        AccountDomain::create_account_with_account_id(
+                        AccountDomain::create_account(
                             &mut tx,
                             &seed,
                             &instance,
+                            None,
                             &account_index_map,
                             &wallet.uid,
                             &wallet.wallet_address,
@@ -148,31 +148,14 @@ impl ChainService {
                     );
                     subkeys.push(subkey);
 
-                    for coin in &coins {
-                        if chain.chain_code == coin.chain_code {
-                            let assets_id = AssetsId::new(
-                                &account_address.address,
-                                &coin.chain_code,
-                                &coin.symbol,
-                            );
-                            let assets = CreateAssetsVo::new(
-                                assets_id,
-                                coin.decimals,
-                                coin.token_address.clone(),
-                                coin.protocol.clone(),
-                                0,
-                            )
-                            .with_name(&coin.name)
-                            .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                            if coin.price.is_empty() {
-                                req.insert(
-                                    &coin.chain_code,
-                                    &assets.token_address.clone().unwrap_or_default(),
-                                );
-                            }
-                            tx.upsert_assets(assets).await?;
-                        }
-                    }
+                    AssetsDomain::init_default_assets(
+                        &coins,
+                        &account_address.address,
+                        &chain.chain_code,
+                        &mut req,
+                        &mut tx,
+                    )
+                    .await?;
                 }
             }
 

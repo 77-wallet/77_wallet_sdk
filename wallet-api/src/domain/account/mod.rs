@@ -101,7 +101,7 @@ impl AccountDomain {
         Ok(account_addresses)
     }
 
-    pub(crate) async fn create_account_with_derivation_path(
+    pub(crate) async fn create_account(
         repo: &mut ResourcesRepo,
         seed: &[u8],
         instance: &wallet_chain_instance::instance::ChainObject,
@@ -165,44 +165,6 @@ impl AccountDomain {
         )?;
 
         Ok(address_init_task_data)
-    }
-
-    pub(crate) async fn create_account_with_account_id(
-        repo: &mut ResourcesRepo,
-        seed: &[u8],
-        instance: &wallet_chain_instance::instance::ChainObject,
-        account_index_map: &wallet_utils::address::AccountIndexMap,
-        uid: &str,
-        wallet_address: &str,
-        name: &str,
-        is_default_name: bool,
-    ) -> Result<(CreateAccountRes, String, BackendApiTaskData), crate::ServiceError> {
-        let (address, name, derivation_path) = Self::derive_subkey(
-            repo,
-            seed,
-            account_index_map,
-            instance,
-            None,
-            wallet_address,
-            name,
-            is_default_name,
-        )
-        .await?;
-
-        let res = CreateAccountRes {
-            address: address.to_string(),
-        };
-        let task_data = Self::address_init(
-            repo,
-            uid,
-            &address,
-            account_index_map.input_index,
-            &instance.chain_code().to_string(),
-            &name,
-        )
-        .await?;
-
-        Ok((res, derivation_path, task_data))
     }
 
     pub(crate) async fn derive_subkey(
