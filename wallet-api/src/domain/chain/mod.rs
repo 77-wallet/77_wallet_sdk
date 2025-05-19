@@ -3,8 +3,8 @@ use crate::{
     response_vo,
 };
 use wallet_chain_interact::{
-    btc::ParseBtcAddress, eth::FeeSetting, ton::address::parse_addr_from_bs64_url,
-    BillResourceConsume,
+    btc::ParseBtcAddress, dog::ParseDogAddress, eth::FeeSetting, ltc::ParseLtcAddress,
+    ton::address::parse_addr_from_bs64_url, BillResourceConsume,
 };
 use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
 use wallet_transport_backend::request::ChainRpcListReq;
@@ -91,7 +91,18 @@ pub fn check_address(
         wallet_types::chain::chain::ChainCode::Ton => parse_addr_from_bs64_url(address)
             .map(|_| true)
             .map_err(|_| crate::BusinessError::Account(crate::AccountError::AddressNotCorrect))?,
-        _ => panic!("not support chain"),
+        wallet_types::chain::chain::ChainCode::Litecoin => {
+            let parse = ParseLtcAddress::new(network);
+            parse.parse_address(address).map(|_| true).map_err(|_| {
+                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+            })?
+        }
+        wallet_types::chain::chain::ChainCode::Dogcoin => {
+            let parse = ParseDogAddress::new(network);
+            parse.parse_address(address).map(|_| true).map_err(|_| {
+                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+            })?
+        }
     };
     Ok(())
 }

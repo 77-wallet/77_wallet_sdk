@@ -13,6 +13,7 @@ use wallet_database::{
     entities::{
         assets::{AssetsEntity, AssetsId},
         coin::SymbolId,
+        wallet::WalletEntity,
     },
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
@@ -518,8 +519,11 @@ impl AssetsService {
         // let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
         // if let Some(wallet) = wallet {
         //     let backhand = crate::Context::get_global_backend_api()?;
+        //     let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
-        //     let resp = backhand.wallet_assets_list(wallet.uid, None).await?;
+        //     let resp = backhand
+        //         .wallet_assets_list(&cryptor, wallet.uid, None)
+        //         .await?;
         //     for item in resp.list.iter() {
         //         let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
         //         if amount > 0.0 {
