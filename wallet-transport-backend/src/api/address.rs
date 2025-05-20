@@ -41,11 +41,11 @@ impl BackendApi {
         &self,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         uid: String,
-        address: Option<String>,
+        index: Option<u32>,
     ) -> Result<AssertResp, crate::Error> {
         let req = serde_json::json!({
             "uid":uid,
-            "address":address,
+            "index":index,
         });
 
         let res = self

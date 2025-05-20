@@ -122,8 +122,8 @@ async fn sync_assets() {
 #[tokio::test]
 async fn sync_assets_by_wallet() {
     let wallet_manager = get_manager().await;
-    let wallet_address = "0xAE7fEc45b1a63c2870B80F2496870bd064C1C937".to_string();
-    let account_id = None;
+    let wallet_address = "0x09520e748eC0E2DfefDb50323c4b46B62d379eDB".to_string();
+    let account_id = Some(1);
     let symbol = vec!["TRX".to_string()];
 
     let _c = wallet_manager

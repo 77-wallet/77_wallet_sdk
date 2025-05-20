@@ -510,39 +510,41 @@ impl AssetsService {
         self,
         wallet_address: String,
         account_id: Option<u32>,
-        symbol: Vec<String>,
+        _symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, symbol).await
+        // AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, symbol).await
 
         // 根据后端的值来同步资产:等全局进行调整
-        // let pool = crate::Context::get_global_sqlite_pool()?;
-        // let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
-        // if let Some(wallet) = wallet {
-        //     let backhand = crate::Context::get_global_backend_api()?;
-        //     let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
+        if let Some(wallet) = wallet {
+            let backhand = crate::Context::get_global_backend_api()?;
+            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
-        //     let resp = backhand
-        //         .wallet_assets_list(&cryptor, wallet.uid, None)
-        //         .await?;
-        //     for item in resp.list.iter() {
-        //         let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
-        //         if amount > 0.0 {
-        //             let assets_id = AssetsId {
-        //                 address: item.address.clone(),
-        //                 chain_code: item.chain_code.clone(),
-        //                 symbol: item.symbol.clone(),
-        //             };
+            let index = account_id.map(|x| x - 1);
+            let resp = backhand
+                .wallet_assets_list(&cryptor, wallet.uid, index)
+                .await?;
 
-        //             let r =
-        //                 AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
+            for item in resp.list.iter() {
+                let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
+                if amount >= 0.0 {
+                    let assets_id = AssetsId {
+                        address: item.address.clone(),
+                        chain_code: item.chain_code.clone(),
+                        symbol: item.symbol.to_uppercase(),
+                    };
 
-        //             if let Err(e) = r {
-        //                 tracing::warn!("udpate balance error {}", e);
-        //             }
-        //         }
-        //     }
-        // }
+                    let r =
+                        AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
 
-        // Ok(())
+                    if let Err(e) = r {
+                        tracing::warn!("udpate balance error {}", e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
