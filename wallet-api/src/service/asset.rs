@@ -13,7 +13,6 @@ use wallet_database::{
     entities::{
         assets::{AssetsEntity, AssetsId},
         coin::SymbolId,
-        wallet::WalletEntity,
     },
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,

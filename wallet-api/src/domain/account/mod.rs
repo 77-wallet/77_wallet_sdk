@@ -299,6 +299,27 @@ impl AccountDomain {
 
         Ok(())
     }
+
+    pub(crate) async fn generate_subkey(
+        instance: &wallet_chain_instance::instance::ChainObject,
+        seed: &[u8],
+        address: &str,
+        chain_code: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        derivation_path: &str,
+    ) -> Result<wallet_tree::file_ops::BulkSubkey, crate::ServiceError> {
+        let keypair =
+            instance.gen_keypair_with_index_address_type(seed, account_index_map.input_index)?;
+        let private_key = keypair.private_key_bytes()?;
+
+        Ok(wallet_tree::file_ops::BulkSubkey::new(
+            account_index_map.clone(),
+            address,
+            chain_code,
+            derivation_path,
+            private_key,
+        ))
+    }
 }
 
 pub async fn open_accounts_pk_with_password(
