@@ -125,7 +125,7 @@ impl TaskManager {
             tokio::sync::mpsc::unbounded_channel::<Vec<TaskQueueEntity>>();
 
         // 内部缓冲池：有界控制最大任务数（比如100）
-        let (internal_tx, mut internal_rx) = tokio::sync::mpsc::channel::<TaskQueueEntity>(100);
+        let (internal_tx, mut internal_rx) = tokio::sync::mpsc::channel::<TaskQueueEntity>(1000);
 
         // 外部接收 Vec<Task>，拆分为单个任务送入内部 Sender
         tokio::spawn(async move {
@@ -140,7 +140,7 @@ impl TaskManager {
 
         // 固定后台 Worker 拉任务处理
         let internal_running = Arc::clone(&running_tasks);
-        let semaphore = Arc::new(Semaphore::new(20)); // 控制最大并发数
+        let semaphore = Arc::new(Semaphore::new(100)); // 控制最大并发数
         tokio::spawn(async move {
             while let Some(task) = internal_rx.recv().await {
                 tracing::debug!("[task_process] tasks: {task:?}");
