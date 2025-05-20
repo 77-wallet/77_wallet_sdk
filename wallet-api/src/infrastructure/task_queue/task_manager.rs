@@ -4,7 +4,6 @@ use super::{
 use dashmap::DashSet;
 use rand::Rng as _;
 use std::sync::Arc;
-use tokio_stream::StreamExt as _;
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 
@@ -21,7 +20,7 @@ impl TaskManager {
     /// 创建一个新的 TaskManager 实例
     pub fn new() -> Self {
         let running_tasks: RunningTasks = Arc::new(DashSet::new());
-        let task_sender = Self::task_process(Arc::clone(&running_tasks));
+        let task_sender = Self::task_dispatcher(Arc::clone(&running_tasks));
         Self {
             running_tasks,
             task_sender,
@@ -84,28 +83,74 @@ impl TaskManager {
         Ok(())
     }
 
-    /// 定义 task_process 方法，接受共享的 running_tasks
-    fn task_process(
+    /// 任务调度器（task_dispatcher）的设计结构
+    ///
+    /// 整体结构图：
+    ///
+    /// ```text
+    ///         上层模块 / 外部调用
+    ///                  │
+    ///                  ▼
+    ///   UnboundedSender<Vec<Task>> （无限缓冲）
+    ///                  │
+    ///      ┌───────────┴────────────┐
+    ///      │ 拆分 Vec<Task> 并发送到 ↓
+    ///      ▼                        internal task queue (Sender<Task>, 有界，例如容量 100)
+    ///    dispatcher task loop  ───────────────────────┐
+    ///                                                │
+    ///      tokio::spawn(process_task(task)) <────────┘
+    /// ```
+    ///
+    /// ### 模块说明：
+    ///
+    /// - `UnboundedSender<Vec<Task>>`:
+    ///   外部任务发送入口，使用 **无界通道**，确保不会阻塞外部调用。
+    ///   无论任务量多大，UI 和上层模块不会卡顿或崩溃。
+    ///
+    /// - `dispatcher task loop`:
+    ///   异步任务派发循环，监听 `UnboundedReceiver<Vec<Task>>`，
+    ///   拆分任务并发送到内部有限缓冲区（`Sender<Task>`）。
+    ///
+    /// - `Sender<Task>` (bounded):
+    ///   有限容量的内部队列（如容量 100），限制并发任务数量，
+    ///   避免资源耗尽、CPU 飙高、内存暴涨等问题。
+    ///
+    /// - `tokio::spawn(process_task(task))`:
+    ///   异步处理单个任务逻辑，执行后自动释放任务槽位，保持系统健康运行。
+    fn task_dispatcher(
         running_tasks: RunningTasks,
     ) -> tokio::sync::mpsc::UnboundedSender<Vec<TaskQueueEntity>> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<TaskQueueEntity>>();
-        let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
+        let (external_tx, mut external_rx) =
+            tokio::sync::mpsc::unbounded_channel::<Vec<TaskQueueEntity>>();
 
+        // 内部缓冲池：有界控制最大任务数（比如100）
+        let (internal_tx, mut internal_rx) = tokio::sync::mpsc::channel::<TaskQueueEntity>(100);
+
+        // 外部接收 Vec<Task>，拆分为单个任务送入内部 Sender
         tokio::spawn(async move {
-            while let Some(tasks) = rx.next().await {
-                tracing::debug!("[task_process] tasks: {tasks:?}");
-                for task in tasks {
-                    let task_id = task.id.clone();
-
-                    // 检查并更新 running_tasks
-                    if running_tasks.insert(task_id.clone()) {
-                        let running_tasks_clone = Arc::clone(&running_tasks);
-                        tokio::spawn(Self::process_single_task(task, running_tasks_clone));
+            while let Some(task_list) = external_rx.recv().await {
+                for task in task_list {
+                    if let Err(e) = internal_tx.send(task).await {
+                        tracing::warn!("task dispatcher dropped task: {}", e);
                     }
                 }
             }
         });
-        tx
+
+        // 固定后台 Worker 拉任务处理
+        let internal_running = Arc::clone(&running_tasks);
+        tokio::spawn(async move {
+            while let Some(task) = internal_rx.recv().await {
+                tracing::debug!("[task_process] tasks: {task:?}");
+                let task_id = task.id.clone();
+
+                if internal_running.insert(task_id.clone()) {
+                    let rt_clone = Arc::clone(&internal_running);
+                    tokio::spawn(Self::process_single_task(task, rt_clone));
+                }
+            }
+        });
+        external_tx
     }
 
     async fn process_single_task(task: TaskQueueEntity, running_tasks: RunningTasks) {
