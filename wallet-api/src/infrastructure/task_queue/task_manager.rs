@@ -183,24 +183,29 @@ impl TaskManager {
                 break;
             }
 
-            if let Err(e) = Self::handle_task(&task, retry_count).await {
-                tracing::error!(?task, "[task_process] error: {}", e);
-                if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
-                    let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-                    let _ = repo.task_failed(&task_id).await;
-                };
-                // 计算指数退避的延迟时间，单位是毫秒
-                delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为 120 秒（120,000 毫秒）
-                let jitter =
-                    std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
-                delay += jitter.as_millis() as u64; // 将延迟加上抖动
-                retry_count += 1;
-                tracing::debug!("[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}");
-                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                continue;
+            match Self::handle_task(&task, retry_count).await {
+                Ok(()) => break, // 成功
+                Err(e) => {
+                    tracing::error!(?task, "[task_process] error: {}", e);
+                    if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                        let mut repo =
+                            wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                        let _ = repo.task_failed(&task_id).await;
+                    }
+                }
             }
-            // 成功处理任务
-            break;
+
+            // 计算指数退避的延迟时间，单位是毫秒
+            delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为 120 秒（120,000 毫秒）
+            let jitter =
+                std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
+            delay += jitter.as_millis() as u64; // 将延迟加上抖动
+            retry_count += 1;
+
+            tracing::debug!(
+                "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
         }
 
         running_tasks.remove(&task_id);
