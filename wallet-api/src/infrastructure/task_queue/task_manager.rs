@@ -167,8 +167,22 @@ impl TaskManager {
 
         let mut retry_count = 0;
         let mut delay = 200; // 初始延迟设为 200 毫秒
+        const MAX_RETRY_COUNT: i32 = 5;
 
         loop {
+            if retry_count >= MAX_RETRY_COUNT {
+                tracing::warn!(
+                    "[process_single_task] task {} exceeded max retries ({})",
+                    task_id,
+                    MAX_RETRY_COUNT
+                );
+                if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                    let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                    let _ = repo.task_failed(&task_id).await;
+                };
+                break;
+            }
+
             if let Err(e) = Self::handle_task(&task, retry_count).await {
                 tracing::error!(?task, "[task_process] error: {}", e);
                 if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
