@@ -4,6 +4,7 @@ use super::{
 use dashmap::DashSet;
 use rand::Rng as _;
 use std::sync::Arc;
+use tokio::sync::Semaphore;
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 
@@ -139,6 +140,7 @@ impl TaskManager {
 
         // 固定后台 Worker 拉任务处理
         let internal_running = Arc::clone(&running_tasks);
+        let semaphore = Arc::new(Semaphore::new(20)); // 控制最大并发数
         tokio::spawn(async move {
             while let Some(task) = internal_rx.recv().await {
                 tracing::debug!("[task_process] tasks: {task:?}");
@@ -146,7 +148,14 @@ impl TaskManager {
 
                 if internal_running.insert(task_id.clone()) {
                     let rt_clone = Arc::clone(&internal_running);
-                    tokio::spawn(Self::process_single_task(task, rt_clone));
+                    let semaphore_clone = Arc::clone(&semaphore);
+
+                    // 每次任务获取 permit
+                    let permit = semaphore_clone.acquire_owned().await.unwrap();
+                    tokio::spawn(async move {
+                        Self::process_single_task(task, rt_clone).await;
+                        drop(permit); // 执行完释放 permit
+                    });
                 }
             }
         });
