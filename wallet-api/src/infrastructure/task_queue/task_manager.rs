@@ -62,7 +62,7 @@ impl TaskManager {
     ) -> Result<(), crate::ServiceError> {
         let manager = crate::manager::Context::get_global_task_manager()?;
 
-        repo.delete_old(30).await?;
+        repo.delete_old(15).await?;
         let mut failed_queue = repo.failed_task_queue().await?;
         let pending_queue = repo.pending_task_queue().await?;
         let running_queue = repo.running_task_queue().await?;
