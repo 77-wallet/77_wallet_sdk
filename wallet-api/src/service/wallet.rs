@@ -1,10 +1,8 @@
 use wallet_database::{
-    dao::{assets::CreateAssetsVo, multisig_member::MultisigMemberDaoV1},
-    entities::assets::AssetsId,
+    dao::multisig_member::MultisigMemberDaoV1,
     repositories::{
-        account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
-        TransactionTrait as _,
+        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
+        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
 };
 use wallet_transport_backend::{
@@ -12,7 +10,7 @@ use wallet_transport_backend::{
     request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
 use wallet_tree::{api::KeystoreApi, file_ops::RootData};
-use wallet_types::{chain::chain::ChainCode, constant::chain_code};
+use wallet_types::constant::chain_code;
 
 use crate::{
     domain::{
@@ -20,6 +18,7 @@ use crate::{
         account::AccountDomain,
         app::{config::ConfigDomain, DeviceDomain},
         assets::AssetsDomain,
+        chain::ChainDomain,
         coin::CoinDomain,
         multisig::MultisigDomain,
         permission::PermissionDomain,
@@ -363,60 +362,23 @@ impl WalletService {
         for account_id in account_ids {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
-            for chain_code in &default_chain_list {
-                let code: ChainCode = chain_code.as_str().try_into()?;
 
-                // 不同的创建不同的地址类型
-                let address_types = WalletDomain::address_type_by_chain(code);
-
-                let Some(chain) = tx.chain_node_info_left_join(chain_code).await? else {
-                    tracing::warn!("[create_wallet] chain not found: {chain_code}");
-                    continue;
-                };
-                let network = chain.get_network();
-
-                for address_type in address_types {
-                    let instance: wallet_chain_instance::instance::ChainObject =
-                        (&code, &address_type, network.into()).try_into()?;
-
-                    let (account_address, derivation_path, task_data) =
-                        AccountDomain::create_account(
-                            tx,
-                            &seed,
-                            &instance,
-                            None,
-                            &account_index_map,
-                            &uid,
-                            address,
-                            account_name,
-                            is_default_name,
-                        )
-                        .await?;
-                    address_init_task_data.push(task_data);
-
-                    let keypair = instance
-                        .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
-                        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-                    let pk = keypair.private_key_bytes()?;
-                    let subkey = wallet_tree::file_ops::BulkSubkey::new(
-                        account_index_map.clone(),
-                        &account_address.address,
-                        chain_code,
-                        derivation_path.as_str(),
-                        pk,
-                    );
-                    subkeys.push(subkey);
-                    // 创建默认资产
-                    AssetsDomain::init_default_assets(
-                        &coins,
-                        &account_address.address,
-                        chain_code,
-                        &mut req,
-                        tx,
-                    )
-                    .await?;
-                }
-            }
+            ChainDomain::init_chains_assets(
+                tx,
+                &coins,
+                &mut req,
+                &mut address_init_task_data,
+                &mut subkeys,
+                &default_chain_list,
+                &seed,
+                &account_index_map,
+                None,
+                &uid,
+                address,
+                account_name,
+                is_default_name,
+            )
+            .await?;
         }
         tracing::info!(
             "Account creation and subkey generation took: {:?}",

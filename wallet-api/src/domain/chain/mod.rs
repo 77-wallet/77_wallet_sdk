@@ -6,9 +6,14 @@ use wallet_chain_interact::{
     btc::ParseBtcAddress, dog::ParseDogAddress, eth::FeeSetting, ltc::ParseLtcAddress,
     ton::address::parse_addr_from_bs64_url, BillResourceConsume,
 };
-use wallet_database::repositories::{account::AccountRepoTrait, chain::ChainRepoTrait};
-use wallet_transport_backend::request::ChainRpcListReq;
-use wallet_types::chain::network;
+use wallet_database::{
+    entities::coin::CoinEntity,
+    repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, ResourcesRepo},
+};
+use wallet_transport_backend::request::{ChainRpcListReq, TokenQueryPriceReq};
+use wallet_types::chain::{chain::ChainCode, network};
+
+use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 
 pub mod adapter;
 pub mod transaction;
@@ -253,4 +258,70 @@ impl ChainDomain {
     //         Ok(None)
     //     }
     // }
+
+    pub(crate) async fn init_chains_assets(
+        tx: &mut ResourcesRepo,
+        coins: &[CoinEntity],
+        req: &mut TokenQueryPriceReq,
+        address_init_task_data: &mut Vec<BackendApiTaskData>,
+        subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
+        chain_list: &[String],
+        seed: &[u8],
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        derivation_path: Option<&str>,
+        uid: &str,
+        wallet_address: &str,
+        account_name: &str,
+        is_default_name: bool,
+    ) -> Result<(), crate::error::ServiceError> {
+        for chain in chain_list.iter() {
+            let code: ChainCode = chain.as_str().try_into()?;
+            let address_types = WalletDomain::address_type_by_chain(code);
+
+            let Some(chain) = tx.detail_with_node(chain).await? else {
+                continue;
+            };
+
+            for address_type in address_types {
+                let instance: wallet_chain_instance::instance::ChainObject =
+                    (&code, &address_type, chain.network.as_str().into()).try_into()?;
+
+                let (account_address, derivation_path, task_data) = AccountDomain::create_account(
+                    tx,
+                    seed,
+                    &instance,
+                    derivation_path,
+                    account_index_map,
+                    uid,
+                    wallet_address,
+                    account_name,
+                    is_default_name,
+                )
+                .await?;
+                address_init_task_data.push(task_data);
+
+                subkeys.push(
+                    AccountDomain::generate_subkey(
+                        &instance,
+                        &seed,
+                        &account_address.address,
+                        &chain.chain_code,
+                        &account_index_map,
+                        derivation_path.as_str(),
+                    )
+                    .await?,
+                );
+
+                AssetsDomain::init_default_assets(
+                    coins,
+                    &account_address.address,
+                    &chain.chain_code,
+                    req,
+                    tx,
+                )
+                .await?;
+            }
+        }
+        Ok(())
+    }
 }

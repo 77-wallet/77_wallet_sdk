@@ -1,9 +1,8 @@
 use wallet_database::{
-    dao::assets::CreateAssetsVo,
-    entities::{account::AccountEntity, assets::AssetsId},
+    entities::account::AccountEntity,
     repositories::{
-        account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
+        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
+        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
     },
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -19,7 +18,7 @@ use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     domain::{
-        self, account::AccountDomain, app::config::ConfigDomain, assets::AssetsDomain,
+        self, account::AccountDomain, app::config::ConfigDomain, chain::ChainDomain,
         permission::PermissionDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{BackendApiTask, CommonTask, RecoverDataBody, Task, Tasks},
@@ -167,56 +166,23 @@ impl AccountService {
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
         let mut address_init_task_data = Vec::new();
-        for chain_code in &chains {
-            let code: ChainCode = chain_code.as_str().try_into()?;
-            // 不同的创建不同的地址类型
-            let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Some(chain) = tx.detail_with_node(chain_code).await? else {
-                continue;
-            };
-
-            for address_type in address_types {
-                let instance: wallet_chain_instance::instance::ChainObject =
-                    (&code, &address_type, chain.network.as_str().into()).try_into()?;
-
-                let (account_address, derivation_path, task_data) = AccountDomain::create_account(
-                    &mut tx,
-                    &seed,
-                    &instance,
-                    derivation_path.as_deref(),
-                    &account_index_map,
-                    &wallet.uid,
-                    &wallet.address,
-                    name,
-                    is_default_name,
-                )
-                .await?;
-
-                address_init_task_data.push(task_data);
-
-                let keypair = instance
-                    .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
-                    .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-                let pk = keypair.private_key_bytes()?;
-                let subkey = wallet_tree::file_ops::BulkSubkey::new(
-                    account_index_map.clone(),
-                    &account_address.address,
-                    chain_code,
-                    derivation_path.as_str(),
-                    pk,
-                );
-                subkeys.push(subkey);
-                AssetsDomain::init_default_assets(
-                    &default_coins_list,
-                    &account_address.address,
-                    chain_code,
-                    &mut req,
-                    &mut tx,
-                )
-                .await?;
-            }
-        }
+        ChainDomain::init_chains_assets(
+            &mut tx,
+            &default_coins_list,
+            &mut req,
+            &mut address_init_task_data,
+            &mut subkeys,
+            &chains,
+            &seed,
+            &account_index_map,
+            derivation_path.as_deref(),
+            &wallet.uid,
+            &wallet.address,
+            name,
+            is_default_name,
+        )
+        .await?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
