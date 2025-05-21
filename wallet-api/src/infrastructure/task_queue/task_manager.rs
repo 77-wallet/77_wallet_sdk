@@ -156,6 +156,7 @@ impl TaskManager {
                         Self::process_single_task(task, rt_clone).await;
                         drop(permit); // 执行完释放 permit
                     });
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 }
             }
         });
@@ -167,7 +168,7 @@ impl TaskManager {
 
         let mut retry_count = 0;
         let mut delay = 200; // 初始延迟设为 200 毫秒
-        // const MAX_RETRY_COUNT: i32 = 5;
+                             // const MAX_RETRY_COUNT: i32 = 5;
 
         loop {
             // if retry_count >= MAX_RETRY_COUNT {
