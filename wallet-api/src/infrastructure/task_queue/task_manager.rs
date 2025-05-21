@@ -63,6 +63,7 @@ impl TaskManager {
         let manager = crate::manager::Context::get_global_task_manager()?;
 
         repo.delete_old(15).await?;
+
         let mut failed_queue = repo.failed_task_queue().await?;
         let pending_queue = repo.pending_task_queue().await?;
         let running_queue = repo.running_task_queue().await?;
@@ -77,7 +78,7 @@ impl TaskManager {
                 tasks.push(task);
             }
         }
-
+        tracing::info!("task queue: {}", tasks.len());
         if let Err(e) = manager.get_task_sender().send(tasks) {
             tracing::error!("send task queue error: {}", e);
         }
@@ -140,7 +141,7 @@ impl TaskManager {
 
         // 固定后台 Worker 拉任务处理
         let internal_running = Arc::clone(&running_tasks);
-        let semaphore = Arc::new(Semaphore::new(100)); // 控制最大并发数
+        let semaphore = Arc::new(Semaphore::new(50)); // 控制最大并发数
         tokio::spawn(async move {
             while let Some(task) = internal_rx.recv().await {
                 tracing::debug!("[task_process] tasks: {task:?}");

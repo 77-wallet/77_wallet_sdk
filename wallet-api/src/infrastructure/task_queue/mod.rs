@@ -86,7 +86,8 @@ impl Tasks {
 
         let entities = repo.create_multi_task(&create_entities).await?;
         task_sender.get_task_sender().send(entities).unwrap();
-
+        repo.delete_oldest_by_status_when_exceeded(200000, 2)
+            .await?;
         Ok(())
     }
 }
