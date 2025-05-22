@@ -135,7 +135,7 @@ impl DeviceInfo {
 }
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
-pub type TaskSender = tokio::sync::mpsc::UnboundedSender<Vec<TaskQueueEntity>>;
+pub type TaskSender = tokio::sync::mpsc::UnboundedSender<(u8, Vec<TaskQueueEntity>)>;
 
 impl Context {
     async fn new(

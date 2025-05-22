@@ -1,5 +1,7 @@
 mod task_handle;
 pub(crate) mod task_manager;
+use std::collections::BTreeMap;
+
 use crate::messaging::mqtt::topics;
 use wallet_database::entities::{
     multisig_queue::QueueTaskEntity,
@@ -85,7 +87,20 @@ impl Tasks {
         }
 
         let entities = repo.create_multi_task(&create_entities).await?;
-        task_sender.get_task_sender().send(entities).unwrap();
+
+        let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
+
+        for task in entities.into_iter() {
+            let priority = task_manager::scheduler::assign_priority(&task)?;
+            grouped_tasks.entry(priority).or_default().push(task);
+        }
+
+        for (priority, tasks) in grouped_tasks {
+            if let Err(e) = task_sender.get_task_sender().send((priority, tasks)) {
+                tracing::error!("send task queue error: {}", e);
+            }
+        }
+
         repo.delete_oldest_by_status_when_exceeded(200000, 2)
             .await?;
         Ok(())
