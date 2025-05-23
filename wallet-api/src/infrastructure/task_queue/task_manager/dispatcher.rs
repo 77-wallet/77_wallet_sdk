@@ -1,10 +1,12 @@
+use crate::infrastructure::task_queue::task_manager::scheduler::TASK_CATEGORY_LIMIT;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
+use crate::infrastructure::task_queue::{Task, TaskType};
 
 use super::RunningTasks;
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::Semaphore;
 use wallet_database::entities::task_queue::TaskQueueEntity;
 
 type Priority = u8;
@@ -12,7 +14,7 @@ type PriorityTaskQueue = Arc<tokio::sync::Mutex<BTreeMap<Priority, VecDeque<Task
 
 #[derive(Debug, Clone)]
 pub(super) struct Dispatcher {
-    task_queues: Arc<tokio::sync::Mutex<BTreeMap<u8, VecDeque<TaskQueueEntity>>>>,
+    task_queues: PriorityTaskQueue,
     semaphore: Arc<Semaphore>,
 }
 
@@ -121,18 +123,32 @@ impl Dispatcher {
         let semaphore = Arc::clone(&self.semaphore);
 
         tokio::spawn(async move {
-            const MAX_TASKS_PER_ROUND: usize = 3;
+            let category_limit: HashMap<TaskType, usize> =
+                TASK_CATEGORY_LIMIT.iter().cloned().collect();
 
             loop {
                 let mut round: Vec<TaskQueueEntity> = vec![];
-
+                let mut category_counter: HashMap<TaskType, usize> = HashMap::new();
                 {
                     let mut queues = task_queues.lock().await;
                     for (_priority, queue) in queues.iter_mut() {
-                        let take_count = std::cmp::min(MAX_TASKS_PER_ROUND, queue.len());
-                        for _ in 0..take_count {
-                            if let Some(task) = queue.pop_front() {
-                                round.push(task);
+                        let mut i = 0;
+                        while i < queue.len() {
+                            if let Some(task) = queue.get(i) {
+                                let task: Task = task.try_into().unwrap();
+                                let category = task.get_type();
+                                let limit = *category_limit.get(&category).unwrap_or(&1);
+                                let count = category_counter.entry(category).or_insert(0);
+
+                                if *count < limit {
+                                    let task = queue.remove(i).unwrap();
+                                    round.push(task);
+                                    *count += 1;
+                                } else {
+                                    i += 1;
+                                }
+                            } else {
+                                break;
                             }
                         }
                     }

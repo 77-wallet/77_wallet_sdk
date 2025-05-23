@@ -55,7 +55,7 @@ impl BackendTaskHandle {
         Ok(())
     }
 
-    fn is_default_endpoint(endpoint: &str) -> bool {
+    pub(crate) fn is_default_endpoint(endpoint: &str) -> bool {
         DEFAULT_ENDPOINTS.contains(&endpoint)
     }
 

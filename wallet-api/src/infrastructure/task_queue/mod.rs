@@ -91,7 +91,7 @@ impl Tasks {
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
         for task in entities.into_iter() {
-            let priority = task_manager::scheduler::assign_priority(&task)?;
+            let priority = task_manager::scheduler::assign_priority(&task, false)?;
             grouped_tasks.entry(priority).or_default().push(task);
         }
 
@@ -131,6 +131,15 @@ impl Task {
             Task::Mqtt(task) => task.get_body()?,
             Task::Common(task) => task.get_body()?,
         })
+    }
+
+    pub fn get_type(&self) -> TaskType {
+        match self {
+            Task::Initialization(_) => TaskType::Initialization,
+            Task::BackendApi(_) => TaskType::BackendApi,
+            Task::Mqtt(_) => TaskType::Mqtt,
+            Task::Common(_) => TaskType::Common,
+        }
     }
 }
 
@@ -271,6 +280,7 @@ impl TryFrom<&TaskQueueEntity> for Task {
 }
 
 /// 0: initialization, 1: backend_api, 2: mqtt
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub(crate) enum TaskType {
     Initialization,
     BackendApi,

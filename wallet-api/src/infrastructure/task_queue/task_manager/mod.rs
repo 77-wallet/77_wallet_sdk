@@ -78,7 +78,7 @@ impl TaskManager {
 
         for task in failed_queue.into_iter() {
             if !running_tasks.contains(&task.id) {
-                let priority = scheduler::assign_priority(&task)?;
+                let priority = scheduler::assign_priority(&task, true)?;
                 grouped_tasks.entry(priority).or_default().push(task);
             }
         }
