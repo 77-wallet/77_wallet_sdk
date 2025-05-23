@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
-use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::factory::RepositoryFactory;
 use wallet_database::SqliteContext;
 
@@ -28,6 +27,10 @@ async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
 pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
+    // Tasks::new()
+    //     .push(Task::Initialization(InitializationTask::InitMqtt))
+    //     .send()
+    //     .await?;
     let pool = Context::get_global_sqlite_pool()?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut node_service = NodeService::new(repo);
@@ -54,13 +57,14 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         &(),
     )?;
 
-    let mqtt_init_req =
-        BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
+    // let mqtt_init_req =
+    //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
     let sn = Context::get_context()?.device.sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
     Tasks::new()
+        .push(Task::Initialization(InitializationTask::InitMqtt))
         .push(Task::Initialization(InitializationTask::PullAnnouncement))
         .push(Task::Initialization(InitializationTask::PullHotCoins))
         .push(Task::Initialization(
@@ -78,7 +82,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             set_app_install_download_req,
         )))
-        .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
+        // .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
         .send()
         .await?;
 
@@ -101,6 +105,7 @@ pub(crate) async fn init_context<'a>(
             Ok(context)
         })
         .await?;
+
     Ok(context)
 }
 
@@ -355,7 +360,7 @@ impl WalletManager {
         let dir = Dirs::new(root_dir)?;
         // let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
         let context = init_context(sn, device_type, dir, sender, config).await?;
-
+        Context::get_global_task_manager()?.start_task_check();
         let pool = context.sqlite_context.get_pool().unwrap();
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
@@ -368,13 +373,13 @@ impl WalletManager {
         // 启动任务检查循环
         // let manager = Context::get_global_task_manager()?;
         // manager.start_task_check();
-        Context::get_global_task_manager()?.start_task_check();
+        // Context::get_global_task_manager()?.start_task_check();
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
 
-        Tasks::new()
-            .push(Task::Initialization(InitializationTask::InitMqtt))
-            .send()
-            .await?;
+        // Tasks::new()
+        //     .push(Task::Initialization(InitializationTask::InitMqtt))
+        //     .send()
+        //     .await?;
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
         tokio::spawn(async move {
             if let Err(e) = do_some_init().await {

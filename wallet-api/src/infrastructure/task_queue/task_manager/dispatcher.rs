@@ -6,7 +6,7 @@ use super::RunningTasks;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{mpsc, Mutex, Semaphore};
 use wallet_database::entities::task_queue::TaskQueueEntity;
 
 type Priority = u8;
@@ -98,6 +98,7 @@ impl Dispatcher {
         let (external_tx, external_rx) = tokio::sync::mpsc::unbounded_channel();
 
         Self::start_internal_task(external_rx, running_tasks, Arc::new(Semaphore::new(50)));
+        tracing::info!("Dispatcher 启动完成，开始监听外部任务输入...");
         Self {
             external_tx, // task_queues: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
                          // semaphore: Arc::new(Semaphore::new(50)), // 最大并发数可调整
@@ -123,7 +124,14 @@ impl Dispatcher {
                 .collect::<HashMap<_, _>>();
 
             while let Some((priority, tasks)) = external_rx.recv().await {
+                tracing::info!(
+                    "收到 {} 个任务，优先级 = {}, 任务：{:?}",
+                    tasks.len(),
+                    priority,
+                    tasks
+                );
                 let sender = priority_senders.entry(priority).or_insert_with(|| {
+                    tracing::info!("创建新的优先级 {} 通道并启动任务消费器", priority);
                     Self::create_priority_channel_task(
                         running_tasks.clone(),
                         semaphore.clone(),
@@ -135,6 +143,7 @@ impl Dispatcher {
                     let _ = sender.send(task);
                 }
             }
+            tracing::warn!("Dispatcher 的 external_rx 关闭，任务监听结束");
         });
     }
 
@@ -149,18 +158,19 @@ impl Dispatcher {
     ) -> mpsc::UnboundedSender<TaskQueueEntity> {
         let (tx, mut rx) = mpsc::unbounded_channel::<TaskQueueEntity>();
         tokio::spawn(async move {
-            let mut category_counter: HashMap<TaskType, usize> = HashMap::new();
+            let category_counter = Arc::new(Mutex::new(HashMap::<TaskType, usize>::new()));
 
             while let Some(task_entity) = rx.recv().await {
                 Self::handle_task_entity(
                     task_entity,
-                    &mut category_counter,
+                    category_counter.clone(),
                     &category_limit,
                     running_tasks.clone(),
                     semaphore.clone(),
                 )
                 .await;
             }
+            tracing::warn!("优先级通道消费者退出，该通道已关闭");
         });
         tx
     }
@@ -172,39 +182,78 @@ impl Dispatcher {
     /// - 任务调度（spawn）
     async fn handle_task_entity(
         task_entity: TaskQueueEntity,
-        category_counter: &mut HashMap<TaskType, usize>,
+        category_counter: Arc<Mutex<HashMap<TaskType, usize>>>,
         category_limit: &HashMap<TaskType, usize>,
         running_tasks: RunningTasks,
         semaphore: Arc<Semaphore>,
     ) {
+        let task_id = &task_entity.id;
+
         let task: Task = match (&task_entity).try_into() {
             Ok(t) => t,
-            Err(_) => return, // 转换失败直接跳过
+            Err(_) => {
+                tracing::warn!("任务解析失败，跳过：id = {:?}", task_id);
+                return;
+            } // 转换失败直接跳过
         };
 
         // === 限速逻辑 ===
         let category = task.get_type();
         let limit = *category_limit.get(&category).unwrap_or(&1);
-        let count = category_counter.entry(category).or_insert(0);
-        if *count >= limit {
-            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-            return;
-        }
-        *count += 1;
+
+        // let count = category_counter.entry(category.clone()).or_insert(0);
+        let current_count = {
+            let mut counter = category_counter.lock().await;
+            let count = counter.entry(category.clone()).or_insert(0);
+
+            if *count >= limit {
+                tracing::info!(
+                    "任务类型 {:?} 达到限速上限 ({}/{})，延迟处理任务 {}",
+                    category,
+                    *count,
+                    limit,
+                    task_id
+                );
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                return;
+            }
+            *count += 1;
+            *count
+        };
 
         // === 去重逻辑 + 并发控制 ===
         let task_id = task_entity.id.clone();
         if running_tasks.insert(task_id.clone()) {
+            let category_counter = category_counter.clone();
+
+            tracing::info!(
+                "准备执行任务 {}，类型 = {:?}，当前类型计数 = {}/{}，当前并发 = {}",
+                task_id,
+                category,
+                current_count,
+                limit,
+                running_tasks.len()
+            );
+
             // 如果成功插入，说明之前没有该任务，开始处理
             let permit = semaphore.acquire_owned().await.unwrap();
             let running_tasks_inner = running_tasks.clone();
 
             tokio::spawn(async move {
+                tracing::info!("开始执行任务 {}", task_id);
                 TaskManager::process_single_task(task_entity, running_tasks_inner).await;
                 drop(permit); // 释放信号量
+                let mut counter = category_counter.lock().await;
+                if let Some(count) = counter.get_mut(&category) {
+                    *count = count.saturating_sub(1);
+                    tracing::info!(?category, current = *count, "任务计数 -1");
+                }
+                tracing::info!("任务 {} 执行完成", task_id);
             });
 
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        } else {
+            tracing::info!("任务 {} 已在运行中，跳过重复执行", task_id);
         }
     }
 }

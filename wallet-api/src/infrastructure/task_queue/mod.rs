@@ -280,7 +280,7 @@ impl TryFrom<&TaskQueueEntity> for Task {
 }
 
 /// 0: initialization, 1: backend_api, 2: mqtt
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub(crate) enum TaskType {
     Initialization,
     BackendApi,

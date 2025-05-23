@@ -6,10 +6,10 @@ use crate::infrastructure::task_queue::{CommonTask, InitializationTask, MqttTask
 const HISTORICAL_TASK_OFFSET: u8 = 10;
 
 pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
-    (TaskType::Initialization, 1),
-    (TaskType::BackendApi, 4),
-    (TaskType::Mqtt, 2),
-    (TaskType::Common, 1),
+    (TaskType::Initialization, 5),
+    (TaskType::BackendApi, 20),
+    (TaskType::Mqtt, 10),
+    (TaskType::Common, 5),
 ];
 
 pub(crate) fn assign_priority(
@@ -44,12 +44,17 @@ fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> 
                 backend_api_task_data,
             ) => {
                 match backend_api_task_data.endpoint.as_str() {
-                    DEVICE_INIT => 0,
+                    DEVICE_INIT
+                    | MQTT_INIT => 0,
                     // 确认消息，高优先级
                     SEND_MSG_CONFIRM  => 1,
                     // 关键初始化流程，高优先级
-                    KEYS_INIT | ADDRESS_INIT | LANGUAGE_INIT | MQTT_INIT|
-                    DEVICE_EDIT_DEVICE_INVITEE_STATUS| APP_INSTALL_DOWNLOAD | CHAIN_LIST
+                    KEYS_INIT
+                    | ADDRESS_INIT
+                    | DEVICE_EDIT_DEVICE_INVITEE_STATUS
+                    | LANGUAGE_INIT
+                    | APP_INSTALL_DOWNLOAD
+                    | CHAIN_LIST
                     | CHAIN_RPC_LIST => 2,
                     // 重要功能任务，中优先级
                     DEVICE_BIND_ADDRESS
