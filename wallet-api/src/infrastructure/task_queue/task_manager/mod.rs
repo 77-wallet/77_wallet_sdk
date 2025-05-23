@@ -4,7 +4,7 @@ use super::{
     handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task, Task,
 };
 use dashmap::DashSet;
-use dispatcher::Dispatcher;
+use dispatcher::{Dispatcher, TaskSender};
 use rand::Rng as _;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ type RunningTasks = Arc<DashSet<String>>;
 #[derive(Debug, Clone)]
 pub struct TaskManager {
     running_tasks: RunningTasks,
-    task_sender: crate::manager::TaskSender,
+    // task_sender: crate::manager::TaskSender,
     dispatcher: Dispatcher,
 }
 
@@ -25,11 +25,11 @@ impl TaskManager {
     /// 创建一个新的 TaskManager 实例
     pub fn new() -> Self {
         let running_tasks: RunningTasks = Arc::new(DashSet::new());
-        let dispatcher = Dispatcher::new();
-        let task_sender = dispatcher.task_dispatcher(Arc::clone(&running_tasks));
+        let dispatcher = Dispatcher::new(Arc::clone(&running_tasks));
+        // let task_sender = dispatcher.task_dispatcher(Arc::clone(&running_tasks));
         Self {
             running_tasks,
-            task_sender,
+            // task_sender,
             dispatcher,
         }
     }
@@ -43,8 +43,8 @@ impl TaskManager {
     }
 
     /// 获取任务发送器
-    pub fn get_task_sender(&self) -> crate::manager::TaskSender {
-        self.task_sender.clone()
+    pub fn get_task_sender(&self) -> TaskSender {
+        self.dispatcher.external_tx.clone()
     }
 
     /// 任务检查函数
