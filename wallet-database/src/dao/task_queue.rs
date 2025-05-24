@@ -225,4 +225,16 @@ impl TaskQueueEntity {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn has_unfinished_task<'a, E>(exec: E) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT EXISTS(SELECT 1 FROM task_queue WHERE status != 2)";
+        let exists: i64 = sqlx::query_scalar(sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(exists == 1)
+    }
 }
