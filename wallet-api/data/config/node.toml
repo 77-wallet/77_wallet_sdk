@@ -160,10 +160,24 @@ http_url = ""
 network = "mainnet"
 active = true
 
-
 [[nodes.ton.nodes]]
 node_name = "77 Official Nodes"
 rpc_url = "https://quiet-quick-rain.ton-mainnet.quiknode.pro/c810e9e5a4bff2ca191a43fcb46e6ad5fecf78dd"
+http_url = ""
+network = "mainnet"
+active = true
+
+[[nodes.sui.nodes]]
+node_name = "77 Official Nodes"
+rpc_url = "https://apprpc.safew.cc/sui"
+http_url = ""
+network = "mainnet"
+active = true
+
+
+[[nodes.tron.nodes]]
+node_name = "Sui Official Node"
+rpc_url = "https://rpc-mainnet.suiscan.xyz"
 http_url = ""
 network = "mainnet"
 active = true

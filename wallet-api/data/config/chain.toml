@@ -58,3 +58,10 @@ chain_code = "ton"
 main_symbol = "TON"
 protocols = []
 active = true
+
+[chains.sui]
+name = "Sui"
+chain_code = "sui"
+main_symbol = "SUI"
+protocols = []
+active = true

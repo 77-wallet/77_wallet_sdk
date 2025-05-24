@@ -24,6 +24,7 @@ macro_rules! dispatch {
             Self::Ltc(chain) => chain.$method($($arg),*).await,
             Self::Doge(chain) => chain.$method($($arg),*).await,
             Self::Ton(chain) => chain.$method($($arg),*).await,
+            Self::Sui(chain) => chain.$method($($arg),*).await,
         }
     };
 }

@@ -36,6 +36,7 @@ pub enum MultisigAdapter {
     Ltc(chain::ltc::LtcChain),
     Doge(chain::dog::DogChain),
     Ton(chain::ton::chain::TonChain),
+    Sui(chain::sui::SuiChain),
 }
 impl std::fmt::Display for MultisigAdapter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,6 +48,7 @@ impl std::fmt::Display for MultisigAdapter {
             MultisigAdapter::Ltc(_chain) => write!(f, "{}", "ltc"),
             MultisigAdapter::Doge(_chain) => write!(f, "{}", "doge"),
             MultisigAdapter::Ton(_chain) => write!(f, "{}", "ton"),
+            MultisigAdapter::Sui(_chain) => write!(f, "{}", "sui"),
         }
     }
 }

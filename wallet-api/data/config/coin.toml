@@ -197,3 +197,25 @@ protocol = ""
 default = true
 popular = true
 active = true
+
+[[coins]]
+name = "sui"
+chain_code = "sui"
+symbol = "SUI"
+decimals = 9
+token_address = ""
+protocol = ""
+default = true
+popular = true
+active = true
+
+[[coins]]
+name = "sui"
+chain_code = "sui"
+symbol = "USDT"
+decimals = 6
+token_address = "0x375f70cf2ae4c00bf37117d0c85a2c71545e6ee05c4a5c7d282cd66a4504b068::usdt::USDT"
+protocol = ""
+default = true
+popular = true
+active = true

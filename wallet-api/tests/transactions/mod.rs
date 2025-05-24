@@ -1,3 +1,4 @@
+mod sui;
 mod tx_bnb;
 mod tx_btc;
 mod tx_doge;

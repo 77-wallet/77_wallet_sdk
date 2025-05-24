@@ -19,7 +19,7 @@ use wallet_chain_interact::{
     btc::{self},
     dog, eth, ltc,
     sol::{self, operations::SolInstructionOperation},
-    ton,
+    sui, ton,
     tron::{
         self,
         operations::{TronConstantOperation as _, TronTxOperation},
@@ -42,6 +42,7 @@ pub enum TransactionAdapter {
     Ltc(chain::ltc::LtcChain),
     Doge(chain::dog::DogChain),
     Ton(chain::ton::chain::TonChain),
+    Sui(chain::sui::SuiChain),
 }
 
 impl TransactionAdapter {
@@ -113,6 +114,12 @@ impl TransactionAdapter {
                 let ton = chain::ton::chain::TonChain::new(provider)?;
 
                 Ok(TransactionAdapter::Ton(ton))
+            }
+            ChainType::Sui => {
+                let rpc = RpcClient::new(rpc_url, header_opt, timeout)?;
+
+                let provider = sui::Provider::new(rpc);
+                Ok(TransactionAdapter::Sui(sui::SuiChain::new(provider)?))
             }
         }
     }
@@ -468,6 +475,50 @@ impl TransactionAdapter {
 
                 Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))
             }
+            Self::Sui(chain) => {
+                let balance = chain
+                    .balance(&params.base.from, params.base.token_address.clone())
+                    .await?;
+                if balance < transfer_amount {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
+                }
+
+                let req = sui::transfer::TransferOpt::new(
+                    &params.base.from,
+                    &params.base.to,
+                    transfer_amount,
+                    params.base.token_address.clone(),
+                )?;
+
+                let (pt, helper) = req.build_pt(&chain.provider).await?;
+
+                let gas = chain.estimate_fee(&params.base.from, pt).await?;
+
+                let mut trans_fee = U256::from(gas.get_fee());
+                if params.base.token_address.is_none() {
+                    trans_fee += transfer_amount;
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                } else {
+                    let balance = chain.balance(&params.base.from, None).await?;
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                }
+
+                let fee = gas.get_fee_f64();
+                let tx_data = req.build_data(&chain.provider, helper, gas).await?;
+                let tx_hash = chain.exec(tx_data, private_key).await?;
+
+                Ok(TransferResp::new(tx_hash, fee.to_string()))
+            }
         }
     }
 
@@ -671,6 +722,24 @@ impl TransactionAdapter {
 
                 let res =
                     response_vo::CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency);
+
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Sui(chain) => {
+                let amount = unit::convert_to_u256(&req.value, req.decimals)?;
+                let params = sui::transfer::TransferOpt::new(
+                    &req.from,
+                    &req.to,
+                    amount,
+                    req.token_address.clone(),
+                )?;
+
+                let (pt, _helper) = params.build_pt(&chain.provider).await?;
+
+                let gas = chain.estimate_fee(&req.from, pt).await?;
+
+                let res =
+                    response_vo::CommonFeeDetails::new(gas.get_fee_f64(), token_currency, currency);
 
                 wallet_utils::serde_func::serde_to_string(&res)
             }

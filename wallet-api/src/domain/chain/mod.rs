@@ -12,6 +12,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::{ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{chain::ChainCode, network};
+use wallet_utils::address;
 
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 
@@ -108,6 +109,9 @@ pub fn check_address(
                 crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
             })?
         }
+        wallet_types::chain::chain::ChainCode::Sui => address::parse_sui_address(address)
+            .map(|_| true)
+            .map_err(|_| crate::BusinessError::Account(crate::AccountError::AddressNotCorrect))?,
     };
     Ok(())
 }
