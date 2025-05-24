@@ -4,13 +4,56 @@ use crate::infrastructure::task_queue::{Task, TaskType};
 
 use super::RunningTasks;
 
+use governor::clock::DefaultClock;
+use governor::state::{InMemoryState, NotKeyed};
+use governor::{Quota, RateLimiter};
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex, Semaphore};
 use wallet_database::entities::task_queue::TaskQueueEntity;
 
 type Priority = u8;
 pub type TaskSender = tokio::sync::mpsc::UnboundedSender<(u8, Vec<TaskQueueEntity>)>;
+
+// static RATE_LIMITERS: Lazy<
+//     std::collections::HashMap<TaskType, Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>>>,
+// > = Lazy::new(|| {
+//     use TaskType::*;
+//     let mut m = std::collections::HashMap::new();
+//     m.insert(
+//         BackendApi,
+//         Arc::new(RateLimiter::direct(Quota::per_second(
+//             NonZeroU32::new(50).unwrap(),
+//         ))),
+//     );
+//     m.insert(
+//         Mqtt,
+//         Arc::new(RateLimiter::direct(Quota::per_second(
+//             NonZeroU32::new(200).unwrap(),
+//         ))),
+//     );
+//     m.insert(
+//         Initialization,
+//         Arc::new(RateLimiter::direct(Quota::per_second(
+//             NonZeroU32::new(10).unwrap(),
+//         ))),
+//     );
+//     m.insert(
+//         Common,
+//         Arc::new(RateLimiter::direct(Quota::per_second(
+//             NonZeroU32::new(10).unwrap(),
+//         ))),
+//     );
+//     m
+// });
+
+// fn get_rate_limiter(
+//     category: &TaskType,
+// ) -> Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>> {
+//     RATE_LIMITERS.get(category).cloned().unwrap()
+// }
 
 /// 多优先级任务调度器 `Dispatcher`
 ///
@@ -124,15 +167,11 @@ impl Dispatcher {
                 .collect::<HashMap<_, _>>();
 
             while let Some((priority, tasks)) = external_rx.recv().await {
-                tracing::info!(
-                    "收到 {} 个任务，优先级 = {}, 任务：{:?}",
-                    tasks.len(),
-                    priority,
-                    tasks
-                );
+                tracing::info!("收到 {} 个任务，优先级 = {}", tasks.len(), priority,);
                 let sender = priority_senders.entry(priority).or_insert_with(|| {
                     tracing::info!("创建新的优先级 {} 通道并启动任务消费器", priority);
                     Self::create_priority_channel_task(
+                        priority,
                         running_tasks.clone(),
                         semaphore.clone(),
                         category_limit.clone(),
@@ -152,6 +191,7 @@ impl Dispatcher {
     /// 返回该优先级的 `UnboundedSender<TaskQueueEntity>`，用于后续投递任务
 
     fn create_priority_channel_task(
+        priority: u8,
         running_tasks: RunningTasks,
         semaphore: Arc<Semaphore>,
         category_limit: HashMap<TaskType, usize>,
@@ -162,6 +202,7 @@ impl Dispatcher {
 
             while let Some(task_entity) = rx.recv().await {
                 Self::handle_task_entity(
+                    priority,
                     task_entity,
                     category_counter.clone(),
                     &category_limit,
@@ -181,6 +222,7 @@ impl Dispatcher {
     /// - 去重（RunningTasks）
     /// - 任务调度（spawn）
     async fn handle_task_entity(
+        priority: u8,
         task_entity: TaskQueueEntity,
         category_counter: Arc<Mutex<HashMap<TaskType, usize>>>,
         category_limit: &HashMap<TaskType, usize>,
@@ -199,6 +241,11 @@ impl Dispatcher {
 
         // === 限速逻辑 ===
         let category = task.get_type();
+
+        // let limiter = get_rate_limiter(&category);
+
+        // limiter.until_ready().await;
+
         let limit = *category_limit.get(&category).unwrap_or(&1);
 
         // let count = category_counter.entry(category.clone()).or_insert(0);
@@ -208,8 +255,9 @@ impl Dispatcher {
 
             if *count >= limit {
                 tracing::info!(
-                    "任务类型 {:?} 达到限速上限 ({}/{})，延迟处理任务 {}",
+                    "任务类型 {:?} 优先级 {} 达到限速上限 ({}/{})，延迟处理任务 {}",
                     category,
+                    priority,
                     *count,
                     limit,
                     task_id
@@ -227,9 +275,10 @@ impl Dispatcher {
             let category_counter = category_counter.clone();
 
             tracing::info!(
-                "准备执行任务 {}，类型 = {:?}，当前类型计数 = {}/{}，当前并发 = {}",
+                "准备执行任务 {}，类型 = {:?}，优先级 = {}, 当前类型计数 = {}/{}，当前并发 = {}",
                 task_id,
                 category,
+                priority,
                 current_count,
                 limit,
                 running_tasks.len()
@@ -242,16 +291,16 @@ impl Dispatcher {
             tokio::spawn(async move {
                 tracing::info!("开始执行任务 {}", task_id);
                 TaskManager::process_single_task(task_entity, running_tasks_inner).await;
-                drop(permit); // 释放信号量
                 let mut counter = category_counter.lock().await;
                 if let Some(count) = counter.get_mut(&category) {
                     *count = count.saturating_sub(1);
                     tracing::info!(?category, current = *count, "任务计数 -1");
                 }
+                drop(permit); // 释放信号量
                 tracing::info!("任务 {} 执行完成", task_id);
             });
 
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         } else {
             tracing::info!("任务 {} 已在运行中，跳过重复执行", task_id);
         }

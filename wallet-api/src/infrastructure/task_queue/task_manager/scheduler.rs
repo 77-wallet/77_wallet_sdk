@@ -6,10 +6,10 @@ use crate::infrastructure::task_queue::{CommonTask, InitializationTask, MqttTask
 const HISTORICAL_TASK_OFFSET: u8 = 10;
 
 pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
-    (TaskType::Initialization, 5),
-    (TaskType::BackendApi, 20),
-    (TaskType::Mqtt, 10),
-    (TaskType::Common, 5),
+    (TaskType::Initialization, 3),
+    (TaskType::BackendApi, 10),
+    (TaskType::Mqtt, 35),
+    (TaskType::Common, 2),
 ];
 
 pub(crate) fn assign_priority(

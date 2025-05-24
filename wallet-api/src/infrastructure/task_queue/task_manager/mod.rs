@@ -76,7 +76,7 @@ impl TaskManager {
 
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
-        tracing::info!("failed_queue: {:#?}", failed_queue);
+        // tracing::info!("failed_queue: {:#?}", failed_queue);
         for task in failed_queue.into_iter() {
             if !running_tasks.contains(&task.id) {
                 let priority = scheduler::assign_priority(&task, true)?;
