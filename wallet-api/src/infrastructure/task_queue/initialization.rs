@@ -104,7 +104,7 @@ pub(crate) async fn handle_initialization_task(
                         }
                         tracing::error!("process unconfirm msg error:{}", e);
                     };
-                    tracing::warn!("处理未确认消息");
+                    // tracing::warn!("处理未确认消息");
                 }
             });
         }
