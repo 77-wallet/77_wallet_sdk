@@ -56,6 +56,7 @@ impl MqttDomain {
             )
             .await?
             .list;
+        tracing::info!("query_unconfirm_msg: {}", data.len());
         let ids =
             crate::service::jpush::JPushService::jpush_multi(data, MsgConfirmSource::Api).await?;
         if !ids.is_empty() {

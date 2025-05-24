@@ -81,11 +81,11 @@ pub(crate) async fn handle_initialization_task(
                     interval.tick().await;
                     match TaskQueueEntity::has_unfinished_task(&*pool).await {
                         Ok(true) => {
-                            tracing::debug!("存在未完成任务，跳过处理未确认消息");
+                            tracing::info!("存在未完成任务，跳过处理未确认消息");
                             continue;
                         }
                         Ok(false) => {
-                            tracing::debug!("不存在未完成任务，处理未确认消息");
+                            tracing::info!("不存在未完成任务，处理未确认消息");
                         }
                         Err(e) => {
                             tracing::error!("has_unfinished_task error: {}", e);
@@ -104,7 +104,7 @@ pub(crate) async fn handle_initialization_task(
                         }
                         tracing::error!("process unconfirm msg error:{}", e);
                     };
-                    // tracing::warn!("处理未确认消息");
+                    tracing::warn!("处理未确认消息");
                 }
             });
         }

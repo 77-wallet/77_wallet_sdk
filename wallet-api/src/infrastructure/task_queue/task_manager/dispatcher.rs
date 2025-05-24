@@ -271,7 +271,7 @@ impl Dispatcher {
                 );
                 break;
             } else {
-                tracing::info!(
+                tracing::debug!(
                     "任务类型 {:?} 优先级 {} 达到限速上限 ({}/{}), 等待中：{}",
                     category,
                     priority,
