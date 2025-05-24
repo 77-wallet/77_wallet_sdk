@@ -1,10 +1,13 @@
+mod dispatcher;
+pub(crate) mod scheduler;
 use super::{
     handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task, Task,
 };
 use dashmap::DashSet;
+use dispatcher::{Dispatcher, TaskSender};
 use rand::Rng as _;
+use std::collections::BTreeMap;
 use std::sync::Arc;
-use tokio_stream::StreamExt as _;
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 
@@ -14,17 +17,20 @@ type RunningTasks = Arc<DashSet<String>>;
 #[derive(Debug, Clone)]
 pub struct TaskManager {
     running_tasks: RunningTasks,
-    task_sender: crate::manager::TaskSender,
+    // task_sender: crate::manager::TaskSender,
+    dispatcher: Dispatcher,
 }
 
 impl TaskManager {
     /// 创建一个新的 TaskManager 实例
     pub fn new() -> Self {
         let running_tasks: RunningTasks = Arc::new(DashSet::new());
-        let task_sender = Self::task_process(Arc::clone(&running_tasks));
+        let dispatcher = Dispatcher::new(Arc::clone(&running_tasks));
+        // let task_sender = dispatcher.task_dispatcher(Arc::clone(&running_tasks));
         Self {
             running_tasks,
-            task_sender,
+            // task_sender,
+            dispatcher,
         }
     }
 
@@ -37,22 +43,20 @@ impl TaskManager {
     }
 
     /// 获取任务发送器
-    pub fn get_task_sender(&self) -> tokio::sync::mpsc::UnboundedSender<Vec<TaskQueueEntity>> {
-        self.task_sender.clone()
+    pub fn get_task_sender(&self) -> TaskSender {
+        self.dispatcher.external_tx.clone()
     }
 
     /// 任务检查函数
     async fn task_check(running_tasks: RunningTasks) {
         // 在 TaskManager 的方法中启动
-        tokio::spawn(async move {
-            let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
+        let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
 
-            let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-            if let Err(e) = Self::check_handle(repo, &running_tasks).await {
-                tracing::error!("task check error: {}", e);
-            }
-        });
+        if let Err(e) = Self::check_handle(repo, &running_tasks).await {
+            tracing::error!("task check error: {}", e);
+        }
     }
 
     /// 检查并发送任务的处理函数
@@ -62,51 +66,30 @@ impl TaskManager {
     ) -> Result<(), crate::ServiceError> {
         let manager = crate::manager::Context::get_global_task_manager()?;
 
-        repo.delete_old(30).await?;
+        repo.delete_old(15).await?;
+
         let mut failed_queue = repo.failed_task_queue().await?;
         let pending_queue = repo.pending_task_queue().await?;
         let running_queue = repo.running_task_queue().await?;
         failed_queue.extend(running_queue);
         failed_queue.extend(pending_queue);
 
-        let mut tasks = Vec::new();
+        let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
-        // 获取当前正在运行的任务
-        for task in failed_queue {
+        // tracing::info!("failed_queue: {:#?}", failed_queue);
+        for task in failed_queue.into_iter() {
             if !running_tasks.contains(&task.id) {
-                tasks.push(task);
+                let priority = scheduler::assign_priority(&task, true)?;
+                grouped_tasks.entry(priority).or_default().push(task);
             }
         }
 
-        if let Err(e) = manager.get_task_sender().send(tasks) {
-            tracing::error!("send task queue error: {}", e);
+        for (priority, tasks) in grouped_tasks {
+            if let Err(e) = manager.get_task_sender().send((priority, tasks)) {
+                tracing::error!("send task queue error: {}", e);
+            }
         }
         Ok(())
-    }
-
-    /// 定义 task_process 方法，接受共享的 running_tasks
-    fn task_process(
-        running_tasks: RunningTasks,
-    ) -> tokio::sync::mpsc::UnboundedSender<Vec<TaskQueueEntity>> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<TaskQueueEntity>>();
-        let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
-
-        tokio::spawn(async move {
-            while let Some(tasks) = rx.next().await {
-                tracing::debug!("[task_process] tasks: {tasks:?}");
-                for task in tasks {
-                    let task_id = task.id.clone();
-
-                    // 检查并更新 running_tasks
-                    if running_tasks.insert(task_id.clone()) {
-                        let running_tasks_clone = Arc::clone(&running_tasks);
-                        tokio::spawn(Self::process_single_task(task, running_tasks_clone));
-                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                    }
-                }
-            }
-        });
-        tx
     }
 
     async fn process_single_task(task: TaskQueueEntity, running_tasks: RunningTasks) {
@@ -114,26 +97,45 @@ impl TaskManager {
 
         let mut retry_count = 0;
         let mut delay = 200; // 初始延迟设为 200 毫秒
+                             // const MAX_RETRY_COUNT: i32 = 5;
 
         loop {
-            if let Err(e) = Self::handle_task(&task, retry_count).await {
-                tracing::error!(?task, "[task_process] error: {}", e);
-                if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
-                    let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-                    let _ = repo.task_failed(&task_id).await;
-                };
-                // 计算指数退避的延迟时间，单位是毫秒
-                delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为 120 秒（120,000 毫秒）
-                let jitter =
-                    std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
-                delay += jitter.as_millis() as u64; // 将延迟加上抖动
-                retry_count += 1;
-                tracing::debug!("[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}");
-                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                continue;
+            // if retry_count >= MAX_RETRY_COUNT {
+            //     tracing::warn!(
+            //         "[process_single_task] task {} exceeded max retries ({})",
+            //         task_id,
+            //         MAX_RETRY_COUNT
+            //     );
+            //     if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+            //         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+            //         let _ = repo.task_failed(&task_id).await;
+            //     };
+            //     break;
+            // }
+
+            match Self::handle_task(&task, retry_count).await {
+                Ok(()) => break, // 成功
+                Err(e) => {
+                    tracing::error!(?task, "[task_process] error: {}", e);
+                    if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                        let mut repo =
+                            wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                        let _ = repo.task_failed(&task_id).await;
+                    }
+                }
             }
-            // 成功处理任务
-            break;
+
+            // 计算指数退避的延迟时间，单位是毫秒
+            delay = std::cmp::min(delay * 2, 120_000); // 最大延迟设为 120 秒（120,000 毫秒）
+            let jitter =
+                std::time::Duration::from_millis(rand::thread_rng().gen_range(0..(delay / 2)));
+            delay += jitter.as_millis() as u64; // 将延迟加上抖动
+            retry_count += 1;
+
+            tracing::debug!(
+                "[process_single_task] delay: {delay} ms, retry_count: {retry_count}, jitter: {jitter:?}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
         }
 
         running_tasks.remove(&task_id);

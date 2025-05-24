@@ -1,5 +1,3 @@
-use wallet_api::request::transaction::QueryBillResultReq;
-
 use crate::get_manager;
 
 #[tokio::test]
@@ -71,10 +69,12 @@ async fn bill_lists() {
 async fn query_bill_result() {
     let wallet_manager = get_manager().await;
 
-    let req = vec![QueryBillResultReq {
-        tx_hash: "2PfPFzv1u9yPgFsNdK4Amku2jb6cZ39u2WueAPkdnGJuuBvajDBfxWfvVESK8oCxctXFtyYwAxRvnfgfsrcWcZTx".to_string(),
-        owner: "5PvYfcS6M4VpeUoFCVQEWjkM4fFyxh4Gq2HTovW45LdN".to_string(),
-    }];
+    // let req = vec![QueryBillResultReq {
+    //     tx_hash: "2PfPFzv1u9yPgFsNdK4Amku2jb6cZ39u2WueAPkdnGJuuBvajDBfxWfvVESK8oCxctXFtyYwAxRvnfgfsrcWcZTx".to_string(),
+    //     owner: "5PvYfcS6M4VpeUoFCVQEWjkM4fFyxh4Gq2HTovW45LdN".to_string(),
+    // }];
+
+    let req = vec!["1".to_string()];
 
     let c = wallet_manager.query_tx_result(req).await;
 

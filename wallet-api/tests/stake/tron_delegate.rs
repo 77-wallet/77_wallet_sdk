@@ -1,6 +1,7 @@
 use crate::get_manager;
-use wallet_api::request::stake::{
-    BatchDelegate, BatchList, BatchUnDelegate, DelegateReq, UnDelegateReq,
+use wallet_api::request::{
+    stake::{BatchDelegate, BatchList, BatchUnDelegate, DelegateReq, UnDelegateReq},
+    transaction::Signer,
 };
 use wallet_database::entities::bill::BillKind;
 
@@ -58,14 +59,19 @@ async fn test_delegate_fee() {
 async fn test_delegate() {
     let manager = get_manager().await;
 
+    let sign = Signer {
+        address: "TCZYpvSt36MXdnPhhFMyqwfpoqSHrjUg2b".to_string(),
+        permission_id: 3,
+    };
+
     let req = DelegateReq {
-        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
+        owner_address: "TBtrFfwCQEtR8HZ4hEgfmYWiVetMF11czn".to_string(),
         receiver_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        balance: 13,
+        balance: 1,
         resource: "energy".to_string(),
         lock: true,
         lock_period: 3.0,
-        signer: None,
+        signer: Some(sign),
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;
