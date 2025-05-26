@@ -141,10 +141,10 @@ impl AcctChange {
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        tracing::info!(
-            event_name = %event_name,
-            ?self,
-            "Starting AcctChange processing");
+        // tracing::info!(
+        //     event_name = %event_name,
+        //     ?self,
+        //     "Starting AcctChange processing");
 
         // bill create
         let tx = NewBillEntity::try_from(&self)?;
