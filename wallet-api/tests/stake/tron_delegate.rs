@@ -23,8 +23,8 @@ async fn test_account_exists() {
 async fn test_query_available_max() {
     let manager = get_manager().await;
 
-    let account = "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string();
-    let resource_type = "bandwidth".to_string();
+    let account = "TRh73Wpw9oisNGE4aMXt5XnRZJHHbRd1kd".to_string();
+    let resource_type = "energy".to_string();
     let is_multisig = Some(false);
 
     let res = manager
