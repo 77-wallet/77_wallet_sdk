@@ -8,7 +8,7 @@ async fn test_balance() {
 
     let addr = "0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd";
     let chain_code = "sui";
-    let symbol = "SUI";
+    let symbol = "USDT";
 
     let balance = wallet_manager
         .chain_balance(addr, chain_code, &symbol)
@@ -46,7 +46,7 @@ async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
     let from = "0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd";
-    let to = "0xa042c3ba8208964374cc050922ec94e85fdffe9fc0cd656fb623642ae2fdb4c0";
+    let to = "0x4c1cd48f7f203870be350d7a18c5a827131cecc7322b1571b9a69aeae7dda5f2";
     let value = "0.01";
     let chain_code = "sui";
     let symbol = "SUI";
@@ -62,10 +62,8 @@ async fn test_transfer() {
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
-        fee_setting:
-            r#"{"gasLimit":23100,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1000000000"}"#
-                .to_string(),
-        signer:None,
+        fee_setting: r#""#.to_string(),
+        signer: None,
     };
 
     let token_fee = wallet_manager.transfer(params).await;

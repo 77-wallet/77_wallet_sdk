@@ -5,6 +5,7 @@ use wallet_utils::init_test_log;
 
 mod account;
 mod address_book;
+mod backend;
 mod bill;
 mod config;
 mod multisig_account;

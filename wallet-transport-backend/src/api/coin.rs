@@ -155,14 +155,6 @@ impl BackendApi {
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         req: &crate::request::TokenQueryHistoryPrice,
     ) -> Result<crate::response_vo::coin::TokenHistoryPrices, crate::Error> {
-        // let mut params = HashMap::new();
-
-        // let symbol = symbol.to_lowercase();
-        // params.insert("chainCode", chain_code);
-        // params.insert("code", &symbol);
-        // params.insert("dateType", date_type);
-        // params.insert("currency", currency);
-
         let res = self
             .client
             .post("token/queryHisPrice")
