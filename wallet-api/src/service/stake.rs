@@ -974,7 +974,7 @@ impl StackService {
         let mut resource_value = (price * value as f64 * 100.0).round() / 100.0;
 
         // 多签的代理带宽在进行扣减
-        if matches!(is_multisig, Some(true)) {
+        if matches!(is_multisig, Some(true)) && 0 == resource_type.to_i8() {
             // 默认扣减 3个签名的长度 在加 锁定期的长度
             let reduce = (3 * 67 + 5) as f64;
             value = (value - (reduce / price) as i64).max(0);
