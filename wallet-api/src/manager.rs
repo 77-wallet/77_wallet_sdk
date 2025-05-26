@@ -360,7 +360,11 @@ impl WalletManager {
         let dir = Dirs::new(root_dir)?;
         // let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
         let context = init_context(sn, device_type, dir, sender, config).await?;
-        Context::get_global_task_manager()?.start_task_check();
+        crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+
+        Context::get_global_task_manager()?
+            .start_task_check()
+            .await?;
         let pool = context.sqlite_context.get_pool().unwrap();
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
@@ -374,7 +378,6 @@ impl WalletManager {
         // let manager = Context::get_global_task_manager()?;
         // manager.start_task_check();
         // Context::get_global_task_manager()?.start_task_check();
-        crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
 
         // Tasks::new()
         //     .push(Task::Initialization(InitializationTask::InitMqtt))

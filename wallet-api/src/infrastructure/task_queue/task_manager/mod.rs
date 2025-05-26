@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
+use wallet_transport_backend::consts::endpoint::SEND_MSG_CONFIRM;
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
@@ -35,11 +36,18 @@ impl TaskManager {
     }
 
     /// 启动任务检查循环
-    pub fn start_task_check(&self) {
+    pub async fn start_task_check(&self) -> Result<(), crate::ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
+
+        let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        repo.delete_tasks_with_request_body_like(SEND_MSG_CONFIRM)
+            .await?;
+
         tokio::spawn(async move {
             Self::task_check(running_tasks).await;
         });
+        Ok(())
     }
 
     /// 获取任务发送器

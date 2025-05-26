@@ -214,6 +214,20 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn delete_tasks_with_request_body_like<'a, E>(exec: E, keyword: &str) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let sql = "DELETE FROM task_queue WHERE request_body LIKE ?";
+        let pattern = format!("%{}%", keyword);
+        sqlx::query(sql)
+            .bind(pattern)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn list<'a, E>(exec: E, status: u8) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
