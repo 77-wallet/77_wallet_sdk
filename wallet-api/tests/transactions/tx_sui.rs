@@ -26,7 +26,7 @@ async fn test_fee() {
     let to = "0xa042c3ba8208964374cc050922ec94e85fdffe9fc0cd656fb623642ae2fdb4c0";
     let value = "0.01";
     let chain_code = "sui";
-    let symbol = "SUI";
+    let symbol = "USDT";
 
     let params = transaction::BaseTransferReq::new(
         from.to_string(),

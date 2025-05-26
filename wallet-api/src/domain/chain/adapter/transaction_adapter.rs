@@ -492,7 +492,8 @@ impl TransactionAdapter {
                     params.base.token_address.clone(),
                 )?;
 
-                let (pt, helper) = req.build_pt(&chain.provider).await?;
+                let mut helper = req.select_coin(&chain.provider).await?;
+                let pt = req.build_pt(&chain.provider, &mut helper, None).await?;
 
                 let gas = chain.estimate_fee(&params.base.from, pt).await?;
 
@@ -734,7 +735,8 @@ impl TransactionAdapter {
                     req.token_address.clone(),
                 )?;
 
-                let (pt, _helper) = params.build_pt(&chain.provider).await?;
+                let mut helper = params.select_coin(&chain.provider).await?;
+                let pt = params.build_pt(&chain.provider, &mut helper, None).await?;
 
                 let gas = chain.estimate_fee(&req.from, pt).await?;
 
