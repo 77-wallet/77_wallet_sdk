@@ -4,12 +4,7 @@ use crate::infrastructure::task_queue::{Task, TaskType};
 
 use super::RunningTasks;
 
-use governor::clock::DefaultClock;
-use governor::state::{InMemoryState, NotKeyed};
-use governor::{Quota, RateLimiter};
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex, Semaphore};
 use wallet_database::entities::task_queue::TaskQueueEntity;
