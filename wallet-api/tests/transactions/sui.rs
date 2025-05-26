@@ -49,7 +49,7 @@ async fn test_transfer() {
     let to = "0x4c1cd48f7f203870be350d7a18c5a827131cecc7322b1571b9a69aeae7dda5f2";
     let value = "0.01";
     let chain_code = "sui";
-    let symbol = "SUI";
+    let symbol = "USDT";
     let password = "123456";
 
     let base = transaction::BaseTransferReq::new(
