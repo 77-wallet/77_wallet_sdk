@@ -116,6 +116,47 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn delete_oldest_by_status_when_exceeded<'a, E>(
+        exec: &E,
+        max_size: u32,
+        target_status: u8,
+    ) -> Result<(), crate::Error>
+    where
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+    {
+        // 获取当前总记录数
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM task_queue")
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let max_size = max_size as i64;
+        if count <= max_size {
+            return Ok(());
+        }
+
+        let over_count = count - max_size;
+
+        // 删除指定状态的最早记录
+        let sql = "
+            DELETE FROM task_queue
+            WHERE id IN (
+                SELECT id 
+                FROM task_queue 
+                WHERE status = ? 
+                ORDER BY created_at ASC 
+                LIMIT ?
+            )";
+
+        sqlx::query(sql)
+            .bind(target_status)
+            .bind(over_count)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn delete_all<'a, E>(exec: E, typ: Option<u8>) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -183,5 +224,17 @@ impl TaskQueueEntity {
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn has_unfinished_task<'a, E>(exec: E) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT EXISTS(SELECT 1 FROM task_queue WHERE status != 2)";
+        let exists: i64 = sqlx::query_scalar(sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(exists == 1)
     }
 }

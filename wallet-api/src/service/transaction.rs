@@ -1,7 +1,7 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::coin::CoinDomain;
-use crate::request::transaction::{self, QueryBillResultReq};
+use crate::request::transaction::{self};
 use crate::response_vo::{
     self,
     account::Balance,
@@ -206,17 +206,15 @@ impl TransactionService {
         Ok(lists)
     }
 
-    pub async fn query_tx_result(
-        req: Vec<QueryBillResultReq>,
-    ) -> Result<Vec<BillEntity>, crate::ServiceError> {
+    pub async fn query_tx_result(req: Vec<String>) -> Result<Vec<BillEntity>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let mut res = vec![];
-        for item in req.iter() {
-            match Self::sync_bill_info(item, pool.clone()).await {
+        for id in req.iter() {
+            match Self::sync_bill_info(id, pool.clone()).await {
                 Ok(tx) => res.push(tx),
                 Err(e) => {
-                    tracing::warn!("sync bill err tx_hash = {},err = {}", item.tx_hash, e)
+                    tracing::warn!("sync bill err id = {},err = {}", id, e)
                 }
             }
         }
@@ -224,13 +222,17 @@ impl TransactionService {
     }
 
     async fn sync_bill_info(
-        query_rx: &QueryBillResultReq,
+        id: &str,
         pool: wallet_database::DbPool,
     ) -> Result<BillEntity, crate::ServiceError> {
-        let transaction =
-            BillDao::get_by_hash_and_owner(pool.as_ref(), &query_rx.tx_hash, &query_rx.owner)
-                .await?
-                .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
+        // let transaction =
+        //     BillDao::get_by_hash_and_owner(pool.as_ref(), &query_rx.tx_hash, &query_rx.owner)
+        //         .await?
+        //         .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
+
+        let transaction = BillDao::find_by_id(pool.as_ref(), id)
+            .await?
+            .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
 
         if transaction.status != wallet_database::entities::bill::BillStatus::Pending.to_i8() {
             return Ok(transaction);
@@ -279,15 +281,15 @@ impl TransactionService {
             address: transaction.owner.clone(),
         };
 
-        // 1. 更新余额
-        AssetsEntity::update_balance(tx.as_mut(), &assets_id, &sync_bill.balance)
-            .await
-            .map_err(|e| crate::SystemError::Service(format!("update balance fail:{e:?}")))?;
-
         // 2. 更新账单
         let tx_result = BillDao::update(&sync_bill.tx_update, tx.as_mut())
             .await
             .map_err(|e| crate::SystemError::Service(format!("update bill fail:{e:?}")))?;
+
+        // 1. 更新余额
+        AssetsEntity::update_balance(tx.as_mut(), &assets_id, &sync_bill.balance)
+            .await
+            .map_err(|e| crate::SystemError::Service(format!("update balance fail:{e:?}")))?;
 
         // 3. 如果queue_id 存在表示是多签交易，需要同步多签队列里面的状态
         if !transaction.queue_id.is_empty() {
@@ -363,14 +365,10 @@ impl TransactionService {
 
         // 查询余额
         let balance = adapter.balance(&transaction.owner, token).await?;
-        let assets = domain::chain::transaction::ChainTransaction::assets(
-            &transaction.chain_code,
-            &transaction.symbol,
-            &transaction.owner,
-        )
-        .await?;
 
-        let balance = unit::format_to_string(balance, assets.decimals)?;
+        let coin = CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol).await?;
+
+        let balance = unit::format_to_string(balance, coin.decimals)?;
 
         let tx_bill = BillUpdateEntity::new(
             tx_result.hash,
