@@ -63,6 +63,22 @@ impl BillDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn find_by_id<'a, E>(
+        executor: E,
+        id: &str,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from bill where id = ?";
+
+        sqlx::query_as::<_, BillEntity>(sql)
+            .bind(id)
+            .fetch_optional(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     // 查询某种类型的最后一笔交易
     pub async fn last_kind_bill<'a, E>(
         exec: E,

@@ -77,8 +77,34 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, TaskQueueEntity::delete_old, day)
     }
 
+    async fn delete_oldest_by_status_when_exceeded(
+        &mut self,
+        max_size: u32,
+        target_status: u8,
+    ) -> Result<(), crate::Error> {
+        let executor = self.get_db_pool();
+        TaskQueueEntity::delete_oldest_by_status_when_exceeded(
+            executor.as_ref(),
+            max_size,
+            target_status,
+        )
+        .await?;
+        Ok(())
+        // crate::execute_with_executor!(
+        //     executor,
+        //     TaskQueueEntity::delete_oldest_by_status_when_exceeded,
+        //     max_size,
+        //     target_status
+        // )
+    }
+
     async fn delete_all(&mut self, typ: Option<u8>) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::delete_all, typ)
+    }
+
+    async fn has_unfinished_task(&mut self) -> Result<bool, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::has_unfinished_task,)
     }
 }
