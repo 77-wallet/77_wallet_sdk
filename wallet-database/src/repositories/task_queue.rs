@@ -102,4 +102,9 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::delete_all, typ)
     }
+
+    async fn has_unfinished_task(&mut self) -> Result<bool, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::has_unfinished_task,)
+    }
 }
