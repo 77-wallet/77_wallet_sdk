@@ -167,9 +167,9 @@ impl Dispatcher {
                 .collect::<HashMap<_, _>>();
 
             while let Some((priority, tasks)) = external_rx.recv().await {
-                tracing::info!("收到 {} 个任务，优先级 = {}", tasks.len(), priority,);
+                // tracing::info!("收到 {} 个任务，优先级 = {}", tasks.len(), priority,);
                 let sender = priority_senders.entry(priority).or_insert_with(|| {
-                    tracing::info!("创建新的优先级 {} 通道并启动任务消费器", priority);
+                    // tracing::info!("创建新的优先级 {} 通道并启动任务消费器", priority);
                     Self::create_priority_channel_task(
                         priority,
                         running_tasks.clone(),
@@ -197,19 +197,26 @@ impl Dispatcher {
         category_limit: HashMap<TaskType, usize>,
     ) -> mpsc::UnboundedSender<TaskQueueEntity> {
         let (tx, mut rx) = mpsc::unbounded_channel::<TaskQueueEntity>();
+        // let tx_c = tx.clone(); // 不需要重排但保留 clone 用于其他情况
         tokio::spawn(async move {
             let category_counter = Arc::new(Mutex::new(HashMap::<TaskType, usize>::new()));
 
             while let Some(task_entity) = rx.recv().await {
-                Self::handle_task_entity(
-                    priority,
-                    task_entity,
-                    category_counter.clone(),
-                    &category_limit,
-                    running_tasks.clone(),
-                    semaphore.clone(),
-                )
-                .await;
+                let category_counter = category_counter.clone();
+                let running_tasks = running_tasks.clone();
+                let semaphore = semaphore.clone();
+                let category_limit = category_limit.clone();
+                tokio::spawn(async move {
+                    Self::handle_task_entity(
+                        priority,
+                        task_entity,
+                        category_counter,
+                        &category_limit,
+                        running_tasks,
+                        semaphore,
+                    )
+                    .await;
+                });
             }
             tracing::warn!("优先级通道消费者退出，该通道已关闭");
         });
@@ -248,56 +255,61 @@ impl Dispatcher {
 
         let limit = *category_limit.get(&category).unwrap_or(&1);
 
-        // let count = category_counter.entry(category.clone()).or_insert(0);
-        let current_count = {
+        // === 等待类型限速窗口 ===
+        loop {
             let mut counter = category_counter.lock().await;
             let count = counter.entry(category.clone()).or_insert(0);
-
-            if *count >= limit {
-                tracing::info!(
-                    "任务类型 {:?} 优先级 {} 达到限速上限 ({}/{})，延迟处理任务 {}",
+            if *count < limit {
+                *count += 1;
+                // tracing::info!(
+                //     "任务类型 {:?} 优先级 {} 未达到限速上限 ({}/{}), 待执行：{}",
+                //     category,
+                //     priority,
+                //     *count,
+                //     limit,
+                //     task_id
+                // );
+                break;
+            } else {
+                tracing::debug!(
+                    "任务类型 {:?} 优先级 {} 达到限速上限 ({}/{}), 等待中：{}",
                     category,
                     priority,
                     *count,
                     limit,
                     task_id
                 );
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                return;
             }
-            *count += 1;
-            *count
-        };
+            drop(counter); // 释放锁，避免死锁
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        }
 
         // === 去重逻辑 + 并发控制 ===
         let task_id = task_entity.id.clone();
         if running_tasks.insert(task_id.clone()) {
-            let category_counter = category_counter.clone();
-
-            tracing::info!(
-                "准备执行任务 {}，类型 = {:?}，优先级 = {}, 当前类型计数 = {}/{}，当前并发 = {}",
-                task_id,
-                category,
-                priority,
-                current_count,
-                limit,
-                running_tasks.len()
-            );
+            // tracing::info!(
+            //     "准备执行任务 {}，类型 = {:?}，优先级 = {}, 当前并发 = {}",
+            //     task_id,
+            //     category,
+            //     priority,
+            //     running_tasks.len()
+            // );
 
             // 如果成功插入，说明之前没有该任务，开始处理
             let permit = semaphore.acquire_owned().await.unwrap();
             let running_tasks_inner = running_tasks.clone();
+            let category_counter = category_counter.clone();
 
             tokio::spawn(async move {
-                tracing::info!("开始执行任务 {}", task_id);
+                // tracing::info!("开始执行任务 {}", task_id);
                 TaskManager::process_single_task(task_entity, running_tasks_inner).await;
                 let mut counter = category_counter.lock().await;
                 if let Some(count) = counter.get_mut(&category) {
                     *count = count.saturating_sub(1);
-                    tracing::info!(?category, current = *count, "任务计数 -1");
+                    // tracing::info!(?category, current = *count, "任务计数 -1");
                 }
                 drop(permit); // 释放信号量
-                tracing::info!("任务 {} 执行完成", task_id);
+                              // tracing::info!("任务 {} 执行完成", task_id);
             });
 
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;

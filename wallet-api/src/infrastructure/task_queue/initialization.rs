@@ -6,7 +6,11 @@ use crate::{
     service::{announcement::AnnouncementService, coin::CoinService, device::DeviceService},
     FrontendNotifyEvent,
 };
-use wallet_database::{entities::task_queue::TaskName, factory::RepositoryFactory, DbPool};
+use wallet_database::{
+    entities::task_queue::{TaskName, TaskQueueEntity},
+    factory::RepositoryFactory,
+    DbPool,
+};
 
 pub(crate) enum InitializationTask {
     PullAnnouncement,
@@ -75,6 +79,19 @@ pub(crate) async fn handle_initialization_task(
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
                 loop {
                     interval.tick().await;
+                    match TaskQueueEntity::has_unfinished_task(&*pool).await {
+                        Ok(true) => {
+                            tracing::info!("存在未完成任务，跳过处理未确认消息");
+                            continue;
+                        }
+                        Ok(false) => {
+                            tracing::info!("不存在未完成任务，处理未确认消息");
+                        }
+                        Err(e) => {
+                            tracing::error!("has_unfinished_task error: {}", e);
+                            continue;
+                        }
+                    }
 
                     if let Err(e) = MqttDomain::process_unconfirm_msg(&client_id).await {
                         if let Err(e) = FrontendNotifyEvent::send_error(
