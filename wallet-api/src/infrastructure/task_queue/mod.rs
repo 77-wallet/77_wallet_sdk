@@ -3,6 +3,7 @@ pub(crate) mod task_manager;
 use std::collections::BTreeMap;
 
 use crate::messaging::mqtt::topics;
+use task_manager::dispatcher::PriorityTask;
 use wallet_database::entities::{
     multisig_queue::QueueTaskEntity,
     node::NodeEntity,
@@ -96,7 +97,10 @@ impl Tasks {
         }
 
         for (priority, tasks) in grouped_tasks {
-            if let Err(e) = task_sender.get_task_sender().send((priority, tasks)) {
+            if let Err(e) = task_sender
+                .get_task_sender()
+                .send(PriorityTask { priority, tasks })
+            {
                 tracing::error!("send task queue error: {}", e);
             }
         }

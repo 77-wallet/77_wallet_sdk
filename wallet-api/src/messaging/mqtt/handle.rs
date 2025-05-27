@@ -1,13 +1,9 @@
 use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
 use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
-use wallet_transport_backend::{
-    consts::endpoint::SEND_MSG_CONFIRM,
-    request::{MsgConfirmSource, SendMsgConfirm, SendMsgConfirmReq},
-};
 use wallet_utils::serde_func;
 
 use crate::{
-    infrastructure::task_queue::{BackendApiTask, MqttTask, Task, Tasks},
+    infrastructure::task_queue::{MqttTask, Task, Tasks},
     messaging::{
         mqtt::topics::OutgoingPayload,
         notify::{event::NotifyEvent, FrontendNotifyEvent},
@@ -87,17 +83,18 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
 
-            let send_msg_confirm_req = BackendApiTask::new(
-                SEND_MSG_CONFIRM,
-                &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(
-                    &payload.msg_id,
-                    MsgConfirmSource::Mqtt,
-                )]),
-            )?;
-            Tasks::new()
-                .push(Task::BackendApi(send_msg_confirm_req))
-                .send()
-                .await?;
+            // TODO: 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
+            // let send_msg_confirm_req = BackendApiTask::new(
+            //     SEND_MSG_CONFIRM,
+            //     &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(
+            //         &payload.msg_id,
+            //         MsgConfirmSource::Mqtt,
+            //     )]),
+            // )?;
+            // Tasks::new()
+            //     .push(Task::BackendApi(send_msg_confirm_req))
+            //     .send()
+            //     .await?;
 
             // 是否有相同的队列
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)

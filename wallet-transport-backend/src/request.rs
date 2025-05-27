@@ -641,6 +641,7 @@ pub enum MsgConfirmSource {
     Mqtt,
     Api,
     Jg,
+    Other,
 }
 
 impl SendMsgConfirm {

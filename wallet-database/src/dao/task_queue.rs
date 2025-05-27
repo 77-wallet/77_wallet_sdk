@@ -214,7 +214,10 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn delete_tasks_with_request_body_like<'a, E>(exec: E, keyword: &str) -> Result<(), crate::Error>
+    pub async fn delete_tasks_with_request_body_like<'a, E>(
+        exec: E,
+        keyword: &str,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
