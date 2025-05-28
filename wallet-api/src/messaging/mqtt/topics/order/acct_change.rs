@@ -13,11 +13,12 @@ use wallet_database::{
 
 use crate::{
     domain::multisig::MultisigQueueDomain,
+    infrastructure::inner_event::InnerEvent,
     messaging::{
         notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
         system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
     },
-    service::{asset::AssetsService, system_notification::SystemNotificationService},
+    service::system_notification::SystemNotificationService,
 };
 
 // biz_type = ACCT_CHANGE
@@ -196,24 +197,16 @@ impl AcctChange {
     }
 
     async fn sync_assets(acct_change: &AcctChange) -> Result<(), crate::ServiceError> {
-        let asset_list = vec![
-            acct_change.from_addr.to_string(),
-            acct_change.to_addr.to_string(),
-        ];
-
-        if !asset_list.is_empty() {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
-            let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-            AssetsService::new(repo)
-                .sync_assets_by_addr(
-                    asset_list,
-                    Some(acct_change.chain_code.to_string()),
-                    vec![acct_change.symbol.to_string()],
-                )
-                .await?;
-        }
-
+        let inner_event_handle = crate::manager::Context::get_global_inner_event_handle()?;
+        inner_event_handle.send(InnerEvent::SyncAssets {
+            addr_list: vec![
+                acct_change.from_addr.to_string(),
+                acct_change.to_addr.to_string(),
+            ],
+            chain_code: acct_change.chain_code.to_string(),
+            symbol: acct_change.symbol.to_string(),
+        })?;
+        // tracing::info!("发送同步资产事件");
         Ok(())
     }
 

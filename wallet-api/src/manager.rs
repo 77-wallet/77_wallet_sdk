@@ -1,4 +1,5 @@
 use crate::domain;
+use crate::infrastructure::inner_event::InnerEventHandle;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
@@ -123,6 +124,7 @@ pub struct Context {
     pub(crate) device: Arc<DeviceInfo>,
     pub(crate) cache: Arc<SharedCache>,
     pub(crate) aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
+    pub(crate) inner_event_handle: InnerEventHandle,
 }
 
 #[derive(Debug, Clone)]
@@ -183,6 +185,8 @@ impl Context {
         // 创建 TaskManager 实例
         let task_manager = TaskManager::new();
 
+        let inner_event_handle = InnerEventHandle::new();
+
         Ok(Context {
             dirs,
             mqtt_url,
@@ -196,6 +200,7 @@ impl Context {
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
             aes_cbc_cryptor,
+            inner_event_handle,
         })
     }
 
@@ -326,6 +331,11 @@ impl Context {
 
             Ok(HashMap::from([("token".to_string(), token)]))
         }
+    }
+
+    pub(crate) fn get_global_inner_event_handle(
+    ) -> Result<&'static InnerEventHandle, crate::SystemError> {
+        Ok(&Context::get_context()?.inner_event_handle)
     }
 }
 
