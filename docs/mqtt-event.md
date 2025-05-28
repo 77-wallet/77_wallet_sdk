@@ -19,7 +19,7 @@ struct Message<T>{
 
 ## 多签相关
 
-#### 订单多签-发起签名受理
+### 订单多签-发起签名受理
 
 > ORDER_MULTI_SIGN_ACCEPT(3,"订单多签-发起签名受理"),
 
@@ -90,7 +90,7 @@ pub struct Member {
       }
   ```
 
-#### 订单多签-发起签名受理完成-消息通知
+### 订单多签-发起签名受理完成-消息通知
 
 > ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG(5,"订单多签-发起签名受理完成-消息通知")
 
@@ -141,7 +141,8 @@ pub(crate) struct Confirm {
       }
   ```
 
-#### 订单多签-服务费收取完成
+### 订单多签-服务费收取完成
+
 > ORDER_MULTI_SIGN_SERVICE_COMPLETE(6,"订单多签-服务费收取完成")
 当手续费或服务费完成后，通知参与方修改状态。多签账号已启用。
 
@@ -174,9 +175,7 @@ stuct Body{
 
 ------
 
-
-
-#### 订单多签-取消签名
+### 订单多签-取消签名
 
 > ORDER_MULTI_SIGN_CANCEL(4,"订单多签-取消签名")
 
@@ -201,11 +200,7 @@ struct Body{
       }
   ```
 
-
-
-
-
-#### 订单多签-账户创建完成
+### 订单多签-账户创建完成
 
 > ORDER_MULTI_SIGN_CREATED(7,"订单多签-账户创建完成")
 
@@ -241,17 +236,13 @@ pub(crate) struct OrderMultiSignCreated {
               "multisigAccountId": "order-1",
               "multisigAccountAddress": "asdasdasdasd",
               "addressType": "p2wsh",
-            	"salt": "asdasd",
-            	"authorityAddr": "sadasdasd"
+             "salt": "asdasd",
+             "authorityAddr": "sadasdasd"
           }
       }
   ```
 
-  
-
-
-
-#### 多签转账-发起签名受理
+### 多签转账-发起签名受理
 
 > MULTI_SIGN_TRANS_ACCEPT(9,"多签转账-发起签名受理"),
 
@@ -308,9 +299,7 @@ pub struct MultiSignTransAccept {
       }
   ```
 
-  
-
-#### 多签转账-发起签名受理完成
+### 多签转账-发起签名受理完成
 
 > MULTI_SIGN_TRANS_ACCEPT_COMPLETE_MSG(10,"多签转账-发起签名受理完成")
 
@@ -352,13 +341,9 @@ pub struct MultiSignTransAcceptCompleteMsgBody {
       }
   ```
 
-  
-
-  
-
 ## 其他
 
-#### 账变通知 
+### 账变通知
 
 > ACCT_CHANGE(1,"帐变")
 
@@ -432,9 +417,7 @@ pub struct AcctChange {
       }
   ```
 
-  
-
-#### 账户余额初始化
+### 账户余额初始化
 
 > INIT(2,"账户余额初始化")
 
@@ -472,16 +455,14 @@ pub struct Init {
               "balance": 4000002,
               "chainCode": "tron",
               "code": "sadsadsad",
-            	"tokenAddress": "",
-            	"decimals": 6
+             "tokenAddress": "",
+             "decimals": 6
           }
       ]
   }
   ```
   
-  
-
-#### 代币价格变动
+### 代币价格变动
 
 > TOKEN_PRICE_CHANGE(8,"代币价格变动"),
 
@@ -490,7 +471,7 @@ pub struct Init {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPriceChange {
-  	// 代币id
+   // 代币id
     pub id: String,
     // 链码
     pub chain_code: String,
@@ -543,9 +524,7 @@ pub struct TokenPriceChange {
   }
   ```
 
-  
-
-#### 链变动
+### 链变动
 
 > CHAIN_CHANGE(,"链变动"),
 
@@ -624,18 +603,3 @@ pub struct ChainUrlInfo {
       }]
   }
   ```
-
-  
-
-
-
-
-
-
-
-
-
-
-
-
-
