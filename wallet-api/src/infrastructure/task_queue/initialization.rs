@@ -71,9 +71,13 @@ pub(crate) async fn handle_initialization_task(
             let repo = RepositoryFactory::repo(pool.clone());
             let device_service = DeviceService::new(repo);
             let Some(device) = device_service.get_device_info().await? else {
-                tracing::error!("get device info failed");
-                return Ok(());
+                return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
             };
+
+            if device.is_init != 1 {
+                return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            }
+
             let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
             tokio::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
