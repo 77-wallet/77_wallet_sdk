@@ -26,7 +26,7 @@ async fn test_fee() {
     let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
     let value = "0.01";
     let chain_code = "ton";
-    let symbol = "USDT";
+    let symbol = "TON";
 
     let params = transaction::BaseTransferReq::new(
         from.to_string(),
@@ -49,7 +49,7 @@ async fn test_transfer() {
     let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
     let value = "0.01";
     let chain_code = "ton";
-    let symbol = "TON";
+    let symbol = "USDT";
     let password = "123456";
 
     let base = transaction::BaseTransferReq::new(
@@ -62,12 +62,22 @@ async fn test_transfer() {
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
-        fee_setting:
-            r#"{"gasLimit":23100,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1000000000"}"#
-                .to_string(),
-        signer:None,
+        fee_setting: "".to_string(),
+        signer: None,
     };
 
     let token_fee = wallet_manager.transfer(params).await;
     println!("token transaction: {:?}", token_fee);
+}
+
+#[test]
+fn fee_cal() {
+    let before = 8.780073749;
+    let after = 8.773793064;
+
+    let diff = before - after;
+    let fee = 0.002574306;
+
+    println!("diff: {}", diff);
+    println!("feee: {}", fee);
 }

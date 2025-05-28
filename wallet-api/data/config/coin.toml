@@ -179,7 +179,7 @@ active = true
 [[coins]]
 name = "Ton"
 chain_code = "ton"
-symbol = "Ton"
+symbol = "TON"
 decimals = 9
 token_address = ""
 protocol = ""
