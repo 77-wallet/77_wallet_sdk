@@ -5,7 +5,7 @@ use std::{
 
 use tokio::sync::Notify;
 
-use crate::service::asset::AssetsService;
+use crate::{service::asset::AssetsService, FrontendNotifyEvent, NotifyEvent};
 
 pub type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
@@ -150,6 +150,10 @@ impl InnerEventHandle {
                     if let Err(e) = Self::sync_assets_once(chain_code, symbol, addr_list).await {
                         tracing::error!("SyncAssets error: {}", e);
                     }
+                }
+                let data = NotifyEvent::SyncAssets;
+                if let Err(e) = FrontendNotifyEvent::new(data).send().await {
+                    tracing::error!("SyncAssets send error: {}", e);
                 }
             }
         });
