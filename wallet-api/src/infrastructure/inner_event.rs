@@ -4,6 +4,7 @@ use std::{
 };
 
 use tokio::sync::Notify;
+use tokio_stream::StreamExt as _;
 
 use crate::{service::asset::AssetsService, FrontendNotifyEvent, NotifyEvent};
 
@@ -62,12 +63,47 @@ impl EventBuffer {
         }
     }
 
-    async fn wait_and_drain_after_delay(&self, delay_secs: u64) -> Vec<AssetKey> {
-        self.notifier.notified().await;
-        tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+    // async fn wait_and_drain_after_delay(&self, delay_secs: u64) -> Vec<AssetKey> {
+    //     self.notifier.notified().await;
+    //     tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
 
-        let mut buf = self.buffer.lock().unwrap();
-        buf.drain().collect()
+    //     let mut buf = self.buffer.lock().unwrap();
+    //     buf.drain().collect()
+    // }
+
+    async fn wait_and_drain_stream(
+        &self,
+        delay_secs: u64,
+    ) -> impl tokio_stream::Stream<Item = Vec<AssetKey>> + '_ {
+        use tokio_stream::{wrappers::IntervalStream, StreamExt};
+
+        tracing::info!("等待第一次资产变更通知...");
+        self.notifier.notified().await;
+        tracing::info!("收到资产变更通知，立即执行第一次 drain");
+        // 1. 第一次立即 drain
+        let first = {
+            let mut buf = self.buffer.lock().unwrap();
+            let drained = buf.drain().collect::<Vec<_>>();
+            tracing::info!("第一次 drain 获取到 {} 个资产项", drained.len());
+            drained
+        };
+
+        // 用 stream 返回：第一次立即返回 → 然后每隔 delay 秒返回一次
+        let delay = tokio::time::Duration::from_secs(delay_secs);
+        let interval = tokio::time::interval(delay);
+        let interval_stream = IntervalStream::new(interval).filter_map(move |_| {
+            let mut buf = self.buffer.lock().unwrap();
+            let drained = buf.drain().collect::<Vec<_>>();
+            if drained.is_empty() {
+                tracing::debug!("⏳ 定时检查：无新增资产变更，跳过");
+                None
+            } else {
+                // tracing::info!("🔁 定时检查：drain 到 {} 个资产项", drained.len());
+                Some(drained)
+            }
+        });
+
+        tokio_stream::once(first).chain(interval_stream)
     }
 }
 
@@ -113,7 +149,7 @@ impl InnerEventHandle {
                 chain_code,
                 symbol,
             } => {
-                // tracing::info!("开始同步资产");
+                // tracing::info!("收到资产变更通知，开始同步资产");
                 buffer.push_assets(addr_list, chain_code, symbol)
             }
         }
@@ -124,9 +160,10 @@ impl InnerEventHandle {
         let buffer = Arc::clone(&buffer);
 
         tokio::spawn(async move {
-            loop {
-                let batch = buffer.wait_and_drain_after_delay(5).await;
-                tracing::info!("同步资产，batch: {:?}", batch);
+            let mut stream = buffer.wait_and_drain_stream(5).await;
+
+            while let Some(batch) = stream.next().await {
+                tracing::debug!("同步资产，batch: {:?}", batch);
                 if batch.is_empty() {
                     continue;
                 }
@@ -141,7 +178,7 @@ impl InnerEventHandle {
 
                 // 逐组执行
                 for ((chain_code, symbol), addr_list) in grouped {
-                    tracing::info!(
+                    tracing::debug!(
                         "Syncing assets: chain={} symbol={} addresses={:?}",
                         chain_code,
                         symbol,

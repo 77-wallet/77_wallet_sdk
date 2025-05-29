@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let res = wallet_utils::serde_func::serde_to_string(&config)?;
     // tracing::info!("config result: {res}");
     while let Some(_data) = rx.next().await {
-        tracing::info!("data: {_data:?}");
+        // tracing::info!("data: {_data:?}");
     }
     Ok(())
 }
