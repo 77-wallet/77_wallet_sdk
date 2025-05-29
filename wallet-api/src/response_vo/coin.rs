@@ -217,10 +217,7 @@ impl TokenCurrencies {
                     .calculate_to_balance(&assets.balance, &assets.symbol, &assets.chain_code)
                     .await?;
 
-                let name = if assets.chain_code == "btc"
-                    || assets.chain_code == "ton"
-                    || assets.chain_code == "ltc"
-                {
+                let name = if assets.chain_code == "btc" || assets.chain_code == "ltc" {
                     let address_category = AccountDomain::get_show_address_type(
                         &assets.chain_code,
                         assets.address_type(),
