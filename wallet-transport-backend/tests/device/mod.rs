@@ -1,5 +1,6 @@
 use wallet_transport_backend::request::{
     DeviceBindAddressReq, DeviceDeleteReq, DeviceInitReq, DeviceUnbindAddress, KeysInitReq,
+    UpdateAppIdReq,
 };
 
 use crate::init;
@@ -112,7 +113,6 @@ async fn test_keys_init() -> Result<(), wallet_transport_backend::Error> {
         sn: "dead3430844c05f837d2301d7b3bc2f3".to_string(),
         client_id: Some("guanxiang".to_string()),
         device_type: Some("ANDROID".to_string()),
-        app_id: Some("asad".to_string()),
         name: "asad".to_string(),
         invite_code: "".to_string(),
     };
@@ -123,6 +123,23 @@ async fn test_keys_init() -> Result<(), wallet_transport_backend::Error> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_update_app_id() -> Result<(), wallet_transport_backend::Error> {
+    let (aes_cbc_cryptor, backend_api) = init()?; // Initialize the cryptor and API
+
+    let req = UpdateAppIdReq {
+        sn: "dead3430844c05f837d2301d7b3bc2f3".to_string(),
+        app_id: "asad".to_string(),
+    };
+    let res = backend_api
+        .update_app_id(&aes_cbc_cryptor, &req)
+        .await
+        .unwrap();
+
+    println!("[test_update_app_id] res: {res:?}");
+
+    Ok(())
+}
 #[tokio::test]
 async fn test_main() -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::builder().build()?;

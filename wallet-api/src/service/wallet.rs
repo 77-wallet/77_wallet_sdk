@@ -128,31 +128,34 @@ impl WalletService {
         let mut tx = self.repo;
         let wallet_list = tx.edit_wallet_name(wallet_address, wallet_name).await?;
 
-        let device = tx.get_device_info().await?;
-        if let Some(device) = &device {
-            let client_id = domain::app::DeviceDomain::client_id_by_device(device)?;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
 
-            for wallet in wallet_list {
-                let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-                    &wallet.uid,
-                    &device.sn,
-                    Some(client_id.clone()),
-                    device.app_id.clone(),
-                    Some(device.device_type.clone()),
-                    wallet_name,
-                    None,
-                );
-                let keys_init_task_data = BackendApiTaskData::new(
-                    wallet_transport_backend::consts::endpoint::KEYS_INIT,
-                    &keys_init_req,
-                )?;
-                Tasks::new()
-                    .push(Task::BackendApi(BackendApiTask::BackendApi(
-                        keys_init_task_data,
-                    )))
-                    .send()
-                    .await?;
-            }
+        let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
+        let code = ConfigDomain::get_invite_code()
+            .await?
+            .map(|c| c.code)
+            .flatten();
+        for wallet in wallet_list {
+            let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+                &wallet.uid,
+                &device.sn,
+                Some(client_id.clone()),
+                Some(device.device_type.clone()),
+                &wallet.name,
+                code.clone(),
+            );
+            let keys_init_task_data = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::KEYS_INIT,
+                &keys_init_req,
+            )?;
+            Tasks::new()
+                .push(Task::BackendApi(BackendApiTask::BackendApi(
+                    keys_init_task_data,
+                )))
+                .send()
+                .await?;
         }
 
         Ok(())
@@ -491,7 +494,6 @@ impl WalletService {
             &uid,
             &device.sn,
             Some(client_id),
-            device.app_id,
             Some(device.device_type),
             wallet_name,
             invite_code,

@@ -50,6 +50,7 @@ fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> 
                     SEND_MSG_CONFIRM  => 1,
                     // 关键初始化流程，高优先级
                     KEYS_INIT
+                    | DEVICE_UPDATE_APP_ID
                     | ADDRESS_INIT
                     | DEVICE_EDIT_DEVICE_INVITEE_STATUS
                     | LANGUAGE_INIT
