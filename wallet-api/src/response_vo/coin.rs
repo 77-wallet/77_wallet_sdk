@@ -4,7 +4,6 @@ use std::{
 };
 use wallet_database::entities::chain::ChainEntity;
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
-use wallet_types::chain::address::{category::AddressCategory, r#type::AddressType};
 
 use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
 
@@ -218,13 +217,15 @@ impl TokenCurrencies {
                     .calculate_to_balance(&assets.balance, &assets.symbol, &assets.chain_code)
                     .await?;
 
-                let btc_address_type_opt: AddressType = assets.address_type().try_into()?;
-                let address_category = btc_address_type_opt.into();
-
                 let name = if assets.chain_code == "btc"
-                    && let AddressCategory::Btc(address_category) = address_category
+                    || assets.chain_code == "ton"
+                    || assets.chain_code == "ltc"
                 {
-                    address_category.to_string()
+                    let address_category = AccountDomain::get_show_address_type(
+                        &assets.chain_code,
+                        assets.address_type(),
+                    )?;
+                    address_category.show_name().to_uppercase()
                 } else {
                     chain.name.clone()
                 };
@@ -244,20 +245,6 @@ impl TokenCurrencies {
         }
         Ok(res)
     }
-
-    // pub async fn calculate_token_price_change(
-    //     &self,
-    //     data: TokenPriceChangeBody,
-    // ) -> Result<TokenPriceChangeRes, crate::ServiceError> {
-    //     let balance = self
-    //         .calculate_to_balance(
-    //             &wallet_types::Decimal::default().to_string(),
-    //             &data.symbol,
-    //             &data.chain_code,
-    //         )
-    //         .await?;
-    //     Ok((data, balance).into())
-    // }
 
     pub async fn calculate_to_balance(
         &self,
@@ -408,7 +395,8 @@ impl TokenCurrencies {
             // let btc_address_type_opt: AddressType = account.address_type().try_into()?;
             // let address_type = btc_address_type_opt.into();
 
-            let address_type = AccountDomain::get_show_address_type(&account)?;
+            let address_type =
+                AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
 
             if let Some(info) = account_list
                 .iter_mut()

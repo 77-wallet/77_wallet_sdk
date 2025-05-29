@@ -143,18 +143,17 @@ async fn test_generate_phrase() {
 async fn test_show_key() {
     init_test_log();
 
-    let parse = "member diesel marine culture boat differ spirit patient drum fix chunk sadness"
-        .to_string();
-    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "1234qwer").unwrap();
+    let parse = "".to_string();
+    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
-    let chain_code = "sol";
+    let chain_code = "sui";
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
     let address_type = Some("p2wpkh".to_string());
     let object = ChainObject::new(chain_code, address_type, network).unwrap();
 
     let keypair = object
-        .gen_keypair_with_index_address_type(&seed, 10)
+        .gen_keypair_with_index_address_type(&seed, 0)
         .unwrap();
 
     tracing::info!("address = {}", keypair.address());

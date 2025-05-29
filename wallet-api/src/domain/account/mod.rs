@@ -1,3 +1,4 @@
+use wallet_chain_instance::instance::eth::address;
 use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
@@ -32,11 +33,12 @@ impl AccountDomain {
 
     // 获取地址对应的展示类型 比如: p2pkh --> legacy
     pub fn get_show_address_type(
-        account: &AccountEntity,
+        chain_code: &str,
+        address_type: Option<String>,
     ) -> Result<AddressCategory, crate::ServiceError> {
-        let chain_code = ChainCode::try_from(account.chain_code.as_str())?;
+        let chain_code = ChainCode::try_from(chain_code)?;
 
-        if let Some(types_str) = account.address_type() {
+        if let Some(types_str) = address_type {
             match chain_code {
                 ChainCode::Bitcoin | ChainCode::Litecoin | ChainCode::Dogcoin => {
                     let address_type = types_str.as_str();

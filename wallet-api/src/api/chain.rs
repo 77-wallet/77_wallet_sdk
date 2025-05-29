@@ -94,11 +94,11 @@ mod tests {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
-        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
-        let symbol = "USDT";
+        let address = "0x93F63A0804d6b76ffa93675A26706d67Ade81fA8";
+        let symbol = "LTC";
         let res = wallet_manager.get_chain_list(address, 1, symbol).await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
-        tracing::info!("res: {res:?}");
+        tracing::info!("res: {res}");
         Ok(())
     }
 
