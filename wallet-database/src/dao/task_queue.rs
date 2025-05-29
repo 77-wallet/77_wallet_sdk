@@ -231,13 +231,26 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E, status: u8) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "SELECT * FROM task_queue WHERE status = ?";
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(status)
+        let mut sql = "SELECT * FROM task_queue".to_string();
+        let mut conditions = Vec::new();
+        if status.is_some() {
+            conditions.push("status = ?".to_string());
+        }
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql);
+
+        if let Some(status) = status {
+            query = query.bind(status);
+        }
+
+        query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
