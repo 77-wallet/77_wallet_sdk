@@ -197,6 +197,11 @@ impl AcctChange {
     }
 
     async fn sync_assets(acct_change: &AcctChange) -> Result<(), crate::ServiceError> {
+        if !acct_change.status {
+            tracing::warn!("acct_change status is false, skip sync assets");
+            return Ok(());
+        }
+
         let inner_event_handle = crate::manager::Context::get_global_inner_event_handle()?;
         inner_event_handle.send(InnerEvent::SyncAssets {
             addr_list: vec![
