@@ -2,7 +2,13 @@ use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
 };
-use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
+use wallet_types::chain::{
+    address::{
+        category::AddressCategory,
+        r#type::{AddressType, BtcAddressType, TonAddressType},
+    },
+    chain::ChainCode,
+};
 
 use crate::{
     infrastructure::task_queue::BackendApiTaskData, response_vo::account::CreateAccountRes,
@@ -22,6 +28,33 @@ impl Default for AccountDomain {
 impl AccountDomain {
     pub fn new() -> Self {
         Self {}
+    }
+
+    // 获取地址对应的展示类型 比如: p2pkh --> legacy
+    pub fn get_show_address_type(
+        account: &AccountEntity,
+    ) -> Result<AddressCategory, crate::ServiceError> {
+        let chain_code = ChainCode::try_from(account.chain_code.as_str())?;
+
+        if let Some(types_str) = account.address_type() {
+            match chain_code {
+                ChainCode::Bitcoin | ChainCode::Litecoin | ChainCode::Dogcoin => {
+                    let address_type = types_str.as_str();
+
+                    let res = BtcAddressType::try_from(address_type)?;
+                    Ok(AddressCategory::Btc(res.into()))
+                }
+                ChainCode::Ton => {
+                    let address_type = types_str.as_str();
+                    let res = TonAddressType::try_from(address_type)?;
+                    Ok(AddressCategory::Ton(res))
+                }
+
+                _ => Ok(AddressCategory::Other),
+            }
+        } else {
+            Ok(AddressCategory::Other)
+        }
     }
 
     pub async fn get_addresses(

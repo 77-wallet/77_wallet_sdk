@@ -6,7 +6,7 @@ use wallet_database::entities::chain::ChainEntity;
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
 use wallet_types::chain::address::{category::AddressCategory, r#type::AddressType};
 
-use crate::domain::app::config::ConfigDomain;
+use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
 
 use super::{
     account::BalanceInfo,
@@ -405,8 +405,10 @@ impl TokenCurrencies {
     ) -> Result<AccountInfos, crate::ServiceError> {
         let mut account_list = Vec::<crate::response_vo::wallet::AccountInfo>::new();
         for account in data {
-            let btc_address_type_opt: AddressType = account.address_type().try_into()?;
-            let address_type = btc_address_type_opt.into();
+            // let btc_address_type_opt: AddressType = account.address_type().try_into()?;
+            // let address_type = btc_address_type_opt.into();
+
+            let address_type = AccountDomain::get_show_address_type(&account)?;
 
             if let Some(info) = account_list
                 .iter_mut()
