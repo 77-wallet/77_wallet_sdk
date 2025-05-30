@@ -71,7 +71,7 @@ pub enum TaskName {
     PullAnnouncement,
     PullHotCoins,
     InitTokenPrice,
-    ProcessUnconfirmMsg,
+    // ProcessUnconfirmMsg,
     SetBlockBrowserUrl,
     SetFiat,
     RecoverQueueData,

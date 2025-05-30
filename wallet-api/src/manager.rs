@@ -68,9 +68,9 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         .push(Task::Initialization(InitializationTask::InitMqtt))
         .push(Task::Initialization(InitializationTask::PullAnnouncement))
         .push(Task::Initialization(InitializationTask::PullHotCoins))
-        .push(Task::Initialization(
-            InitializationTask::ProcessUnconfirmMsg,
-        ))
+        // .push(Task::Initialization(
+        //     InitializationTask::ProcessUnconfirmMsg,
+        // ))
         .push(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
         .push(Task::Initialization(InitializationTask::SetFiat))
         .push(Task::Initialization(InitializationTask::RecoverQueueData))
@@ -183,7 +183,15 @@ impl Context {
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         // 创建 TaskManager 实例
-        let task_manager = TaskManager::new();
+        let notify = Arc::new(tokio::sync::Notify::new());
+
+        let task_manager = TaskManager::new(notify.clone());
+
+        let pool = sqlite_context.get_pool()?;
+        crate::infrastructure::process_unconfirm_msg::process_unconfirm_msg(
+            &client_id, pool, notify,
+        )
+        .await?;
 
         let inner_event_handle = InnerEventHandle::new();
 
@@ -336,6 +344,10 @@ impl Context {
     pub(crate) fn get_global_inner_event_handle(
     ) -> Result<&'static InnerEventHandle, crate::SystemError> {
         Ok(&Context::get_context()?.inner_event_handle)
+    }
+
+    pub(crate) fn get_global_notify() -> Result<Arc<tokio::sync::Notify>, crate::SystemError> {
+        Ok(Context::get_context()?.task_manager.notify.clone())
     }
 }
 

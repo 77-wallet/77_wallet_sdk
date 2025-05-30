@@ -169,9 +169,9 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 Ok(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
             }
             TaskName::SetFiat => Ok(Task::Initialization(InitializationTask::SetFiat)),
-            TaskName::ProcessUnconfirmMsg => Ok(Task::Initialization(
-                InitializationTask::ProcessUnconfirmMsg,
-            )),
+            // TaskName::ProcessUnconfirmMsg => Ok(Task::Initialization(
+            //     InitializationTask::ProcessUnconfirmMsg,
+            // )),
             TaskName::RecoverQueueData => {
                 Ok(Task::Initialization(InitializationTask::RecoverQueueData))
             }

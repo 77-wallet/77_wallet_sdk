@@ -20,18 +20,20 @@ type RunningTasks = Arc<DashSet<String>>;
 pub struct TaskManager {
     running_tasks: RunningTasks,
     // task_sender: crate::manager::TaskSender,
+    pub(crate) notify: Arc<tokio::sync::Notify>,
     dispatcher: Dispatcher,
 }
 
 impl TaskManager {
     /// 创建一个新的 TaskManager 实例
-    pub fn new() -> Self {
+    pub fn new(notify: Arc<tokio::sync::Notify>) -> Self {
         let running_tasks: RunningTasks = Arc::new(DashSet::new());
         let dispatcher = Dispatcher::new(Arc::clone(&running_tasks));
         // let task_sender = dispatcher.task_dispatcher(Arc::clone(&running_tasks));
         Self {
             running_tasks,
             // task_sender,
+            notify,
             dispatcher,
         }
     }
@@ -151,6 +153,11 @@ impl TaskManager {
         }
 
         running_tasks.remove(&task_id);
+        if running_tasks.is_empty() {
+            let notify = crate::manager::Context::get_global_notify().unwrap();
+            notify.notify_one();
+            // tracing::info!("notify_one");
+        }
     }
 
     async fn handle_task(
