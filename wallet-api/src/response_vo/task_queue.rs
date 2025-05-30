@@ -8,4 +8,5 @@ pub struct TaskQueueStatus {
     pub pending_tasks: usize,
     pub failed_tasks: usize,
     pub done_tasks: usize,
+    pub bill_count: i64,
 }

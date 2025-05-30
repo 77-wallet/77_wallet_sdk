@@ -119,6 +119,19 @@ impl BillDao {
         Ok(res)
     }
 
+    pub async fn bill_count<'a, E>(pool: E) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(*) FROM bill";
+
+        let res = sqlx::query_scalar::<_, i64>(sql)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
     pub async fn bill_lists<'a, E>(
         pool: &E,
         addr: &[String],

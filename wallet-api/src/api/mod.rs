@@ -116,6 +116,8 @@ mod test {
 
         let status = wallet_manager.get_task_queue_status().await;
         tracing::info!("[test_get_task_queue_status] status: {status:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&status).unwrap();
+        tracing::info!("[test_get_task_queue_status] res: {res}");
         Ok(())
     }
 }

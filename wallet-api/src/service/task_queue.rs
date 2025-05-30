@@ -1,4 +1,4 @@
-use wallet_database::repositories::ResourcesRepo;
+use wallet_database::repositories::{bill::BillRepoTrait, ResourcesRepo};
 
 use crate::response_vo::task_queue::TaskQueueStatus;
 
@@ -20,12 +20,15 @@ impl TaskQueueService {
         let pending = repo.pending_task_queue().await?;
         let failed = repo.failed_task_queue().await?;
 
+        let bill_count = repo.bill_count().await?;
+
         let status = TaskQueueStatus {
             all_tasks: all.len(),
             running_tasks: running.len(),
             pending_tasks: pending.len(),
             failed_tasks: failed.len(),
             done_tasks: done.len(),
+            bill_count,
         };
 
         tracing::info!(?status, "Current task queue status");
