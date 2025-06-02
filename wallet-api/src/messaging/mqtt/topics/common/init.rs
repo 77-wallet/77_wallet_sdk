@@ -9,25 +9,6 @@ use crate::{
     service::asset::AssetsService,
 };
 
-/*
-{
-    "clientId": "wenjing",
-    "sn": "wenjing",
-    "deviceType": "ANDROID",
-    "bizType": "INIT",
-    "body": [
-        {
-            "address": "TGyw6wH5UT5GVY5v6MTWedabScAwF4gffQ",
-            "balance": 4000002,
-            "chainCode": "tron",
-            "code": "sadsadsad",
-              "tokenAddress": "",
-              "decimals": 6
-        }
-    ]
-}
-*/
-
 // biz_type = INIT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -163,39 +144,11 @@ impl Init {
 #[cfg(test)]
 mod test {
     use crate::messaging::mqtt::topics::Init;
-    use std::str::FromStr;
 
     #[test]
     fn test_() {
-        let raw = r#"
-        {
-            "bizType": "INIT",
-            "body": [
-                {
-                    "address": "TCVt2AYPjUZdSvLgUy8x2xhT7uj1FrQRZs",
-                    "balance": 2000000000,
-                    "chainCode": "tron",
-                    "code": "trx"
-                }
-            ],
-            "clientId": "wenjing",
-            "deviceType": "ANDROID",
-            "sn": "wenjing"
-        }
-        "#;
+        let raw = r#"[{"address":"LPksEuS2ZeN89BwKQkJw4HAAivrruFDn3j","chainCode":"ltc","balance":"0.29486678","code":"LTC","tokenAddress":null}]"#;
         let res = serde_json::from_str::<Init>(&raw);
         println!("res: {res:?}");
-    }
-
-    #[test]
-    fn test_decimal() {
-        let balance = wallet_types::Decimal::from_str("1996.733").unwrap();
-        let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), 6).unwrap();
-        println!("balance: {balance}");
-        println!(
-            "balance: {}",
-            wallet_utils::unit::format_to_string(balance, 6).unwrap()
-        );
-        // let balance = wallet_utils::unit::u256_from_str(&balance.to_string()).unwrap();
     }
 }

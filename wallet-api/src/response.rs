@@ -106,6 +106,14 @@ fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) 
                             err_msg,
                         )
                     }
+                    -26 => {
+                        // ltc btc doge dust transaction
+                        let err_msg = node_response_error.message.unwrap_or_default();
+                        (
+                            crate::ChainError::DustTransaction.get_status_code(),
+                            err_msg,
+                        )
+                    }
                     _ => (
                         node_response_error.code,
                         node_response_error.message.unwrap_or_default(),
