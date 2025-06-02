@@ -196,7 +196,6 @@ impl Context {
         let unconfirmed_msg_processor = UnconfirmedMsgProcessor::new(&client_id, notify);
 
         let inner_event_handle = InnerEventHandle::new();
-
         Ok(Context {
             dirs,
             mqtt_url,
