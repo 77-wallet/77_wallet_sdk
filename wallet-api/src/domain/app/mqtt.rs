@@ -1,9 +1,5 @@
 use crate::infrastructure::mqtt::{init::init_mqtt_processor, property::UserProperty};
-use wallet_database::{
-    dao::config::ConfigDao,
-    entities::config::{config_key::APP_VERSION, AppVersion},
-    repositories::{device::DeviceRepoTrait, ResourcesRepo},
-};
+use wallet_database::repositories::{device::DeviceRepoTrait, ResourcesRepo};
 use wallet_transport_backend::request::MsgConfirmSource;
 
 use super::DeviceDomain;

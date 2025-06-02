@@ -1,4 +1,3 @@
-use wallet_chain_instance::instance::eth::address;
 use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
