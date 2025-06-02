@@ -113,4 +113,18 @@ impl BackendApi {
             .await?
             .process(aes_cbc_cryptor)
     }
+
+    pub async fn update_app_id(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        req: &crate::request::UpdateAppIdReq,
+    ) -> Result<(), crate::Error> {
+        let res = self
+            .client
+            .post("device/updateAppId")
+            .json(req)
+            .send::<BackendResponse>()
+            .await?;
+        res.process(aes_cbc_cryptor)
+    }
 }

@@ -50,21 +50,9 @@ impl MqttDomain {
             .await?
             .list;
         tracing::info!("query_unconfirm_msg: {}", data.len());
-        let ids =
-            crate::service::jpush::JPushService::jpush_multi(data, MsgConfirmSource::Api).await?;
-        if !ids.is_empty() {
-            const BATCH_SIZE: usize = 500;
-            for chunk in ids.chunks(BATCH_SIZE) {
-                let api = crate::Context::get_global_backend_api()?;
-                let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-                tracing::info!("send_msg_confirm: {}", chunk.len());
-                api.send_msg_confirm(
-                    aes_cbc_cryptor,
-                    &wallet_transport_backend::request::SendMsgConfirmReq::new(chunk.to_vec()),
-                )
-                .await?;
-            }
-        }
+        crate::service::jpush::JPushService::jpush_multi(data, MsgConfirmSource::Api).await?;
+        // TODO: 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
+        // crate::domain::task_queue::TaskQueueDomain::send_msg_confirm(ids).await?;
         Ok(())
     }
 }

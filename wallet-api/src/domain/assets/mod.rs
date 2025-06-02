@@ -1,7 +1,9 @@
+use super::chain::adapter::ChainAdapterFactory;
 use crate::{
     domain,
     infrastructure::task_queue::{CommonTask, Task, Tasks},
 };
+use futures::{stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use wallet_database::{
@@ -14,6 +16,14 @@ use wallet_database::{
     repositories::{account::AccountRepoTrait, assets::AssetsRepoTrait, ResourcesRepo},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
+
+struct BalanceTask {
+    address: String,
+    chain_code: String,
+    symbol: String,
+    decimals: u8,
+    token_address: Option<String>,
+}
 
 pub struct AssetsDomain {}
 
@@ -201,78 +211,93 @@ impl AssetsDomain {
         Ok(())
     }
 
+    /// 从任务获取余额并返回结果
+    async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {
+        // 获取并发许可
+        let _permit = sem.acquire().await.ok()?;
+
+        // 获取适配器
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&task.chain_code)
+            .await
+            .map_err(|e| {
+                tracing::error!("获取链详情出错: {}，链代码: {}", e, task.chain_code.clone())
+            })
+            .ok()?;
+
+        // 获取余额
+        let raw = adapter
+            .balance(&task.address, task.token_address.clone())
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "获取余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
+                    task.address,
+                    task.chain_code,
+                    task.symbol,
+                    task.token_address,
+                    e
+                )
+            })
+            .ok()?;
+
+        // 格式化
+        let bal_str = wallet_utils::unit::format_to_string(raw, task.decimals)
+            .unwrap_or_else(|_| "0".to_string());
+
+        // tracing::warn!(
+        //     "余额获取成功: 地址={}, 链={}, 符号={}, token={:?},余额={}",
+        //     task.address,
+        //     task.chain_code,
+        //     task.symbol,
+        //     task.token_address,
+        //     bal_str
+        // );
+
+        // 构建 ID
+        let id = AssetsId {
+            address: task.address,
+            chain_code: task.chain_code,
+            symbol: task.symbol,
+        };
+
+        Some((id, bal_str))
+    }
+
     pub async fn sync_address_balance(
         assets: &[AssetsEntity],
     ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
+        // 获取全局连接池
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        // 限制最大并发数为 10
+        let sem = Arc::new(Semaphore::new(10));
 
-        let semaphore = Arc::new(Semaphore::new(10));
-        let tasks = assets.iter().map(|coin| {
-            let semaphore = semaphore.clone();
+        let mut tasks = vec![];
 
-            async move {
-                // 获取信号量的许可，限制并发数量
-                let _permit = semaphore.acquire().await.unwrap();
+        for asset in assets.iter() {
+            let bal = BalanceTask {
+                address: asset.address.clone(),
+                chain_code: asset.chain_code.clone(),
+                symbol: asset.symbol.clone(),
+                decimals: asset.decimals,
+                token_address: asset.token_address(),
+            };
+            tasks.push(bal);
+        }
 
-                let adapter = domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(
-                    &coin.chain_code,
-                )
-                .await;
-                let adapter = match adapter {
-                    Ok(adapter) => adapter,
-                    Err(e) => {
-                        tracing::error!("获取链详情出错: {}，链代码: {}", e, coin.chain_code);
-                        return None;
-                    }
-                };
+        // 并发获取余额并格式化
+        let results = stream::iter(tasks)
+            .map(|task| Self::fetch_balance(task, sem.clone()))
+            .buffer_unordered(10)
+            .filter_map(|x| async move { x })
+            .collect::<Vec<_>>()
+            .await;
 
-                let balance = match adapter.balance(&coin.address, coin.token_address()).await {
-                    Ok(balance) => balance,
-                    Err(e) => {
-                        tracing::error!(
-                            "获取余额出错: 地址={}, 链代码={}, 符号={}, token = {:?},错误:{}",
-                            coin.address,
-                            coin.chain_code,
-                            coin.symbol,
-                            coin.token_address(),
-                            e
-                        );
-                        return None;
-                    }
-                };
-                let balance = wallet_utils::unit::format_to_string(balance, coin.decimals)
-                    .unwrap_or_else(|_| "0".to_string());
-
-                // 准备更新数据
-                let assets_id = AssetsId {
-                    address: coin.address.to_string(),
-                    chain_code: coin.chain_code.to_string(),
-                    symbol: coin.symbol.to_string(),
-                };
-
-                Some((assets_id, balance))
-            }
-        });
-
-        // 并发执行所有任务，并收集结果
-        let results: Vec<(AssetsId, String)> = futures::future::join_all(tasks)
-            .await
-            .into_iter()
-            .flatten()
-            .collect();
-
-        // 在单个事务中批量更新数据库
-        // let mut tx = pool.begin().await.expect("开启事务失败");
-        for (assets_id, balance) in results.iter() {
-            // if let Err(e) = AssetsEntity::update_balance(tx.as_mut(), &assets_id, &balance).await {
+        // 顺序更新数据库
+        for (assets_id, balance) in &results {
             if let Err(e) = AssetsEntity::update_balance(&*pool, assets_id, balance).await {
                 tracing::error!("更新余额出错: {}", e);
             }
         }
-        // 提交事务
-        // if let Err(e) = tx.commit().await {
-        //     tracing::error!("提交事务失败: {}", e);
-        // }
 
         Ok(results)
     }
@@ -339,3 +364,69 @@ impl AssetsDomain {
         Ok(())
     }
 }
+
+// let semaphore = Arc::new(Semaphore::new(10));
+// let tasks = assets.iter().map(|coin| {
+//     let semaphore = semaphore.clone();
+
+//     async move {
+//         // 获取信号量的许可，限制并发数量
+//         let _permit = semaphore.acquire().await.unwrap();
+
+//         let adapter = domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(
+//             &coin.chain_code,
+//         )
+//         .await;
+//         let adapter = match adapter {
+//             Ok(adapter) => adapter,
+//             Err(e) => {
+//                 tracing::error!("获取链详情出错: {}，链代码: {}", e, coin.chain_code);
+//                 return None;
+//             }
+//         };
+
+//         let balance = match adapter.balance(&coin.address, coin.token_address()).await {
+//             Ok(balance) => balance,
+//             Err(e) => {
+//                 tracing::error!(
+//                     "获取余额出错: 地址={}, 链代码={}, 符号={}, token = {:?},错误:{}",
+//                     coin.address,
+//                     coin.chain_code,
+//                     coin.symbol,
+//                     coin.token_address(),
+//                     e
+//                 );
+//                 return None;
+//             }
+//         };
+//         let balance = wallet_utils::unit::format_to_string(balance, coin.decimals)
+//             .unwrap_or_else(|_| "0".to_string());
+
+//         // 准备更新数据
+//         let assets_id = AssetsId {
+//             address: coin.address.to_string(),
+//             chain_code: coin.chain_code.to_string(),
+//             symbol: coin.symbol.to_string(),
+//         };
+
+//         Some((assets_id, balance))
+//     }
+// });
+
+// // 并发执行所有任务，并收集结果
+// let results: Vec<(AssetsId, String)> = futures::future::join_all(tasks)
+//     .await
+//     .into_iter()
+//     .flatten()
+//     .collect();
+
+// // 在单个事务中批量更新数据库
+// // let mut tx = pool.begin().await.expect("开启事务失败");
+// for (assets_id, balance) in results.iter() {
+//     // if let Err(e) = AssetsEntity::update_balance(tx.as_mut(), &assets_id, &balance).await {
+//     if let Err(e) = AssetsEntity::update_balance(&*pool, assets_id, balance).await {
+//         tracing::error!("更新余额出错: {}", e);
+//     }
+// }
+
+// Ok(results)

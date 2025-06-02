@@ -20,14 +20,14 @@ impl BackendApiTask {
     }
 }
 
-impl BackendApiTask {
-    pub fn new<T>(endpoint: &str, body: &T) -> Result<Self, crate::ServiceError>
-    where
-        T: serde::Serialize,
-    {
-        Ok(Self::BackendApi(BackendApiTaskData::new(endpoint, body)?))
-    }
-}
+// impl BackendApiTask {
+//     pub fn new<T>(endpoint: &str, body: &T) -> Result<Self, crate::ServiceError>
+//     where
+//         T: serde::Serialize,
+//     {
+//         Ok(Self::BackendApi(BackendApiTaskData::new(endpoint, body)?))
+//     }
+// }
 
 // 所有请求后端的task，公用结构
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

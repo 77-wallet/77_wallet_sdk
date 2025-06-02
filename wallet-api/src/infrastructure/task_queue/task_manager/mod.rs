@@ -1,15 +1,17 @@
-mod dispatcher;
+pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
 use super::{
-    handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task, Task,
+    handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task,
+    Task, TaskType,
 };
 use dashmap::DashSet;
-use dispatcher::{Dispatcher, TaskSender};
+use dispatcher::{Dispatcher, PriorityTask, TaskSender};
 use rand::Rng as _;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
+use wallet_transport_backend::consts::endpoint::SEND_MSG_CONFIRM;
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
@@ -18,28 +20,37 @@ type RunningTasks = Arc<DashSet<String>>;
 pub struct TaskManager {
     running_tasks: RunningTasks,
     // task_sender: crate::manager::TaskSender,
+    pub(crate) notify: Arc<tokio::sync::Notify>,
     dispatcher: Dispatcher,
 }
 
 impl TaskManager {
     /// 创建一个新的 TaskManager 实例
-    pub fn new() -> Self {
+    pub fn new(notify: Arc<tokio::sync::Notify>) -> Self {
         let running_tasks: RunningTasks = Arc::new(DashSet::new());
         let dispatcher = Dispatcher::new(Arc::clone(&running_tasks));
         // let task_sender = dispatcher.task_dispatcher(Arc::clone(&running_tasks));
         Self {
             running_tasks,
             // task_sender,
+            notify,
             dispatcher,
         }
     }
 
     /// 启动任务检查循环
-    pub fn start_task_check(&self) {
+    pub async fn start_task_check(&self) -> Result<(), crate::ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
+
+        let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        repo.delete_tasks_with_request_body_like(SEND_MSG_CONFIRM)
+            .await?;
+
         tokio::spawn(async move {
             Self::task_check(running_tasks).await;
         });
+        Ok(())
     }
 
     /// 获取任务发送器
@@ -85,7 +96,10 @@ impl TaskManager {
         }
 
         for (priority, tasks) in grouped_tasks {
-            if let Err(e) = manager.get_task_sender().send((priority, tasks)) {
+            if let Err(e) = manager
+                .get_task_sender()
+                .send(PriorityTask { priority, tasks })
+            {
                 tracing::error!("send task queue error: {}", e);
             }
         }
@@ -139,6 +153,11 @@ impl TaskManager {
         }
 
         running_tasks.remove(&task_id);
+        if running_tasks.is_empty() {
+            let notify = crate::manager::Context::get_global_notify().unwrap();
+            notify.notify_one();
+            // tracing::info!("notify_one");
+        }
     }
 
     async fn handle_task(
@@ -150,6 +169,7 @@ impl TaskManager {
 
         let id = task_entity.id.clone();
         let task: Task = task_entity.try_into()?;
+        let task_type = task.get_type();
         let backend_api = crate::manager::Context::get_global_backend_api()?;
         let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
         // update task running status
@@ -160,15 +180,24 @@ impl TaskManager {
 
         match task {
             Task::Initialization(initialization_task) => {
-                handle_initialization_task(initialization_task, pool).await
+                handle_initialization_task(initialization_task, pool).await?
             }
             Task::BackendApi(backend_api_task) => {
-                handle_backend_api_task(backend_api_task, backend_api, aes_cbc_cryptor).await
+                handle_backend_api_task(backend_api_task, backend_api, aes_cbc_cryptor).await?
             }
-            Task::Mqtt(mqtt_task) => handle_mqtt_task(mqtt_task, &id).await,
-            Task::Common(common_task) => handle_common_task(common_task, pool).await,
-        }?;
+            Task::Mqtt(mqtt_task) => handle_mqtt_task(mqtt_task, &id).await?,
+            Task::Common(common_task) => handle_common_task(common_task, pool).await?,
+        }
+
         repo.task_done(&id).await?;
+
+        if task_type == TaskType::Mqtt {
+            let ids = vec![wallet_transport_backend::request::SendMsgConfirm::new(
+                &id,
+                wallet_transport_backend::request::MsgConfirmSource::Other,
+            )];
+            crate::domain::task_queue::TaskQueueDomain::send_msg_confirm(ids).await?
+        }
 
         Ok(())
     }

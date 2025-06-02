@@ -13,7 +13,10 @@ pub mod permission;
 pub mod phrase;
 pub mod stake;
 pub mod system_notification;
-use crate::{response::Response, service::device::DeviceService};
+use crate::{
+    response::Response,
+    service::{device::DeviceService, task_queue::TaskQueueService},
+};
 
 #[cfg(not(feature = "result"))]
 pub type ReturnType<T> = Response<T>;
@@ -72,6 +75,15 @@ impl super::WalletManager {
             .await?;
         self.init_data().await.into()
     }
+
+    pub async fn get_task_queue_status(
+        &self,
+    ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
+        TaskQueueService::new(self.repo_factory.resource_repo())
+            .get_task_queue_status()
+            .await?
+            .into()
+    }
 }
 
 #[cfg(test)]
@@ -94,6 +106,18 @@ mod test {
         let account = wallet_manager.process_jpush_message(message).await;
         tracing::info!("[test_process_jpush_message] account: {account:?}");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_task_queue_status() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let status = wallet_manager.get_task_queue_status().await;
+        tracing::info!("[test_get_task_queue_status] status: {status:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&status).unwrap();
+        tracing::info!("[test_get_task_queue_status] res: {res}");
         Ok(())
     }
 }

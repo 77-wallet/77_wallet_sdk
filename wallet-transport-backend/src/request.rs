@@ -123,7 +123,6 @@ pub struct KeysInitReq {
     pub uid: String,
     pub sn: String,
     pub client_id: Option<String>,
-    pub app_id: Option<String>,
     pub device_type: Option<String>,
     pub name: String,
     pub invite_code: String,
@@ -134,7 +133,6 @@ impl KeysInitReq {
         uid: &str,
         sn: &str,
         client_id: Option<String>,
-        app_id: Option<String>,
         device_type: Option<String>,
         name: &str,
         invite_code: Option<String>,
@@ -143,7 +141,6 @@ impl KeysInitReq {
             uid: uid.to_string(),
             sn: sn.to_string(),
             client_id,
-            app_id,
             device_type,
             name: name.to_string(),
             invite_code: invite_code.unwrap_or_default(),
@@ -641,6 +638,7 @@ pub enum MsgConfirmSource {
     Mqtt,
     Api,
     Jg,
+    Other,
 }
 
 impl SendMsgConfirm {
@@ -673,6 +671,22 @@ pub struct ChainRpcListReq {
 impl ChainRpcListReq {
     pub fn new(chain_code: Vec<String>) -> Self {
         Self { chain_code }
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAppIdReq {
+    pub sn: String,
+    pub app_id: String,
+}
+
+impl UpdateAppIdReq {
+    pub fn new(sn: &str, app_id: &str) -> Self {
+        Self {
+            sn: sn.to_string(),
+            app_id: app_id.to_string(),
+        }
     }
 }
 
