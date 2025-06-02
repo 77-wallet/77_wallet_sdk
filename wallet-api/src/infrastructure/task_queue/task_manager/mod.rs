@@ -88,10 +88,15 @@ impl TaskManager {
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
         // tracing::info!("failed_queue: {:#?}", failed_queue);
-        for task in failed_queue.into_iter() {
-            if !running_tasks.contains(&task.id) {
+        for task_entity in failed_queue.into_iter() {
+            if !running_tasks.contains(&task_entity.id) {
+                let Ok(task) = (&task_entity).try_into() else {
+                    repo.delete_task(&task_entity.id).await?;
+                    continue;
+                };
+
                 let priority = scheduler::assign_priority(&task, true)?;
-                grouped_tasks.entry(priority).or_default().push(task);
+                grouped_tasks.entry(priority).or_default().push(task_entity);
             }
         }
 
@@ -192,11 +197,9 @@ impl TaskManager {
         repo.task_done(&id).await?;
 
         if task_type == TaskType::Mqtt {
-            let ids = vec![wallet_transport_backend::request::SendMsgConfirm::new(
-                &id,
-                wallet_transport_backend::request::MsgConfirmSource::Other,
-            )];
-            crate::domain::task_queue::TaskQueueDomain::send_msg_confirm(ids).await?
+            let unconfirmed_msg_collector =
+                crate::manager::Context::get_global_unconfirmed_msg_collector()?;
+            unconfirmed_msg_collector.submit(vec![id])?;
         }
 
         Ok(())

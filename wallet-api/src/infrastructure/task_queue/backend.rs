@@ -1,4 +1,4 @@
-use wallet_database::entities::task_queue::TaskName;
+use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use super::task_handle::backend_handle::BackendTaskHandle;
 
@@ -8,7 +8,7 @@ pub(crate) enum BackendApiTask {
 
 impl BackendApiTask {
     pub(crate) fn get_name(&self) -> TaskName {
-        TaskName::BackendApi
+        TaskName::Known(KnownTaskName::BackendApi)
     }
 
     pub(crate) fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {

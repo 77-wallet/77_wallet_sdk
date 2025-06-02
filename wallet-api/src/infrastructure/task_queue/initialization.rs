@@ -5,7 +5,11 @@ use crate::{
     },
     service::{announcement::AnnouncementService, coin::CoinService},
 };
-use wallet_database::{entities::task_queue::TaskName, factory::RepositoryFactory, DbPool};
+use wallet_database::{
+    entities::task_queue::{KnownTaskName, TaskName},
+    factory::RepositoryFactory,
+    DbPool,
+};
 
 pub(crate) enum InitializationTask {
     PullAnnouncement,
@@ -20,14 +24,20 @@ pub(crate) enum InitializationTask {
 impl InitializationTask {
     pub(crate) fn get_name(&self) -> TaskName {
         match self {
-            InitializationTask::PullAnnouncement => TaskName::PullAnnouncement,
-            InitializationTask::PullHotCoins => TaskName::PullHotCoins,
-            InitializationTask::InitTokenPrice => TaskName::InitTokenPrice,
+            InitializationTask::PullAnnouncement => {
+                TaskName::Known(KnownTaskName::PullAnnouncement)
+            }
+            InitializationTask::PullHotCoins => TaskName::Known(KnownTaskName::PullHotCoins),
+            InitializationTask::InitTokenPrice => TaskName::Known(KnownTaskName::InitTokenPrice),
             // InitializationTask::ProcessUnconfirmMsg => TaskName::ProcessUnconfirmMsg,
-            InitializationTask::SetBlockBrowserUrl => TaskName::SetBlockBrowserUrl,
-            InitializationTask::SetFiat => TaskName::SetFiat,
-            InitializationTask::RecoverQueueData => TaskName::RecoverQueueData,
-            InitializationTask::InitMqtt => TaskName::InitMqtt,
+            InitializationTask::SetBlockBrowserUrl => {
+                TaskName::Known(KnownTaskName::SetBlockBrowserUrl)
+            }
+            InitializationTask::SetFiat => TaskName::Known(KnownTaskName::SetFiat),
+            InitializationTask::RecoverQueueData => {
+                TaskName::Known(KnownTaskName::RecoverQueueData)
+            }
+            InitializationTask::InitMqtt => TaskName::Known(KnownTaskName::InitMqtt),
         }
     }
 

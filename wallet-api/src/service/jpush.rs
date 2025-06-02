@@ -1,5 +1,5 @@
 use wallet_database::entities::task_queue::TaskQueueEntity;
-use wallet_transport_backend::request::MsgConfirmSource;
+// use wallet_transport_backend::request::MsgConfirmSource;
 use wallet_utils::serde_func;
 
 use crate::messaging::{mqtt::Message, notify::FrontendNotifyEvent};
@@ -24,7 +24,11 @@ impl JPushService {
                     .await?;
 
                 if let Some(msg) = data.body {
-                    Self::jpush_multi(vec![msg], MsgConfirmSource::Jg).await?;
+                    Self::jpush_multi(
+                        vec![msg],
+                        // MsgConfirmSource::Jg
+                    )
+                    .await?;
                     // TODO: 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
                     // if !ids.is_empty() {
                     //     let send_msg_confirm_req =
@@ -49,9 +53,11 @@ impl JPushService {
 
     pub async fn jpush_multi(
         messages: Vec<String>,
-        source: MsgConfirmSource,
+        // source: MsgConfirmSource,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let unconfirmed_msg_collector =
+            crate::manager::Context::get_global_unconfirmed_msg_collector()?;
         for message in messages {
             let payload = match serde_func::serde_from_str::<Message>(message.as_str()) {
                 Ok(data) => data,
@@ -71,11 +77,7 @@ impl JPushService {
                 TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?
                 && task_entity.status == 2
             {
-                let ids = vec![wallet_transport_backend::request::SendMsgConfirm::new(
-                    &id,
-                    source.clone(),
-                )];
-                crate::domain::task_queue::TaskQueueDomain::send_msg_confirm(ids).await?;
+                unconfirmed_msg_collector.submit(vec![id])?;
             } else {
                 if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
                     if let Err(e) =

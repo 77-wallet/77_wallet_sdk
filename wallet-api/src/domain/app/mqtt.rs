@@ -1,6 +1,6 @@
 use crate::infrastructure::mqtt::{init::init_mqtt_processor, property::UserProperty};
 use wallet_database::repositories::{device::DeviceRepoTrait, ResourcesRepo};
-use wallet_transport_backend::request::MsgConfirmSource;
+// use wallet_transport_backend::request::MsgConfirmSource;
 
 use super::DeviceDomain;
 
@@ -46,7 +46,11 @@ impl MqttDomain {
             .await?
             .list;
         tracing::info!("query_unconfirm_msg: {}", data.len());
-        crate::service::jpush::JPushService::jpush_multi(data, MsgConfirmSource::Api).await?;
+        crate::service::jpush::JPushService::jpush_multi(
+            data,
+            // MsgConfirmSource::Api
+        )
+        .await?;
         // TODO: 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
         // crate::domain::task_queue::TaskQueueDomain::send_msg_confirm(ids).await?;
         Ok(())
