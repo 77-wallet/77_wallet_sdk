@@ -42,22 +42,6 @@ async fn test_create_multisig_account() {
 }
 
 #[tokio::test]
-async fn test_balance() {
-    let wallet_manager = get_manager().await;
-
-    let addr = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
-    let chain_code = "tron";
-    let symbol = "TRX";
-
-    // let symbol = "USDT";
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol)
-        .await;
-
-    tracing::info!("balance: {:?}", balance);
-}
-
-#[tokio::test]
 async fn test_create_transfer() {
     let manager = get_manager().await;
 

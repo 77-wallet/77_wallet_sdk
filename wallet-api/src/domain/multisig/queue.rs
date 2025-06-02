@@ -3,8 +3,9 @@ use crate::{
         self,
         bill::BillDomain,
         chain::{adapter::MultisigAdapter, transaction::ChainTransDomain},
+        task_queue::TaskQueueDomain,
     },
-    infrastructure::task_queue::{self, BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{self},
     messaging::mqtt::topics::MultiSignTransAcceptCompleteMsgBody,
     response_vo::multisig_transaction::ExtraData,
 };
@@ -35,7 +36,6 @@ use wallet_transport_backend::{
     consts::endpoint,
     request::{PermissionData, SignedTranAcceptReq, SignedTranCreateReq},
 };
-use wallet_utils::serde_func;
 
 pub struct MultisigQueueDomain;
 impl MultisigQueueDomain {
@@ -399,17 +399,29 @@ impl MultisigQueueDomain {
             permission_data: opt_data,
         };
 
-        let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
-            BackendApiTaskData::new(endpoint::multisig::SIGNED_TRAN_CREATE, &req)?,
-        ));
-
-        let mut tasks = task_queue::Tasks::new().push(task);
-        // 权限的修改单独上报一份权限的数据
-        if let Some(backend_params) = backend_params {
-            let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
-                BackendApiTaskData::new(endpoint::multisig::PERMISSION_ACCEPT, &backend_params)?,
-            ));
+        let mut tasks = task_queue::Tasks::new();
+        let task =
+            TaskQueueDomain::send_or_wrap_task(req, endpoint::multisig::SIGNED_TRAN_CREATE).await?;
+        if let Some(task) = task {
             tasks = tasks.push(task);
+        }
+
+        // let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+        //     BackendApiTaskData::new(endpoint::multisig::SIGNED_TRAN_CREATE, &req)?,
+        // ));
+        // let mut tasks = task_queue::Tasks::new().push(task);
+        // 多签权限的修改单独上报一份权限的数据
+        if let Some(req) = backend_params {
+            let task =
+                TaskQueueDomain::send_or_wrap_task(req, endpoint::multisig::PERMISSION_ACCEPT)
+                    .await?;
+            if let Some(task) = task {
+                tasks = tasks.push(task);
+            }
+            // let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+            //     BackendApiTaskData::new(endpoint::multisig::PERMISSION_ACCEPT, &backend_params)?,
+            // ));
+            // tasks = tasks.push(task);
         }
 
         tasks.send().await?;
@@ -439,12 +451,13 @@ impl MultisigQueueDomain {
             status: status.to_i8(),
             raw_data,
         };
+        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_TRAN_ACCEPT).await?;
 
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
-            endpoint: endpoint::multisig::SIGNED_TRAN_ACCEPT.to_string(),
-            body: serde_func::serde_to_value(&req)?,
-        }));
-        Tasks::new().push(task).send().await?;
+        // let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+        //     endpoint: endpoint::multisig::SIGNED_TRAN_ACCEPT.to_string(),
+        //     body: serde_func::serde_to_value(&req)?,
+        // }));
+        // Tasks::new().push(task).send().await?;
 
         Ok(())
     }

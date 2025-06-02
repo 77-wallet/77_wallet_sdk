@@ -3,6 +3,7 @@ use crate::domain::assets::AssetsDomain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::multisig::MultisigDomain;
+use crate::domain::task_queue::TaskQueueDomain;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
 use crate::messaging::mqtt::topics::OrderMultiSignAccept;
 use crate::request::transaction;
@@ -280,11 +281,7 @@ impl MultisigAccountService {
             order_id: account.id.clone(),
             raw_data,
         };
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData::new(
-            endpoint::multisig::SIGNED_ORDER_CANCEL,
-            &req,
-        )?));
-        Tasks::new().push(task).send().await?;
+        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_ORDER_CANCEL).await?;
 
         Ok(())
     }
@@ -440,11 +437,13 @@ impl MultisigAccountService {
             status: 1,
             raw_data,
         };
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
-            endpoint: endpoint::multisig::SIGNED_ORDER_ACCEPT.to_string(),
-            body: serde_func::serde_to_value(&req)?,
-        }));
-        Tasks::new().push(task).send().await?;
+        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_ORDER_ACCEPT).await?;
+
+        // let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+        //     endpoint: endpoint::multisig::SIGNED_ORDER_ACCEPT.to_string(),
+        //     body: serde_func::serde_to_value(&req)?,
+        // }));
+        // Tasks::new().push(task).send().await?;
 
         Ok(())
     }

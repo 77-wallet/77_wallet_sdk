@@ -1,3 +1,4 @@
+use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
 use wallet_transport_backend::request::SendMsgConfirm;
 
 pub(crate) struct TaskQueueDomain;
@@ -17,6 +18,43 @@ impl TaskQueueDomain {
                 .await?;
             }
         }
+        Ok(())
+    }
+
+    // send a request to backend if failed wrap to task
+    pub async fn send_or_wrap_task<T: serde::Serialize + std::fmt::Debug>(
+        req: T,
+        endpoint: &str,
+    ) -> Result<Option<Task>, crate::ServiceError> {
+        let backend = crate::Context::get_global_backend_api()?;
+        let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
+
+        let res = backend
+            .post_request::<_, serde_json::Value>(endpoint, &req, aes_cbc_cryptor)
+            .await;
+
+        if let Err(e) = res {
+            tracing::error!("request backend:{},req:{:?} error:{}", endpoint, req, e);
+
+            let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                endpoint, &req,
+            )?));
+            return Ok(Some(task));
+        }
+        Ok(None)
+    }
+
+    // 发送任务,如果失败放入到队列中去
+    pub async fn send_or_to_queue<T: serde::Serialize + std::fmt::Debug>(
+        req: T,
+        endpoint: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let task = Self::send_or_wrap_task(req, endpoint).await?;
+
+        if let Some(task) = task {
+            Tasks::new().push(task).send().await?;
+        }
+
         Ok(())
     }
 

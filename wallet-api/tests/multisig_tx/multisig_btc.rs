@@ -1,25 +1,24 @@
+use crate::get_manager;
 use wallet_api::{
     response_vo::{transaction::TransferParams, MultisigQueueFeeParams},
     MemberVo,
 };
 
-use crate::get_manager;
-
 #[tokio::test]
 async fn test_create_multisig_account() {
     let wallet_manager = get_manager().await;
-    let address = "bc1qmtz5a8a5d5jj369fkzhcnqq8ccf7g6alpw5dw0".to_string();
+    let address = "bc1qgzfqayxf0gw4vnu440uugyawlmvqyzw5c73k79".to_string();
     let chain_code = "btc".to_string();
     let threshold = 2;
 
     let member1 = MemberVo::new(
         "alice".to_string(),
-        "bc1qmtz5a8a5d5jj369fkzhcnqq8ccf7g6alpw5dw0".to_string(),
+        "bc1qgzfqayxf0gw4vnu440uugyawlmvqyzw5c73k79".to_string(),
     );
 
     let member2 = MemberVo::new(
         "bob".to_string(),
-        "bc1qgqjkv0lr0x4vqjt9lk87knhwu7uh0h3jhxp6ec".to_string(),
+        "3HoUeYmrHPQuXr4fJ1zQsF31rntE3JLkg4".to_string(),
     );
 
     // let member3 = MemberVo::new(
