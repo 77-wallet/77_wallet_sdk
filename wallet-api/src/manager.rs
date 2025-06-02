@@ -1,5 +1,6 @@
 use crate::domain;
 use crate::infrastructure::inner_event::InnerEventHandle;
+use crate::infrastructure::process_unconfirm_msg::UnconfirmedMsgCollector;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
@@ -125,6 +126,7 @@ pub struct Context {
     pub(crate) cache: Arc<SharedCache>,
     pub(crate) aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
     pub(crate) inner_event_handle: InnerEventHandle,
+    pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +196,7 @@ impl Context {
         .await?;
 
         let inner_event_handle = InnerEventHandle::new();
+        let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
 
         Ok(Context {
             dirs,
@@ -209,6 +212,7 @@ impl Context {
             cache: Arc::new(SharedCache::new()),
             aes_cbc_cryptor,
             inner_event_handle,
+            unconfirmed_msg_collector,
         })
     }
 
@@ -348,6 +352,11 @@ impl Context {
 
     pub(crate) fn get_global_notify() -> Result<Arc<tokio::sync::Notify>, crate::SystemError> {
         Ok(Context::get_context()?.task_manager.notify.clone())
+    }
+
+    pub(crate) fn get_global_unconfirmed_msg_collector(
+    ) -> Result<&'static UnconfirmedMsgCollector, crate::SystemError> {
+        Ok(&Context::get_context()?.unconfirmed_msg_collector)
     }
 }
 

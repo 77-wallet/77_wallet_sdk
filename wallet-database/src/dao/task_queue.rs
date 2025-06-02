@@ -15,7 +15,7 @@ impl TaskQueueEntity {
         );
         query_builder.push_values(reqs, |mut b, req| {
             b.push_bind(req.id.clone())
-                .push_bind(req.task_name)
+                .push_bind(req.task_name.clone())
                 .push_bind(req.request_body.clone().unwrap_or_default())
                 .push_bind(req.r#type)
                 .push_bind(req.status)

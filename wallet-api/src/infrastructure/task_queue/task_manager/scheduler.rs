@@ -1,4 +1,3 @@
-use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
 use crate::infrastructure::task_queue::{CommonTask, InitializationTask, MqttTask, Task, TaskType};
@@ -12,10 +11,7 @@ pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
     (TaskType::Common, 2),
 ];
 
-pub(crate) fn assign_priority(
-    task: &TaskQueueEntity,
-    is_history: bool,
-) -> Result<u8, crate::ServiceError> {
+pub(crate) fn assign_priority(task: &Task, is_history: bool) -> Result<u8, crate::ServiceError> {
     let base = get_base_priority(task)?; // 任务类型对应基础优先级，比如 sync=1，其他=3
     Ok(if is_history {
         // 历史任务统一加偏移，确保比新任务优先级低
@@ -26,8 +22,7 @@ pub(crate) fn assign_priority(
 }
 
 /// 动态确定任务优先级（0 = 高，1 = 中，2 = 低）
-fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> {
-    let task: Task = task.try_into()?;
+fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
     Ok(match task {
         Task::Initialization(initialization_task) => match initialization_task {
             InitializationTask::PullAnnouncement => 3,
@@ -85,7 +80,7 @@ fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> 
                 }
             }
         },
-        Task::Mqtt(mqtt_task) => match *mqtt_task {
+        Task::Mqtt(mqtt_task) => match **mqtt_task {
             MqttTask::OrderMultiSignAccept(_) => 0,
             MqttTask::OrderMultiSignAcceptCompleteMsg(_) => 1,
             MqttTask::OrderMultiSignServiceComplete(_) => 1,
@@ -115,7 +110,7 @@ fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> 
 mod tests {
     use super::*;
     use sqlx::types::chrono::Utc;
-    use wallet_database::entities::task_queue::{TaskName, TaskQueueEntity};
+    use wallet_database::entities::task_queue::{KnownTaskName, TaskName, TaskQueueEntity};
 
     fn make_task_entity(
         id: &str,
@@ -139,7 +134,7 @@ mod tests {
     fn test_assign_priority() {
         let task1 = make_task_entity(
             "263099225674485766",
-            TaskName::BackendApi,
+            TaskName::Known(KnownTaskName::BackendApi),
             r#"{
                 "body": null,
                 "endpoint": "token/queryRates"
@@ -147,8 +142,16 @@ mod tests {
             0,
             0,
         );
-        let task2 = make_task_entity("263099222805581824", TaskName::InitMqtt, "", 1, 1);
+        let task2 = make_task_entity(
+            "263099222805581824",
+            TaskName::Known(KnownTaskName::InitMqtt),
+            "",
+            1,
+            1,
+        );
 
+        let task1 = (&task1).try_into().unwrap();
+        let task2 = (&task2).try_into().unwrap();
         assert_eq!(assign_priority(&task1, false).unwrap(), 1);
         assert_eq!(assign_priority(&task2, false).unwrap(), 0);
     }

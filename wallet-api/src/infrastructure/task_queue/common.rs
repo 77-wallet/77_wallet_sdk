@@ -1,5 +1,9 @@
 use wallet_database::{
-    entities::{multisig_queue::QueueTaskEntity, node::NodeEntity, task_queue::TaskName},
+    entities::{
+        multisig_queue::QueueTaskEntity,
+        node::NodeEntity,
+        task_queue::{KnownTaskName, TaskName},
+    },
     factory::RepositoryFactory,
     repositories::chain::ChainRepoTrait,
     DbPool,
@@ -25,10 +29,14 @@ pub(crate) enum CommonTask {
 impl CommonTask {
     pub(crate) fn get_name(&self) -> TaskName {
         match self {
-            CommonTask::QueryCoinPrice(_) => TaskName::QueryCoinPrice,
-            CommonTask::QueryQueueResult(_) => TaskName::QueryQueueResult,
-            CommonTask::RecoverMultisigAccountData(_) => TaskName::RecoverMultisigAccountData,
-            CommonTask::SyncNodesAndLinkToChains(_) => TaskName::SyncNodesAndLinkToChains,
+            CommonTask::QueryCoinPrice(_) => TaskName::Known(KnownTaskName::QueryCoinPrice),
+            CommonTask::QueryQueueResult(_) => TaskName::Known(KnownTaskName::QueryQueueResult),
+            CommonTask::RecoverMultisigAccountData(_) => {
+                TaskName::Known(KnownTaskName::RecoverMultisigAccountData)
+            }
+            CommonTask::SyncNodesAndLinkToChains(_) => {
+                TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains)
+            }
         }
     }
 

@@ -146,6 +146,9 @@ cfg-if = "1.0.0"
 # map
 dashmap = { version = "6.1.0", features = ["serde"] }
 
+strum = "0.26"
+strum_macros = "0.26"
+
 
 [patch.crates-io.aes-gcm-siv]
 git = "https://github.com/RustCrypto/AEADs"
