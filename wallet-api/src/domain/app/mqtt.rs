@@ -45,7 +45,7 @@ impl MqttDomain {
             )
             .await?
             .list;
-        tracing::info!("query_unconfirm_msg: {}", data.len());
+        tracing::debug!("query_unconfirm_msg: {}", data.len());
         crate::service::jpush::JPushService::jpush_multi(
             data,
             // MsgConfirmSource::Api
