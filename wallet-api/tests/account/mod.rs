@@ -120,6 +120,19 @@ async fn sync_assets() {
 }
 
 #[tokio::test]
+async fn sync_assets_by_addr_from_backend() {
+    let wallet_manager = get_manager().await;
+    let addr = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw".to_string();
+    let chain_code = None;
+    let symbol = vec![];
+
+    let _c = wallet_manager
+        .sync_assets(vec![addr], chain_code, symbol)
+        .await;
+    tracing::info!("response");
+}
+
+#[tokio::test]
 async fn sync_assets_by_wallet() {
     let wallet_manager = get_manager().await;
     let wallet_address = "0x93F63A0804d6b76ffa93675A26706d67Ade81fA8".to_string();

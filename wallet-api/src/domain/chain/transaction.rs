@@ -82,9 +82,27 @@ impl ChainTransDomain {
             symbol: symbol.to_string(),
         };
 
-        AssetsEntity::update_balance(&*pool, &assets_id, balance)
-            .await
-            .map_err(crate::ServiceError::Database)
+        // 查询余额
+        let asset = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
+        if let Some(asset) = asset {
+            // 余额不一致
+            if asset.balance != balance {
+                // 更新本地余额后在上报后端
+                AssetsEntity::update_balance(&*pool, &assets_id, balance)
+                    .await
+                    .map_err(crate::ServiceError::Database)?;
+
+                // 上报后端修改余额
+                // let backend = crate::manager::Context::get_global_backend_api()?;
+                // let ase_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+                // let _rs = backend
+                //     .wallet_assets_refresh_bal(&ase_cbc_cryptor, address, chain_code, symbol)
+                //     .await;
+                // tracing::warn!("update balance result = {:#?}", _rs);
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn main_coin(chain_code: &str) -> Result<CoinEntity, crate::ServiceError> {

@@ -212,9 +212,10 @@ impl AssetsDomain {
 
             for code in codes {
                 let resp = backhand
-                    .wallet_assets_chain_list(&cryptor, &addr, &code, None)
+                    .wallet_assets_chain_list(&cryptor, &addr, &code)
                     .await?;
 
+                tracing::info!("resp: {:#?}", resp);
                 for item in resp.list.into_iter() {
                     let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
                     if amount >= 0.0 {
@@ -257,6 +258,7 @@ impl AssetsDomain {
                 .wallet_assets_list(&cryptor, wallet.uid, index)
                 .await?;
 
+            tracing::warn!("resp = {:#?}", resp);
             for item in resp.list.into_iter() {
                 let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
                 if amount >= 0.0 {

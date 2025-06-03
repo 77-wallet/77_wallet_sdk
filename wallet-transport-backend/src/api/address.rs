@@ -64,12 +64,10 @@ impl BackendApi {
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         address: &str,
         chain_code: &str,
-        symbol: Option<String>,
     ) -> Result<AssertResp, crate::Error> {
         let req = serde_json::json!({
             "address":address,
             "chain_code":chain_code,
-            "symbol":symbol,
         });
 
         let res = self
@@ -89,7 +87,7 @@ impl BackendApi {
         address: &str,
         chain_code: &str,
         symbol: &str,
-    ) -> Result<AssertResp, crate::Error> {
+    ) -> Result<Option<()>, crate::Error> {
         let req = serde_json::json!({
             "address":address,
             "chain_code":chain_code,
