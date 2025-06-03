@@ -57,4 +57,52 @@ impl BackendApi {
 
         res.process(aes_cbc_cryptor)
     }
+
+    // 地址 - 链获取余额
+    pub async fn wallet_assets_chain_list(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        address: &str,
+        chain_code: &str,
+        symbol: Option<String>,
+    ) -> Result<AssertResp, crate::Error> {
+        let req = serde_json::json!({
+            "address":address,
+            "chain_code":chain_code,
+            "symbol":symbol,
+        });
+
+        let res = self
+            .client
+            .post("wallet/assets/chain/list")
+            .json(req)
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(aes_cbc_cryptor)
+    }
+
+    // 告知后端需要刷新余额
+    pub async fn wallet_assets_refresh_bal(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        address: &str,
+        chain_code: &str,
+        symbol: &str,
+    ) -> Result<AssertResp, crate::Error> {
+        let req = serde_json::json!({
+            "address":address,
+            "chain_code":chain_code,
+            "symbol":symbol,
+        });
+
+        let res = self
+            .client
+            .post("wallet/assets/refreshAddressBalance")
+            .json(req)
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(aes_cbc_cryptor)
+    }
 }

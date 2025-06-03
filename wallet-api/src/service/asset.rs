@@ -1,7 +1,6 @@
 use crate::{
     domain::{
-        self, account::AccountDomain, assets::AssetsDomain, coin::CoinDomain,
-        multisig::MultisigDomain,
+        account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
     infrastructure::task_queue::{CommonTask, Task, Tasks},
     response_vo::assets::{
@@ -13,7 +12,6 @@ use wallet_database::{
     entities::{
         assets::{AssetsEntity, AssetsId},
         coin::SymbolId,
-        wallet::WalletEntity,
     },
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
@@ -466,43 +464,17 @@ impl AssetsService {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        AssetsDomain::sync_assets_by_address(addr, chain_code, symbol).await
+        AssetsDomain::sync_assets_by_addr_chain(addr, chain_code, symbol).await
     }
 
-    // 根据地址同步余额(单个),如果资产与数据库不一致则上报到后端。
-    pub async fn sync_single_assets(
-        &self,
-        address: &str,
-        symbol: &str,
+    // 从后端同步余额
+    pub async fn sync_assets_from_backend(
+        self,
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        _symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
-        // 1. 查询所有的资产
-        let assets = AssetsEntity::get_chain_assets_by_address_chain_code_symbol(
-            pool.as_ref(),
-            vec![address.to_string()],
-            None,
-            Some(symbol),
-            None,
-        )
-        .await?;
-
-        let sync_res = domain::assets::AssetsDomain::sync_address_balance(&assets).await?;
-
-        // 如果余额和实际余额不一致,
-        let _balance_not_eq: Vec<_> = assets
-            .iter()
-            .filter_map(|asset| {
-                let id = asset.get_assets_id();
-                sync_res
-                    .iter()
-                    .find(|sync| id == sync.0 && asset.balance == sync.1)
-            })
-            .collect();
-
-        // TODO 需要把不一致的值给到后端,后端在进行同步
-
-        Ok(())
+        AssetsDomain::async_balance_from_backend_addr(addr, chain_code).await
     }
 
     // 根据钱包地址来同步资产余额
@@ -514,37 +486,6 @@ impl AssetsService {
     ) -> Result<(), crate::ServiceError> {
         // AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, symbol).await
 
-        // 根据后端的值来同步资产:等全局进行调整
-        let pool = crate::Context::get_global_sqlite_pool()?;
-        let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
-        if let Some(wallet) = wallet {
-            let backhand = crate::Context::get_global_backend_api()?;
-            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-
-            let index = account_id.map(|x| x - 1);
-            let resp = backhand
-                .wallet_assets_list(&cryptor, wallet.uid, index)
-                .await?;
-
-            for item in resp.list.iter() {
-                let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
-                if amount >= 0.0 {
-                    let assets_id = AssetsId {
-                        address: item.address.clone(),
-                        chain_code: item.chain_code.clone(),
-                        symbol: item.symbol.to_uppercase(),
-                    };
-
-                    let r =
-                        AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
-
-                    if let Err(e) = r {
-                        tracing::warn!("udpate balance error {}", e);
-                    }
-                }
-            }
-        }
-
-        Ok(())
+        AssetsDomain::async_balance_from_backend_wallet(wallet_address, account_id).await
     }
 }
