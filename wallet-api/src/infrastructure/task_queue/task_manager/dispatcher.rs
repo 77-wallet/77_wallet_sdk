@@ -301,7 +301,7 @@ impl Dispatcher {
             let category_counter = category_counter.clone();
 
             tokio::spawn(async move {
-                // tracing::info!("开始执行任务 {}", task_id);
+                tracing::debug!("开始执行任务 {}", task_id);
                 TaskManager::process_single_task(task_entity, running_tasks_inner).await;
                 let mut counter = category_counter.lock().await;
                 if let Some(count) = counter.get_mut(&category) {
@@ -309,7 +309,7 @@ impl Dispatcher {
                     // tracing::info!(?category, current = *count, "任务计数 -1");
                 }
                 drop(permit); // 释放信号量
-                              // tracing::info!("任务 {} 执行完成", task_id);
+                tracing::debug!("任务 {} 执行完成", task_id);
             });
 
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;

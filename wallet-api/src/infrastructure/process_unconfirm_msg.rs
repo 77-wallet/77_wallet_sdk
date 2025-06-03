@@ -52,7 +52,7 @@ impl UnconfirmedMsgCollector {
                     } => {
                         if !buffer.is_empty() {
                             let confirm_ids: Vec<_> = buffer.drain().collect();
-                            tracing::info!("批量确认消息: {:?}", confirm_ids);
+                            tracing::debug!("批量确认消息: {:?}", confirm_ids.len());
 
                             let confirms = confirm_ids
                                 .iter()
@@ -69,6 +69,12 @@ impl UnconfirmedMsgCollector {
                             }
 
                             last_recv_time = None;
+
+                            let notify = crate::manager::Context::get_global_notify().unwrap();
+                            notify.notify_one();
+                            tracing::debug!("notify_one");
+                        }else{
+                            tracing::debug!("⏳ 等待消息确认");
                         }
                     }
 
@@ -78,96 +84,84 @@ impl UnconfirmedMsgCollector {
     }
 }
 
-pub async fn process_unconfirm_msg(
-    client_id: &str,
-    pool: wallet_database::DbPool,
+#[derive(Debug, Clone)]
+pub struct UnconfirmedMsgProcessor {
+    client_id: String,
     notify: Arc<tokio::sync::Notify>,
-) -> Result<(), crate::ServiceError> {
-    let client_id = client_id.to_string();
-    tokio::spawn(async move {
-        tracing::info!("process_unconfirm_msg start");
-        loop {
-            tokio::select! {
-                _ = notify.notified() => {
-                    tracing::debug!("收到通知，开始处理");
-                }
-                _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {
-                    tracing::debug!("30秒超时，开始自动处理");
-                }
-            }
-
-            if let Err(e) = do_process_unconfirm_msg(&client_id, pool.clone()).await {
-                tracing::error!("处理未确认消息失败: {}", e);
-                // 尝试发送错误通知给前端
-                if let Err(send_err) = FrontendNotifyEvent::send_error(
-                    "InitializationTask::ProcessUnconfirmMsg",
-                    e.to_string(),
-                )
-                .await
-                {
-                    tracing::error!("发送错误通知失败: {}", send_err);
-                }
-            }
-            // match timeout(std::time::Duration::from_secs(30), rx.changed()).await {
-            //     Ok(Ok(_)) => {
-            //         tracing::info!("收到通知，继续执行未确认消息任务");
-            //         if let Err(e) = do_process_unconfirm_msg(&client_id, pool.clone()).await {
-            //             tracing::error!("处理未确认消息失败: {}", e);
-            //             // 尝试发送错误通知给前端
-            //             if let Err(send_err) = FrontendNotifyEvent::send_error(
-            //                 "InitializationTask::ProcessUnconfirmMsg",
-            //                 e.to_string(),
-            //             )
-            //             .await
-            //             {
-            //                 tracing::error!("发送错误通知失败: {}", send_err);
-            //             }
-            //         }
-            //     }
-            //     Ok(Err(_)) => {
-            //         tracing::warn!("通知通道已关闭，退出监听任务");
-            //         break; // 通道关闭，退出循环
-            //     }
-            //     Err(_) => {
-            //         tracing::warn!("等待通知超时，继续等待下一次通知");
-            //         // 超时继续等待，不break，保持循环
-            //     }
-            // }
-        }
-    });
-
-    Ok(())
 }
 
-async fn do_process_unconfirm_msg(
-    client_id: &str,
-    pool: wallet_database::DbPool,
-) -> Result<(), crate::ServiceError> {
-    match TaskQueueEntity::has_unfinished_task(&*pool).await {
-        Ok(true) => {
-            tracing::debug!("存在未完成任务，跳过处理未确认消息");
-            return Ok(());
-        }
-        Ok(false) => {
-            tracing::debug!("不存在未完成任务，处理未确认消息");
-        }
-        Err(e) => {
-            tracing::error!("has_unfinished_task error: {}", e);
-            return Err(e.into());
+impl UnconfirmedMsgProcessor {
+    pub fn new(client_id: &str, notify: Arc<tokio::sync::Notify>) -> Self {
+        Self {
+            client_id: client_id.into(),
+            notify,
         }
     }
 
-    if let Err(e) = MqttDomain::process_unconfirm_msg(&client_id).await {
-        if let Err(e) = FrontendNotifyEvent::send_error(
-            "InitializationTask::ProcessUnconfirmMsg",
-            e.to_string(),
-        )
-        .await
-        {
-            tracing::error!("send_error error: {}", e);
+    async fn handle_once(
+        pool: wallet_database::DbPool,
+        client_id: &str,
+    ) -> Result<(), crate::ServiceError> {
+        match TaskQueueEntity::has_unfinished_task_by_type(&*pool, 2).await {
+            Ok(true) => {
+                tracing::debug!("存在未完成的mqtt任务，跳过处理未确认消息");
+                return Ok(());
+            }
+            Ok(false) => {
+                tracing::debug!("不存在未完成mqtt任务，处理未确认消息");
+            }
+            Err(e) => {
+                tracing::error!("has_unfinished_task error: {}", e);
+                return Err(e.into());
+            }
         }
-        tracing::error!("process unconfirm msg error:{}", e);
-    };
 
-    Ok(())
+        if let Err(e) = MqttDomain::process_unconfirm_msg(client_id).await {
+            if let Err(e) = FrontendNotifyEvent::send_error(
+                "InitializationTask::ProcessUnconfirmMsg",
+                e.to_string(),
+            )
+            .await
+            {
+                tracing::error!("send_error error: {}", e);
+            }
+            tracing::error!("process unconfirm msg error:{}", e);
+        };
+
+        Ok(())
+    }
+
+    pub async fn start(&self) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        Self::handle_once(pool.clone(), &self.client_id).await?;
+        let client_id = self.client_id.to_string();
+        let notify = self.notify.clone();
+        tokio::spawn(async move {
+            tracing::info!("process_unconfirm_msg start");
+            loop {
+                tokio::select! {
+                    _ = notify.notified() => {
+                        tracing::debug!("收到通知，开始处理");
+                    }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {
+                        tracing::debug!("30秒超时，开始自动处理");
+                    }
+                }
+                if let Err(e) = Self::handle_once(pool.clone(), &client_id).await {
+                    tracing::error!("处理未确认消息失败: {}", e);
+                    // 尝试发送错误通知给前端
+                    if let Err(send_err) = FrontendNotifyEvent::send_error(
+                        "InitializationTask::ProcessUnconfirmMsg",
+                        e.to_string(),
+                    )
+                    .await
+                    {
+                        tracing::error!("发送错误通知失败: {}", send_err);
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
 }

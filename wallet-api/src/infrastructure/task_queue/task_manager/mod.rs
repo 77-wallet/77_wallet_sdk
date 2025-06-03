@@ -158,11 +158,11 @@ impl TaskManager {
         }
 
         running_tasks.remove(&task_id);
-        if running_tasks.is_empty() {
-            let notify = crate::manager::Context::get_global_notify().unwrap();
-            notify.notify_one();
-            // tracing::info!("notify_one");
-        }
+        // if running_tasks.is_empty() {
+        //     let notify = crate::manager::Context::get_global_notify().unwrap();
+        //     notify.notify_one();
+        //     tracing::info!("notify_one");
+        // }
     }
 
     async fn handle_task(
@@ -199,6 +199,7 @@ impl TaskManager {
         if task_type == TaskType::Mqtt {
             let unconfirmed_msg_collector =
                 crate::manager::Context::get_global_unconfirmed_msg_collector()?;
+            tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
             unconfirmed_msg_collector.submit(vec![id])?;
         }
 
