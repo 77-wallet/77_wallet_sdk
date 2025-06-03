@@ -9,6 +9,9 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
+use wallet_types::constant::chain_code;
+
+use crate::messaging::mqtt::topics::AcctChange;
 
 pub struct BillDomain;
 
@@ -78,7 +81,13 @@ impl BillDomain {
             signer: item.signer,
         };
 
-        BillDomain::create_bill(new_entity).await?;
+        if new_entity.chain_code == chain_code::TON {
+            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            AcctChange::handle_ton_bill(new_entity, &pool).await?;
+        } else {
+            BillDomain::create_bill(new_entity).await?;
+        }
+
         Ok(())
     }
 

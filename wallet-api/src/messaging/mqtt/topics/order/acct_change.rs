@@ -10,6 +10,7 @@ use wallet_database::{
     },
     DbPool,
 };
+use wallet_types::constant::chain_code;
 
 use crate::{
     domain::multisig::MultisigQueueDomain,
@@ -142,15 +143,16 @@ impl AcctChange {
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
         // let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // tracing::info!(
-        //     event_name = %event_name,
-        //     ?self,
-        //     "Starting AcctChange processing");
 
         // bill create
         let tx = NewBillEntity::try_from(&self)?;
         let tx_kind = tx.tx_kind;
-        BillDao::create(tx, pool.as_ref()).await?;
+
+        if tx.chain_code == chain_code::TON {
+            Self::handle_ton_bill(tx, &pool).await?;
+        } else {
+            BillDao::create(tx, pool.as_ref()).await?;
+        }
 
         if !self.queue_id.is_empty() {
             Self::handle_queue(&self, &pool).await?;
@@ -212,6 +214,29 @@ impl AcctChange {
             symbol: acct_change.symbol.to_string(),
         })?;
         // tracing::info!("发送同步资产事件");
+        Ok(())
+    }
+
+    pub async fn handle_ton_bill(
+        mut tx: NewBillEntity,
+        pool: &DbPool,
+    ) -> Result<(), crate::ServiceError> {
+        let origin_hash = tx.hash.clone();
+        let hashs = origin_hash.split(":").collect::<Vec<_>>();
+
+        if hashs.len() == 2 {
+            tx.hash = hashs[0].to_string();
+            let in_hash = hashs[1];
+
+            if let Some(bill) = BillDao::get_one_by_hash(in_hash, pool.as_ref()).await? {
+                BillDao::update_all(pool.clone(), tx, bill.id).await?;
+            } else {
+                BillDao::create(tx, pool.as_ref()).await?;
+            }
+        } else {
+            BillDao::create(tx, pool.as_ref()).await?;
+        }
+
         Ok(())
     }
 
@@ -312,7 +337,7 @@ mod test {
         init_manager().await;
 
         // let change = r#"{"blockHeight":56520912,"chainCode":"tron","fromAddr":"TPgKQJDibjSNQ8AsXp35dja9gP1iLs7BdV","isMultisig":1,"queueId":"255844763314556930","signer":[],"status":true,"symbol":"trx","toAddr":"TGCya1Rrupsqv2RAr48er1B6bcJxK9TZnG","token":"","transactionFee":1.337,"transactionTime":"2025-04-29 10:16:51","transferType":1,"txHash":"e1e4412bf86c6d3b79b7da4838b1f26b3889bcdd62cc768ee3fe4b09778e3396","txKind":1,"value":10,"valueUsdt":2.4751915605691943}"#;
-        let change = r#"{"txHash":"9gaiYphWbxjabMk2L4ALVXiq2NRgwRkmdAUFsW8pj6qw","chainCode":"sui","symbol":"SUI","transferType":1,"txKind":1,"fromAddr":"0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd","toAddr":"0x427e388a85bbb00da32af7716b15749a147affb8ed3a87cd7ce1f98f0b20bc6f","token":null,"value":0.01,"transactionFee":0.00173788,"transactionTime":"2025-05-29 03:45:50","status":true,"isMultisig":0,"queueId":"","blockHeight":150642276,"notes":"","netUsed":0,"energyUsed":null}"#;
+        let change = r#"{"txHash":"1fc93cd86f034c5846b28c7e88f9470155cabfb370f879a5c5bf2dd9520fdeda:upBTz2Tntpn2my8DzxFF66eVqM2CXir2xun00pgBKD4=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u","toAddr":"UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw","token":null,"value":0.01,"transactionFee":2.489863e-12,"transactionTime":"2025-06-03 07:11:52","status":true,"isMultisig":0,"queueId":"","blockHeight":48457725,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
 
         let _res = change.exec("1").await.unwrap();

@@ -4,6 +4,7 @@ use crate::{
         BillEntity, BillKind, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo,
     },
     pagination::Pagination,
+    DbPool,
 };
 use sqlx::{Executor, Pool, Sqlite};
 use std::{collections::HashSet, sync::Arc};
@@ -274,6 +275,38 @@ impl BillDao {
             .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    // 包括需要更新交易的hash(ton链的in_msg 字段处理)
+    pub async fn update_all(pool: DbPool, tx: NewBillEntity, id: i32) -> Result<(), crate::Error> {
+        let sql = r#"
+            update bill set 
+                transaction_fee = $2,
+                transaction_time = $3,
+                status = $4,
+                block_height = $5,
+                updated_at = $6,
+                resource_consume = $7,
+                hash = $8
+            where id = $1
+            RETURNING *
+            "#;
+
+        let time = sqlx::types::chrono::Utc::now().timestamp();
+        let _res = sqlx::query(sql)
+            .bind(id)
+            .bind(tx.transaction_fee.clone())
+            .bind(tx.transaction_time.to_string())
+            .bind(tx.status)
+            .bind(tx.block_height.to_string())
+            .bind(time)
+            .bind(tx.resource_consume.clone())
+            .bind(tx.hash)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
     /// Creates a new bill record in the database.
