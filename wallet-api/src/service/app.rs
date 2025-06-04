@@ -343,6 +343,7 @@ impl<
         let backend = crate::manager::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         backend.app_install_save(cryptor, req).await?;
+        backend.keys_reset(cryptor, sn).await?;
         Ok(())
     }
 
