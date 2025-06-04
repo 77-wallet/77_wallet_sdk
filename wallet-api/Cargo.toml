@@ -97,3 +97,5 @@ urlencoding = { workspace = true }
 dashmap = { workspace = true }
 
 governor = "0.4"
+
+rust_decimal = { workspace = true }

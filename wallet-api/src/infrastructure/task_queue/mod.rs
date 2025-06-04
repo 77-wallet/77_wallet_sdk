@@ -7,7 +7,7 @@ use task_manager::dispatcher::PriorityTask;
 use wallet_database::entities::{
     multisig_queue::QueueTaskEntity,
     node::NodeEntity,
-    task_queue::{TaskName, TaskQueueEntity},
+    task_queue::{KnownTaskName, TaskName, TaskQueueEntity},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -91,9 +91,13 @@ impl Tasks {
 
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
-        for task in entities.into_iter() {
+        for task_entity in entities.into_iter() {
+            let Ok(task) = (&task_entity).try_into() else {
+                repo.delete_task(&task_entity.id).await?;
+                continue;
+            };
             let priority = task_manager::scheduler::assign_priority(&task, false)?;
-            grouped_tasks.entry(priority).or_default().push(task);
+            grouped_tasks.entry(priority).or_default().push(task_entity);
         }
 
         for (priority, tasks) in grouped_tasks {
@@ -153,42 +157,48 @@ impl TryFrom<&TaskQueueEntity> for Task {
 
     fn try_from(value: &TaskQueueEntity) -> Result<Self, Self::Error> {
         match value.task_name {
-            TaskName::BackendApi => {
+            TaskName::Known(KnownTaskName::BackendApi) => {
                 let api_data =
                     serde_func::serde_from_str::<BackendApiTaskData>(&value.request_body)?;
                 Ok(Task::BackendApi(BackendApiTask::BackendApi(api_data)))
             }
-            TaskName::PullAnnouncement => {
+            TaskName::Known(KnownTaskName::PullAnnouncement) => {
                 Ok(Task::Initialization(InitializationTask::PullAnnouncement))
             }
-            TaskName::PullHotCoins => Ok(Task::Initialization(InitializationTask::PullHotCoins)),
-            TaskName::InitTokenPrice => {
+            TaskName::Known(KnownTaskName::PullHotCoins) => {
+                Ok(Task::Initialization(InitializationTask::PullHotCoins))
+            }
+            TaskName::Known(KnownTaskName::InitTokenPrice) => {
                 Ok(Task::Initialization(InitializationTask::InitTokenPrice))
             }
-            TaskName::SetBlockBrowserUrl => {
+            TaskName::Known(KnownTaskName::SetBlockBrowserUrl) => {
                 Ok(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
             }
-            TaskName::SetFiat => Ok(Task::Initialization(InitializationTask::SetFiat)),
+            TaskName::Known(KnownTaskName::SetFiat) => {
+                Ok(Task::Initialization(InitializationTask::SetFiat))
+            }
             // TaskName::ProcessUnconfirmMsg => Ok(Task::Initialization(
             //     InitializationTask::ProcessUnconfirmMsg,
             // )),
-            TaskName::RecoverQueueData => {
+            TaskName::Known(KnownTaskName::RecoverQueueData) => {
                 Ok(Task::Initialization(InitializationTask::RecoverQueueData))
             }
-            TaskName::InitMqtt => Ok(Task::Initialization(InitializationTask::InitMqtt)),
-            TaskName::OrderMultiSignAccept => {
+            TaskName::Known(KnownTaskName::InitMqtt) => {
+                Ok(Task::Initialization(InitializationTask::InitMqtt))
+            }
+            TaskName::Known(KnownTaskName::OrderMultiSignAccept) => {
                 let req = serde_func::serde_from_str::<topics::OrderMultiSignAccept>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(req))))
             }
-            TaskName::MultiSignTransCancel => {
+            TaskName::Known(KnownTaskName::MultiSignTransCancel) => {
                 let req = serde_func::serde_from_str::<topics::MultiSignTransCancel>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(req))))
             }
-            TaskName::OrderMultiSignAcceptCompleteMsg => {
+            TaskName::Known(KnownTaskName::OrderMultiSignAcceptCompleteMsg) => {
                 let req = serde_func::serde_from_str::<topics::OrderMultiSignAcceptCompleteMsg>(
                     &value.request_body,
                 )?;
@@ -196,7 +206,7 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     MqttTask::OrderMultiSignAcceptCompleteMsg(req),
                 )))
             }
-            TaskName::OrderMultiSignServiceComplete => {
+            TaskName::Known(KnownTaskName::OrderMultiSignServiceComplete) => {
                 let req = serde_func::serde_from_str::<topics::OrderMultiSignServiceComplete>(
                     &value.request_body,
                 )?;
@@ -204,25 +214,25 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     MqttTask::OrderMultiSignServiceComplete(req),
                 )))
             }
-            TaskName::OrderMultiSignCreated => {
+            TaskName::Known(KnownTaskName::OrderMultiSignCreated) => {
                 let req = serde_func::serde_from_str::<topics::OrderMultiSignCreated>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderMultiSignCreated(req))))
             }
-            TaskName::OrderMultiSignCancel => {
+            TaskName::Known(KnownTaskName::OrderMultiSignCancel) => {
                 let req = serde_func::serde_from_str::<topics::OrderMultiSignCancel>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderMultiSignCancel(req))))
             }
-            TaskName::MultiSignTransAccept => {
+            TaskName::Known(KnownTaskName::MultiSignTransAccept) => {
                 let req = serde_func::serde_from_str::<topics::MultiSignTransAccept>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::MultiSignTransAccept(req))))
             }
-            TaskName::MultiSignTransAcceptCompleteMsg => {
+            TaskName::Known(KnownTaskName::MultiSignTransAcceptCompleteMsg) => {
                 let req = serde_func::serde_from_str::<topics::MultiSignTransAcceptCompleteMsg>(
                     &value.request_body,
                 )?;
@@ -230,55 +240,56 @@ impl TryFrom<&TaskQueueEntity> for Task {
                     MqttTask::MultiSignTransAcceptCompleteMsg(req),
                 )))
             }
-            TaskName::AcctChange => {
+            TaskName::Known(KnownTaskName::AcctChange) => {
                 let req = serde_func::serde_from_str::<topics::AcctChange>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::AcctChange(req))))
             }
-            TaskName::Init => {
+            TaskName::Known(KnownTaskName::Init) => {
                 let req = serde_func::serde_from_str::<topics::Init>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::Init(req))))
             }
-            TaskName::BulletinMsg => {
+            TaskName::Known(KnownTaskName::BulletinMsg) => {
                 let req = serde_func::serde_from_str::<topics::BulletinMsg>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::BulletinMsg(req))))
             }
-            TaskName::QueryCoinPrice => {
+            TaskName::Known(KnownTaskName::QueryCoinPrice) => {
                 let req = serde_func::serde_from_str::<TokenQueryPriceReq>(&value.request_body)?;
                 Ok(Task::Common(CommonTask::QueryCoinPrice(req)))
             }
-            TaskName::QueryQueueResult => {
+            TaskName::Known(KnownTaskName::QueryQueueResult) => {
                 let req = serde_func::serde_from_str::<QueueTaskEntity>(&value.request_body)?;
                 Ok(Task::Common(CommonTask::QueryQueueResult(req)))
             }
-            TaskName::RecoverMultisigAccountData => {
+            TaskName::Known(KnownTaskName::RecoverMultisigAccountData) => {
                 let req = serde_func::serde_from_str::<RecoverDataBody>(&value.request_body)?;
                 Ok(Task::Common(CommonTask::RecoverMultisigAccountData(req)))
             }
-            TaskName::SyncNodesAndLinkToChains => {
+            TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains) => {
                 let req = serde_func::serde_from_str::<Vec<NodeEntity>>(&value.request_body)?;
                 Ok(Task::Common(CommonTask::SyncNodesAndLinkToChains(req)))
             }
-            TaskName::PermissionAccept => {
+            TaskName::Known(KnownTaskName::PermissionAccept) => {
                 let req =
                     serde_func::serde_from_str::<topics::PermissionAccept>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::PermissionAccept(req))))
             }
-            TaskName::MultiSignTransExecute => {
+            TaskName::Known(KnownTaskName::MultiSignTransExecute) => {
                 let req = serde_func::serde_from_str::<topics::MultiSignTransExecute>(
                     &value.request_body,
                 )?;
                 Ok(Task::Mqtt(Box::new(MqttTask::MultiSignTransExecute(req))))
             }
-            TaskName::CleanPermission => {
+            TaskName::Known(KnownTaskName::CleanPermission) => {
                 let req =
                     serde_func::serde_from_str::<topics::CleanPermission>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::CleanPermission(req))))
             }
-            TaskName::OrderAllConfirmed => {
+            TaskName::Known(KnownTaskName::OrderAllConfirmed) => {
                 let req =
                     serde_func::serde_from_str::<topics::OrderAllConfirmed>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::OrderAllConfirmed(req))))
             }
+            _ => Err(crate::SystemError::Service("Unknown task name".to_string()).into()),
         }
     }
 }

@@ -1,5 +1,8 @@
 use crate::domain;
 use crate::infrastructure::inner_event::InnerEventHandle;
+use crate::infrastructure::process_unconfirm_msg::{
+    UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
+};
 use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{
     BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
@@ -125,6 +128,8 @@ pub struct Context {
     pub(crate) cache: Arc<SharedCache>,
     pub(crate) aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
     pub(crate) inner_event_handle: InnerEventHandle,
+    pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
+    pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
 }
 
 #[derive(Debug, Clone)]
@@ -182,16 +187,13 @@ impl Context {
 
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
+        let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
 
         let task_manager = TaskManager::new(notify.clone());
 
-        let pool = sqlite_context.get_pool()?;
-        crate::infrastructure::process_unconfirm_msg::process_unconfirm_msg(
-            &client_id, pool, notify,
-        )
-        .await?;
+        let unconfirmed_msg_processor = UnconfirmedMsgProcessor::new(&client_id, notify);
 
         let inner_event_handle = InnerEventHandle::new();
 
@@ -209,6 +211,8 @@ impl Context {
             cache: Arc::new(SharedCache::new()),
             aes_cbc_cryptor,
             inner_event_handle,
+            unconfirmed_msg_collector,
+            unconfirmed_msg_processor,
         })
     }
 
@@ -349,6 +353,16 @@ impl Context {
     pub(crate) fn get_global_notify() -> Result<Arc<tokio::sync::Notify>, crate::SystemError> {
         Ok(Context::get_context()?.task_manager.notify.clone())
     }
+
+    pub(crate) fn get_global_unconfirmed_msg_collector(
+    ) -> Result<&'static UnconfirmedMsgCollector, crate::SystemError> {
+        Ok(&Context::get_context()?.unconfirmed_msg_collector)
+    }
+
+    pub(crate) fn get_global_unconfirmed_msg_processor(
+    ) -> Result<&'static UnconfirmedMsgProcessor, crate::SystemError> {
+        Ok(&Context::get_context()?.unconfirmed_msg_processor)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -384,6 +398,9 @@ impl WalletManager {
         let context = init_context(sn, device_type, dir, sender, config).await?;
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
 
+        Context::get_global_unconfirmed_msg_processor()?
+            .start()
+            .await?;
         Context::get_global_task_manager()?
             .start_task_check()
             .await?;
