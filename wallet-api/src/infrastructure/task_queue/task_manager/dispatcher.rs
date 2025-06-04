@@ -178,8 +178,8 @@ impl Dispatcher {
                     )
                 });
 
-                for task in tasks {
-                    let _ = sender.send(task);
+                for task_entity in tasks {
+                    let _ = sender.send(task_entity);
                 }
             }
             tracing::warn!("Dispatcher 的 external_rx 关闭，任务监听结束");

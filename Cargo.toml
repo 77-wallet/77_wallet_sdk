@@ -20,13 +20,13 @@ wallet-transport-backend = { version = "0.1.0", default-features = false, path =
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree" }
 
-wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "67564382c82ddcc5339233cb72c1a11ddfb243f9" }
-wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "67564382c82ddcc5339233cb72c1a11ddfb243f9" }
-wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "67564382c82ddcc5339233cb72c1a11ddfb243f9" }
-wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "67564382c82ddcc5339233cb72c1a11ddfb243f9" }
-wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "67564382c82ddcc5339233cb72c1a11ddfb243f9" }
-wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "67564382c82ddcc5339233cb72c1a11ddfb243f9" }
-wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "67564382c82ddcc5339233cb72c1a11ddfb243f9" }
+wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
+wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
+wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
+wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
+wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
+wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
+wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
 
 # wallet-crypto = { default-features = false, path = "../wallet_core/wallet-crypto" }
 # wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
@@ -104,7 +104,7 @@ serde_repr = "0.1"
 thiserror = "1"
 anyhow = "1"
 
-rust_decimal = { version = "1.35.0", features = ["maths"] }
+rust_decimal = { version = "1.35.0", features = ["maths", "serde-with-float"] }
 rand = "0.8.5"
 
 # sqlx
