@@ -144,16 +144,16 @@ impl crate::WalletManager {
     // 根据资产地址、后端同步。
     pub async fn sync_assets(
         &self,
-        addr: Vec<String>,
+        addr: String,
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        // let res = AssetsService::new(self.repo_factory.resource_repo())
-        //     .sync_assets_from_backend(addr, chain_code, symbol)
-        //     .await;
         let res = AssetsService::new(self.repo_factory.resource_repo())
-            .sync_assets_by_addr(addr, chain_code, symbol)
+            .sync_assets_from_backend(addr, chain_code, symbol)
             .await;
+        // let res = AssetsService::new(self.repo_factory.resource_repo())
+        //     .sync_assets_by_addr(addr, chain_code, symbol)
+        //     .await;
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);
         }
@@ -199,16 +199,6 @@ impl crate::WalletManager {
 mod test {
     use crate::test::env::get_manager;
     use anyhow::Result;
-
-    #[tokio::test]
-    async fn test_sync_assets() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-        let res = wallet_manager.sync_assets(vec![], None, vec![]).await;
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
 
     #[tokio::test]
     async fn test_add_assets() -> Result<()> {

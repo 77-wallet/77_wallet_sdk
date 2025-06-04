@@ -116,18 +116,23 @@ async fn physical_delete() {
 #[tokio::test]
 async fn sync_assets() {
     let wallet_manager = get_manager().await;
-    let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
+    let addr = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw".to_string();
+    let chain_code = None;
+    let symbol = vec![];
+
+    let _c = wallet_manager.sync_assets(addr, chain_code, symbol).await;
+    tracing::info!("response");
 }
 
 #[tokio::test]
-async fn sync_assets_by_addr_from_backend() {
+async fn sync_assets_from_chain() {
     let wallet_manager = get_manager().await;
     let addr = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw".to_string();
     let chain_code = None;
     let symbol = vec![];
 
     let _c = wallet_manager
-        .sync_assets(vec![addr], chain_code, symbol)
+        .sync_balance_from_chain(addr, chain_code, symbol)
         .await;
     tracing::info!("response");
 }

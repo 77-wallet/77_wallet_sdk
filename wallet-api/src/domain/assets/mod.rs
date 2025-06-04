@@ -186,7 +186,7 @@ impl AssetsDomain {
 
     // 从后端同步余额(根据地址-链)
     pub async fn async_balance_from_backend_addr(
-        addr: Vec<String>,
+        addr: String,
         chain_code: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         // 单个地址处理
@@ -195,43 +195,38 @@ impl AssetsDomain {
         let backhand = crate::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
-        for addr in addr {
-            // 获取这个地址对应的链码,如果未传
-            let codes = if let Some(chain_code) = chain_code.clone() {
-                vec![chain_code]
-            } else {
-                let account =
-                    AccountEntity::list_in_address(pool.as_ref(), &vec![addr.clone()], None)
-                        .await?;
+        // 获取这个地址对应的链码,如果未传
+        let codes = if let Some(chain_code) = chain_code.clone() {
+            vec![chain_code]
+        } else {
+            let account =
+                AccountEntity::list_in_address(pool.as_ref(), &vec![addr.clone()], None).await?;
 
-                account
-                    .iter()
-                    .map(|a| a.chain_code.clone())
-                    .collect::<Vec<String>>()
-            };
+            account
+                .iter()
+                .map(|a| a.chain_code.clone())
+                .collect::<Vec<String>>()
+        };
 
-            for code in codes {
-                let resp = backhand
-                    .wallet_assets_chain_list(&cryptor, &addr, &code)
-                    .await?;
+        for code in codes {
+            let resp = backhand
+                .wallet_assets_chain_list(&cryptor, &addr, &code)
+                .await?;
 
-                tracing::info!("resp: {:#?}", resp);
-                for item in resp.list.into_iter() {
-                    let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
-                    if amount >= 0.0 {
-                        let assets_id = AssetsId {
-                            address: item.address,
-                            chain_code: item.chain_code,
-                            symbol: item.symbol.to_uppercase(),
-                        };
+            for item in resp.list.into_iter() {
+                let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
+                if amount >= 0.0 {
+                    let assets_id = AssetsId {
+                        address: item.address,
+                        chain_code: item.chain_code,
+                        symbol: item.symbol.to_uppercase(),
+                    };
 
-                        let r =
-                            AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount)
-                                .await;
+                    let r =
+                        AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
 
-                        if let Err(e) = r {
-                            tracing::warn!("udpate balance error {}", e);
-                        }
+                    if let Err(e) = r {
+                        tracing::warn!("udpate balance error {}", e);
                     }
                 }
             }

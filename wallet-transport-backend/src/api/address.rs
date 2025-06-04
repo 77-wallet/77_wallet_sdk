@@ -67,7 +67,7 @@ impl BackendApi {
     ) -> Result<AssertResp, crate::Error> {
         let req = serde_json::json!({
             "address":address,
-            "chain_code":chain_code,
+            "chainCode":chain_code,
         });
 
         let res = self
@@ -90,7 +90,7 @@ impl BackendApi {
     ) -> Result<Option<()>, crate::Error> {
         let req = serde_json::json!({
             "address":address,
-            "chain_code":chain_code,
+            "chainCode":chain_code,
             "symbol":symbol,
         });
 
