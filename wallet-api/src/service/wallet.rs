@@ -7,7 +7,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::{
     consts::endpoint,
-    request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
+    request::{AddressBatchInitReq, DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
 use wallet_tree::{api::KeystoreApi, file_ops::RootData};
 use wallet_types::constant::chain_code;
@@ -125,27 +125,20 @@ impl WalletService {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
-        let code = ConfigDomain::get_invite_code()
-            .await?
-            .map(|c| c.code)
-            .flatten();
         for wallet in wallet_list {
-            let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-                &wallet.uid,
-                &device.sn,
-                Some(client_id.clone()),
-                Some(device.device_type.clone()),
-                &wallet.name,
-                code.clone(),
-            );
-            let keys_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::KEYS_INIT,
-                &keys_init_req,
+            let keys_update_wallet_name =
+                wallet_transport_backend::request::KeysUpdateWalletNameReq::new(
+                    &wallet.uid,
+                    &device.sn,
+                    &wallet.name,
+                );
+            let keys_update_wallet_name = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::KEYS_UPDATE_WALLET_NAME,
+                &keys_update_wallet_name,
             )?;
             Tasks::new()
                 .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    keys_init_task_data,
+                    keys_update_wallet_name,
                 )))
                 .send()
                 .await?;
@@ -179,7 +172,7 @@ impl WalletService {
 
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         let mut accounts = Vec::new();
-        let mut address_init_task_data = Vec::new();
+        let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
         for data in exports {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
                 &data.derivation_path,
@@ -195,7 +188,7 @@ impl WalletService {
                 chain.network.as_str().into(),
             )?;
 
-            let (account, _, task_data) = AccountDomain::create_account(
+            let (account, _, address_init_req) = AccountDomain::create_account_v2(
                 &mut tx,
                 &seed,
                 &instance,
@@ -207,7 +200,7 @@ impl WalletService {
                 is_default_name,
             )
             .await?;
-            address_init_task_data.push(task_data);
+            address_batch_init_task_data.0.push(address_init_req);
 
             let keypair = instance
                 .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
@@ -223,6 +216,7 @@ impl WalletService {
             subkeys.push(subkey);
             accounts.push(account.address);
         }
+
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
@@ -234,12 +228,16 @@ impl WalletService {
             algorithm,
         )?;
 
-        for task in address_init_task_data {
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
-                .send()
-                .await?;
-        }
+        let address_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+            &address_batch_init_task_data,
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                address_init_task_data,
+            )))
+            .send()
+            .await?;
         Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
     }
 
@@ -361,7 +359,7 @@ impl WalletService {
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
-        let mut address_init_task_data = Vec::new();
+        let mut address_init_task_data = AddressBatchInitReq(Vec::new());
         for account_id in account_ids {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
@@ -431,7 +429,7 @@ impl WalletService {
             invite_code,
         );
         let keys_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::KEYS_INIT,
+            wallet_transport_backend::consts::endpoint::KEYS_V2_INIT,
             &keys_init_req,
         )?;
 
@@ -440,26 +438,29 @@ impl WalletService {
             &language_req,
         )?;
 
-        let uids = tx
-            .uid_list()
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect::<Vec<String>>();
-        let device_delete_req = DeviceDeleteReq::new(&device.sn, &uids);
+        // let uids = tx
+        //     .uid_list()
+        //     .await?
+        //     .into_iter()
+        //     .map(|uid| uid.0)
+        //     .collect::<Vec<String>>();
+        // let device_delete_req = DeviceDeleteReq::new(&device.sn, &uids);
 
-        let device_delete_task_data =
-            BackendApiTaskData::new(endpoint::DEVICE_DELETE, &device_delete_req)?;
+        // let device_delete_task_data =
+        //     BackendApiTaskData::new(endpoint::DEVICE_DELETE, &device_delete_req)?;
 
-        let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
+        // let device_bind_address_task_data =
+        //     domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
 
         // 恢复多签账号、多签队列
         let mut recover_data = RecoverDataBody::new(&uid);
         if let Some(tron_address) = tron_address {
             recover_data.tron_address = Some(tron_address);
         };
-
+        let address_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+            &address_init_task_data,
+        )?;
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 keys_init_task_data,
@@ -467,24 +468,20 @@ impl WalletService {
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 language_init_task_data,
             )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_delete_task_data,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_bind_address_task_data,
-            )))
+            // .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //     device_delete_task_data,
+            // )))
+            // .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //     device_bind_address_task_data,
+            // )))
             .push(Task::Common(CommonTask::RecoverMultisigAccountData(
                 recover_data,
             )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                address_init_task_data,
+            )))
             .send()
             .await?;
-
-        for task in address_init_task_data {
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
-                .send()
-                .await?;
-        }
 
         tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(CreateWalletRes {

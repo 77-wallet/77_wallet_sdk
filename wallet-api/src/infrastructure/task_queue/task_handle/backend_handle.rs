@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
-use wallet_database::{
-    entities::account::AccountEntity,
-    repositories::{device::DeviceRepoTrait as _, wallet::WalletRepoTrait},
-};
+use wallet_database::repositories::{device::DeviceRepoTrait as _, wallet::WalletRepoTrait};
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
@@ -35,6 +32,9 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::multisig::PERMISSION_ACCEPT,
         endpoint::UPLOAD_PERMISSION_TRANS,
         endpoint::DEVICE_UPDATE_APP_ID,
+        endpoint::KEYS_UPDATE_WALLET_NAME,
+        endpoint::KEYS_RESET,
+        endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
     ]
     .iter()
     .cloned()
@@ -141,7 +141,7 @@ impl EndpointHandler for SpecialHandler {
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
                 repo.device_init().await?;
             }
-            endpoint::KEYS_INIT => {
+            endpoint::KEYS_V2_INIT => {
                 // let invite_code = ConfigDomain::get_invite_code().await?;
                 // if invite_code.status.is_none() {
                 //     return Err(crate::BusinessError::Device(
@@ -206,32 +206,39 @@ impl EndpointHandler for SpecialHandler {
                 crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo)
                     .await?;
             }
-            endpoint::ADDRESS_INIT => {
-                let req: wallet_transport_backend::request::AddressInitReq =
+            endpoint::ADDRESS_BATCH_INIT => {
+                let req: wallet_transport_backend::request::AddressBatchInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
-                let wallet = repo.wallet_detail_by_uid(&req.uid).await?;
-                match wallet {
-                    Some(wallet) => {
-                        if wallet.is_init == 1 {
-                            let res = backend
-                                .post_req_str::<()>(endpoint, &body, aes_cbc_cryptor)
-                                .await;
-                            res?;
-                            use wallet_database::repositories::account::AccountRepoTrait as _;
-                            repo.account_init(&req.address, &req.chain_code).await?;
-                        } else {
+                for address in req.0 {
+                    let wallet = repo.wallet_detail_by_uid(&address.uid).await?;
+
+                    match wallet {
+                        Some(wallet) => {
+                            if wallet.is_init == 1 {
+                                use wallet_database::repositories::account::AccountRepoTrait as _;
+                                repo.account_init(&address.address, &address.chain_code)
+                                    .await?;
+                                continue;
+                            } else {
+                                return Err(crate::BusinessError::Wallet(
+                                    crate::WalletError::NotInit,
+                                )
+                                .into());
+                            }
+                        }
+                        None => {
                             return Err(
-                                crate::BusinessError::Wallet(crate::WalletError::NotInit).into()
+                                crate::BusinessError::Wallet(crate::WalletError::NotFound).into()
                             );
                         }
                     }
-                    None => {
-                        return Err(
-                            crate::BusinessError::Wallet(crate::WalletError::NotFound).into()
-                        );
-                    }
                 }
+
+                let res = backend
+                    .post_req_str::<()>(endpoint, &body, aes_cbc_cryptor)
+                    .await;
+                res?;
             }
             endpoint::TOKEN_CUSTOM_TOKEN_INIT => {
                 let res = backend
@@ -321,37 +328,37 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
                 ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
             }
-            endpoint::DEVICE_BIND_ADDRESS => {
-                let Some(device) = repo.get_device_info().await? else {
-                    return Err(
-                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
-                    );
-                };
-                let mut device_bind_address_req =
-                    wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
+            // endpoint::DEVICE_BIND_ADDRESS => {
+            //     let Some(device) = repo.get_device_info().await? else {
+            //         return Err(
+            //             crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
+            //         );
+            //     };
+            //     let mut device_bind_address_req =
+            //         wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
 
-                let accounts =
-                    AccountEntity::account_list(&*pool, None, None, None, vec![], None).await?;
+            //     let accounts =
+            //         AccountEntity::account_list(&*pool, None, None, None, vec![], None).await?;
 
-                let multisig_accounts =
-                    wallet_database::dao::multisig_account::MultisigAccountDaoV1::find_owner_on_chain_account(&*pool)
-                        .await
-                        .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            //     let multisig_accounts =
+            //         wallet_database::dao::multisig_account::MultisigAccountDaoV1::find_owner_on_chain_account(&*pool)
+            //             .await
+            //             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
-                for account in accounts {
-                    device_bind_address_req.push(&account.chain_code, &account.address);
-                }
-                for multisig_account in multisig_accounts {
-                    device_bind_address_req
-                        .push(&multisig_account.chain_code, &multisig_account.address);
-                }
+            //     for account in accounts {
+            //         device_bind_address_req.push(&account.chain_code, &account.address);
+            //     }
+            //     for multisig_account in multisig_accounts {
+            //         device_bind_address_req
+            //             .push(&multisig_account.chain_code, &multisig_account.address);
+            //     }
 
-                let body = wallet_utils::serde_func::serde_to_value(device_bind_address_req)?;
+            //     let body = wallet_utils::serde_func::serde_to_value(device_bind_address_req)?;
 
-                backend
-                    .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
-                    .await?;
-            }
+            //     backend
+            //         .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
+            //         .await?;
+            // }
             _ => {
                 // 未知的 endpoint
                 tracing::warn!("unknown endpoint: {}", endpoint);

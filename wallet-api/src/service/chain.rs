@@ -1,11 +1,6 @@
 use crate::{
-    domain::{
-        self,
-        app::{config::ConfigDomain, DeviceDomain},
-        chain::ChainDomain,
-        coin::CoinDomain,
-    },
-    infrastructure::task_queue::{BackendApiTask, CommonTask, Task, Tasks},
+    domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{
@@ -15,7 +10,7 @@ use wallet_database::{
         coin::CoinRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
 };
-use wallet_transport_backend::request::TokenQueryPriceReq;
+use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
 use wallet_tree::api::KeystoreApi;
 
 pub struct ChainService {
@@ -92,7 +87,7 @@ impl ChainService {
         let mut req = TokenQueryPriceReq(Vec::new());
         let coins = tx.default_coin_list().await?;
 
-        let mut address_init_task_data = Vec::new();
+        let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
         for wallet in account_wallet_mapping {
             let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
             let account_index_map =
@@ -109,7 +104,7 @@ impl ChainService {
                 &mut tx,
                 &coins,
                 &mut req,
-                &mut address_init_task_data,
+                &mut address_batch_init_task_data,
                 &mut subkeys,
                 &chain_list,
                 &seed,
@@ -134,24 +129,24 @@ impl ChainService {
             )?;
         }
 
-        let device_bind_address_task_data =
-            DeviceDomain::gen_device_bind_address_task_data().await?;
+        // let device_bind_address_task_data =
+        //     DeviceDomain::gen_device_bind_address_task_data().await?;
 
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
+        let address_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+            &address_batch_init_task_data,
+        )?;
         Tasks::new()
             .push(task)
+            // .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //     device_bind_address_task_data,
+            // )))
             .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_bind_address_task_data,
+                address_init_task_data,
             )))
             .send()
             .await?;
-
-        for task in address_init_task_data {
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
-                .send()
-                .await?;
-        }
 
         Ok(())
     }

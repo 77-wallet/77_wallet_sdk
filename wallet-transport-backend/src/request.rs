@@ -150,6 +150,24 @@ impl KeysInitReq {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct KeysUpdateWalletNameReq {
+    pub uid: String,
+    pub sn: String,
+    pub name: String,
+}
+
+impl KeysUpdateWalletNameReq {
+    pub fn new(uid: &str, sn: &str, name: &str) -> Self {
+        Self {
+            uid: uid.to_string(),
+            sn: sn.to_string(),
+            name: name.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenQueryPriceReq(pub Vec<TokenQueryPrice>);
 
 impl TokenQueryPriceReq {
@@ -384,6 +402,28 @@ impl AddressInitReq {
             chain_code: chain_code.to_string(),
             sn: sn.to_string(),
             contract_address,
+            name: name.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressBatchInitReq(pub Vec<AddressInitReq>);
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressUpdateAccountNameReq {
+    pub uid: String,
+    pub index: i32,
+    pub name: String,
+}
+
+impl AddressUpdateAccountNameReq {
+    pub fn new(uid: &str, index: i32, name: &str) -> Self {
+        Self {
+            uid: uid.to_string(),
+            index,
             name: name.to_string(),
         }
     }

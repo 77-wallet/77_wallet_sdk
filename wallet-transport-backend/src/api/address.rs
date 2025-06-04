@@ -21,6 +21,36 @@ impl BackendApi {
         res.process(aes_cbc_cryptor)
     }
 
+    pub async fn address_batch_init(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        req: &crate::request::AddressBatchInitReq,
+    ) -> Result<Option<()>, crate::Error> {
+        let res = self
+            .client
+            .post("address/batch/init")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(aes_cbc_cryptor)
+    }
+
+    pub async fn address_update_account_name(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        req: &crate::request::AddressUpdateAccountNameReq,
+    ) -> Result<Option<()>, crate::Error> {
+        let res = self
+            .client
+            .post("address/updateAccountName")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(aes_cbc_cryptor)
+    }
+
     pub async fn address_find_multisiged_details(
         &self,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
