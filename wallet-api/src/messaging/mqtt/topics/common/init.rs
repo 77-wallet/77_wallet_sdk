@@ -42,6 +42,7 @@ pub struct InitBody {
     // 链码
     pub chain_code: String,
     // 余额
+    #[serde(with = "rust_decimal::serde::float")]
     pub balance: wallet_types::Decimal,
     // 代币编码
     #[serde(deserialize_with = "wallet_utils::serde_func::deserialize_uppercase")]

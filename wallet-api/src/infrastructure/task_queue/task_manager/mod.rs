@@ -91,6 +91,10 @@ impl TaskManager {
         for task_entity in failed_queue.into_iter() {
             if !running_tasks.contains(&task_entity.id) {
                 let Ok(task) = (&task_entity).try_into() else {
+                    tracing::error!(
+                        "task queue entity convert to task error: {}",
+                        task_entity.id
+                    );
                     repo.delete_task(&task_entity.id).await?;
                     continue;
                 };
