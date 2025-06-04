@@ -67,4 +67,19 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
 
         Ok(())
     }
+
+    pub async fn unbind_device(self, sn: &str) -> Result<(), crate::ServiceError> {
+        let task_data = BackendApiTaskData {
+            endpoint: endpoint::KEYS_RESET.to_string(),
+            body: serde_json::json!({
+                "sn": sn,
+            }),
+        };
+
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .send()
+            .await?;
+        Ok(())
+    }
 }

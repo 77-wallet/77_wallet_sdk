@@ -67,14 +67,14 @@ impl DeviceDomain {
         Ok(DeviceDomain::client_id_by_identifier(&identifier))
     }
 
-    pub(crate) async fn gen_device_bind_address_task_data(
-    ) -> Result<BackendApiTaskData, crate::ServiceError> {
-        let device_bind_address_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
-            &(),
-        )?;
-        Ok(device_bind_address_task_data)
-    }
+    // pub(crate) async fn gen_device_bind_address_task_data(
+    // ) -> Result<BackendApiTaskData, crate::ServiceError> {
+    //     let device_bind_address_task_data = BackendApiTaskData::new(
+    //         wallet_transport_backend::consts::endpoint::DEVICE_BIND_ADDRESS,
+    //         &(),
+    //     )?;
+    //     Ok(device_bind_address_task_data)
+    // }
 
     pub(crate) async fn gen_device_unbind_all_address_task_data(
         accounts: &[wallet_database::entities::account::AccountEntity],

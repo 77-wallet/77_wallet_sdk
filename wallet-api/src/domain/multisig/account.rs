@@ -163,14 +163,14 @@ impl MultisigDomain {
             }
         }
 
-        let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
-        Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_bind_address_task_data,
-            )))
-            .send()
-            .await?;
+        // let device_bind_address_task_data =
+        //     domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
+        // Tasks::new()
+        //     .push(Task::BackendApi(BackendApiTask::BackendApi(
+        //         device_bind_address_task_data,
+        //     )))
+        //     .send()
+        //     .await?;
         Ok(())
     }
 
