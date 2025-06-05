@@ -104,7 +104,7 @@ serde_repr = "0.1"
 thiserror = "1"
 anyhow = "1"
 
-rust_decimal = { version = "1.35.0", features = ["maths", "serde-with-float"] }
+rust_decimal = { version = "1.37.1", features = ["maths"] }
 rand = "0.8.5"
 
 # sqlx
