@@ -42,12 +42,17 @@ pub struct InitBody {
     // 链码
     pub chain_code: String,
     // 余额
-    #[serde(with = "rust_decimal::serde::float")]
-    pub balance: wallet_types::Decimal,
+    // #[serde(deserialize_with = "wallet_utils::serde_func::deserialize_decimal_from_str")]
+    pub balance: f64,
     // 代币编码
     #[serde(deserialize_with = "wallet_utils::serde_func::deserialize_uppercase")]
     pub code: String,
     // 合约地址
+    #[serde(
+        rename = "contractAddress",
+        default,
+        deserialize_with = "wallet_utils::serde_func::deserialize_empty_string_as_none"
+    )]
     pub token_address: Option<String>,
     // 代币精度
     // pub decimals: Option<u8>,
@@ -103,6 +108,7 @@ impl Init {
                     .await?
                     .unit
             };
+            tracing::warn!("Init msg: {_msg_id} ==================5");
             // TODO: 处理余额计算
             let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), decimals)?;
 
@@ -163,8 +169,72 @@ impl Init {
 
 #[cfg(test)]
 mod test {
+    use rust_decimal::Decimal;
+    use wallet_transport_backend::response_vo::coin::TokenQueryByContractAddressRes;
+
     use crate::messaging::mqtt::topics::Init;
     use std::str::FromStr;
+
+    #[derive(serde::Deserialize)]
+    struct Test {
+        price: Decimal,
+        marketValue: Decimal,
+    }
+
+    #[test]
+    fn test_scientific_notation_deserialization() {
+        // 测试用例1：普通数字
+        let normal_num = serde_json:: json!({
+            "price": 668.32,
+            "marketValue": 97133760610.0
+        });
+
+        // 测试用例2：科学计数法
+        let scientific_num = serde_json::  json!({
+            "price": 6.683208365533216E2,  // 668.3208365533216
+            "marketValue": 9.713376061E10  // 97133760610.0
+        });
+
+        // 测试用例3：极大数字的科学计数法
+        let large_scientific = serde_json::  json!({
+            "price": 1.23E+20,
+            "marketValue": 9.99E+30
+        });
+
+        // 测试用例4：极小数科学计数法
+        let small_scientific = serde_json::            json!({
+            "price": 1.23E-10,
+            "marketValue": 9.99E-8
+        });
+
+        // 定义辅助函数
+        fn test_deserialization(value: serde_json::Value) -> Result<(), String> {
+            let res: Result<Test, _> = wallet_utils::serde_func::serde_from_value(value);
+
+            match res {
+                Ok(data) => {
+                    println!("Deserialized successfully:");
+                    println!("Price: {:?}", data.price);
+                    println!("Market Value: {:?}", data.marketValue);
+                    Ok(())
+                }
+                Err(e) => Err(format!("Failed to deserialize: {}", e)),
+            }
+        }
+
+        // 执行测试
+        println!("=== Testing normal number ===");
+
+        println!("\n=== Testing scientific notation ===");
+        println!("\n=== Testing large scientific ===");
+
+        let res = test_deserialization(small_scientific);
+        println!("Result: {:?}", res);
+        // assert!(test_deserialization(large_scientific).is_ok());
+
+        println!("\n=== Testing small scientific ===");
+        // assert!(test_deserialization(small_scientific).is_ok());
+    }
 
     #[test]
     fn test_() {

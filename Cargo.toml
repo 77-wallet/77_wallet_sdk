@@ -20,13 +20,13 @@ wallet-transport-backend = { version = "0.1.0", default-features = false, path =
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree" }
 
-wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
-wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
-wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
-wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
-wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
-wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
-wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "efbb7e707ff151d858d540fa99d5381eea7efcb6" }
+# wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "18b1e7b3309659b120bf692c40cd3e29bdce1d95" }
+# wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "18b1e7b3309659b120bf692c40cd3e29bdce1d95" }
+# wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "18b1e7b3309659b120bf692c40cd3e29bdce1d95" }
+# wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "18b1e7b3309659b120bf692c40cd3e29bdce1d95" }
+# wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "18b1e7b3309659b120bf692c40cd3e29bdce1d95" }
+# wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "18b1e7b3309659b120bf692c40cd3e29bdce1d95" }
+# wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "18b1e7b3309659b120bf692c40cd3e29bdce1d95" }
 
 # wallet-crypto = { default-features = false, path = "../wallet_core/wallet-crypto" }
 # wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
@@ -36,14 +36,14 @@ wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client
 # wallet-types = { default-features = false, path = "../wallet_core/wallet-types" }
 # wallet-core = { default-features = false, path = "../wallet_core/wallet-core" }
 
-# wallet-crypto = { default-features = false, path = "../77_wallet_core/wallet-crypto" }
-# wallet-chain-interact = { default-features = false, path = "../77_wallet_core/wallet-chain-interact" }
-# wallet-chain-instance = { default-features = false, path = "../77_wallet_core/wallet-chain-instance" }
-# wallet-transport = { default-features = false, path = "../77_wallet_core/wallet-transport" }
-# wallet-utils = { default-features = false, path = "../77_wallet_core/wallet-utils" }
-# wallet-types = { default-features = false, path = "../77_wallet_core/wallet-types" }
-# # wallet-tree = { default-features = false, path = "../77_wallet_core/wallet-tree" }
-# wallet-core = { default-features = false, path = "../77_wallet_core/wallet-core" }
+wallet-crypto = { default-features = false, path = "../77_wallet_core/wallet-crypto" }
+wallet-chain-interact = { default-features = false, path = "../77_wallet_core/wallet-chain-interact" }
+wallet-chain-instance = { default-features = false, path = "../77_wallet_core/wallet-chain-instance" }
+wallet-transport = { default-features = false, path = "../77_wallet_core/wallet-transport" }
+wallet-utils = { default-features = false, path = "../77_wallet_core/wallet-utils" }
+wallet-types = { default-features = false, path = "../77_wallet_core/wallet-types" }
+# wallet-tree = { default-features = false, path = "../77_wallet_core/wallet-tree" }
+wallet-core = { default-features = false, path = "../77_wallet_core/wallet-core" }
 
 # wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
 # wallet-error = { version = "0.1.0", default-features = false, path = "wallet-error" }
@@ -104,7 +104,7 @@ serde_repr = "0.1"
 thiserror = "1"
 anyhow = "1"
 
-rust_decimal = { version = "1.35.0", features = ["maths", "serde-with-float"] }
+rust_decimal = { version = "1.37.1", features = ["maths"] }
 rand = "0.8.5"
 
 # sqlx
