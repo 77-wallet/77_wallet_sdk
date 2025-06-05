@@ -457,7 +457,7 @@ impl AssetsService {
         Ok(res)
     }
 
-    // 根据地址来同步余额()
+    // 根据地址来同步余额(链)
     pub async fn sync_assets_by_addr(
         self,
         addr: Vec<String>,
@@ -467,10 +467,10 @@ impl AssetsService {
         AssetsDomain::sync_assets_by_addr_chain(addr, chain_code, symbol).await
     }
 
-    // 从后端同步余额
+    // 从后端同步余额(后端)
     pub async fn sync_assets_from_backend(
         self,
-        addr: Vec<String>,
+        addr: String,
         chain_code: Option<String>,
         _symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {

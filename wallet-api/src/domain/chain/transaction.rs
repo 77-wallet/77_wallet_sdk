@@ -93,12 +93,14 @@ impl ChainTransDomain {
                     .map_err(crate::ServiceError::Database)?;
 
                 // 上报后端修改余额
-                // let backend = crate::manager::Context::get_global_backend_api()?;
-                // let ase_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-                // let _rs = backend
-                //     .wallet_assets_refresh_bal(&ase_cbc_cryptor, address, chain_code, symbol)
-                //     .await;
-                // tracing::warn!("update balance result = {:#?}", _rs);
+                let backend = crate::manager::Context::get_global_backend_api()?;
+                let ase_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+                let rs = backend
+                    .wallet_assets_refresh_bal(&ase_cbc_cryptor, address, chain_code, symbol)
+                    .await;
+                if let Err(e) = rs {
+                    tracing::warn!("upload balance refresh error = {}", e);
+                }
             }
         }
 
