@@ -372,7 +372,14 @@ impl CoinService {
             }
             _ => {}
         }
-        domain::chain::check_address(&token_address, chain, net)?;
+
+        match chain {
+            wallet_types::chain::chain::ChainCode::Sui => {
+                wallet_utils::address::parse_sui_type_tag(&token_address)?;
+            }
+            _ => domain::chain::check_address(&token_address, chain, net)?,
+        }
+
         let tx = &mut self.repo;
         let Some(_) = tx.detail_with_node(chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(

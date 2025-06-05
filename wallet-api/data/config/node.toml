@@ -175,7 +175,7 @@ network = "mainnet"
 active = true
 
 
-[[nodes.tron.nodes]]
+[[nodes.sui.nodes]]
 node_name = "Sui Official Node"
 rpc_url = "https://rpc-mainnet.suiscan.xyz"
 http_url = ""
