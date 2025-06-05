@@ -92,10 +92,15 @@ impl Tasks {
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
         for task_entity in entities.into_iter() {
-            let Ok(task) = (&task_entity).try_into() else {
-                repo.delete_task(&task_entity.id).await?;
-                continue;
+            let task = match (&task_entity).try_into() {
+                Ok(task) => task,
+                Err(e) => {
+                    tracing::error!("task_entity.try_into() error: {}", e);
+                    repo.delete_task(&task_entity.id).await?;
+                    continue;
+                }
             };
+
             let priority = task_manager::scheduler::assign_priority(&task, false)?;
             grouped_tasks.entry(priority).or_default().push(task_entity);
         }

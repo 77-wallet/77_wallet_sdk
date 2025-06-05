@@ -44,16 +44,21 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
                     // 确认消息，高优先级
                     SEND_MSG_CONFIRM  => 1,
                     // 关键初始化流程，高优先级
-                    KEYS_INIT
+                    KEYS_V2_INIT
+                    | KEYS_RESET
                     | DEVICE_UPDATE_APP_ID
-                    | ADDRESS_INIT
+                    | KEYS_UPDATE_WALLET_NAME
+                    // | ADDRESS_INIT
+                    | ADDRESS_UPDATE_ACCOUNT_NAME
+                    | ADDRESS_BATCH_INIT
                     | DEVICE_EDIT_DEVICE_INVITEE_STATUS
                     | LANGUAGE_INIT
                     | APP_INSTALL_DOWNLOAD
                     | CHAIN_LIST
                     | CHAIN_RPC_LIST => 2,
                     // 重要功能任务，中优先级
-                    DEVICE_BIND_ADDRESS
+
+                    // DEVICE_BIND_ADDRESS
                     | DEVICE_UNBIND_ADDRESS
                     | DEVICE_DELETE
                     | SYS_CONFIG_FIND_CONFIG_BY_KEY

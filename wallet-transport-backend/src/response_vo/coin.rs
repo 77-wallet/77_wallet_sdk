@@ -52,10 +52,10 @@ pub struct TokenQueryByContractAddressRes {
     pub chain_code: String,
     pub code: String,
     pub contract_address: Option<String>,
-    pub market_value: Option<rust_decimal::Decimal>,
+    pub market_value: Option<f64>,
     pub master: bool,
     pub name: Option<String>,
-    pub price: Option<rust_decimal::Decimal>,
+    pub price: Option<f64>,
     pub unit: u8,
 }
 

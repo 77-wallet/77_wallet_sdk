@@ -286,7 +286,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
+        let wallet_address = "0x48914c12BbB44a4c32e6CA7A99831c46267533B0";
         let account = wallet_manager
             .edit_account_name(1, wallet_address, "new_account")
             .await;

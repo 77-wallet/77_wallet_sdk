@@ -10,7 +10,7 @@ use wallet_database::{
     entities::coin::CoinEntity,
     repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, ResourcesRepo},
 };
-use wallet_transport_backend::request::{ChainRpcListReq, TokenQueryPriceReq};
+use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{chain::ChainCode, network};
 use wallet_utils::address;
 
@@ -267,7 +267,7 @@ impl ChainDomain {
         tx: &mut ResourcesRepo,
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
-        address_init_task_data: &mut Vec<BackendApiTaskData>,
+        address_batch_init_task_data: &mut AddressBatchInitReq,
         subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
         chain_list: &[String],
         seed: &[u8],
@@ -290,19 +290,20 @@ impl ChainDomain {
                 let instance: wallet_chain_instance::instance::ChainObject =
                     (&code, &address_type, chain.network.as_str().into()).try_into()?;
 
-                let (account_address, derivation_path, task_data) = AccountDomain::create_account(
-                    tx,
-                    seed,
-                    &instance,
-                    derivation_path,
-                    account_index_map,
-                    uid,
-                    wallet_address,
-                    account_name,
-                    is_default_name,
-                )
-                .await?;
-                address_init_task_data.push(task_data);
+                let (account_address, derivation_path, address_init_req) =
+                    AccountDomain::create_account_v2(
+                        tx,
+                        seed,
+                        &instance,
+                        derivation_path,
+                        account_index_map,
+                        uid,
+                        wallet_address,
+                        account_name,
+                        is_default_name,
+                    )
+                    .await?;
+                address_batch_init_task_data.0.push(address_init_req);
 
                 subkeys.push(
                     AccountDomain::generate_subkey(

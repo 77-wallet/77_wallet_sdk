@@ -33,9 +33,15 @@ pub mod endpoint {
     pub const DEVICE_INIT: &str = "device/init";
     pub const DEVICE_DELETE: &str = "device/delete";
     pub const DEVICE_UNBIND_ADDRESS: &str = "device/unBindAddress";
-    pub const DEVICE_BIND_ADDRESS: &str = "device/bindAddress";
-    pub const KEYS_INIT: &str = "keys/init";
-    pub const ADDRESS_INIT: &str = "address/init";
+    // pub const DEVICE_BIND_ADDRESS: &str = "device/bindAddress";
+    // pub const KEYS_INIT: &str = "keys/init";
+    pub const KEYS_V2_INIT: &str = "keys/v2/init";
+    pub const KEYS_UPDATE_WALLET_NAME: &str = "keys/updateWalletName";
+    pub const KEYS_RESET: &str = "keys/reset";
+
+    // pub const ADDRESS_INIT: &str = "address/init";
+    pub const ADDRESS_BATCH_INIT: &str = "address/batch/init";
+    pub const ADDRESS_UPDATE_ACCOUNT_NAME: &str = "address/updateAccountName";
     pub const LANGUAGE_INIT: &str = "language/init";
 
     pub const TOKEN_CUSTOM_TOKEN_INIT: &str = "token/custom/token/init";
