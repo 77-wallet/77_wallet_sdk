@@ -177,9 +177,7 @@ impl TaskManager {
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         let id = task_entity.id.clone();
-        tracing::warn!("handle_task ========== 1");
         let task: Task = task_entity.try_into()?;
-        tracing::warn!("handle_task ========== 2");
         let task_type = task.get_type();
         let backend_api = crate::manager::Context::get_global_backend_api()?;
         let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
