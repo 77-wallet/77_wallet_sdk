@@ -108,7 +108,6 @@ impl Init {
                     .await?
                     .unit
             };
-            tracing::warn!("Init msg: {_msg_id} ==================5");
             // TODO: 处理余额计算
             let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), decimals)?;
 
@@ -170,7 +169,6 @@ impl Init {
 #[cfg(test)]
 mod test {
     use rust_decimal::Decimal;
-    use wallet_transport_backend::response_vo::coin::TokenQueryByContractAddressRes;
 
     use crate::messaging::mqtt::topics::Init;
     use std::str::FromStr;
