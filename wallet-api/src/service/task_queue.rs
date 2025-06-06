@@ -18,7 +18,7 @@ impl TaskQueueService {
         let done = repo.done_task_queue().await?;
         let running = repo.running_task_queue().await?;
         let pending = repo.pending_task_queue().await?;
-        let failed = repo.failed_task_queue().await?;
+        let failed_tasks_list = repo.failed_task_queue().await?;
 
         let bill_count = repo.bill_count().await?;
 
@@ -26,9 +26,10 @@ impl TaskQueueService {
             all_tasks: all.len(),
             running_tasks: running.len(),
             pending_tasks: pending.len(),
-            failed_tasks: failed.len(),
+            failed_tasks: failed_tasks_list.len(),
             done_tasks: done.len(),
             bill_count,
+            failed_tasks_list
         };
 
         tracing::info!(?status, "Current task queue status");
