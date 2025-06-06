@@ -808,26 +808,30 @@ impl WalletService {
         WalletRepoTrait::physical_delete_all(&mut tx).await?;
         // 删除所有mqtt相关的任务
         // TaskQueueRepoTrait::delete_all(&mut tx, 2).await?;
-        let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
+        AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
         let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
-        let multisig_accounts = MultisigDomain::physical_delete_all_account(pool).await?;
+        MultisigDomain::physical_delete_all_account(pool).await?;
 
-        let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
-            &accounts,
-            multisig_accounts,
-            &device.sn,
-        )
-        .await?;
+        // let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
+        //     &accounts,
+        //     multisig_accounts,
+        //     &device.sn,
+        // )
+        // .await?;
+        let reset_task = BackendApiTaskData::new(
+            endpoint::KEYS_RESET,
+            &serde_json::json!({
+                "sn": device.sn
+            }),
+        )?;
 
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 device_delete_task,
             )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_unbind_address_task,
-            )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(reset_task)))
             .send()
             .await?;
 

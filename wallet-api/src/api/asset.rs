@@ -291,7 +291,7 @@ mod test {
         let chain_code = None;
         // let is_multisig = None;
         let is_multisig = Some(false);
-        let wallet_address = "0x535D377eE677Cfe452e98A6fc332B8CD8777a79C";
+        let wallet_address = "0x82C818D352BAf6cC7dd007B89E5CC82B4DAF2c9c";
         let res = wallet_manager
             .get_coin_list(wallet_address, Some(1), chain_code, keyword, is_multisig)
             .await;

@@ -1,13 +1,13 @@
-use wallet_database::{
-    dao::assets::CreateAssetsVo, entities::assets::AssetsId, repositories::assets::AssetsRepoTrait,
-};
-use wallet_transport_backend::request::{TokenQueryByContractAddressReq, TokenQueryPriceReq};
+// use wallet_database::{
+//     dao::assets::CreateAssetsVo, entities::assets::AssetsId, repositories::assets::AssetsRepoTrait,
+// };
+// use wallet_transport_backend::request::{TokenQueryByContractAddressReq, TokenQueryPriceReq};
 
-use crate::{
-    infrastructure::task_queue::{CommonTask, Task, Tasks},
-    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
-    service::asset::AssetsService,
-};
+// use crate::{
+//     infrastructure::task_queue::{CommonTask, Task, Tasks},
+//     messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+//     service::asset::AssetsService,
+// };
 
 // biz_type = INIT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
