@@ -33,7 +33,6 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::UPLOAD_PERMISSION_TRANS,
         endpoint::DEVICE_UPDATE_APP_ID,
         endpoint::KEYS_UPDATE_WALLET_NAME,
-        endpoint::KEYS_RESET,
         endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
         endpoint::APP_INSTALL_SAVE,
     ]
@@ -150,6 +149,14 @@ impl EndpointHandler for SpecialHandler {
                 //     )
                 //     .into());
                 // }
+
+                let status = ConfigDomain::get_keys_reset_status().await?;
+                if let Some(false) = status.status {
+                    return Err(
+                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into(),
+                    );
+                }
+
                 let res = backend
                     .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
                     .await;
@@ -208,6 +215,13 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
             }
             endpoint::ADDRESS_BATCH_INIT => {
+                let status = ConfigDomain::get_keys_reset_status().await?;
+                if let Some(false) = status.status {
+                    return Err(
+                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into(),
+                    );
+                }
+
                 let req: wallet_transport_backend::request::AddressBatchInitReq =
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
 
@@ -328,6 +342,19 @@ impl EndpointHandler for SpecialHandler {
                     .post_req_str::<String>(endpoint, &body, aes_cbc_cryptor)
                     .await?;
                 ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
+            }
+            endpoint::KEYS_RESET => {
+                match backend
+                    .post_req_str::<Option<()>>(endpoint, &body, aes_cbc_cryptor)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(err) => {
+                        ConfigDomain::set_keys_reset_status(Some(false)).await?;
+                        return Err(err.into());
+                    }
+                };
+                ConfigDomain::set_keys_reset_status(Some(true)).await?;
             }
             // endpoint::DEVICE_BIND_ADDRESS => {
             //     let Some(device) = repo.get_device_info().await? else {
