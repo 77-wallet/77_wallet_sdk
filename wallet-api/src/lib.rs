@@ -31,7 +31,7 @@ pub use error::{
 };
 
 pub use config::*;
-pub use manager::{Context, WalletManager};
+pub use manager::{Context, Dirs, WalletManager};
 pub use request::assets::GetChain;
 pub use request::{
     account::CreateAccountReq, app::UploadLogFileReq, devices::InitDeviceReq,

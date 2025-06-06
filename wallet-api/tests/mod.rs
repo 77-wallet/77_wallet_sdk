@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use tokio_stream::StreamExt;
-use wallet_api::{FrontendNotifyEvent, WalletManager};
+use wallet_api::{Dirs, FrontendNotifyEvent, WalletManager};
 use wallet_utils::init_test_log;
 
 mod account;
@@ -38,9 +38,10 @@ pub async fn get_manager() -> WalletManager {
             tracing::info!("data: {_data:?}");
         }
     });
+    let dirs = Dirs::new(&path).unwrap();
 
     let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
-    WalletManager::new("guangxiang", "ANDROID", &path, Some(tx), config)
+    WalletManager::new("guangxiang", "ANDROID", Some(tx), config, dirs)
         .await
         .unwrap()
 }
