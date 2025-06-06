@@ -98,10 +98,8 @@ impl UnconfirmedMsgProcessor {
         }
     }
 
-    async fn handle_once(
-        pool: wallet_database::DbPool,
-        client_id: &str,
-    ) -> Result<(), crate::ServiceError> {
+    async fn handle_once(client_id: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         match TaskQueueEntity::has_unfinished_task_by_type(&*pool, 2).await {
             Ok(true) => {
                 tracing::debug!("存在未完成的mqtt任务，跳过处理未确认消息");
@@ -132,13 +130,22 @@ impl UnconfirmedMsgProcessor {
     }
 
     pub async fn start(&self) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
-        tracing::info!("handle_once start");
-        Self::handle_once(pool.clone(), &self.client_id).await?;
-        tracing::info!("handle_once end");
         let client_id = self.client_id.to_string();
         let notify = self.notify.clone();
         tokio::spawn(async move {
+            tracing::info!("handle_once start");
+            if let Err(e) = Self::handle_once(&client_id).await {
+                if let Err(send_err) = FrontendNotifyEvent::send_error(
+                    "InitializationTask::ProcessUnconfirmMsg",
+                    e.to_string(),
+                )
+                .await
+                {
+                    tracing::error!("send_error error: {}", send_err);
+                }
+            };
+            tracing::info!("handle_once end");
+
             tracing::info!("process_unconfirm_msg start");
             loop {
                 tokio::select! {
@@ -149,7 +156,7 @@ impl UnconfirmedMsgProcessor {
                         tracing::debug!("30秒超时，开始自动处理");
                     }
                 }
-                if let Err(e) = Self::handle_once(pool.clone(), &client_id).await {
+                if let Err(e) = Self::handle_once(&client_id).await {
                     tracing::error!("处理未确认消息失败: {}", e);
                     // 尝试发送错误通知给前端
                     if let Err(send_err) = FrontendNotifyEvent::send_error(
