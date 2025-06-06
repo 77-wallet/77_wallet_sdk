@@ -342,7 +342,27 @@ impl<
         let req = AppInstallSaveReq::new(sn, device_type, channel);
         let backend = crate::manager::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        backend.app_install_save(cryptor, req).await?;
+        // backend.app_install_save(cryptor, req).await?;
+
+        let app_install_save_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::APP_INSTALL_SAVE,
+            &req,
+        )?;
+        let keys_reset_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::KEYS_RESET,
+            &serde_json::json!({
+                "sn": sn
+            }),
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                app_install_save_data,
+            )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                keys_reset_data,
+            )))
+            .send()
+            .await?;
         backend.keys_reset(cryptor, sn).await?;
         Ok(())
     }

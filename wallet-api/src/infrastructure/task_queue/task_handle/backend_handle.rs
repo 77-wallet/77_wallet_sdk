@@ -35,6 +35,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::KEYS_UPDATE_WALLET_NAME,
         endpoint::KEYS_RESET,
         endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
+        endpoint::APP_INSTALL_SAVE,
     ]
     .iter()
     .cloned()
