@@ -133,7 +133,9 @@ impl UnconfirmedMsgProcessor {
 
     pub async fn start(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
+        tracing::info!("handle_once start");
         Self::handle_once(pool.clone(), &self.client_id).await?;
+        tracing::info!("handle_once end");
         let client_id = self.client_id.to_string();
         let notify = self.notify.clone();
         tokio::spawn(async move {
