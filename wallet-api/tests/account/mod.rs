@@ -1,5 +1,5 @@
 use std::{env, path::PathBuf};
-use wallet_api::{InitDeviceReq, WalletManager};
+use wallet_api::{Dirs, InitDeviceReq, WalletManager};
 use wallet_chain_instance::instance::ChainObject;
 use wallet_utils::init_test_log;
 
@@ -10,8 +10,9 @@ async fn get_manager() -> WalletManager {
         .to_string_lossy()
         .to_string();
     let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+    let dirs = Dirs::new(&path).unwrap();
 
-    WalletManager::new("guangxiang", "ANDROID", &path, None, config)
+    WalletManager::new("guangxiang", "ANDROID", None, config, dirs)
         .await
         .unwrap()
 }

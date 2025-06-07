@@ -9,6 +9,25 @@
 //     service::asset::AssetsService,
 // };
 
+/*
+{
+    "clientId": "wenjing",
+    "sn": "wenjing",
+    "deviceType": "ANDROID",
+    "bizType": "INIT",
+    "body": [
+        {
+            "address": "TGyw6wH5UT5GVY5v6MTWedabScAwF4gffQ",
+            "balance": 4000002,
+            "chainCode": "tron",
+            "code": "sadsadsad",
+              "tokenAddress": "",
+              "decimals": 6
+        }
+    ]
+}
+*/
+
 // biz_type = INIT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

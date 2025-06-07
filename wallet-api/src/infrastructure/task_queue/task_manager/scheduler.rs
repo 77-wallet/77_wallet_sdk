@@ -40,12 +40,13 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
             ) => {
                 match backend_api_task_data.endpoint.as_str() {
                     DEVICE_INIT
-                    | MQTT_INIT => 0,
+                    | MQTT_INIT
+                    | KEYS_RESET
+                    | APP_INSTALL_SAVE => 0,
                     // 确认消息，高优先级
                     SEND_MSG_CONFIRM  => 1,
                     // 关键初始化流程，高优先级
                     KEYS_V2_INIT
-                    | KEYS_RESET
                     | DEVICE_UPDATE_APP_ID
                     | KEYS_UPDATE_WALLET_NAME
                     // | ADDRESS_INIT
@@ -54,6 +55,7 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
                     | DEVICE_EDIT_DEVICE_INVITEE_STATUS
                     | LANGUAGE_INIT
                     | APP_INSTALL_DOWNLOAD
+
                     | CHAIN_LIST
                     | CHAIN_RPC_LIST => 2,
                     // 重要功能任务，中优先级

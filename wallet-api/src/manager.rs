@@ -389,11 +389,11 @@ impl WalletManager {
     pub async fn new(
         sn: &str,
         device_type: &str,
-        root_dir: &str,
         sender: Option<UnboundedSender<FrontendNotifyEvent>>,
         config: crate::Config,
+        dir: Dirs,
     ) -> Result<WalletManager, crate::ServiceError> {
-        let dir = Dirs::new(root_dir)?;
+        // let dir = Dirs::new(root_dir)?;
         // let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
         let context = init_context(sn, device_type, dir, sender, config).await?;
         crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
@@ -442,12 +442,14 @@ impl WalletManager {
             .await?;
         Ok(())
     }
-    pub async fn init_log(level: Option<&str>, app_code: &str) -> Result<(), crate::ServiceError> {
+    pub async fn init_log(
+        level: Option<&str>,
+        app_code: &str,
+        dirs: &Dirs,
+        sn: &str,
+    ) -> Result<(), crate::ServiceError> {
         wallet_utils::log::set_app_code(app_code);
-        let context = Context::get_context()?;
-
-        let log_dir = context.dirs.get_log_dir();
-        let sn = &context.device.sn;
+        let log_dir = dirs.get_log_dir();
 
         wallet_utils::log::set_sn_code(sn);
 
@@ -543,6 +545,8 @@ mod tests {
     use std::io::Write;
     use tempfile::tempdir;
 
+    use crate::Dirs;
+
     #[tokio::test]
     async fn test_traverse_directory_structure() -> Result<(), anyhow::Error> {
         // 创建临时目录结构
@@ -588,9 +592,10 @@ mod tests {
         File::create(&wallet_a_sub_key_2)?.write_all(b"walletA sub key 2")?;
 
         let dir = &root_dir.to_string_lossy().to_string();
+        let dirs = Dirs::new(dir)?;
 
         let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
-        let _manager = crate::WalletManager::new("sn", "ANDROID", dir, None, config)
+        let _manager = crate::WalletManager::new("sn", "ANDROID", None, config, dirs)
             .await
             .unwrap();
         let dirs = crate::manager::Context::get_global_dirs()?;

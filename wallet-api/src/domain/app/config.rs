@@ -6,9 +6,11 @@ use wallet_database::{
     entities::config::{
         config_key::{
             APP_DOWNLOAD_QR_CODE_URL, APP_VERSION, BLOCK_BROWSER_URL_LIST, CURRENCY, INVITE_CODE,
-            KEYSTORE_KDF_ALGORITHM, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
+            KEYSTORE_KDF_ALGORITHM, KEYS_RESET_STATUS, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE,
+            WALLET_TREE_STRATEGY,
         },
-        AppVersion, Currency, InviteCode, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
+        AppVersion, Currency, InviteCode, KeysResetStatus, MinValueSwitchConfig, MqttUrl,
+        OfficialWebsite,
     },
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
@@ -244,6 +246,26 @@ impl ConfigDomain {
         // } else {
         //     Err(crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into())
         // }
+    }
+
+    pub async fn set_keys_reset_status(status: Option<bool>) -> Result<(), crate::ServiceError> {
+        let config = KeysResetStatus { status };
+        ConfigDomain::set_config(KEYS_RESET_STATUS, &config.to_json_str()?).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn get_keys_reset_status(
+    ) -> Result<Option<KeysResetStatus>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let keys_reset_status = ConfigDao::find_by_key(KEYS_RESET_STATUS, pool.as_ref()).await?;
+
+        if let Some(keys_reset_status) = keys_reset_status {
+            Ok(Some(KeysResetStatus::try_from(keys_reset_status.value)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub(crate) async fn get_app_version() -> Result<AppVersion, crate::ServiceError> {

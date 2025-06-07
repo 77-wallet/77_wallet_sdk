@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;
 
-use crate::WalletManager;
+use crate::{Dirs, WalletManager};
 
 pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)> {
     // 获取项目根目录
@@ -27,13 +27,14 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
 
     info!("[setup_test_environment] storage_dir: {:?}", storage_dir);
 
+    let dirs = Dirs::new(&storage_dir.to_string_lossy())?;
     let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
     let wallet_manager = WalletManager::new(
         &test_params.device_req.sn,
         &test_params.device_req.device_type,
-        &storage_dir.to_string_lossy(),
         None,
         config,
+        dirs,
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();
