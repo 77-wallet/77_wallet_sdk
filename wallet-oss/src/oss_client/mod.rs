@@ -79,16 +79,14 @@ impl OssClient {
 
     pub async fn upload_buffer(
         &self,
-        file_path: &str,
+        buff: Vec<u8>,
         file_name: &str,
     ) -> Result<(), crate::TransportError> {
         let oss = &self.oss;
         let builder = self.builder.clone();
         let oss_path = format!("logs/{}", file_name);
-        let buffer = std::fs::read(file_path).unwrap();
 
-        oss.pub_object_from_buffer(oss_path, &buffer, builder)
-            .await?;
+        oss.pub_object_from_buffer(oss_path, buff, builder).await?;
         Ok(())
     }
 }
@@ -111,16 +109,6 @@ mod tests {
         // let file_name = "test.txt";
         let file_name = "sdk:2025-03-27 09:35:47.txt";
         let result = oss_client.upload_local_file(file_path, file_name).await;
-        println!("result: {result:?}");
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_buffer() {
-        let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT, BUCKET_NAME);
-        let file_path = "./test.txt";
-        let file_name = "test.txt";
-        let result = oss_client.upload_buffer(file_path, file_name).await;
         println!("result: {result:?}");
         assert!(result.is_ok());
     }

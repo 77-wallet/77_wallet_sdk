@@ -20,4 +20,6 @@ pub enum SystemError {
     DeviceNotInit,
     #[error("backend endpoint not found")]
     BackendEndpointNotFound,
+    #[error("io error: {0}")]
+    IoError(#[from] std::io::Error),
 }

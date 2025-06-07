@@ -174,7 +174,7 @@ impl Oss {
     pub async fn pub_object_from_buffer<S: AsRef<str>>(
         &self,
         key: S,
-        buffer: &[u8],
+        buffer: Vec<u8>,
         build: RequestBuilder,
     ) -> Result<(), OssError> {
         let mut build = build.clone();

@@ -8,6 +8,7 @@ pub(crate) mod default_data;
 pub mod domain;
 mod error;
 pub(crate) mod infrastructure;
+pub use infrastructure::log::*;
 mod manager;
 mod messaging;
 pub use messaging::notify::event::NotifyEvent;
