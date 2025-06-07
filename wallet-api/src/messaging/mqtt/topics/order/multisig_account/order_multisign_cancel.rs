@@ -37,9 +37,7 @@ impl OrderMultiSignCancel {
 
         let account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool).await?;
         if account.is_none() {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotFound,
-            ))?;
+            return Ok(());
         }
 
         // check
