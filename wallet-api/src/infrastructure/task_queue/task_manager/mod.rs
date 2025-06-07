@@ -1,17 +1,22 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
+use crate::domain::app::config::ConfigDomain;
+
 use super::{
     handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task,
-    Task, TaskType,
+    BackendApiTaskData, Task, TaskType,
 };
+use core::task;
 use dashmap::DashSet;
 use dispatcher::{Dispatcher, PriorityTask, TaskSender};
 use rand::Rng as _;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use wallet_database::entities::task_queue::TaskQueueEntity;
+use wallet_database::repositories::device::DeviceRepoTrait;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 use wallet_transport_backend::consts::endpoint::SEND_MSG_CONFIRM;
+use wallet_transport_backend::request::ClientTaskLogUploadReq;
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
@@ -140,7 +145,7 @@ impl TaskManager {
                 Ok(()) => break, // 成功
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
-                    let is_network = match e {
+                    let is_network = match &e {
                         crate::ServiceError::Transport(transport_error) => {
                             transport_error.is_network_error()
                         }
@@ -178,6 +183,13 @@ impl TaskManager {
                             let _ = repo.task_hang_up(&task_id).await;
                             tracing::warn!("[process_single_task] task {} hang up", task_id);
                         }
+
+                        if let Err(e) = Self::upload_task_error_info(&task, &e.to_string()).await {
+                            tracing::error!(
+                                "[process_single_task] upload_task_error_info error: {}",
+                                e
+                            );
+                        };
                         break;
                     }
                 }
@@ -202,6 +214,39 @@ impl TaskManager {
         //     notify.notify_one();
         //     tracing::info!("notify_one");
         // }
+    }
+
+    async fn upload_task_error_info(
+        task_entity: &TaskQueueEntity,
+        error_info: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+        let Some(device) = repo.get_device_info().await? else {
+            tracing::error!("device not found");
+            return Ok(());
+        };
+
+        let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
+        let app_version = ConfigDomain::get_app_version().await?;
+
+        let req = ClientTaskLogUploadReq::new(
+            &device.sn,
+            &client_id,
+            &app_version.app_version,
+            &task_entity.id,
+            &wallet_utils::serde_func::serde_to_string(&task_entity.task_name)?,
+            &task_entity.r#type.to_string(),
+            &task_entity.request_body,
+            error_info,
+        );
+
+        let backend_api = crate::Context::get_global_backend_api()?;
+        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        backend_api.client_task_log_upload(cryptor, req).await?;
+
+        Ok(())
     }
 
     async fn increase_retry_times(

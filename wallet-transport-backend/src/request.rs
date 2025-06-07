@@ -741,3 +741,40 @@ impl ChainListReq {
         Self { app_version_code }
     }
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientTaskLogUploadReq {
+    pub sn: String,
+    pub client_id: String,
+    pub app_version: String,
+    pub task_id: String,
+    pub task_name: String,
+    pub task_type: String,
+    pub content: String,
+    pub remark: String,
+}
+
+impl ClientTaskLogUploadReq {
+    pub fn new(
+        sn: &str,
+        client_id: &str,
+        app_version: &str,
+        task_id: &str,
+        task_name: &str,
+        task_type: &str,
+        content: &str,
+        remark: &str,
+    ) -> Self {
+        Self {
+            sn: sn.to_string(),
+            client_id: client_id.to_string(),
+            app_version: app_version.to_string(),
+            task_id: task_id.to_string(),
+            task_name: task_name.to_string(),
+            task_type: task_type.to_string(),
+            content: content.to_string(),
+            remark: remark.to_string(),
+        }
+    }
+}
