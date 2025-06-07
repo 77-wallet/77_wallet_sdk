@@ -255,15 +255,17 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub(crate) async fn get_keys_reset_status() -> Result<KeysResetStatus, crate::ServiceError> {
+    pub(crate) async fn get_keys_reset_status(
+    ) -> Result<Option<KeysResetStatus>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let keys_reset_status = ConfigDao::find_by_key(KEYS_RESET_STATUS, pool.as_ref())
-            .await?
-            .ok_or(crate::ServiceError::Business(crate::BusinessError::Config(
-                crate::ConfigError::NotFound(KEYS_RESET_STATUS.to_owned()),
-            )))?;
-        Ok(KeysResetStatus::try_from(keys_reset_status.value)?)
+        let keys_reset_status = ConfigDao::find_by_key(KEYS_RESET_STATUS, pool.as_ref()).await?;
+
+        if let Some(keys_reset_status) = keys_reset_status {
+            Ok(Some(KeysResetStatus::try_from(keys_reset_status.value)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub(crate) async fn get_app_version() -> Result<AppVersion, crate::ServiceError> {

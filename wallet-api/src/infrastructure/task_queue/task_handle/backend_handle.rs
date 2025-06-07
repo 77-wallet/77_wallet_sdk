@@ -151,7 +151,9 @@ impl EndpointHandler for SpecialHandler {
                 // }
 
                 let status = ConfigDomain::get_keys_reset_status().await?;
-                if let Some(false) = status.status {
+                if let Some(status) = status
+                    && let Some(false) = status.status
+                {
                     return Err(
                         crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into(),
                     );
@@ -216,7 +218,9 @@ impl EndpointHandler for SpecialHandler {
             }
             endpoint::ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
-                if let Some(false) = status.status {
+                if let Some(status) = status
+                    && let Some(false) = status.status
+                {
                     return Err(
                         crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into(),
                     );

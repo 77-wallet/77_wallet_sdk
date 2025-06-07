@@ -29,7 +29,7 @@ impl TaskQueueService {
             failed_tasks: failed_tasks_list.len(),
             done_tasks: done.len(),
             bill_count,
-            failed_tasks_list
+            failed_tasks_list,
         };
 
         tracing::info!(?status, "Current task queue status");
