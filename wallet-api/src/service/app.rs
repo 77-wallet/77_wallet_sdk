@@ -340,8 +340,8 @@ impl<
         channel: &str,
     ) -> Result<(), crate::ServiceError> {
         let req = AppInstallSaveReq::new(sn, device_type, channel);
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        // let backend = crate::manager::Context::get_global_backend_api()?;
+        // let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         // backend.app_install_save(cryptor, req).await?;
 
         let app_install_save_data = BackendApiTaskData::new(
@@ -363,7 +363,7 @@ impl<
             )))
             .send()
             .await?;
-        backend.keys_reset(cryptor, sn).await?;
+        // backend.keys_reset(cryptor, sn).await?;
         Ok(())
     }
 
