@@ -160,7 +160,12 @@ impl AcctChange {
         Self::sync_assets(&self).await?;
 
         // 创建系统通知
-        if tx_kind.needs_system_notify() && self.value != 0.0 {
+        if tx_kind.needs_system_notify()
+            && self.value != 0.0
+            && !self.chain_code.is_empty()
+            && !self.to_addr.is_empty()
+            && !self.from_addr.is_empty()
+        {
             Self::system_notification(msg_id, &self, &pool).await?;
         }
 
