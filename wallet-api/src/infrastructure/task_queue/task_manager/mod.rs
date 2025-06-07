@@ -136,14 +136,49 @@ impl TaskManager {
             //     break;
             // }
 
-            match Self::handle_task(&task, retry_count).await {
+            match Self::handle_task(&task).await {
                 Ok(()) => break, // 成功
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
+                    let is_network = match e {
+                        crate::ServiceError::Transport(transport_error) => {
+                            transport_error.is_network_error()
+                        }
+                        _ => false,
+                    };
+                    if is_network {
+                        // 如果是网络错误，则重试
+                        tracing::warn!(
+                            "[process_single_task] task {} retry {} due to network error",
+                            task_id,
+                            retry_count
+                        );
+                    } else {
+                        // 否则，记录错误并增加重试次数
+                        if let Err(e) = Self::increase_retry_times(&task.id, retry_count).await {
+                            tracing::error!("[process_single_task] error: {}", e);
+                        }
+                    }
+
                     if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
                         let mut repo =
                             wallet_database::factory::RepositoryFactory::repo(pool.clone());
                         let _ = repo.task_failed(&task_id).await;
+                    }
+
+                    if retry_count >= 10 {
+                        tracing::warn!(
+                            "[process_single_task] task {} exceeded max retries ({}), breaking",
+                            task_id,
+                            retry_count
+                        );
+                        if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                            let mut repo =
+                                wallet_database::factory::RepositoryFactory::repo(pool.clone());
+                            let _ = repo.task_hang_up(&task_id).await;
+                            tracing::warn!("[process_single_task] task {} hang up", task_id);
+                        }
+                        break;
                     }
                 }
             }
@@ -169,10 +204,21 @@ impl TaskManager {
         // }
     }
 
-    async fn handle_task(
-        task_entity: &TaskQueueEntity,
+    async fn increase_retry_times(
+        task_id: &str,
         retry_count: i32,
     ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+        if retry_count > 0 {
+            repo.increase_retry_times(task_id).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn handle_task(task_entity: &TaskQueueEntity) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -182,9 +228,7 @@ impl TaskManager {
         let backend_api = crate::manager::Context::get_global_backend_api()?;
         let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
         // update task running status
-        if retry_count > 0 {
-            repo.increase_retry_times(&id).await?;
-        }
+
         repo.task_running(&id).await?;
 
         match task {

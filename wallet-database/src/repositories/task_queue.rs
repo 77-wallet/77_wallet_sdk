@@ -60,6 +60,11 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, TaskQueueEntity::update_status, id, 2)
     }
 
+    async fn task_hang_up(&mut self, id: &str) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::update_status, id, 4)
+    }
+
     async fn get_tasks_with_request_body(
         &mut self,
         request_body: &str,

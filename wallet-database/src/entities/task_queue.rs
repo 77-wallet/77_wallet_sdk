@@ -8,7 +8,7 @@ pub struct TaskQueueEntity {
     pub task_name: TaskName,
     pub request_body: String,
     pub r#type: u8,
-    /// 0: pending, 1: running, 2: success, 3: failed
+    /// 0: pending, 1: running, 2: success, 3: failed, 4: hang up
     pub status: u8,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
