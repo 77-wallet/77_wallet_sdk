@@ -69,9 +69,6 @@ pub async fn start_upload_scheduler(
 
                     // 重置为0
                     tracker.set_offset(0);
-
-                    // 重置为0
-                    tracker.set_offset(0);
                 }
 
                 // 上报
@@ -128,6 +125,7 @@ async fn upload(
         tracing::error!("upload log file error:{}", e);
     };
 
+    // tracing::info!("upload log file success");
     offset += bytes_reader as u64;
 
     Ok(offset)

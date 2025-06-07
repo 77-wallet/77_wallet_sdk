@@ -5,8 +5,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use chrono::Local;
-
 pub struct SizeRotatingWriter {
     inner: Arc<Mutex<InnerWriter>>,
 }
@@ -35,12 +33,17 @@ impl SizeRotatingWriter {
     }
 
     pub fn create_file(base_path: PathBuf) -> io::Result<File> {
+        let file_existed = base_path.exists();
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&base_path)?;
-        let timestamp = Local::now().timestamp();
-        writeln!(file, "{}", timestamp)?;
+
+        // 如果是新文件或者空文件，写入时间戳
+        if !file_existed {
+            let timestamp = chrono::Local::now().timestamp();
+            writeln!(file, "{}", timestamp)?;
+        }
         Ok(file)
     }
 }

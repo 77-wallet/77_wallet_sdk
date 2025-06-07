@@ -1,4 +1,3 @@
-use crate::domain;
 use crate::infrastructure::inner_event::InnerEventHandle;
 use crate::infrastructure::process_unconfirm_msg::{
     UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
@@ -11,6 +10,7 @@ use crate::infrastructure::SharedCache;
 use crate::messaging::mqtt::subscribed::Topics;
 use crate::messaging::notify::FrontendNotifyEvent;
 use crate::service::node::NodeService;
+use crate::{domain, infrastructure};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -395,8 +395,14 @@ impl WalletManager {
     ) -> Result<WalletManager, crate::ServiceError> {
         // let dir = Dirs::new(root_dir)?;
         // let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
+        let base_path = infrastructure::log::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
-        crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+        // 以前的上报日志
+        // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+
+        // 现在的上报日志
+        infrastructure::log::start_upload_scheduler(base_path, 5 * 60, context.oss_client.clone())
+            .await?;
 
         Context::get_global_unconfirmed_msg_processor()?
             .start()
@@ -448,15 +454,28 @@ impl WalletManager {
         dirs: &Dirs,
         sn: &str,
     ) -> Result<(), crate::ServiceError> {
-        wallet_utils::log::set_app_code(app_code);
-        let log_dir = dirs.get_log_dir();
+        // 修改后的版本
+        let format =
+            infrastructure::log::CustomEventFormat::new(app_code.to_string(), sn.to_string());
 
-        wallet_utils::log::set_sn_code(sn);
+        let level = level.unwrap_or("info");
 
-        Ok(wallet_utils::log::file::init_log(
-            log_dir.to_string_lossy().as_ref(),
-            level,
-        )?)
+        let path = infrastructure::log::LogBasePath(dirs.get_log_dir());
+        infrastructure::log::init_logger(format, path, level)?;
+
+        Ok(())
+
+        // 以前的版本,
+
+        // wallet_utils::log::set_app_code(app_code);
+        // let log_dir = dirs.get_log_dir();
+
+        // wallet_utils::log::set_sn_code(sn);
+
+        // Ok(wallet_utils::log::file::init_log(
+        //     log_dir.to_string_lossy().as_ref(),
+        //     level,
+        // )?)
     }
 
     pub async fn set_frontend_notify_sender(
