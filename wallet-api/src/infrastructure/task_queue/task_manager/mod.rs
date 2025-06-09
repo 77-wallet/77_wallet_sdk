@@ -189,6 +189,7 @@ impl TaskManager {
                                 e
                             );
                         };
+
                         break;
                     }
                 }
@@ -244,6 +245,14 @@ impl TaskManager {
         let backend_api = crate::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         backend_api.client_task_log_upload(cryptor, req).await?;
+
+        let task: Task = task_entity.try_into()?;
+        if task.get_type() == TaskType::Mqtt {
+            let unconfirmed_msg_collector =
+                crate::manager::Context::get_global_unconfirmed_msg_collector()?;
+            tracing::info!("mqtt submit unconfirmed msg collector: {}", task_entity.id);
+            unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
+        }
 
         Ok(())
     }
