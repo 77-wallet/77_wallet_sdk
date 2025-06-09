@@ -147,6 +147,7 @@ pub struct TokenPriceChangeBody {
     // 代币名称
     pub name: Option<String>,
     // 单价(usdt)
+    #[serde(default)]
     pub price: f64,
     // 波动
     pub price_percentage: Option<f64>,

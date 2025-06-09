@@ -251,6 +251,20 @@ pub struct TokenQueryByPageReq {
 }
 
 impl TokenQueryByPageReq {
+    pub fn new_token(page_num: i32, page_size: i32) -> Self {
+        Self {
+            order_column: Some("create_time".to_string()),
+            order_type: Some("DESC".to_string()),
+            chain_code: None,
+            code: None,
+            default_token: None,
+            popular_token: None,
+            exclude_name_list: None,
+            page_num: Some(page_num),
+            page_size: Some(page_size),
+        }
+    }
+
     pub fn new_default_token(
         exclude_name_list: Vec<String>,
         page_num: i32,
