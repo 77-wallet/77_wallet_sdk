@@ -50,6 +50,11 @@ impl OrderMultiSignCancel {
             });
             FrontendNotifyEvent::new(data).send().await?;
         } else {
+            tracing::warn!(
+                event_name = %event_name,
+                "Cancel Multisig account, account {} not found",
+                multisig_account_id
+            );
             return Ok(());
         }
 
