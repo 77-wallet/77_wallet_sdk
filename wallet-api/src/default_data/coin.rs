@@ -45,6 +45,7 @@ impl From<DefaultCoin> for wallet_transport_backend::CoinInfo {
             decimals: Some(value.decimals),
             default_token: value.default,
             popular_token: value.popular,
+            enable: value.active,
         }
     }
 }

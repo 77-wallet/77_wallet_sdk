@@ -18,6 +18,7 @@ pub struct CoinInfo {
         default,
         deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
     )]
+    pub enable: bool,
     pub default_token: bool,
     pub popular_token: bool,
 }

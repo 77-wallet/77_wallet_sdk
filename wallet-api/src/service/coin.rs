@@ -421,6 +421,7 @@ impl CoinService {
             decimals,
             1,
             0,
+            1,
         )
         .with_custom(1);
         let coin = vec![cus_coin];
