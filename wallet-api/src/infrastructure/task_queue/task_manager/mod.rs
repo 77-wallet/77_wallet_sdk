@@ -4,9 +4,8 @@ use crate::domain::app::config::ConfigDomain;
 
 use super::{
     handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task,
-    BackendApiTaskData, Task, TaskType,
+    Task, TaskType,
 };
-use core::task;
 use dashmap::DashSet;
 use dispatcher::{Dispatcher, PriorityTask, TaskSender};
 use rand::Rng as _;
