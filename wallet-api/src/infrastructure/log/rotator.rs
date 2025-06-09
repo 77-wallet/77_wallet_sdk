@@ -11,22 +11,17 @@ pub struct SizeRotatingWriter {
 
 struct InnerWriter {
     base_path: PathBuf,
-    max_size: u64,
-    max_files: usize,
     current_file: File,
 }
 impl SizeRotatingWriter {
-    pub fn new(
-        base_path: PathBuf,
-        max_size: u64,
-        max_files: usize,
-    ) -> Result<Self, crate::SystemError> {
+    pub const MAX_FILES: usize = 3;
+    pub const MAX_SIZE: u64 = 1024 * 1024 * 7;
+
+    pub fn new(base_path: PathBuf) -> Result<Self, crate::SystemError> {
         let file = Self::create_file(base_path.clone())?;
         Ok(Self {
             inner: Arc::new(Mutex::new(InnerWriter {
                 base_path,
-                max_size,
-                max_files,
                 current_file: file,
             })),
         })
@@ -50,11 +45,14 @@ impl SizeRotatingWriter {
 
 impl Write for SizeRotatingWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Mutex poisoned: {}", e)))?;
 
         let metadata = inner.current_file.metadata()?;
-        if metadata.len() >= inner.max_size {
-            rotate_files(&inner.base_path, inner.max_files)?;
+        if metadata.len() >= Self::MAX_SIZE {
+            rotate_files(&inner.base_path, Self::MAX_FILES)?;
             inner.current_file = Self::create_file(inner.base_path.clone())?;
         }
 
@@ -62,7 +60,10 @@ impl Write for SizeRotatingWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Mutex poisoned: {}", e)))?;
         inner.current_file.flush()
     }
 }

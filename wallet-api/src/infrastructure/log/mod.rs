@@ -24,10 +24,7 @@ pub fn init_logger(
     path: LogBasePath,
     log_level: &str,
 ) -> Result<(), crate::ServiceError> {
-    let max_size = 1024 * 1024 * 5;
-    let max_files = 3;
-
-    let writer = SizeRotatingWriter::new(path.log_path(), max_size, max_files)?;
+    let writer = SizeRotatingWriter::new(path.log_path())?;
     let (non_blocking, guard) = tracing_appender::non_blocking(writer);
 
     let env_filter = EnvFilter::new(log_level);
@@ -63,20 +60,26 @@ pub async fn start_upload_scheduler(
 
                 if time != tracker.get_uid() {
                     // 将未上报的进行上报
-                    let _ = upload(&base_path.back_file_path(), &mut tracker, &oss_client)
-                        .await
-                        .unwrap();
+                    if let Err(e) =
+                        upload(&base_path.back_file_path(), &mut tracker, &oss_client).await
+                    {
+                        tracing::error!("upload log to oss error1: {}", e);
+                    }
 
                     // 重置为0
                     tracker.set_offset(0);
                 }
 
                 // 上报
-                let new_offset = upload(&base_path.log_path(), &mut tracker, &oss_client)
-                    .await
-                    .unwrap();
-                tracker.set_offset(new_offset);
-                tracker.save().await;
+                match upload(&base_path.log_path(), &mut tracker, &oss_client).await {
+                    Ok(new_offset) => {
+                        tracker.set_offset(new_offset);
+                        tracker.save().await;
+                    }
+                    Err(e) => {
+                        tracing::error!("upload log to oss error: {}", e);
+                    }
+                }
             }
         }
     });
@@ -111,6 +114,7 @@ async fn upload(
     let mut buf = Vec::new();
     let bytes_reader = reader.read_to_end(&mut buf).await?;
 
+    // 数据太少了,下次上报
     if buf.len() < 1024 {
         return Ok(offset);
     }
@@ -118,7 +122,7 @@ async fn upload(
     // println!("content");
     // println!("{}", String::from_utf8_lossy(&buf));
 
-    // // 上传文件
+    // 上传文件
     let timestamp = chrono::Utc::now();
     let dst_file_name = format!("sdk:{}.txt", timestamp.format("%Y-%m-%d %H:%M:%S"));
     if let Err(e) = oss_client.upload_buffer(buf, &dst_file_name).await {
