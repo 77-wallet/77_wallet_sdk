@@ -36,9 +36,6 @@ impl OrderMultiSignCancel {
         } = self;
 
         let account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool).await?;
-        if account.is_none() {
-            return Ok(());
-        }
 
         // check
         if let Some(multisig_account) = account {
@@ -52,6 +49,8 @@ impl OrderMultiSignCancel {
                 address_type: multisig_account.address_type,
             });
             FrontendNotifyEvent::new(data).send().await?;
+        } else {
+            return Ok(());
         }
 
         Ok(())
