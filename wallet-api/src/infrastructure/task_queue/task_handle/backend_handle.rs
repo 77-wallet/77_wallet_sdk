@@ -342,10 +342,11 @@ impl EndpointHandler for SpecialHandler {
                 .await?;
             }
             endpoint::MQTT_INIT => {
-                let mqtt_url = backend
-                    .post_req_str::<String>(endpoint, &body, aes_cbc_cryptor)
-                    .await?;
-                ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
+                // 1.4 version 注释掉,
+                // let mqtt_url = backend
+                //     .post_req_str::<String>(endpoint, &body, aes_cbc_cryptor)
+                //     .await?;
+                // ConfigDomain::set_mqtt_url(Some(mqtt_url)).await?;
             }
             endpoint::KEYS_RESET => {
                 match backend

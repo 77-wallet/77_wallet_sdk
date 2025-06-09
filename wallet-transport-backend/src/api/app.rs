@@ -33,13 +33,12 @@ impl BackendApi {
     pub async fn mqtt_init(
         &self,
         aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-    ) -> Result<serde_json::Value, crate::Error> {
+    ) -> Result<String, crate::Error> {
         let res = self
             .client
             .post("mqtt/init")
-            .send::<serde_json::Value>()
+            .send::<crate::response::BackendResponse>()
             .await?;
-        let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
         res.process(aes_cbc_cryptor)
     }
 

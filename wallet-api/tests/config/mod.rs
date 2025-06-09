@@ -1,4 +1,5 @@
 use crate::get_manager;
+use wallet_api::domain::app::config::ConfigDomain;
 
 #[tokio::test]
 async fn test_config_list() {
@@ -64,4 +65,13 @@ async fn test_jpush() {
     let res = wallet_manager.process_jpush_message(message).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
+}
+
+#[tokio::test]
+async fn test_mqtt_uri() {
+    let _wallet_manager = get_manager().await;
+
+    let rs = ConfigDomain::get_mqtt_uri().await.unwrap();
+
+    tracing::info!("uri : {}", serde_json::to_string(&rs).unwrap());
 }

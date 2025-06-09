@@ -1,8 +1,6 @@
+use super::{config::ConfigDomain, DeviceDomain};
 use crate::infrastructure::mqtt::{init::init_mqtt_processor, property::UserProperty};
 use wallet_database::repositories::{device::DeviceRepoTrait, ResourcesRepo};
-// use wallet_transport_backend::request::MsgConfirmSource;
-
-use super::DeviceDomain;
 
 pub(crate) struct MqttDomain;
 
@@ -16,18 +14,24 @@ impl MqttDomain {
                 ))?;
         let content = DeviceDomain::device_content(&device)?;
         let client_id = DeviceDomain::client_id_by_device(&device)?;
-        let md5_sn = DeviceDomain::md5_sn(&device.sn);
+        let password = DeviceDomain::md5_sn(&device.sn);
 
         let app_version = super::config::ConfigDomain::get_app_version().await?;
 
-        init_mqtt_processor(UserProperty::new(
-            &content,
-            &client_id,
+        let property = UserProperty::new(
+            content,
+            client_id,
             &device.sn,
-            &md5_sn,
+            password,
             &app_version.app_version,
-        ))
-        .await?;
+        );
+
+        let url = ConfigDomain::get_mqtt_uri()
+            .await?
+            .ok_or(crate::ServiceError::System(
+                crate::SystemError::MqttClientNotInit,
+            ))?;
+        init_mqtt_processor(property, url).await?;
 
         Ok(())
     }

@@ -116,7 +116,7 @@ pub(crate) async fn init_context<'a>(
 #[derive(Debug, Clone)]
 pub struct Context {
     pub(crate) dirs: Dirs,
-    pub(crate) mqtt_url: Arc<RwLock<Option<String>>>,
+    // pub(crate) mqtt_url: Arc<RwLock<Option<String>>>,
     pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
     pub(crate) sqlite_context: wallet_database::SqliteContext,
     pub(crate) oss_client: wallet_oss::oss_client::OssClient,
@@ -176,7 +176,7 @@ impl Context {
             let mut app_state = crate::app_state::APP_STATE.write().await;
             app_state.set_backend_url(Some(backend_api.base_url.clone()));
         }
-        let mqtt_url = Arc::new(RwLock::new(None));
+        // let mqtt_url = Arc::new(RwLock::new(None));
 
         let oss_client = wallet_oss::oss_client::OssClient::new(
             &config.oss.access_key_id,
@@ -199,7 +199,6 @@ impl Context {
 
         Ok(Context {
             dirs,
-            mqtt_url,
             backend_api,
             sqlite_context,
             frontend_notify,
@@ -248,24 +247,24 @@ impl Context {
         Ok(&Context::get_context()?.dirs)
     }
 
-    pub(crate) async fn get_global_mqtt_url() -> Result<Option<String>, crate::SystemError> {
-        let rs = &Context::get_context()?.mqtt_url;
+    // pub(crate) async fn get_global_mqtt_url() -> Result<Option<String>, crate::SystemError> {
+    //     let rs = &Context::get_context()?.mqtt_url;
 
-        let res = rs.read().await.clone();
-        Ok(res)
-    }
+    //     let res = rs.read().await.clone();
+    //     Ok(res)
+    // }
 
-    pub(crate) async fn set_global_mqtt_url(mqtt_url: &str) -> Result<(), crate::ServiceError> {
-        let mqtt_url = if !mqtt_url.starts_with("mqtt://") {
-            format!("mqtt://{}", mqtt_url)
-        } else {
-            mqtt_url.to_string()
-        };
-        let cx = Context::get_context()?;
-        let mut lock = cx.mqtt_url.write().await;
-        *lock = Some(mqtt_url);
-        Ok(())
-    }
+    // pub(crate) async fn set_global_mqtt_url(mqtt_url: &str) -> Result<(), crate::ServiceError> {
+    //     let mqtt_url = if !mqtt_url.starts_with("mqtt://") {
+    //         format!("mqtt://{}", mqtt_url)
+    //     } else {
+    //         mqtt_url.to_string()
+    //     };
+    //     let cx = Context::get_context()?;
+    //     let mut lock = cx.mqtt_url.write().await;
+    //     *lock = Some(mqtt_url);
+    //     Ok(())
+    // }
 
     pub(crate) fn get_global_oss_client(
     ) -> Result<&'static wallet_oss::oss_client::OssClient, crate::SystemError> {
@@ -438,16 +437,16 @@ impl WalletManager {
         Ok(())
     }
 
-    pub(crate) async fn init_mqtt() -> Result<(), crate::ServiceError> {
-        let mqtt_init_req =
-            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
+    // pub(crate) async fn init_mqtt() -> Result<(), crate::ServiceError> {
+    //     let mqtt_init_req =
+    //         BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-        Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
-            .send()
-            .await?;
-        Ok(())
-    }
+    //     Tasks::new()
+    //         .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
+    //         .send()
+    //         .await?;
+    //     Ok(())
+    // }
     pub async fn init_log(
         level: Option<&str>,
         app_code: &str,
