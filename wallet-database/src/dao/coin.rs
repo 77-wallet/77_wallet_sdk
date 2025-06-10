@@ -139,8 +139,7 @@ impl CoinEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let symbol_list = crate::any_in_collection(symbol_list, "','");
-        let mut sql =
-            "SELECT * FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1".to_string();
+        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1".to_string();
 
         let mut conditions = Vec::new();
 
@@ -182,8 +181,7 @@ impl CoinEntity {
     {
         let symbol_list = crate::any_in_collection(symbol_list, "','");
         let chain_codes = crate::any_in_collection(chain_codes, "','");
-        let mut sql =
-            "SELECT * FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1".to_string();
+        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1".to_string();
 
         let mut conditions = Vec::new();
 
