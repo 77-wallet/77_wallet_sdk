@@ -18,6 +18,7 @@ pub struct CoinInfo {
         default,
         deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
     )]
+    pub enable: bool,
     pub default_token: bool,
     pub popular_token: bool,
 }
@@ -146,6 +147,7 @@ pub struct TokenPriceChangeBody {
     // 代币名称
     pub name: Option<String>,
     // 单价(usdt)
+    #[serde(default)]
     pub price: f64,
     // 波动
     pub price_percentage: Option<f64>,

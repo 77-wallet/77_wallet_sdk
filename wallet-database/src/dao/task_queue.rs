@@ -231,7 +231,11 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>
+    pub async fn list<'a, E>(
+        exec: E,
+        status: Option<u8>,
+        typ: Option<u8>,
+    ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
@@ -240,6 +244,11 @@ impl TaskQueueEntity {
         if status.is_some() {
             conditions.push("status = ?".to_string());
         }
+
+        if typ.is_some() {
+            conditions.push("type = ?".to_string());
+        }
+
         if !conditions.is_empty() {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));

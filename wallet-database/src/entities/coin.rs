@@ -24,6 +24,7 @@ impl CoinData {
         decimals: u8,
         is_default: u8,
         is_popular: u8,
+        status: u8,
     ) -> Self {
         Self {
             name,
@@ -36,7 +37,7 @@ impl CoinData {
             is_default,
             is_popular,
             is_custom: 0,
-            status: 1,
+            status,
         }
     }
 

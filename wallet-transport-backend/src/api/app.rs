@@ -1,5 +1,7 @@
 use super::BackendApi;
-use crate::{request::LanguageInitReq, response::BackendResponse};
+use crate::{
+    consts::endpoint::CLIENT_TASK_LOG_UPLOAD, request::LanguageInitReq, response::BackendResponse,
+};
 
 impl BackendApi {
     pub async fn app_install_save(
@@ -107,6 +109,21 @@ impl BackendApi {
         let res = self
             .client
             .post("/device/editDeviceInviteeStatus")
+            .json(req)
+            .send::<serde_json::Value>()
+            .await?;
+        let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
+        res.process(aes_cbc_cryptor)
+    }
+
+    pub async fn client_task_log_upload(
+        &self,
+        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+        req: crate::request::ClientTaskLogUploadReq,
+    ) -> Result<(), crate::Error> {
+        let res = self
+            .client
+            .post(CLIENT_TASK_LOG_UPLOAD)
             .json(req)
             .send::<serde_json::Value>()
             .await?;

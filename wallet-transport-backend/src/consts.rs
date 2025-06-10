@@ -62,6 +62,8 @@ pub mod endpoint {
     pub const ADDRESS_FIND_MULTI_SIGNED_DETAILS: &str = "address/findMultiSignedDetails";
     pub const DEVICE_EDIT_DEVICE_INVITEE_STATUS: &str = "device/editDeviceInviteeStatus";
     pub const DEVICE_UPDATE_APP_ID: &str = "device/updateAppId";
+
+    pub const CLIENT_TASK_LOG_UPLOAD: &str = "client/taskLog/upload";
 }
 
 /// 代理的全局rpc节点
