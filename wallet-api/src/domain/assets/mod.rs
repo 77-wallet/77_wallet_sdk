@@ -341,7 +341,7 @@ impl AssetsDomain {
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let default_coins =
-            CoinEntity::list(&*pool, &[], Some(chain_code.clone()), None).await?;
+            CoinEntity::list(&*pool, &[], Some(chain_code.clone()), Some(1)).await?;
         let mut symbols = Vec::new();
         for coin in default_coins {
             let assets_id = AssetsId::new(&address, &chain_code, &coin.symbol);

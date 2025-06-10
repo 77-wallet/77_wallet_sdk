@@ -50,7 +50,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
 
     async fn default_coin_list(&mut self) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::list, &[], None, None)
+        crate::execute_with_executor!(executor, CoinEntity::list, &[], None, Some(1))
     }
 
     async fn get_market_chain_list(&mut self) -> Result<Vec<String>, crate::Error> {

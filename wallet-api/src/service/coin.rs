@@ -187,19 +187,44 @@ impl CoinService {
         let req =
             wallet_transport_backend::request::TokenQueryByPageReq::new_popular_token(0, page_size);
 
+        let default_list: Vec<wallet_transport_backend::CoinInfo> =
+            crate::default_data::coin::init_default_coins_list()?
+                .coins
+                .iter()
+                .map(|coin| coin.to_owned().into())
+                .collect();
+
         if let Ok(mut list) = backend_api.token_query_by_page(cryptor, &req).await {
             data.append(&mut list.list);
         }
         tracing::info!("pull hot coins data: {data:#?}");
+        // let filtered_data: Vec<_> = data
+        //     .into_iter()
+        //     .map(|mut d| {
+        //         if d.token_address().is_none() {
+        //             d.token_address = Some("".to_string());
+        //         };
+        //         d
+        //     })
+        //     .collect();
         let filtered_data: Vec<_> = data
             .into_iter()
-            .map(|mut d| {
-                if d.token_address().is_none() {
-                    d.token_address = Some("".to_string());
-                };
-                d
+            .filter(|coin| {
+                !default_list.iter().any(|default_coin| {
+                    tracing::debug!("coin: {coin:#?}");
+                    tracing::debug!(
+                        "default_coin symbol: {:?}, chain_code: {:?}, token_address: {:?}",
+                        default_coin.symbol,
+                        default_coin.chain_code,
+                        default_coin.token_address,
+                    );
+                    default_coin.chain_code == coin.chain_code
+                        && default_coin.symbol == coin.symbol
+                        && default_coin.token_address == coin.token_address
+                })
             })
             .collect();
+
         // tracing::info!("filtered_data: {filtered_data:?}");
         let data = filtered_data.into_iter().map(|d| d.into()).collect();
 
