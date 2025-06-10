@@ -22,7 +22,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         } else {
             Vec::new()
         };
-        crate::execute_with_executor!(executor, CoinEntity::list, &symbol, chain_code, Some(1))
+        crate::execute_with_executor!(executor, CoinEntity::list, &symbol, chain_code, None)
     }
 
     async fn get_coin_by_chain_code_token_address(
@@ -45,12 +45,12 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         chain_code: Option<String>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::list, symbols, chain_code, Some(1))
+        crate::execute_with_executor!(executor, CoinEntity::list, symbols, chain_code, None)
     }
 
     async fn default_coin_list(&mut self) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::list, &[], None, Some(1))
+        crate::execute_with_executor!(executor, CoinEntity::list, &[], None, None)
     }
 
     async fn get_market_chain_list(&mut self) -> Result<Vec<String>, crate::Error> {
