@@ -197,6 +197,7 @@ impl CoinService {
                 if d.token_address().is_none() {
                     d.token_address = Some("".to_string());
                 };
+                d.default_token = true;
                 d
             })
             .collect();
