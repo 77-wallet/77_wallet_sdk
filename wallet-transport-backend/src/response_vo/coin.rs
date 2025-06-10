@@ -18,6 +18,7 @@ pub struct CoinInfo {
         default,
         deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
     )]
+    pub enable: bool,
     pub default_token: bool,
     pub popular_token: bool,
 }
@@ -52,10 +53,10 @@ pub struct TokenQueryByContractAddressRes {
     pub chain_code: String,
     pub code: String,
     pub contract_address: Option<String>,
-    pub market_value: Option<rust_decimal::Decimal>,
+    pub market_value: Option<f64>,
     pub master: bool,
     pub name: Option<String>,
-    pub price: Option<rust_decimal::Decimal>,
+    pub price: Option<f64>,
     pub unit: u8,
 }
 
@@ -146,6 +147,7 @@ pub struct TokenPriceChangeBody {
     // 代币名称
     pub name: Option<String>,
     // 单价(usdt)
+    #[serde(default)]
     pub price: f64,
     // 波动
     pub price_percentage: Option<f64>,

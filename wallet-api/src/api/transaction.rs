@@ -7,6 +7,7 @@ use crate::response_vo::{
     transaction::{BillDetailVo, TransactionResult},
 };
 use crate::service::bill::BillService;
+use crate::service::transaction::TransactionService;
 use wallet_database::entities::bill::{BillEntity, BillKind, RecentBillListVo};
 use wallet_database::pagination::Pagination;
 
@@ -18,7 +19,7 @@ impl crate::WalletManager {
         chain_code: &str,
         symbol: &str,
     ) -> ReturnType<Balance> {
-        crate::service::transaction::TransactionService::chain_balance(address, chain_code, symbol)
+        TransactionService::chain_balance(address, chain_code, symbol)
             .await
             .into()
     }

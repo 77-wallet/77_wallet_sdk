@@ -107,7 +107,7 @@ async fn test_token_query_price() -> Result<(), Error> {
 }
 
 #[tokio::test]
-async fn test_token_list() -> Result<(), Error> {
+async fn test_default_token_list() -> Result<(), Error> {
     let (aes_cbc_cryptor, backend_api) = init()?; // 初始化加密器和API
 
     let req = TokenQueryByPageReq::new_default_token(Vec::new(), 0, 100);
@@ -134,6 +134,23 @@ async fn test_popular_token_list() -> Result<(), Error> {
         .await
         .unwrap();
 
+    let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+    println!("[test_popular_token_list] res: {res_str}");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_token_list() -> Result<(), Error> {
+    let (aes_cbc_cryptor, backend_api) = init()?; // 初始化加密器和API
+
+    let req = TokenQueryByPageReq::new_token(0, 1000);
+
+    let res = backend_api
+        .token_query_by_page(&aes_cbc_cryptor, &req)
+        .await
+        .unwrap();
+    println!("[test_token_list] res: {res:?}");
     let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     println!("[test_popular_token_list] res: {res_str}");
 

@@ -12,4 +12,5 @@ pub mod announcement;
 pub mod permission;
 pub mod stake;
 pub mod system_notification;
+pub mod task_queue;
 pub mod wallet;

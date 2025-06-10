@@ -1,5 +1,5 @@
 use std::{env, path::PathBuf};
-use wallet_api::{InitDeviceReq, WalletManager};
+use wallet_api::{Dirs, InitDeviceReq, WalletManager};
 use wallet_chain_instance::instance::ChainObject;
 use wallet_utils::init_test_log;
 
@@ -10,8 +10,9 @@ async fn get_manager() -> WalletManager {
         .to_string_lossy()
         .to_string();
     let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+    let dirs = Dirs::new(&path).unwrap();
 
-    WalletManager::new("guangxiang", "ANDROID", &path, None, config)
+    WalletManager::new("guangxiang", "ANDROID", None, config, dirs)
         .await
         .unwrap()
 }
@@ -64,10 +65,21 @@ async fn create_wallet() {
 }
 
 #[tokio::test]
+async fn delete_wallet() {
+    let wallet_manager = get_manager().await;
+
+    let addr = "0xEa80C3E12F7AB803f2bf35d79501172D505F2D98";
+
+    let res = wallet_manager.physical_delete_wallet(&addr).await;
+
+    println!("创建的钱包{:?}", res);
+}
+
+#[tokio::test]
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
-    let wallet_name = "0x0E1E806fdB77Eb4a67F3c3CCCBA58d62F4325077";
+    let wallet_name = "0x09520e748eC0E2DfefDb50323c4b46B62d379eDB";
     let account_name = "账户";
     let root_password = "123456";
     let req = wallet_api::CreateAccountReq::new(
@@ -111,8 +123,8 @@ async fn sync_assets() {
 #[tokio::test]
 async fn sync_assets_by_wallet() {
     let wallet_manager = get_manager().await;
-    let wallet_address = "0xAE7fEc45b1a63c2870B80F2496870bd064C1C937".to_string();
-    let account_id = None;
+    let wallet_address = "0x09520e748eC0E2DfefDb50323c4b46B62d379eDB".to_string();
+    let account_id = Some(1);
     let symbol = vec!["TRX".to_string()];
 
     let _c = wallet_manager
@@ -132,18 +144,17 @@ async fn test_generate_phrase() {
 async fn test_show_key() {
     init_test_log();
 
-    let parse = "member diesel marine culture boat differ spirit patient drum fix chunk sadness"
-        .to_string();
-    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "1234qwer").unwrap();
+    let parse = "".to_string();
+    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
-    let chain_code = "sol";
+    let chain_code = "sui";
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
     let address_type = Some("p2wpkh".to_string());
     let object = ChainObject::new(chain_code, address_type, network).unwrap();
 
     let keypair = object
-        .gen_keypair_with_index_address_type(&seed, 10)
+        .gen_keypair_with_index_address_type(&seed, 0)
         .unwrap();
 
     tracing::info!("address = {}", keypair.address());

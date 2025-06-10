@@ -25,6 +25,8 @@ pub enum MultisigAccountError {
     // 在tron 创建多签账号时，重复创建
     #[error("address repeat")]
     AddressRepeat,
+    #[error("not support multisg chain: {0}")]
+    NotSupportChain(String),
 }
 
 impl MultisigAccountError {
@@ -42,6 +44,7 @@ impl MultisigAccountError {
             MultisigAccountError::NotPay => 3609,
             MultisigAccountError::NotOnChain => 3610,
             MultisigAccountError::AddressRepeat => 3611,
+            MultisigAccountError::NotSupportChain(_) => 3611,
         }
     }
 }

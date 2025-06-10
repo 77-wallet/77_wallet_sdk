@@ -1,12 +1,13 @@
 use wallet_database::{
-    dao::assets::CreateAssetsVo,
-    entities::{account::AccountEntity, assets::AssetsId},
+    entities::account::AccountEntity,
     repositories::{
-        account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
+        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
+        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
     },
 };
-use wallet_transport_backend::request::TokenQueryPriceReq;
+use wallet_transport_backend::request::{
+    AddressBatchInitReq, AddressUpdateAccountNameReq, TokenQueryPriceReq,
+};
 use wallet_tree::api::KeystoreApi;
 use wallet_types::{
     chain::{
@@ -19,10 +20,12 @@ use wallet_utils::address::AccountIndexMap;
 
 use crate::{
     domain::{
-        self, account::AccountDomain, app::config::ConfigDomain, permission::PermissionDomain,
-        wallet::WalletDomain,
+        self, account::AccountDomain, app::config::ConfigDomain, chain::ChainDomain,
+        permission::PermissionDomain, wallet::WalletDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, CommonTask, RecoverDataBody, Task, Tasks},
+    infrastructure::task_queue::{
+        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, Task, Tasks,
+    },
     response_vo::account::DerivedAddressesList,
 };
 
@@ -95,7 +98,6 @@ impl AccountService {
         self,
         wallet_address: &str,
         wallet_password: &str,
-        // derive_password: Option<String>,
         derivation_path: Option<String>,
         index: Option<i32>,
         name: &str,
@@ -167,73 +169,24 @@ impl AccountService {
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
-        let mut address_init_task_data = Vec::new();
-        for chain_code in &chains {
-            let btc_address_types = if chain_code == "btc" {
-                BTC_ADDRESS_TYPES.to_vec()
-            } else {
-                vec![AddressType::Other]
-            };
-            let code: ChainCode = chain_code.as_str().try_into()?;
-            for btc_address_type in btc_address_types {
-                let Some(chain) = tx.detail_with_node(chain_code).await? else {
-                    continue;
-                };
-                let instance: wallet_chain_instance::instance::ChainObject =
-                    (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
+        let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
 
-                let (account_address, derivation_path, task_data) =
-                    AccountDomain::create_account_with_derivation_path(
-                        &mut tx,
-                        &seed,
-                        &instance,
-                        derivation_path.as_deref(),
-                        &account_index_map,
-                        &wallet.uid,
-                        &wallet.address,
-                        name,
-                        is_default_name,
-                    )
-                    .await?;
-
-                address_init_task_data.push(task_data);
-
-                let keypair = instance
-                    .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
-                    .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-                let pk = keypair.private_key_bytes()?;
-                let subkey = wallet_tree::file_ops::BulkSubkey::new(
-                    account_index_map.clone(),
-                    &account_address.address,
-                    chain_code,
-                    derivation_path.as_str(),
-                    pk,
-                );
-                subkeys.push(subkey);
-                for coin in &default_coins_list {
-                    if &coin.chain_code == chain_code {
-                        let assets_id =
-                            AssetsId::new(&account_address.address, chain_code, &coin.symbol);
-                        let assets = CreateAssetsVo::new(
-                            assets_id,
-                            coin.decimals,
-                            coin.token_address.clone(),
-                            coin.protocol.clone(),
-                            0,
-                        )
-                        .with_name(&coin.name)
-                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                        if coin.price.is_empty() {
-                            req.insert(
-                                chain_code,
-                                &assets.token_address.clone().unwrap_or_default(),
-                            );
-                        }
-                        tx.upsert_assets(assets).await?;
-                    }
-                }
-            }
-        }
+        ChainDomain::init_chains_assets(
+            &mut tx,
+            &default_coins_list,
+            &mut req,
+            &mut address_batch_init_task_data,
+            &mut subkeys,
+            &chains,
+            &seed,
+            &account_index_map,
+            derivation_path.as_deref(),
+            &wallet.uid,
+            &wallet.address,
+            name,
+            is_default_name,
+        )
+        .await?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -252,8 +205,8 @@ impl AccountService {
             algorithm,
         )?;
 
-        let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
+        // let device_bind_address_task_data =
+        //     domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
 
         // 恢复多签账号、多签队列
         let mut body = RecoverDataBody::new(&wallet.uid);
@@ -261,20 +214,28 @@ impl AccountService {
             body.tron_address = Some(tron_address);
         };
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
+
+        let address_batch_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+            &address_batch_init_task_data,
+        )?;
         Tasks::new()
             .push(task)
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_bind_address_task_data,
-            )))
+            // .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //     device_bind_address_task_data,
+            // )))
             .push(Task::Common(CommonTask::RecoverMultisigAccountData(body)))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                address_batch_init_task_data,
+            )))
             .send()
             .await?;
-        for task in address_init_task_data {
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
-                .send()
-                .await?;
-        }
+        // for task in address_init_task_data {
+        //     Tasks::new()
+        //         .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
+        //         .send()
+        //         .await?;
+        // }
 
         Ok(())
     }
@@ -371,8 +332,7 @@ impl AccountService {
     ) -> Result<(), crate::ServiceError> {
         // let mut tx = self.repo.begin_transaction().await?;
         let mut tx = self.repo;
-        let res = tx
-            .edit_account_name(account_id, wallet_address, name)
+        tx.edit_account_name(account_id, wallet_address, name)
             .await?;
 
         // tx.commit_transaction().await?;
@@ -381,21 +341,17 @@ impl AccountService {
         };
         let account_index_map =
             wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
-        for account in res {
-            let task_data = AccountDomain::address_init(
-                &mut tx,
-                &wallet.uid,
-                &account.address,
-                account_index_map.input_index,
-                &account.chain_code,
-                name,
-            )
+
+        let req =
+            AddressUpdateAccountNameReq::new(&wallet.uid, account_index_map.input_index, name);
+        let req = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
+            &req,
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(req)))
+            .send()
             .await?;
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
-                .send()
-                .await?;
-        }
 
         Ok(())
     }

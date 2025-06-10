@@ -3,13 +3,12 @@ use crate::{
     dispatch,
     domain::{
         self,
-        chain::transaction::{ChainTransaction, DEFAULT_UNITS},
+        chain::transaction::{ChainTransDomain, DEFAULT_UNITS},
     },
     response_vo::{
         self, CommonFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams, TronFeeDetails,
     },
 };
-use core::panic;
 use std::collections::HashMap;
 use wallet_chain_interact::{
     self as chain,
@@ -34,6 +33,24 @@ pub enum MultisigAdapter {
     Ethereum(chain::eth::EthChain),
     Solana(chain::sol::SolanaChain),
     Tron(chain::tron::TronChain),
+    Ltc(chain::ltc::LtcChain),
+    Doge(chain::dog::DogChain),
+    Ton(chain::ton::chain::TonChain),
+    Sui(chain::sui::SuiChain),
+}
+impl std::fmt::Display for MultisigAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MultisigAdapter::BitCoin(_chain) => write!(f, "{}", "bitcode"),
+            MultisigAdapter::Ethereum(_chain) => write!(f, "{}", "ethereum"),
+            MultisigAdapter::Solana(_chain) => write!(f, "{}", "solana"),
+            MultisigAdapter::Tron(_chain) => write!(f, "{}", "tron"),
+            MultisigAdapter::Ltc(_chain) => write!(f, "{}", "ltc"),
+            MultisigAdapter::Doge(_chain) => write!(f, "{}", "doge"),
+            MultisigAdapter::Ton(_chain) => write!(f, "{}", "ton"),
+            MultisigAdapter::Sui(_chain) => write!(f, "{}", "sui"),
+        }
+    }
 }
 
 impl MultisigAdapter {
@@ -78,7 +95,9 @@ impl MultisigAdapter {
 
                 Ok(MultisigAdapter::Tron(tron_chain))
             }
-            _ => panic!("not support chain"),
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(chain_code.to_string()),
+            ))?,
         }
     }
 }
@@ -95,7 +114,7 @@ impl MultisigAdapter {
         &self,
         account: &MultisigAccountEntity,
         member: &MultisigMemberEntities,
-    ) -> Result<types::FetchMultisigAddressResp, chain::Error> {
+    ) -> Result<types::FetchMultisigAddressResp, crate::ServiceError> {
         match self {
             Self::Ethereum(chain) => {
                 let params = operations::MultisigAccountOpt::new(
@@ -105,7 +124,7 @@ impl MultisigAdapter {
                 .with_nonce()
                 .with_owners(member.get_owner_str_vec())?;
 
-                chain.multisig_account(params).await
+                Ok(chain.multisig_account(params).await?)
             }
             Self::BitCoin(chain) => {
                 let params = btc::operations::multisig::MultisigAccountOpt::new(
@@ -113,16 +132,19 @@ impl MultisigAdapter {
                     member.get_owner_pubkey(),
                     &account.address_type,
                 )?;
-                chain.multisig_address(params).await
+                Ok(chain.multisig_address(params).await?)
             }
             Self::Solana(_chain) => {
-                sol::operations::multisig::account::MultisigAccountOpt::multisig_address()
+                Ok(sol::operations::multisig::account::MultisigAccountOpt::multisig_address()?)
             }
             Self::Tron(_chain) => Ok(types::FetchMultisigAddressResp {
                 authority_address: "".to_string(),
                 multisig_address: account.address.to_string(),
                 salt: "".to_string(),
             }),
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            ))?,
         }
     }
 
@@ -174,7 +196,7 @@ impl MultisigAdapter {
                 // check transaction_fee
                 let fee = chain.estimate_fee_v1(&instructions, &params).await?;
                 let balance = chain.balance(&account.initiator_addr, None).await?;
-                domain::chain::transaction::ChainTransaction::check_sol_transaction_fee(
+                domain::chain::transaction::ChainTransDomain::check_sol_transaction_fee(
                     balance,
                     fee.original_fee(),
                 )?;
@@ -216,6 +238,9 @@ impl MultisigAdapter {
                 Ok((tx_hash, consumer.to_json_str()?))
                 // Ok(chain.exec_transaction_v1(tx, key).await?)
             }
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            ))?,
         }
     }
 
@@ -250,7 +275,7 @@ impl MultisigAdapter {
 
                 let gas_limit = chain.estimate_gas(params).await?;
 
-                let gas_oracle = domain::chain::transaction::ChainTransaction::gas_oracle(
+                let gas_oracle = domain::chain::transaction::ChainTransDomain::gas_oracle(
                     &account.chain_code,
                     &chain.provider,
                     backend,
@@ -315,6 +340,9 @@ impl MultisigAdapter {
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)
             }
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            ))?,
         }
     }
 
@@ -360,7 +388,7 @@ impl MultisigAdapter {
                     .create_transaction_fee(&args.transaction_message, base_fee)
                     .await?;
 
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+                ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
                 let fee =
                     CommonFeeDetails::new(fee_setting.transaction_fee(), token_currency, currency);
@@ -386,7 +414,7 @@ impl MultisigAdapter {
                 let fee = chain
                     .estimate_fee(params, Some(multisig_parmas))
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
 
                 let fee =
                     CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency);
@@ -406,13 +434,13 @@ impl MultisigAdapter {
         let decimal = assets.decimals;
         let token = assets.token_address();
 
-        let value = ChainTransaction::check_min_transfer(&req.value, decimal)?;
+        let value = ChainTransDomain::check_min_transfer(&req.value, decimal)?;
 
         match self {
             Self::Ethereum(chain) => {
                 // check balance
                 let balance = chain.balance(&req.from, token.clone()).await?;
-                let _ = domain::chain::transaction::ChainTransaction::check_eth_balance(
+                let _ = domain::chain::transaction::ChainTransDomain::check_eth_balance(
                     &req.from,
                     balance,
                     token.as_deref(),
@@ -446,7 +474,7 @@ impl MultisigAdapter {
                 Ok(chain
                     .build_multisig_tx(params, multisig_parmas)
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?)
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?)
             }
             Self::Solana(chain) => {
                 // check multisig account balance
@@ -483,7 +511,7 @@ impl MultisigAdapter {
                     .await?;
                 // check balance
                 let balance = chain.balance(&account.initiator_addr, None).await?;
-                domain::chain::transaction::ChainTransaction::check_sol_transaction_fee(
+                domain::chain::transaction::ChainTransDomain::check_sol_transaction_fee(
                     balance,
                     fee.original_fee(),
                 )?;
@@ -507,6 +535,9 @@ impl MultisigAdapter {
                 tron_tx::build_build_tx(req, token, value, chain, account.threshold as i64, None)
                     .await
             }
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            ))?,
         }
     }
 
@@ -520,7 +551,7 @@ impl MultisigAdapter {
         let decimal = coin.decimals;
         let token = coin.token_address();
 
-        let value = ChainTransaction::check_min_transfer(&req.value, decimal)?;
+        let value = ChainTransDomain::check_min_transfer(&req.value, decimal)?;
 
         match self {
             Self::Tron(chain) => {
@@ -606,7 +637,7 @@ impl MultisigAdapter {
 
                 let instructions = params.instructions().await?;
                 let fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                domain::chain::transaction::ChainTransaction::check_sol_transaction_fee(
+                domain::chain::transaction::ChainTransDomain::check_sol_transaction_fee(
                     balance,
                     fee.original_fee(),
                 )?;
@@ -618,6 +649,9 @@ impl MultisigAdapter {
                     tron::operations::multisig::TransactionOpt::sign_transaction(raw_data, key)?;
                 Ok(res)
             }
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            ))?,
         }
     }
 
@@ -650,7 +684,7 @@ impl MultisigAdapter {
                 )
                 .await?;
 
-                let gas_oracle = domain::chain::transaction::ChainTransaction::gas_oracle(
+                let gas_oracle = domain::chain::transaction::ChainTransDomain::gas_oracle(
                     &queue.chain_code,
                     &chain.provider,
                     backend,
@@ -695,7 +729,7 @@ impl MultisigAdapter {
                         &multisig_account.address_type,
                     )
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
 
                 CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)
                     .to_json_str()
@@ -708,7 +742,7 @@ impl MultisigAdapter {
 
                 let instructions = params.instructions().await?;
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransaction::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
+                ChainTransDomain::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
 
                 CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency).to_json_str()
             }
@@ -756,6 +790,9 @@ impl MultisigAdapter {
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)
             }
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            ))?,
         }
     }
 }

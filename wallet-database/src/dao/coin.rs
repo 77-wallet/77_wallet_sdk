@@ -97,7 +97,7 @@ impl CoinEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let mut sql = "SELECT DISTINCT symbol
-        FROM coin WHERE is_del = 0 AND status = 1 "
+        FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1"
             .to_string();
 
         let mut conditions = Vec::new();
@@ -121,7 +121,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT DISTINCT chain_code FROM coin WHERE is_del = 0 AND status = 1";
+        let sql = "SELECT DISTINCT chain_code FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1";
 
         sqlx::query_scalar::<_, String>(sql)
             .fetch_all(exec)
@@ -139,7 +139,8 @@ impl CoinEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let symbol_list = crate::any_in_collection(symbol_list, "','");
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
+        let mut sql =
+            "SELECT * FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1".to_string();
 
         let mut conditions = Vec::new();
 
@@ -181,7 +182,8 @@ impl CoinEntity {
     {
         let symbol_list = crate::any_in_collection(symbol_list, "','");
         let chain_codes = crate::any_in_collection(chain_codes, "','");
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
+        let mut sql =
+            "SELECT * FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1".to_string();
 
         let mut conditions = Vec::new();
 
@@ -225,7 +227,8 @@ impl CoinEntity {
         page_size: i64,
     ) -> Result<Pagination<Self>, crate::Error> {
         let symbol_list = crate::any_in_collection(symbol_list, "','");
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
+        let mut sql =
+            "SELECT * FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1".to_string();
 
         let mut conditions = Vec::new();
 
@@ -305,7 +308,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 and chain_code = $1";
+        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1 and token_address = '' and chain_code = $1";
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)
@@ -324,7 +327,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 and chain_code = $1 and lower(symbol) = lower($2)";
+        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1 AND is_default = 1 and chain_code = $1 and lower(symbol) = lower($2)";
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)
@@ -344,7 +347,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM coin WHERE is_del = 0 AND chain_code = $1 and token_address = $2";
+        let sql = "SELECT * FROM coin WHERE is_del = 0 AND chain_code = $1 and token_address = $2 AND status =1 AND is_default = 1";
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)

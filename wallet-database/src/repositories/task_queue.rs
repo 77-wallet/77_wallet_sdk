@@ -15,19 +15,34 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, TaskQueueEntity::upsert, req)
     }
 
+    async fn all_tasks_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::list, None, None)
+    }
+
+    async fn done_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(2), None)
+    }
+
     async fn failed_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueEntity::list, 3)
+        crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(3), None)
+    }
+
+    async fn failed_mqtt_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(3), Some(2))
     }
 
     async fn running_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueEntity::list, 1)
+        crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(1), None)
     }
 
     async fn pending_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, TaskQueueEntity::list, 0)
+        crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(0), None)
     }
 
     async fn task_detail(&mut self, id: &str) -> Result<Option<TaskQueueEntity>, crate::Error> {
@@ -43,6 +58,11 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
     async fn task_done(&mut self, id: &str) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::update_status, id, 2)
+    }
+
+    async fn task_hang_up(&mut self, id: &str) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::update_status, id, 4)
     }
 
     async fn get_tasks_with_request_body(
@@ -106,5 +126,17 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
     async fn has_unfinished_task(&mut self) -> Result<bool, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::has_unfinished_task,)
+    }
+
+    async fn delete_tasks_with_request_body_like(
+        &mut self,
+        keyword: &str,
+    ) -> Result<(), crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(
+            executor,
+            TaskQueueEntity::delete_tasks_with_request_body_like,
+            keyword
+        )
     }
 }

@@ -36,6 +36,7 @@ impl AssetsEntity {
                 AND coin.token_address = assets.token_address
                 AND coin.symbol = assets.symbol
                 AND coin.status = 1
+                AND coin.is_default = 1
             );";
 
         sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
@@ -65,6 +66,7 @@ impl AssetsEntity {
                 AND coin.token_address = assets.token_address
                 AND coin.symbol = assets.symbol
                 AND coin.status = 1
+                AND coin.is_default = 1
             );";
 
         sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
@@ -114,6 +116,7 @@ impl AssetsEntity {
                 AND coin.token_address = assets.token_address
                 AND coin.symbol = assets.symbol
                 AND coin.status = 1
+                AND coin.is_default = 1
             )"
             .to_string(),
         );
@@ -169,6 +172,7 @@ impl AssetsEntity {
                         AND coin.token_address = a.token_address
                         AND coin.symbol = a.symbol
                         AND coin.status = 1
+                        AND coin.is_default = 1
                     )"
             )
         };
@@ -254,6 +258,7 @@ impl AssetsEntity {
                 AND coin.token_address = assets.token_address
                 AND coin.symbol = assets.symbol
                 AND coin.status = 1
+                AND coin.is_default = 1
             )"
         .to_string();
 
@@ -320,6 +325,7 @@ impl AssetsEntity {
                     AND coin.token_address = assets.token_address
                     AND coin.symbol = assets.symbol
                     AND coin.status = 1
+                    AND coin.is_default = 1
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
@@ -471,6 +477,7 @@ impl AssetsEntity {
                 AND coin.token_address = assets.token_address
                 AND coin.symbol = assets.symbol
                 AND coin.status = 1
+                AND coin.is_default = 1
             )"
             .to_string(),
         );

@@ -110,3 +110,12 @@ pub struct ChainWithNode {
     #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
+impl ChainWithNode {
+    pub fn get_network(&self) -> &str {
+        if self.network.is_empty() {
+            "mainnet"
+        } else {
+            &self.network
+        }
+    }
+}

@@ -18,6 +18,7 @@ pub struct AccountEntity {
     pub chain_code: String,
     pub name: String,
     #[resource(detail = "QueryReq")]
+    // 1 启用
     pub status: u8,
     pub is_init: u16,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,

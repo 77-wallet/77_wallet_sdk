@@ -1,6 +1,6 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
-use crate::domain::chain::transaction::ChainTransaction;
+use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::coin::TokenCurrencyGetter;
 use crate::domain::multisig::MultisigDomain;
 use crate::domain::multisig::MultisigQueueDomain;
@@ -82,7 +82,7 @@ impl StackService {
         signer: &Option<Signer>,
         password: &str,
     ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
-        ChainTransaction::get_key(from, chain_code::TRON, password, signer).await
+        ChainTransDomain::get_key(from, chain_code::TRON, password, signer).await
     }
 
     async fn process_transaction<T>(
@@ -288,7 +288,7 @@ impl StackService {
         value: i64,
         resource_type: ops::stake::ResourceType,
     ) -> Result<f64, crate::ServiceError> {
-        let resource = ChainTransaction::account_resource(&self.chain, owner_address).await?;
+        let resource = ChainTransDomain::account_resource(&self.chain, owner_address).await?;
         Ok(resource.resource_value(resource_type, value)?)
     }
 
@@ -772,7 +772,7 @@ impl StackService {
         password: String,
     ) -> Result<resp::CancelAllUnFreezeResp, crate::ServiceError> {
         let account = self.chain.account_info(&req.owner_address).await?;
-        let resource = ChainTransaction::account_resource(&self.chain, &req.owner_address).await?;
+        let resource = ChainTransDomain::account_resource(&self.chain, &req.owner_address).await?;
 
         // 1可以解质押的带宽
         let bandwidth = account.un_freeze_amount("");
@@ -965,7 +965,7 @@ impl StackService {
 
         let mut value = res.to_sun();
 
-        let resource = ChainTransaction::account_resource(&self.chain, &account).await?;
+        let resource = ChainTransDomain::account_resource(&self.chain, &account).await?;
         let price = match resource_type {
             ResourceType::BANDWIDTH => resource.net_price(),
             ResourceType::ENERGY => resource.energy_price(),
@@ -1100,7 +1100,7 @@ impl StackService {
         amount: i64,
         signer: &Option<Signer>,
     ) -> Result<BatchDelegateResp, crate::ServiceError> {
-        let resource = ChainTransaction::account_resource(&self.chain, owner_address).await?;
+        let resource = ChainTransDomain::account_resource(&self.chain, owner_address).await?;
         let chain_param = self.chain.get_provider().chain_params().await?;
 
         // 批量构建交易
@@ -1253,7 +1253,7 @@ impl StackService {
 
         let delegate_other = chain.provider.delegate_others_list(owner_address).await?;
 
-        let resource = ChainTransaction::account_resource(&chain, owner_address).await?;
+        let resource = ChainTransDomain::account_resource(&chain, owner_address).await?;
 
         let len = delegate_other.to_accounts.len();
         let total_page = len / page_size as usize;
@@ -1321,7 +1321,7 @@ impl StackService {
             return Ok(res);
         }
 
-        let resource = ChainTransaction::account_resource(&chain, to).await?;
+        let resource = ChainTransDomain::account_resource(&chain, to).await?;
 
         let mut data = vec![];
         for owner_address in self.page_address(page, page_size, &delegate_other.from_accounts) {

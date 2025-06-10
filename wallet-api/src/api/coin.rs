@@ -168,10 +168,11 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // let keyword = Some("StR");
-        let keyword = None;
+        // let keyword = None;
+        let keyword = Some("USDT");
         // let chain_code = Some("btc");
         let chain_code = None;
-        let wallet_address = "0x535D377eE677Cfe452e98A6fc332B8CD8777a79C";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let res = wallet_manager
             .get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000)
             .await;

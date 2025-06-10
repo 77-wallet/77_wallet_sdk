@@ -1,10 +1,11 @@
+use crate::{
+    messaging::system_notification::{Notification, TransactionNotification},
+    response_vo::system_notification::SystemNotification,
+};
 use wallet_database::{
-    dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
-    entities::system_notification::CreateSystemNotificationEntity,
+    dao::bill::BillDao, entities::system_notification::CreateSystemNotificationEntity,
     repositories::system_notification::SystemNotificationRepoTrait,
 };
-
-use crate::messaging::system_notification::Notification;
 
 pub struct SystemNotificationService<T: SystemNotificationRepoTrait> {
     pub repo: T,
@@ -76,12 +77,8 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         self,
         page: i64,
         page_size: i64,
-    ) -> Result<
-        wallet_database::pagination::Pagination<
-            crate::response_vo::system_notification::SystemNotification,
-        >,
-        crate::ServiceError,
-    > {
+    ) -> Result<wallet_database::pagination::Pagination<SystemNotification>, crate::ServiceError>
+    {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let list = tx
@@ -89,61 +86,31 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
             .await
             .map_err(crate::ServiceError::Database)?;
 
-        let data = list.data;
         let mut res = Vec::new();
-        for notif in data {
-            let no: Notification = match wallet_utils::serde_func::serde_from_str(&notif.content) {
-                Ok(v) => v,
-                Err(_) => {
-                    tx.delete_system_notification(&notif.id).await?;
-                    continue;
-                }
-            };
-            let val = match no {
-                Notification::Multisig(notification) => match MultisigAccountDaoV1::find_by_id(
-                    &notification.multisig_account_id,
-                    &*pool,
-                )
-                .await?
-                {
-                    Some(_) => (notif, true).into(),
-                    None => (notif, false).into(),
-                },
-                Notification::Confirmation(notification) => match MultisigAccountDaoV1::find_by_id(
-                    &notification.multisig_account_id,
-                    &*pool,
-                )
-                .await?
-                {
-                    Some(_) => (notif, true).into(),
-                    None => (notif, false).into(),
-                },
-                Notification::Transaction(transaction_notification) => {
-                    if transaction_notification.chain_code.is_empty()
-                        | transaction_notification.to_addr.is_empty()
-                        | transaction_notification.from_addr.is_empty()
-                    {
-                        tx.delete_system_notification(&notif.id).await?;
+        for notify in list.data {
+            // 针对目前只有一种交易通知
+            let no: TransactionNotification =
+                match wallet_utils::serde_func::serde_from_str(&notify.content) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        tracing::warn!("delete notification id = {}", notify.id);
+                        tx.delete_system_notification(&notify.id).await?;
                         continue;
                     }
+                };
 
-                    let hash = transaction_notification.transaction_hash;
-                    match BillDao::get_one_by_hash(&hash, &*pool).await? {
-                        Some(_) => (notif, true).into(),
-                        None => (notif, false).into(),
-                    }
+            let val = if no.chain_code.is_empty() | no.to_addr.is_empty() | no.from_addr.is_empty()
+            {
+                tx.delete_system_notification(&notify.id).await?;
+                continue;
+            } else {
+                let hash = no.transaction_hash;
+                match BillDao::get_one_by_hash(&hash, &*pool).await? {
+                    Some(_) => (notify, true).into(),
+                    None => (notify, false).into(),
                 }
-                Notification::Resource(notification) => match MultisigAccountDaoV1::find_by_id(
-                    &notification.multisig_account_id,
-                    &*pool,
-                )
-                .await?
-                {
-                    Some(_) => (notif, true).into(),
-                    None => (notif, false).into(),
-                },
-                Notification::PermissionChange(_notification) => (notif, true).into(),
             };
+
             res.push(val);
         }
 
@@ -157,6 +124,65 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         Ok(list)
     }
 }
+
+// 原来有多个消息类型的代码
+// let no: Notification = match wallet_utils::serde_func::serde_from_str(&notif.content) {
+//     Ok(v) => v,
+//     Err(e) => {
+//         tracing::warn!("delete notification id = {}", notif.id);
+//         tracing::warn!("delete notification id = {}", e);
+
+//         assert!(false);
+//         tx.delete_system_notification(&notif.id).await?;
+//         continue;
+//     }
+// };
+
+// let val = match no {
+//     Notification::Multisig(notification) => match MultisigAccountDaoV1::find_by_id(
+//         &notification.multisig_account_id,
+//         &*pool,
+//     )
+//     .await?
+//     {
+//         Some(_) => (notif, true).into(),
+//         None => (notif, false).into(),
+//     },
+//     Notification::Confirmation(notification) => match MultisigAccountDaoV1::find_by_id(
+//         &notification.multisig_account_id,
+//         &*pool,
+//     )
+//     .await?
+//     {
+//         Some(_) => (notif, true).into(),
+//         None => (notif, false).into(),
+//     },
+//     Notification::Transaction(transaction_notification) => {
+//         if transaction_notification.chain_code.is_empty()
+//             | transaction_notification.to_addr.is_empty()
+//             | transaction_notification.from_addr.is_empty()
+//         {
+//             tx.delete_system_notification(&notif.id).await?;
+//             continue;
+//         }
+
+//         let hash = transaction_notification.transaction_hash;
+//         match BillDao::get_one_by_hash(&hash, &*pool).await? {
+//             Some(_) => (notif, true).into(),
+//             None => (notif, false).into(),
+//         }
+//     }
+//     Notification::Resource(notification) => match MultisigAccountDaoV1::find_by_id(
+//         &notification.multisig_account_id,
+//         &*pool,
+//     )
+//     .await?
+//     {
+//         Some(_) => (notif, true).into(),
+//         None => (notif, false).into(),
+//     },
+//     Notification::PermissionChange(_notification) => (notif, true).into(),
+// };
 
 // use crate::global_context::GlobalContext;
 

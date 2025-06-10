@@ -13,11 +13,12 @@ use wallet_database::{
 
 use crate::{
     domain::multisig::MultisigQueueDomain,
+    infrastructure::inner_event::InnerEvent,
     messaging::{
         notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
         system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
     },
-    service::{asset::AssetsService, system_notification::SystemNotificationService},
+    service::system_notification::SystemNotificationService,
 };
 
 // biz_type = ACCT_CHANGE
@@ -159,7 +160,12 @@ impl AcctChange {
         Self::sync_assets(&self).await?;
 
         // 创建系统通知
-        if tx_kind.needs_system_notify() && self.value != 0.0 {
+        if tx_kind.needs_system_notify()
+            && self.value != 0.0
+            && !self.chain_code.is_empty()
+            && !self.to_addr.is_empty()
+            && !self.from_addr.is_empty()
+        {
             Self::system_notification(msg_id, &self, &pool).await?;
         }
 
@@ -196,24 +202,21 @@ impl AcctChange {
     }
 
     async fn sync_assets(acct_change: &AcctChange) -> Result<(), crate::ServiceError> {
-        let asset_list = vec![
-            acct_change.from_addr.to_string(),
-            acct_change.to_addr.to_string(),
-        ];
-
-        if !asset_list.is_empty() {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
-            let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-            AssetsService::new(repo)
-                .sync_assets_by_addr(
-                    asset_list,
-                    Some(acct_change.chain_code.to_string()),
-                    vec![acct_change.symbol.to_string()],
-                )
-                .await?;
+        if !acct_change.status {
+            tracing::warn!("acct_change status is false, skip sync assets");
+            return Ok(());
         }
 
+        let inner_event_handle = crate::manager::Context::get_global_inner_event_handle()?;
+        inner_event_handle.send(InnerEvent::SyncAssets {
+            addr_list: vec![
+                acct_change.from_addr.to_string(),
+                acct_change.to_addr.to_string(),
+            ],
+            chain_code: acct_change.chain_code.to_string(),
+            symbol: acct_change.symbol.to_string(),
+        })?;
+        // tracing::info!("发送同步资产事件");
         Ok(())
     }
 
@@ -313,7 +316,8 @@ mod test {
     async fn acct_change() -> anyhow::Result<()> {
         init_manager().await;
 
-        let change = r#"{"blockHeight":56520912,"chainCode":"tron","fromAddr":"TPgKQJDibjSNQ8AsXp35dja9gP1iLs7BdV","isMultisig":1,"queueId":"255844763314556930","signer":[],"status":true,"symbol":"trx","toAddr":"TGCya1Rrupsqv2RAr48er1B6bcJxK9TZnG","token":"","transactionFee":1.337,"transactionTime":"2025-04-29 10:16:51","transferType":1,"txHash":"e1e4412bf86c6d3b79b7da4838b1f26b3889bcdd62cc768ee3fe4b09778e3396","txKind":1,"value":10,"valueUsdt":2.4751915605691943}"#;
+        // let change = r#"{"blockHeight":56520912,"chainCode":"tron","fromAddr":"TPgKQJDibjSNQ8AsXp35dja9gP1iLs7BdV","isMultisig":1,"queueId":"255844763314556930","signer":[],"status":true,"symbol":"trx","toAddr":"TGCya1Rrupsqv2RAr48er1B6bcJxK9TZnG","token":"","transactionFee":1.337,"transactionTime":"2025-04-29 10:16:51","transferType":1,"txHash":"e1e4412bf86c6d3b79b7da4838b1f26b3889bcdd62cc768ee3fe4b09778e3396","txKind":1,"value":10,"valueUsdt":2.4751915605691943}"#;
+        let change = r#"{"txHash":"9gaiYphWbxjabMk2L4ALVXiq2NRgwRkmdAUFsW8pj6qw","chainCode":"sui","symbol":"SUI","transferType":1,"txKind":1,"fromAddr":"0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd","toAddr":"0x427e388a85bbb00da32af7716b15749a147affb8ed3a87cd7ce1f98f0b20bc6f","token":null,"value":0.01,"transactionFee":0.00173788,"transactionTime":"2025-05-29 03:45:50","status":true,"isMultisig":0,"queueId":"","blockHeight":150642276,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
 
         let _res = change.exec("1").await.unwrap();

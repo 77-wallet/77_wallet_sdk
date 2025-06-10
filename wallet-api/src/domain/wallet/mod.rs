@@ -7,6 +7,12 @@ use wallet_database::{
     repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
 };
 use wallet_tree::{api::KeystoreApi, KdfAlgorithm, WalletTreeStrategy};
+use wallet_types::chain::{
+    address::r#type::{
+        AddressType, BTC_ADDRESS_TYPES, DOG_ADDRESS_TYPES, LTC_ADDRESS_TYPES, TON_ADDRESS_TYPES,
+    },
+    chain::ChainCode,
+};
 
 use super::app::config::ConfigDomain;
 
@@ -388,6 +394,16 @@ impl WalletDomain {
             account_ids.insert(1);
         }
         Ok(account_ids)
+    }
+
+    pub fn address_type_by_chain(chian: ChainCode) -> Vec<AddressType> {
+        match chian {
+            ChainCode::Bitcoin => BTC_ADDRESS_TYPES.to_vec(),
+            ChainCode::Dogcoin => DOG_ADDRESS_TYPES.to_vec(),
+            ChainCode::Litecoin => LTC_ADDRESS_TYPES.to_vec(),
+            ChainCode::Ton => TON_ADDRESS_TYPES.to_vec(),
+            _ => vec![AddressType::Other],
+        }
     }
 }
 

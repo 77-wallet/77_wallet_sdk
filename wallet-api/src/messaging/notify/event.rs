@@ -52,6 +52,10 @@ pub enum NotifyEvent {
     MultisigTransCancel,
     // 多签交易执行
     MultiSignTransExecute,
+
+    // 其他
+    // 同步资产
+    SyncAssets,
 }
 
 impl NotifyEvent {
@@ -93,6 +97,10 @@ impl NotifyEvent {
             NotifyEvent::MultisigTransCancel => "MULTISIG_TRANS_CANCE".to_string(),
             // 多签交易执行
             NotifyEvent::MultiSignTransExecute => "MULTI_SIGN_TRANS_EXECUTE".to_string(),
+
+            // 其他
+            // 同步资产
+            NotifyEvent::SyncAssets => "SYNC_ASSETS".to_string(),
         }
     }
 }

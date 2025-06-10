@@ -1,4 +1,3 @@
-use wallet_database::entities::task_queue::TaskQueueEntity;
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
 use crate::infrastructure::task_queue::{CommonTask, InitializationTask, MqttTask, Task, TaskType};
@@ -12,10 +11,7 @@ pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
     (TaskType::Common, 2),
 ];
 
-pub(crate) fn assign_priority(
-    task: &TaskQueueEntity,
-    is_history: bool,
-) -> Result<u8, crate::ServiceError> {
+pub(crate) fn assign_priority(task: &Task, is_history: bool) -> Result<u8, crate::ServiceError> {
     let base = get_base_priority(task)?; // 任务类型对应基础优先级，比如 sync=1，其他=3
     Ok(if is_history {
         // 历史任务统一加偏移，确保比新任务优先级低
@@ -26,14 +22,13 @@ pub(crate) fn assign_priority(
 }
 
 /// 动态确定任务优先级（0 = 高，1 = 中，2 = 低）
-fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> {
-    let task: Task = task.try_into()?;
+fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
     Ok(match task {
         Task::Initialization(initialization_task) => match initialization_task {
             InitializationTask::PullAnnouncement => 3,
             InitializationTask::PullHotCoins => 0,
             InitializationTask::InitTokenPrice => 1,
-            InitializationTask::ProcessUnconfirmMsg => 2,
+            // InitializationTask::ProcessUnconfirmMsg => 2,
             InitializationTask::SetBlockBrowserUrl => 0,
             InitializationTask::SetFiat => 0,
             InitializationTask::RecoverQueueData => 1,
@@ -45,19 +40,27 @@ fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> 
             ) => {
                 match backend_api_task_data.endpoint.as_str() {
                     DEVICE_INIT
-                    | MQTT_INIT => 0,
+                    | MQTT_INIT
+                    | KEYS_RESET
+                    | APP_INSTALL_SAVE => 0,
                     // 确认消息，高优先级
                     SEND_MSG_CONFIRM  => 1,
                     // 关键初始化流程，高优先级
-                    KEYS_INIT
-                    | ADDRESS_INIT
+                    KEYS_V2_INIT
+                    | DEVICE_UPDATE_APP_ID
+                    | KEYS_UPDATE_WALLET_NAME
+                    // | ADDRESS_INIT
+                    | ADDRESS_UPDATE_ACCOUNT_NAME
+                    | ADDRESS_BATCH_INIT
                     | DEVICE_EDIT_DEVICE_INVITEE_STATUS
                     | LANGUAGE_INIT
                     | APP_INSTALL_DOWNLOAD
+
                     | CHAIN_LIST
                     | CHAIN_RPC_LIST => 2,
                     // 重要功能任务，中优先级
-                    DEVICE_BIND_ADDRESS
+
+                    // DEVICE_BIND_ADDRESS
                     | DEVICE_UNBIND_ADDRESS
                     | DEVICE_DELETE
                     | SYS_CONFIG_FIND_CONFIG_BY_KEY
@@ -84,7 +87,7 @@ fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> 
                 }
             }
         },
-        Task::Mqtt(mqtt_task) => match *mqtt_task {
+        Task::Mqtt(mqtt_task) => match **mqtt_task {
             MqttTask::OrderMultiSignAccept(_) => 0,
             MqttTask::OrderMultiSignAcceptCompleteMsg(_) => 1,
             MqttTask::OrderMultiSignServiceComplete(_) => 1,
@@ -114,7 +117,7 @@ fn get_base_priority(task: &TaskQueueEntity) -> Result<u8, crate::ServiceError> 
 mod tests {
     use super::*;
     use sqlx::types::chrono::Utc;
-    use wallet_database::entities::task_queue::{TaskName, TaskQueueEntity};
+    use wallet_database::entities::task_queue::{KnownTaskName, TaskName, TaskQueueEntity};
 
     fn make_task_entity(
         id: &str,
@@ -138,7 +141,7 @@ mod tests {
     fn test_assign_priority() {
         let task1 = make_task_entity(
             "263099225674485766",
-            TaskName::BackendApi,
+            TaskName::Known(KnownTaskName::BackendApi),
             r#"{
                 "body": null,
                 "endpoint": "token/queryRates"
@@ -146,8 +149,16 @@ mod tests {
             0,
             0,
         );
-        let task2 = make_task_entity("263099222805581824", TaskName::InitMqtt, "", 1, 1);
+        let task2 = make_task_entity(
+            "263099222805581824",
+            TaskName::Known(KnownTaskName::InitMqtt),
+            "",
+            1,
+            1,
+        );
 
+        let task1 = (&task1).try_into().unwrap();
+        let task2 = (&task2).try_into().unwrap();
         assert_eq!(assign_priority(&task1, false).unwrap(), 1);
         assert_eq!(assign_priority(&task2, false).unwrap(), 0);
     }

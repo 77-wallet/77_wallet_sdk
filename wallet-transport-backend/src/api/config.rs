@@ -1,6 +1,5 @@
-use crate::{response::BackendResponse, response_vo::app::FindConfigByKeyRes};
-
 use super::BackendApi;
+use crate::{response::BackendResponse, response_vo::app::FindConfigByKeyRes};
 
 impl BackendApi {
     pub async fn find_config_by_key(

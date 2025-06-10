@@ -15,7 +15,7 @@ impl TaskQueueEntity {
         );
         query_builder.push_values(reqs, |mut b, req| {
             b.push_bind(req.id.clone())
-                .push_bind(req.task_name)
+                .push_bind(req.task_name.clone())
                 .push_bind(req.request_body.clone().unwrap_or_default())
                 .push_bind(req.r#type)
                 .push_bind(req.status)
@@ -214,13 +214,52 @@ impl TaskQueueEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E, status: u8) -> Result<Vec<Self>, crate::Error>
+    pub async fn delete_tasks_with_request_body_like<'a, E>(
+        exec: E,
+        keyword: &str,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "SELECT * FROM task_queue WHERE status = ?";
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(status)
+        let sql = "DELETE FROM task_queue WHERE request_body LIKE ?";
+        let pattern = format!("%{}%", keyword);
+        sqlx::query(sql)
+            .bind(pattern)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list<'a, E>(
+        exec: E,
+        status: Option<u8>,
+        typ: Option<u8>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + 'a,
+    {
+        let mut sql = "SELECT * FROM task_queue".to_string();
+        let mut conditions = Vec::new();
+        if status.is_some() {
+            conditions.push("status = ?".to_string());
+        }
+
+        if typ.is_some() {
+            conditions.push("type = ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql);
+
+        if let Some(status) = status {
+            query = query.bind(status);
+        }
+
+        query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -231,7 +270,22 @@ impl TaskQueueEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "SELECT EXISTS(SELECT 1 FROM task_queue WHERE status != 2)";
+
         let exists: i64 = sqlx::query_scalar(sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(exists == 1)
+    }
+
+    pub async fn has_unfinished_task_by_type<'a, E>(exec: E, typ: u8) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT EXISTS(SELECT 1 FROM task_queue WHERE status != 2 AND type = ?)";
+
+        let exists: i64 = sqlx::query_scalar(sql)
+            .bind(typ)
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

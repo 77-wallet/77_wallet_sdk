@@ -64,4 +64,9 @@ pub trait BillRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, BillDao::get_by_hash_and_type, hash, transfer_type)
     }
+
+    async fn bill_count(&mut self) -> Result<i64, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, BillDao::bill_count,)
+    }
 }

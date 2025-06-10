@@ -80,6 +80,9 @@ impl NodeService {
     pub async fn init_chain_info(&mut self) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
         let list = crate::default_data::chain::get_default_chains_list()?;
+
+        // tracing::warn!("list {:#?}", list);
+
         let mut chain_codes = Vec::new();
         for (chain_code, default_chain) in &list.chains {
             let status = if default_chain.active { 1 } else { 0 };
@@ -101,9 +104,13 @@ impl NodeService {
                 chain_codes.push(chain_code.to_string());
             }
         }
+        let app_version = domain::app::config::ConfigDomain::get_app_version().await?;
+
         ChainDomain::toggle_chains(tx, &chain_codes).await?;
-        let chain_list_req =
-            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::CHAIN_LIST, &())?;
+        let chain_list_req = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
+            &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
+        )?;
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(chain_list_req)))
             .send()

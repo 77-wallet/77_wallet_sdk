@@ -2,12 +2,16 @@ use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
     repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
 };
-use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
-
-use crate::{
-    infrastructure::task_queue::BackendApiTaskData, response_vo::account::CreateAccountRes,
-    service::asset::AddressChainCode,
+use wallet_transport_backend::request::AddressInitReq;
+use wallet_types::chain::{
+    address::{
+        category::AddressCategory,
+        r#type::{AddressType, BtcAddressType, TonAddressType},
+    },
+    chain::ChainCode,
 };
+
+use crate::{response_vo::account::CreateAccountRes, service::asset::AddressChainCode};
 
 use super::app::config::ConfigDomain;
 
@@ -22,6 +26,34 @@ impl Default for AccountDomain {
 impl AccountDomain {
     pub fn new() -> Self {
         Self {}
+    }
+
+    // 获取地址对应的展示类型 比如: p2pkh --> legacy
+    pub fn get_show_address_type(
+        chain_code: &str,
+        address_type: Option<String>,
+    ) -> Result<AddressCategory, crate::ServiceError> {
+        let chain_code = ChainCode::try_from(chain_code)?;
+
+        if let Some(types_str) = address_type {
+            match chain_code {
+                ChainCode::Bitcoin | ChainCode::Litecoin | ChainCode::Dogcoin => {
+                    let address_type = types_str.as_str();
+
+                    let res = BtcAddressType::try_from(address_type)?;
+                    Ok(AddressCategory::Btc(res.into()))
+                }
+                ChainCode::Ton => {
+                    let address_type = types_str.as_str();
+                    let res = TonAddressType::try_from(address_type)?;
+                    Ok(AddressCategory::Ton(res))
+                }
+
+                _ => Ok(AddressCategory::Other),
+            }
+        } else {
+            Ok(AddressCategory::Other)
+        }
     }
 
     pub async fn get_addresses(
@@ -101,7 +133,45 @@ impl AccountDomain {
         Ok(account_addresses)
     }
 
-    pub(crate) async fn create_account_with_derivation_path(
+    // pub(crate) async fn create_account(
+    //     repo: &mut ResourcesRepo,
+    //     seed: &[u8],
+    //     instance: &wallet_chain_instance::instance::ChainObject,
+    //     derivation_path: Option<&str>,
+    //     account_index_map: &wallet_utils::address::AccountIndexMap,
+    //     uid: &str,
+    //     wallet_address: &str,
+    //     name: &str,
+    //     is_default_name: bool,
+    // ) -> Result<(CreateAccountRes, String, BackendApiTaskData), crate::ServiceError> {
+    //     let (address, name, derivation_path) = Self::derive_subkey(
+    //         repo,
+    //         seed,
+    //         account_index_map,
+    //         instance,
+    //         derivation_path,
+    //         wallet_address,
+    //         name,
+    //         is_default_name,
+    //     )
+    //     .await?;
+    //     let res = CreateAccountRes {
+    //         address: address.to_string(),
+    //     };
+    //     let task_data = Self::address_init(
+    //         repo,
+    //         uid,
+    //         &address,
+    //         account_index_map.input_index,
+    //         &instance.chain_code().to_string(),
+    //         &name,
+    //     )
+    //     .await?;
+
+    //     Ok((res, derivation_path, task_data))
+    // }
+
+    pub(crate) async fn create_account_v2(
         repo: &mut ResourcesRepo,
         seed: &[u8],
         instance: &wallet_chain_instance::instance::ChainObject,
@@ -111,7 +181,7 @@ impl AccountDomain {
         wallet_address: &str,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(CreateAccountRes, String, BackendApiTaskData), crate::ServiceError> {
+    ) -> Result<(CreateAccountRes, String, AddressInitReq), crate::ServiceError> {
         let (address, name, derivation_path) = Self::derive_subkey(
             repo,
             seed,
@@ -126,84 +196,58 @@ impl AccountDomain {
         let res = CreateAccountRes {
             address: address.to_string(),
         };
-        let task_data = Self::address_init(
-            repo,
-            uid,
-            &address,
-            account_index_map.input_index,
-            &instance.chain_code().to_string(),
-            &name,
-        )
-        .await?;
-
-        Ok((res, derivation_path, task_data))
-    }
-
-    pub(crate) async fn address_init(
-        repo: &mut ResourcesRepo,
-        uid: &str,
-        address: &str,
-        index: i32,
-        chain_code: &str,
-        name: &str,
-    ) -> Result<BackendApiTaskData, crate::ServiceError> {
+        // let task_data = Self::address_init(
+        //     repo,
+        //     uid,
+        //     &address,
+        //     account_index_map.input_index,
+        //     &instance.chain_code().to_string(),
+        //     &name,
+        // )
+        // .await?;
         let Some(device) = DeviceRepoTrait::get_device_info(repo).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         let address_init_req = wallet_transport_backend::request::AddressInitReq::new(
             uid,
-            address,
-            index,
-            chain_code,
-            &device.sn,
-            vec!["".to_string()],
-            name,
-        );
-        let address_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::ADDRESS_INIT,
-            &address_init_req,
-        )?;
-
-        Ok(address_init_task_data)
-    }
-
-    pub(crate) async fn create_account_with_account_id(
-        repo: &mut ResourcesRepo,
-        seed: &[u8],
-        instance: &wallet_chain_instance::instance::ChainObject,
-        account_index_map: &wallet_utils::address::AccountIndexMap,
-        uid: &str,
-        wallet_address: &str,
-        name: &str,
-        is_default_name: bool,
-    ) -> Result<(CreateAccountRes, String, BackendApiTaskData), crate::ServiceError> {
-        let (address, name, derivation_path) = Self::derive_subkey(
-            repo,
-            seed,
-            account_index_map,
-            instance,
-            None,
-            wallet_address,
-            name,
-            is_default_name,
-        )
-        .await?;
-
-        let res = CreateAccountRes {
-            address: address.to_string(),
-        };
-        let task_data = Self::address_init(
-            repo,
-            uid,
             &address,
             account_index_map.input_index,
             &instance.chain_code().to_string(),
+            &device.sn,
+            vec!["".to_string()],
             &name,
-        )
-        .await?;
+        );
 
-        Ok((res, derivation_path, task_data))
+        Ok((res, derivation_path, address_init_req))
     }
+
+    // pub(crate) async fn address_init(
+    //     repo: &mut ResourcesRepo,
+    //     uid: &str,
+    //     address: &str,
+    //     index: i32,
+    //     chain_code: &str,
+    //     name: &str,
+    // ) -> Result<BackendApiTaskData, crate::ServiceError> {
+    //     let Some(device) = DeviceRepoTrait::get_device_info(repo).await? else {
+    //         return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+    //     };
+    //     let address_init_req = wallet_transport_backend::request::AddressInitReq::new(
+    //         uid,
+    //         address,
+    //         index,
+    //         chain_code,
+    //         &device.sn,
+    //         vec!["".to_string()],
+    //         name,
+    //     );
+    //     let address_init_task_data = BackendApiTaskData::new(
+    //         wallet_transport_backend::consts::endpoint::ADDRESS_INIT,
+    //         &address_init_req,
+    //     )?;
+
+    //     Ok(address_init_task_data)
+    // }
 
     pub(crate) async fn derive_subkey(
         repo: &mut ResourcesRepo,
@@ -247,9 +291,22 @@ impl AccountDomain {
             &chain_code,
             &account_name,
         );
-        if let AddressType::Btc(address_type) = address_type {
-            req = req.with_address_type(address_type.as_ref());
-        };
+
+        match address_type {
+            AddressType::Btc(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
+            AddressType::Ltc(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
+            AddressType::Dog(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
+            AddressType::Ton(address_type) => {
+                req = req.with_address_type(address_type.as_ref());
+            }
+            _ => {}
+        }
         repo.upsert_multi_account(vec![req]).await?;
         Ok((address, account_name, derivation_path))
     }
@@ -323,6 +380,27 @@ impl AccountDomain {
         wallet_tree::api::KeystoreApi::store_verify_file(&*wallet_tree, &dirs.root_dir, password)?;
 
         Ok(())
+    }
+
+    pub(crate) async fn generate_subkey(
+        instance: &wallet_chain_instance::instance::ChainObject,
+        seed: &[u8],
+        address: &str,
+        chain_code: &str,
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        derivation_path: &str,
+    ) -> Result<wallet_tree::file_ops::BulkSubkey, crate::ServiceError> {
+        let keypair =
+            instance.gen_keypair_with_index_address_type(seed, account_index_map.input_index)?;
+        let private_key = keypair.private_key_bytes()?;
+
+        Ok(wallet_tree::file_ops::BulkSubkey::new(
+            account_index_map.clone(),
+            address,
+            chain_code,
+            derivation_path,
+            private_key,
+        ))
     }
 }
 
@@ -426,6 +504,12 @@ pub async fn open_subpk_with_password(
         }
         ChainCode::Bitcoin => {
             wallet_chain_interact::btc::wif_private_key(&key, chain.network.as_str().into())?
+        }
+        ChainCode::Dogcoin => {
+            wallet_chain_interact::dog::wif_private_key(&key, chain.network.as_str().into())?
+        }
+        ChainCode::Litecoin => {
+            wallet_chain_interact::ltc::wif_private_key(&key, chain.network.as_str().into())?
         }
         _ => hex::encode(key),
     };

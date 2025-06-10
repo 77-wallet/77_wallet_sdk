@@ -1,4 +1,4 @@
-use wallet_database::entities::task_queue::TaskName;
+use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use crate::messaging::mqtt::topics;
 
@@ -23,26 +23,40 @@ pub(crate) enum MqttTask {
 impl MqttTask {
     pub(crate) fn get_name(&self) -> TaskName {
         match self {
-            MqttTask::OrderMultiSignAccept(_) => TaskName::OrderMultiSignAccept,
+            MqttTask::OrderMultiSignAccept(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignAccept)
+            }
             MqttTask::OrderMultiSignAcceptCompleteMsg(_) => {
-                TaskName::OrderMultiSignAcceptCompleteMsg
+                TaskName::Known(KnownTaskName::OrderMultiSignAcceptCompleteMsg)
             }
-            MqttTask::OrderMultiSignServiceComplete(_) => TaskName::OrderMultiSignServiceComplete,
-            MqttTask::OrderMultiSignCreated(_) => TaskName::OrderMultiSignCreated,
-            MqttTask::OrderMultiSignCancel(_) => TaskName::OrderMultiSignCancel,
-            MqttTask::MultiSignTransAccept(_) => TaskName::MultiSignTransAccept,
-            MqttTask::MultiSignTransCancel(_) => TaskName::MultiSignTransCancel,
+            MqttTask::OrderMultiSignServiceComplete(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignServiceComplete)
+            }
+            MqttTask::OrderMultiSignCreated(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignCreated)
+            }
+            MqttTask::OrderMultiSignCancel(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignCancel)
+            }
+            MqttTask::MultiSignTransAccept(_) => {
+                TaskName::Known(KnownTaskName::MultiSignTransAccept)
+            }
+            MqttTask::MultiSignTransCancel(_) => {
+                TaskName::Known(KnownTaskName::MultiSignTransCancel)
+            }
             MqttTask::MultiSignTransAcceptCompleteMsg(_) => {
-                TaskName::MultiSignTransAcceptCompleteMsg
+                TaskName::Known(KnownTaskName::MultiSignTransAcceptCompleteMsg)
             }
-            MqttTask::AcctChange(_) => TaskName::AcctChange,
-            MqttTask::Init(_) => TaskName::Init,
-            MqttTask::BulletinMsg(_) => TaskName::BulletinMsg,
+            MqttTask::AcctChange(_) => TaskName::Known(KnownTaskName::AcctChange),
+            MqttTask::Init(_) => TaskName::Known(KnownTaskName::Init),
+            MqttTask::BulletinMsg(_) => TaskName::Known(KnownTaskName::BulletinMsg),
 
-            MqttTask::PermissionAccept(_) => TaskName::PermissionAccept,
-            MqttTask::MultiSignTransExecute(_) => TaskName::MultiSignTransExecute,
-            MqttTask::CleanPermission(_) => TaskName::CleanPermission,
-            MqttTask::OrderAllConfirmed(_) => TaskName::OrderAllConfirmed,
+            MqttTask::PermissionAccept(_) => TaskName::Known(KnownTaskName::PermissionAccept),
+            MqttTask::MultiSignTransExecute(_) => {
+                TaskName::Known(KnownTaskName::MultiSignTransExecute)
+            }
+            MqttTask::CleanPermission(_) => TaskName::Known(KnownTaskName::CleanPermission),
+            MqttTask::OrderAllConfirmed(_) => TaskName::Known(KnownTaskName::OrderAllConfirmed),
         }
     }
 

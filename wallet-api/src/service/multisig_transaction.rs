@@ -1,5 +1,5 @@
 use crate::domain::chain::adapter::{ChainAdapterFactory, MultisigAdapter};
-use crate::domain::chain::transaction::ChainTransaction;
+use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::chain::TransferResp;
 use crate::domain::coin::CoinDomain;
 use crate::domain::multisig::{MultisigDomain, MultisigQueueDomain};
@@ -41,10 +41,10 @@ impl MultisigTransactionService {
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
 
         let assets =
-            ChainTransaction::assets(&req_params.chain_code, &req_params.symbol, &req_params.from)
+            ChainTransDomain::assets(&req_params.chain_code, &req_params.symbol, &req_params.from)
                 .await?;
 
-        let main_coin = ChainTransaction::main_coin(&assets.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(&assets.chain_code).await?;
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
 
@@ -81,12 +81,12 @@ impl MultisigTransactionService {
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let assets = ChainTransaction::assets(&req.chain_code, &req.symbol, &req.from).await?;
+        let assets = ChainTransDomain::assets(&req.chain_code, &req.symbol, &req.from).await?;
 
         let account = MultisigDomain::account_by_address(&req.from, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
 
-        let key = ChainTransaction::get_key(
+        let key = ChainTransDomain::get_key(
             &account.initiator_addr,
             &account.chain_code,
             password,
@@ -287,7 +287,7 @@ impl MultisigTransactionService {
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
 
-        let main_coin = ChainTransaction::main_coin(&queue.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
         let res = adapter
             .sign_fee(
@@ -368,7 +368,7 @@ impl MultisigTransactionService {
         let sign_list = signs.get_order_sign_str();
 
         let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
-        let main_coin = ChainTransaction::main_coin(&queue.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
         let fee = instance
@@ -441,7 +441,7 @@ impl MultisigTransactionService {
             };
 
             let key =
-                ChainTransaction::get_key(address, &queue.chain_code, password, &None).await?;
+                ChainTransDomain::get_key(address, &queue.chain_code, password, &None).await?;
 
             let rs = instance
                 .sign_multisig_tx(&multisig_account, address, key, &queue.raw_data)
@@ -514,7 +514,7 @@ impl MultisigTransactionService {
             }
 
             let key =
-                ChainTransaction::get_key(address, &queue.chain_code, password, &None).await?;
+                ChainTransDomain::get_key(address, &queue.chain_code, password, &None).await?;
 
             let res =
                 tron::operations::multisig::TransactionOpt::sign_transaction(&queue.raw_data, key)?;
@@ -635,7 +635,7 @@ impl MultisigTransactionService {
                 let tx = chain
                     .exec_multisig_tx(params, sign, account.authority_addr)
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
 
                 TransferResp::new(tx.tx_hash, tx.fee.to_string())
             }
@@ -659,12 +659,12 @@ impl MultisigTransactionService {
 
                 // check transaction_fee
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransaction::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
+                ChainTransDomain::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
 
                 let balance = chain
                     .balance(&multisig_account.initiator_addr, None)
                     .await?;
-                ChainTransaction::check_sol_transaction_fee(balance, fee.original_fee())?;
+                ChainTransDomain::check_sol_transaction_fee(balance, fee.original_fee())?;
 
                 let fees = fee.transaction_fee().to_string();
 
@@ -761,6 +761,9 @@ impl MultisigTransactionService {
                 resp.with_consumer(bill_consumer);
                 resp
             }
+            _ => Err(crate::BusinessError::MultisigAccount(
+                crate::MultisigAccountError::NotSupportChain(instance.to_string()),
+            ))?,
         };
 
         // 创建本地pending 交易

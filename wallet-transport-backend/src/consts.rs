@@ -33,18 +33,25 @@ pub mod endpoint {
     pub const DEVICE_INIT: &str = "device/init";
     pub const DEVICE_DELETE: &str = "device/delete";
     pub const DEVICE_UNBIND_ADDRESS: &str = "device/unBindAddress";
-    pub const DEVICE_BIND_ADDRESS: &str = "device/bindAddress";
-    pub const KEYS_INIT: &str = "keys/init";
-    pub const ADDRESS_INIT: &str = "address/init";
+    // pub const DEVICE_BIND_ADDRESS: &str = "device/bindAddress";
+    // pub const KEYS_INIT: &str = "keys/init";
+    pub const KEYS_V2_INIT: &str = "keys/v2/init";
+    pub const KEYS_UPDATE_WALLET_NAME: &str = "keys/updateWalletName";
+    pub const KEYS_RESET: &str = "keys/reset";
+
+    // pub const ADDRESS_INIT: &str = "address/init";
+    pub const ADDRESS_BATCH_INIT: &str = "address/batch/init";
+    pub const ADDRESS_UPDATE_ACCOUNT_NAME: &str = "address/updateAccountName";
     pub const LANGUAGE_INIT: &str = "language/init";
 
     pub const TOKEN_CUSTOM_TOKEN_INIT: &str = "token/custom/token/init";
     pub const TOKEN_QUERY_RATES: &str = "token/queryRates";
     pub const SYS_CONFIG_FIND_CONFIG_BY_KEY: &str = "sys/config/findConfigByKey";
     pub const APP_INSTALL_DOWNLOAD: &str = "app/install/download";
+    pub const APP_INSTALL_SAVE: &str = "app/install/save";
     pub const VERSION_VIEW: &str = "version/view";
     // pub const CHAIN_DEFAULT_LIST: &str = "chain/defaultList";
-    pub const CHAIN_LIST: &str = "chain/list";
+    pub const CHAIN_LIST: &str = "chain/v2/list";
     pub const CHAIN_RPC_LIST: &str = "chain/rpcList";
     pub const MQTT_INIT: &str = "mqtt/init";
 
@@ -54,6 +61,9 @@ pub mod endpoint {
 
     pub const ADDRESS_FIND_MULTI_SIGNED_DETAILS: &str = "address/findMultiSignedDetails";
     pub const DEVICE_EDIT_DEVICE_INVITEE_STATUS: &str = "device/editDeviceInviteeStatus";
+    pub const DEVICE_UPDATE_APP_ID: &str = "device/updateAppId";
+
+    pub const CLIENT_TASK_LOG_UPLOAD: &str = "client/taskLog/upload";
 }
 
 /// 代理的全局rpc节点

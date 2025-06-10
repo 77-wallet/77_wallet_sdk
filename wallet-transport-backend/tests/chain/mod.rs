@@ -1,5 +1,7 @@
-use wallet_transport_backend::{request::ChainRpcListReq, Error};
-use wallet_utils::init_test_log;
+use wallet_transport_backend::{
+    request::{ChainListReq, ChainRpcListReq},
+    Error,
+};
 
 use crate::init;
 
@@ -36,10 +38,11 @@ async fn _chain_list() -> Result<(), Error> {
 
 #[tokio::test]
 async fn test_chain_list() -> Result<(), Error> {
-    init_test_log();
+    // init_test_log();
     let (aes_cbc_cryptor, backend_api) = init()?; // Initialize the cryptor and API
 
-    let res = backend_api.chain_list(&aes_cbc_cryptor).await.unwrap();
+    let req = ChainListReq::new("1.1.1".to_string());
+    let res = backend_api.chain_list(&aes_cbc_cryptor, req).await.unwrap();
 
     tracing::info!("[test_chain_list] res: {res:?}");
 
@@ -51,7 +54,7 @@ async fn test_chain_list() -> Result<(), Error> {
 
 #[tokio::test]
 async fn test_chain_rpc_list() -> Result<(), Error> {
-    init_test_log();
+    // init_test_log();
     let (aes_cbc_cryptor, backend_api) = init()?; // Initialize the cryptor and API
 
     let chain_code = vec!["eth".to_string(), "tron".to_string(), "btc".to_string()];

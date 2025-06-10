@@ -32,9 +32,9 @@ use wallet_utils::unit;
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
 
-pub struct ChainTransaction;
+pub struct ChainTransDomain;
 
-impl ChainTransaction {
+impl ChainTransDomain {
     pub async fn assets(
         chain_code: &str,
         symbol: &str,
@@ -125,7 +125,7 @@ impl ChainTransaction {
             ))?;
         };
 
-        let private_key = ChainTransaction::get_key(
+        let private_key = ChainTransDomain::get_key(
             &params.base.from,
             &params.base.chain_code,
             &params.password,

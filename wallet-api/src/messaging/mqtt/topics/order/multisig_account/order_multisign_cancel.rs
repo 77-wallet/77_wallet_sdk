@@ -35,26 +35,23 @@ impl OrderMultiSignCancel {
             ref multisig_account_id,
         } = self;
 
-        let account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool).await?;
-        if account.is_none() {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotFound,
+        let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool)
+            .await?
+            .ok_or(crate::ServiceError::Business(
+                crate::MultisigAccountError::NotFound.into(),
             ))?;
-        }
 
         // check
-        if let Some(multisig_account) = account {
-            MultisigAccountDaoV1::delete_in_status(multisig_account_id, &*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(e.into()))?;
+        MultisigAccountDaoV1::delete_in_status(multisig_account_id, &*pool)
+            .await
+            .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-            let data = NotifyEvent::OrderMultisignCanceled(OrderMultisignCanceledFrontend {
-                multisig_account_id: multisig_account.id,
-                multisig_account_address: multisig_account.address,
-                address_type: multisig_account.address_type,
-            });
-            FrontendNotifyEvent::new(data).send().await?;
-        }
+        let data = NotifyEvent::OrderMultisignCanceled(OrderMultisignCanceledFrontend {
+            multisig_account_id: multisig_account.id,
+            multisig_account_address: multisig_account.address,
+            address_type: multisig_account.address_type,
+        });
+        FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

@@ -24,7 +24,7 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "0x38Fb5978e1C0D2A419Acd3ae3e99CD57bf331fc3";
+    let from = "0x5d38C9d80A89f9A6464fC34E8bbCfEB2aD56dAc9";
     let to = "0xF7d5c082Ce49922913404b56168EBa82Dda4c1F7";
     let value = "0.0001";
     let chain_code = "bnb";

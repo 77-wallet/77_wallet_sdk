@@ -1,12 +1,16 @@
+use std::cmp::Ordering;
+
 use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
         config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, BLOCK_BROWSER_URL_LIST, CURRENCY, INVITE_CODE,
-            KEYSTORE_KDF_ALGORITHM, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE, WALLET_TREE_STRATEGY,
+            APP_DOWNLOAD_QR_CODE_URL, APP_VERSION, BLOCK_BROWSER_URL_LIST, CURRENCY, INVITE_CODE,
+            KEYSTORE_KDF_ALGORITHM, KEYS_RESET_STATUS, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE,
+            WALLET_TREE_STRATEGY,
         },
-        Currency, InviteCode, MinValueSwitchConfig, MqttUrl, OfficialWebsite,
+        AppVersion, Currency, InviteCode, KeysResetStatus, MinValueSwitchConfig, MqttUrl,
+        OfficialWebsite,
     },
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
@@ -244,6 +248,61 @@ impl ConfigDomain {
         // }
     }
 
+    pub async fn set_keys_reset_status(status: Option<bool>) -> Result<(), crate::ServiceError> {
+        let config = KeysResetStatus { status };
+        ConfigDomain::set_config(KEYS_RESET_STATUS, &config.to_json_str()?).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn get_keys_reset_status(
+    ) -> Result<Option<KeysResetStatus>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let keys_reset_status = ConfigDao::find_by_key(KEYS_RESET_STATUS, pool.as_ref()).await?;
+
+        if let Some(keys_reset_status) = keys_reset_status {
+            Ok(Some(KeysResetStatus::try_from(keys_reset_status.value)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) async fn get_app_version() -> Result<AppVersion, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let app_version = ConfigDao::find_by_key(APP_VERSION, pool.as_ref())
+            .await?
+            .ok_or(crate::ServiceError::Business(crate::BusinessError::Config(
+                crate::ConfigError::NotFound(APP_VERSION.to_owned()),
+            )))?;
+        Ok(AppVersion::try_from(app_version.value)?)
+    }
+
+    pub(crate) fn compare_versions(v1: &str, v2: &str) -> Ordering {
+        let parse = |v: &str| {
+            v.split('.')
+                .map(|s| s.parse::<u32>().unwrap_or(0))
+                .collect::<Vec<_>>()
+        };
+
+        let mut v1_parts = parse(v1);
+        let mut v2_parts = parse(v2);
+
+        let max_len = v1_parts.len().max(v2_parts.len());
+        v1_parts.resize(max_len, 0);
+        v2_parts.resize(max_len, 0);
+
+        for (a, b) in v1_parts.iter().zip(v2_parts.iter()) {
+            match a.cmp(b) {
+                Ordering::Equal => continue,
+                non_eq => return non_eq,
+            }
+        }
+
+        Ordering::Equal
+    }
+
     pub(crate) async fn get_keystore_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let keystore_kdf_algorithm =
@@ -321,5 +380,114 @@ impl ConfigDomain {
         Self::init_language().await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Ordering;
+
+    use crate::domain::app::config::ConfigDomain;
+
+    #[test]
+    fn test_equal_versions() {
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2.3", "1.2.3"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2", "1.2.0"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1.0.0.0", "1"),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn test_greater_versions() {
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2.10", "1.2.2"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("2.0", "1.999.999"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1.10.0", "1.2.99"),
+            Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_less_versions() {
+        assert_eq!(
+            ConfigDomain::compare_versions("0.9.9", "1.0.0"),
+            Ordering::Less
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2.3", "1.2.4"),
+            Ordering::Less
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2", "1.2.1"),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn test_invalid_parts() {
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2.alpha", "1.2.0"),
+            Ordering::Equal
+        ); // "alpha" -> 0
+        assert_eq!(
+            ConfigDomain::compare_versions("1.a.3", "1.0.3"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("a.b.c", "0.0.0"),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn test_empty_strings() {
+        assert_eq!(ConfigDomain::compare_versions("", ""), Ordering::Equal);
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2.3", ""),
+            Ordering::Greater
+        );
+        assert_eq!(ConfigDomain::compare_versions("", "0.0.1"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_trailing_zeros() {
+        assert_eq!(
+            ConfigDomain::compare_versions("1.0.0.0", "1"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1.0.0.1", "1"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1", "1.0.0.1"),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn test_long_versions() {
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2.3.4.5.6.7", "1.2.3.4.5.6.7"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            ConfigDomain::compare_versions("1.2.3.4.5.6.8", "1.2.3.4.5.6.7"),
+            Ordering::Greater
+        );
     }
 }

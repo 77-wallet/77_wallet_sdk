@@ -154,38 +154,22 @@ impl<
 
     pub async fn set_app_id(mut self, app_id: &str) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
-        tx.update_app_id(app_id).await?;
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::ServiceError::Business(
                 crate::DeviceError::Uninitialized.into(),
             ));
         };
-        tracing::info!("device = {:?}", device);
-        let wallet_list = tx.wallet_list().await?;
-        for wallet in wallet_list {
-            let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
-            let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-                &wallet.uid,
-                &device.sn,
-                Some(client_id),
-                Some(app_id.to_string()),
-                // device.app_id.clone(),
-                Some(device.device_type.clone()),
-                &wallet.name,
-                None,
-            );
-            let keys_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::KEYS_INIT,
-                &keys_init_req,
-            )?;
-            tracing::info!("keys_init_task_data = {:?}", keys_init_task_data);
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    keys_init_task_data,
-                )))
-                .send()
-                .await?;
-        }
+        tx.update_app_id(app_id).await?;
+
+        let req = wallet_transport_backend::request::UpdateAppIdReq::new(&device.sn, app_id);
+        let task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::DEVICE_UPDATE_APP_ID,
+            &req,
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .send()
+            .await?;
 
         Ok(())
     }
@@ -202,7 +186,11 @@ impl<
         // let tx = &mut self.repo;
         let backend_api = crate::manager::Context::get_global_backend_api()?;
         let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let list = backend_api.chain_list(cryptor).await?.list;
+
+        let app_version = ConfigDomain::get_app_version().await?;
+
+        let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
+        let list = backend_api.chain_list(cryptor, req).await?.list;
         ConfigDomain::set_block_browser_url(&list).await?;
         Ok(())
     }
@@ -352,9 +340,30 @@ impl<
         channel: &str,
     ) -> Result<(), crate::ServiceError> {
         let req = AppInstallSaveReq::new(sn, device_type, channel);
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        backend.app_install_save(cryptor, req).await?;
+        // let backend = crate::manager::Context::get_global_backend_api()?;
+        // let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+        // backend.app_install_save(cryptor, req).await?;
+
+        let app_install_save_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::APP_INSTALL_SAVE,
+            &req,
+        )?;
+        let keys_reset_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::KEYS_RESET,
+            &serde_json::json!({
+                "sn": sn
+            }),
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                app_install_save_data,
+            )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                keys_reset_data,
+            )))
+            .send()
+            .await?;
+        // backend.keys_reset(cryptor, sn).await?;
         Ok(())
     }
 

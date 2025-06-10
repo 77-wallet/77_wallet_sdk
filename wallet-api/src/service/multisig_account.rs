@@ -1,7 +1,7 @@
 use crate::domain;
 use crate::domain::assets::AssetsDomain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
-use crate::domain::chain::transaction::ChainTransaction;
+use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::multisig::MultisigDomain;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
 use crate::messaging::mqtt::topics::OrderMultiSignAccept;
@@ -663,7 +663,7 @@ impl MultisigAccountService {
                 signer: None,
             };
 
-            ChainTransaction::transfer(params, BillKind::ServiceCharge, &adapter).await?
+            ChainTransDomain::transfer(params, BillKind::ServiceCharge, &adapter).await?
         } else {
             // 服务费为0的传入固定的hash
             MultisigAccountEntity::NONE_TRANS_HASH.to_string()
@@ -722,7 +722,7 @@ impl MultisigAccountService {
         // 2. 不是btc的创建一个部署的bill
         if account.chain_code != chain_code::BTC {
             let main_coin =
-                domain::chain::transaction::ChainTransaction::main_coin(&account.chain_code)
+                domain::chain::transaction::ChainTransDomain::main_coin(&account.chain_code)
                     .await?;
             let mut new_bill = NewBillEntity::new_deploy_bill(
                 hash.clone(),
@@ -771,7 +771,8 @@ impl MultisigAccountService {
 
         let account = MultisigDomain::account_by_id(account_id, pool.clone()).await?;
 
-        let main_coin = ChainTransaction::main_coin(&account.chain_code).await?;
+        let main_coin =
+            domain::chain::transaction::ChainTransDomain::main_coin(&account.chain_code).await?;
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
 

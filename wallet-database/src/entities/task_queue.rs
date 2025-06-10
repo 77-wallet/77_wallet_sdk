@@ -1,10 +1,14 @@
+use std::str::FromStr as _;
+
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 pub struct TaskQueueEntity {
     pub id: String,
     pub task_name: TaskName,
     pub request_body: String,
     pub r#type: u8,
-    /// 0: pending, 1: running, 2: success, 3: failed
+    /// 0: pending, 1: running, 2: success, 3: failed, 4: hang up
     pub status: u8,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
@@ -65,13 +69,80 @@ impl CreateTaskQueueEntity {
     }
 }
 
-#[derive(Debug, serde::Serialize, Clone, Copy, sqlx::Type)]
-#[sqlx(rename_all = "PascalCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum TaskName {
+    Known(KnownTaskName),
+    Unknown(String),
+}
+
+impl sqlx::Type<sqlx::Sqlite> for TaskName {
+    fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for TaskName {
+    // fn encode_by_ref(&self, buf: &mut sqlx::sqlite::SqliteArguments<'q>) -> IsNull {
+    //     let s: &str = match self {
+    //         TaskName::Known(k) => k.as_ref(),
+    //         TaskName::Unknown(s) => s.as_str(),
+    //     };
+    //     buf.add(SqliteArgumentValue::Text(s.into()));
+    //     IsNull::No
+    // }
+    fn encode_by_ref(
+        &self,
+        buf: &mut <sqlx::Sqlite as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+    ) -> sqlx::encode::IsNull {
+        let s = match self {
+            TaskName::Known(k) => k.as_ref().to_string(),
+            TaskName::Unknown(s) => s.as_str().to_string(),
+        };
+        buf.push(sqlx::sqlite::SqliteArgumentValue::Text(s.into()));
+        sqlx::encode::IsNull::No
+    }
+}
+
+impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for TaskName {
+    fn decode(
+        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
+    ) -> Result<Self, sqlx::error::BoxDynError> {
+        let raw = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+        Ok(match KnownTaskName::from_str(&raw) {
+            Ok(known) => TaskName::Known(known),
+            Err(_) => TaskName::Unknown(raw),
+        })
+    }
+}
+
+impl From<String> for TaskName {
+    fn from(s: String) -> Self {
+        match s.parse::<KnownTaskName>() {
+            Ok(k) => TaskName::Known(k),
+            Err(_) => TaskName::Unknown(s),
+        }
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    sqlx::Type,
+    PartialEq,
+    Eq,
+    strum_macros::EnumString,
+    strum_macros::AsRefStr,
+)]
+#[sqlx(rename_all = "PascalCase")]
+#[sqlx(type_name = "TEXT")]
+pub enum KnownTaskName {
     PullAnnouncement,
     PullHotCoins,
     InitTokenPrice,
-    ProcessUnconfirmMsg,
+    // ProcessUnconfirmMsg,
     SetBlockBrowserUrl,
     SetFiat,
     RecoverQueueData,

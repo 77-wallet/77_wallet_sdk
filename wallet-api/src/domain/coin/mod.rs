@@ -164,6 +164,7 @@ impl CoinDomain {
                     coin.decimals.unwrap_or_default(),
                     coin.is_default,
                     coin.is_popular,
+                    coin.status,
                 )
                 .with_status(coin.status),
             );
@@ -241,7 +242,7 @@ impl From<wallet_transport_backend::CoinInfo> for UpsertCoinVo {
             protocol: coin.protocol,
             is_default: if coin.default_token { 1 } else { 0 },
             is_popular: if coin.popular_token { 1 } else { 0 },
-            status: 1,
+            status: if coin.enable { 1 } else { 0 },
         }
     }
 }

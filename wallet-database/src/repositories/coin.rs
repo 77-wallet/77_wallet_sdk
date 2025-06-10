@@ -1,6 +1,7 @@
 use crate::{
     dao::coin::Coins,
     entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
+    DbPool,
 };
 
 #[async_trait::async_trait]
@@ -124,5 +125,21 @@ pub trait CoinRepoTrait: super::TransactionTrait {
     async fn clean_table(&mut self) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinEntity::clean_table,)
+    }
+}
+
+pub struct CoinRepo;
+impl CoinRepo {
+    pub async fn coin_by_symbol_chain(
+        chain_code: &str,
+        symbol: &str,
+        pool: &DbPool,
+    ) -> Result<CoinEntity, crate::Error> {
+        CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
+            .await?
+            .ok_or(crate::Error::NotFound(format!(
+                "coin not found: chain_code: {}, symbol: {}",
+                chain_code, symbol
+            )))
     }
 }

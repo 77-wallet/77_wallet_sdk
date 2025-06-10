@@ -1,5 +1,6 @@
 use crate::domain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
+use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::coin::CoinDomain;
 use crate::request::transaction::{self};
 use crate::response_vo::{
@@ -25,6 +26,7 @@ use wallet_database::entities::multisig_account::{
 use wallet_database::entities::multisig_queue::{MemberSignedResult, MultisigQueueStatus};
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::address_book::AddressBookRepo;
+use wallet_database::repositories::coin::CoinRepo;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_utils::unit;
 
@@ -37,17 +39,10 @@ impl TransactionService {
         chain_code: &str,
         symbol: &str,
     ) -> Result<Balance, crate::ServiceError> {
-        let adapter =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
-                .await?;
+        let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-
-        let coin = CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
-            .await?
-            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                symbol.to_string(),
-            )))?;
+        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, &pool).await?;
 
         let balance = adapter.balance(address, coin.token_address()).await?;
         let format_balance = unit::format_to_string(balance, coin.decimals)?;
@@ -58,13 +53,7 @@ impl TransactionService {
             original_balance: balance.to_string(),
         };
 
-        domain::chain::transaction::ChainTransaction::update_balance(
-            address,
-            chain_code,
-            symbol,
-            &format_balance,
-        )
-        .await?;
+        ChainTransDomain::update_balance(address, chain_code, symbol, &format_balance).await?;
 
         Ok(balance)
     }
@@ -78,8 +67,7 @@ impl TransactionService {
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address());
 
-        let main_coin =
-            domain::chain::transaction::ChainTransaction::main_coin(&params.chain_code).await?;
+        let main_coin = ChainTransDomain::main_coin(&params.chain_code).await?;
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
         let fee = adapter
@@ -98,7 +86,7 @@ impl TransactionService {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.base.chain_code).await?;
 
         let tx_hash =
-            domain::chain::transaction::ChainTransaction::transfer(params, bill_kind, &adapter)
+            domain::chain::transaction::ChainTransDomain::transfer(params, bill_kind, &adapter)
                 .await?;
         Ok(TransactionResult { tx_hash })
     }

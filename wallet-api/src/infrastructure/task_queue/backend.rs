@@ -1,4 +1,4 @@
-use wallet_database::entities::task_queue::TaskName;
+use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use super::task_handle::backend_handle::BackendTaskHandle;
 
@@ -8,7 +8,7 @@ pub(crate) enum BackendApiTask {
 
 impl BackendApiTask {
     pub(crate) fn get_name(&self) -> TaskName {
-        TaskName::BackendApi
+        TaskName::Known(KnownTaskName::BackendApi)
     }
 
     pub(crate) fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
@@ -20,14 +20,14 @@ impl BackendApiTask {
     }
 }
 
-impl BackendApiTask {
-    pub fn new<T>(endpoint: &str, body: &T) -> Result<Self, crate::ServiceError>
-    where
-        T: serde::Serialize,
-    {
-        Ok(Self::BackendApi(BackendApiTaskData::new(endpoint, body)?))
-    }
-}
+// impl BackendApiTask {
+//     pub fn new<T>(endpoint: &str, body: &T) -> Result<Self, crate::ServiceError>
+//     where
+//         T: serde::Serialize,
+//     {
+//         Ok(Self::BackendApi(BackendApiTaskData::new(endpoint, body)?))
+//     }
+// }
 
 // 所有请求后端的task，公用结构
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

@@ -1,24 +1,16 @@
 use wallet_database::{
-    dao::{assets::CreateAssetsVo, multisig_member::MultisigMemberDaoV1},
-    entities::assets::AssetsId,
+    dao::multisig_member::MultisigMemberDaoV1,
     repositories::{
-        account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
-        TransactionTrait as _,
+        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
+        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
 };
 use wallet_transport_backend::{
     consts::endpoint,
-    request::{DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
+    request::{AddressBatchInitReq, DeviceDeleteReq, LanguageInitReq, TokenQueryPriceReq},
 };
 use wallet_tree::{api::KeystoreApi, file_ops::RootData};
-use wallet_types::{
-    chain::{
-        address::r#type::{AddressType, BTC_ADDRESS_TYPES},
-        chain::ChainCode,
-    },
-    constant::chain_code,
-};
+use wallet_types::constant::chain_code;
 
 use crate::{
     domain::{
@@ -26,6 +18,7 @@ use crate::{
         account::AccountDomain,
         app::{config::ConfigDomain, DeviceDomain},
         assets::AssetsDomain,
+        chain::ChainDomain,
         coin::CoinDomain,
         multisig::MultisigDomain,
         permission::PermissionDomain,
@@ -128,31 +121,27 @@ impl WalletService {
         let mut tx = self.repo;
         let wallet_list = tx.edit_wallet_name(wallet_address, wallet_name).await?;
 
-        let device = tx.get_device_info().await?;
-        if let Some(device) = &device {
-            let client_id = domain::app::DeviceDomain::client_id_by_device(device)?;
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
 
-            for wallet in wallet_list {
-                let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+        for wallet in wallet_list {
+            let keys_update_wallet_name =
+                wallet_transport_backend::request::KeysUpdateWalletNameReq::new(
                     &wallet.uid,
                     &device.sn,
-                    Some(client_id.clone()),
-                    device.app_id.clone(),
-                    Some(device.device_type.clone()),
-                    wallet_name,
-                    None,
+                    &wallet.name,
                 );
-                let keys_init_task_data = BackendApiTaskData::new(
-                    wallet_transport_backend::consts::endpoint::KEYS_INIT,
-                    &keys_init_req,
-                )?;
-                Tasks::new()
-                    .push(Task::BackendApi(BackendApiTask::BackendApi(
-                        keys_init_task_data,
-                    )))
-                    .send()
-                    .await?;
-            }
+            let keys_update_wallet_name = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::KEYS_UPDATE_WALLET_NAME,
+                &keys_update_wallet_name,
+            )?;
+            Tasks::new()
+                .push(Task::BackendApi(BackendApiTask::BackendApi(
+                    keys_update_wallet_name,
+                )))
+                .send()
+                .await?;
         }
 
         Ok(())
@@ -183,7 +172,7 @@ impl WalletService {
 
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         let mut accounts = Vec::new();
-        let mut address_init_task_data = Vec::new();
+        let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
         for data in exports {
             let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
                 &data.derivation_path,
@@ -199,7 +188,7 @@ impl WalletService {
                 chain.network.as_str().into(),
             )?;
 
-            let (account, _, task_data) = AccountDomain::create_account_with_derivation_path(
+            let (account, _, address_init_req) = AccountDomain::create_account_v2(
                 &mut tx,
                 &seed,
                 &instance,
@@ -211,7 +200,7 @@ impl WalletService {
                 is_default_name,
             )
             .await?;
-            address_init_task_data.push(task_data);
+            address_batch_init_task_data.0.push(address_init_req);
 
             let keypair = instance
                 .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
@@ -227,6 +216,7 @@ impl WalletService {
             subkeys.push(subkey);
             accounts.push(account.address);
         }
+
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
@@ -238,12 +228,16 @@ impl WalletService {
             algorithm,
         )?;
 
-        for task in address_init_task_data {
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
-                .send()
-                .await?;
-        }
+        let address_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+            &address_batch_init_task_data,
+        )?;
+        Tasks::new()
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                address_init_task_data,
+            )))
+            .send()
+            .await?;
         Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
     }
 
@@ -365,88 +359,27 @@ impl WalletService {
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
-        let mut address_init_task_data = Vec::new();
+        let mut address_init_task_data = AddressBatchInitReq(Vec::new());
         for account_id in account_ids {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
-            for chain_code in &default_chain_list {
-                let btc_address_types = if chain_code == "btc" {
-                    BTC_ADDRESS_TYPES.to_vec()
-                } else {
-                    vec![AddressType::Other]
-                };
 
-                let code: ChainCode = chain_code.as_str().try_into()?;
-                for btc_address_type in btc_address_types {
-                    let Some(chain) =
-                        // ChainDomain::chain_node_info_left_join(tx, chain_code).await?
-                    tx.chain_node_info_left_join(chain_code).await?
-                    else {
-                        tracing::warn!("[create_wallet] chain not found: {chain_code}");
-                        continue;
-                    };
-                    // TODO：后续想好的办法
-                    let network = if chain.network.is_empty() {
-                        "mainnet"
-                    } else {
-                        chain.network.as_str()
-                    };
-                    let instance: wallet_chain_instance::instance::ChainObject =
-                        (&code, &btc_address_type, network.into()).try_into()?;
-
-                    let (account_address, derivation_path, task_data) =
-                        AccountDomain::create_account_with_account_id(
-                            tx,
-                            &seed,
-                            &instance,
-                            &account_index_map,
-                            &uid,
-                            address,
-                            account_name,
-                            is_default_name,
-                        )
-                        .await?;
-                    address_init_task_data.push(task_data);
-
-                    let keypair = instance
-                        .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
-                        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-                    let pk = keypair.private_key_bytes()?;
-                    let subkey = wallet_tree::file_ops::BulkSubkey::new(
-                        account_index_map.clone(),
-                        &account_address.address,
-                        chain_code,
-                        derivation_path.as_str(),
-                        pk,
-                    );
-                    subkeys.push(subkey);
-                    for coin in &coins {
-                        if chain_code == &coin.chain_code {
-                            let assets_id = AssetsId::new(
-                                &account_address.address,
-                                &coin.chain_code,
-                                &coin.symbol,
-                            );
-                            let assets = CreateAssetsVo::new(
-                                assets_id,
-                                coin.decimals,
-                                coin.token_address.clone(),
-                                coin.protocol.clone(),
-                                0,
-                            )
-                            .with_name(&coin.name)
-                            .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-                            if coin.price.is_empty() {
-                                req.insert(
-                                    chain_code,
-                                    &assets.token_address.clone().unwrap_or_default(),
-                                );
-                            }
-                            tx.upsert_assets(assets).await?;
-                        }
-                    }
-                }
-            }
+            ChainDomain::init_chains_assets(
+                tx,
+                &coins,
+                &mut req,
+                &mut address_init_task_data,
+                &mut subkeys,
+                &default_chain_list,
+                &seed,
+                &account_index_map,
+                None,
+                &uid,
+                address,
+                account_name,
+                is_default_name,
+            )
+            .await?;
         }
         tracing::info!(
             "Account creation and subkey generation took: {:?}",
@@ -491,13 +424,12 @@ impl WalletService {
             &uid,
             &device.sn,
             Some(client_id),
-            device.app_id,
             Some(device.device_type),
             wallet_name,
             invite_code,
         );
         let keys_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::KEYS_INIT,
+            wallet_transport_backend::consts::endpoint::KEYS_V2_INIT,
             &keys_init_req,
         )?;
 
@@ -506,26 +438,29 @@ impl WalletService {
             &language_req,
         )?;
 
-        let uids = tx
-            .uid_list()
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect::<Vec<String>>();
-        let device_delete_req = DeviceDeleteReq::new(&device.sn, &uids);
+        // let uids = tx
+        //     .uid_list()
+        //     .await?
+        //     .into_iter()
+        //     .map(|uid| uid.0)
+        //     .collect::<Vec<String>>();
+        // let device_delete_req = DeviceDeleteReq::new(&device.sn, &uids);
 
-        let device_delete_task_data =
-            BackendApiTaskData::new(endpoint::DEVICE_DELETE, &device_delete_req)?;
+        // let device_delete_task_data =
+        //     BackendApiTaskData::new(endpoint::DEVICE_DELETE, &device_delete_req)?;
 
-        let device_bind_address_task_data =
-            domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
+        // let device_bind_address_task_data =
+        //     domain::app::DeviceDomain::gen_device_bind_address_task_data().await?;
 
         // 恢复多签账号、多签队列
         let mut recover_data = RecoverDataBody::new(&uid);
         if let Some(tron_address) = tron_address {
             recover_data.tron_address = Some(tron_address);
         };
-
+        let address_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+            &address_init_task_data,
+        )?;
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 keys_init_task_data,
@@ -533,24 +468,20 @@ impl WalletService {
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 language_init_task_data,
             )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_delete_task_data,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_bind_address_task_data,
-            )))
+            // .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //     device_delete_task_data,
+            // )))
+            // .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //     device_bind_address_task_data,
+            // )))
             .push(Task::Common(CommonTask::RecoverMultisigAccountData(
                 recover_data,
             )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(
+                address_init_task_data,
+            )))
             .send()
             .await?;
-
-        for task in address_init_task_data {
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(task)))
-                .send()
-                .await?;
-        }
 
         tracing::info!("cose time: {}", start.elapsed().as_millis());
         Ok(CreateWalletRes {
@@ -877,26 +808,30 @@ impl WalletService {
         WalletRepoTrait::physical_delete_all(&mut tx).await?;
         // 删除所有mqtt相关的任务
         // TaskQueueRepoTrait::delete_all(&mut tx, 2).await?;
-        let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
+        AccountRepoTrait::physical_delete_all(&mut tx, &[]).await?;
 
         let req = DeviceDeleteReq::new(&device.sn, &[]);
         let device_delete_task = BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?;
-        let multisig_accounts = MultisigDomain::physical_delete_all_account(pool).await?;
+        MultisigDomain::physical_delete_all_account(pool).await?;
 
-        let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
-            &accounts,
-            multisig_accounts,
-            &device.sn,
-        )
-        .await?;
+        // let device_unbind_address_task = DeviceDomain::gen_device_unbind_all_address_task_data(
+        //     &accounts,
+        //     multisig_accounts,
+        //     &device.sn,
+        // )
+        // .await?;
+        let reset_task = BackendApiTaskData::new(
+            endpoint::KEYS_RESET,
+            &serde_json::json!({
+                "sn": device.sn
+            }),
+        )?;
 
         Tasks::new()
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 device_delete_task,
             )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_unbind_address_task,
-            )))
+            .push(Task::BackendApi(BackendApiTask::BackendApi(reset_task)))
             .send()
             .await?;
 

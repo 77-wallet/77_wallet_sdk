@@ -1,11 +1,11 @@
-use super::TIME_OUT;
+use super::{ton_tx, TIME_OUT};
 use crate::{
     dispatch,
     domain::{
         self,
         chain::{
             pare_fee_setting,
-            transaction::{ChainTransaction, DEFAULT_UNITS},
+            transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
     },
@@ -17,8 +17,9 @@ use std::collections::HashMap;
 use wallet_chain_interact::{
     self as chain,
     btc::{self},
-    eth,
+    dog, eth, ltc,
     sol::{self, operations::SolInstructionOperation},
+    sui, ton,
     tron::{
         self,
         operations::{TronConstantOperation as _, TronTxOperation},
@@ -27,7 +28,10 @@ use wallet_chain_interact::{
     BillResourceConsume,
 };
 use wallet_transport::client::{HttpClient, RpcClient};
-use wallet_types::chain::chain::ChainCode as ChainType;
+use wallet_types::chain::{
+    address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
+    chain::ChainCode as ChainType,
+};
 use wallet_utils::unit;
 
 pub enum TransactionAdapter {
@@ -35,6 +39,10 @@ pub enum TransactionAdapter {
     Ethereum(chain::eth::EthChain),
     Solana(chain::sol::SolanaChain),
     Tron(chain::tron::TronChain),
+    Ltc(chain::ltc::LtcChain),
+    Doge(chain::dog::DogChain),
+    Ton(chain::ton::chain::TonChain),
+    Sui(chain::sui::SuiChain),
 }
 
 impl TransactionAdapter {
@@ -47,10 +55,6 @@ impl TransactionAdapter {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         match chain_code {
             ChainType::Bitcoin => {
-                // let auth = wallet_chain_interact::btc::provider::RpcAuth {
-                //     user: "hello-bitcoin".to_string(),
-                //     password: "123456".to_string(),
-                // };
                 let config = chain::btc::provider::ProviderConfig {
                     rpc_url: rpc_url.to_string(),
                     rpc_auth: None,
@@ -79,7 +83,44 @@ impl TransactionAdapter {
                 let tron_chain = chain::tron::TronChain::new(provider)?;
                 Ok(TransactionAdapter::Tron(tron_chain))
             }
-            _ => panic!("not support chain"),
+            ChainType::Dogcoin => {
+                let config = chain::dog::provider::ProviderConfig {
+                    rpc_url: rpc_url.to_string(),
+                    rpc_auth: None,
+                    http_url: rpc_url.to_string(),
+                    http_api_key: None,
+                    access_key: None,
+                };
+
+                let doge = chain::dog::DogChain::new(config, network, header_opt, timeout)?;
+                Ok(TransactionAdapter::Doge(doge))
+            }
+            ChainType::Litecoin => {
+                let config = chain::ltc::provider::ProviderConfig {
+                    rpc_url: rpc_url.to_string(),
+                    rpc_auth: None,
+                    http_url: rpc_url.to_string(),
+                    http_api_key: None,
+                    access_key: None,
+                };
+
+                let doge = chain::ltc::LtcChain::new(config, network, header_opt, timeout)?;
+                Ok(TransactionAdapter::Ltc(doge))
+            }
+            ChainType::Ton => {
+                let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
+                let provider = ton::provider::Provider::new(http_client);
+
+                let ton = chain::ton::chain::TonChain::new(provider)?;
+
+                Ok(TransactionAdapter::Ton(ton))
+            }
+            ChainType::Sui => {
+                let rpc = RpcClient::new(rpc_url, header_opt, timeout)?;
+
+                let provider = sui::Provider::new(rpc);
+                Ok(TransactionAdapter::Sui(sui::SuiChain::new(provider)?))
+            }
         }
     }
 }
@@ -138,7 +179,7 @@ impl TransactionAdapter {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, crate::ServiceError> {
         let transfer_amount =
-            ChainTransaction::check_min_transfer(&params.base.value, params.base.decimals)?;
+            ChainTransDomain::check_min_transfer(&params.base.value, params.base.decimals)?;
 
         match self {
             Self::Ethereum(chain) => {
@@ -147,7 +188,7 @@ impl TransactionAdapter {
                 let balance = chain.balance(&params.base.from, None).await?;
 
                 // check balance
-                let remain_balance = ChainTransaction::check_eth_balance(
+                let remain_balance = ChainTransDomain::check_eth_balance(
                     &params.base.from,
                     balance,
                     params.base.token_address.as_deref(),
@@ -175,7 +216,7 @@ impl TransactionAdapter {
                 ))
             }
             Self::BitCoin(chain) => {
-                let account = domain::chain::transaction::ChainTransaction::account(
+                let account = domain::chain::transaction::ChainTransDomain::account(
                     &params.base.chain_code,
                     &params.base.from,
                 )
@@ -192,14 +233,58 @@ impl TransactionAdapter {
                 let tx = chain
                     .transfer(params, private_key)
                     .await
-                    .map_err(ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(ChainTransDomain::handle_btc_fee_error)?;
+
+                Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
+            }
+            Self::Ltc(chain) => {
+                let account =
+                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+
+                let address_type = LtcAddressType::try_from(account.address_type())?;
+
+                let params = ltc::operations::transfer::TransferArg::new(
+                    &params.base.from,
+                    &params.base.to,
+                    &params.base.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(params.base.spend_all);
+
+                let tx = chain
+                    .transfer(params, private_key)
+                    .await
+                    .map_err(ChainTransDomain::handle_btc_fee_error)?;
+
+                Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
+            }
+            Self::Doge(chain) => {
+                let account =
+                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+
+                let address_type = DogAddressType::try_from(account.address_type())?;
+
+                let params = dog::operations::transfer::TransferArg::new(
+                    &params.base.from,
+                    &params.base.to,
+                    &params.base.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(params.base.spend_all);
+
+                let tx = chain
+                    .transfer(params, private_key)
+                    .await
+                    .map_err(ChainTransDomain::handle_btc_fee_error)?;
 
                 Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
             }
             Self::Solana(chain) => {
                 // check balance
                 let balance = chain.balance(&params.base.from, None).await?;
-                let remain_balance = ChainTransaction::check_sol_balance(
+                let remain_balance = ChainTransDomain::check_sol_balance(
                     &params.base.from,
                     balance,
                     params.base.token_address.as_deref(),
@@ -220,9 +305,9 @@ impl TransactionAdapter {
 
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+                ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
-                ChainTransaction::check_sol_transaction_fee(
+                ChainTransDomain::check_sol_transaction_fee(
                     remain_balance,
                     fee_setting.original_fee(),
                 )?;
@@ -340,6 +425,101 @@ impl TransactionAdapter {
                     Ok(resp)
                 }
             }
+            Self::Ton(chain) => {
+                // 验证余额
+                let balance = chain
+                    .balance(&params.base.from, params.base.token_address.clone())
+                    .await?;
+                if balance < transfer_amount {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
+                }
+
+                let account =
+                    ChainTransDomain::account(&params.base.chain_code, &params.base.from).await?;
+
+                let address_type = match account.address_type() {
+                    Some(ty) => TonAddressType::try_from(ty.as_str())?,
+                    None => Err(crate::ServiceError::Types(
+                        wallet_types::error::Error::MissAddressType,
+                    ))?,
+                };
+
+                let msg_cell =
+                    ton_tx::build_ext_cell(&params.base, &chain.provider, address_type).await?;
+
+                let fee = chain
+                    .estimate_fee(msg_cell.clone(), &params.base.from, address_type)
+                    .await?;
+
+                let mut trans_fee = U256::from(fee.get_fee());
+                if params.base.token_address.is_none() {
+                    trans_fee += transfer_amount;
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                } else {
+                    let balance = chain.balance(&params.base.from, None).await?;
+
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                }
+
+                let tx_hash = chain.exec(msg_cell, private_key, address_type).await?;
+
+                Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))
+            }
+            Self::Sui(chain) => {
+                let balance = chain
+                    .balance(&params.base.from, params.base.token_address.clone())
+                    .await?;
+                if balance < transfer_amount {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
+                }
+
+                let req = sui::transfer::TransferOpt::new(
+                    &params.base.from,
+                    &params.base.to,
+                    transfer_amount,
+                    params.base.token_address.clone(),
+                )?;
+
+                let mut helper = req.select_coin(&chain.provider).await?;
+                let pt = req.build_pt(&chain.provider, &mut helper, None).await?;
+
+                let gas = chain.estimate_fee(&params.base.from, pt).await?;
+
+                let mut trans_fee = U256::from(gas.get_fee());
+                if params.base.token_address.is_none() {
+                    trans_fee += transfer_amount;
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                } else {
+                    let balance = chain.balance(&params.base.from, None).await?;
+                    if balance < trans_fee {
+                        return Err(crate::BusinessError::Chain(
+                            crate::ChainError::InsufficientFeeBalance,
+                        ))?;
+                    }
+                }
+
+                let fee = gas.get_fee_f64();
+                let tx_data = req.build_data(&chain.provider, helper, gas).await?;
+                let tx_hash = chain.exec(tx_data, private_key).await?;
+
+                Ok(TransferResp::new(tx_hash, fee.to_string()))
+            }
         }
     }
 
@@ -370,12 +550,8 @@ impl TransactionAdapter {
                     ))?;
                 }
 
-                let gas_oracle = domain::chain::transaction::ChainTransaction::gas_oracle(
-                    &req.chain_code,
-                    &chain.provider,
-                    backend,
-                )
-                .await?;
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend).await?;
 
                 let params = eth::operations::TransferOpt::new(
                     &req.from,
@@ -390,11 +566,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&fee)
             }
             Self::BitCoin(chain) => {
-                let account = domain::chain::transaction::ChainTransaction::account(
-                    &req.chain_code,
-                    &req.from,
-                )
-                .await?;
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
                 let params = btc::operations::transfer::TransferArg::new(
                     &req.from,
                     &req.to,
@@ -407,7 +579,59 @@ impl TransactionAdapter {
                 let fee = chain
                     .estimate_fee(params, None)
                     .await
-                    .map_err(domain::chain::transaction::ChainTransaction::handle_btc_fee_error)?;
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
+
+                let res = response_vo::CommonFeeDetails::new(
+                    fee.transaction_fee_f64(),
+                    token_currency,
+                    currency,
+                );
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Ltc(chain) => {
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+
+                let address_type = LtcAddressType::try_from(account.address_type())?;
+
+                let params = ltc::operations::transfer::TransferArg::new(
+                    &req.from,
+                    &req.to,
+                    &req.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(req.spend_all);
+
+                let fee = chain
+                    .estimate_fee(params)
+                    .await
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
+
+                let res = response_vo::CommonFeeDetails::new(
+                    fee.transaction_fee_f64(),
+                    token_currency,
+                    currency,
+                );
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Doge(chain) => {
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+
+                let address_type = DogAddressType::try_from(account.address_type())?;
+
+                let params = dog::operations::transfer::TransferArg::new(
+                    &req.from,
+                    &req.to,
+                    &req.value,
+                    address_type,
+                    chain.network,
+                )?
+                .with_spend_all(req.spend_all);
+
+                let fee = chain
+                    .estimate_fee(params)
+                    .await
+                    .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
 
                 let res = response_vo::CommonFeeDetails::new(
                     fee.transaction_fee_f64(),
@@ -430,7 +654,7 @@ impl TransactionAdapter {
                 let instructions = params.instructions().await?;
                 let mut fee_setting = chain.estimate_fee_v1(&instructions, &params).await?;
 
-                ChainTransaction::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
+                ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
                 let res = response_vo::CommonFeeDetails::new(
                     fee_setting.transaction_fee(),
@@ -479,6 +703,46 @@ impl TransactionAdapter {
                 .await?;
 
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Ton(chain) => {
+                let account = ChainTransDomain::account(&req.chain_code, &req.from).await?;
+
+                let address_type = match account.address_type() {
+                    Some(ty) => TonAddressType::try_from(ty.as_str())?,
+                    None => Err(crate::ServiceError::Types(
+                        wallet_types::error::Error::MissAddressType,
+                    ))?,
+                };
+
+                let msg_cell = ton_tx::build_ext_cell(&req, &chain.provider, address_type).await?;
+
+                let fee = chain
+                    .estimate_fee(msg_cell.clone(), &req.from, address_type)
+                    .await?;
+
+                let res =
+                    response_vo::CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency);
+
+                wallet_utils::serde_func::serde_to_string(&res)
+            }
+            Self::Sui(chain) => {
+                let amount = unit::convert_to_u256(&req.value, req.decimals)?;
+                let params = sui::transfer::TransferOpt::new(
+                    &req.from,
+                    &req.to,
+                    amount,
+                    req.token_address.clone(),
+                )?;
+
+                let mut helper = params.select_coin(&chain.provider).await?;
+                let pt = params.build_pt(&chain.provider, &mut helper, None).await?;
+
+                let gas = chain.estimate_fee(&req.from, pt).await?;
+
+                let res =
+                    response_vo::CommonFeeDetails::new(gas.get_fee_f64(), token_currency, currency);
+
                 wallet_utils::serde_func::serde_to_string(&res)
             }
         };
