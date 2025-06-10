@@ -199,7 +199,8 @@ impl From<crate::default_data::coin::DefaultCoin> for UpsertCoinVo {
             protocol: coin.protocol,
             is_default: if coin.default { 1 } else { 0 },
             is_popular: if coin.popular { 1 } else { 0 },
-            status: if coin.active { 1 } else { 0 },
+            // status: if coin.enable { 1 } else { 0 },
+            status: 1,
         }
     }
 }
@@ -242,7 +243,8 @@ impl From<wallet_transport_backend::CoinInfo> for UpsertCoinVo {
             protocol: coin.protocol,
             is_default: if coin.default_token { 1 } else { 0 },
             is_popular: if coin.popular_token { 1 } else { 0 },
-            status: if coin.enable { 1 } else { 0 },
+            // status: if coin.enable { 1 } else { 0 },
+            status: 1,
         }
     }
 }

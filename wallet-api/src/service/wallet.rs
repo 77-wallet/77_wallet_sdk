@@ -354,7 +354,7 @@ impl WalletService {
             .into_iter()
             .map(|chain| chain.chain_code)
             .collect::<Vec<String>>();
-
+        // tracing::info!("coins: {:?}", coins);
         let account_creation_start = std::time::Instant::now();
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
