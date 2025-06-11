@@ -19,7 +19,7 @@ node_name = "Nileex"
 rpc_url = "https://api.nileex.io"
 http_url = ""
 network = "testnet"
-active = true
+active = false
 
 # [[nodes.tron.nodes]]
 # node_name = "Platform Node"
@@ -151,33 +151,33 @@ node_name = "77 Official Nodes"
 rpc_url = "https://apprpc.safew.cc/ltc"
 http_url = ""
 network = "mainnet"
-active = true
+active = false
 
 [[nodes.doge.nodes]]
 node_name = "77 Official Nodes"
 rpc_url = "https://apprpc.safew.cc/doge"
 http_url = ""
 network = "mainnet"
-active = true
+active = false
 
 [[nodes.ton.nodes]]
 node_name = "77 Official Nodes"
 rpc_url = "https://quiet-quick-rain.ton-mainnet.quiknode.pro/c810e9e5a4bff2ca191a43fcb46e6ad5fecf78dd"
 http_url = ""
 network = "mainnet"
-active = true
+active = false
 
 [[nodes.sui.nodes]]
 node_name = "77 Official Nodes"
 rpc_url = "https://apprpc.safew.cc/sui"
 http_url = ""
 network = "mainnet"
-active = true
+active = false
 
 
-[[nodes.tron.nodes]]
+[[nodes.sui.nodes]]
 node_name = "Sui Official Node"
 rpc_url = "https://rpc-mainnet.suiscan.xyz"
 http_url = ""
 network = "mainnet"
-active = true
+active = false
