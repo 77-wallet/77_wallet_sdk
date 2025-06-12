@@ -152,7 +152,7 @@ impl crate::WalletManager {
         //     .sync_assets_from_backend(addr, chain_code, symbol)
         //     .await;
         let res = AssetsService::new(self.repo_factory.resource_repo())
-            .sync_assets_by_addr(addr, chain_code, symbol)
+            .sync_assets_by_addr(vec![addr], chain_code, symbol)
             .await;
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);
