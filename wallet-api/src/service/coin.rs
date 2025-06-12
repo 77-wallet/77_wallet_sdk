@@ -308,15 +308,18 @@ impl CoinService {
     pub async fn query_token_info(
         self,
         chain_code: &str,
-        token_address: &str,
+        mut token_address: String,
     ) -> Result<crate::response_vo::coin::TokenInfo, crate::ServiceError> {
         let mut tx = self.repo;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
-        domain::chain::check_address(token_address, chain_code.try_into()?, net)?;
+        domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let coin =
-            CoinRepoTrait::get_coin_by_chain_code_token_address(&mut tx, chain_code, token_address)
-                .await?;
+        let coin = CoinRepoTrait::get_coin_by_chain_code_token_address(
+            &mut tx,
+            chain_code,
+            &token_address,
+        )
+        .await?;
         let res = if let Some(coin) = coin {
             crate::response_vo::coin::TokenInfo {
                 symbol: Some(coin.symbol),
@@ -329,7 +332,7 @@ impl CoinService {
                     .await?;
 
             let decimals = chain_instance
-                .decimals(token_address)
+                .decimals(&token_address)
                 .await
                 .map_err(|e| match e {
                     wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
@@ -345,13 +348,13 @@ impl CoinService {
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
-            let symbol = chain_instance.token_symbol(token_address).await?;
+            let symbol = chain_instance.token_symbol(&token_address).await?;
             if symbol.is_empty() {
                 return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
-            let name = chain_instance.token_name(token_address).await?;
+            let name = chain_instance.token_name(&token_address).await?;
             if name.is_empty() {
                 return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
@@ -379,22 +382,7 @@ impl CoinService {
     ) -> Result<(), crate::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
-        let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
-
-        match chain {
-            wallet_types::chain::chain::ChainCode::Ethereum
-            | wallet_types::chain::chain::ChainCode::BnbSmartChain => {
-                token_address = wallet_utils::address::to_checksum_address(&token_address);
-            }
-            _ => {}
-        }
-
-        match chain {
-            wallet_types::chain::chain::ChainCode::Sui => {
-                wallet_utils::address::parse_sui_type_tag(&token_address)?;
-            }
-            _ => domain::chain::check_address(&token_address, chain, net)?,
-        }
+        domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
         let tx = &mut self.repo;
         let Some(_) = tx.detail_with_node(chain_code).await? else {

@@ -11,7 +11,10 @@ use wallet_database::{
     repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, ResourcesRepo},
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
-use wallet_types::chain::{chain::ChainCode, network};
+use wallet_types::chain::{
+    chain::ChainCode,
+    network::{self, NetworkKind},
+};
 use wallet_utils::address;
 
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
@@ -326,6 +329,30 @@ impl ChainDomain {
                 )
                 .await?;
             }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn check_token_address(
+        token_address: &mut String,
+        chain_code: &str,
+        net: NetworkKind,
+    ) -> Result<(), crate::ServiceError> {
+        let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
+
+        match chain {
+            wallet_types::chain::chain::ChainCode::Ethereum
+            | wallet_types::chain::chain::ChainCode::BnbSmartChain => {
+                *token_address = wallet_utils::address::to_checksum_address(&token_address);
+            }
+            _ => {}
+        }
+
+        match chain {
+            wallet_types::chain::chain::ChainCode::Sui => {
+                wallet_utils::address::parse_sui_type_tag(&token_address)?;
+            }
+            _ => check_address(&token_address, chain, net)?,
         }
         Ok(())
     }
