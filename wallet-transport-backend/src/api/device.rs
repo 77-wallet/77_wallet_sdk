@@ -6,7 +6,7 @@ use crate::{response::BackendResponse, response_vo::app::MinValueConfigResp};
 impl BackendApi {
     pub async fn device_init(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::DeviceInitReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -16,12 +16,12 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn device_delete(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::DeviceDeleteReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -31,12 +31,12 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn device_bind_address(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::DeviceBindAddressReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -46,12 +46,12 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn device_unbind_address(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::DeviceBindAddressReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -61,12 +61,12 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn keys_init(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::KeysInitReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -75,12 +75,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn keys_v2_init(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::KeysInitReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -89,12 +89,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn keys_update_wallet_name(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::KeysUpdateWalletNameReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -103,14 +103,10 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn keys_reset(
-        &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-        sn: &str,
-    ) -> Result<Option<()>, crate::Error> {
+    pub async fn keys_reset(&self, sn: &str) -> Result<Option<()>, crate::Error> {
         let res = self
             .client
             .post("keys/reset")
@@ -119,13 +115,13 @@ impl BackendApi {
             }))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     // report filter min value config
     pub async fn save_send_msg_account(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: Vec<crate::response_vo::app::SaveSendMsgAccount>,
     ) -> Result<(), crate::Error> {
         let req = json!({
@@ -137,15 +133,11 @@ impl BackendApi {
             .json(req)
             .send::<BackendResponse>()
             .await?
-            .process(aes_cbc_cryptor)
+            .process(&self.aes_cbc_cryptor)
     }
 
     // fetch min config
-    pub async fn fetch_min_config(
-        &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-        sn: String,
-    ) -> Result<MinValueConfigResp, crate::Error> {
+    pub async fn fetch_min_config(&self, sn: String) -> Result<MinValueConfigResp, crate::Error> {
         let req = json!({
             "sn":sn
         });
@@ -155,12 +147,12 @@ impl BackendApi {
             .json(req)
             .send::<BackendResponse>()
             .await?
-            .process(aes_cbc_cryptor)
+            .process(&self.aes_cbc_cryptor)
     }
 
     pub async fn update_app_id(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &crate::request::UpdateAppIdReq,
     ) -> Result<(), crate::Error> {
         let res = self
@@ -169,6 +161,6 @@ impl BackendApi {
             .json(req)
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 }

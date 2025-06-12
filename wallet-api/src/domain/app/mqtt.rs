@@ -38,15 +38,11 @@ impl MqttDomain {
 
     pub(crate) async fn process_unconfirm_msg(client_id: &str) -> Result<(), crate::ServiceError> {
         let backend_api = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let data = backend_api
-            .query_unconfirm_msg(
-                cryptor,
-                &wallet_transport_backend::request::QueryUnconfirmMsgReq {
-                    client_id: client_id.to_string(),
-                },
-            )
+            .query_unconfirm_msg(&wallet_transport_backend::request::QueryUnconfirmMsgReq {
+                client_id: client_id.to_string(),
+            })
             .await?
             .list;
         tracing::debug!("query_unconfirm_msg: {}", data.len());

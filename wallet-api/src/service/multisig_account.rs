@@ -63,7 +63,6 @@ impl MultisigAccountService {
         address_type: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         // check address type
         let address_type = match chain_code.as_str() {
             chain_code::BTC => {
@@ -94,7 +93,7 @@ impl MultisigAccountService {
         // 获取address对应的uid
         let address_uid = self
             .backend
-            .get_address_uid(cryptor, chain_code.clone(), member_address)
+            .get_address_uid(chain_code.clone(), member_address)
             .await?;
         // 设置member 的ui
         for item in member_list.iter_mut() {
@@ -160,9 +159,7 @@ impl MultisigAccountService {
             &sync_account_params.to_json_str()?,
             raw_data,
         );
-        self.backend
-            .signed_order_save_confirm_address(cryptor, req)
-            .await?;
+        self.backend.signed_order_save_confirm_address(req).await?;
 
         self.repo.create_with_member(&params).await?;
 
@@ -332,11 +329,10 @@ impl MultisigAccountService {
         self,
         chain_code: &str,
     ) -> Result<String, crate::ServiceError> {
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let req = SignedFindAddressReq::new(chain_code);
         let res = self
             .backend
-            .signed_find_address(cryptor, req)
+            .signed_find_address(req)
             .await
             .map_err(crate::ServiceError::TransportBackend)?;
 
@@ -349,8 +345,6 @@ impl MultisigAccountService {
         account_chain: &str,
         pay_address: &str,
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let account_with_wallet = AccountRepo::account_with_wallet(pay_address, pay_chain, pool)
@@ -361,7 +355,7 @@ impl MultisigAccountService {
 
         // service fee
         let req = SignedFeeListReq::new(account_chain, pay_address, account_with_wallet.uid);
-        let res = self.backend.signed_fee_info(cryptor, req).await?;
+        let res = self.backend.signed_fee_info(req).await?;
 
         Ok(MultisigFeeVo::from(res))
     }
@@ -491,12 +485,11 @@ impl MultisigAccountService {
                 let chain = ChainAdapterFactory::get_tron_adapter().await?;
                 let account = chain.account_info(&multisig_account.address).await?;
 
-                let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
                 let users = account.all_actives_user();
                 if users.len() > 1 || (users.len() == 1 && users[0] != multisig_account.address) {
                     let _n = self
                         .backend
-                        .permission_clean(&cryptor, &multisig_account.address, users)
+                        .permission_clean(&multisig_account.address, users)
                         .await;
                 }
             }
@@ -621,11 +614,10 @@ impl MultisigAccountService {
         }
 
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         // fetch address
         let req = SignedFindAddressReq::new(&payer.chain_code);
-        let address = backend.signed_find_address(cryptor, req).await?;
+        let address = backend.signed_find_address(req).await?;
         let to = &address.address;
 
         // fetch value
@@ -642,7 +634,7 @@ impl MultisigAccountService {
             &payer.from,
             account_with_wallet.uid,
         );
-        let amount = backend.signed_fee_info(cryptor, req).await?;
+        let amount = backend.signed_fee_info(req).await?;
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();

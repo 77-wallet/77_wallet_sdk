@@ -9,12 +9,10 @@ impl TaskQueueDomain {
             const BATCH_SIZE: usize = 500;
             for chunk in ids.chunks(BATCH_SIZE) {
                 let api = crate::Context::get_global_backend_api()?;
-                let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
                 // tracing::info!("send_msg_confirm: {}", chunk.len());
-                api.send_msg_confirm(
-                    aes_cbc_cryptor,
-                    &wallet_transport_backend::request::SendMsgConfirmReq::new(chunk.to_vec()),
-                )
+                api.send_msg_confirm(&wallet_transport_backend::request::SendMsgConfirmReq::new(
+                    chunk.to_vec(),
+                ))
                 .await?;
             }
         }
@@ -27,10 +25,9 @@ impl TaskQueueDomain {
         endpoint: &str,
     ) -> Result<Option<Task>, crate::ServiceError> {
         let backend = crate::Context::get_global_backend_api()?;
-        let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
 
         let res = backend
-            .post_request::<_, serde_json::Value>(endpoint, &req, aes_cbc_cryptor)
+            .post_request::<_, serde_json::Value>(endpoint, &req)
             .await;
 
         if let Err(e) = res {

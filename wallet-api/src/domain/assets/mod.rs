@@ -193,7 +193,6 @@ impl AssetsDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let backhand = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         // 获取这个地址对应的链码,如果未传
         let codes = if let Some(chain_code) = chain_code.clone() {
@@ -209,9 +208,7 @@ impl AssetsDomain {
         };
 
         for code in codes {
-            let resp = backhand
-                .wallet_assets_chain_list(&cryptor, &addr, &code)
-                .await?;
+            let resp = backhand.wallet_assets_chain_list(&addr, &code).await?;
 
             for item in resp.list.into_iter() {
                 let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
@@ -245,13 +242,10 @@ impl AssetsDomain {
 
         if let Some(wallet) = wallet {
             let backhand = crate::Context::get_global_backend_api()?;
-            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
             // 本地的index 进行了 + 1
             let index = account_id.map(|x| x - 1);
-            let resp = backhand
-                .wallet_assets_list(&cryptor, wallet.uid, index)
-                .await?;
+            let resp = backhand.wallet_assets_list(wallet.uid, index).await?;
 
             tracing::warn!("resp = {:#?}", resp);
             for item in resp.list.into_iter() {

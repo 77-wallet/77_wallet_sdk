@@ -9,7 +9,7 @@ use std::collections::HashMap;
 impl BackendApi {
     pub async fn signed_tran_create(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &SignedTranCreateReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -18,12 +18,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_tran_accept(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &SignedTranAcceptReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -32,12 +32,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_tran_update_trans_hash(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &SignedTranUpdateHashReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -46,14 +46,10 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn gas_oracle(
-        &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-        chain_code: &str,
-    ) -> Result<GasOracle, crate::Error> {
+    pub async fn gas_oracle(&self, chain_code: &str) -> Result<GasOracle, crate::Error> {
         let mut params = HashMap::new();
         params.insert("chainCode", chain_code);
 
@@ -64,12 +60,12 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn record_lists(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         chain_code: &str,
         address: &str,
         start_time: Option<String>,
@@ -83,6 +79,6 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 }

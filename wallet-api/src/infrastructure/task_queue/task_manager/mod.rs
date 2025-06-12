@@ -243,8 +243,7 @@ impl TaskManager {
         );
 
         let backend_api = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        backend_api.client_task_log_upload(cryptor, req).await?;
+        backend_api.client_task_log_upload(req).await?;
 
         let task: Task = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
@@ -279,7 +278,6 @@ impl TaskManager {
         let task: Task = task_entity.try_into()?;
         let task_type = task.get_type();
         let backend_api = crate::manager::Context::get_global_backend_api()?;
-        let aes_cbc_cryptor = crate::manager::Context::get_global_aes_cbc_cryptor()?;
         // update task running status
 
         repo.task_running(&id).await?;
@@ -289,7 +287,7 @@ impl TaskManager {
                 handle_initialization_task(initialization_task, pool).await?
             }
             Task::BackendApi(backend_api_task) => {
-                handle_backend_api_task(backend_api_task, backend_api, aes_cbc_cryptor).await?
+                handle_backend_api_task(backend_api_task, backend_api).await?
             }
             Task::Mqtt(mqtt_task) => handle_mqtt_task(mqtt_task, &id).await?,
             Task::Common(common_task) => handle_common_task(common_task, pool).await?,

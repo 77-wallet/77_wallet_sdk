@@ -41,8 +41,7 @@ impl ConfigDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let backend = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let res = backend.fetch_min_config(cryptor, sn.to_string()).await?;
+        let res = backend.fetch_min_config(sn.to_string()).await?;
 
         for item in res.list {
             let key = MinValueSwitchConfig::get_key(&item.token_code.to_uppercase(), sn);
@@ -385,11 +384,10 @@ impl ConfigDomain {
     // If an error occurs or the URI is not found, use the URI from the database instead.
     pub async fn get_mqtt_uri() -> Result<Option<String>, crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
-        let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        if let Ok(mqtt_url) = backend_api.mqtt_init(aes_cbc_cryptor).await {
+        if let Ok(mqtt_url) = backend_api.mqtt_init().await {
             let config = MqttUrl {
                 url: mqtt_url.clone(),
             };

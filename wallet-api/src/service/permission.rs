@@ -151,10 +151,9 @@ impl PermissionService {
 
     // 上报后端
     async fn upload_backend(&self, params: PermissionAcceptReq) -> Result<(), crate::ServiceError> {
-        let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let backend = crate::Context::get_global_backend_api()?;
 
-        Ok(backend.permission_accept(params, aes_cbc_cryptor).await?)
+        Ok(backend.permission_accept(params).await?)
     }
 }
 

@@ -134,7 +134,6 @@ impl MultisigQueueDomain {
         raw_time: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let req = wallet_transport_backend::request::FindAddressRawDataReq::new_trans(
@@ -142,7 +141,7 @@ impl MultisigQueueDomain {
             raw_time,
             None,
         );
-        let data = backend.address_find_address_raw_data(cryptor, req).await?;
+        let data = backend.address_find_address_raw_data(req).await?;
 
         let list = data.list;
         for item in list {
@@ -253,10 +252,7 @@ impl MultisigQueueDomain {
             .to_string()?;
 
         let backend_api = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        Ok(backend_api
-            .update_raw_data(cryptor, queue_id, raw_data)
-            .await?)
+        Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
     }
 
     // 波场交易队列事件、并进行默认签名

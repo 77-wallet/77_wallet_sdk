@@ -816,8 +816,7 @@ impl MultisigTransactionService {
         // 回收资源
         if let Some(request_id) = request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;
-            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-            let _rs = backend.delegate_complete(cryptor, &request_id).await;
+            let _rs = backend.delegate_complete(&request_id).await;
         }
 
         Ok(tx_resp.tx_hash)
@@ -862,11 +861,8 @@ impl MultisigTransactionService {
             .await?
             .to_string()?;
         let backend = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        if let Err(e) = backend
-            .signed_trans_cancel(cryptor, &queue_id, raw_data)
-            .await
-        {
+
+        if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
             tracing::error!("cancel queue[{}] upload fail roolback err:{}", queue_id, e);
             MultisigQueueDaoV1::rollback_update_fail(&queue_id, queue.status, pool.as_ref())
                 .await

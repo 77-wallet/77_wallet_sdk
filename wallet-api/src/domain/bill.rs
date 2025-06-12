@@ -98,9 +98,8 @@ impl BillDomain {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let resp = backend
-            .record_lists(cryptor, chain_code, address, start_time)
+            .record_lists(chain_code, address, start_time)
             .await?;
 
         for item in resp.list {

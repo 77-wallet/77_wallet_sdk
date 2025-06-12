@@ -34,7 +34,6 @@ impl PermissionDomain {
     pub async fn recover_permission(addresses: Vec<String>) -> Result<(), crate::ServiceError> {
         let backend = crate::Context::get_global_backend_api()?;
 
-        let aes_cbc_cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         for address in addresses {
@@ -42,7 +41,7 @@ impl PermissionDomain {
                 address: Some(address),
                 uid: None,
             };
-            let result = backend.get_permission_backup(req, aes_cbc_cryptor).await?;
+            let result = backend.get_permission_backup(req).await?;
 
             for item in result.list {
                 if let Err(e) = Self::handel_one_item(&pool, &item).await {

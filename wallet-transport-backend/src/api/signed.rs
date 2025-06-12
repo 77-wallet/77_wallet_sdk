@@ -12,7 +12,7 @@ use crate::{
 impl BackendApi {
     pub async fn address_find_address_raw_data(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: crate::request::FindAddressRawDataReq,
     ) -> Result<FindAddressRawDataRes, crate::Error> {
         let res = self
@@ -22,12 +22,12 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_find_address(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: crate::request::SignedFindAddressReq,
     ) -> Result<DepositAddress, crate::Error> {
         let res = self
@@ -37,12 +37,12 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_fee_info(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: crate::request::SignedFeeListReq,
     ) -> Result<MultisigServiceFeeInfo, crate::Error> {
         let res = self
@@ -52,12 +52,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_order_update_signed_hash(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &SignedUpdateSignedHashReq,
     ) -> Result<Option<String>, crate::Error> {
         let res = self
@@ -66,12 +66,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_order_update_recharge_hash(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &SignedUpdateRechargeHashReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -80,12 +80,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_order_save_confirm_address(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: SignedSaveAddressReq,
     ) -> Result<Option<String>, crate::Error> {
         // /signed/order/saveConfirmAddress
@@ -96,12 +96,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn get_address_uid(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         chain_code: String,
         address: Vec<String>,
     ) -> Result<AddressUidList, crate::Error> {
@@ -116,12 +116,12 @@ impl BackendApi {
             .json(req)
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_order_cancel(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &SingedOrderCancelReq,
     ) -> Result<Option<String>, crate::Error> {
         let res = self
@@ -130,12 +130,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_order_create(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: SignedCreateOrderReq,
     ) -> Result<String, crate::Error> {
         let res = self
@@ -144,12 +144,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn signed_order_accept(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: &SignedOrderAcceptReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -158,13 +158,13 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     // /signed/order/success
     pub async fn signed_order_success(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
+
         req: SignedUpdateRechargeHashReq,
     ) -> Result<String, crate::Error> {
         let res = self
@@ -173,13 +173,12 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-        res.process(aes_cbc_cryptor)
+        res.process(&self.aes_cbc_cryptor)
     }
 
     // cancel multisig queue
     pub async fn signed_trans_cancel(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         queue_id: &str,
         raw_data: String,
     ) -> Result<(), crate::Error> {
@@ -188,40 +187,29 @@ impl BackendApi {
             "rawData":raw_data
         });
 
-        self.post_request::<_, ()>("signed/trans/cancel", req, aes_cbc_cryptor)
-            .await
+        self.post_request::<_, ()>("signed/trans/cancel", req).await
     }
 
     // Update the raw data of the multisig account or queue.
-    pub async fn update_raw_data(
-        &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-        id: &str,
-        raw_data: String,
-    ) -> Result<(), crate::Error> {
+    pub async fn update_raw_data(&self, id: &str, raw_data: String) -> Result<(), crate::Error> {
         let req = serde_json::json!({
             "businessId":id.to_string(),
             "rawData":raw_data
         });
 
-        self.post_request::<_, ()>("/signed/order/saveRawData", req, aes_cbc_cryptor)
+        self.post_request::<_, ()>("/signed/order/saveRawData", req)
             .await
     }
 
     pub async fn check_multisig_account_is_cancel(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         account_id: &str,
     ) -> Result<MultisigAccountIsCancelRes, crate::Error> {
         let req = serde_json::json!({
             "orderId":account_id.to_string(),
         });
 
-        self.post_request::<_, MultisigAccountIsCancelRes>(
-            "signed/order/findCancelStatusById",
-            req,
-            aes_cbc_cryptor,
-        )
-        .await
+        self.post_request::<_, MultisigAccountIsCancelRes>("signed/order/findCancelStatusById", req)
+            .await
     }
 }

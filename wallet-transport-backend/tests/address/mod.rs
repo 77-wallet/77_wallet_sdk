@@ -3,7 +3,7 @@ use wallet_transport_backend::request::{AddressDetailsReq, AddressInitReq};
 
 #[tokio::test]
 async fn test_address_init() -> Result<(), wallet_transport_backend::Error> {
-    let (aes_cbc_cryptor, backend_api) = init()?;
+    let backend_api = init()?;
 
     let uid = "cd2ac48fa33ba24a8bc0d89e7658a2cd";
     let req = AddressInitReq {
@@ -16,10 +16,7 @@ async fn test_address_init() -> Result<(), wallet_transport_backend::Error> {
         name: "test".to_string(),
     };
 
-    let res = backend_api
-        .address_init(&aes_cbc_cryptor, &req)
-        .await
-        .unwrap();
+    let res = backend_api.address_init(&req).await.unwrap();
 
     println!("[test_chain_default_list] res: {res:?}");
     Ok(())
@@ -27,7 +24,7 @@ async fn test_address_init() -> Result<(), wallet_transport_backend::Error> {
 
 #[tokio::test]
 async fn test_address_details() -> Result<(), wallet_transport_backend::Error> {
-    let (aes_cbc_cryptor, backend_api) = init()?;
+    let backend_api = init()?;
     let req = AddressDetailsReq {
         // address: "TSL4wp6qcLwub88FmEu2gozA1Buz8CnsTn".to_string(),
         // address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
@@ -37,7 +34,7 @@ async fn test_address_details() -> Result<(), wallet_transport_backend::Error> {
     };
 
     let res = backend_api
-        .address_find_multisiged_details(&aes_cbc_cryptor, req)
+        .address_find_multisiged_details(req)
         .await
         .unwrap();
 
@@ -47,12 +44,10 @@ async fn test_address_details() -> Result<(), wallet_transport_backend::Error> {
 
 #[tokio::test]
 async fn test_assests_list() -> Result<(), wallet_transport_backend::Error> {
-    let (aes_cbc_cryptor, backend_api) = init()?;
+    let backend_api = init()?;
     let uid = "074209f318e1079c7910c336df5745c57d31da251ebecd7cfda6d13206b71699".to_string();
     let address = None;
-    let res = backend_api
-        .wallet_assets_list(&aes_cbc_cryptor, uid, address)
-        .await;
+    let res = backend_api.wallet_assets_list(uid, address).await;
 
     println!(" res: {res:?}");
     Ok(())

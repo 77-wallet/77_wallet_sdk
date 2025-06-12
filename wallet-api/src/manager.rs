@@ -126,7 +126,6 @@ pub struct Context {
     pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
     pub(crate) device: Arc<DeviceInfo>,
     pub(crate) cache: Arc<SharedCache>,
-    pub(crate) aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
     pub(crate) inner_event_handle: InnerEventHandle,
     pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
     pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
@@ -167,8 +166,13 @@ impl Context {
         #[cfg(feature = "prod")]
         let api_url = config.backend_api.prod_url;
 
-        let backend_api =
-            wallet_transport_backend::api::BackendApi::new(Some(api_url.to_string()), header_opt)?;
+        let aes_cbc_cryptor =
+            wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
+        let backend_api = wallet_transport_backend::api::BackendApi::new(
+            Some(api_url.to_string()),
+            header_opt,
+            aes_cbc_cryptor,
+        )?;
 
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
 
@@ -185,8 +189,6 @@ impl Context {
             &config.oss.bucket_name,
         );
 
-        let aes_cbc_cryptor =
-            wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
@@ -208,7 +210,6 @@ impl Context {
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
-            aes_cbc_cryptor,
             inner_event_handle,
             unconfirmed_msg_collector,
             unconfirmed_msg_processor,
@@ -236,11 +237,6 @@ impl Context {
     pub(crate) fn get_global_backend_api(
     ) -> Result<&'static wallet_transport_backend::api::BackendApi, crate::ServiceError> {
         Ok(&Context::get_context()?.backend_api)
-    }
-
-    pub(crate) fn get_global_aes_cbc_cryptor(
-    ) -> Result<&'static wallet_utils::cbc::AesCbcCryptor, crate::ServiceError> {
-        Ok(&Context::get_context()?.aes_cbc_cryptor)
     }
 
     pub(crate) fn get_global_dirs() -> Result<&'static crate::manager::Dirs, crate::SystemError> {
@@ -302,10 +298,7 @@ impl Context {
 
         if token_expired {
             let backend_api = cx.backend_api.clone();
-            let aes_cbc_cryptor = &cx.aes_cbc_cryptor;
-            let new_token_response = backend_api
-                .rpc_token(aes_cbc_cryptor, &cx.device.client_id)
-                .await;
+            let new_token_response = backend_api.rpc_token(&cx.device.client_id).await;
             match new_token_response {
                 Ok(token) => {
                     let new_token = RpcToken {

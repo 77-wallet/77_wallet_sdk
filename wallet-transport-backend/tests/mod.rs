@@ -12,14 +12,14 @@ mod signed;
 mod stake;
 mod transaction;
 
-pub fn init(
-) -> Result<(wallet_utils::cbc::AesCbcCryptor, BackendApi), wallet_transport_backend::Error> {
+pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
     wallet_utils::init_test_log();
     let base_url = "https://xxxx.top";
-    Ok((
+    Ok(BackendApi::new(
+        Some(base_url.to_string()),
+        None,
         create_aes_cryptor(),
-        BackendApi::new(Some(base_url.to_string()), None)?,
-    ))
+    )?)
 }
 
 pub(crate) fn create_aes_cryptor() -> wallet_utils::cbc::AesCbcCryptor {

@@ -60,16 +60,10 @@ pub struct TransPermission {
 }
 
 impl BackendApi {
-    pub async fn permission_accept(
-        &self,
-        req: PermissionAcceptReq,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-    ) -> Result<(), crate::Error> {
+    pub async fn permission_accept(&self, req: PermissionAcceptReq) -> Result<(), crate::Error> {
         let endpoint = "permission/change";
 
-        let _result = self
-            .post_request::<_, bool>(endpoint, &req, aes_cbc_cryptor)
-            .await;
+        let _result = self.post_request::<_, bool>(endpoint, &req).await;
 
         Ok(())
     }
@@ -77,12 +71,11 @@ impl BackendApi {
     pub async fn get_permission_backup(
         &self,
         req: GetPermissionBackReq,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<PermissionBackupResp, crate::Error> {
         let endpoint = "permission/getBackUpData";
 
         let result = self
-            .post_request::<_, PermissionBackupResp>(endpoint, &req, aes_cbc_cryptor)
+            .post_request::<_, PermissionBackupResp>(endpoint, &req)
             .await?;
 
         Ok(result)
@@ -90,7 +83,6 @@ impl BackendApi {
 
     pub async fn permission_clean(
         &self,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
         owner: &str,
         users: Vec<String>,
     ) -> Result<(), crate::Error> {
@@ -101,23 +93,15 @@ impl BackendApi {
 
         let endpoint = "permission/activePermission/clean";
 
-        let _result = self
-            .post_request::<_, Option<bool>>(endpoint, &req, aes_cbc_cryptor)
-            .await;
+        let _result = self.post_request::<_, Option<bool>>(endpoint, &req).await;
 
         Ok(())
     }
 
-    pub async fn trans_upload(
-        &self,
-        req: TransPermission,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-    ) -> Result<(), crate::Error> {
+    pub async fn trans_upload(&self, req: TransPermission) -> Result<(), crate::Error> {
         let endpoint = "permission/uploadTrans";
 
-        let _result = self
-            .post_request::<_, bool>(endpoint, &req, aes_cbc_cryptor)
-            .await;
+        let _result = self.post_request::<_, bool>(endpoint, &req).await;
 
         Ok(())
     }

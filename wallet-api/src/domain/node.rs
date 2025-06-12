@@ -71,7 +71,6 @@ impl NodeDomain {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let local_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo)
             .await?
@@ -81,7 +80,7 @@ impl NodeDomain {
         let mut backend_nodes = Vec::new();
 
         match backend
-            .chain_rpc_list(cryptor, ChainRpcListReq::new(local_chains.clone()))
+            .chain_rpc_list(ChainRpcListReq::new(local_chains.clone()))
             .await
         {
             Ok(nodes) => {

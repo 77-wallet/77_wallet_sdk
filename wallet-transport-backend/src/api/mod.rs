@@ -19,12 +19,14 @@ pub mod transaction;
 pub struct BackendApi {
     pub base_url: String,
     pub client: wallet_transport::client::HttpClient,
+    pub(crate) aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
 }
 
 impl BackendApi {
     pub fn new(
         backend_url: Option<String>,
         headers_opt: Option<HashMap<String, String>>,
+        aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<Self, crate::Error> {
         let url = backend_url.unwrap_or(crate::consts::BASE_URL.to_string());
 
@@ -35,6 +37,7 @@ impl BackendApi {
         Ok(Self {
             base_url: url.to_string(),
             client: wallet_transport::client::HttpClient::new(&url, Some(headers_opt), timeout)?,
+            aes_cbc_cryptor,
         })
     }
 
@@ -43,12 +46,7 @@ impl BackendApi {
         self.client.replace_base_url(base_url);
     }
 
-    pub async fn post_request<T, R>(
-        &self,
-        endpoint: &str,
-        req: T,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-    ) -> Result<R, crate::Error>
+    pub async fn post_request<T, R>(&self, endpoint: &str, req: T) -> Result<R, crate::Error>
     where
         T: serde::Serialize + std::fmt::Debug,
         R: serde::de::DeserializeOwned + serde::Serialize,
@@ -59,16 +57,11 @@ impl BackendApi {
             .json(req)
             .send::<BackendResponse>()
             .await?;
-        res.process::<R>(aes_cbc_cryptor)
+        res.process::<R>(&self.aes_cbc_cryptor)
     }
 
     // 发送一个字符串的请求.
-    pub async fn post_req_string<T>(
-        &self,
-        endpoint: &str,
-        body: String,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
-    ) -> Result<T, crate::Error>
+    pub async fn post_req_string<T>(&self, endpoint: &str, body: String) -> Result<T, crate::Error>
     where
         T: serde::de::DeserializeOwned + serde::Serialize,
     {
@@ -78,7 +71,7 @@ impl BackendApi {
             .body(body)
             .send::<BackendResponse>()
             .await?;
-        res.process::<T>(aes_cbc_cryptor)
+        res.process::<T>(&self.aes_cbc_cryptor)
     }
 
     // 发送一个字符串的请求.
@@ -86,7 +79,6 @@ impl BackendApi {
         &self,
         endpoint: &str,
         body: &serde_json::Value,
-        aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
     ) -> Result<T, crate::Error>
     where
         T: serde::de::DeserializeOwned + serde::Serialize,
@@ -97,6 +89,6 @@ impl BackendApi {
             .body(body.to_string())
             .send::<BackendResponse>()
             .await?;
-        res.process::<T>(aes_cbc_cryptor)
+        res.process::<T>(&self.aes_cbc_cryptor)
     }
 }

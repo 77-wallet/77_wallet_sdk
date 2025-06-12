@@ -1,5 +1,3 @@
-use wallet_transport::client::HttpClient;
-
 use crate::{consts::BASE_URL, response::BackendResponse};
 
 // const BASE_URL: &str = "https://api.hhxe43.com";
@@ -66,77 +64,8 @@ pub async fn send_request(
     res.process(&cryptor)
 }
 
-pub async fn _send_request(
-    base_url: Option<String>,
-    method: &str,
-    path: &str,
-    args: Option<std::collections::HashMap<String, String>>,
-    headers: Option<std::collections::HashMap<String, String>>,
-    cryptor: &wallet_utils::cbc::AesCbcCryptor,
-) -> Result<std::collections::HashMap<String, serde_json::Value>, crate::Error> {
-    let base_url = base_url.unwrap_or(BASE_URL.to_string());
-    let client = HttpClient::new(&base_url, headers, None)?;
-
-    let method = wallet_utils::parse_func::method_from_str(method)?;
-
-    let res = match method {
-        reqwest::Method::POST => {
-            let mut builder = client.post(path);
-            if let Some(args) = args {
-                builder = builder.json(args);
-            }
-            builder.send::<String>().await?
-        }
-        reqwest::Method::GET => client.get(path).query(args).send::<String>().await?,
-        _ => client.get(path).json(args).send::<String>().await?,
-    };
-    let res: BackendResponse = wallet_utils::serde_func::serde_from_str(&res)?;
-
-    res.process(cryptor)
-}
-
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
-    use crate::http::_send_request;
-
-    #[tokio::test]
-    async fn test_send_request() -> Result<(), Box<dyn std::error::Error>> {
-        let mut headers = HashMap::new();
-        headers.insert("Content-Type".to_string(), "application/json".to_string());
-
-        let data = r#"{
-        "deviceType": "ANDROID",
-        "sn": "2",
-        "code": "2",
-        "systemVer": "3",
-        "iemi": "4",
-        "meid": "5",
-        "iccid": "6",
-        "mem": "7"
-    }"#;
-        let aes_cbc_cryptor =
-            wallet_utils::cbc::AesCbcCryptor::new("1234567890123456", "1234567890123456");
-        let json: std::collections::HashMap<String, String> = serde_json::from_str(&data)?;
-        let base_url = "http://api.wallet.net".to_string();
-        let method = "POST";
-        let path = "device/init";
-        let res = _send_request(
-            Some(base_url),
-            method,
-            path,
-            Some(json),
-            Some(headers),
-            &aes_cbc_cryptor,
-        )
-        .await
-        .unwrap();
-
-        println!("{:?}", res);
-
-        Ok(())
-    }
 
     #[tokio::test]
     async fn test() -> Result<(), Box<dyn std::error::Error>> {
