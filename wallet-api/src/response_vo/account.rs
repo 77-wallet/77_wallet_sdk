@@ -164,19 +164,30 @@ fn serialize_f64_as_string<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    let rounded = if x.fract() == 0.0 {
-        *x // 如果是整数，直接返回
+    if x.fract() == 0.0 {
+        // 是整数，直接转为 i64 的字符串
+        s.serialize_str(&(x.trunc() as i64).to_string())
     } else {
-        let multiplier = 10f64.powi(8);
-        (*x * multiplier).trunc() / multiplier // 截断到 8 位小数
-    };
-
-    // 根据是否是整数选择序列化方式
-    if rounded.fract() == 0.0 {
-        s.serialize_str(&(rounded as i64).to_string()) // 序列化为整数
-    } else {
-        s.serialize_str(&rounded.to_string()) // 序列化为浮点数
+        // 使用 format 保留固定精度，避免浮点误差
+        let formatted = format!("{:.8}", x);
+        // 去除多余的尾部 0
+        let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
+        s.serialize_str(trimmed)
     }
+
+    // let rounded = if x.fract() == 0.0 {
+    //     *x // 如果是整数，直接返回
+    // } else {
+    //     let multiplier = 10f64.powi(8);
+    //     (*x * multiplier).trunc() / multiplier // 截断到 8 位小数
+    // };
+
+    // // 根据是否是整数选择序列化方式
+    // if rounded.fract() == 0.0 {
+    //     s.serialize_str(&(rounded as i64).to_string()) // 序列化为整数
+    // } else {
+    //     s.serialize_str(&rounded.to_string()) // 序列化为浮点数
+    // }
 }
 
 pub fn default_unit_price_as_zero<S>(price: &Option<f64>, serializer: S) -> Result<S::Ok, S::Error>
@@ -262,5 +273,37 @@ impl DerivedAddressesList {
             chain_code: chain_code.to_string(),
             address_type,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    pub fn test_balance_serializer() {
+        let mut balance = crate::response_vo::account::BalanceInfo::default();
+        balance.calculate_amount_fiat_value(19.9);
+        let json = serde_json::to_string(&balance).unwrap();
+        println!("json: {}", json);
+
+        assert!(
+            json.contains("\"amount\":\"19.9\""),
+            "序列化结果不包含正确的金额: {}",
+            json
+        );
+    }
+
+    #[test]
+    pub fn test_balance_serializer1() {
+        let mut balance = crate::response_vo::account::BalanceInfo::default();
+        balance.calculate_amount_fiat_value(1.0);
+        let json = serde_json::to_string(&balance).unwrap();
+        println!("json: {}", json);
+
+        assert!(
+            json.contains("\"amount\":\"1\""),
+            "序列化结果不包含正确的金额: {}",
+            json
+        );
     }
 }

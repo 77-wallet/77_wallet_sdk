@@ -5,8 +5,10 @@ use wallet_utils::init_test_log;
 
 mod account;
 mod address_book;
+mod assets;
 mod backend;
 mod bill;
+mod chain;
 mod config;
 mod multisig_account;
 mod multisig_tx;

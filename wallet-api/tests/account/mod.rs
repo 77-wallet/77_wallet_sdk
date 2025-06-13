@@ -115,42 +115,6 @@ async fn physical_delete() {
 }
 
 #[tokio::test]
-async fn sync_assets() {
-    let wallet_manager = get_manager().await;
-    let addr = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw".to_string();
-    let chain_code = None;
-    let symbol = vec![];
-
-    let _c = wallet_manager.sync_assets(addr, chain_code, symbol).await;
-    tracing::info!("response");
-}
-
-#[tokio::test]
-async fn sync_assets_from_chain() {
-    let wallet_manager = get_manager().await;
-    let addr = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw".to_string();
-    let chain_code = None;
-    let symbol = vec![];
-
-    let _c = wallet_manager
-        .sync_balance_from_chain(addr, chain_code, symbol)
-        .await;
-    tracing::info!("response");
-}
-
-#[tokio::test]
-async fn sync_assets_by_wallet() {
-    let wallet_manager = get_manager().await;
-    let wallet_address = "0x93F63A0804d6b76ffa93675A26706d67Ade81fA8".to_string();
-    let account_id = Some(1);
-    let symbol = vec![];
-
-    let _c = wallet_manager
-        .sync_assets_by_wallet(wallet_address, account_id, symbol)
-        .await;
-}
-
-#[tokio::test]
 async fn test_generate_phrase() {
     let wallet_manager = get_manager().await;
     let c = wallet_manager.generate_phrase(1, 12);

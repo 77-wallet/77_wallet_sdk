@@ -185,8 +185,11 @@ impl crate::WalletManager {
         symbol: Vec<String>,
     ) -> ReturnType<()> {
         let res = AssetsService::new(self.repo_factory.resource_repo())
-            .sync_assets_by_wallet(wallet_address, account_id, symbol)
+            .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
             .await;
+        // let res = AssetsService::new(self.repo_factory.resource_repo())
+        //     .sync_assets_by_wallet_backend(wallet_address, account_id, symbol)
+        //     .await;
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);
         }

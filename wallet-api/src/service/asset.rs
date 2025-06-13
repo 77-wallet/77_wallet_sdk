@@ -478,13 +478,21 @@ impl AssetsService {
     }
 
     // 根据钱包地址来同步资产余额
-    pub async fn sync_assets_by_wallet(
+    pub async fn sync_assets_by_wallet_chain(
         self,
         wallet_address: String,
         account_id: Option<u32>,
         _symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        // AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
+        AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
+    }
+
+    pub async fn sync_assets_by_wallet_backend(
+        self,
+        wallet_address: String,
+        account_id: Option<u32>,
+        _symbol: Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
         AssetsDomain::async_balance_from_backend_wallet(wallet_address, account_id).await
     }
 }
