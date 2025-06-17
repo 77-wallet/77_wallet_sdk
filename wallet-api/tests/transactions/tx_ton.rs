@@ -47,9 +47,9 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY";
-    let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
-    let value = "0.489945224";
+    let from = "UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb";
+    let to = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw";
+    let value = "0.1";
     let chain_code = "ton";
     let symbol = "TON";
     let password = "123456";
@@ -61,7 +61,7 @@ async fn test_transfer() {
         chain_code.to_string(),
         symbol.to_string(),
     );
-    base.with_spend_all(true);
+    base.with_spend_all(false);
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
@@ -75,8 +75,8 @@ async fn test_transfer() {
 
 #[test]
 fn fee_cal() {
-    let before = 0.495453629;
-    let after = 0.005508405;
+    let before = 0.077260348;
+    let after = 0.074920963;
 
     let diff = before - after;
     let fee = 0.002574306;

@@ -232,8 +232,9 @@ impl AcctChange {
         if hashs.len() == 2 {
             tx.hash = hashs[0].to_string();
             let in_hash = hashs[1];
-
-            if let Some(bill) = BillDao::get_one_by_hash(in_hash, pool.as_ref()).await? {
+            if let Some(bill) =
+                BillDao::get_by_hash_and_type(pool.as_ref(), in_hash, tx.tx_type as i64).await?
+            {
                 BillDao::update_all(pool.clone(), tx, bill.id).await?;
             } else {
                 BillDao::create(tx, pool.as_ref()).await?;
@@ -343,8 +344,11 @@ mod test {
     async fn acct_change() -> anyhow::Result<()> {
         init_manager().await;
 
-        // let change = r#"{"blockHeight":56520912,"chainCode":"tron","fromAddr":"TPgKQJDibjSNQ8AsXp35dja9gP1iLs7BdV","isMultisig":1,"queueId":"255844763314556930","signer":[],"status":true,"symbol":"trx","toAddr":"TGCya1Rrupsqv2RAr48er1B6bcJxK9TZnG","token":"","transactionFee":1.337,"transactionTime":"2025-04-29 10:16:51","transferType":1,"txHash":"e1e4412bf86c6d3b79b7da4838b1f26b3889bcdd62cc768ee3fe4b09778e3396","txKind":1,"value":10,"valueUsdt":2.4751915605691943}"#;
-        let change = r#"{"txHash":"1fc93cd86f034c5846b28c7e88f9470155cabfb370f879a5c5bf2dd9520fdeda:upBTz2Tntpn2my8DzxFF66eVqM2CXir2xun00pgBKD4=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u","toAddr":"UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw","token":null,"value":0.01,"transactionFee":2.489863e-12,"transactionTime":"2025-06-03 07:11:52","status":true,"isMultisig":0,"queueId":"","blockHeight":48457725,"notes":"","netUsed":0,"energyUsed":null}"#;
+        let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
+        let change = serde_json::from_str::<AcctChange>(&change).unwrap();
+        let _res = change.exec("2").await.unwrap();
+
+        let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":1,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
 
         let _res = change.exec("1").await.unwrap();
