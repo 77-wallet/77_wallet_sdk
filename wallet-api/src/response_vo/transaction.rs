@@ -2,6 +2,7 @@ use crate::request::transaction::Signer;
 
 use super::account::default_unit_price_as_zero;
 use super::account::BalanceInfo;
+use super::account::BalanceNotTruncate;
 use alloy::primitives::U256;
 use wallet_chain_interact::{eth, tron};
 use wallet_database::entities::bill::BillKind;
@@ -327,14 +328,18 @@ pub struct BitcoinFeeDetails {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommonFeeDetails {
-    pub estimate_fee: BalanceInfo,
+    pub estimate_fee: BalanceNotTruncate,
 }
 
 impl CommonFeeDetails {
     // fee unit is format
     pub fn new(fee: f64, token_currency: TokenCurrency, currency: &str) -> Self {
         Self {
-            estimate_fee: BalanceInfo::new(fee, token_currency.get_price(currency), currency),
+            estimate_fee: BalanceNotTruncate::new(
+                fee,
+                token_currency.get_price(currency),
+                currency,
+            ),
         }
     }
 

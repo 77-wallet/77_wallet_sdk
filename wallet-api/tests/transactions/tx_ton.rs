@@ -22,19 +22,21 @@ async fn test_balance() {
 async fn test_fee() {
     let wallet_manager = get_manager().await;
 
-    let from = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw";
-    let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
-    let value = "0.01";
+    let from = "UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY";
+    let to = "UQBbNvHNr_Lcqe-Vq8xrLUONWdK-3Di4LbeuWNuLxnRfThq6";
+    let value = "0.495453745";
     let chain_code = "ton";
     let symbol = "TON";
 
-    let params = transaction::BaseTransferReq::new(
+    let mut params = transaction::BaseTransferReq::new(
         from.to_string(),
         to.to_string(),
         value.to_string(),
         chain_code.to_string(),
         symbol.to_string(),
     );
+    params.with_spend_all(true);
+
     let res = wallet_manager.transaction_fee(params).await;
 
     tracing::info!("res: {}", serde_json::to_string(&res).unwrap());
@@ -45,20 +47,21 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw";
+    let from = "UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY";
     let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
-    let value = "0.03";
+    let value = "0.489945224";
     let chain_code = "ton";
     let symbol = "TON";
     let password = "123456";
 
-    let base = transaction::BaseTransferReq::new(
+    let mut base = transaction::BaseTransferReq::new(
         from.to_string(),
         to.to_string(),
         value.to_string(),
         chain_code.to_string(),
         symbol.to_string(),
     );
+    base.with_spend_all(true);
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),
@@ -72,8 +75,8 @@ async fn test_transfer() {
 
 #[test]
 fn fee_cal() {
-    let before = 8.780073749;
-    let after = 8.773793064;
+    let before = 0.495453629;
+    let after = 0.005508405;
 
     let diff = before - after;
     let fee = 0.002574306;

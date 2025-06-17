@@ -212,13 +212,10 @@ impl BalanceInfo {
     }
 
     pub async fn new_without_amount() -> Result<BalanceInfo, crate::ServiceError> {
-        // let config = crate::app_state::APP_STATE.read().await;
-        // let currency = config.currency();
-        // let currency = "USD".to_string();
         let currency = ConfigDomain::get_currency().await?;
 
         Ok(Self {
-            amount: Default::default(),
+            amount: 0.0,
             currency,
             unit_price: Default::default(),
             fiat_value: Default::default(),
@@ -232,6 +229,7 @@ impl BalanceInfo {
         } else {
             self.fiat_value = None;
         }
+
         self.amount = amount;
     }
 
@@ -239,16 +237,52 @@ impl BalanceInfo {
         self.amount += amount;
     }
 
-    pub fn calculate_fiat_value(&mut self, unit_price: Option<f64>) {
-        self.fiat_value = unit_price.map(|price| self.amount * price);
-        self.unit_price = unit_price;
-    }
+    // pub fn calculate_fiat_value(&mut self, unit_price: Option<f64>) {
+    //     self.fiat_value = unit_price.map(|price| self.amount * price);
+    //     self.unit_price = unit_price;
+    // }
 
     pub fn fiat_add(&mut self, fiat_value: Option<f64>) {
         self.fiat_value = self.fiat_value.map_or(fiat_value, |current| {
             fiat_value.map(|value| current + value).or(Some(current))
         });
     }
+}
+
+// 不使用截断的返回原始的
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceNotTruncate {
+    // amount of token
+    #[serde(serialize_with = "serialize_f64_string")]
+    pub amount: f64,
+    // currency of symbol
+    pub currency: String,
+    // unit price or currency
+    #[serde(serialize_with = "default_unit_price_as_zero")]
+    pub unit_price: Option<f64>,
+    // fiat value of token
+    #[serde(serialize_with = "default_unit_price_as_zero")]
+    pub fiat_value: Option<f64>,
+}
+
+impl BalanceNotTruncate {
+    pub fn new(amount: f64, unit_price: Option<f64>, currency: &str) -> Self {
+        let fiat_value = unit_price.map(|price| amount * price);
+        Self {
+            amount,
+            currency: currency.to_string(),
+            unit_price,
+            fiat_value,
+        }
+    }
+}
+
+pub fn serialize_f64_string<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    s.serialize_str(&x.to_string())
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -307,3 +341,82 @@ mod tests {
         );
     }
 }
+
+// // 决定是否需要进行截断处理
+// #[derive(Debug)]
+// pub enum AmountFormat {
+//     // 最原始的值
+//     TruncateString(f64),
+//     RawString(f64),
+// }
+
+// impl Default for AmountFormat {
+//     fn default() -> Self {
+//         AmountFormat::RawString(0.0)
+//     }
+// }
+
+// impl serde::Serialize for AmountFormat {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         match self {
+//             AmountFormat::TruncateString(v) => serialize_f64_as_string(v, serializer),
+//             AmountFormat::RawString(v) => serializer.serialize_str(&v.to_string()),
+//         }
+//     }
+// }
+
+// impl<'de> serde::Deserialize<'de> for AmountFormat {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: serde::Deserializer<'de>,
+//     {
+//         struct AmountVisitor;
+
+//         impl<'de> serde::de::Visitor<'de> for AmountVisitor {
+//             type Value = AmountFormat;
+
+//             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+//                 formatter.write_str("a float or a string representing a float")
+//             }
+
+//             fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
+//                 Ok(AmountFormat::RawString(value))
+//             }
+
+//             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+//             where
+//                 E: serde::de::Error,
+//             {
+//                 v.parse::<f64>()
+//                     .map(AmountFormat::RawString)
+//                     .map_err(E::custom)
+//             }
+
+//             fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+//             where
+//                 E: serde::de::Error,
+//             {
+//                 self.visit_str(&v)
+//             }
+
+//             fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+//             where
+//                 E: serde::de::Error,
+//             {
+//                 self.visit_f64(value as f64)
+//             }
+
+//             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+//             where
+//                 E: serde::de::Error,
+//             {
+//                 self.visit_f64(value as f64)
+//             }
+//         }
+
+//         deserializer.deserialize_any(AmountVisitor)
+//     }
+// }
