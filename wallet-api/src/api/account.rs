@@ -248,13 +248,13 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
         // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
-        let wallet_address = "0xf689Fac64cF12175Dc0570656B97414d7A8d3BF1";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account = wallet_manager
             .list_derived_addresses(
                 wallet_address,
                 1,
                 &test_params.create_wallet_req.wallet_password,
-                false,
+                true,
             )
             .await;
         tracing::info!("[test_show_index_address] show_index_address: {account:?}");

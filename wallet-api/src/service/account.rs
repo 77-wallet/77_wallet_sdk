@@ -10,10 +10,7 @@ use wallet_transport_backend::request::{
 };
 use wallet_tree::api::KeystoreApi;
 use wallet_types::{
-    chain::{
-        address::r#type::{AddressType, BTC_ADDRESS_TYPES},
-        chain::ChainCode,
-    },
+    chain::{address::r#type::AddressType, chain::ChainCode},
     constant::chain_code,
 };
 use wallet_utils::address::AccountIndexMap;
@@ -283,19 +280,17 @@ impl AccountService {
         };
 
         let mut res = Vec::new();
-        for chain_code in &chains {
-            let btc_address_types = if chain_code == "btc" {
-                BTC_ADDRESS_TYPES.to_vec()
-            } else {
-                vec![AddressType::Other]
+        for chain in chains.iter() {
+            let code: ChainCode = chain.as_str().try_into()?;
+            let address_types = WalletDomain::address_type_by_chain(code);
+
+            let Some(chain) = tx.detail_with_node(chain).await? else {
+                continue;
             };
-            let code: ChainCode = chain_code.as_str().try_into()?;
-            for btc_address_type in btc_address_types {
-                let Some(chain) = tx.detail_with_node(chain_code).await? else {
-                    continue;
-                };
+
+            for address_type in address_types {
                 let instance: wallet_chain_instance::instance::ChainObject =
-                    (&code, &btc_address_type, chain.network.as_str().into()).try_into()?;
+                    (&code, &address_type, chain.network.as_str().into()).try_into()?;
 
                 let keypair = instance
                     .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)?;
@@ -306,7 +301,7 @@ impl AccountService {
                 res.push(DerivedAddressesList::new(
                     &address,
                     &derivation_path,
-                    chain_code,
+                    &chain.chain_code,
                     address_type,
                 ));
             }
