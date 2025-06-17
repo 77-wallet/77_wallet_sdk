@@ -13,7 +13,7 @@ use wallet_database::{
 use wallet_types::constant::chain_code;
 
 use crate::{
-    domain::multisig::MultisigQueueDomain,
+    domain::{bill::BillDomain, multisig::MultisigQueueDomain},
     infrastructure::inner_event::InnerEvent,
     messaging::{
         notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
@@ -250,6 +250,8 @@ impl AcctChange {
         acct_change: &AcctChange,
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
+        let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
+
         // 交易方式 0转入 1转出 2初始化
         let address = match acct_change.transfer_type {
             0 => acct_change.to_addr.as_str(),
@@ -286,14 +288,14 @@ impl AcctChange {
             &acct_change.symbol,
             &acct_change.chain_code,
             &transaction_status,
-            &acct_change.tx_hash,
+            &transaction_hash,
             &notification_type,
         );
         let req = notify.gen_create_system_notification_entity(
             msg_id,
             0,
             Some("tx_hash".to_string()),
-            Some(acct_change.tx_hash.to_string()),
+            Some(transaction_hash),
         )?;
 
         let repo = RepositoryFactory::repo(pool.clone());

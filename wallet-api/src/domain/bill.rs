@@ -111,6 +111,13 @@ impl BillDomain {
         Ok(())
     }
 
+    pub(crate) fn handle_hash(hash: &str) -> String {
+        match hash.split_once(':') {
+            Some((before, _)) => before.to_owned(),
+            None => hash.to_owned(),
+        }
+    }
+
     // For non-TRON networks, directly subtract 5 days from the time in the order.
     // For TRON network:
     // 1. Non-multisig accounts: the logic is the same as for non-TRON networks.
