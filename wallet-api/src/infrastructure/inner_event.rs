@@ -1,12 +1,10 @@
+use crate::{domain::assets::AssetsDomain, FrontendNotifyEvent, NotifyEvent};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
-
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
-
-use crate::{service::asset::AssetsService, FrontendNotifyEvent, NotifyEvent};
 
 pub type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
@@ -205,11 +203,6 @@ impl InnerEventHandle {
             return Ok(());
         }
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool);
-
-        AssetsService::new(repo)
-            .sync_assets_by_addr(addr_list, Some(chain_code), vec![symbol])
-            .await
+        AssetsDomain::sync_assets_by_addr_chain(addr_list, Some(chain_code), vec![symbol]).await
     }
 }

@@ -1,5 +1,6 @@
 use wallet_database::entities::task_queue::TaskQueueEntity;
 // use wallet_transport_backend::request::MsgConfirmSource;
+// use wallet_transport_backend::request::MsgConfirmSource;
 use wallet_utils::serde_func;
 
 use crate::messaging::{mqtt::Message, notify::FrontendNotifyEvent};
@@ -12,15 +13,11 @@ impl JPushService {
         match serde_func::serde_from_str::<Message>(message) {
             Ok(data) => {
                 let backend_api = crate::manager::Context::get_global_backend_api()?;
-                let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
                 let data = backend_api
-                    .get_unconfirm_by_msg_id(
-                        cryptor,
-                        &wallet_transport_backend::request::GetUnconfirmById {
-                            msg_id: data.msg_id.to_string(),
-                        },
-                    )
+                    .get_unconfirm_by_msg_id(&wallet_transport_backend::request::GetUnconfirmById {
+                        msg_id: data.msg_id.to_string(),
+                    })
                     .await?;
 
                 if let Some(msg) = data.body {

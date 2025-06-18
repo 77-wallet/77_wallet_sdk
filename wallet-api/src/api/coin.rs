@@ -72,7 +72,7 @@ impl crate::WalletManager {
         token_address: &str,
     ) -> ReturnType<crate::response_vo::coin::TokenInfo> {
         CoinService::new(self.repo_factory.resource_repo())
-            .query_token_info(chain_code, token_address)
+            .query_token_info(chain_code, token_address.to_string())
             .await?
             .into()
     }
@@ -224,14 +224,16 @@ mod test {
         // let chain_code = "tron";
         // let chain_code = "btc";
         // let chain_code = "sol";
-        let chain_code = "bnb";
+        let chain_code = "sui";
         // let token_address = "0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24";
         // let token_address = "0xB8c77482e45F1F44dE1745F52C74426C631bDD52";
         // let token_address = "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB";
         // let token_address = "bc1qgw4dunlmtvdy4vc8zauma4qjqtmrktjf8mw6le";
         // let token_address = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
         // let token_address = "So11111111111111111111111111111111111111112";
-        let token_address = "0x55d398326f99059fF775485246999027B3197955";
+        let token_address =
+        // "0x55d398326f99059fF775485246999027B3197955";
+        "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
 
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
@@ -264,14 +266,14 @@ mod test {
 
         // let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
         // let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
-        let wallet_address = "0x535D377eE677Cfe452e98A6fc332B8CD8777a79C";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         // let chain_code = "eth";
         // let chain_code = "sol";
         // let chain_code = "btc";
         // let chain_code = "bnb";
         // let chain_code = "eth";
         // let chain_code = "sol";
-        let chain_code = "tron";
+        let chain_code = "sui";
         // let symbol = "ATLA";
         // let token_address = Some("0x45e9F834539bC2a0936f184779cED638c9B26459".to_string());
         // let protocol = Some("ERC20".to_string());
@@ -289,7 +291,10 @@ mod test {
         // let token_address = "0x55d398326f99059fF775485246999027B3197955";
         // let token_address = "0x55d398326f99059ff775485246999027b3197955";
         // let token_address = "So11111111111111111111111111111111111111112";
-        let token_address = "TF17BgPaZYbz8oxbjhriubPDsA7ArKoLX3";
+        let token_address =
+            // "0x506a6fc25f1c7d52ceb06ea44a3114c9380f8e2029b4356019822f248b49e411::memefi::MEMEFI";
+            "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
+
         // let token_address = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 

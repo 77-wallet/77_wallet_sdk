@@ -231,8 +231,7 @@ impl StakeDomain {
     pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::ServiceError>
     {
         let backend = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let mut list = backend.vote_list(cryptor).await?;
+        let mut list = backend.vote_list().await?;
         // let witness_list = list.node_resp_list;
         list.node_resp_list.iter_mut().for_each(|item| {
             item.brokerage = (100.0 - item.brokerage) / 100.0;

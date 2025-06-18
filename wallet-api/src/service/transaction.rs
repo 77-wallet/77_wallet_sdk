@@ -1,4 +1,5 @@
 use crate::domain;
+use crate::domain::bill::BillDomain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::coin::CoinDomain;
@@ -145,8 +146,10 @@ impl TransactionService {
         tx_hash: &str,
         owner: &str,
     ) -> Result<BillDetailVo, crate::ServiceError> {
+        let tx_hash = BillDomain::handle_hash(tx_hash);
+
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let mut bill = BillDao::get_by_hash_and_owner(pool.as_ref(), tx_hash, owner)
+        let mut bill = BillDao::get_by_hash_and_owner(pool.as_ref(), &tx_hash, owner)
             .await?
             .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
         bill.value = wallet_utils::unit::truncate_to_8_decimals(&bill.value);

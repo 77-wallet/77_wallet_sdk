@@ -23,18 +23,3 @@ pub async fn build_ext_cell(
         Ok(arg.build_trans(address_type, provider).await?)
     }
 }
-
-// pub fn build_token_arg(
-//     req: &transaction::BaseTransferReq,
-//     token: &str,
-// ) -> Result<TokenTransferOpt, crate::ServiceError> {
-//     let value = unit::convert_to_u256(&req.value, req.decimals)?;
-//     let arg = TokenTransferOpt::new(&req.from, &req.to, token, value)?;
-
-//     Ok(arg)
-// }
-
-// pub fn build_args(req: &transaction::BaseTransferReq) -> Result<TransferOpt, crate::ServiceError> {
-//     let arg = TransferOpt::new(&req.from, &req.to, &req.value)?;
-//     Ok(arg)
-// }

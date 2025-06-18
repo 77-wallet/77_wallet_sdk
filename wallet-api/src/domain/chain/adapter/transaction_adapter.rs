@@ -455,22 +455,23 @@ impl TransactionAdapter {
 
                 let mut trans_fee = U256::from(fee.get_fee());
                 if params.base.token_address.is_none() {
-                    trans_fee += transfer_amount;
-                    if balance < trans_fee {
-                        return Err(crate::BusinessError::Chain(
-                            crate::ChainError::InsufficientFeeBalance,
-                        ))?;
+                    // 主笔转账
+                    if !params.base.spend_all {
+                        trans_fee += transfer_amount;
+                        if balance < trans_fee {
+                            return Err(crate::BusinessError::Chain(
+                                crate::ChainError::InsufficientFeeBalance,
+                            ))?;
+                        }
                     }
                 } else {
                     let balance = chain.balance(&params.base.from, None).await?;
-
                     if balance < trans_fee {
                         return Err(crate::BusinessError::Chain(
                             crate::ChainError::InsufficientFeeBalance,
                         ))?;
                     }
                 }
-
                 let tx_hash = chain.exec(msg_cell, private_key, address_type).await?;
 
                 Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))

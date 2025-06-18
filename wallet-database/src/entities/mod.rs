@@ -44,6 +44,9 @@ fn has_expiration(timestamp: i64, chain_code: wallet_types::chain::chain::ChainC
         wallet_types::chain::chain::ChainCode::BnbSmartChain => {
             timestamp < chrono::Utc::now().timestamp() - (30 * 60)
         }
-        _ => panic!("not support"),
+        _ => {
+            // 默认 给到30分钟
+            timestamp < chrono::Utc::now().timestamp() - (30 * 60)
+        }
     }
 }

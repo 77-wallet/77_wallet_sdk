@@ -3,9 +3,8 @@ use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::chain::TransferResp;
 use crate::domain::coin::CoinDomain;
 use crate::domain::multisig::{MultisigDomain, MultisigQueueDomain};
-use crate::infrastructure::task_queue::{
-    BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
-};
+use crate::domain::task_queue::TaskQueueDomain;
+use crate::infrastructure::task_queue::{CommonTask, Task, Tasks};
 use crate::request::transaction::Signer;
 use crate::response_vo::multisig_account::QueueInfo;
 use crate::response_vo::MultisigQueueFeeParams;
@@ -28,7 +27,7 @@ use wallet_database::DbPool;
 use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::request::{PermissionData, SignedTranUpdateHashReq};
 use wallet_types::constant::chain_code;
-use wallet_utils::{serde_func, unit};
+use wallet_utils::unit;
 
 pub struct MultisigTransactionService;
 
@@ -802,21 +801,22 @@ impl MultisigTransactionService {
             remark: queue.notes,
             raw_data,
         };
+        TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH)
+            .await?;
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        if let Err(e) = backend.signed_tran_update_trans_hash(cryptor, &req).await {
-            tracing::error!("report signed tran update  add to task{}", e);
-            let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
-                endpoint: endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH.to_string(),
-                body: serde_func::serde_to_value(&req)?,
-            }));
-            Tasks::new().push(task).send().await?;
-        }
+        // if let Err(e) = backend.signed_tran_update_trans_hash(cryptor, &req).await {
+        //     tracing::error!("report signed tran update  add to task{}", e);
+        //     let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+        //         endpoint: endpoint::multisig::SIGNED_TRAN_UPDATE_TRANS_HASH.to_string(),
+        //         body: serde_func::serde_to_value(&req)?,
+        //     }));
+        //     Tasks::new().push(task).send().await?;
+        // }
 
         // 回收资源
         if let Some(request_id) = request_resource_id {
-            let _rs = backend.delegate_complete(cryptor, &request_id).await;
+            let backend = crate::manager::Context::get_global_backend_api()?;
+            let _rs = backend.delegate_complete(&request_id).await;
         }
 
         Ok(tx_resp.tx_hash)
@@ -861,11 +861,8 @@ impl MultisigTransactionService {
             .await?
             .to_string()?;
         let backend = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        if let Err(e) = backend
-            .signed_trans_cancel(cryptor, &queue_id, raw_data)
-            .await
-        {
+
+        if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
             tracing::error!("cancel queue[{}] upload fail roolback err:{}", queue_id, e);
             MultisigQueueDaoV1::rollback_update_fail(&queue_id, queue.status, pool.as_ref())
                 .await

@@ -1,4 +1,3 @@
-use crate::domain;
 use crate::infrastructure::inner_event::InnerEventHandle;
 use crate::infrastructure::process_unconfirm_msg::{
     UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
@@ -11,6 +10,7 @@ use crate::infrastructure::SharedCache;
 use crate::messaging::mqtt::subscribed::Topics;
 use crate::messaging::notify::FrontendNotifyEvent;
 use crate::service::node::NodeService;
+use crate::{domain, infrastructure};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -116,7 +116,7 @@ pub(crate) async fn init_context<'a>(
 #[derive(Debug, Clone)]
 pub struct Context {
     pub(crate) dirs: Dirs,
-    pub(crate) mqtt_url: Arc<RwLock<Option<String>>>,
+    // pub(crate) mqtt_url: Arc<RwLock<Option<String>>>,
     pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
     pub(crate) sqlite_context: wallet_database::SqliteContext,
     pub(crate) oss_client: wallet_oss::oss_client::OssClient,
@@ -126,7 +126,6 @@ pub struct Context {
     pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
     pub(crate) device: Arc<DeviceInfo>,
     pub(crate) cache: Arc<SharedCache>,
-    pub(crate) aes_cbc_cryptor: wallet_utils::cbc::AesCbcCryptor,
     pub(crate) inner_event_handle: InnerEventHandle,
     pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
     pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
@@ -167,8 +166,13 @@ impl Context {
         #[cfg(feature = "prod")]
         let api_url = config.backend_api.prod_url;
 
-        let backend_api =
-            wallet_transport_backend::api::BackendApi::new(Some(api_url.to_string()), header_opt)?;
+        let aes_cbc_cryptor =
+            wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
+        let backend_api = wallet_transport_backend::api::BackendApi::new(
+            Some(api_url.to_string()),
+            header_opt,
+            aes_cbc_cryptor,
+        )?;
 
         let frontend_notify = Arc::new(RwLock::new(frontend_notify));
 
@@ -176,7 +180,7 @@ impl Context {
             let mut app_state = crate::app_state::APP_STATE.write().await;
             app_state.set_backend_url(Some(backend_api.base_url.clone()));
         }
-        let mqtt_url = Arc::new(RwLock::new(None));
+        // let mqtt_url = Arc::new(RwLock::new(None));
 
         let oss_client = wallet_oss::oss_client::OssClient::new(
             &config.oss.access_key_id,
@@ -185,8 +189,6 @@ impl Context {
             &config.oss.bucket_name,
         );
 
-        let aes_cbc_cryptor =
-            wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
@@ -199,7 +201,6 @@ impl Context {
 
         Ok(Context {
             dirs,
-            mqtt_url,
             backend_api,
             sqlite_context,
             frontend_notify,
@@ -209,7 +210,6 @@ impl Context {
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
-            aes_cbc_cryptor,
             inner_event_handle,
             unconfirmed_msg_collector,
             unconfirmed_msg_processor,
@@ -239,33 +239,28 @@ impl Context {
         Ok(&Context::get_context()?.backend_api)
     }
 
-    pub(crate) fn get_global_aes_cbc_cryptor(
-    ) -> Result<&'static wallet_utils::cbc::AesCbcCryptor, crate::ServiceError> {
-        Ok(&Context::get_context()?.aes_cbc_cryptor)
-    }
-
     pub(crate) fn get_global_dirs() -> Result<&'static crate::manager::Dirs, crate::SystemError> {
         Ok(&Context::get_context()?.dirs)
     }
 
-    pub(crate) async fn get_global_mqtt_url() -> Result<Option<String>, crate::SystemError> {
-        let rs = &Context::get_context()?.mqtt_url;
+    // pub(crate) async fn get_global_mqtt_url() -> Result<Option<String>, crate::SystemError> {
+    //     let rs = &Context::get_context()?.mqtt_url;
 
-        let res = rs.read().await.clone();
-        Ok(res)
-    }
+    //     let res = rs.read().await.clone();
+    //     Ok(res)
+    // }
 
-    pub(crate) async fn set_global_mqtt_url(mqtt_url: &str) -> Result<(), crate::ServiceError> {
-        let mqtt_url = if !mqtt_url.starts_with("mqtt://") {
-            format!("mqtt://{}", mqtt_url)
-        } else {
-            mqtt_url.to_string()
-        };
-        let cx = Context::get_context()?;
-        let mut lock = cx.mqtt_url.write().await;
-        *lock = Some(mqtt_url);
-        Ok(())
-    }
+    // pub(crate) async fn set_global_mqtt_url(mqtt_url: &str) -> Result<(), crate::ServiceError> {
+    //     let mqtt_url = if !mqtt_url.starts_with("mqtt://") {
+    //         format!("mqtt://{}", mqtt_url)
+    //     } else {
+    //         mqtt_url.to_string()
+    //     };
+    //     let cx = Context::get_context()?;
+    //     let mut lock = cx.mqtt_url.write().await;
+    //     *lock = Some(mqtt_url);
+    //     Ok(())
+    // }
 
     pub(crate) fn get_global_oss_client(
     ) -> Result<&'static wallet_oss::oss_client::OssClient, crate::SystemError> {
@@ -303,10 +298,7 @@ impl Context {
 
         if token_expired {
             let backend_api = cx.backend_api.clone();
-            let aes_cbc_cryptor = &cx.aes_cbc_cryptor;
-            let new_token_response = backend_api
-                .rpc_token(aes_cbc_cryptor, &cx.device.client_id)
-                .await;
+            let new_token_response = backend_api.rpc_token(&cx.device.client_id).await;
             match new_token_response {
                 Ok(token) => {
                     let new_token = RpcToken {
@@ -395,8 +387,14 @@ impl WalletManager {
     ) -> Result<WalletManager, crate::ServiceError> {
         // let dir = Dirs::new(root_dir)?;
         // let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
+        let base_path = infrastructure::log::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
-        crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+        // 以前的上报日志
+        // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
+
+        // 现在的上报日志
+        infrastructure::log::start_upload_scheduler(base_path, 5 * 60, context.oss_client.clone())
+            .await?;
 
         Context::get_global_unconfirmed_msg_processor()?
             .start()
@@ -432,31 +430,44 @@ impl WalletManager {
         Ok(())
     }
 
-    pub(crate) async fn init_mqtt() -> Result<(), crate::ServiceError> {
-        let mqtt_init_req =
-            BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
+    // pub(crate) async fn init_mqtt() -> Result<(), crate::ServiceError> {
+    //     let mqtt_init_req =
+    //         BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-        Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
-            .send()
-            .await?;
-        Ok(())
-    }
+    //     Tasks::new()
+    //         .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
+    //         .send()
+    //         .await?;
+    //     Ok(())
+    // }
     pub async fn init_log(
         level: Option<&str>,
         app_code: &str,
         dirs: &Dirs,
         sn: &str,
     ) -> Result<(), crate::ServiceError> {
-        wallet_utils::log::set_app_code(app_code);
-        let log_dir = dirs.get_log_dir();
+        // 修改后的版本
+        let format =
+            infrastructure::log::CustomEventFormat::new(app_code.to_string(), sn.to_string());
 
-        wallet_utils::log::set_sn_code(sn);
+        let level = level.unwrap_or("info");
 
-        Ok(wallet_utils::log::file::init_log(
-            log_dir.to_string_lossy().as_ref(),
-            level,
-        )?)
+        let path = infrastructure::log::LogBasePath(dirs.get_log_dir());
+        infrastructure::log::init_logger(format, path, level)?;
+
+        Ok(())
+
+        // 以前的版本,
+
+        // wallet_utils::log::set_app_code(app_code);
+        // let log_dir = dirs.get_log_dir();
+
+        // wallet_utils::log::set_sn_code(sn);
+
+        // Ok(wallet_utils::log::file::init_log(
+        //     log_dir.to_string_lossy().as_ref(),
+        //     level,
+        // )?)
     }
 
     pub async fn set_frontend_notify_sender(

@@ -141,27 +141,34 @@ impl crate::WalletManager {
             .into()
     }
 
-    // 根据资产地址、链以及符号来同步余额(直接重链上同步余额)。
+    // 根据资产地址、后端同步。
     pub async fn sync_assets(
         &self,
-        addr: Vec<String>,
+        addr: String,
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
+        // let res = AssetsService::new(self.repo_factory.resource_repo())
+        //     .sync_assets_from_backend(addr, chain_code, symbol)
+        //     .await;
         let res = AssetsService::new(self.repo_factory.resource_repo())
-            .sync_assets_by_addr(addr, chain_code, symbol)
+            .sync_assets_by_addr(vec![addr], chain_code, symbol)
             .await;
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);
         }
-
         ().into()
     }
 
-    // 单个地址某个币的资产
-    pub async fn sync_single_assets(&self, address: &str, symbol: &str) -> ReturnType<()> {
+    // 根据资产地址、链以及符号来同步余额(直接重链上同步余额)。
+    pub async fn sync_balance_from_chain(
+        &self,
+        addr: String,
+        chain_code: Option<String>,
+        symbol: Vec<String>,
+    ) -> ReturnType<()> {
         let res = AssetsService::new(self.repo_factory.resource_repo())
-            .sync_single_assets(address, symbol)
+            .sync_assets_by_addr(vec![addr], chain_code, symbol)
             .await;
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);
@@ -178,8 +185,11 @@ impl crate::WalletManager {
         symbol: Vec<String>,
     ) -> ReturnType<()> {
         let res = AssetsService::new(self.repo_factory.resource_repo())
-            .sync_assets_by_wallet(wallet_address, account_id, symbol)
+            .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
             .await;
+        // let res = AssetsService::new(self.repo_factory.resource_repo())
+        //     .sync_assets_by_wallet_backend(wallet_address, account_id, symbol)
+        //     .await;
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);
         }
@@ -192,16 +202,6 @@ impl crate::WalletManager {
 mod test {
     use crate::test::env::get_manager;
     use anyhow::Result;
-
-    #[tokio::test]
-    async fn test_sync_assets() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-        let res = wallet_manager.sync_assets(vec![], None, vec![]).await;
-        tracing::info!("res: {res:?}");
-        Ok(())
-    }
 
     #[tokio::test]
     async fn test_add_assets() -> Result<()> {
@@ -404,15 +404,10 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-        // let chain_code = Some("bnb");
-        // let chain_code = Some("btc");
-        // let chain_code = Some("eth".to_string());
-        // let chain_code = Some("tron".to_string());
         let chain_code = None;
-        // let chain_code = Some("sol".to_string());
-        // let is_multisig = Some(false);
         let is_multisig = None;
         let account_id = Some(1);
+
         wallet_manager.set_currency("USD").await;
         let res = wallet_manager
             .get_assets_list_v2(address, account_id, chain_code, is_multisig)

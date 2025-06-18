@@ -28,11 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("res: {res:?}");
 
-    let wallet = wallet_manager
-        .create_wallet(test_params.create_wallet_req)
-        .await
-        .result;
-    tracing::warn!("wallet: {wallet:#?}");
+    // let wallet = wallet_manager
+    //     .create_wallet(test_params.create_wallet_req)
+    //     .await
+    //     .result;
+    // tracing::warn!("wallet: {wallet:#?}");
 
     // let sync_res = wallet_manager.sync_assets(vec![], None, vec![]).await;
     // tracing::info!("sync res: {sync_res:#?}");
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let res = wallet_utils::serde_func::serde_to_string(&config)?;
     // tracing::info!("config result: {res}");
     while let Some(_data) = rx.next().await {
-        // tracing::info!("data: {_data:?}");
+        tracing::info!("data: {_data:?}");
     }
     Ok(())
 }

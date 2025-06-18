@@ -43,25 +43,25 @@ name = "Litecoin"
 chain_code = "ltc"
 main_symbol = "LTC"
 protocols = []
-active = false
+active = true
 
 [chains.doge]
 name = "Doge"
 chain_code = "doge"
 main_symbol = "Doge"
 protocols = []
-active = false
+active = true
 
 [chains.ton]
 name = "Ton"
 chain_code = "ton"
 main_symbol = "TON"
 protocols = []
-active = false
+active = true
 
 [chains.sui]
 name = "Sui"
 chain_code = "sui"
 main_symbol = "SUI"
 protocols = []
-active = false
+active = true

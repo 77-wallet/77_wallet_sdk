@@ -13,21 +13,15 @@ pub(crate) static MQTT_PROCESSOR: once_cell::sync::Lazy<tokio::sync::OnceCell<Mq
 
 pub async fn init_mqtt_processor<'a>(
     user_property: UserProperty,
+    url: String,
 ) -> Result<&'a MqttAsyncClient, crate::ServiceError> {
     MQTT_PROCESSOR
         .get_or_try_init(|| async {
-            let url = crate::manager::Context::get_global_mqtt_url().await?;
-            let Some(url) = url.as_ref() else {
-                return Err(crate::ServiceError::System(
-                    crate::SystemError::MqttClientNotInit,
-                ));
-            };
-
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             let rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
 
             tracing::debug!("[init_mqtt_processor] url: {url}");
-            let (client, eventloop) = MqttClientBuilder::new(url, user_property).build()?;
+            let (client, eventloop) = MqttClientBuilder::new(&url, user_property).build()?;
 
             tokio::spawn(async move { handle_eventloop(tx, eventloop).await });
             let cli = client.client();

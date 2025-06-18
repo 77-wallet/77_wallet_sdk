@@ -82,9 +82,28 @@ impl ChainTransDomain {
             symbol: symbol.to_string(),
         };
 
-        AssetsEntity::update_balance(&*pool, &assets_id, balance)
-            .await
-            .map_err(crate::ServiceError::Database)
+        // 查询余额
+        let asset = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
+        if let Some(asset) = asset {
+            // 余额不一致
+            if asset.balance != balance {
+                // 更新本地余额后在上报后端
+                AssetsEntity::update_balance(&*pool, &assets_id, balance)
+                    .await
+                    .map_err(crate::ServiceError::Database)?;
+
+                // 上报后端修改余额
+                let backend = crate::manager::Context::get_global_backend_api()?;
+                let rs = backend
+                    .wallet_assets_refresh_bal(address, chain_code, symbol)
+                    .await;
+                if let Err(e) = rs {
+                    tracing::warn!("upload balance refresh error = {}", e);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn main_coin(chain_code: &str) -> Result<CoinEntity, crate::ServiceError> {
@@ -184,8 +203,7 @@ impl ChainTransDomain {
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;
-            let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-            let _ = backend.delegate_complete(cryptor, &request_id).await;
+            let _ = backend.delegate_complete(&request_id).await;
         }
 
         Ok(resp.tx_hash)
@@ -196,8 +214,7 @@ impl ChainTransDomain {
         provider: &eth::Provider,
         backend: &BackendApi,
     ) -> Result<GasOracle, crate::ServiceError> {
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let gas_oracle = backend.gas_oracle(cryptor, chain_code).await;
+        let gas_oracle = backend.gas_oracle(chain_code).await;
 
         match gas_oracle {
             Ok(gas_oracle) => Ok(gas_oracle),

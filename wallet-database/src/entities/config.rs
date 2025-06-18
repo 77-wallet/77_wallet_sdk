@@ -98,6 +98,14 @@ impl MqttUrl {
     pub fn to_json_str(&self) -> Result<String, crate::Error> {
         Ok(wallet_utils::serde_func::serde_to_string(self)?)
     }
+
+    pub fn url_with_protocol(&self) -> String {
+        if !self.url.starts_with("mqtt://") {
+            format!("mqtt://{}", self.url)
+        } else {
+            self.url.clone()
+        }
+    }
 }
 
 impl TryFrom<String> for MqttUrl {

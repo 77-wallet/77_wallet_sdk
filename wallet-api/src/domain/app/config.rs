@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-
 use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
     dao::config::ConfigDao,
@@ -42,8 +41,7 @@ impl ConfigDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let backend = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let res = backend.fetch_min_config(cryptor, sn.to_string()).await?;
+        let res = backend.fetch_min_config(sn.to_string()).await?;
 
         for item in res.list {
             let key = MinValueSwitchConfig::get_key(&item.token_code.to_uppercase(), sn);
@@ -106,21 +104,21 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn set_mqtt_url(mqtt_url: Option<String>) -> Result<(), crate::ServiceError> {
-        if let Some(mqtt_url) = mqtt_url {
-            let config = MqttUrl {
-                url: mqtt_url.clone(),
-            };
+    // pub async fn set_mqtt_url(mqtt_url: Option<String>) -> Result<(), crate::ServiceError> {
+    //     if let Some(mqtt_url) = mqtt_url {
+    //         let config = MqttUrl {
+    //             url: mqtt_url.clone(),
+    //         };
 
-            tracing::info!("set mqtt url: {}", mqtt_url);
-            ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
-            crate::Context::set_global_mqtt_url(&mqtt_url).await?;
-            let mut config = crate::app_state::APP_STATE.write().await;
-            config.set_mqtt_url(Some(mqtt_url));
-        }
+    //         tracing::info!("set mqtt url: {}", mqtt_url);
+    //         ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
+    //         crate::Context::set_global_mqtt_url(&mqtt_url).await?;
+    //         let mut config = crate::app_state::APP_STATE.write().await;
+    //         config.set_mqtt_url(Some(mqtt_url));
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     pub async fn set_app_download_qr_code_url(
         app_download_qr_code_url: &str,
@@ -162,17 +160,17 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub(crate) async fn init_mqtt_url() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let config = ConfigDao::find_by_key(MQTT_URL, pool.as_ref()).await?;
-        if let Some(config) = config {
-            let mqtt_url = MqttUrl::try_from(config.value)?;
-            crate::Context::set_global_mqtt_url(&mqtt_url.url).await?;
-            let mut config = crate::app_state::APP_STATE.write().await;
-            config.set_mqtt_url(Some(mqtt_url.url));
-        }
-        Ok(())
-    }
+    // pub(crate) async fn init_mqtt_url() -> Result<(), crate::ServiceError> {
+    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    //     let config = ConfigDao::find_by_key(MQTT_URL, pool.as_ref()).await?;
+    //     if let Some(config) = config {
+    //         let mqtt_url = MqttUrl::try_from(config.value)?;
+    //         crate::Context::set_global_mqtt_url(&mqtt_url.url).await?;
+    //         let mut config = crate::app_state::APP_STATE.write().await;
+    //         config.set_mqtt_url(Some(mqtt_url.url));
+    //     }
+    //     Ok(())
+    // }
 
     pub async fn init_official_website() -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -371,8 +369,8 @@ impl ConfigDomain {
     }
 
     pub async fn init_url() -> Result<(), crate::ServiceError> {
-        Self::init_mqtt_url().await?;
-        crate::WalletManager::init_mqtt().await?;
+        // Self::init_mqtt_url().await?;
+        // crate::WalletManager::init_mqtt().await?;
 
         Self::init_official_website().await?;
         Self::init_block_browser_url_list().await?;
@@ -380,6 +378,29 @@ impl ConfigDomain {
         Self::init_language().await?;
 
         Ok(())
+    }
+
+    // Attempt to get the MQTT URI from the backend.
+    // If an error occurs or the URI is not found, use the URI from the database instead.
+    pub async fn get_mqtt_uri() -> Result<Option<String>, crate::ServiceError> {
+        let backend_api = crate::Context::get_global_backend_api()?;
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        if let Ok(mqtt_url) = backend_api.mqtt_init().await {
+            let config = MqttUrl {
+                url: mqtt_url.clone(),
+            };
+            ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
+            return Ok(Some(config.url_with_protocol()));
+        }
+
+        let config = ConfigDao::find_by_key(MQTT_URL, pool.as_ref()).await?;
+        let uri = config
+            .and_then(|c| MqttUrl::try_from(c.value).ok())
+            .map(|mqtt| mqtt.url_with_protocol());
+
+        Ok(uri)
     }
 }
 

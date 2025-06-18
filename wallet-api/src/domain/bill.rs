@@ -9,6 +9,9 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
+use wallet_types::constant::chain_code;
+
+use crate::messaging::mqtt::topics::AcctChange;
 
 pub struct BillDomain;
 
@@ -78,7 +81,13 @@ impl BillDomain {
             signer: item.signer,
         };
 
-        BillDomain::create_bill(new_entity).await?;
+        if new_entity.chain_code == chain_code::TON {
+            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            AcctChange::handle_ton_bill(new_entity, &pool).await?;
+        } else {
+            BillDomain::create_bill(new_entity).await?;
+        }
+
         Ok(())
     }
 
@@ -89,9 +98,8 @@ impl BillDomain {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let resp = backend
-            .record_lists(cryptor, chain_code, address, start_time)
+            .record_lists(chain_code, address, start_time)
             .await?;
 
         for item in resp.list {
@@ -101,6 +109,13 @@ impl BillDomain {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn handle_hash(hash: &str) -> String {
+        match hash.split_once(':') {
+            Some((before, _)) => before.to_owned(),
+            None => hash.to_owned(),
+        }
     }
 
     // For non-TRON networks, directly subtract 5 days from the time in the order.

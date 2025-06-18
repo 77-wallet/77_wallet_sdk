@@ -51,12 +51,10 @@ impl BackendApiTaskData {
 pub(crate) async fn handle_backend_api_task(
     task: BackendApiTask,
     backend_api: &wallet_transport_backend::api::BackendApi,
-    aes_cbc_cryptor: &wallet_utils::cbc::AesCbcCryptor,
 ) -> Result<(), crate::ServiceError> {
     match task {
         BackendApiTask::BackendApi(data) => {
-            BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api, aes_cbc_cryptor)
-                .await?;
+            BackendTaskHandle::do_handle(&data.endpoint, data.body, backend_api).await?;
         }
     }
     Ok(())

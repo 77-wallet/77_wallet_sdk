@@ -34,6 +34,8 @@ wallet-transport-backend = { workspace = true }
 wallet-chain-interact = { workspace = true }
 wallet-chain-instance = { workspace = true }
 wallet-types = { workspace = true }
+tracing-appender = { workspace = true }
+chrono = { workspace = true }
 
 anyhow = { workspace = true }
 alloy = { workspace = true }

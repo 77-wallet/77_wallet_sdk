@@ -21,7 +21,6 @@ pub async fn upload_log_file() -> Result<(), crate::ServiceError> {
     let log_dir = &dirs.log_dir.to_string_lossy().to_string();
     let level = wallet_utils::log::get_log_level();
     let src_file_path = format!("{log_dir}/{level}.txt");
-
     if wallet_utils::file_func::is_file_empty(&src_file_path)? {
         return Ok(());
     };

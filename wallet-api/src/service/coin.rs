@@ -144,7 +144,6 @@ impl CoinService {
 
     pub async fn pull_hot_coins(&mut self) -> Result<(), crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
         let tx = &mut self.repo;
         tx.drop_coin_just_null_token_address().await?;
 
@@ -168,7 +167,7 @@ impl CoinService {
                 page,
                 page_size,
             );
-            match backend_api.token_query_by_page(cryptor, &req).await {
+            match backend_api.token_query_by_page(&req).await {
                 Ok(mut list) => {
                     data.append(&mut list.list);
                     page += 1;
@@ -194,10 +193,10 @@ impl CoinService {
                 .map(|coin| coin.to_owned().into())
                 .collect();
 
-        if let Ok(mut list) = backend_api.token_query_by_page(cryptor, &req).await {
+        if let Ok(mut list) = backend_api.token_query_by_page(&req).await {
             data.append(&mut list.list);
         }
-        tracing::info!("pull hot coins data: {data:#?}");
+        tracing::debug!("pull hot coins data: {data:#?}");
         // let filtered_data: Vec<_> = data
         //     .into_iter()
         //     .map(|mut d| {
@@ -236,7 +235,7 @@ impl CoinService {
 
     pub async fn init_token_price(mut self) -> Result<(), crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+
         let tx = &mut self.repo;
 
         let coin_list = tx.coin_list(None, None).await?;
@@ -250,10 +249,7 @@ impl CoinService {
             .collect();
 
         let tokens = backend_api
-            .token_query_price(
-                cryptor,
-                wallet_transport_backend::request::TokenQueryPriceReq(req),
-            )
+            .token_query_price(wallet_transport_backend::request::TokenQueryPriceReq(req))
             .await?
             .list;
         tracing::debug!("init_token_price resp: {tokens:#?}");
@@ -277,11 +273,11 @@ impl CoinService {
         req: TokenQueryPriceReq,
     ) -> Result<(), crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
+
         let tx = &mut self.repo;
         // tracing::warn!("[query_token_price] req: {req:?}");
 
-        let tokens = backend_api.token_query_price(cryptor, req).await?.list;
+        let tokens = backend_api.token_query_price(req).await?.list;
 
         // tracing::warn!("[query_token_price] tokens: {tokens:?}");
         for token in tokens {
@@ -312,15 +308,18 @@ impl CoinService {
     pub async fn query_token_info(
         self,
         chain_code: &str,
-        token_address: &str,
+        mut token_address: String,
     ) -> Result<crate::response_vo::coin::TokenInfo, crate::ServiceError> {
         let mut tx = self.repo;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
-        domain::chain::check_address(token_address, chain_code.try_into()?, net)?;
+        domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        let coin =
-            CoinRepoTrait::get_coin_by_chain_code_token_address(&mut tx, chain_code, token_address)
-                .await?;
+        let coin = CoinRepoTrait::get_coin_by_chain_code_token_address(
+            &mut tx,
+            chain_code,
+            &token_address,
+        )
+        .await?;
         let res = if let Some(coin) = coin {
             crate::response_vo::coin::TokenInfo {
                 symbol: Some(coin.symbol),
@@ -333,7 +332,7 @@ impl CoinService {
                     .await?;
 
             let decimals = chain_instance
-                .decimals(token_address)
+                .decimals(&token_address)
                 .await
                 .map_err(|e| match e {
                     wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
@@ -349,13 +348,13 @@ impl CoinService {
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
-            let symbol = chain_instance.token_symbol(token_address).await?;
+            let symbol = chain_instance.token_symbol(&token_address).await?;
             if symbol.is_empty() {
                 return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
-            let name = chain_instance.token_name(token_address).await?;
+            let name = chain_instance.token_name(&token_address).await?;
             if name.is_empty() {
                 return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
@@ -383,16 +382,8 @@ impl CoinService {
     ) -> Result<(), crate::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
-        let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
+        domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
-        match chain {
-            wallet_types::chain::chain::ChainCode::Ethereum
-            | wallet_types::chain::chain::ChainCode::BnbSmartChain => {
-                token_address = wallet_utils::address::to_checksum_address(&token_address);
-            }
-            _ => {}
-        }
-        domain::chain::check_address(&token_address, chain, net)?;
         let tx = &mut self.repo;
         let Some(_) = tx.detail_with_node(chain_code).await? else {
             return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
@@ -540,8 +531,8 @@ impl CoinService {
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> Result<TokenHistoryPrices, crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let prices = backend_api.query_history_price(cryptor, &req).await?;
+
+        let prices = backend_api.query_history_price(&req).await?;
 
         Ok(prices)
     }
@@ -554,8 +545,8 @@ impl CoinService {
     {
         let tx = &mut self.repo;
         let backend_api = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let prices = backend_api.query_popular_by_page(cryptor, &req).await?;
+
+        let prices = backend_api.query_popular_by_page(&req).await?;
 
         let list = prices.list;
 

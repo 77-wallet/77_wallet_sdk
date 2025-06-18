@@ -118,7 +118,6 @@ impl<
                 .push(Task::BackendApi(BackendApiTask::BackendApi(
                     language_init_task_data,
                 )))
-                .push(Task::Initialization(InitializationTask::PullAnnouncement))
                 .send()
                 .await?;
             let mut config = crate::app_state::APP_STATE.write().await;
@@ -137,8 +136,8 @@ impl<
     pub async fn check_version(self, r#type: &str) -> Result<AppVersionRes, crate::ServiceError> {
         let req = VersionViewReq::new(r#type);
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        let res = backend.version_view(cryptor, req).await?;
+
+        let res = backend.version_view(req).await?;
         Ok(res)
     }
 
@@ -185,12 +184,11 @@ impl<
     pub async fn set_block_browser_url(&mut self) -> Result<(), crate::ServiceError> {
         // let tx = &mut self.repo;
         let backend_api = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let app_version = ConfigDomain::get_app_version().await?;
 
         let req = wallet_transport_backend::request::ChainListReq::new(app_version.app_version);
-        let list = backend_api.chain_list(cryptor, req).await?.list;
+        let list = backend_api.chain_list(req).await?.list;
         ConfigDomain::set_block_browser_url(&list).await?;
         Ok(())
     }
@@ -307,8 +305,8 @@ impl<
             is_open: switch,
         };
         let backend = crate::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        if let Err(e) = backend.save_send_msg_account(cryptor, vec![req]).await {
+
+        if let Err(e) = backend.save_send_msg_account(vec![req]).await {
             tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
         }
 
@@ -341,8 +339,8 @@ impl<
     ) -> Result<(), crate::ServiceError> {
         let req = AppInstallSaveReq::new(sn, device_type, channel);
         // let backend = crate::manager::Context::get_global_backend_api()?;
-        // let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
-        // backend.app_install_save(cryptor, req).await?;
+        //
+        // backend.app_install_save(req).await?;
 
         let app_install_save_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::APP_INSTALL_SAVE,
@@ -363,7 +361,7 @@ impl<
             )))
             .send()
             .await?;
-        // backend.keys_reset(cryptor, sn).await?;
+        // backend.keys_reset(sn).await?;
         Ok(())
     }
 
@@ -373,10 +371,9 @@ impl<
         body: String,
     ) -> Result<serde_json::Value, crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let cryptor = crate::Context::get_global_aes_cbc_cryptor()?;
 
         let result = backend
-            .post_req_string::<serde_json::Value>(endpoint, body, &cryptor)
+            .post_req_string::<serde_json::Value>(endpoint, body)
             .await?;
         Ok(result)
     }

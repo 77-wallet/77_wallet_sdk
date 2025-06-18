@@ -10,9 +10,10 @@ use wallet_database::{
     },
     DbPool,
 };
+use wallet_types::constant::chain_code;
 
 use crate::{
-    domain::multisig::MultisigQueueDomain,
+    domain::{bill::BillDomain, multisig::MultisigQueueDomain},
     infrastructure::inner_event::InnerEvent,
     messaging::{
         notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
@@ -142,15 +143,16 @@ impl AcctChange {
     pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
         // let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // tracing::info!(
-        //     event_name = %event_name,
-        //     ?self,
-        //     "Starting AcctChange processing");
 
         // bill create
         let tx = NewBillEntity::try_from(&self)?;
         let tx_kind = tx.tx_kind;
-        BillDao::create(tx, pool.as_ref()).await?;
+
+        if tx.chain_code == chain_code::TON {
+            Self::handle_ton_bill(tx, &pool).await?;
+        } else {
+            BillDao::create(tx, pool.as_ref()).await?;
+        }
 
         if !self.queue_id.is_empty() {
             Self::handle_queue(&self, &pool).await?;
@@ -220,11 +222,37 @@ impl AcctChange {
         Ok(())
     }
 
+    pub async fn handle_ton_bill(
+        mut tx: NewBillEntity,
+        pool: &DbPool,
+    ) -> Result<(), crate::ServiceError> {
+        let origin_hash = tx.hash.clone();
+        let hashs = origin_hash.split(":").collect::<Vec<_>>();
+
+        if hashs.len() == 2 {
+            tx.hash = hashs[0].to_string();
+            let in_hash = hashs[1];
+            if let Some(bill) =
+                BillDao::get_by_hash_and_type(pool.as_ref(), in_hash, tx.tx_type as i64).await?
+            {
+                BillDao::update_all(pool.clone(), tx, bill.id).await?;
+            } else {
+                BillDao::create(tx, pool.as_ref()).await?;
+            }
+        } else {
+            BillDao::create(tx, pool.as_ref()).await?;
+        }
+
+        Ok(())
+    }
+
     async fn system_notification(
         msg_id: &str,
         acct_change: &AcctChange,
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
+        let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
+
         // 交易方式 0转入 1转出 2初始化
         let address = match acct_change.transfer_type {
             0 => acct_change.to_addr.as_str(),
@@ -261,14 +289,14 @@ impl AcctChange {
             &acct_change.symbol,
             &acct_change.chain_code,
             &transaction_status,
-            &acct_change.tx_hash,
+            &transaction_hash,
             &notification_type,
         );
         let req = notify.gen_create_system_notification_entity(
             msg_id,
             0,
             Some("tx_hash".to_string()),
-            Some(acct_change.tx_hash.to_string()),
+            Some(transaction_hash),
         )?;
 
         let repo = RepositoryFactory::repo(pool.clone());
@@ -316,8 +344,11 @@ mod test {
     async fn acct_change() -> anyhow::Result<()> {
         init_manager().await;
 
-        // let change = r#"{"blockHeight":56520912,"chainCode":"tron","fromAddr":"TPgKQJDibjSNQ8AsXp35dja9gP1iLs7BdV","isMultisig":1,"queueId":"255844763314556930","signer":[],"status":true,"symbol":"trx","toAddr":"TGCya1Rrupsqv2RAr48er1B6bcJxK9TZnG","token":"","transactionFee":1.337,"transactionTime":"2025-04-29 10:16:51","transferType":1,"txHash":"e1e4412bf86c6d3b79b7da4838b1f26b3889bcdd62cc768ee3fe4b09778e3396","txKind":1,"value":10,"valueUsdt":2.4751915605691943}"#;
-        let change = r#"{"txHash":"9gaiYphWbxjabMk2L4ALVXiq2NRgwRkmdAUFsW8pj6qw","chainCode":"sui","symbol":"SUI","transferType":1,"txKind":1,"fromAddr":"0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd","toAddr":"0x427e388a85bbb00da32af7716b15749a147affb8ed3a87cd7ce1f98f0b20bc6f","token":null,"value":0.01,"transactionFee":0.00173788,"transactionTime":"2025-05-29 03:45:50","status":true,"isMultisig":0,"queueId":"","blockHeight":150642276,"notes":"","netUsed":0,"energyUsed":null}"#;
+        let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":0,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
+        let change = serde_json::from_str::<AcctChange>(&change).unwrap();
+        let _res = change.exec("2").await.unwrap();
+
+        let change = r#"{"txHash":"c357a09e84a6dd1ad0d621641320f505fd23bc3c48251a5d524fd281de2870da:ftIuBQWDNv8Ik9FQy8aUIfzdrTbennywxOCmw6Ury1A=","chainCode":"ton","symbol":"TON","transferType":1,"txKind":1,"fromAddr":"UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb","toAddr":"UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY","token":"","value":0.01,"transactionFee":0.002432489,"transactionTime":"2025-06-17 08:53:28","status":true,"isMultisig":0,"queueId":"","blockHeight":48927711,"notes":"","netUsed":0,"energyUsed":null}"#;
         let change = serde_json::from_str::<AcctChange>(&change).unwrap();
 
         let _res = change.exec("1").await.unwrap();

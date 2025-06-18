@@ -11,17 +11,17 @@ pub struct UserProperty {
 
 impl UserProperty {
     pub fn new(
-        content: &str,
-        client_id: &str,
+        content: String,
+        client_id: String,
         username: &str,
-        password: &str,
+        password: String,
         app_version: &str,
     ) -> Self {
         Self {
-            content: content.to_string(),
-            client_id: client_id.to_string(),
+            content,
+            client_id,
             username: username.to_string(),
-            password: password.to_string(),
+            password,
             app_version: app_version.to_string(),
         }
     }

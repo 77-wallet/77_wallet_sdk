@@ -79,7 +79,7 @@ async fn delete_wallet() {
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
-    let wallet_name = "0x09520e748eC0E2DfefDb50323c4b46B62d379eDB";
+    let wallet_name = "0x93F63A0804d6b76ffa93675A26706d67Ade81fA8";
     let account_name = "账户";
     let root_password = "123456";
     let req = wallet_api::CreateAccountReq::new(
@@ -87,7 +87,7 @@ async fn create_account() {
         root_password,
         None,
         None,
-        Some(1),
+        None,
         account_name,
         false,
     );
@@ -112,24 +112,6 @@ async fn physical_delete() {
         .physical_delete_account(&wallet_address, account_id, &root_password)
         .await;
     tracing::info!("create_account {:?}", resp);
-}
-
-#[tokio::test]
-async fn sync_assets() {
-    let wallet_manager = get_manager().await;
-    let _c = wallet_manager.sync_assets(vec![], None, vec![]).await;
-}
-
-#[tokio::test]
-async fn sync_assets_by_wallet() {
-    let wallet_manager = get_manager().await;
-    let wallet_address = "0x09520e748eC0E2DfefDb50323c4b46B62d379eDB".to_string();
-    let account_id = Some(1);
-    let symbol = vec!["TRX".to_string()];
-
-    let _c = wallet_manager
-        .sync_assets_by_wallet(wallet_address, account_id, symbol)
-        .await;
 }
 
 #[tokio::test]

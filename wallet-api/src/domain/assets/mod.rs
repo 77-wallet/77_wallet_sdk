@@ -1,8 +1,5 @@
 use super::chain::adapter::ChainAdapterFactory;
-use crate::{
-    domain,
-    infrastructure::task_queue::{CommonTask, Task, Tasks},
-};
+use crate::infrastructure::task_queue::{CommonTask, Task, Tasks};
 use futures::{stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -12,20 +9,14 @@ use wallet_database::{
         account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
         coin::{CoinEntity, CoinMultisigStatus},
+        wallet::WalletEntity,
     },
     repositories::{account::AccountRepoTrait, assets::AssetsRepoTrait, ResourcesRepo},
+    DbPool,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
-struct BalanceTask {
-    address: String,
-    chain_code: String,
-    symbol: String,
-    decimals: u8,
-    token_address: Option<String>,
-}
-
-pub struct AssetsDomain {}
+pub struct AssetsDomain;
 
 impl Default for AssetsDomain {
     fn default() -> Self {
@@ -162,27 +153,7 @@ impl AssetsDomain {
         Ok(res)
     }
 
-    pub async fn sync_assets_by_address(
-        addr: Vec<String>,
-        chain_code: Option<String>,
-        symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
-        // 1. 查询所有的资产
-        let mut assets =
-            AssetsEntity::all_assets(pool.as_ref(), addr, chain_code, None, None).await?;
-        if !symbol.is_empty() {
-            assets.retain(|asset| symbol.contains(&asset.symbol));
-        }
-
-        // 2. 同步资产余额
-        let _rs = domain::assets::AssetsDomain::sync_address_balance(&assets).await;
-
-        Ok(())
-    }
-
-    // 根据钱包地址来同步资产余额
+    // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
     pub async fn sync_assets_by_wallet(
         wallet_address: String,
         account_id: Option<u32>,
@@ -200,106 +171,126 @@ impl AssetsDomain {
             .map(|a| a.address.clone())
             .collect::<Vec<String>>();
 
-        let mut assets = AssetsEntity::all_assets(pool.as_ref(), addr, None, None, None).await?;
+        Self::do_async_balance(pool, addr, None, symbol).await
+    }
 
+    pub async fn sync_assets_by_addr_chain(
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        Self::do_async_balance(pool, addr, chain_code, symbol).await
+    }
+
+    // 从后端同步余额(根据地址-链)
+    pub async fn async_balance_from_backend_addr(
+        addr: String,
+        chain_code: Option<String>,
+    ) -> Result<(), crate::ServiceError> {
+        // 单个地址处理
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let backhand = crate::Context::get_global_backend_api()?;
+
+        // 获取这个地址对应的链码,如果未传
+        let codes = if let Some(chain_code) = chain_code.clone() {
+            vec![chain_code]
+        } else {
+            let account =
+                AccountEntity::list_in_address(pool.as_ref(), &vec![addr.clone()], None).await?;
+
+            account
+                .iter()
+                .map(|a| a.chain_code.clone())
+                .collect::<Vec<String>>()
+        };
+
+        for code in codes {
+            let resp = backhand.wallet_assets_chain_list(&addr, &code).await?;
+
+            for item in resp.list.into_iter() {
+                let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
+                if amount >= 0.0 {
+                    let assets_id = AssetsId {
+                        address: item.address,
+                        chain_code: item.chain_code,
+                        symbol: item.symbol.to_uppercase(),
+                    };
+
+                    let r =
+                        AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
+
+                    if let Err(e) = r {
+                        tracing::warn!("udpate balance error {}", e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    // 从后端同步余额(根据钱包-账号)
+    pub async fn async_balance_from_backend_wallet(
+        wallet_address: String,
+        account_id: Option<u32>,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
+
+        if let Some(wallet) = wallet {
+            let backhand = crate::Context::get_global_backend_api()?;
+
+            // 本地的index 进行了 + 1
+            let index = account_id.map(|x| x - 1);
+            let resp = backhand.wallet_assets_list(wallet.uid, index).await?;
+
+            tracing::warn!("resp = {:#?}", resp);
+            for item in resp.list.into_iter() {
+                let amount = wallet_utils::unit::string_to_f64(&item.amount)?;
+                if amount >= 0.0 {
+                    let assets_id = AssetsId {
+                        address: item.address,
+                        chain_code: item.chain_code,
+                        symbol: item.symbol.to_uppercase(),
+                    };
+
+                    let r =
+                        AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
+
+                    if let Err(e) = r {
+                        tracing::warn!("udpate balance error {}", e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn do_async_balance(
+        pool: DbPool,
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let mut assets =
+            AssetsEntity::all_assets(pool.as_ref(), addr, chain_code, None, None).await?;
         if !symbol.is_empty() {
             assets.retain(|asset| symbol.contains(&asset.symbol));
         }
 
-        // 2. 同步资产余额
-        let _rs = domain::assets::AssetsDomain::sync_address_balance(&assets).await;
-        Ok(())
-    }
+        let results = ChainBalance::sync_address_balance(&assets).await?;
 
-    /// 从任务获取余额并返回结果
-    async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {
-        // 获取并发许可
-        let _permit = sem.acquire().await.ok()?;
-
-        // 获取适配器
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&task.chain_code)
-            .await
-            .map_err(|e| {
-                tracing::error!("获取链详情出错: {}，链代码: {}", e, task.chain_code.clone())
-            })
-            .ok()?;
-
-        // 获取余额
-        let raw = adapter
-            .balance(&task.address, task.token_address.clone())
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    "获取余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
-                    task.address,
-                    task.chain_code,
-                    task.symbol,
-                    task.token_address,
-                    e
-                )
-            })
-            .ok()?;
-
-        // 格式化
-        let bal_str = wallet_utils::unit::format_to_string(raw, task.decimals)
-            .unwrap_or_else(|_| "0".to_string());
-
-        // tracing::warn!(
-        //     "余额获取成功: 地址={}, 链={}, 符号={}, token={:?},余额={}",
-        //     task.address,
-        //     task.chain_code,
-        //     task.symbol,
-        //     task.token_address,
-        //     bal_str
-        // );
-
-        // 构建 ID
-        let id = AssetsId {
-            address: task.address,
-            chain_code: task.chain_code,
-            symbol: task.symbol,
-        };
-
-        Some((id, bal_str))
-    }
-
-    pub async fn sync_address_balance(
-        assets: &[AssetsEntity],
-    ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
-        // 获取全局连接池
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        // 限制最大并发数为 10
-        let sem = Arc::new(Semaphore::new(10));
-
-        let mut tasks = vec![];
-
-        for asset in assets.iter() {
-            let bal = BalanceTask {
-                address: asset.address.clone(),
-                chain_code: asset.chain_code.clone(),
-                symbol: asset.symbol.clone(),
-                decimals: asset.decimals,
-                token_address: asset.token_address(),
-            };
-            tasks.push(bal);
-        }
-
-        // 并发获取余额并格式化
-        let results = stream::iter(tasks)
-            .map(|task| Self::fetch_balance(task, sem.clone()))
-            .buffer_unordered(10)
-            .filter_map(|x| async move { x })
-            .collect::<Vec<_>>()
-            .await;
-
-        // 顺序更新数据库
         for (assets_id, balance) in &results {
-            if let Err(e) = AssetsEntity::update_balance(&*pool, assets_id, balance).await {
+            if let Err(e) = AssetsEntity::update_balance(pool.as_ref(), assets_id, balance).await {
                 tracing::error!("更新余额出错: {}", e);
             }
         }
 
-        Ok(results)
+        Ok(())
     }
 
     pub(crate) async fn init_default_assets(
@@ -360,73 +351,89 @@ impl AssetsDomain {
         }
 
         // 同步资产余额
-        AssetsDomain::sync_assets_by_address(vec![address], Some(chain_code), symbols).await?;
+        AssetsDomain::sync_assets_by_addr_chain(vec![address], Some(chain_code), symbols).await?;
         Ok(())
     }
 }
 
-// let semaphore = Arc::new(Semaphore::new(10));
-// let tasks = assets.iter().map(|coin| {
-//     let semaphore = semaphore.clone();
+struct BalanceTask {
+    address: String,
+    chain_code: String,
+    symbol: String,
+    decimals: u8,
+    token_address: Option<String>,
+}
+struct ChainBalance;
+impl ChainBalance {
+    async fn sync_address_balance(
+        assets: &[AssetsEntity],
+    ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
+        // 限制最大并发数为 10
+        let sem = Arc::new(Semaphore::new(10));
+        let mut tasks = vec![];
 
-//     async move {
-//         // 获取信号量的许可，限制并发数量
-//         let _permit = semaphore.acquire().await.unwrap();
+        for asset in assets.iter() {
+            let bal = BalanceTask {
+                address: asset.address.clone(),
+                chain_code: asset.chain_code.clone(),
+                symbol: asset.symbol.clone(),
+                decimals: asset.decimals,
+                token_address: asset.token_address(),
+            };
+            tasks.push(bal);
+        }
 
-//         let adapter = domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(
-//             &coin.chain_code,
-//         )
-//         .await;
-//         let adapter = match adapter {
-//             Ok(adapter) => adapter,
-//             Err(e) => {
-//                 tracing::error!("获取链详情出错: {}，链代码: {}", e, coin.chain_code);
-//                 return None;
-//             }
-//         };
+        // 并发获取余额并格式化
+        let results = stream::iter(tasks)
+            .map(|task| Self::fetch_balance(task, sem.clone()))
+            .buffer_unordered(10)
+            .filter_map(|x| async move { x })
+            .collect::<Vec<_>>()
+            .await;
 
-//         let balance = match adapter.balance(&coin.address, coin.token_address()).await {
-//             Ok(balance) => balance,
-//             Err(e) => {
-//                 tracing::error!(
-//                     "获取余额出错: 地址={}, 链代码={}, 符号={}, token = {:?},错误:{}",
-//                     coin.address,
-//                     coin.chain_code,
-//                     coin.symbol,
-//                     coin.token_address(),
-//                     e
-//                 );
-//                 return None;
-//             }
-//         };
-//         let balance = wallet_utils::unit::format_to_string(balance, coin.decimals)
-//             .unwrap_or_else(|_| "0".to_string());
+        Ok(results)
+    }
 
-//         // 准备更新数据
-//         let assets_id = AssetsId {
-//             address: coin.address.to_string(),
-//             chain_code: coin.chain_code.to_string(),
-//             symbol: coin.symbol.to_string(),
-//         };
+    // 从任务获取余额并返回结果
+    async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {
+        // 获取并发许可
+        let _permit = sem.acquire().await.ok()?;
 
-//         Some((assets_id, balance))
-//     }
-// });
+        // 获取适配器
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&task.chain_code)
+            .await
+            .map_err(|e| {
+                tracing::error!("获取链详情出错: {}，链代码: {}", e, task.chain_code.clone())
+            })
+            .ok()?;
 
-// // 并发执行所有任务，并收集结果
-// let results: Vec<(AssetsId, String)> = futures::future::join_all(tasks)
-//     .await
-//     .into_iter()
-//     .flatten()
-//     .collect();
+        // 获取余额
+        let raw = adapter
+            .balance(&task.address, task.token_address.clone())
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "获取余额出错: 地址={}, 链={}, 符号={}, token={:?}, 错误={}",
+                    task.address,
+                    task.chain_code,
+                    task.symbol,
+                    task.token_address,
+                    e
+                )
+            })
+            .ok()?;
 
-// // 在单个事务中批量更新数据库
-// // let mut tx = pool.begin().await.expect("开启事务失败");
-// for (assets_id, balance) in results.iter() {
-//     // if let Err(e) = AssetsEntity::update_balance(tx.as_mut(), &assets_id, &balance).await {
-//     if let Err(e) = AssetsEntity::update_balance(&*pool, assets_id, balance).await {
-//         tracing::error!("更新余额出错: {}", e);
-//     }
-// }
+        // 格式化
+        let bal_str = wallet_utils::unit::format_to_string(raw, task.decimals)
+            .unwrap_or_else(|_| "0".to_string());
 
-// Ok(results)
+        // 构建 ID
+        let id = AssetsId {
+            address: task.address,
+            chain_code: task.chain_code,
+            symbol: task.symbol,
+        };
+
+        Some((id, bal_str))
+    }
+}
