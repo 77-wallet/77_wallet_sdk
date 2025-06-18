@@ -118,7 +118,6 @@ impl<
                 .push(Task::BackendApi(BackendApiTask::BackendApi(
                     language_init_task_data,
                 )))
-                .push(Task::Initialization(InitializationTask::PullAnnouncement))
                 .send()
                 .await?;
             let mut config = crate::app_state::APP_STATE.write().await;
