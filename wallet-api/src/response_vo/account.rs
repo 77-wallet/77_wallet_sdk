@@ -292,6 +292,15 @@ pub struct DerivedAddressesList {
     pub derivation_path: String,
     pub chain_code: String,
     pub address_type: AddressCategory,
+    pub mapping_account: Option<MappingAccount>,
+    pub mapping_positive_index: Option<u32>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingAccount {
+    pub account_id: u32,
+    pub account_name: String,
 }
 
 impl DerivedAddressesList {
@@ -306,10 +315,24 @@ impl DerivedAddressesList {
             derivation_path: derivation_path.to_string(),
             chain_code: chain_code.to_string(),
             address_type,
+            mapping_account: None,
+            mapping_positive_index: None,
         }
     }
-}
 
+    pub fn with_mapping_account(&mut self, account_id: u32, account_name: String) -> &mut Self {
+        self.mapping_account = Some(MappingAccount {
+            account_id,
+            account_name,
+        });
+        self
+    }
+
+    pub fn with_mapping_positive_index(&mut self, index: u32) -> &mut Self {
+        self.mapping_positive_index = Some(index);
+        self
+    }
+}
 #[cfg(test)]
 mod tests {
 

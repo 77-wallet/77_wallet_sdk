@@ -252,7 +252,7 @@ mod test {
         let account = wallet_manager
             .list_derived_addresses(
                 wallet_address,
-                1,
+                -1,
                 &test_params.create_wallet_req.wallet_password,
                 true,
             )

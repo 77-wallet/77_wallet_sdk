@@ -298,12 +298,32 @@ impl AccountService {
                 let address_type = instance.address_type().into();
                 let derivation_path = keypair.derivation_path();
                 let address = keypair.address();
-                res.push(DerivedAddressesList::new(
+
+                let mut derived_address = DerivedAddressesList::new(
                     &address,
                     &derivation_path,
                     &chain.chain_code,
                     address_type,
-                ));
+                );
+
+                match code {
+                    ChainCode::Solana | ChainCode::Sui | ChainCode::Ton => {
+                        let account = tx
+                            .detail_by_address_and_chain_code(&address, &chain.chain_code)
+                            .await?;
+                        if let Some(account) = account {
+                            derived_address.with_mapping_account(account.account_id, account.name);
+                        };
+
+                        if account_index_map.input_index < 0 {
+                            derived_address
+                                .with_mapping_positive_index(account_index_map.unhardend_index);
+                        }
+                    }
+                    _ => {}
+                }
+
+                res.push(derived_address);
             }
         }
 
