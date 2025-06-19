@@ -200,7 +200,12 @@ impl WalletService {
                 is_default_name,
             )
             .await?;
-            address_batch_init_task_data.0.push(address_init_req);
+
+            if let Some(address_init_req) = address_init_req {
+                address_batch_init_task_data.0.push(address_init_req);
+            } else {
+                tracing::info!("不上报： {}", account.address);
+            };
 
             let keypair = instance
                 .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)

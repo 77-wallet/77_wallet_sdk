@@ -306,7 +306,12 @@ impl ChainDomain {
                         is_default_name,
                     )
                     .await?;
-                address_batch_init_task_data.0.push(address_init_req);
+
+                if let Some(address_init_req) = address_init_req {
+                    address_batch_init_task_data.0.push(address_init_req);
+                } else {
+                    tracing::info!("不上报： {}", account_address.address);
+                };
 
                 subkeys.push(
                     AccountDomain::generate_subkey(
