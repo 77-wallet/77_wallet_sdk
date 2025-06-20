@@ -233,7 +233,8 @@ mod test {
         // let token_address = "So11111111111111111111111111111111111111112";
         let token_address =
         // "0x55d398326f99059fF775485246999027B3197955";
-        "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
+        // "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
+        "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25";
 
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 

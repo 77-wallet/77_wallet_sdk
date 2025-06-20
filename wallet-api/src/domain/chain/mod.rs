@@ -355,7 +355,9 @@ impl ChainDomain {
 
         match chain {
             wallet_types::chain::chain::ChainCode::Sui => {
-                wallet_utils::address::parse_sui_type_tag(&token_address)?;
+                wallet_utils::address::parse_sui_type_tag(&token_address).map_err(|_| {
+                    crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                })?;
             }
             _ => check_address(&token_address, chain, net)?,
         }
