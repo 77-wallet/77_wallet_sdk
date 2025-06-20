@@ -12,6 +12,7 @@ pub mod node;
 pub mod permission;
 pub mod phrase;
 pub mod stake;
+pub mod swap;
 pub mod system_notification;
 use crate::{
     response::Response,
