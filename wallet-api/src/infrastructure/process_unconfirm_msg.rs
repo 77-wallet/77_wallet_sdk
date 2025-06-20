@@ -154,7 +154,7 @@ impl UnconfirmedMsgProcessor {
                     tracing::error!("send_error error: {}", send_err);
                 }
             };
-            tracing::info!("process_unconfirm_msg start");
+            tracing::debug!("process_unconfirm_msg start");
             loop {
                 tokio::select! {
                     _ = notify.notified() => {

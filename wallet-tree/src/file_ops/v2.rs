@@ -303,7 +303,7 @@ impl IoStrategy for ModernIo {
             &wallet_utils::serde_func::serde_to_vec(&metadata)?,
         )?;
         wallet_utils::file_func::rename(temp_meta_path, meta_path)?;
-        tracing::warn!("store_subkeys_bulk cost: {:?}", start.elapsed());
+        tracing::debug!("store_subkeys_bulk cost: {:?}", start.elapsed());
         Ok(())
     }
 

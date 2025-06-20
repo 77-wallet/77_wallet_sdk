@@ -141,7 +141,7 @@ impl Dispatcher {
         let (external_tx, external_rx) = tokio::sync::mpsc::unbounded_channel();
 
         Self::start_internal_task(external_rx, running_tasks, Arc::new(Semaphore::new(50)));
-        tracing::info!("Dispatcher 启动完成，开始监听外部任务输入...");
+        tracing::debug!("Dispatcher 启动完成，开始监听外部任务输入...");
         Self {
             external_tx, // task_queues: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
                          // semaphore: Arc::new(Semaphore::new(50)), // 最大并发数可调整
@@ -314,7 +314,7 @@ impl Dispatcher {
 
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         } else {
-            tracing::info!("任务 {} 已在运行中，跳过重复执行", task_id);
+            tracing::debug!("任务 {} 已在运行中，跳过重复执行", task_id);
         }
     }
 }
