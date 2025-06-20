@@ -69,7 +69,7 @@ impl IoStrategy for LegacyIo {
             KeystoreBuilder::new_decrypt(root_dir.as_ref().join(phrase_filename), password)
                 .load()?
                 .try_into()?;
-        let seed: &[u8] = seed.into_seed().expose_secret().as_ref();
+        let seed: &[u8] = seed.into_seed().expose_secret();
 
         Ok(super::RootData::new(
             phrase_wallet.phrase.expose_secret(),

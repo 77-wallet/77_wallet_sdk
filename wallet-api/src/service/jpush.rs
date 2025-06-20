@@ -76,15 +76,13 @@ impl JPushService {
             {
                 unconfirmed_msg_collector.submit(vec![id])?;
                 // tracing::info!("[jpush_multi] unconfirmed_msg_collector submit");
-            } else {
-                if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
-                    if let Err(e) =
-                        FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
-                    {
-                        tracing::error!("send_error error: {}", e);
-                    }
-                    tracing::error!("[jpush_multi] exec_payload error: {}", e);
-                };
+            } else if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
+                if let Err(e) = FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                {
+                    tracing::error!("send_error error: {}", e);
+                }
+                tracing::error!("[jpush_multi] exec_payload error: {}", e);
+
                 // tracing::info!("[jpush_multi] exec_payload success");
             };
             // ids.push(wallet_transport_backend::request::SendMsgConfirm::new(

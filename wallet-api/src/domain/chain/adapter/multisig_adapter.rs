@@ -41,18 +41,17 @@ pub enum MultisigAdapter {
 impl std::fmt::Display for MultisigAdapter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MultisigAdapter::BitCoin(_chain) => write!(f, "{}", "bitcode"),
-            MultisigAdapter::Ethereum(_chain) => write!(f, "{}", "ethereum"),
-            MultisigAdapter::Solana(_chain) => write!(f, "{}", "solana"),
-            MultisigAdapter::Tron(_chain) => write!(f, "{}", "tron"),
-            MultisigAdapter::Ltc(_chain) => write!(f, "{}", "ltc"),
-            MultisigAdapter::Doge(_chain) => write!(f, "{}", "doge"),
-            MultisigAdapter::Ton(_chain) => write!(f, "{}", "ton"),
-            MultisigAdapter::Sui(_chain) => write!(f, "{}", "sui"),
+            MultisigAdapter::BitCoin(_) => write!(f, "bitcoin"),
+            MultisigAdapter::Ethereum(_) => write!(f, "ethereum"),
+            MultisigAdapter::Solana(_) => write!(f, "solana"),
+            MultisigAdapter::Tron(_) => write!(f, "tron"),
+            MultisigAdapter::Ltc(_) => write!(f, "ltc"),
+            MultisigAdapter::Doge(_) => write!(f, "doge"),
+            MultisigAdapter::Ton(_) => write!(f, "ton"),
+            MultisigAdapter::Sui(_) => write!(f, "sui"),
         }
     }
 }
-
 impl MultisigAdapter {
     pub fn new(
         chain_code: ChainType,

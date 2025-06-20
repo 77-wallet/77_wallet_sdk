@@ -127,7 +127,7 @@ impl AddressBookService {
             wallet_types::chain::chain::ChainCode::Tron => {
                 wallet_types::constant::check_black::TRON
             }
-            _ => &vec![],
+            _ => &[],
         };
 
         for token in token_address {

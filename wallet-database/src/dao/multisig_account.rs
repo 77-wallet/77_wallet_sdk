@@ -545,7 +545,7 @@ impl MultisigAccountDaoV1 {
         let res = sqlx::query_as::<_, MultisigAccountEntity>(&sql)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::DatabaseError::Sqlx(e))?;
+            .map_err(crate::DatabaseError::Sqlx)?;
 
         Ok(res)
     }

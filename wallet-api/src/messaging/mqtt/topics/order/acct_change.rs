@@ -303,7 +303,7 @@ impl AcctChange {
         let system_notification_service = SystemNotificationService::new(repo);
 
         system_notification_service
-            .add_multi_system_notification_with_key_value(&vec![req])
+            .add_multi_system_notification_with_key_value(&[req])
             .await?;
         Ok(())
     }

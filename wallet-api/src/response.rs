@@ -83,44 +83,40 @@ fn map_backend_error(err: wallet_transport_backend::Error) -> (i64, String) {
 fn map_chain_interact_error(err: wallet_chain_interact::Error) -> (i64, String) {
     let msg = err.to_string();
     match err {
-        wallet_chain_interact::Error::TransportError(transport_error) => match transport_error {
-            wallet_transport::TransportError::NodeResponseError(node_response_error) => {
-                match node_response_error.code {
-                    // sol链错误码,转账金额小于租金
-                    -32002 => {
-                        let msg = node_response_error.message.unwrap_or_default();
-                        if msg.contains("insufficient funds for rent") {
-                            (
-                                crate::ChainError::InsufficientFundsRent.get_status_code(),
-                                msg,
-                            )
-                        } else {
-                            (node_response_error.code, msg)
-                        }
-                    }
-                    -32602 => {
-                        let err_msg = node_response_error.message.unwrap_or_default();
-                        (
-                            crate::CoinError::InvalidContractAddress(err_msg.clone())
-                                .get_status_code(),
-                            err_msg,
-                        )
-                    }
-                    -26 => {
-                        // ltc btc doge dust transaction
-                        let err_msg = node_response_error.message.unwrap_or_default();
-                        (
-                            crate::ChainError::DustTransaction.get_status_code(),
-                            err_msg,
-                        )
-                    }
-                    _ => (
-                        node_response_error.code,
-                        node_response_error.message.unwrap_or_default(),
-                    ),
+        wallet_chain_interact::Error::TransportError(
+            wallet_transport::TransportError::NodeResponseError(node_response_error),
+        ) => match node_response_error.code {
+            // sol链错误码,转账金额小于租金
+            -32002 => {
+                let msg = node_response_error.message.unwrap_or_default();
+                if msg.contains("insufficient funds for rent") {
+                    (
+                        crate::ChainError::InsufficientFundsRent.get_status_code(),
+                        msg,
+                    )
+                } else {
+                    (node_response_error.code, msg)
                 }
             }
-            _ => (540, msg),
+            -32602 => {
+                let err_msg = node_response_error.message.unwrap_or_default();
+                (
+                    crate::CoinError::InvalidContractAddress(err_msg.clone()).get_status_code(),
+                    err_msg,
+                )
+            }
+            -26 => {
+                // ltc btc doge dust transaction
+                let err_msg = node_response_error.message.unwrap_or_default();
+                (
+                    crate::ChainError::DustTransaction.get_status_code(),
+                    err_msg,
+                )
+            }
+            _ => (
+                node_response_error.code,
+                node_response_error.message.unwrap_or_default(),
+            ),
         },
         wallet_chain_interact::Error::ContractValidationError(msg) => match msg {
             wallet_chain_interact::ContractValidationError::WithdrawTooSoon(_) => (

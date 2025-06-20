@@ -187,10 +187,7 @@ impl EndpointHandler for SpecialHandler {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
 
                 res?;
-                let code = ConfigDomain::get_invite_code()
-                    .await?
-                    .map(|c| c.code)
-                    .flatten();
+                let code = ConfigDomain::get_invite_code().await?.and_then(|c| c.code);
 
                 ConfigDomain::set_invite_code(Some(req.invitee), code).await?;
             }

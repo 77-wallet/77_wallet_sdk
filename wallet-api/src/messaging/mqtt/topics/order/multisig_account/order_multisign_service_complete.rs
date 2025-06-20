@@ -113,12 +113,10 @@ impl OrderMultiSignServiceComplete {
             } else {
                 (Some(MultisigAccountStatus::OnChainFail.to_i8()), None)
             }
+        } else if status {
+            (None, Some(MultisigAccountPayStatus::Paid.to_i8()))
         } else {
-            if status {
-                (None, Some(MultisigAccountPayStatus::Paid.to_i8()))
-            } else {
-                (None, Some(MultisigAccountPayStatus::PaidFail.to_i8()))
-            }
+            (None, Some(MultisigAccountPayStatus::PaidFail.to_i8()))
         }
     }
 }

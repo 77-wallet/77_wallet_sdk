@@ -412,14 +412,14 @@ impl<
             MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Confirmed)
                 .await?
                 .into_iter()
-                .map(|f| MultisigAccountBase::from(f))
+                .map(MultisigAccountBase::from)
                 .collect();
 
         msg.pending_agree_multisig =
             MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Pending)
                 .await?
                 .into_iter()
-                .map(|f| MultisigAccountBase::from(f))
+                .map(MultisigAccountBase::from)
                 .collect();
 
         Ok(msg)
