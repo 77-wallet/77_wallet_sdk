@@ -236,6 +236,23 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_get_account_address() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+
+        let account = wallet_manager.get_account_address(wallet_address, 1).await;
+        tracing::info!("[test_get_account_address] account: {account:?}");
+
+        let res = serde_json::to_string(&account).unwrap();
+        tracing::info!("[test_get_account_address] account: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_create_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>

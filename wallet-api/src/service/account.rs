@@ -9,10 +9,7 @@ use wallet_transport_backend::request::{
     AddressBatchInitReq, AddressUpdateAccountNameReq, TokenQueryPriceReq,
 };
 use wallet_tree::api::KeystoreApi;
-use wallet_types::{
-    chain::{address::r#type::AddressType, chain::ChainCode},
-    constant::chain_code,
-};
+use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 use wallet_utils::address::AccountIndexMap;
 
 use crate::{
