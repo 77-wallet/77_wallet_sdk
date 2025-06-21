@@ -333,6 +333,32 @@ impl DerivedAddressesList {
         self
     }
 }
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryAccountDerivationPath {
+    pub address: String,
+    pub derivation_path: String,
+    pub chain_code: String,
+    pub address_type: AddressCategory,
+}
+
+impl QueryAccountDerivationPath {
+    pub fn new(
+        address: &str,
+        derivation_path: &str,
+        chain_code: &str,
+        address_type: AddressCategory,
+    ) -> Self {
+        Self {
+            address: address.to_string(),
+            derivation_path: derivation_path.to_string(),
+            chain_code: chain_code.to_string(),
+            address_type,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

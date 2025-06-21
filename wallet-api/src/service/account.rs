@@ -23,7 +23,7 @@ use crate::{
     infrastructure::task_queue::{
         BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, Task, Tasks,
     },
-    response_vo::account::DerivedAddressesList,
+    response_vo::account::{DerivedAddressesList, QueryAccountDerivationPath},
 };
 
 pub struct AccountService {
@@ -235,6 +235,30 @@ impl AccountService {
         // }
 
         Ok(())
+    }
+
+    pub async fn query_account_derivation_path(
+        self,
+        wallet_address: &str,
+        index: u32,
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::ServiceError> {
+        let mut tx = self.repo;
+        let list = tx
+            .get_account_list_by_wallet_address_and_account_id(Some(wallet_address), Some(index))
+            .await?;
+        let mut res = Vec::new();
+        for data in list {
+            let address_type =
+                AccountDomain::get_show_address_type(&data.chain_code, data.address_type())?;
+            res.push(QueryAccountDerivationPath::new(
+                &data.address,
+                &data.derivation_path,
+                &data.chain_code,
+                address_type,
+            ));
+        }
+
+        Ok(res)
     }
 
     pub async fn list_derived_addresses(
@@ -542,7 +566,10 @@ impl AccountService {
                     && meta.address == account.address
                     && meta.derivation_path == account.derivation_path
             }) {
-                let btc_address_type_opt: AddressType = account.address_type().try_into()?;
+                let address_type = AccountDomain::get_show_address_type(
+                    &account.chain_code,
+                    account.address_type(),
+                )?;
                 if let Some(chain) = chains
                     .iter()
                     .find(|chain| chain.chain_code == account.chain_code)
@@ -551,7 +578,7 @@ impl AccountService {
                         chain_code: account.chain_code,
                         name: chain.name.clone(),
                         address: account.address,
-                        address_type: btc_address_type_opt.into(),
+                        address_type,
                         private_key: pk.to_string(),
                     };
                     res.push(data);
@@ -589,6 +616,7 @@ impl AccountService {
         let mut res = Vec::new();
         for account in account_list {
             let address_type = account.address_type().try_into()?;
+
             let data = crate::response_vo::account::GetAccountAddress {
                 chain_code: account.chain_code,
                 address: account.address,

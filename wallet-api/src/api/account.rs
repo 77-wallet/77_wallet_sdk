@@ -1,5 +1,5 @@
 use crate::api::ReturnType;
-use crate::response_vo::account::DerivedAddressesList;
+use crate::response_vo::account::{DerivedAddressesList, QueryAccountDerivationPath};
 use crate::service::account::AccountService;
 use wallet_database::entities::account::AccountEntity;
 
@@ -60,6 +60,20 @@ impl crate::WalletManager {
 
         AccountService::new(repo)
             .get_account_list(wallet_address, account_id)
+            .await?
+            .into()
+    }
+
+    pub async fn query_account_derivation_path(
+        &self,
+        wallet_address: &str,
+        index: u32,
+    ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+        AccountService::new(repo)
+            .query_account_derivation_path(wallet_address, index)
             .await?
             .into()
     }
@@ -207,7 +221,7 @@ mod test {
 
         // let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
         // let wallet_address = "0x65Eb73c5aeAD87688D639E796C959E23C2356681";
-        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
         let account = wallet_manager
@@ -239,6 +253,22 @@ mod test {
             .result;
         tracing::info!("[test_create_account] list: {list:?}");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_query_account_derivation_path() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let account = wallet_manager
+            .query_account_derivation_path(wallet_address, 2147483648)
+            .await;
+        tracing::info!("[test_show_index_address] show_index_address: {account:?}");
+        let res = serde_json::to_string(&account).unwrap();
+        tracing::info!("[test_show_index_address] show_index_address: {res:?}");
         Ok(())
     }
 
