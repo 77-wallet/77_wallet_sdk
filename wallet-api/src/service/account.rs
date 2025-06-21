@@ -234,7 +234,7 @@ impl AccountService {
         Ok(())
     }
 
-    pub async fn query_account_derivation_path(
+    pub async fn get_account_derivation_path(
         self,
         wallet_address: &str,
         index: u32,

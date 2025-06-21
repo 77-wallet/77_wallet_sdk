@@ -64,7 +64,7 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn query_account_derivation_path(
+    pub async fn get_account_derivation_path(
         &self,
         wallet_address: &str,
         index: u32,
@@ -73,7 +73,7 @@ impl crate::WalletManager {
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo)
-            .query_account_derivation_path(wallet_address, index)
+            .get_account_derivation_path(wallet_address, index)
             .await?
             .into()
     }
@@ -281,7 +281,7 @@ mod test {
         // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account = wallet_manager
-            .query_account_derivation_path(wallet_address, 2147483648)
+            .get_account_derivation_path(wallet_address, 2147483648)
             .await;
         tracing::info!("[test_show_index_address] show_index_address: {account:?}");
         let res = serde_json::to_string(&account).unwrap();
