@@ -133,20 +133,6 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn get_account_address(
-        &self,
-        wallet_address: &str,
-        account_id: u32,
-    ) -> ReturnType<crate::response_vo::account::GetAccountAddressRes> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        AccountService::new(repo)
-            .get_account_address(wallet_address, account_id)
-            .await?
-            .into()
-    }
-
     pub async fn set_all_password(&self, old_password: &str, new_password: &str) -> ReturnType<()> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -236,23 +222,6 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_get_account_address() -> Result<()> {
-        wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
-        let (wallet_manager, _test_params) = get_manager().await?;
-
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-
-        let account = wallet_manager.get_account_address(wallet_address, 1).await;
-        tracing::info!("[test_get_account_address] account: {account:?}");
-
-        let res = serde_json::to_string(&account).unwrap();
-        tracing::info!("[test_get_account_address] account: {res:?}");
-
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_create_account() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -283,9 +252,9 @@ mod test {
         let account = wallet_manager
             .get_account_derivation_path(wallet_address, 2147483648)
             .await;
-        tracing::info!("[test_show_index_address] show_index_address: {account:?}");
+        tracing::info!("[get_account_derivation_path] get_account_derivation_path: {account:?}");
         let res = serde_json::to_string(&account).unwrap();
-        tracing::info!("[test_show_index_address] show_index_address: {res:?}");
+        tracing::info!("[get_account_derivation_path] get_account_derivation_path: {res:?}");
         Ok(())
     }
 

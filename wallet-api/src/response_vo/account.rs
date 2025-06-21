@@ -1,4 +1,4 @@
-use wallet_types::chain::address::{category::AddressCategory, r#type::AddressType};
+use wallet_types::chain::address::category::AddressCategory;
 
 use crate::domain::app::config::ConfigDomain;
 
@@ -39,19 +39,6 @@ pub struct GetAccountPrivateKey {
     pub address_type: AddressCategory,
     pub private_key: String,
 }
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetAccountAddressRes(pub Vec<GetAccountAddress>);
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetAccountAddress {
-    pub chain_code: String,
-    pub address: String,
-    pub address_type: AddressType,
-}
-
 #[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountResource {

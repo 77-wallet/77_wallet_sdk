@@ -597,34 +597,6 @@ impl AccountService {
             .await?)
     }
 
-    pub async fn get_account_address(
-        &mut self,
-        wallet_address: &str,
-        account_id: u32,
-    ) -> Result<crate::response_vo::account::GetAccountAddressRes, crate::ServiceError> {
-        let tx = &mut self.repo;
-        let account_list = tx
-            .get_account_list_by_wallet_address_and_account_id(
-                Some(wallet_address),
-                Some(account_id),
-            )
-            .await?;
-
-        let mut res = Vec::new();
-        for account in account_list {
-            let address_type = account.address_type().try_into()?;
-
-            let data = crate::response_vo::account::GetAccountAddress {
-                chain_code: account.chain_code,
-                address: account.address,
-                address_type,
-            };
-            res.push(data);
-        }
-
-        Ok(crate::response_vo::account::GetAccountAddressRes(res))
-    }
-
     // pub fn recover_subkey(
     //     &self,
     //     wallet_name: &str,
