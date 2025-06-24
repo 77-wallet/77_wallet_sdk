@@ -1,4 +1,4 @@
-use super::{ton_tx, TIME_OUT};
+use super::{eth_tx, ton_tx, tron_tx, TIME_OUT};
 use crate::{
     dispatch,
     domain::{
@@ -27,6 +27,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
     BillResourceConsume,
 };
+use wallet_database::entities::coin::CoinEntity;
 use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::{
     address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
@@ -748,5 +749,26 @@ impl TransactionAdapter {
             }
         };
         Ok(res?)
+    }
+
+    pub async fn approve(
+        &self,
+        req: &transaction::ApproveParams,
+        coin: &CoinEntity,
+        key: ChainPrivateKey,
+    ) -> Result<String, crate::ServiceError> {
+        let value = wallet_utils::unit::convert_to_u256(&req.value, coin.decimals)?;
+
+        let hash = match self {
+            Self::Ethereum(chain) => eth_tx::approve(chain, req, value, key).await?,
+            Self::Tron(chain) => tron_tx::approve(chain, req, value, key).await?,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(hash)
     }
 }

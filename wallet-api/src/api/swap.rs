@@ -1,5 +1,6 @@
 use crate::{
     api::ReturnType,
+    request::transaction::ApproveParams,
     response_vo::swap::{SupportChain, SwapTokenInfo},
     service::swap::SwapServer,
 };
@@ -19,5 +20,13 @@ impl crate::WalletManager {
     // 支持兑换的链
     pub async fn chain_list(&self) -> ReturnType<Vec<SupportChain>> {
         SwapServer::new().chain_list().await.into()
+    }
+
+    pub async fn approve(
+        &self,
+        req: ApproveParams,
+        password: String,
+    ) -> Result<String, crate::ServiceError> {
+        SwapServer::new().approve(req, password).await.into()
     }
 }

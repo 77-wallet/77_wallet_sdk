@@ -1,13 +1,18 @@
-use crate::{domain::multisig::MultisigQueueDomain, response_vo::TransferParams};
+use crate::{
+    domain::multisig::MultisigQueueDomain, request::transaction::ApproveParams,
+    response_vo::TransferParams,
+};
 use wallet_chain_interact::{
     tron::{
         operations::{
+            contract::WarpContract,
             transfer::{ContractTransferOpt, TransferOpt},
+            trc::Approve,
             TronConstantOperation as _,
         },
         TronChain,
     },
-    types::MultisigTxResp,
+    types::{ChainPrivateKey, MultisigTxResp},
 };
 
 // 构建多签交易
@@ -45,4 +50,26 @@ pub(super) async fn build_build_tx(
             .build_multisig_transaction(params, expiration as u64)
             .await?)
     }
+}
+
+pub(super) async fn approve(
+    chain: &TronChain,
+    req: &ApproveParams,
+    value: alloy::primitives::U256,
+    key: ChainPrivateKey,
+) -> Result<String, crate::ServiceError> {
+    let approve = Approve::new(&req.from, &req.spender, &req.contract, value);
+    let mut wrap = WarpContract::new(approve)?;
+
+    // get fee
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    let consumer = chain.provider.contract_fee(constant, 1, &req.from).await?;
+
+    // exec tx
+    let raw_transaction = wrap
+        .trigger_smart_contract(&chain.provider, &consumer)
+        .await?;
+
+    let result = chain.exec_transaction_v1(raw_transaction, key).await?;
+    Ok(result)
 }
