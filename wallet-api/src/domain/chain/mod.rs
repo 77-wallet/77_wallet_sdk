@@ -306,15 +306,20 @@ impl ChainDomain {
                         is_default_name,
                     )
                     .await?;
-                address_batch_init_task_data.0.push(address_init_req);
+
+                if let Some(address_init_req) = address_init_req {
+                    address_batch_init_task_data.0.push(address_init_req);
+                } else {
+                    tracing::info!("不上报： {}", account_address.address);
+                };
 
                 subkeys.push(
                     AccountDomain::generate_subkey(
                         &instance,
-                        &seed,
+                        seed,
                         &account_address.address,
                         &chain.chain_code,
-                        &account_index_map,
+                        account_index_map,
                         derivation_path.as_str(),
                     )
                     .await?,
@@ -343,16 +348,18 @@ impl ChainDomain {
         match chain {
             wallet_types::chain::chain::ChainCode::Ethereum
             | wallet_types::chain::chain::ChainCode::BnbSmartChain => {
-                *token_address = wallet_utils::address::to_checksum_address(&token_address);
+                *token_address = wallet_utils::address::to_checksum_address(token_address);
             }
             _ => {}
         }
 
         match chain {
             wallet_types::chain::chain::ChainCode::Sui => {
-                wallet_utils::address::parse_sui_type_tag(&token_address)?;
+                wallet_utils::address::parse_sui_type_tag(token_address).map_err(|_| {
+                    crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                })?;
             }
-            _ => check_address(&token_address, chain, net)?,
+            _ => check_address(token_address, chain, net)?,
         }
         Ok(())
     }

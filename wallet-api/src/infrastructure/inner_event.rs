@@ -75,14 +75,14 @@ impl EventBuffer {
     ) -> impl tokio_stream::Stream<Item = Vec<AssetKey>> + '_ {
         use tokio_stream::{wrappers::IntervalStream, StreamExt};
 
-        tracing::info!("等待第一次资产变更通知...");
+        tracing::debug!("等待第一次资产变更通知...");
         self.notifier.notified().await;
-        tracing::info!("收到资产变更通知，立即执行第一次 drain");
+        tracing::debug!("收到资产变更通知，立即执行第一次 drain");
         // 1. 第一次立即 drain
         let first = {
             let mut buf = self.buffer.lock().unwrap();
             let drained = buf.drain().collect::<Vec<_>>();
-            tracing::info!("第一次 drain 获取到 {} 个资产项", drained.len());
+            tracing::debug!("第一次 drain 获取到 {} 个资产项", drained.len());
             drained
         };
 

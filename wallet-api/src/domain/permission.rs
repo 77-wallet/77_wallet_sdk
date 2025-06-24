@@ -187,7 +187,7 @@ impl PermissionDomain {
         pool: &DbPool,
         grantor_addr: &str,
     ) -> Result<(), crate::ServiceError> {
-        let result = MultisigQueueRepo::permission_update_fail(grantor_addr, &pool).await?;
+        let result = MultisigQueueRepo::permission_update_fail(grantor_addr, pool).await?;
 
         for queue in result {
             MultisigQueueDomain::update_raw_data(&queue.id, pool.clone()).await?;

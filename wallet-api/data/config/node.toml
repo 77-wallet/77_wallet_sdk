@@ -21,6 +21,35 @@ http_url = ""
 network = "testnet"
 active = false
 
+# [[nodes.tron.nodes]]
+# node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/tron"
+# http_url = ""
+# network = "mainnet"
+# active = false
+
+# [[nodes.tron.nodes]]
+# node_name = "Third-Party Node"
+# rpc_url = "https://rpc.ankr.com/premium-http/tron/2554129db2045e61c3b8584ad6ee32b7b7808916d160e3e16b51dfee6d17d56c"
+# http_url = ""
+# network = "mainnet"
+# active = true
+
+# [nodes.eth]
+# [[nodes.eth.nodes]]
+# node_name = "Platform Node"
+# rpc_url = "http://rpc.88ai.fun/eth"
+# http_url = ""
+# network = "mainnet"
+# active = false
+
+# [[nodes.eth.nodes]]
+# node_name = "Third-Party Node"
+# rpc_url = "https://rpc.ankr.com/eth/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
+# http_url = ""
+# network = "mainnet"
+# active = true
+
 [[nodes.eth.nodes]]
 node_name = "77 Official Nodes"
 rpc_url = "https://apprpc.safew.cc/eth"
@@ -76,7 +105,7 @@ node_name = "77 Official Nodes"
 rpc_url = "https://apprpc.safew.cc/ton"
 http_url = ""
 network = "mainnet"
-active = true
+active = false
 
 [[nodes.sui.nodes]]
 node_name = "77 Official Nodes"

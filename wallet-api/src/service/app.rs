@@ -18,9 +18,7 @@ use wallet_transport_backend::{
 
 use crate::{
     domain::app::config::ConfigDomain,
-    infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
-    },
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
     response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
@@ -414,14 +412,14 @@ impl<
             MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Confirmed)
                 .await?
                 .into_iter()
-                .map(|f| MultisigAccountBase::from(f))
+                .map(MultisigAccountBase::from)
                 .collect();
 
         msg.pending_agree_multisig =
             MultisigAccountRepo::pending_handle(&pool, MultisigAccountStatus::Pending)
                 .await?
                 .into_iter()
-                .map(|f| MultisigAccountBase::from(f))
+                .map(MultisigAccountBase::from)
                 .collect();
 
         Ok(msg)

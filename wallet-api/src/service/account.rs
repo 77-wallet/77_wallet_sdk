@@ -9,10 +9,7 @@ use wallet_transport_backend::request::{
     AddressBatchInitReq, AddressUpdateAccountNameReq, TokenQueryPriceReq,
 };
 use wallet_tree::api::KeystoreApi;
-use wallet_types::{
-    chain::{address::r#type::AddressType, chain::ChainCode},
-    constant::chain_code,
-};
+use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 use wallet_utils::address::AccountIndexMap;
 
 use crate::{
@@ -23,7 +20,7 @@ use crate::{
     infrastructure::task_queue::{
         BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, Task, Tasks,
     },
-    response_vo::account::DerivedAddressesList,
+    response_vo::account::{DerivedAddressesList, QueryAccountDerivationPath},
 };
 
 pub struct AccountService {
@@ -237,6 +234,30 @@ impl AccountService {
         Ok(())
     }
 
+    pub async fn get_account_derivation_path(
+        self,
+        wallet_address: &str,
+        index: u32,
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::ServiceError> {
+        let mut tx = self.repo;
+        let list = tx
+            .get_account_list_by_wallet_address_and_account_id(Some(wallet_address), Some(index))
+            .await?;
+        let mut res = Vec::new();
+        for data in list {
+            let address_type =
+                AccountDomain::get_show_address_type(&data.chain_code, data.address_type())?;
+            res.push(QueryAccountDerivationPath::new(
+                &data.address,
+                &data.derivation_path,
+                &data.chain_code,
+                address_type,
+            ));
+        }
+
+        Ok(res)
+    }
+
     pub async fn list_derived_addresses(
         self,
         wallet_address: &str,
@@ -298,12 +319,32 @@ impl AccountService {
                 let address_type = instance.address_type().into();
                 let derivation_path = keypair.derivation_path();
                 let address = keypair.address();
-                res.push(DerivedAddressesList::new(
+
+                let mut derived_address = DerivedAddressesList::new(
                     &address,
                     &derivation_path,
                     &chain.chain_code,
                     address_type,
-                ));
+                );
+
+                match code {
+                    ChainCode::Solana | ChainCode::Sui | ChainCode::Ton => {
+                        let account = tx
+                            .detail_by_address_and_chain_code(&address, &chain.chain_code)
+                            .await?;
+                        if let Some(account) = account {
+                            derived_address.with_mapping_account(account.account_id, account.name);
+                        };
+
+                        if account_index_map.input_index < 0 {
+                            derived_address
+                                .with_mapping_positive_index(account_index_map.unhardend_index);
+                        }
+                    }
+                    _ => {}
+                }
+
+                res.push(derived_address);
             }
         }
 
@@ -522,7 +563,10 @@ impl AccountService {
                     && meta.address == account.address
                     && meta.derivation_path == account.derivation_path
             }) {
-                let btc_address_type_opt: AddressType = account.address_type().try_into()?;
+                let address_type = AccountDomain::get_show_address_type(
+                    &account.chain_code,
+                    account.address_type(),
+                )?;
                 if let Some(chain) = chains
                     .iter()
                     .find(|chain| chain.chain_code == account.chain_code)
@@ -531,7 +575,7 @@ impl AccountService {
                         chain_code: account.chain_code,
                         name: chain.name.clone(),
                         address: account.address,
-                        address_type: btc_address_type_opt.into(),
+                        address_type,
                         private_key: pk.to_string(),
                     };
                     res.push(data);
@@ -551,33 +595,6 @@ impl AccountService {
             .repo
             .get_account_list_by_wallet_address_and_account_id(wallet_address, account_id)
             .await?)
-    }
-
-    pub async fn get_account_address(
-        &mut self,
-        wallet_address: &str,
-        account_id: u32,
-    ) -> Result<crate::response_vo::account::GetAccountAddressRes, crate::ServiceError> {
-        let tx = &mut self.repo;
-        let account_list = tx
-            .get_account_list_by_wallet_address_and_account_id(
-                Some(wallet_address),
-                Some(account_id),
-            )
-            .await?;
-
-        let mut res = Vec::new();
-        for account in account_list {
-            let address_type = account.address_type().try_into()?;
-            let data = crate::response_vo::account::GetAccountAddress {
-                chain_code: account.chain_code,
-                address: account.address,
-                address_type,
-            };
-            res.push(data);
-        }
-
-        Ok(crate::response_vo::account::GetAccountAddressRes(res))
     }
 
     // pub fn recover_subkey(

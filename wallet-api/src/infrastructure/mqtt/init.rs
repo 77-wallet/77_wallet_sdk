@@ -81,7 +81,7 @@ pub async fn exec_event(
 }
 
 // 过滤ping 和 pong 的日志
-fn filter_log_event(event: &Event) -> bool {
+fn _filter_log_event(event: &Event) -> bool {
     match event {
         Event::Incoming(packet) => match packet {
             rumqttc::v5::Incoming::PingReq(_) => false,

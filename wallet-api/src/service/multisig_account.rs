@@ -146,7 +146,7 @@ impl MultisigAccountService {
                 name: a.name.clone(),
                 address: a.address.clone(),
                 pubkey: a.pubkey.clone(),
-                confirmed: a.confirmed.clone(),
+                confirmed: a.confirmed,
                 uid: a.uid.clone(),
             })
             .collect::<Vec<AddressList>>();

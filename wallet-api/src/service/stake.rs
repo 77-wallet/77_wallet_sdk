@@ -102,7 +102,7 @@ impl StackService {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let key = self.get_key(&from, signer, password).await?;
+        let key = self.get_key(from, signer, password).await?;
 
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
         // 验证余额
@@ -1011,7 +1011,7 @@ impl StackService {
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, &password)
+            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, password)
             .await?;
 
         let resource_value = self

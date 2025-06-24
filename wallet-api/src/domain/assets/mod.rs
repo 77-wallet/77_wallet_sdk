@@ -199,7 +199,7 @@ impl AssetsDomain {
             vec![chain_code]
         } else {
             let account =
-                AccountEntity::list_in_address(pool.as_ref(), &vec![addr.clone()], None).await?;
+                AccountEntity::list_in_address(pool.as_ref(), &[addr.clone()], None).await?;
 
             account
                 .iter()
@@ -301,7 +301,7 @@ impl AssetsDomain {
         tx: &mut ResourcesRepo,
     ) -> Result<(), crate::ServiceError> {
         for coin in coins {
-            if chain_code == &coin.chain_code {
+            if chain_code == coin.chain_code {
                 let assets_id = AssetsId::new(address, &coin.chain_code, &coin.symbol);
                 let assets = CreateAssetsVo::new(
                     assets_id,

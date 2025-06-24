@@ -150,7 +150,7 @@ impl MultisigQueueDomain {
                     Ok(r) => {
                         let id = r.queue.id.clone();
                         if let Err(e) = Self::insert(pool.clone(), r).await {
-                            tracing::error!("revover queue data error: {} queue_id = {}", e, id);
+                            tracing::error!("recover queue data error: {} queue_id = {}", e, id);
                         }
                     }
                     Err(e) => {

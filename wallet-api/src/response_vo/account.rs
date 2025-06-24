@@ -1,4 +1,4 @@
-use wallet_types::chain::address::{category::AddressCategory, r#type::AddressType};
+use wallet_types::chain::address::category::AddressCategory;
 
 use crate::domain::app::config::ConfigDomain;
 
@@ -39,19 +39,6 @@ pub struct GetAccountPrivateKey {
     pub address_type: AddressCategory,
     pub private_key: String,
 }
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetAccountAddressRes(pub Vec<GetAccountAddress>);
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetAccountAddress {
-    pub chain_code: String,
-    pub address: String,
-    pub address_type: AddressType,
-}
-
 #[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountResource {
@@ -292,9 +279,58 @@ pub struct DerivedAddressesList {
     pub derivation_path: String,
     pub chain_code: String,
     pub address_type: AddressCategory,
+    pub mapping_account: Option<MappingAccount>,
+    pub mapping_positive_index: Option<u32>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingAccount {
+    pub account_id: u32,
+    pub account_name: String,
 }
 
 impl DerivedAddressesList {
+    pub fn new(
+        address: &str,
+        derivation_path: &str,
+        chain_code: &str,
+        address_type: AddressCategory,
+    ) -> Self {
+        Self {
+            address: address.to_string(),
+            derivation_path: derivation_path.to_string(),
+            chain_code: chain_code.to_string(),
+            address_type,
+            mapping_account: None,
+            mapping_positive_index: None,
+        }
+    }
+
+    pub fn with_mapping_account(&mut self, account_id: u32, account_name: String) -> &mut Self {
+        self.mapping_account = Some(MappingAccount {
+            account_id,
+            account_name,
+        });
+        self
+    }
+
+    pub fn with_mapping_positive_index(&mut self, index: u32) -> &mut Self {
+        self.mapping_positive_index = Some(index);
+        self
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryAccountDerivationPath {
+    pub address: String,
+    pub derivation_path: String,
+    pub chain_code: String,
+    pub address_type: AddressCategory,
+}
+
+impl QueryAccountDerivationPath {
     pub fn new(
         address: &str,
         derivation_path: &str,

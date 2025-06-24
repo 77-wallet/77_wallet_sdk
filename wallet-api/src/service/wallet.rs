@@ -200,7 +200,12 @@ impl WalletService {
                 is_default_name,
             )
             .await?;
-            address_batch_init_task_data.0.push(address_init_req);
+
+            if let Some(address_init_req) = address_init_req {
+                address_batch_init_task_data.0.push(address_init_req);
+            } else {
+                tracing::info!("不上报： {}", account.address);
+            };
 
             let keypair = instance
                 .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
@@ -286,7 +291,7 @@ impl WalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
-        tracing::info!(
+        tracing::debug!(
             "Password validation took: {:?}",
             password_validation_start.elapsed()
         );
@@ -304,7 +309,7 @@ impl WalletService {
             address,
             phrase,
         } = wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
-        tracing::info!(
+        tracing::debug!(
             "Master key generation took: {:?}",
             master_key_start.elapsed()
         );
@@ -312,7 +317,7 @@ impl WalletService {
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
-        tracing::info!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
+        tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let address = &address.to_string();
         let seed = seed.clone();
 
@@ -327,7 +332,7 @@ impl WalletService {
         let wallet_tree_start = std::time::Instant::now();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        tracing::info!(
+        tracing::debug!(
             "Wallet tree strategy retrieval took: {:?}",
             wallet_tree_start.elapsed()
         );
@@ -343,7 +348,7 @@ impl WalletService {
             wallet_password,
             algorithm,
         )?;
-        tracing::info!(
+        tracing::debug!(
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
@@ -404,7 +409,7 @@ impl WalletService {
             wallet_password,
             algorithm,
         )?;
-        tracing::info!(
+        tracing::debug!(
             "Child keystore initialization took: {:?}",
             child_keystore_start.elapsed()
         );
@@ -483,7 +488,7 @@ impl WalletService {
             .send()
             .await?;
 
-        tracing::info!("cose time: {}", start.elapsed().as_millis());
+        tracing::debug!("cose time: {}", start.elapsed().as_millis());
         Ok(CreateWalletRes {
             address: address.to_string(),
         })

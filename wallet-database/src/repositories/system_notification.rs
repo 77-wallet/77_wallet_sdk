@@ -129,6 +129,6 @@ impl SystemNotificationRepo {
             id: Some(id.to_string()),
         };
 
-        Ok(SystemNotificationEntity::detail(pool.as_ref(), &req).await?)
+        SystemNotificationEntity::detail(pool.as_ref(), &req).await
     }
 }

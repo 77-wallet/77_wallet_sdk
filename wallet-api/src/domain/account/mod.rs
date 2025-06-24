@@ -181,9 +181,10 @@ impl AccountDomain {
         wallet_address: &str,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(CreateAccountRes, String, AddressInitReq), crate::ServiceError> {
-        let (address, name, derivation_path) = Self::derive_subkey(
+    ) -> Result<(CreateAccountRes, String, Option<AddressInitReq>), crate::ServiceError> {
+        let (address, derivation_path, address_init_req) = Self::derive_subkey(
             repo,
+            uid,
             seed,
             account_index_map,
             instance,
@@ -205,18 +206,6 @@ impl AccountDomain {
         //     &name,
         // )
         // .await?;
-        let Some(device) = DeviceRepoTrait::get_device_info(repo).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
-        let address_init_req = wallet_transport_backend::request::AddressInitReq::new(
-            uid,
-            &address,
-            account_index_map.input_index,
-            &instance.chain_code().to_string(),
-            &device.sn,
-            vec!["".to_string()],
-            &name,
-        );
 
         Ok((res, derivation_path, address_init_req))
     }
@@ -251,6 +240,7 @@ impl AccountDomain {
 
     pub(crate) async fn derive_subkey(
         repo: &mut ResourcesRepo,
+        uid: &str,
         seed: &[u8],
         account_index_map: &wallet_utils::address::AccountIndexMap,
         instance: &wallet_chain_instance::instance::ChainObject,
@@ -258,7 +248,7 @@ impl AccountDomain {
         wallet_address: &str,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(String, String, String), crate::ServiceError> {
+    ) -> Result<(String, String, Option<AddressInitReq>), crate::ServiceError> {
         let account_name = if is_default_name {
             format!("{name}{}", account_index_map.account_id)
         } else {
@@ -292,6 +282,29 @@ impl AccountDomain {
             &account_name,
         );
 
+        let Some(device) = DeviceRepoTrait::get_device_info(repo).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+
+        let account = repo
+            .detail_by_address_and_chain_code(&address, &instance.chain_code().to_string())
+            .await?;
+
+        let address_init_req = if let Some(account) = account {
+            tracing::info!("已存在: {}", account.address);
+            None
+        } else {
+            Some(wallet_transport_backend::request::AddressInitReq::new(
+                uid,
+                &address,
+                account_index_map.input_index,
+                &instance.chain_code().to_string(),
+                &device.sn,
+                vec!["".to_string()],
+                &account_name,
+            ))
+        };
+
         match address_type {
             AddressType::Btc(address_type) => {
                 req = req.with_address_type(address_type.as_ref());
@@ -308,7 +321,7 @@ impl AccountDomain {
             _ => {}
         }
         repo.upsert_multi_account(vec![req]).await?;
-        Ok((address, account_name, derivation_path))
+        Ok((address, derivation_path, address_init_req))
     }
 
     pub async fn set_root_password(

@@ -1,5 +1,5 @@
 use crate::api::ReturnType;
-use crate::response_vo::account::DerivedAddressesList;
+use crate::response_vo::account::{DerivedAddressesList, QueryAccountDerivationPath};
 use crate::service::account::AccountService;
 use wallet_database::entities::account::AccountEntity;
 
@@ -64,6 +64,20 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn get_account_derivation_path(
+        &self,
+        wallet_address: &str,
+        index: u32,
+    ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+        AccountService::new(repo)
+            .get_account_derivation_path(wallet_address, index)
+            .await?
+            .into()
+    }
+
     pub async fn list_derived_addresses(
         &self,
         wallet_address: &str,
@@ -115,20 +129,6 @@ impl crate::WalletManager {
 
         AccountService::new(repo)
             .get_account_private_key(password, wallet_address, account_id)
-            .await?
-            .into()
-    }
-
-    pub async fn get_account_address(
-        &self,
-        wallet_address: &str,
-        account_id: u32,
-    ) -> ReturnType<crate::response_vo::account::GetAccountAddressRes> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        AccountService::new(repo)
-            .get_account_address(wallet_address, account_id)
             .await?
             .into()
     }
@@ -207,7 +207,7 @@ mod test {
 
         // let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
         // let wallet_address = "0x65Eb73c5aeAD87688D639E796C959E23C2356681";
-        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
         let account = wallet_manager
@@ -243,6 +243,22 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_query_account_derivation_path() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let account = wallet_manager
+            .get_account_derivation_path(wallet_address, 2147483648)
+            .await;
+        tracing::info!("[get_account_derivation_path] get_account_derivation_path: {account:?}");
+        let res = serde_json::to_string(&account).unwrap();
+        tracing::info!("[get_account_derivation_path] get_account_derivation_path: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_show_index_address() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
@@ -252,7 +268,7 @@ mod test {
         let account = wallet_manager
             .list_derived_addresses(
                 wallet_address,
-                1,
+                -1,
                 &test_params.create_wallet_req.wallet_password,
                 true,
             )

@@ -32,7 +32,7 @@ impl MultisigSignatureEntities {
     }
 
     pub fn need_signed_num(&self, threshold: usize) -> usize {
-        (threshold as usize - self.0.len()).max(0)
+        (threshold - self.0.len()).max(0)
     }
 }
 
