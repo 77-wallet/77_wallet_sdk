@@ -1,4 +1,5 @@
 use wallet_chain_interact::eth;
+use wallet_database::entities::bill::NewBillEntity;
 use wallet_utils::unit;
 
 #[derive(Debug, Clone)]
@@ -122,4 +123,38 @@ impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
 pub struct QueryBillResultReq {
     pub tx_hash: String,
     pub owner: String,
+}
+
+#[derive(Debug)]
+pub struct ApproveParams {
+    pub contract: String,
+    pub from: String,
+    pub spender: String,
+    pub value: String,
+    pub chain_code: String,
+}
+
+impl From<ApproveParams> for NewBillEntity {
+    fn from(value: ApproveParams) -> Self {
+        NewBillEntity {
+            hash: "".to_string(),
+            from: value.from,
+            to: value.spender,
+            token: Some(value.contract),
+            value: wallet_utils::unit::string_to_f64(&value.value).unwrap(),
+            multisig_tx: false,
+            symbol: "".to_string(),
+            chain_code: value.chain_code,
+            tx_type: 1,
+            tx_kind: wallet_database::entities::bill::BillKind::Approve,
+            status: 1,
+            queue_id: "".to_owned(),
+            notes: "".to_string(),
+            transaction_fee: "0".to_string(),
+            resource_consume: "".to_string(),
+            transaction_time: 0,
+            block_height: "0".to_string(),
+            signer: vec![],
+        }
+    }
 }
