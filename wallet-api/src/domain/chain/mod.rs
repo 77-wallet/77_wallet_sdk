@@ -266,6 +266,41 @@ impl ChainDomain {
     //     }
     // }
 
+    pub(crate) async fn get_node(
+        tx: &mut ResourcesRepo,
+        chain_code: &str,
+    ) -> Result<NodeInfo, crate::error::ServiceError> {
+        let node = match tx.detail_with_node(chain_code).await? {
+            Some(node) => NodeInfo::new(
+                &node.chain_code,
+                &node.node_id,
+                &node.node_name,
+                &node.rpc_url,
+                &node.ws_url,
+                &node.http_url,
+                &node.network,
+                node.status,
+            ),
+            None => {
+                use wallet_database::repositories::node::NodeRepoTrait as _;
+                let node = tx.get_local_node_by_chain(chain_code).await?.pop().ok_or(
+                    crate::BusinessError::ChainNode(crate::ChainNodeError::NodeNotFound),
+                )?;
+                NodeInfo::new(
+                    &node.chain_code,
+                    &node.node_id,
+                    &node.name,
+                    &node.rpc_url,
+                    &node.ws_url,
+                    &node.http_url,
+                    &node.network,
+                    node.status,
+                )
+            }
+        };
+        Ok(node)
+    }
+
     pub(crate) async fn init_chains_assets(
         tx: &mut ResourcesRepo,
         coins: &[CoinEntity],
@@ -285,13 +320,14 @@ impl ChainDomain {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Some(chain) = tx.detail_with_node(chain).await? else {
+            let Ok(node) = Self::get_node(tx, chain).await else {
                 continue;
             };
 
             for address_type in address_types {
                 let instance: wallet_chain_instance::instance::ChainObject =
-                    (&code, &address_type, chain.network.as_str().into()).try_into()?;
+                    (&code, &address_type, node.network.as_str().into()).try_into()?;
+                // (&code, &address_type, "mainnet".into()).try_into()?;
 
                 let (account_address, derivation_path, address_init_req) =
                     AccountDomain::create_account_v2(
@@ -318,17 +354,16 @@ impl ChainDomain {
                         &instance,
                         seed,
                         &account_address.address,
-                        &chain.chain_code,
+                        &code.to_string(),
                         account_index_map,
                         derivation_path.as_str(),
                     )
                     .await?,
                 );
-
                 AssetsDomain::init_default_assets(
                     coins,
                     &account_address.address,
-                    &chain.chain_code,
+                    &code.to_string(),
                     req,
                     tx,
                 )
@@ -362,5 +397,42 @@ impl ChainDomain {
             _ => check_address(token_address, chain, net)?,
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeInfo {
+    pub chain_code: String,
+    pub node_id: String,
+    pub node_name: String,
+    pub rpc_url: String,
+    pub ws_url: String,
+    pub http_url: String,
+    pub network: String,
+    pub status: u8,
+}
+
+impl NodeInfo {
+    pub fn new(
+        chain_code: &str,
+        node_id: &str,
+        node_name: &str,
+        rpc_url: &str,
+        ws_url: &str,
+        http_url: &str,
+        network: &str,
+        status: u8,
+    ) -> Self {
+        Self {
+            chain_code: chain_code.to_string(),
+            node_id: node_id.to_string(),
+            node_name: node_name.to_string(),
+            rpc_url: rpc_url.to_string(),
+            ws_url: ws_url.to_string(),
+            http_url: http_url.to_string(),
+            network: network.to_string(),
+            status,
+        }
     }
 }
