@@ -17,7 +17,7 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::app::config::ConfigDomain,
+    domain::app::{config::ConfigDomain, DeviceDomain},
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
     response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
@@ -102,22 +102,8 @@ impl<
         ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
         let device_info = tx.get_device_info().await?;
         if let Some(device_info) = device_info {
-            let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device_info)?;
-
-            let language_req = wallet_transport_backend::request::LanguageInitReq {
-                client_id,
-                lan: language.to_string(),
-            };
-            let language_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
-                &language_req,
-            )?;
-            Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    language_init_task_data,
-                )))
-                .send()
-                .await?;
+            let task = DeviceDomain::language_init(&device_info, language).await?;
+            Tasks::new().push(task).send().await?;
             let mut config = crate::app_state::APP_STATE.write().await;
             config.set_language(language);
         }
