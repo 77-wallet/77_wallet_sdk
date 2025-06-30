@@ -65,6 +65,36 @@ impl Topics {
             crate::SystemError::MqttClientNotInit,
         ))?;
 
+        // let filters: Vec<rumqttc::v5::mqttbytes::v5::Filter> = unique_topics
+        //     .iter()
+        //     .map(|topic| rumqttc::v5::mqttbytes::v5::Filter::new(topic, qos))
+        //     .collect();
+        // match mqtt_processor.client().subscribe_many(filters).await {
+        //     Ok(_) => {
+        //         tracing::info!("订阅主题成功: {:?}", unique_topics);
+        //         let now = std::time::SystemTime::now();
+        //         // 插入新的订阅数据到 HashMap
+        //         for topic in unique_topics {
+        //             self.data.insert(
+        //                 topic.clone(),
+        //                 TopicData {
+        //                     qos,
+        //                     last_updated: now,
+        //                     is_active: true,
+        //                 },
+        //             );
+
+        //             // 更新 BTreeSet，进行排序
+        //             self.entry.insert(TopicEntry {
+        //                 topic: topic.clone(),
+        //                 last_updated: now,
+        //             });
+        //         }
+        //     }
+        //     Err(e) => {
+        //         tracing::error!("订阅主题失败: {:?}, 错误信息：{:?}", unique_topics, e);
+        //     }
+        // }
         for topic in unique_topics.iter() {
             match mqtt_processor.client().try_subscribe(topic, qos) {
                 Ok(_) => {

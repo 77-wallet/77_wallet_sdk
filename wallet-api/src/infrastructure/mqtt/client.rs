@@ -45,7 +45,7 @@ impl MqttClientBuilder {
             .set_clean_start(true)
             .set_manual_acks(true);
 
-        let (client, eventloop) = AsyncClient::new(mqtt_options, 10);
+        let (client, eventloop) = AsyncClient::new(mqtt_options, 50);
 
         Ok((MqttAsyncClient { client }, eventloop))
     }
