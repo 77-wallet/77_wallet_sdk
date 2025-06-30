@@ -305,13 +305,12 @@ impl AccountService {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Some(chain) = tx.detail_with_node(chain).await? else {
+            let Ok(node) = ChainDomain::get_node(&mut tx, chain).await else {
                 continue;
             };
-
             for address_type in address_types {
                 let instance: wallet_chain_instance::instance::ChainObject =
-                    (&code, &address_type, chain.network.as_str().into()).try_into()?;
+                    (&code, &address_type, node.network.as_str().into()).try_into()?;
 
                 let keypair = instance
                     .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)?;
@@ -323,14 +322,14 @@ impl AccountService {
                 let mut derived_address = DerivedAddressesList::new(
                     &address,
                     &derivation_path,
-                    &chain.chain_code,
+                    &node.chain_code,
                     address_type,
                 );
 
                 match code {
                     ChainCode::Solana | ChainCode::Sui | ChainCode::Ton => {
                         let account = tx
-                            .detail_by_address_and_chain_code(&address, &chain.chain_code)
+                            .detail_by_address_and_chain_code(&address, &node.chain_code)
                             .await?;
                         if let Some(account) = account {
                             derived_address.with_mapping_account(account.account_id, account.name);
@@ -504,15 +503,12 @@ impl AccountService {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let Some(chain) = tx.detail_with_node(chain_code).await? else {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
-                crate::ChainError::NotFound(chain_code.to_string()),
-            )));
-        };
+        let node = ChainDomain::get_node(tx, chain_code).await?;
+
         let instance = wallet_chain_instance::instance::ChainObject::new(
             chain_code,
             account.address_type(),
-            chain.network.as_str().into(),
+            node.network.as_str().into(),
         )?;
 
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;

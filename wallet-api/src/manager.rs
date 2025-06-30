@@ -17,6 +17,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
 use wallet_database::factory::RepositoryFactory;
+use wallet_database::repositories::device::DeviceRepoTrait;
 use wallet_database::SqliteContext;
 
 pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
@@ -67,13 +68,19 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     let sn = Context::get_context()?.device.sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
+    let mut repo = RepositoryFactory::repo(pool.clone());
+    let device = repo.get_device_info().await?;
+    let task = if let Some(device) = device
+        && device.language_init == 1
+    {
+        domain::app::DeviceDomain::language_init(&device, "CHINESE_SIMPLIFIED").await?
+    } else {
+        Task::Initialization(InitializationTask::PullAnnouncement)
+    };
     Tasks::new()
         .push(Task::Initialization(InitializationTask::InitMqtt))
-        .push(Task::Initialization(InitializationTask::PullAnnouncement))
+        .push(task)
         .push(Task::Initialization(InitializationTask::PullHotCoins))
-        // .push(Task::Initialization(
-        //     InitializationTask::ProcessUnconfirmMsg,
-        // ))
         .push(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
         .push(Task::Initialization(InitializationTask::SetFiat))
         .push(Task::Initialization(InitializationTask::RecoverQueueData))
@@ -86,7 +93,6 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
         .push(Task::BackendApi(BackendApiTask::BackendApi(
             set_app_install_download_req,
         )))
-        // .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
         .send()
         .await?;
 

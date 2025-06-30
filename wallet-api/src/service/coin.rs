@@ -13,7 +13,7 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::{self, account::AccountDomain, coin::CoinDomain},
+    domain::{self, account::AccountDomain, chain::ChainDomain, coin::CoinDomain},
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
     response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
 };
@@ -385,11 +385,8 @@ impl CoinService {
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
         let tx = &mut self.repo;
-        let Some(_) = tx.detail_with_node(chain_code).await? else {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
-                crate::ChainError::NotFound(chain_code.to_string()),
-            )));
-        };
+        let _ = ChainDomain::get_node(tx, chain_code).await?;
+
         let chain_instance =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                 .await?;

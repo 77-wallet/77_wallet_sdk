@@ -285,9 +285,9 @@ impl AssetsService {
                 } else {
                     let balance = token_currencies.calculate_assets_entity(&asset).await?;
 
-                    if balance.unit_price == Some(0.0) {
-                        continue;
-                    }
+                    // if balance.unit_price == Some(0.0) {
+                    //     continue;
+                    // }
                     let chain_code = if chain_code.is_none()
                         && let Some(chain) = tx.detail_with_main_symbol(&asset.symbol).await?
                     {

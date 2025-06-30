@@ -3,12 +3,18 @@ pub mod mqtt;
 use config::ConfigDomain;
 use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
-    entities::config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
+    entities::{
+        config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
+        device::DeviceEntity,
+    },
     factory::RepositoryFactory,
     repositories::device::DeviceRepoTrait,
 };
 
-use crate::{infrastructure::task_queue::BackendApiTaskData, service::device::APP_ID};
+use crate::{
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task},
+    service::device::APP_ID,
+};
 
 pub struct AppDomain<T> {
     phantom: std::marker::PhantomData<T>,
@@ -129,6 +135,25 @@ impl DeviceDomain {
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
         Ok(())
+    }
+
+    pub(crate) async fn language_init(
+        device_info: &DeviceEntity,
+        language: &str,
+    ) -> Result<Task, crate::ServiceError> {
+        let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device_info)?;
+        let language_req = wallet_transport_backend::request::LanguageInitReq {
+            client_id,
+            lan: language.to_string(),
+        };
+        let language_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
+            &language_req,
+        )?;
+
+        Ok(Task::BackendApi(BackendApiTask::BackendApi(
+            language_init_task_data,
+        )))
     }
 }
 
