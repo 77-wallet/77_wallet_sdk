@@ -13,7 +13,7 @@ pub(crate) struct UnconfirmedMsgCollector {
 impl UnconfirmedMsgCollector {
     pub fn new() -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        Self::start_collect(rx);
+        // Self::start_collect(rx);
         Self { tx }
     }
 

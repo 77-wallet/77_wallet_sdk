@@ -119,17 +119,20 @@ async fn test_generate_phrase() {
     let wallet_manager = get_manager().await;
     let c = wallet_manager.generate_phrase(1, 12);
 
-    tracing::info!("response {:?}", c)
+    let phrase = c.result.unwrap().phrases.join(" ");
+
+    tracing::info!("{}", phrase)
 }
 
 #[tokio::test]
 async fn test_show_key() {
     init_test_log();
 
-    let parse = "".to_string();
+    let parse =
+        "mobile trim alter rotate foam drastic problem people drive pig direct evolve".to_string();
     let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
-    let chain_code = "sui";
+    let chain_code = "sol";
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
     let address_type = Some("p2wpkh".to_string());

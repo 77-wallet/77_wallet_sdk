@@ -297,50 +297,51 @@ impl Context {
     ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
         let cx = Context::get_context()?;
 
-        let token_expired = {
-            let token_guard = cx.rpc_token.read().await;
-            token_guard.instance < tokio::time::Instant::now()
-        };
+        Ok(HashMap::from([("token".to_string(), "hello".to_string())]))
+        // let token_expired = {
+        //     let token_guard = cx.rpc_token.read().await;
+        //     token_guard.instance < tokio::time::Instant::now()
+        // };
 
-        if token_expired {
-            let backend_api = cx.backend_api.clone();
-            let new_token_response = backend_api.rpc_token(&cx.device.client_id).await;
-            match new_token_response {
-                Ok(token) => {
-                    let new_token = RpcToken {
-                        token,
-                        instance: tokio::time::Instant::now()
-                            + tokio::time::Duration::from_secs(30 * 60),
-                    };
+        // if token_expired {
+        //     let backend_api = cx.backend_api.clone();
+        //     let new_token_response = backend_api.rpc_token(&cx.device.client_id).await;
+        //     match new_token_response {
+        //         Ok(token) => {
+        //             let new_token = RpcToken {
+        //                 token,
+        //                 instance: tokio::time::Instant::now()
+        //                     + tokio::time::Duration::from_secs(30 * 60),
+        //             };
 
-                    {
-                        let mut token_guard = cx.rpc_token.write().await;
-                        *token_guard = new_token.clone();
-                    }
+        //             {
+        //                 let mut token_guard = cx.rpc_token.write().await;
+        //                 *token_guard = new_token.clone();
+        //             }
 
-                    Ok(HashMap::from([("token".to_string(), new_token.token)]))
-                }
-                Err(e) => {
-                    // 服务端报错,如果token有值那么使用原来的值，服务端token的过期时间会大于我本地的。
+        //             Ok(HashMap::from([("token".to_string(), new_token.token)]))
+        //         }
+        //         Err(e) => {
+        //             // 服务端报错,如果token有值那么使用原来的值，服务端token的过期时间会大于我本地的。
 
-                    let token_guard = cx.rpc_token.read().await;
-                    let token = token_guard.token.clone();
-                    if !token.is_empty() {
-                        Ok(HashMap::from([("token".to_string(), token)]))
-                    } else {
-                        Err(crate::BusinessError::Chain(crate::ChainError::NodeToken(
-                            e.to_string(),
-                        )))?
-                    }
-                }
-            }
-        } else {
-            // 未过期使用缓存里面的token
-            let token_guard = cx.rpc_token.read().await;
-            let token = token_guard.token.clone();
+        //             let token_guard = cx.rpc_token.read().await;
+        //             let token = token_guard.token.clone();
+        //             if !token.is_empty() {
+        //                 Ok(HashMap::from([("token".to_string(), token)]))
+        //             } else {
+        //                 Err(crate::BusinessError::Chain(crate::ChainError::NodeToken(
+        //                     e.to_string(),
+        //                 )))?
+        //             }
+        //         }
+        //     }
+        // } else {
+        //     // 未过期使用缓存里面的token
+        //     let token_guard = cx.rpc_token.read().await;
+        //     let token = token_guard.token.clone();
 
-            Ok(HashMap::from([("token".to_string(), token)]))
-        }
+        //     Ok(HashMap::from([("token".to_string(), token)]))
+        // }
     }
 
     pub(crate) fn get_global_inner_event_handle(

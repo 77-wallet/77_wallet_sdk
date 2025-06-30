@@ -1,8 +1,9 @@
 use super::account::BalanceInfo;
+use crate::domain::swap_client::DexRoute;
 
 // 查询报价的响应
 #[derive(serde::Serialize)]
-pub struct QuoteResp {
+pub struct ApiQuoteResp {
     // 提供方
     pub supplier: String,
 
@@ -13,13 +14,13 @@ pub struct QuoteResp {
     pub from_token_price: String,
 
     // 滑点
-    pub slippage: String,
+    pub slippage: f64,
 
     // 最小获得数量
     pub min_amount: String,
 
     // 兑换路径
-    pub path: String,
+    pub dex_route_list: Vec<DexRoute>,
 
     // (选择的流动性)流动性
     pub liquidity: String,

@@ -5,6 +5,10 @@ use crate::{
         self,
         chain::{
             pare_fee_setting,
+            swap::{
+                evm_swap::{dexSwap1Call, SwapParams},
+                EstimateSwapResult,
+            },
             transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
@@ -27,7 +31,6 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
     BillResourceConsume,
 };
-use wallet_database::entities::coin::CoinEntity;
 use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::{
     address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
@@ -754,10 +757,10 @@ impl TransactionAdapter {
     pub async fn approve(
         &self,
         req: &transaction::ApproveParams,
-        coin: &CoinEntity,
+        coin: u8,
         key: ChainPrivateKey,
     ) -> Result<String, crate::ServiceError> {
-        let value = wallet_utils::unit::convert_to_u256(&req.value, coin.decimals)?;
+        let value = wallet_utils::unit::convert_to_u256(&req.value, coin)?;
 
         let hash = match self {
             Self::Ethereum(chain) => eth_tx::approve(chain, req, value, key).await?,
@@ -770,5 +773,126 @@ impl TransactionAdapter {
         };
 
         Ok(hash)
+    }
+
+    pub async fn deposit(
+        &self,
+        req: &transaction::DepositParams,
+        decimals: u8,
+        key: ChainPrivateKey,
+    ) -> Result<String, crate::ServiceError> {
+        let value = wallet_utils::unit::convert_to_u256(&req.value, decimals)?;
+
+        let hash = match self {
+            Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, key).await?,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(hash)
+    }
+
+    pub async fn swap_quote(
+        &self,
+        swap_params: SwapParams,
+        recipient: &str,
+    ) -> Result<EstimateSwapResult, crate::ServiceError> {
+        let call_value = dexSwap1Call::try_from(swap_params)?;
+
+        tracing::warn!("call_value: {call_value:#?}");
+
+        let resp = match self {
+            Self::Ethereum(chain) => eth_tx::estimate_swap(call_value, chain, recipient).await?,
+            Self::Tron(chain) => tron_tx::estimate_swap(call_value, chain, recipient).await?,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(resp)
+    }
+
+    pub async fn swap(
+        &self,
+        swap_params: SwapParams,
+        recipient: &str,
+        fee: String,
+        key: ChainPrivateKey,
+    ) -> Result<String, crate::ServiceError> {
+        let call_value = dexSwap1Call::try_from(swap_params)?;
+
+        tracing::warn!("call_value: {call_value:#?}");
+
+        let resp = match self {
+            Self::Ethereum(chain) => eth_tx::swap(call_value, chain, recipient, fee, key).await?,
+            Self::Tron(chain) => tron_tx::swap(call_value, chain, recipient, key).await?,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(resp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::{
+        chain::{adapter::ChainAdapterFactory, swap::evm_swap::SwapParams},
+        swap_client::QuoteResp,
+    };
+    use wallet_utils::init_test_log;
+
+    #[tokio::test]
+    async fn test_estimate_swap() {
+        init_test_log();
+
+        let chain_code = "eth";
+        let rpc_url = "http://127.0.0.1:8545";
+
+        let adapter = ChainAdapterFactory::get_node_transaction_adapter(chain_code, rpc_url)
+            .await
+            .unwrap();
+
+        let s = r#"{"chain_id":1,"dex_route_list":[{"amount_in":"10000000000000000","amount_out":"0","route_in_dex":[{"dex_id":3,"pool_id":"0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640","in_token_addr":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","out_token_addr":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","zero_for_one":false,"fee":"500","amount_in":"0","min_amount_out":"0"},{"dex_id":2,"pool_id":"0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f","in_token_addr":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","out_token_addr":"0xdac17f958d2ee523a2206206994597c13d831ec7","zero_for_one":true,"fee":"3000","amount_in":"0","min_amount_out":"0"}]}]}"#;
+        let resp = serde_json::from_str::<QuoteResp>(s).unwrap();
+
+        let recipient = "0x14AdbbE60b214ebddc90792482F664C446d93804";
+        let token_in =
+            wallet_utils::address::parse_eth_address("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
+                .unwrap();
+        let token_out =
+            wallet_utils::address::parse_eth_address("0xdAC17F958D2ee523a2206206994597C13D831ec7")
+                .unwrap();
+
+        let swap_params = SwapParams {
+            recipient: wallet_utils::address::parse_eth_address(recipient).unwrap(),
+            token_in,
+            token_out,
+            dex_router: resp.dex_route_list,
+            allow_partial_fill: false,
+        };
+
+        let result = adapter
+            .swap_quote(swap_params, "0x14AdbbE60b214ebddc90792482F664C446d93804")
+            .await
+            .unwrap();
+
+        tracing::warn!(
+            "amount_in {}",
+            wallet_utils::unit::format_to_f64(result.amount_in, 18).unwrap(),
+        );
+
+        tracing::warn!(
+            "amount_out {}",
+            wallet_utils::unit::format_to_f64(result.amount_out, 6).unwrap(),
+        );
     }
 }
