@@ -1,11 +1,16 @@
 use crate::{
-    domain::multisig::MultisigQueueDomain, request::transaction::ApproveParams,
+    domain::{
+        chain::swap::{evm_swap::dexSwap1Call, EstimateSwapResult, TRON_SWAP_ADDRESS},
+        multisig::MultisigQueueDomain,
+    },
+    request::transaction::ApproveParams,
     response_vo::TransferParams,
 };
+use alloy::sol_types::SolCall;
 use wallet_chain_interact::{
     tron::{
         operations::{
-            contract::WarpContract,
+            contract::{TriggerContractParameter, WarpContract},
             transfer::{ContractTransferOpt, TransferOpt},
             trc::Approve,
             TronConstantOperation as _,
@@ -72,4 +77,58 @@ pub(super) async fn approve(
 
     let result = chain.exec_transaction_v1(raw_transaction, key).await?;
     Ok(result)
+}
+
+pub(super) async fn estimate_swap(
+    call_value: dexSwap1Call,
+    chain: &TronChain,
+    recipient: &str,
+) -> Result<EstimateSwapResult, crate::ServiceError> {
+    // 构建调用合约的参数
+    let parameter = wallet_utils::hex_func::hex_encode(call_value.abi_encode());
+    let value = TriggerContractParameter::new(TRON_SWAP_ADDRESS, recipient, "", parameter);
+
+    let wrap = WarpContract { params: value };
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+
+    // 模拟的结果
+    let amount_in = constant.parse_num(&constant.constant_result[0])?;
+    let amount_out = constant.parse_num(&constant.constant_result[1])?;
+
+    // get fee
+    let consumer = chain.provider.contract_fee(constant, 1, recipient).await?;
+
+    let resp = EstimateSwapResult {
+        amount_in,
+        amount_out,
+        fee: wallet_utils::unit::string_to_f64(&consumer.transaction_fee())?,
+        consumer: wallet_utils::serde_func::serde_to_string(&consumer)?,
+    };
+
+    Ok(resp)
+}
+
+// 执行swap操作
+pub(super) async fn swap(
+    call_value: dexSwap1Call,
+    chain: &TronChain,
+    recipient: &str,
+    key: ChainPrivateKey,
+) -> Result<String, crate::ServiceError> {
+    // 构建调用合约的参数
+    let parameter = wallet_utils::hex_func::hex_encode(call_value.abi_encode());
+    let value = TriggerContractParameter::new(TRON_SWAP_ADDRESS, recipient, "", parameter);
+
+    let mut wrap = WarpContract { params: value };
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    // get fee
+    let consumer = chain.provider.contract_fee(constant, 1, recipient).await?;
+
+    let raw_transaction = wrap
+        .trigger_smart_contract(&chain.provider, &consumer)
+        .await?;
+
+    let hash = chain.exec_transaction_v1(raw_transaction, key).await?;
+
+    Ok(hash)
 }

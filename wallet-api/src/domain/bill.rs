@@ -1,3 +1,4 @@
+use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
     dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
@@ -10,8 +11,6 @@ use wallet_database::{
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
-
-use crate::messaging::mqtt::topics::AcctChange;
 
 pub struct BillDomain;
 

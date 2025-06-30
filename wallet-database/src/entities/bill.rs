@@ -127,6 +127,8 @@ pub enum BillKind {
     UpdatePermission = 22,
     // 授权交易
     Approve = 23,
+    // swap 交易
+    Swap = 24,
 }
 impl Serialize for BillKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -181,6 +183,7 @@ impl BillKind {
             BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
             BillKind::UpdatePermission => vec![BillKind::UpdatePermission.to_i8()],
             BillKind::Approve => vec![BillKind::Approve.to_i8()],
+            BillKind::Swap => vec![BillKind::Swap.to_i8()],
         }
     }
 
