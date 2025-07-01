@@ -1,3 +1,5 @@
+use std::ops::{Deref, DerefMut};
+
 use serde_json::Value;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -171,10 +173,6 @@ impl KeysUpdateWalletNameReq {
 pub struct TokenQueryPriceReq(pub Vec<TokenQueryPrice>);
 
 impl TokenQueryPriceReq {
-    pub fn new(token_query_price: Vec<TokenQueryPrice>) -> Self {
-        Self(token_query_price)
-    }
-
     pub fn insert(&mut self, chain_code: &str, contract_address: &str) {
         // 尝试查找已存在的请求
         if let Some(existing_req) = self.0.iter_mut().find(|r| r.chain_code == chain_code) {
@@ -789,6 +787,42 @@ impl ClientTaskLogUploadReq {
             task_type: task_type.to_string(),
             content: content.to_string(),
             remark: remark.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenBalanceRefreshReq(pub Vec<TokenBalanceRefresh>);
+
+impl Deref for TokenBalanceRefreshReq {
+    type Target = Vec<TokenBalanceRefresh>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for TokenBalanceRefreshReq {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenBalanceRefresh {
+    pub address: String,
+    pub chain_code: String,
+    pub sn: String,
+}
+
+impl TokenBalanceRefresh {
+    pub fn new(address: &str, chain_code: &str, sn: &str) -> Self {
+        Self {
+            address: address.to_string(),
+            sn: sn.to_string(),
+            chain_code: chain_code.to_string(),
         }
     }
 }
