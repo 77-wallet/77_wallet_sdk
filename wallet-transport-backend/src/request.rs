@@ -5,6 +5,7 @@ use serde_json::Value;
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomTokenInitReq {
+    pub address: String,
     pub chain_code: String,
     pub symbol: String,
     pub token_name: String,

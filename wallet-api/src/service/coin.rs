@@ -483,6 +483,7 @@ impl CoinService {
 
         tx.upsert_assets(assets).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
+            address: address.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
             token_name: name,
