@@ -1,6 +1,9 @@
 // tron 和 eth 系列的交易参数
 use crate::domain::swap_client::DexRoute;
-use alloy::{primitives::Address, sol};
+use alloy::{
+    primitives::{Address, U256},
+    sol,
+};
 
 // evm 系列调用合约的方法
 sol!(
@@ -34,6 +37,8 @@ sol!(
 
 //  聚合器合约参数
 pub struct SwapParams {
+    pub amount_in: U256,
+    pub min_amount_out: U256,
     // 接收地址
     pub recipient: Address,
     // 输入token
@@ -53,8 +58,6 @@ impl TryFrom<SwapParams> for dexSwap1Call {
         use wallet_utils::{address::parse_eth_address, unit::u256_from_str};
 
         let mut router_param = Vec::with_capacity(value.dex_router.len());
-        let mut total_in = alloy::primitives::U256::ZERO;
-        let mut total_out = alloy::primitives::U256::ZERO;
 
         for quote in value.dex_router {
             let mut sub_routes = Vec::with_capacity(quote.route_in_dex.len());
@@ -79,9 +82,6 @@ impl TryFrom<SwapParams> for dexSwap1Call {
                 sub_routes.push(sub_route);
             }
 
-            total_in += amount_in;
-            total_out += amount_out;
-
             router_param.push(DexRouterParam1 {
                 subDexRouters: sub_routes,
                 // amountIn: amount_in,
@@ -93,8 +93,8 @@ impl TryFrom<SwapParams> for dexSwap1Call {
             routerParam: router_param,
             tokenIn: value.token_in,
             tokenOut: value.token_out,
-            amountIn: total_in,
-            minAmountOut: total_out,
+            amountIn: value.amount_in,
+            minAmountOut: value.min_amount_out,
             recipient: value.recipient,
             allowPartialFill: value.allow_partial_fill,
         })

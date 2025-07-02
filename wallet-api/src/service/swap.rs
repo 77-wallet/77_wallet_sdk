@@ -5,15 +5,14 @@ use crate::{
             adapter::ChainAdapterFactory, swap::evm_swap::SwapParams, transaction::ChainTransDomain,
         },
         coin::TokenCurrencyGetter,
-        swap_client::{QuoteRequest, SwapClient},
+        swap_client::{AggQuoteRequest, AggQuoteResp, SupportChain, SupportDex, SwapClient},
     },
-    request::transaction::{ApproveParams, DepositParams, QuoteReq, SwapReq},
-    response_vo::{
-        account::BalanceInfo,
-        swap::{ApiQuoteResp, SupportChain, SwapTokenInfo},
-    },
+    request::transaction::{ApproveParams, QuoteReq, SwapReq, SwapTokenListReq},
+    response_vo::swap::ApiQuoteResp,
 };
-use wallet_database::entities::bill::NewBillEntity;
+use alloy::primitives::U256;
+use wallet_database::{entities::bill::NewBillEntity, repositories::coin::CoinRepo};
+use wallet_utils::unit;
 
 pub struct SwapServer {
     pub client: SwapClient,
@@ -32,48 +31,88 @@ impl SwapServer {
 
 impl SwapServer {
     pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
+        use wallet_utils::unit::{convert_to_u256, format_to_f64, format_to_string, string_to_f64};
         // 查询后端,获取报价(调用合约查路径)
-        let params = QuoteRequest::from(&req);
-
+        let params = AggQuoteRequest::try_from(&req)?;
         let quote_resp = self.client.get_quote(params).await?;
 
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let amount_out = unit::u256_from_str(&quote_resp.amount_out)?;
 
-        // swap 参数
-        let swap_params = SwapParams {
-            recipient: wallet_utils::address::parse_eth_address(&req.from)?,
-            token_in: wallet_utils::address::parse_eth_address(&req.token_in)?,
-            token_out: wallet_utils::address::parse_eth_address(&req.token_out)?,
-            dex_router: quote_resp.dex_route_list.clone(),
-            allow_partial_fill: false,
-        };
+        let bal_in = TokenCurrencyGetter::get_bal_by_backend(
+            &req.chain_code,
+            &req.token_in.token_addr,
+            string_to_f64(&req.amount_in)?,
+        )
+        .await?;
 
-        // 模拟执行获得手续费
-        let result = adapter.swap_quote(swap_params, &req.from).await?;
+        let bal_out = TokenCurrencyGetter::get_bal_by_backend(
+            &req.chain_code,
+            &req.token_out.token_addr,
+            format_to_f64(amount_out, req.token_out.decimals as u8)?,
+        )
+        .await?;
 
-        let fee =
-            TokenCurrencyGetter::get_balance_info(&req.chain_code, &req.from_symbol, result.fee)
-                .await?;
+        // TODO
+        let mut res = ApiQuoteResp::new(
+            "".to_string(),
+            req.slippage,
+            quote_resp.dex_route_list.clone(),
+            bal_in,
+            bal_out,
+        );
+        res.set_amount_out(amount_out, req.token_out.decimals);
 
-        let res = ApiQuoteResp {
-            supplier: "77_DexAggreagre".to_string(),
-            // 预估的手续费
-            fee,
-            // 转换后的值
-            from_token_price: "price".to_string(),
-            // 滑点
-            slippage: req.slippage,
-            // 最小获得数量
-            min_amount: result.amount_out.to_string(),
-            // 兑换路径
-            dex_route_list: quote_resp.dex_route_list,
+        // 主币处理
+        if req.token_in.token_addr.is_empty() {
+            self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+            return Ok(res);
+        }
 
-            liquidity: "".to_string(),
-        };
+        // 代币处理
+        let allowance = self.check_allowance(&req).await?;
+        let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
 
-        Ok(res)
+        if allowance >= amount_in {
+            self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+            return Ok(res);
+        } else {
+            let diff = amount_in - allowance;
+            res.approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
+            return Ok(res);
+        }
     }
 
+    // 模拟交易以及填充响应
+    async fn simulate_and_fill(
+        &self,
+        req: &QuoteReq,
+        quote_resp: &AggQuoteResp,
+        res: &mut ApiQuoteResp,
+    ) -> Result<(), crate::ServiceError> {
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        let result = adapter.swap_quote(req, quote_resp).await?;
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
+
+        let amount = wallet_utils::unit::format_to_f64(result.fee, main_coin.decimals)?;
+
+        res.fee = TokenCurrencyGetter::get_balance_info(&req.chain_code, &main_coin.symbol, amount)
+            .await?;
+        res.consumer = result.consumer;
+        res.set_amount_out(result.amount_out, req.token_out.decimals);
+
+        Ok(())
+    }
+
+    async fn check_allowance(&self, req: &QuoteReq) -> Result<U256, crate::ServiceError> {
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        adapter
+            .allowance(&req.recipient, &req.token_in.token_addr)
+            .await
+    }
+
+    // 执行兑换
     pub async fn swap(
         &self,
         req: SwapReq,
@@ -98,25 +137,21 @@ impl SwapServer {
         Ok(hash)
     }
 
-    pub async fn token_list(&self) -> Result<Vec<SwapTokenInfo>, crate::ServiceError> {
-        let data = SwapTokenInfo {
-            name: String::from("usdt"),
-            symbol: String::from("USDT"),
-            decimals: 0,
-            chain_code: String::from("tron"),
-            contract_address: String::from("xxx"),
-        };
+    pub async fn token_list(
+        &self,
+        req: SwapTokenListReq,
+    ) -> Result<serde_json::Value, crate::ServiceError> {
+        let res = self.client.token_list(req).await?;
 
-        Ok(vec![data])
+        Ok(res)
     }
 
     pub async fn chain_list(&self) -> Result<Vec<SupportChain>, crate::ServiceError> {
-        let data = SupportChain {
-            name: String::from("tron"),
-            chain_code: String::from("tron"),
-        };
+        Ok(self.client.chain_list().await?)
+    }
 
-        Ok(vec![data])
+    pub async fn dex_list(&self, chain_id: i64) -> Result<Vec<SupportDex>, crate::ServiceError> {
+        Ok(self.client.dex_list(chain_id).await?)
     }
 
     pub async fn approve(
@@ -125,64 +160,34 @@ impl SwapServer {
         password: String,
     ) -> Result<String, crate::ServiceError> {
         // // get coin
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        // let coin = CoinEntity::get_coin_by_chain_code_token_address(
-        //     pool.as_ref(),
-        //     &req.chain_code,
-        //     &req.contract,
-        // )
-        // .await?
-        // .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-        //     format!(
-        //         "coin not found: chain_code: {}, symbol: {}",
-        //         req.chain_code, req.contract
-        //     ),
-        // )))?;
+        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
         let private_key =
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        //
-        let hash = adapter.approve(&req, 18, private_key).await?;
+        let hash = adapter.approve(&req, coin.decimals, private_key).await?;
 
         let mut new_bill = NewBillEntity::from(req);
         new_bill.hash = hash.clone();
-        new_bill.symbol = "WETH".to_string();
+        new_bill.symbol = coin.symbol;
 
         BillDomain::create_bill(new_bill).await?;
         Ok(hash)
     }
 
-    pub async fn deposit(
+    pub async fn allowance(
         &self,
-        req: DepositParams,
-        password: String,
+        from: String,
+        token: String,
+        chain_code: String,
     ) -> Result<String, crate::ServiceError> {
-        // get coin
-        // let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&chain_code).await?;
 
-        // let coin = CoinEntity::get_coin_by_chain_code_token_address(
-        //     pool.as_ref(),
-        //     &req.chain_code,
-        //     &req.contract,
-        // )
-        // .await?
-        // .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-        //     format!(
-        //         "coin not found: chain_code: {}, symbol: {}",
-        //         req.chain_code, req.contract
-        //     ),
-        // )))?;
+        let result = adapter.allowance(&from, &token).await?;
 
-        let private_key =
-            ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-
-        //
-        let hash = adapter.deposit(&req, 18, private_key).await?;
-
-        Ok(hash)
+        Ok(result.to_string())
     }
 }

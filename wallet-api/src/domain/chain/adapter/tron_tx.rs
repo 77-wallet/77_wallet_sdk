@@ -6,13 +6,13 @@ use crate::{
     request::transaction::ApproveParams,
     response_vo::TransferParams,
 };
-use alloy::sol_types::SolCall;
+use alloy::{primitives::U256, sol_types::SolCall};
 use wallet_chain_interact::{
     tron::{
         operations::{
             contract::{TriggerContractParameter, WarpContract},
             transfer::{ContractTransferOpt, TransferOpt},
-            trc::Approve,
+            trc::{Allowance, Approve},
             TronConstantOperation as _,
         },
         TronChain,
@@ -79,6 +79,20 @@ pub(super) async fn approve(
     Ok(result)
 }
 
+pub(super) async fn allowance(
+    chain: &TronChain,
+    from: &str,
+    token: &str,
+) -> Result<U256, crate::ServiceError> {
+    let approve = Allowance::new(from, token, TRON_SWAP_ADDRESS);
+    let wrap = WarpContract::new(approve)?;
+
+    // get fee
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+
+    Ok(constant.parse_u256()?)
+}
+
 pub(super) async fn estimate_swap(
     call_value: dexSwap1Call,
     chain: &TronChain,
@@ -101,7 +115,7 @@ pub(super) async fn estimate_swap(
     let resp = EstimateSwapResult {
         amount_in,
         amount_out,
-        fee: wallet_utils::unit::string_to_f64(&consumer.transaction_fee())?,
+        fee: alloy::primitives::U256::from(consumer.transaction_fee_i64()),
         consumer: wallet_utils::serde_func::serde_to_string(&consumer)?,
     };
 
