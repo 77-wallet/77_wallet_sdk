@@ -174,4 +174,17 @@ impl BackendApi {
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }
+
+    pub async fn token_balance_refresh(
+        &self,
+        req: crate::request::TokenBalanceRefreshReq,
+    ) -> Result<(), crate::Error> {
+        let res = self
+            .client
+            .post("token/balance/refresh")
+            .json(serde_json::json!(req))
+            .send::<crate::response::BackendResponse>()
+            .await?;
+        res.process(&self.aes_cbc_cryptor)
+    }
 }

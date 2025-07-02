@@ -13,6 +13,7 @@ async fn test_custom_token_init() -> Result<(), Error> {
     let backend_api = init()?; // 初始化加密器和API
 
     let req = CustomTokenInitReq {
+        address: "0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24".to_string(),
         chain_code: "eth".to_string(),
         symbol: "XRP".to_string(),
         token_name: "XRP(IBC)".to_string(),

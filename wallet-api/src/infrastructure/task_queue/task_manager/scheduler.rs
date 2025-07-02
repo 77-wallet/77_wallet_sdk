@@ -55,7 +55,7 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
                     | DEVICE_EDIT_DEVICE_INVITEE_STATUS
                     | LANGUAGE_INIT
                     | APP_INSTALL_DOWNLOAD
-
+                    | TOKEN_BALANCE_REFRESH
                     | CHAIN_LIST
                     | CHAIN_RPC_LIST => 2,
                     // 重要功能任务，中优先级

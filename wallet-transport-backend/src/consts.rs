@@ -64,6 +64,7 @@ pub mod endpoint {
     pub const DEVICE_UPDATE_APP_ID: &str = "device/updateAppId";
 
     pub const CLIENT_TASK_LOG_UPLOAD: &str = "client/taskLog/upload";
+    pub const TOKEN_BALANCE_REFRESH: &str = "token/balance/refresh";
 }
 
 /// 代理的全局rpc节点
