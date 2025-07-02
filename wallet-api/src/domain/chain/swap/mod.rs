@@ -1,11 +1,6 @@
 use wallet_types::chain::chain::ChainCode;
 pub mod evm_swap;
 
-// 波场聚合器合约地址
-pub const TRON_SWAP_ADDRESS: &str = "TJ8rG2LZ6wQJgPp7sQ5XZzvWQqQa4pXQVW";
-// eth 合约地址
-pub const ETH_SWAP_ADDRESS: &str = "0x59a4ad52B1dEfC42033f8f109a7cF53924296112";
-
 // 各个链的主币地址
 pub const W_ETH: &str = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 pub const W_BNB: &str = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";

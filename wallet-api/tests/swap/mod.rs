@@ -16,8 +16,8 @@ async fn test_support_chain() {
 async fn test_support_dex() {
     let wallet_manager = get_manager().await;
 
-    let chain_id = 1;
-    let resp = wallet_manager.dex_list(chain_id).await;
+    let chain_code = "eth".to_string();
+    let resp = wallet_manager.dex_list(chain_code).await;
 
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
@@ -27,7 +27,7 @@ async fn test_token_list() {
     let wallet_manager = get_manager().await;
 
     let req = SwapTokenListReq {
-        chain_id: 1,
+        chain_code: "eth".to_string(),
         token_symbol_fuzzy: "".to_string(),
         page_num: 0,
         page_size: 10,
@@ -62,9 +62,10 @@ async fn test_allowance() {
     let from = "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string();
     let token = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string();
     let chain_code = "eth".to_string();
+    let spender = "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string();
 
     let resp = wallet_manager
-        .allowance(from, token, chain_code)
+        .allowance(from, token, chain_code, spender)
         .await
         .unwrap();
     println!("{}", serde_json::to_string(&resp).unwrap());
@@ -87,6 +88,7 @@ async fn test_quote() {
     };
 
     let req = QuoteReq {
+        aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
         recipient: "".to_string(),
         chain_code: "eth".to_string(),
         amount_in: "0.2".to_string(),
@@ -193,6 +195,7 @@ async fn test_swap() {
     };
 
     let req = SwapReq {
+        aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
         amount_in: "0.1".to_string(),
         amount_out: "0".to_string(),
         min_amount_out: "0".to_string(),

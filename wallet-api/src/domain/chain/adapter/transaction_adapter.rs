@@ -5,17 +5,13 @@ use crate::{
         self,
         chain::{
             pare_fee_setting,
-            swap::{
-                calc_slippage,
-                evm_swap::{dexSwap1Call, SwapParams},
-                EstimateSwapResult,
-            },
+            swap::{calc_slippage, evm_swap::SwapParams, EstimateSwapResult},
             transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
         swap_client::AggQuoteResp,
     },
-    request::transaction::{self, QuoteReq},
+    request::transaction::{self, QuoteReq, SwapReq},
     response_vo::{self, FeeDetails, TronFeeDetails},
 };
 use alloy::primitives::U256;
@@ -797,10 +793,15 @@ impl TransactionAdapter {
         Ok(hash)
     }
 
-    pub async fn allowance(&self, from: &str, token: &str) -> Result<U256, crate::ServiceError> {
+    pub async fn allowance(
+        &self,
+        from: &str,
+        token: &str,
+        spender: &str,
+    ) -> Result<U256, crate::ServiceError> {
         let resp = match self {
-            Self::Ethereum(chain) => eth_tx::allowance(chain, from, token).await?,
-            Self::Tron(chain) => tron_tx::allowance(chain, from, token).await?,
+            Self::Ethereum(chain) => eth_tx::allowance(chain, from, token, spender).await?,
+            Self::Tron(chain) => tron_tx::allowance(chain, from, token, spender).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -817,34 +818,50 @@ impl TransactionAdapter {
         quote_resp: &AggQuoteResp,
     ) -> Result<EstimateSwapResult, crate::ServiceError> {
         // note:如果token_in 是主币，则传入0地址
-        let token_in = if req.token_in.token_addr.is_empty() {
-            alloy::primitives::Address::ZERO
-        } else {
-            wallet_utils::address::parse_eth_address(&req.recipient)?
-        };
 
         let amount_out = quote_resp.amount_out_u256(req.token_out.decimals as u8)?;
         let min_amount_out = calc_slippage(amount_out, req.slippage);
 
-        let swap_params = SwapParams {
-            amount_in: req.amount_in_u256()?,
-            min_amount_out,
-            recipient: wallet_utils::address::parse_eth_address(&req.recipient)?,
-            token_in,
-            token_out: wallet_utils::address::parse_eth_address(&req.token_out.token_addr)?,
-            dex_router: quote_resp.dex_route_list.clone(),
-            allow_partial_fill: req.allow_partial_fill,
-        };
-
-        let call_value = dexSwap1Call::try_from(swap_params)?;
-
-        tracing::warn!("call_value: {call_value:#?}");
-
         let resp = match self {
             Self::Ethereum(chain) => {
-                eth_tx::estimate_swap(call_value, chain, &req.recipient).await?
+                let token_in = if req.token_in.token_addr.is_empty() {
+                    alloy::primitives::Address::ZERO
+                } else {
+                    wallet_utils::address::parse_eth_address(&req.recipient)?
+                };
+
+                let swap_params = SwapParams {
+                    aggregator_addr: req.aggregator_address()?,
+                    amount_in: req.amount_in_u256()?,
+                    min_amount_out,
+                    recipient: wallet_utils::address::parse_eth_address(&req.recipient)?,
+                    token_in,
+                    token_out: wallet_utils::address::parse_eth_address(&req.token_out.token_addr)?,
+                    dex_router: quote_resp.dex_route_list.clone(),
+                    allow_partial_fill: req.allow_partial_fill,
+                };
+
+                eth_tx::estimate_swap(swap_params, chain).await?
             }
-            Self::Tron(chain) => tron_tx::estimate_swap(call_value, chain, &req.recipient).await?,
+            Self::Tron(chain) => {
+                let token_in = if req.token_in.token_addr.is_empty() {
+                    alloy::primitives::Address::ZERO
+                } else {
+                    QuoteReq::addr_tron_to_eth(&req.token_in.token_addr)?
+                };
+
+                let swap_params = SwapParams {
+                    aggregator_addr: req.aggregator_address()?,
+                    amount_in: req.amount_in_u256()?,
+                    min_amount_out,
+                    recipient: QuoteReq::addr_tron_to_eth(&req.recipient)?,
+                    token_in,
+                    token_out: QuoteReq::addr_tron_to_eth(&req.token_out.token_addr)?,
+                    dex_router: quote_resp.dex_route_list.clone(),
+                    allow_partial_fill: req.allow_partial_fill,
+                };
+                tron_tx::estimate_swap(&swap_params, chain).await?
+            }
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -857,18 +874,15 @@ impl TransactionAdapter {
 
     pub async fn swap(
         &self,
-        swap_params: SwapParams,
-        recipient: &str,
+        req: &SwapReq,
         fee: String,
         key: ChainPrivateKey,
     ) -> Result<String, crate::ServiceError> {
-        let call_value = dexSwap1Call::try_from(swap_params)?;
-
-        tracing::warn!("call_value: {call_value:#?}");
+        let swap_params = SwapParams::try_from(req)?;
 
         let resp = match self {
-            Self::Ethereum(chain) => eth_tx::swap(call_value, chain, recipient, fee, key).await?,
-            Self::Tron(chain) => tron_tx::swap(call_value, chain, recipient, key).await?,
+            Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
+            Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -916,6 +930,7 @@ mod tests {
         };
 
         let req = QuoteReq {
+            aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
             recipient: "".to_string(),
             chain_code: "eth".to_string(),
             amount_in: "0.2".to_string(),

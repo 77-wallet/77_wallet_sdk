@@ -26,8 +26,8 @@ impl crate::WalletManager {
         SwapServer::new()?.chain_list().await.into()
     }
 
-    pub async fn dex_list(&self, chain_id: i64) -> ReturnType<Vec<SupportDex>> {
-        SwapServer::new()?.dex_list(chain_id).await.into()
+    pub async fn dex_list(&self, chain_code: String) -> ReturnType<Vec<SupportDex>> {
+        SwapServer::new()?.dex_list(chain_code).await.into()
     }
 
     pub async fn approve(
@@ -43,9 +43,10 @@ impl crate::WalletManager {
         from: String,
         token: String,
         chain_code: String,
+        spender: String,
     ) -> Result<String, crate::ServiceError> {
         SwapServer::new()?
-            .allowance(from, token, chain_code)
+            .allowance(from, token, chain_code, spender)
             .await
             .into()
     }

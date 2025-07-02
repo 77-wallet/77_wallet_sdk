@@ -1,7 +1,10 @@
 use crate::{
     domain::chain::{
         pare_fee_setting,
-        swap::{evm_swap::dexSwap1Call, EstimateSwapResult, ETH_SWAP_ADDRESS},
+        swap::{
+            evm_swap::{dexSwap1Call, SwapParams},
+            EstimateSwapResult,
+        },
     },
     request::transaction::{ApproveParams, DepositParams},
 };
@@ -59,8 +62,9 @@ pub(super) async fn allowance(
     chain: &EthChain,
     from: &str,
     token: &str,
+    spender: &str,
 ) -> Result<U256, crate::ServiceError> {
-    let approve = Allowance::new(from, token, ETH_SWAP_ADDRESS)?;
+    let approve = Allowance::new(from, token, spender)?;
 
     let amount = chain.eth_call::<_, U256>(approve).await?;
 
@@ -68,13 +72,13 @@ pub(super) async fn allowance(
 }
 
 pub(super) async fn estimate_swap(
-    call_value: dexSwap1Call,
+    swap_params: SwapParams,
     chain: &EthChain,
-    recipient: &str,
 ) -> Result<EstimateSwapResult, crate::ServiceError> {
+    let call_value = dexSwap1Call::try_from(&swap_params)?;
     let tx = TransactionRequest::default()
-        .from(wallet_utils::address::parse_eth_address(recipient)?)
-        .to(wallet_utils::address::parse_eth_address(ETH_SWAP_ADDRESS)?)
+        .from(swap_params.recipient)
+        .to(swap_params.aggregator_addr)
         .with_input(call_value.abi_encode());
 
     // estimate_fee
@@ -104,18 +108,19 @@ pub(super) async fn estimate_swap(
 }
 
 pub(super) async fn swap(
-    call_value: dexSwap1Call,
     chain: &EthChain,
-    recipient: &str,
+    swap_params: &SwapParams,
     fee: String,
     key: ChainPrivateKey,
 ) -> Result<String, crate::ServiceError> {
     let fee = pare_fee_setting(fee.as_str())?;
 
+    let call_value = dexSwap1Call::try_from(swap_params)?;
+
     // 构建交易
     let tx = TransactionRequest::default()
-        .from(wallet_utils::address::parse_eth_address(recipient)?)
-        .to(wallet_utils::address::parse_eth_address(ETH_SWAP_ADDRESS)?)
+        .from(swap_params.recipient)
+        .to(swap_params.aggregator_addr)
         .with_input(call_value.abi_encode());
 
     let tx = chain
