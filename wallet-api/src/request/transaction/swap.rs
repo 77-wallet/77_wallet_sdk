@@ -4,11 +4,11 @@ use crate::domain::{
 };
 use alloy::primitives::U256;
 use wallet_database::entities::bill::NewBillEntity;
-use wallet_types::chain::chain::ChainCode;
+use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
 #[derive(Debug, serde::Serialize)]
 pub struct SwapTokenListReq {
-    pub chain_id: i64,
+    pub chain_code: String,
     pub token_symbol_fuzzy: String,
     pub page_num: i64,
     pub page_size: i64,
@@ -57,6 +57,7 @@ pub struct DepositParams {
 }
 
 pub struct SwapReq {
+    pub aggregator_addr: String,
     // 链code
     pub chain_code: String,
     // 输出金额
@@ -89,15 +90,29 @@ impl TryFrom<&SwapReq> for SwapParams {
             value.token_out.decimals as u8,
         )?;
 
-        Ok(SwapParams {
-            amount_in,
-            min_amount_out,
-            recipient: wallet_utils::address::parse_eth_address(&value.recipient)?,
-            dex_router: value.dex_router.clone(),
-            token_in: wallet_utils::address::parse_eth_address(&value.token_in.token_addr)?,
-            token_out: wallet_utils::address::parse_eth_address(&value.token_out.token_addr)?,
-            allow_partial_fill: value.allow_partial_fill,
-        })
+        if value.chain_code == chain_code::ETHEREUM {
+            Ok(SwapParams {
+                aggregator_addr: wallet_utils::address::parse_eth_address(&value.aggregator_addr)?,
+                amount_in,
+                min_amount_out,
+                recipient: wallet_utils::address::parse_eth_address(&value.recipient)?,
+                dex_router: value.dex_router.clone(),
+                token_in: wallet_utils::address::parse_eth_address(&value.token_in.token_addr)?,
+                token_out: wallet_utils::address::parse_eth_address(&value.token_out.token_addr)?,
+                allow_partial_fill: value.allow_partial_fill,
+            })
+        } else {
+            Ok(SwapParams {
+                aggregator_addr: QuoteReq::addr_tron_to_eth(&value.aggregator_addr)?,
+                amount_in,
+                min_amount_out,
+                recipient: QuoteReq::addr_tron_to_eth(&value.recipient)?,
+                dex_router: value.dex_router.clone(),
+                token_in: QuoteReq::addr_tron_to_eth(&value.token_in.token_addr)?,
+                token_out: QuoteReq::addr_tron_to_eth(&value.token_out.token_addr)?,
+                allow_partial_fill: value.allow_partial_fill,
+            })
+        }
     }
 }
 
@@ -128,6 +143,8 @@ impl From<SwapReq> for NewBillEntity {
 
 // 前端请求报价的参数
 pub struct QuoteReq {
+    // 聚合器提供的地址
+    pub aggregator_addr: String,
     pub recipient: String,
     pub chain_code: String,
     // 未处理精度的值
@@ -155,6 +172,22 @@ impl QuoteReq {
             &self.amount_in,
             self.token_in.decimals as u8,
         )?)
+    }
+
+    pub fn recipient_address(&self) -> Result<alloy::primitives::Address, crate::ServiceError> {
+        Ok(wallet_utils::address::parse_eth_address(&self.recipient)?)
+    }
+
+    pub fn aggregator_address(&self) -> Result<alloy::primitives::Address, crate::ServiceError> {
+        Ok(wallet_utils::address::parse_eth_address(
+            &self.aggregator_addr,
+        )?)
+    }
+
+    pub fn addr_tron_to_eth(addr: &str) -> Result<alloy::primitives::Address, crate::ServiceError> {
+        let hex_addr = wallet_utils::address::bs58_addr_to_hex(addr)?;
+
+        Ok(wallet_utils::address::parse_eth_address(&hex_addr)?)
     }
 }
 

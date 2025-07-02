@@ -48,8 +48,8 @@ impl SwapClient {
         self.handle_result(res)
     }
 
-    pub async fn dex_list(&self, chain_id: i64) -> Result<Vec<SupportDex>, crate::ServiceError> {
-        let payload = std::collections::HashMap::from([("chain_id", chain_id)]);
+    pub async fn dex_list(&self, chain_code: &str) -> Result<Vec<SupportDex>, crate::ServiceError> {
+        let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
 
         let res = self
             .client
@@ -65,7 +65,7 @@ impl SwapClient {
     ) -> Result<serde_json::Value, crate::ServiceError> {
         let res = self
             .client
-            .post_request::<_, AggregatorResp<serde_json::Value>>("get_support_dex", req)
+            .post_request::<_, AggregatorResp<serde_json::Value>>("get_support_token", req)
             .await?;
 
         self.handle_result(res)
@@ -75,8 +75,6 @@ impl SwapClient {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SupportChain {
-    pub chain_id: u64,
-    pub chain_name: String,
     pub chain_code: String,
 }
 

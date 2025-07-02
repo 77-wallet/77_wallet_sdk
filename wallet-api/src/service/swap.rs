@@ -1,9 +1,7 @@
 use crate::{
     domain::{
         bill::BillDomain,
-        chain::{
-            adapter::ChainAdapterFactory, swap::evm_swap::SwapParams, transaction::ChainTransDomain,
-        },
+        chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::TokenCurrencyGetter,
         swap_client::{AggQuoteRequest, AggQuoteResp, SupportChain, SupportDex, SwapClient},
     },
@@ -52,7 +50,7 @@ impl SwapServer {
         )
         .await?;
 
-        // TODO
+        // TODO price
         let mut res = ApiQuoteResp::new(
             "".to_string(),
             req.slippage,
@@ -108,7 +106,11 @@ impl SwapServer {
     async fn check_allowance(&self, req: &QuoteReq) -> Result<U256, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         adapter
-            .allowance(&req.recipient, &req.token_in.token_addr)
+            .allowance(
+                &req.recipient,
+                &req.token_in.token_addr,
+                &req.aggregator_addr,
+            )
             .await
     }
 
@@ -124,10 +126,8 @@ impl SwapServer {
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        let swap_params = SwapParams::try_from(&req)?;
-
         // 执行swap 交易
-        let hash = adapter.swap(swap_params, &req.recipient, fee, key).await?;
+        let hash = adapter.swap(&req, fee, key).await?;
 
         // 写入本地交易记录表
         let mut new_bill = NewBillEntity::from(req);
@@ -141,17 +141,18 @@ impl SwapServer {
         &self,
         req: SwapTokenListReq,
     ) -> Result<serde_json::Value, crate::ServiceError> {
-        let res = self.client.token_list(req).await?;
-
-        Ok(res)
+        Ok(self.client.token_list(req).await?)
     }
 
     pub async fn chain_list(&self) -> Result<Vec<SupportChain>, crate::ServiceError> {
         Ok(self.client.chain_list().await?)
     }
 
-    pub async fn dex_list(&self, chain_id: i64) -> Result<Vec<SupportDex>, crate::ServiceError> {
-        Ok(self.client.dex_list(chain_id).await?)
+    pub async fn dex_list(
+        &self,
+        chain_code: String,
+    ) -> Result<Vec<SupportDex>, crate::ServiceError> {
+        Ok(self.client.dex_list(&chain_code).await?)
     }
 
     pub async fn approve(
@@ -183,10 +184,11 @@ impl SwapServer {
         from: String,
         token: String,
         chain_code: String,
+        spender: String,
     ) -> Result<String, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&chain_code).await?;
 
-        let result = adapter.allowance(&from, &token).await?;
+        let result = adapter.allowance(&from, &token, &spender).await?;
 
         Ok(result.to_string())
     }

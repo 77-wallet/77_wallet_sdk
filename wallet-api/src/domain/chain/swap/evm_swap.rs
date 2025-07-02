@@ -37,7 +37,11 @@ sol!(
 
 //  聚合器合约参数
 pub struct SwapParams {
+    // 聚合器地址
+    pub aggregator_addr: Address,
+    // 转账金额
     pub amount_in: U256,
+    // 最小输出
     pub min_amount_out: U256,
     // 接收地址
     pub recipient: Address,
@@ -51,15 +55,30 @@ pub struct SwapParams {
     pub allow_partial_fill: bool,
 }
 
-impl TryFrom<SwapParams> for dexSwap1Call {
+impl SwapParams {
+    // eth 地址类型转为tron的地址类型
+    pub fn aggregator_tron_addr(&self) -> Result<String, crate::ServiceError> {
+        let address = self.aggregator_addr.to_string();
+
+        Ok(wallet_utils::address::eth_addr_to_tron_addr(&address)?)
+    }
+
+    pub fn recipient_tron_addr(&self) -> Result<String, crate::ServiceError> {
+        let address = self.recipient.to_string();
+
+        Ok(wallet_utils::address::eth_addr_to_tron_addr(&address)?)
+    }
+}
+
+impl TryFrom<&SwapParams> for dexSwap1Call {
     type Error = crate::ServiceError;
 
-    fn try_from(value: SwapParams) -> Result<Self, Self::Error> {
+    fn try_from(value: &SwapParams) -> Result<Self, Self::Error> {
         use wallet_utils::{address::parse_eth_address, unit::u256_from_str};
 
         let mut router_param = Vec::with_capacity(value.dex_router.len());
 
-        for quote in value.dex_router {
+        for quote in value.dex_router.iter() {
             let mut sub_routes = Vec::with_capacity(quote.route_in_dex.len());
 
             let amount_in = u256_from_str(&quote.amount_in)?;
@@ -84,8 +103,6 @@ impl TryFrom<SwapParams> for dexSwap1Call {
 
             router_param.push(DexRouterParam1 {
                 subDexRouters: sub_routes,
-                // amountIn: amount_in,
-                // minAmountOut: amount_out,
             });
         }
 
