@@ -1,7 +1,8 @@
 use crate::{
     api::ReturnType,
-    request::transaction::{ApproveParams, DepositParams, QuoteReq, SwapReq},
-    response_vo::swap::{ApiQuoteResp, SupportChain, SwapTokenInfo},
+    domain::swap_client::{SupportChain, SupportDex},
+    request::transaction::{ApproveParams, QuoteReq, SwapReq, SwapTokenListReq},
+    response_vo::swap::ApiQuoteResp,
     service::swap::SwapServer,
 };
 
@@ -16,13 +17,17 @@ impl crate::WalletManager {
     }
 
     // 获取token列表
-    pub async fn token_list(&self) -> ReturnType<Vec<SwapTokenInfo>> {
-        SwapServer::new()?.token_list().await.into()
+    pub async fn token_list(&self, req: SwapTokenListReq) -> ReturnType<serde_json::Value> {
+        SwapServer::new()?.token_list(req).await.into()
     }
 
     // 支持兑换的链
     pub async fn chain_list(&self) -> ReturnType<Vec<SupportChain>> {
         SwapServer::new()?.chain_list().await.into()
+    }
+
+    pub async fn dex_list(&self, chain_id: i64) -> ReturnType<Vec<SupportDex>> {
+        SwapServer::new()?.dex_list(chain_id).await.into()
     }
 
     pub async fn approve(
@@ -33,11 +38,15 @@ impl crate::WalletManager {
         SwapServer::new()?.approve(req, password).await.into()
     }
 
-    pub async fn deposit(
+    pub async fn allowance(
         &self,
-        req: DepositParams,
-        password: String,
+        from: String,
+        token: String,
+        chain_code: String,
     ) -> Result<String, crate::ServiceError> {
-        SwapServer::new()?.deposit(req, password).await.into()
+        SwapServer::new()?
+            .allowance(from, token, chain_code)
+            .await
+            .into()
     }
 }

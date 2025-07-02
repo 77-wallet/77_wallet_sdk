@@ -12,7 +12,7 @@ use alloy::{
 use alloy::{primitives::U256, rpc::types::TransactionRequest};
 use wallet_chain_interact::{
     eth::{
-        operations::erc::{Approve, Deposit},
+        operations::erc::{Allowance, Approve, Deposit},
         EthChain, FeeSetting,
     },
     types::ChainPrivateKey,
@@ -55,6 +55,18 @@ pub(super) async fn deposit(
     Ok(hash)
 }
 
+pub(super) async fn allowance(
+    chain: &EthChain,
+    from: &str,
+    token: &str,
+) -> Result<U256, crate::ServiceError> {
+    let approve = Allowance::new(from, token, ETH_SWAP_ADDRESS)?;
+
+    let amount = chain.eth_call::<_, U256>(approve).await?;
+
+    Ok(amount)
+}
+
 pub(super) async fn estimate_swap(
     call_value: dexSwap1Call,
     chain: &EthChain,
@@ -67,7 +79,6 @@ pub(super) async fn estimate_swap(
 
     // estimate_fee
     let gas_limit = chain.provider.estimate_gas(tx.clone()).await?;
-
     let tx = tx.with_gas_limit(gas_limit.to::<u64>());
 
     let gas_price = chain.provider.gas_price().await?;
@@ -80,10 +91,8 @@ pub(super) async fn estimate_swap(
     let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
         .map_err(|e| crate::ServiceError::AggregatorError(e.to_string()))?;
 
-    // TODO 注意不同的链获取的 精度
     let fee = fee.transaction_fee();
     let consumer = wallet_utils::serde_func::serde_to_string(&fee)?;
-    let fee = wallet_utils::unit::format_to_f64(fee, 18)?;
 
     let resp = EstimateSwapResult {
         amount_in,

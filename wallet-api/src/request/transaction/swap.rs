@@ -1,8 +1,18 @@
 use crate::domain::{
-    chain::swap::evm_swap::SwapParams,
-    swap_client::{DexId, DexRoute, QuoteRequest},
+    chain::swap::{evm_swap::SwapParams, get_warp_address},
+    swap_client::{AggQuoteRequest, DexId, DexRoute},
 };
+use alloy::primitives::U256;
 use wallet_database::entities::bill::NewBillEntity;
+use wallet_types::chain::chain::ChainCode;
+
+#[derive(Debug, serde::Serialize)]
+pub struct SwapTokenListReq {
+    pub chain_id: i64,
+    pub token_symbol_fuzzy: String,
+    pub page_num: i64,
+    pub page_size: i64,
+}
 
 #[derive(Debug)]
 pub struct ApproveParams {
@@ -47,13 +57,20 @@ pub struct DepositParams {
 }
 
 pub struct SwapReq {
+    // 链code
     pub chain_code: String,
+    // 输出金额
+    pub amount_in: String,
+    // 输出金额
+    pub amount_out: String,
+    // 接受最小的输出金额
+    pub min_amount_out: String,
     // 接收地址
     pub recipient: String,
     // 输入token
-    pub token_in: String,
+    pub token_in: SwapTokenInfo,
     // 输出token
-    pub token_out: String,
+    pub token_out: SwapTokenInfo,
     // 路由数据
     pub dex_router: Vec<DexRoute>,
     // 允许部分兑换
@@ -64,11 +81,21 @@ impl TryFrom<&SwapReq> for SwapParams {
     type Error = crate::ServiceError;
 
     fn try_from(value: &SwapReq) -> Result<Self, Self::Error> {
+        let amount_in =
+            wallet_utils::unit::convert_to_u256(&value.amount_in, value.token_in.decimals as u8)?;
+
+        let min_amount_out = wallet_utils::unit::convert_to_u256(
+            &value.min_amount_out,
+            value.token_out.decimals as u8,
+        )?;
+
         Ok(SwapParams {
+            amount_in,
+            min_amount_out,
             recipient: wallet_utils::address::parse_eth_address(&value.recipient)?,
             dex_router: value.dex_router.clone(),
-            token_in: wallet_utils::address::parse_eth_address(&value.token_in)?,
-            token_out: wallet_utils::address::parse_eth_address(&value.token_out)?,
+            token_in: wallet_utils::address::parse_eth_address(&value.token_in.token_addr)?,
+            token_out: wallet_utils::address::parse_eth_address(&value.token_out.token_addr)?,
             allow_partial_fill: value.allow_partial_fill,
         })
     }
@@ -99,23 +126,53 @@ impl From<SwapReq> for NewBillEntity {
     }
 }
 
+// 前端请求报价的参数
 pub struct QuoteReq {
-    pub from: String,
+    pub recipient: String,
     pub chain_code: String,
+    // 未处理精度的值
     pub amount_in: String,
-    pub token_in: String,
-    pub token_out: String,
-    pub from_symbol: String,
+    pub token_in: SwapTokenInfo,
+    pub token_out: SwapTokenInfo,
     // 选择的池子
     pub dex_list: Vec<i32>,
     // 滑点
     pub slippage: f64,
+    // 允许部分兑换
+    pub allow_partial_fill: bool,
+}
+impl QuoteReq {
+    pub fn token_in_or_warp(&self, chain_code: ChainCode) -> String {
+        if self.token_in.token_addr.is_empty() {
+            get_warp_address(chain_code).unwrap().to_string()
+        } else {
+            self.token_in.token_addr.clone()
+        }
+    }
+
+    pub fn amount_in_u256(&self) -> Result<U256, crate::ServiceError> {
+        Ok(wallet_utils::unit::convert_to_u256(
+            &self.amount_in,
+            self.token_in.decimals as u8,
+        )?)
+    }
 }
 
-impl From<&QuoteReq> for QuoteRequest {
-    fn from(value: &QuoteReq) -> Self {
-        //TODO
+pub struct SwapTokenInfo {
+    pub symbol: String,
+    pub decimals: u32,
+    pub token_addr: String,
+}
+
+impl TryFrom<&QuoteReq> for AggQuoteRequest {
+    type Error = crate::ServiceError;
+    fn try_from(value: &QuoteReq) -> Result<Self, Self::Error> {
+        let chain_code = ChainCode::try_from(value.chain_code.as_str())?;
+
         let chain_id = 1;
+
+        let amount =
+            wallet_utils::unit::convert_to_u256(&value.amount_in, value.token_in.decimals as u8)?;
 
         let dex_ids = value
             .dex_list
@@ -123,12 +180,12 @@ impl From<&QuoteReq> for QuoteRequest {
             .map(|dex_id| DexId { dex_id: *dex_id })
             .collect();
 
-        Self {
+        Ok(Self {
             chain_id,
-            amount: value.amount_in.clone(),
-            in_token_addr: value.token_in.clone(),
-            out_token_addr: value.token_out.clone(),
+            amount: amount.to_string(),
+            in_token_addr: value.token_in_or_warp(chain_code),
+            out_token_addr: value.token_out.token_addr.clone(),
             dex_ids,
-        }
+        })
     }
 }

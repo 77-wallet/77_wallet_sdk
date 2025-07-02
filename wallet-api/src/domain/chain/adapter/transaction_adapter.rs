@@ -6,14 +6,16 @@ use crate::{
         chain::{
             pare_fee_setting,
             swap::{
+                calc_slippage,
                 evm_swap::{dexSwap1Call, SwapParams},
                 EstimateSwapResult,
             },
             transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
+        swap_client::AggQuoteResp,
     },
-    request::transaction::{self},
+    request::transaction::{self, QuoteReq},
     response_vo::{self, FeeDetails, TronFeeDetails},
 };
 use alloy::primitives::U256;
@@ -795,18 +797,54 @@ impl TransactionAdapter {
         Ok(hash)
     }
 
+    pub async fn allowance(&self, from: &str, token: &str) -> Result<U256, crate::ServiceError> {
+        let resp = match self {
+            Self::Ethereum(chain) => eth_tx::allowance(chain, from, token).await?,
+            Self::Tron(chain) => tron_tx::allowance(chain, from, token).await?,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(resp)
+    }
+
     pub async fn swap_quote(
         &self,
-        swap_params: SwapParams,
-        recipient: &str,
+        req: &QuoteReq,
+        quote_resp: &AggQuoteResp,
     ) -> Result<EstimateSwapResult, crate::ServiceError> {
+        // note:如果token_in 是主币，则传入0地址
+        let token_in = if req.token_in.token_addr.is_empty() {
+            alloy::primitives::Address::ZERO
+        } else {
+            wallet_utils::address::parse_eth_address(&req.recipient)?
+        };
+
+        let amount_out = quote_resp.amount_out_u256(req.token_out.decimals as u8)?;
+        let min_amount_out = calc_slippage(amount_out, req.slippage);
+
+        let swap_params = SwapParams {
+            amount_in: req.amount_in_u256()?,
+            min_amount_out,
+            recipient: wallet_utils::address::parse_eth_address(&req.recipient)?,
+            token_in,
+            token_out: wallet_utils::address::parse_eth_address(&req.token_out.token_addr)?,
+            dex_router: quote_resp.dex_route_list.clone(),
+            allow_partial_fill: req.allow_partial_fill,
+        };
+
         let call_value = dexSwap1Call::try_from(swap_params)?;
 
         tracing::warn!("call_value: {call_value:#?}");
 
         let resp = match self {
-            Self::Ethereum(chain) => eth_tx::estimate_swap(call_value, chain, recipient).await?,
-            Self::Tron(chain) => tron_tx::estimate_swap(call_value, chain, recipient).await?,
+            Self::Ethereum(chain) => {
+                eth_tx::estimate_swap(call_value, chain, &req.recipient).await?
+            }
+            Self::Tron(chain) => tron_tx::estimate_swap(call_value, chain, &req.recipient).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -844,9 +882,9 @@ impl TransactionAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::{
-        chain::{adapter::ChainAdapterFactory, swap::evm_swap::SwapParams},
-        swap_client::QuoteResp,
+    use crate::{
+        domain::{chain::adapter::ChainAdapterFactory, swap_client::AggQuoteResp},
+        request::transaction::{QuoteReq, SwapTokenInfo},
     };
     use wallet_utils::init_test_log;
 
@@ -861,38 +899,45 @@ mod tests {
             .await
             .unwrap();
 
+        // 模拟聚合器的响应
         let s = r#"{"chain_id":1,"dex_route_list":[{"amount_in":"10000000000000000","amount_out":"0","route_in_dex":[{"dex_id":3,"pool_id":"0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640","in_token_addr":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","out_token_addr":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","zero_for_one":false,"fee":"500","amount_in":"0","min_amount_out":"0"},{"dex_id":2,"pool_id":"0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f","in_token_addr":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","out_token_addr":"0xdac17f958d2ee523a2206206994597c13d831ec7","zero_for_one":true,"fee":"3000","amount_in":"0","min_amount_out":"0"}]}]}"#;
-        let resp = serde_json::from_str::<QuoteResp>(s).unwrap();
+        let resp = serde_json::from_str::<AggQuoteResp>(s).unwrap();
 
-        let recipient = "0x14AdbbE60b214ebddc90792482F664C446d93804";
-        let token_in =
-            wallet_utils::address::parse_eth_address("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
-                .unwrap();
-        let token_out =
-            wallet_utils::address::parse_eth_address("0xdAC17F958D2ee523a2206206994597C13D831ec7")
-                .unwrap();
+        let token_in = SwapTokenInfo {
+            token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+            symbol: "ETH".to_string(),
+            decimals: 18,
+        };
 
-        let swap_params = SwapParams {
-            recipient: wallet_utils::address::parse_eth_address(recipient).unwrap(),
+        let token_out = SwapTokenInfo {
+            token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+            symbol: "USDT".to_string(),
+            decimals: 6,
+        };
+
+        let req = QuoteReq {
+            recipient: "".to_string(),
+            chain_code: "eth".to_string(),
+            amount_in: "0.2".to_string(),
             token_in,
             token_out,
-            dex_router: resp.dex_route_list,
+            dex_list: vec![2, 3],
+            slippage: 0.2,
             allow_partial_fill: false,
         };
 
-        let result = adapter
-            .swap_quote(swap_params, "0x14AdbbE60b214ebddc90792482F664C446d93804")
-            .await
-            .unwrap();
+        let result = adapter.swap_quote(&req, &resp).await.unwrap();
 
         tracing::warn!(
             "amount_in {}",
-            wallet_utils::unit::format_to_f64(result.amount_in, 18).unwrap(),
+            wallet_utils::unit::format_to_f64(result.amount_in, req.token_in.decimals as u8)
+                .unwrap(),
         );
 
         tracing::warn!(
             "amount_out {}",
-            wallet_utils::unit::format_to_f64(result.amount_out, 6).unwrap(),
+            wallet_utils::unit::format_to_f64(result.amount_out, req.token_out.decimals as u8)
+                .unwrap(),
         );
     }
 }

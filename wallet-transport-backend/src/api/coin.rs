@@ -1,10 +1,6 @@
-use std::collections::HashMap;
-
 use crate::{
-    request::{TokenQueryByContractAddressReq, TokenQueryByPageReq},
-    response_vo::coin::{
-        CoinInfos, TokenPopularByPages, TokenPriceInfos, TokenQueryByContractAddressRes, TokenRates,
-    },
+    request::TokenQueryByPageReq,
+    response_vo::coin::{CoinInfos, TokenPopularByPages, TokenPrice, TokenPriceInfos},
 };
 
 use super::BackendApi;
@@ -24,22 +20,6 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn token_subscribe(
-        &self,
-
-        req: crate::request::TokenSubscribeReq,
-    ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
-        let res = self
-            .client
-            .post("token/subscribe")
-            .json(serde_json::json!(req))
-            .send::<serde_json::Value>()
-            .await?;
-        let res: crate::response::BackendResponse =
-            wallet_utils::serde_func::serde_from_value(res)?;
-        res.process(&self.aes_cbc_cryptor)
-    }
-
     pub async fn token_query_price(
         &self,
 
@@ -49,29 +29,6 @@ impl BackendApi {
             .client
             .post("token/queryPrice")
             .json(serde_json::json!(req))
-            .send::<crate::response::BackendResponse>()
-            .await?;
-        res.process(&self.aes_cbc_cryptor)
-    }
-
-    pub async fn _token_query_price(
-        &self,
-
-        req: crate::request::TokenQueryPriceReq,
-    ) -> Result<wallet_types::valueobject::TokenPopularByPages, crate::Error> {
-        let res = self
-            .client
-            .post("token/queryPrice")
-            .json(serde_json::json!(req))
-            .send::<crate::response::BackendResponse>()
-            .await?;
-        res.process(&self.aes_cbc_cryptor)
-    }
-
-    pub async fn token_rates(&self) -> Result<TokenRates, crate::Error> {
-        let res = self
-            .client
-            .post("token/queryRates")
             .send::<crate::response::BackendResponse>()
             .await?;
         res.process(&self.aes_cbc_cryptor)
@@ -88,60 +45,6 @@ impl BackendApi {
             .client
             .post("token/queryByPage")
             .json(req)
-            .send::<crate::response::BackendResponse>()
-            .await?;
-        res.process(&self.aes_cbc_cryptor)
-    }
-
-    pub async fn token_query_by_contract_address(
-        &self,
-
-        req: &TokenQueryByContractAddressReq,
-    ) -> Result<TokenQueryByContractAddressRes, crate::Error> {
-        let req = serde_json::json!(req);
-
-        let res = self
-            .client
-            .post("token/queryByContractAddress")
-            .json(req)
-            .send::<crate::response::BackendResponse>()
-            .await?;
-        res.process(&self.aes_cbc_cryptor)
-    }
-
-    pub async fn token_cancel_subscribe(
-        &self,
-
-        req: crate::request::TokenCancelSubscribeReq,
-    ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
-        let res = self
-            .client
-            .post("token/cancelSubscribe")
-            .json(serde_json::json!(req))
-            .send::<crate::response::BackendResponse>()
-            .await?;
-        res.process(&self.aes_cbc_cryptor)
-    }
-
-    /// query token fee_rate
-    pub async fn token_query_by_currency(
-        &self,
-
-        chain_code: &str,
-        currency: &str,
-        symbol: &str,
-    ) -> Result<crate::response_vo::coin::TokenCurrency, crate::Error> {
-        let mut params = HashMap::new();
-
-        let symbol = symbol.to_lowercase();
-        params.insert("chainCode", chain_code);
-        params.insert("code", &symbol);
-        params.insert("currency", currency);
-
-        let res = self
-            .client
-            .post("token/queryByCurrency")
-            .json(params)
             .send::<crate::response::BackendResponse>()
             .await?;
         res.process(&self.aes_cbc_cryptor)
@@ -174,4 +77,145 @@ impl BackendApi {
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }
+
+    // 单独查询token价格
+    pub async fn token_price(
+        &self,
+        chain_code: &str,
+        token_addr: &str,
+    ) -> Result<TokenPrice, crate::Error> {
+        let endpoint = "token/collect/token";
+
+        let req = serde_json::json!({
+            "chainCode": chain_code,
+            "tokenAddress": token_addr
+        });
+
+        let token = self.post_request::<_, TokenPrice>(endpoint, &req).await?;
+
+        Ok(token)
+    }
 }
+// pub async fn token_subscribe(
+//     &self,
+
+//     req: crate::request::TokenSubscribeReq,
+// ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
+//     let res = self
+//         .client
+//         .post("token/subscribe")
+//         .json(serde_json::json!(req))
+//         .send::<serde_json::Value>()
+//         .await?;
+//     let res: crate::response::BackendResponse =
+//         wallet_utils::serde_func::serde_from_value(res)?;
+//     res.process(&self.aes_cbc_cryptor)
+// }
+
+// pub async fn token_query_by_contract_address(
+//     &self,
+
+//     req: &TokenQueryByContractAddressReq,
+// ) -> Result<TokenQueryByContractAddressRes, crate::Error> {
+//     let req = serde_json::json!(req);
+
+//     let res = self
+//         .client
+//         .post("token/queryByContractAddress")
+//         .json(req)
+//         .send::<crate::response::BackendResponse>()
+//         .await?;
+//     res.process(&self.aes_cbc_cryptor)
+// }
+
+// pub async fn token_cancel_subscribe(
+//     &self,
+
+//     req: crate::request::TokenCancelSubscribeReq,
+// ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
+//     let res = self
+//         .client
+//         .post("token/cancelSubscribe")
+//         .json(serde_json::json!(req))
+//         .send::<crate::response::BackendResponse>()
+//         .await?;
+//     res.process(&self.aes_cbc_cryptor)
+// }
+
+// query token fee_rate
+// pub async fn token_query_by_currency(
+//     &self,
+
+//     chain_code: &str,
+//     currency: &str,
+//     symbol: &str,
+// ) -> Result<crate::response_vo::coin::TokenCurrency, crate::Error> {
+//     let mut params = HashMap::new();
+
+//     let symbol = symbol.to_lowercase();
+//     params.insert("chainCode", chain_code);
+//     params.insert("code", &symbol);
+//     params.insert("currency", currency);
+
+//     let res = self
+//         .client
+//         .post("token/queryByCurrency")
+//         .json(params)
+//         .send::<crate::response::BackendResponse>()
+//         .await?;
+//     res.process(&self.aes_cbc_cryptor)
+// }
+
+// pub async fn token_query_by_contract_address(
+//     &self,
+
+//     req: &TokenQueryByContractAddressReq,
+// ) -> Result<TokenQueryByContractAddressRes, crate::Error> {
+//     let req = serde_json::json!(req);
+
+//     let res = self
+//         .client
+//         .post("token/queryByContractAddress")
+//         .json(req)
+//         .send::<crate::response::BackendResponse>()
+//         .await?;
+//     res.process(&self.aes_cbc_cryptor)
+// }
+
+// pub async fn token_cancel_subscribe(
+//     &self,
+
+//     req: crate::request::TokenCancelSubscribeReq,
+// ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
+//     let res = self
+//         .client
+//         .post("token/cancelSubscribe")
+//         .json(serde_json::json!(req))
+//         .send::<crate::response::BackendResponse>()
+//         .await?;
+//     res.process(&self.aes_cbc_cryptor)
+// }
+
+// query token fee_rate
+// pub async fn token_query_by_currency(
+//     &self,
+
+//     chain_code: &str,
+//     currency: &str,
+//     symbol: &str,
+// ) -> Result<crate::response_vo::coin::TokenCurrency, crate::Error> {
+//     let mut params = HashMap::new();
+
+//     let symbol = symbol.to_lowercase();
+//     params.insert("chainCode", chain_code);
+//     params.insert("code", &symbol);
+//     params.insert("currency", currency);
+
+//     let res = self
+//         .client
+//         .post("token/queryByCurrency")
+//         .json(params)
+//         .send::<crate::response::BackendResponse>()
+//         .await?;
+//     res.process(&self.aes_cbc_cryptor)
+// }
