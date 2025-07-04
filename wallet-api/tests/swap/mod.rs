@@ -155,8 +155,12 @@ async fn test_deposit_and_approve() {
 async fn test_swap() {
     let wallet_manager = get_manager().await;
 
+    let o_value = "0.1";
+
+    let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 18).unwrap();
+
     let dex_route1 = DexRoute {
-        amount_in: "10000000000000000".to_string(),
+        amount_in: amount_in.to_string(),
         amount_out: "0".to_string(),
         route_in_dex: vec![
             RouteInDex {
@@ -183,7 +187,7 @@ async fn test_swap() {
     };
 
     let token_in = SwapTokenInfo {
-        token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+        token_addr: "".to_string(),
         symbol: "ETH".to_string(),
         decimals: 18,
     };
@@ -196,7 +200,7 @@ async fn test_swap() {
 
     let req = SwapReq {
         aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
-        amount_in: "0.1".to_string(),
+        amount_in: o_value.to_string(),
         amount_out: "0".to_string(),
         min_amount_out: "0".to_string(),
         chain_code: "eth".to_string(),
@@ -204,11 +208,11 @@ async fn test_swap() {
         token_in,
         token_out,
         dex_router: vec![dex_route1],
-        allow_partial_fill: false,
+        allow_partial_fill: true,
     };
 
     let fee =
-                r#"{"gasLimit":300000,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1000000000"}"#
+                r#"{"gasLimit":3000000,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1000000000"}"#
                     .to_string();
     let password = "123456".to_string();
 
