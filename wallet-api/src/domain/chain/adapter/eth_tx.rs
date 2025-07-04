@@ -76,10 +76,17 @@ pub(super) async fn estimate_swap(
     chain: &EthChain,
 ) -> Result<EstimateSwapResult, crate::ServiceError> {
     let call_value = dexSwap1Call::try_from(&swap_params)?;
+
     let tx = TransactionRequest::default()
         .from(swap_params.recipient)
         .to(swap_params.aggregator_addr)
         .with_input(call_value.abi_encode());
+
+    let tx = if swap_params.token_in.is_zero() {
+        tx.with_value(swap_params.amount_in)
+    } else {
+        tx
+    };
 
     // estimate_fee
     let gas_limit = chain.provider.estimate_gas(tx.clone()).await?;
@@ -116,12 +123,17 @@ pub(super) async fn swap(
     let fee = pare_fee_setting(fee.as_str())?;
 
     let call_value = dexSwap1Call::try_from(swap_params)?;
-
     // 构建交易
     let tx = TransactionRequest::default()
         .from(swap_params.recipient)
         .to(swap_params.aggregator_addr)
         .with_input(call_value.abi_encode());
+
+    let tx = if swap_params.token_in.is_zero() {
+        tx.with_value(swap_params.amount_in)
+    } else {
+        tx
+    };
 
     let tx = chain
         .provider

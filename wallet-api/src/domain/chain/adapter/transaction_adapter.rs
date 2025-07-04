@@ -897,10 +897,13 @@ impl TransactionAdapter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        domain::{chain::adapter::ChainAdapterFactory, swap_client::AggQuoteResp},
+        domain::{
+            chain::adapter::ChainAdapterFactory,
+            swap_client::{AggQuoteResp, DexRoute, RouteInDex},
+        },
         request::transaction::{QuoteReq, SwapTokenInfo},
     };
-    use wallet_utils::init_test_log;
+    use wallet_utils::{init_test_log, unit};
 
     #[tokio::test]
     async fn test_estimate_swap() {
@@ -913,12 +916,43 @@ mod tests {
             .await
             .unwrap();
 
+        let amount_in = unit::convert_to_u256("0.1", 18).unwrap();
+
         // 模拟聚合器的响应
-        let s = r#"{"chain_id":1,"dex_route_list":[{"amount_in":"10000000000000000","amount_out":"0","route_in_dex":[{"dex_id":3,"pool_id":"0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640","in_token_addr":"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2","out_token_addr":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","zero_for_one":false,"fee":"500","amount_in":"0","min_amount_out":"0"},{"dex_id":2,"pool_id":"0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f","in_token_addr":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","out_token_addr":"0xdac17f958d2ee523a2206206994597c13d831ec7","zero_for_one":true,"fee":"3000","amount_in":"0","min_amount_out":"0"}]}]}"#;
-        let resp = serde_json::from_str::<AggQuoteResp>(s).unwrap();
+        let resp = AggQuoteResp {
+            chain_id: 1,
+            amount_in: amount_in.to_string(),
+            amount_out: "0".to_string(),
+            dex_route_list: vec![DexRoute {
+                amount_in: amount_in.to_string(),
+                amount_out: "0".to_string(),
+                route_in_dex: vec![
+                    RouteInDex {
+                        dex_id: 3,
+                        pool_id: "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640".to_string(),
+                        zero_for_one: false,
+                        amount_in: amount_in.to_string(),
+                        min_amount_out: "0".to_string(),
+                        in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+                        out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+                        fee: "0".to_string(),
+                    },
+                    RouteInDex {
+                        dex_id: 2,
+                        pool_id: "0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f".to_string(),
+                        zero_for_one: true,
+                        amount_in: "0".to_string(),
+                        min_amount_out: "0".to_string(),
+                        in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+                        out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+                        fee: "0".to_string(),
+                    },
+                ],
+            }],
+        };
 
         let token_in = SwapTokenInfo {
-            token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+            token_addr: "".to_string(),
             symbol: "ETH".to_string(),
             decimals: 18,
         };
@@ -931,9 +965,9 @@ mod tests {
 
         let req = QuoteReq {
             aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
-            recipient: "".to_string(),
+            recipient: "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string(),
             chain_code: "eth".to_string(),
-            amount_in: "0.2".to_string(),
+            amount_in: "0.1".to_string(),
             token_in,
             token_out,
             dex_list: vec![2, 3],
@@ -945,14 +979,12 @@ mod tests {
 
         tracing::warn!(
             "amount_in {}",
-            wallet_utils::unit::format_to_f64(result.amount_in, req.token_in.decimals as u8)
-                .unwrap(),
+            unit::format_to_f64(result.amount_in, req.token_in.decimals as u8).unwrap(),
         );
 
         tracing::warn!(
             "amount_out {}",
-            wallet_utils::unit::format_to_f64(result.amount_out, req.token_out.decimals as u8)
-                .unwrap(),
+            unit::format_to_f64(result.amount_out, req.token_out.decimals as u8).unwrap(),
         );
     }
 }
