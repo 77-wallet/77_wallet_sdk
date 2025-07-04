@@ -97,8 +97,7 @@ impl ChainAdapterFactory {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
 
         let header_opt = if rpc_need_header(rpc_url)? {
-            // Some(crate::Context::get_rpc_header().await?)
-            None
+            Some(crate::Context::get_rpc_header().await?)
         } else {
             None
         };

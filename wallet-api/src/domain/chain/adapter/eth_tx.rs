@@ -6,7 +6,7 @@ use crate::{
             EstimateSwapResult,
         },
     },
-    request::transaction::{ApproveParams, DepositParams},
+    request::transaction::ApproveReq,
 };
 use alloy::{
     network::TransactionBuilder as _,
@@ -15,7 +15,7 @@ use alloy::{
 use alloy::{primitives::U256, rpc::types::TransactionRequest};
 use wallet_chain_interact::{
     eth::{
-        operations::erc::{Allowance, Approve, Deposit},
+        operations::erc::{Allowance, Approve},
         EthChain, FeeSetting,
     },
     types::ChainPrivateKey,
@@ -23,7 +23,7 @@ use wallet_chain_interact::{
 
 pub(super) async fn approve(
     chain: &EthChain,
-    req: &ApproveParams,
+    req: &ApproveReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
 ) -> Result<String, crate::ServiceError> {
@@ -39,24 +39,24 @@ pub(super) async fn approve(
     Ok(hash)
 }
 
-// deposit 获取币
-pub(super) async fn deposit(
-    chain: &EthChain,
-    req: &DepositParams,
-    value: alloy::primitives::U256,
-    key: ChainPrivateKey,
-) -> Result<String, crate::ServiceError> {
-    let deposit = Deposit::new(&req.from, &req.contract, value)?;
+// // deposit 获取币
+// pub(super) async fn deposit(
+//     chain: &EthChain,
+//     req: &DepositParams,
+//     value: alloy::primitives::U256,
+//     key: ChainPrivateKey,
+// ) -> Result<String, crate::ServiceError> {
+//     let deposit = Deposit::new(&req.from, &req.contract, value)?;
 
-    // 使用默认的手续费配置
-    let gas_price = chain.provider.gas_price().await?;
-    let fee_setting = FeeSetting::new_with_price(gas_price);
+//     // 使用默认的手续费配置
+//     let gas_price = chain.provider.gas_price().await?;
+//     let fee_setting = FeeSetting::new_with_price(gas_price);
 
-    // exec tx
-    let hash = chain.exec_transaction(deposit, fee_setting, key).await?;
+//     // exec tx
+//     let hash = chain.exec_transaction(deposit, fee_setting, key).await?;
 
-    Ok(hash)
-}
+//     Ok(hash)
+// }
 
 pub(super) async fn allowance(
     chain: &EthChain,

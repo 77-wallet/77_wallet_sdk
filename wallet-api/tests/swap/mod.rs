@@ -1,7 +1,6 @@
 use crate::get_manager;
-use wallet_api::{
-    domain::swap_client::{DexRoute, RouteInDex},
-    request::transaction::{ApproveParams, QuoteReq, SwapReq, SwapTokenInfo, SwapTokenListReq},
+use wallet_api::request::transaction::{
+    ApproveReq, DexRoute, QuoteReq, RouteInDex, SwapReq, SwapTokenInfo, SwapTokenListReq,
 };
 
 #[tokio::test]
@@ -41,7 +40,7 @@ async fn test_token_list() {
 async fn test_approve() {
     let wallet_manager = get_manager().await;
 
-    let params = ApproveParams {
+    let params = ApproveReq {
         from: "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string(),
         spender: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
         contract: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
@@ -51,7 +50,7 @@ async fn test_approve() {
 
     let password = "123456".to_string();
 
-    let resp = wallet_manager.approve(params, password).await.unwrap();
+    let resp = wallet_manager.approve(params, password).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 
@@ -137,7 +136,7 @@ async fn test_deposit_and_approve() {
     // let resp = wallet_manager.deposit(params, password.clone()).await.unwrap();
     // println!("deposit = {}", serde_json::to_string(&resp).unwrap());
 
-    let params = ApproveParams {
+    let params = ApproveReq {
         from: "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string(),
         spender: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
         contract: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
@@ -145,7 +144,7 @@ async fn test_deposit_and_approve() {
         chain_code: "eth".to_string(),
     };
 
-    let resp = wallet_manager.approve(params, password).await.unwrap();
+    let resp = wallet_manager.approve(params, password).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 

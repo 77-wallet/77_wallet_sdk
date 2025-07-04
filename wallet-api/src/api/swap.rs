@@ -1,7 +1,7 @@
 use crate::{
     api::ReturnType,
     domain::swap_client::{SupportChain, SupportDex},
-    request::transaction::{ApproveParams, QuoteReq, SwapReq, SwapTokenListReq},
+    request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::swap::ApiQuoteResp,
     service::swap::SwapServer,
 };
@@ -30,11 +30,7 @@ impl crate::WalletManager {
         SwapServer::new()?.dex_list(chain_code).await.into()
     }
 
-    pub async fn approve(
-        &self,
-        req: ApproveParams,
-        password: String,
-    ) -> Result<String, crate::ServiceError> {
+    pub async fn approve(&self, req: ApproveReq, password: String) -> ReturnType<String> {
         SwapServer::new()?.approve(req, password).await.into()
     }
 

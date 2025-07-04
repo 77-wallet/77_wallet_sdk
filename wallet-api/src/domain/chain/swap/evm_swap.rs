@@ -1,9 +1,10 @@
 // tron 和 eth 系列的交易参数
-use crate::domain::swap_client::DexRoute;
 use alloy::{
     primitives::{Address, U256},
     sol,
 };
+
+use crate::request::transaction::DexRoute;
 
 // evm 系列调用合约的方法
 sol!(
