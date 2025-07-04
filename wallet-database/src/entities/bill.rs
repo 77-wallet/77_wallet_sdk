@@ -60,6 +60,11 @@ impl BillEntity {
 
         has_expiration(self.transaction_time.timestamp(), chain_code)
     }
+
+    // 截断金额
+    pub fn truncate_to_8_decimals(&mut self) {
+        self.value = wallet_utils::unit::truncate_to_8_decimals(&self.value)
+    }
 }
 
 pub enum BillStatus {

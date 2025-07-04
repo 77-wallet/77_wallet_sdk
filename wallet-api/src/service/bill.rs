@@ -3,23 +3,15 @@ use crate::{
     response_vo::CoinCurrency,
 };
 use wallet_database::{
-    dao::bill::BillDao,
     entities::{account::AccountEntity, bill::BillEntity},
     pagination::Pagination,
-    repositories::{account::AccountRepoTrait, bill::BillRepoTrait, permission::PermissionRepo},
+    repositories::{bill::BillRepo, permission::PermissionRepo},
 };
 
-pub struct BillService<T: BillRepoTrait + AccountRepoTrait> {
-    repo: T,
-}
+pub struct BillService;
 
-impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
-    pub fn new(repo: T) -> Self {
-        Self { repo }
-    }
-
+impl BillService {
     pub async fn bill_lists(
-        &mut self,
         root_addr: Option<String>,
         account_id: Option<u32>,
         addr: Option<String>,
@@ -33,18 +25,19 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::ServiceError> {
-        // TODO transaction don't need
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
-            let account = self
-                .repo
-                .account_list_by_wallet_address_and_account_id_and_chain_codes(
-                    root_addr.as_deref(),
-                    account_id,
-                    Vec::new(),
-                )
-                .await?;
+            let account = AccountEntity::account_list(
+                pool.as_ref(),
+                root_addr.as_deref(),
+                None,
+                None,
+                vec![],
+                account_id,
+            )
+            .await?;
 
             let mut address = account
                 .iter()
@@ -52,7 +45,6 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
                 .collect::<Vec<String>>();
 
             // 兼容权限里面的地址
-            let pool = crate::Context::get_global_sqlite_pool()?;
             let users = PermissionRepo::permission_by_users(&pool, &address).await?;
 
             for user in users {
@@ -67,44 +59,30 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
             _ => None,
         };
 
-        let mut lists = self
-            .repo
-            .bill_lists(
-                &adds,
-                chain_code,
-                symbol,
-                is_multisig,
-                min_value,
-                start,
-                end,
-                transfer_type,
-                page,
-                page_size,
-            )
-            .await
-            .map_err(crate::ServiceError::Database)?;
+        let mut lists = BillRepo::bill_lists(
+            &adds,
+            chain_code,
+            symbol,
+            is_multisig,
+            min_value,
+            start,
+            end,
+            transfer_type,
+            page,
+            page_size,
+            &pool,
+        )
+        .await?;
 
         lists
             .data
             .iter_mut()
-            .for_each(|item| item.value = wallet_utils::unit::truncate_to_8_decimals(&item.value));
+            .for_each(|item| item.truncate_to_8_decimals());
 
         Ok(lists)
     }
 
-    pub async fn list_by_hashs(
-        &mut self,
-        owner: String,
-        hashs: Vec<String>,
-    ) -> Result<Vec<BillEntity>, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
-        let res = BillDao::lists_by_hashs(pool.as_ref(), &owner, hashs).await?;
-
-        Ok(res)
-    }
-
     pub async fn sync_bill_by_address(
-        &mut self,
         chain_code: &str,
         address: &str,
     ) -> Result<(), crate::ServiceError> {
@@ -112,7 +90,6 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
     }
 
     pub async fn sync_bill_by_wallet_and_account(
-        &mut self,
         wallet_address: String,
         account_id: u32,
     ) -> Result<(), crate::ServiceError> {
@@ -144,7 +121,6 @@ impl<T: BillRepoTrait + AccountRepoTrait> BillService<T> {
     }
 
     pub async fn coin_currency_price(
-        &mut self,
         chain_code: String,
         symbol: String,
     ) -> Result<CoinCurrency, crate::ServiceError> {

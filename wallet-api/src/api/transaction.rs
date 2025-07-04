@@ -29,21 +29,17 @@ impl crate::WalletManager {
         &self,
         req: transaction::BaseTransferReq,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        crate::service::transaction::TransactionService::transaction_fee(req)
-            .await
-            .into()
+        TransactionService::transaction_fee(req).await.into()
     }
 
     pub async fn transfer(&self, req: transaction::TransferReq) -> ReturnType<TransactionResult> {
-        crate::service::transaction::TransactionService::transfer(req, BillKind::Transfer)
+        TransactionService::transfer(req, BillKind::Transfer)
             .await
             .into()
     }
 
     pub async fn bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<BillDetailVo> {
-        crate::service::transaction::TransactionService::bill_detail(tx_hash, owner)
-            .await
-            .into()
+        TransactionService::bill_detail(tx_hash, owner).await.into()
     }
 
     pub async fn list_by_hashs(
@@ -51,8 +47,7 @@ impl crate::WalletManager {
         owner: String,
         hashs: Vec<String>,
     ) -> ReturnType<Vec<BillEntity>> {
-        BillService::new(self.repo_factory.resource_repo())
-            .list_by_hashs(owner, hashs)
+        TransactionService::list_by_hashs(owner, hashs)
             .await?
             .into()
     }
@@ -72,23 +67,22 @@ impl crate::WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<BillEntity>> {
-        BillService::new(self.repo_factory.resource_repo())
-            .bill_lists(
-                root_addr,
-                account_id,
-                addr,
-                chain_code.as_deref(),
-                symbol.as_deref(),
-                is_multisig,
-                filter_min_value,
-                start,
-                end,
-                transfer_type,
-                page,
-                page_size,
-            )
-            .await?
-            .into()
+        BillService::bill_lists(
+            root_addr,
+            account_id,
+            addr,
+            chain_code.as_deref(),
+            symbol.as_deref(),
+            is_multisig,
+            filter_min_value,
+            start,
+            end,
+            transfer_type,
+            page,
+            page_size,
+        )
+        .await?
+        .into()
     }
 
     // 最近交易列表
@@ -100,31 +94,18 @@ impl crate::WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<RecentBillListVo>> {
-        crate::service::transaction::TransactionService::recent_bill(
-            &symbol,
-            &addr,
-            &chain_code,
-            page,
-            page_size,
-        )
-        .await
-        .into()
-    }
-
-    // 单笔查询交易并处理
-    pub async fn query_tx_result(
-        &self,
-        // req: Vec<QueryBillResultReq>,
-        req: Vec<String>,
-    ) -> ReturnType<Vec<BillEntity>> {
-        crate::service::transaction::TransactionService::query_tx_result(req)
+        TransactionService::recent_bill(&symbol, &addr, &chain_code, page, page_size)
             .await
             .into()
     }
 
+    // 单笔查询交易并处理
+    pub async fn query_tx_result(&self, req: Vec<String>) -> ReturnType<Vec<BillEntity>> {
+        TransactionService::query_tx_result(req).await.into()
+    }
+
     pub async fn sync_bill(&self, chain_code: String, address: String) -> ReturnType<()> {
-        BillService::new(self.repo_factory.resource_repo())
-            .sync_bill_by_address(&chain_code, &address)
+        BillService::sync_bill_by_address(&chain_code, &address)
             .await?
             .into()
     }
@@ -134,8 +115,7 @@ impl crate::WalletManager {
         wallet_address: String,
         account_id: u32,
     ) -> ReturnType<()> {
-        BillService::new(self.repo_factory.resource_repo())
-            .sync_bill_by_wallet_and_account(wallet_address, account_id)
+        BillService::sync_bill_by_wallet_and_account(wallet_address, account_id)
             .await?
             .into()
     }
@@ -146,8 +126,7 @@ impl crate::WalletManager {
         chain_code: String,
         symbol: String,
     ) -> ReturnType<CoinCurrency> {
-        BillService::new(self.repo_factory.resource_repo())
-            .coin_currency_price(chain_code, symbol)
+        BillService::coin_currency_price(chain_code, symbol)
             .await
             .into()
     }

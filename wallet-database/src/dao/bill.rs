@@ -6,8 +6,8 @@ use crate::{
     pagination::Pagination,
     DbPool,
 };
-use sqlx::{Executor, Pool, Sqlite};
-use std::{collections::HashSet, sync::Arc};
+use sqlx::{Executor, Sqlite};
+use std::collections::HashSet;
 use wallet_types::constant::chain_code;
 pub struct BillDao;
 
@@ -187,6 +187,7 @@ impl BillDao {
         Ok(paginate.page(pool, &sql).await?)
     }
 
+    // 最近转列
     pub async fn recent_bill(
         symbol: &str,
         addr: &str,
@@ -194,7 +195,7 @@ impl BillDao {
         min_value: Option<f64>,
         page: i64,
         page_size: i64,
-        pool: Arc<Pool<Sqlite>>,
+        pool: DbPool,
     ) -> Result<Pagination<RecentBillListVo>, crate::Error> {
         let min_value_condition = if let Some(value) = min_value {
             format!("AND CAST(value as REAL) >= {}", value)
