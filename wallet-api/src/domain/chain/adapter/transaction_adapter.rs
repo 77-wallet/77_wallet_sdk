@@ -754,7 +754,7 @@ impl TransactionAdapter {
 
     pub async fn approve(
         &self,
-        req: &transaction::ApproveParams,
+        req: &transaction::ApproveReq,
         coin: u8,
         key: ChainPrivateKey,
     ) -> Result<String, crate::ServiceError> {
@@ -773,25 +773,25 @@ impl TransactionAdapter {
         Ok(hash)
     }
 
-    pub async fn deposit(
-        &self,
-        req: &transaction::DepositParams,
-        decimals: u8,
-        key: ChainPrivateKey,
-    ) -> Result<String, crate::ServiceError> {
-        let value = wallet_utils::unit::convert_to_u256(&req.value, decimals)?;
+    // pub async fn deposit(
+    //     &self,
+    //     req: &transaction::DepositParams,
+    //     decimals: u8,
+    //     key: ChainPrivateKey,
+    // ) -> Result<String, crate::ServiceError> {
+    //     let value = wallet_utils::unit::convert_to_u256(&req.value, decimals)?;
 
-        let hash = match self {
-            Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, key).await?,
-            _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?
-            }
-        };
+    //     let hash = match self {
+    //         Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, key).await?,
+    //         _ => {
+    //             return Err(crate::BusinessError::Chain(
+    //                 crate::ChainError::NotSupportChain,
+    //             ))?
+    //         }
+    //     };
 
-        Ok(hash)
-    }
+    //     Ok(hash)
+    // }
 
     pub async fn allowance(
         &self,
@@ -897,11 +897,8 @@ impl TransactionAdapter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        domain::{
-            chain::adapter::ChainAdapterFactory,
-            swap_client::{AggQuoteResp, DexRoute, RouteInDex},
-        },
-        request::transaction::{QuoteReq, SwapTokenInfo},
+        domain::{chain::adapter::ChainAdapterFactory, swap_client::AggQuoteResp},
+        request::transaction::{DexRoute, QuoteReq, RouteInDex, SwapTokenInfo},
     };
     use wallet_utils::{init_test_log, unit};
 

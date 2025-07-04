@@ -1,9 +1,7 @@
+use crate::{domain::app::mqtt::MqttDomain, FrontendNotifyEvent};
 use std::{collections::HashSet, sync::Arc};
-
 use tokio::time::Instant;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
-
-use crate::{domain::app::mqtt::MqttDomain, FrontendNotifyEvent};
 
 #[derive(Debug, Clone)]
 pub(crate) struct UnconfirmedMsgCollector {
@@ -13,7 +11,7 @@ pub(crate) struct UnconfirmedMsgCollector {
 impl UnconfirmedMsgCollector {
     pub fn new() -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        // Self::start_collect(rx);
+        Self::start_collect(rx);
         Self { tx }
     }
 

@@ -1,5 +1,5 @@
 // 先放在这里，不知道最终会不会和后端用一个
-use crate::request::transaction::SwapTokenListReq;
+use crate::request::transaction::{DexRoute, SwapTokenListReq};
 use alloy::primitives::U256;
 use wallet_transport::client::HttpClient;
 
@@ -120,27 +120,6 @@ impl AggQuoteResp {
     pub fn amount_out_u256(&self, unit: u8) -> Result<U256, crate::ServiceError> {
         Ok(wallet_utils::unit::convert_to_u256(&self.amount_out, unit)?)
     }
-}
-
-// 路由
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-pub struct DexRoute {
-    pub amount_in: String, // 可选择转换为 U256
-    pub amount_out: String,
-    pub route_in_dex: Vec<RouteInDex>,
-}
-
-// 子路由
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-pub struct RouteInDex {
-    pub dex_id: u16,
-    pub pool_id: String,
-    pub in_token_addr: String,
-    pub out_token_addr: String,
-    pub zero_for_one: bool,
-    pub fee: String,
-    pub amount_in: String,
-    pub min_amount_out: String,
 }
 
 #[cfg(test)]

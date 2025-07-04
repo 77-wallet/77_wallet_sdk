@@ -5,7 +5,7 @@ use crate::{
         coin::TokenCurrencyGetter,
         swap_client::{AggQuoteRequest, AggQuoteResp, SupportChain, SupportDex, SwapClient},
     },
-    request::transaction::{ApproveParams, QuoteReq, SwapReq, SwapTokenListReq},
+    request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::swap::ApiQuoteResp,
 };
 use alloy::primitives::U256;
@@ -157,7 +157,7 @@ impl SwapServer {
 
     pub async fn approve(
         &self,
-        req: ApproveParams,
+        req: ApproveReq,
         password: String,
     ) -> Result<String, crate::ServiceError> {
         // // get coin

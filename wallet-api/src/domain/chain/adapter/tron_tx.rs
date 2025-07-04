@@ -6,7 +6,7 @@ use crate::{
         },
         multisig::MultisigQueueDomain,
     },
-    request::transaction::ApproveParams,
+    request::transaction::ApproveReq,
     response_vo::TransferParams,
 };
 use alloy::{primitives::U256, sol_types::SolCall};
@@ -62,7 +62,7 @@ pub(super) async fn build_build_tx(
 
 pub(super) async fn approve(
     chain: &TronChain,
-    req: &ApproveParams,
+    req: &ApproveReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
 ) -> Result<String, crate::ServiceError> {

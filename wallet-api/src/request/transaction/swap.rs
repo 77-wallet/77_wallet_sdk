@@ -1,6 +1,6 @@
 use crate::domain::{
     chain::swap::{evm_swap::SwapParams, get_warp_address},
-    swap_client::{AggQuoteRequest, DexId, DexRoute},
+    swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;
 use wallet_database::entities::bill::NewBillEntity;
@@ -15,7 +15,7 @@ pub struct SwapTokenListReq {
 }
 
 #[derive(Debug)]
-pub struct ApproveParams {
+pub struct ApproveReq {
     pub contract: String,
     pub from: String,
     pub spender: String,
@@ -23,8 +23,8 @@ pub struct ApproveParams {
     pub chain_code: String,
 }
 
-impl From<ApproveParams> for NewBillEntity {
-    fn from(value: ApproveParams) -> Self {
+impl From<ApproveReq> for NewBillEntity {
+    fn from(value: ApproveReq) -> Self {
         NewBillEntity {
             hash: "".to_string(),
             from: value.from,
@@ -46,14 +46,6 @@ impl From<ApproveParams> for NewBillEntity {
             signer: vec![],
         }
     }
-}
-
-#[derive(Debug)]
-pub struct DepositParams {
-    pub contract: String,
-    pub from: String,
-    pub value: String,
-    pub chain_code: String,
 }
 
 pub struct SwapReq {
@@ -233,4 +225,25 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
             dex_ids,
         })
     }
+}
+
+// 路由
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct DexRoute {
+    pub amount_in: String, // 可选择转换为 U256
+    pub amount_out: String,
+    pub route_in_dex: Vec<RouteInDex>,
+}
+
+// 子路由
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct RouteInDex {
+    pub dex_id: u16,
+    pub pool_id: String,
+    pub in_token_addr: String,
+    pub out_token_addr: String,
+    pub zero_for_one: bool,
+    pub fee: String,
+    pub amount_in: String,
+    pub min_amount_out: String,
 }
