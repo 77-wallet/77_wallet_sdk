@@ -1,6 +1,7 @@
 use super::account::BalanceInfo;
 use crate::{domain::chain::swap::calc_slippage, request::transaction::DexRoute};
 use alloy::primitives::U256;
+use wallet_transport_backend::api::swap::ApproveInfo;
 
 // 查询报价的响应
 #[derive(serde::Serialize)]
@@ -56,4 +57,38 @@ impl ApiQuoteResp {
         self.min_amount =
             wallet_utils::unit::format_to_string(min_amount, decimals as u8).unwrap_or_default();
     }
+}
+
+// 授权列表
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApproveList {
+    pub chain_code: String,
+    pub token_address: String,
+    pub spender: String,
+    pub amount: String,
+    pub limit_type: String,
+}
+
+impl From<ApproveInfo> for ApproveList {
+    fn from(value: ApproveInfo) -> Self {
+        Self {
+            chain_code: value.chain_code,
+            token_address: value.token_addr,
+            spender: value.spender,
+            amount: value.value,
+            limit_type: value.limit_type,
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapTokenInfo {
+    pub symbol: String,
+    pub decimals: u32,
+    pub chain_code: String,
+    pub name: String,
+    pub token_addr: String,
+    pub balance: BalanceInfo,
 }

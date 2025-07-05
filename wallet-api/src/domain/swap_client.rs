@@ -70,6 +70,21 @@ impl SwapClient {
 
         self.handle_result(res)
     }
+
+    pub async fn swap_contract(
+        &self,
+        chain_code: String,
+    ) -> Result<serde_json::Value, crate::ServiceError> {
+        let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
+        let res = self
+            .client
+            .post_request::<_, AggregatorResp<serde_json::Value>>(
+                "get_swap_contract_address",
+                payload,
+            )
+            .await?;
+        self.handle_result(res)
+    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

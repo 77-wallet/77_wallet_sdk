@@ -827,3 +827,12 @@ impl TokenBalanceRefresh {
         }
     }
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapTokenQueryReq {
+    pub page_num: i64,
+    pub page_size: i64,
+    pub chain_code: String,
+    pub search: String,
+}

@@ -27,7 +27,7 @@ async fn test_token_list() {
 
     let req = SwapTokenListReq {
         chain_code: "eth".to_string(),
-        token_symbol_fuzzy: "".to_string(),
+        search: "".to_string(),
         page_num: 0,
         page_size: 10,
     };
@@ -41,11 +41,11 @@ async fn test_approve() {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
-        from: "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string(),
-        spender: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
-        contract: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+        from: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        spender: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
         value: "10".to_string(),
-        chain_code: "eth".to_string(),
+        chain_code: "tron".to_string(),
     };
 
     let password = "123456".to_string();
@@ -55,20 +55,59 @@ async fn test_approve() {
 }
 
 #[tokio::test]
-async fn test_allowance() {
+async fn test_approve_list() {
     let wallet_manager = get_manager().await;
 
-    let from = "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string();
-    let token = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string();
-    let chain_code = "eth".to_string();
-    let spender = "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string();
+    let uid = "a1638726610a344dd3f7af9ef1f001607bafdc1b1571122840be013f1ad5ca3c".to_string();
+    let account_id = 1;
 
-    let resp = wallet_manager
-        .allowance(from, token, chain_code, spender)
-        .await
-        .unwrap();
+    let resp = wallet_manager.approve_list(uid, account_id).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
+
+#[tokio::test]
+async fn test_approve_cancel() {
+    let wallet_manager = get_manager().await;
+
+    let params = ApproveReq {
+        from: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        spender: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
+        value: "10".to_string(),
+        chain_code: "tron".to_string(),
+    };
+
+    let password = "123456".to_string();
+
+    let resp = wallet_manager.approve_cancel(params, password).await;
+    println!("{}", serde_json::to_string(&resp).unwrap());
+}
+
+#[tokio::test]
+async fn test_supplier() {
+    let wallet_manager = get_manager().await;
+
+    let chain_code = "tron".to_string();
+
+    let resp = wallet_manager.supplier(chain_code).await;
+    println!("{}", serde_json::to_string(&resp).unwrap());
+}
+
+// #[tokio::test]
+// async fn test_allowance() {
+//     let wallet_manager = get_manager().await;
+
+//     let from = "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string();
+//     let token = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string();
+//     let chain_code = "eth".to_string();
+//     let spender = "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string();
+
+//     let resp = wallet_manager
+//         .allowance(from, token, chain_code, spender)
+//         .await
+//         .unwrap();
+//     println!("{}", serde_json::to_string(&resp).unwrap());
+// }
 
 #[tokio::test]
 async fn test_quote() {

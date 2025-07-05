@@ -2,9 +2,10 @@ use crate::{
     api::ReturnType,
     domain::swap_client::{SupportChain, SupportDex},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
-    response_vo::swap::ApiQuoteResp,
+    response_vo::swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
     service::swap::SwapServer,
 };
+use wallet_database::pagination::Pagination;
 
 impl crate::WalletManager {
     // 获取报价
@@ -17,7 +18,7 @@ impl crate::WalletManager {
     }
 
     // 获取token列表
-    pub async fn token_list(&self, req: SwapTokenListReq) -> ReturnType<serde_json::Value> {
+    pub async fn token_list(&self, req: SwapTokenListReq) -> ReturnType<Pagination<SwapTokenInfo>> {
         SwapServer::new()?.token_list(req).await.into()
     }
 
@@ -34,16 +35,33 @@ impl crate::WalletManager {
         SwapServer::new()?.approve(req, password).await.into()
     }
 
-    pub async fn allowance(
-        &self,
-        from: String,
-        token: String,
-        chain_code: String,
-        spender: String,
-    ) -> Result<String, crate::ServiceError> {
+    pub async fn approve_list(&self, uid: String, account_id: u32) -> ReturnType<Vec<ApproveList>> {
         SwapServer::new()?
-            .allowance(from, token, chain_code, spender)
+            .approve_list(uid, account_id)
             .await
             .into()
     }
+
+    pub async fn approve_cancel(&self, req: ApproveReq, password: String) -> ReturnType<String> {
+        SwapServer::new()?
+            .approve_cancel(req, password)
+            .await
+            .into()
+    }
+
+    pub async fn supplier(&self, chain_code: String) -> ReturnType<serde_json::Value> {
+        SwapServer::new()?.supplier(chain_code).await.into()
+    }
+
+    // pub async fn approve_cancel(
+    //     &self,
+    //     spender: &str,
+    //     token_addr: &str,
+    //     owner_addr: &str,
+    // ) -> ReturnType<bool> {
+    //     SwapServer::new()?
+    //         .approve_cancel(spender, token_addr, owner_addr)
+    //         .await
+    //         .into()
+    // }
 }

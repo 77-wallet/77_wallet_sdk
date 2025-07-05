@@ -1,5 +1,5 @@
 use crate::{
-    request::TokenQueryByPageReq,
+    request::{SwapTokenQueryReq, TokenQueryByPageReq},
     response_vo::coin::{CoinInfos, TokenPopularByPages, TokenPrice, TokenPriceInfos},
 };
 
@@ -104,6 +104,19 @@ impl BackendApi {
         });
 
         let token = self.post_request::<_, TokenPrice>(endpoint, &req).await?;
+
+        Ok(token)
+    }
+
+    pub async fn swap_token_list(
+        &self,
+        req: SwapTokenQueryReq,
+    ) -> Result<TokenPopularByPages, crate::Error> {
+        let endpoint = "token/swapTokenList";
+
+        let token = self
+            .post_request::<_, TokenPopularByPages>(endpoint, &req)
+            .await?;
 
         Ok(token)
     }

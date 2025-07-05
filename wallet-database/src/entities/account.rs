@@ -1,3 +1,5 @@
+use wallet_utils::address::AccountIndexMap;
+
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros ::Resource)]
 #[serde(rename_all = "camelCase")]
 #[resource(
@@ -109,4 +111,12 @@ pub struct AccountWithWalletEntity {
     pub address_type: String,
     pub wallet_address: String,
     pub uid: String,
+}
+
+impl AccountWithWalletEntity {
+    pub fn get_index(&self) -> Result<i32, crate::Error> {
+        let account_index_map = AccountIndexMap::from_account_id(self.account_id)?;
+
+        Ok(account_index_map.input_index)
+    }
 }

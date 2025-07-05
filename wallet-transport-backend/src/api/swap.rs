@@ -1,0 +1,89 @@
+use super::BackendApi;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApproveSaveParams {
+    pub uid: String,
+    pub index: i32,
+    #[serde(rename = "chainCode")]
+    pub chain_code: String,
+    pub spender: String,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "tokenAddr")]
+    pub token_addr: String,
+    pub status: String,
+    pub value: String,
+    #[serde(rename = "limitType")]
+    pub limit_type: String,
+}
+
+impl ApproveSaveParams {
+    pub fn new(
+        index: i32,
+        uid: &str,
+        chain_code: &str,
+        spender: &str,
+        owner_address: &str,
+        token_addr: &str,
+        value: String,
+    ) -> Self {
+        Self {
+            uid: uid.to_owned(),
+            index,
+            chain_code: chain_code.to_owned(),
+            spender: spender.to_owned(),
+            owner_address: owner_address.to_owned(),
+            token_addr: token_addr.to_owned(),
+            status: "APPROVED".to_string(),
+            value,
+            limit_type: "UN_LIMIT".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BackApproveList {
+    pub list: Vec<ApproveInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApproveInfo {
+    pub id: String,
+    pub uid: String,
+    pub index: u32,
+    #[serde(rename = "chainCode")]
+    pub chain_code: String,
+    pub spender: String,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "tokenAddr")]
+    pub token_addr: String,
+    pub status: String,
+    pub value: String,
+    #[serde(rename = "limitType")]
+    pub limit_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApproveCancelReq {
+    pub spender: String,
+    pub token_addr: String,
+    pub owner_address: String,
+}
+
+impl BackendApi {
+    pub async fn approve_list(
+        &self,
+        uid: String,
+        index: i32,
+    ) -> Result<BackApproveList, crate::Error> {
+        let endpoint = "swap/approve/list";
+
+        let req = std::collections::HashMap::from([("uid", uid), ("index", index.to_string())]);
+
+        self.post_request::<_, BackApproveList>(endpoint, &req)
+            .await
+    }
+}

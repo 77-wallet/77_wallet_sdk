@@ -9,9 +9,20 @@ use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 #[derive(Debug, serde::Serialize)]
 pub struct SwapTokenListReq {
     pub chain_code: String,
-    pub token_symbol_fuzzy: String,
+    pub search: String,
     pub page_num: i64,
     pub page_size: i64,
+}
+
+impl From<SwapTokenListReq> for wallet_transport_backend::request::SwapTokenQueryReq {
+    fn from(value: SwapTokenListReq) -> Self {
+        Self {
+            chain_code: value.chain_code,
+            search: value.search,
+            page_num: value.page_num,
+            page_size: value.page_size,
+        }
+    }
 }
 
 #[derive(Debug)]

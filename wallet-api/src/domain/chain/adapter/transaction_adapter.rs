@@ -755,11 +755,9 @@ impl TransactionAdapter {
     pub async fn approve(
         &self,
         req: &transaction::ApproveReq,
-        coin: u8,
         key: ChainPrivateKey,
+        value: alloy::primitives::U256,
     ) -> Result<String, crate::ServiceError> {
-        let value = wallet_utils::unit::convert_to_u256(&req.value, coin)?;
-
         let hash = match self {
             Self::Ethereum(chain) => eth_tx::approve(chain, req, value, key).await?,
             Self::Tron(chain) => tron_tx::approve(chain, req, value, key).await?,

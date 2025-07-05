@@ -167,6 +167,14 @@ pub struct TokenPriceChangeBody {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct TokenPopularByPages {
     pub list: Vec<TokenPriceChangeBody>,
+    #[serde(rename = "pageIndex")]
+    pub page_index: i64,
+    #[serde(rename = "totalPage")]
+    pub total_page: i64,
+    #[serde(rename = "pageSize")]
+    pub page_size: i64,
+    #[serde(rename = "totalCount")]
+    pub total_count: i64,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

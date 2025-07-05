@@ -4,13 +4,29 @@ use crate::{
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::TokenCurrencyGetter,
         swap_client::{AggQuoteRequest, AggQuoteResp, SupportChain, SupportDex, SwapClient},
+        task_queue::TaskQueueDomain,
     },
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
-    response_vo::swap::ApiQuoteResp,
+    response_vo::{
+        account::BalanceInfo,
+        swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
+    },
 };
 use alloy::primitives::U256;
-use wallet_database::{entities::bill::NewBillEntity, repositories::coin::CoinRepo};
-use wallet_utils::unit;
+use wallet_database::{
+    entities::{
+        assets::{AssetsEntity, AssetsId},
+        bill::NewBillEntity,
+    },
+    pagination::Pagination,
+    repositories::{account::AccountRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
+};
+use wallet_transport_backend::{
+    api::swap::{ApproveCancelReq, ApproveSaveParams},
+    consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
+    request::SwapTokenQueryReq,
+};
+use wallet_utils::{address::AccountIndexMap, unit};
 
 pub struct SwapServer {
     pub client: SwapClient,
@@ -140,8 +156,65 @@ impl SwapServer {
     pub async fn token_list(
         &self,
         req: SwapTokenListReq,
-    ) -> Result<serde_json::Value, crate::ServiceError> {
-        Ok(self.client.token_list(req).await?)
+    ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        let req = SwapTokenQueryReq::from(req);
+
+        let result = backend.swap_token_list(req).await?;
+
+        let mut resp = Pagination::<SwapTokenInfo> {
+            page: result.page_index,
+            page_size: result.page_size,
+            total_count: result.total_count,
+            data: vec![],
+        };
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let currency = {
+            let state = crate::app_state::APP_STATE.read().await;
+            state.currency().to_string() // 或复制 enum 值，取决于类型
+        };
+        for item in result.list.into_iter() {
+            // 查询资产
+            let assets_id = AssetsId {
+                address: item.token_address.clone().unwrap_or_default(),
+                symbol: item.aname.clone().unwrap_or_default(),
+                chain_code: item.chain_code.clone(),
+            };
+
+            let assets = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
+            let balance = if let Some(assets) = assets {
+                let unit_price = if currency.eq_ignore_ascii_case("usdt") {
+                    item.price
+                } else {
+                    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                    let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
+
+                    exchange.rate * item.price
+                };
+
+                let amount = wallet_utils::unit::string_to_f64(&assets.balance)?;
+                BalanceInfo::new(amount, Some(unit_price), &currency)
+            } else {
+                BalanceInfo::default()
+            };
+
+            // 构建响应
+            let resp_item = SwapTokenInfo {
+                token_addr: item.token_address.unwrap_or_default(),
+                symbol: item.aname.unwrap_or_default(),
+                decimals: item.unit.unwrap_or_default() as u32,
+                balance,
+                chain_code: item.chain_code,
+                name: item.name.unwrap_or_default(),
+            };
+            resp.data.push(resp_item);
+        }
+
+        // Ok(self.client.token_list(req).await?)
+
+        Ok(resp)
     }
 
     pub async fn chain_list(&self) -> Result<Vec<SupportChain>, crate::ServiceError> {
@@ -160,36 +233,109 @@ impl SwapServer {
         req: ApproveReq,
         password: String,
     ) -> Result<String, crate::ServiceError> {
-        // // get coin
+        // get coin
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
         let private_key =
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        let hash = adapter.approve(&req, coin.decimals, private_key).await?;
+        let value = alloy::primitives::U256::MAX;
+        let hash = adapter.approve(&req, private_key, value).await?;
 
+        let account = AccountRepo::account_with_wallet(&req.from, &req.chain_code, &pool).await?;
+
+        // 上报后端
+        let backend_req = ApproveSaveParams::new(
+            account.get_index()?,
+            &account.uid,
+            &req.chain_code,
+            &req.spender,
+            &req.from,
+            &req.contract,
+            value.to_string(),
+        );
+        TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
+
+        // 写入本地交易
         let mut new_bill = NewBillEntity::from(req);
         new_bill.hash = hash.clone();
         new_bill.symbol = coin.symbol;
-
         BillDomain::create_bill(new_bill).await?;
+
         Ok(hash)
     }
 
-    pub async fn allowance(
+    pub async fn approve_list(
         &self,
-        from: String,
-        token: String,
-        chain_code: String,
-        spender: String,
-    ) -> Result<String, crate::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&chain_code).await?;
+        uid: String,
+        account_id: u32,
+    ) -> Result<Vec<ApproveList>, crate::ServiceError> {
+        let index_map = AccountIndexMap::from_account_id(account_id)?;
 
-        let result = adapter.allowance(&from, &token, &spender).await?;
+        let backend = crate::manager::Context::get_global_backend_api()?;
 
-        Ok(result.to_string())
+        let resp = backend.approve_list(uid, index_map.input_index).await?;
+
+        let res = resp
+            .list
+            .into_iter()
+            .map(|item| ApproveList::from(item))
+            .collect::<Vec<ApproveList>>();
+
+        Ok(res)
     }
+
+    pub async fn approve_cancel(
+        &self,
+        req: ApproveReq,
+        password: String,
+    ) -> Result<String, crate::ServiceError> {
+        let private_key =
+            ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
+
+        let value = alloy::primitives::U256::ZERO;
+        let hash = adapter.approve(&req, private_key, value).await?;
+
+        let backend = ApproveCancelReq {
+            spender: req.spender.clone(),
+            token_addr: req.contract.clone(),
+            owner_address: req.from.clone(),
+        };
+        TaskQueueDomain::send_or_to_queue(backend, SWAP_APPROVE_CANCEL).await?;
+
+        // 写入本地交易
+        let mut new_bill = NewBillEntity::from(req);
+        new_bill.hash = hash.clone();
+        new_bill.symbol = coin.symbol;
+        BillDomain::create_bill(new_bill).await?;
+
+        Ok(hash)
+    }
+
+    pub async fn supplier(
+        &self,
+        chain_code: String,
+    ) -> Result<serde_json::Value, crate::ServiceError> {
+        Ok(self.client.swap_contract(chain_code).await?)
+    }
+
+    // pub async fn allowance(
+    //     &self,
+    //     from: String,
+    //     token: String,
+    //     chain_code: String,
+    //     spender: String,
+    // ) -> Result<String, crate::ServiceError> {
+    //     let adapter = ChainAdapterFactory::get_transaction_adapter(&chain_code).await?;
+
+    //     let result = adapter.allowance(&from, &token, &spender).await?;
+
+    //     Ok(result.to_string())
+    // }
 }
