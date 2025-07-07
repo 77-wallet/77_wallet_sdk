@@ -114,7 +114,7 @@ async fn test_quote() {
     let wallet_manager = get_manager().await;
 
     let token_in = SwapTokenInfo {
-        token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+        token_addr: "".to_string(),
         symbol: "ETH".to_string(),
         decimals: 18,
     };
@@ -126,15 +126,15 @@ async fn test_quote() {
     };
 
     let req = QuoteReq {
-        aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
-        recipient: "".to_string(),
+        aggregator_addr: "0x5C56d2f7a305A541b8655244b50511346C9009A7".to_string(),
+        recipient: "0xD5359AD68FDb8a72386aB26C68D7648D548ec70a".to_string(),
         chain_code: "eth".to_string(),
-        amount_in: "0.2".to_string(),
+        amount_in: "0.1".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
-        slippage: 0.2,
-        allow_partial_fill: false,
+        slippage: None,
+        allow_partial_fill: true,
     };
 
     let result = wallet_manager.quote(req).await;

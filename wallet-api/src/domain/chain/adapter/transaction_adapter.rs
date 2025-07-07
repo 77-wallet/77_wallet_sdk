@@ -818,7 +818,8 @@ impl TransactionAdapter {
         // note:如果token_in 是主币，则传入0地址
 
         let amount_out = quote_resp.amount_out_u256(req.token_out.decimals as u8)?;
-        let min_amount_out = calc_slippage(amount_out, req.slippage);
+        let min_amount_out =
+            calc_slippage(amount_out, req.get_slippage(quote_resp.default_slippage));
 
         let resp = match self {
             Self::Ethereum(chain) => {
@@ -915,7 +916,7 @@ mod tests {
 
         // 模拟聚合器的响应
         let resp = AggQuoteResp {
-            chain_id: 1,
+            chain_code: "eth".to_string(),
             amount_in: amount_in.to_string(),
             amount_out: "0".to_string(),
             dex_route_list: vec![DexRoute {
@@ -944,6 +945,7 @@ mod tests {
                     },
                 ],
             }],
+            default_slippage: 2,
         };
 
         let token_in = SwapTokenInfo {
@@ -966,7 +968,7 @@ mod tests {
             token_in,
             token_out,
             dex_list: vec![2, 3],
-            slippage: 0.2,
+            slippage: Some(0.2),
             allow_partial_fill: false,
         };
 

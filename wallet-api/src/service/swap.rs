@@ -3,7 +3,9 @@ use crate::{
         bill::BillDomain,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::TokenCurrencyGetter,
-        swap_client::{AggQuoteRequest, AggQuoteResp, SupportChain, SupportDex, SwapClient},
+        swap_client::{
+            AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SupportChain, SupportDex, SwapClient,
+        },
         task_queue::TaskQueueDomain,
     },
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
@@ -44,11 +46,31 @@ impl SwapServer {
 }
 
 impl SwapServer {
+    pub async fn default_quote(
+        &self,
+        chain_code: String,
+        token_in: String,
+        token_out: String,
+    ) -> Result<DefaultQuoteResp, crate::ServiceError> {
+        let res = self
+            .client
+            .default_quote(
+                &chain_code,
+                &token_in.to_lowercase(),
+                &token_out.to_lowercase(),
+            )
+            .await?;
+
+        Ok(res)
+    }
+
     pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
         use wallet_utils::unit::{convert_to_u256, format_to_f64, format_to_string, string_to_f64};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
         let quote_resp = self.client.get_quote(params).await?;
+
+        tracing::warn!("quote = {:#?}", quote_resp);
 
         let amount_out = unit::u256_from_str(&quote_resp.amount_out)?;
 
@@ -66,14 +88,11 @@ impl SwapServer {
         )
         .await?;
 
-        // TODO price
-        let mut res = ApiQuoteResp::new(
-            "".to_string(),
-            req.slippage,
-            quote_resp.dex_route_list.clone(),
-            bal_in,
-            bal_out,
-        );
+        // 获取滑点
+        let slippage = req.get_slippage(quote_resp.default_slippage);
+
+        let mut res =
+            ApiQuoteResp::new(slippage, quote_resp.dex_route_list.clone(), bal_in, bal_out);
         res.set_amount_out(amount_out, req.token_out.decimals);
 
         // 主币处理
@@ -91,7 +110,7 @@ impl SwapServer {
             return Ok(res);
         } else {
             let diff = amount_in - allowance;
-            res.approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
+            res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
             return Ok(res);
         }
     }

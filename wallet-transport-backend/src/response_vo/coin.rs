@@ -186,13 +186,3 @@ pub struct TokenPrice {
     pub unit: u8,
     pub price: String,
 }
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TokenPrice {
-    pub token_address: String,
-    pub code: String,
-    pub name: String,
-    pub unit: u8,
-    pub price: String,
-}

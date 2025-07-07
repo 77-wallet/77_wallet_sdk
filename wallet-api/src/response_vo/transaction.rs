@@ -4,6 +4,7 @@ use super::account::default_unit_price_as_zero;
 use super::account::BalanceInfo;
 use super::account::BalanceNotTruncate;
 use alloy::primitives::U256;
+use wallet_chain_interact::eth::FeeSetting;
 use wallet_chain_interact::{eth, tron};
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::{
@@ -269,6 +270,16 @@ impl EthereumFeeDetails {
             base_fee,
             priority_fee,
             max_fee_per_gas,
+        }
+    }
+}
+impl From<FeeSetting> for EthereumFeeDetails {
+    fn from(value: FeeSetting) -> Self {
+        Self {
+            gas_limit: value.gas_limit.to::<u64>() as i64,
+            base_fee: value.base_fee.to_string(),
+            priority_fee: value.max_priority_fee_per_gas.to_string(),
+            max_fee_per_gas: value.max_fee_per_gas.to_string(),
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::domain::{
-    chain::swap::{evm_swap::SwapParams, get_warp_address},
+    chain::swap::{evm_swap::SwapParams, get_warp_address, SLIPPAGE},
     swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;
@@ -169,7 +169,7 @@ pub struct QuoteReq {
     // 选择的池子
     pub dex_list: Vec<i32>,
     // 滑点
-    pub slippage: f64,
+    pub slippage: Option<f64>,
     // 允许部分兑换
     pub allow_partial_fill: bool,
 }
@@ -204,6 +204,10 @@ impl QuoteReq {
 
         Ok(wallet_utils::address::parse_eth_address(&hex_addr)?)
     }
+
+    pub fn get_slippage(&self, default_slippage: u64) -> f64 {
+        self.slippage.unwrap_or(default_slippage as f64 / SLIPPAGE)
+    }
 }
 
 pub struct SwapTokenInfo {
@@ -217,8 +221,6 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
     fn try_from(value: &QuoteReq) -> Result<Self, Self::Error> {
         let chain_code = ChainCode::try_from(value.chain_code.as_str())?;
 
-        let chain_id = 1;
-
         let amount =
             wallet_utils::unit::convert_to_u256(&value.amount_in, value.token_in.decimals as u8)?;
 
@@ -229,7 +231,7 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
             .collect();
 
         Ok(Self {
-            chain_id,
+            chain_code: chain_code.to_string(),
             amount: amount.to_string(),
             in_token_addr: value.token_in_or_warp(chain_code),
             out_token_addr: value.token_out.token_addr.clone(),

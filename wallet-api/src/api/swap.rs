@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType,
-    domain::swap_client::{SupportChain, SupportDex},
+    domain::swap_client::{DefaultQuoteResp, SupportChain, SupportDex},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
     service::swap::SwapServer,
@@ -8,6 +8,18 @@ use crate::{
 use wallet_database::pagination::Pagination;
 
 impl crate::WalletManager {
+    pub async fn default_quote(
+        &self,
+        chain_code: String,
+        token_in: String,
+        token_out: String,
+    ) -> ReturnType<DefaultQuoteResp> {
+        SwapServer::new()?
+            .default_quote(chain_code, token_in, token_out)
+            .await
+            .into()
+    }
+
     // 获取报价
     pub async fn quote(&self, req: QuoteReq) -> ReturnType<ApiQuoteResp> {
         SwapServer::new()?.quote(req).await.into()

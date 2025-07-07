@@ -128,11 +128,10 @@ async fn test_generate_phrase() {
 async fn test_show_key() {
     init_test_log();
 
-    let parse =
-        "mobile trim alter rotate foam drastic problem people drive pig direct evolve".to_string();
-    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
+    let parse = "".to_string();
+    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "1234qwer").unwrap();
 
-    let chain_code = "sol";
+    let chain_code = "eth";
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
     let address_type = Some("p2wpkh".to_string());
