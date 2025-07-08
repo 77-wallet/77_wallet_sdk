@@ -1,10 +1,10 @@
 // tron 和 eth 系列的交易参数
+use crate::request::transaction::{DexRoute, QuoteReq};
 use alloy::{
     primitives::{Address, U256},
     sol,
 };
-
-use crate::request::transaction::DexRoute;
+use wallet_types::chain::chain::ChainCode;
 
 // evm 系列调用合约的方法
 sol!(
@@ -71,24 +71,30 @@ impl SwapParams {
     }
 }
 
-impl TryFrom<&SwapParams> for dexSwap1Call {
+impl TryFrom<(&SwapParams, ChainCode)> for dexSwap1Call {
     type Error = crate::ServiceError;
 
-    fn try_from(value: &SwapParams) -> Result<Self, Self::Error> {
+    fn try_from(value: (&SwapParams, ChainCode)) -> Result<Self, Self::Error> {
         use wallet_utils::{address::parse_eth_address, unit::u256_from_str};
 
-        let mut router_param = Vec::with_capacity(value.dex_router.len());
+        let mut router_param = Vec::with_capacity(value.0.dex_router.len());
 
-        for quote in value.dex_router.iter() {
+        for quote in value.0.dex_router.iter() {
             let mut sub_routes = Vec::with_capacity(quote.route_in_dex.len());
 
             let amount_in = u256_from_str(&quote.amount_in)?;
             let amount_out = u256_from_str(&quote.amount_out)?;
 
             for pool in &quote.route_in_dex {
+                let pool_id = if value.1 == ChainCode::Ethereum {
+                    parse_eth_address(&pool.pool_id)?
+                } else {
+                    QuoteReq::addr_tron_to_eth(&pool.pool_id)?
+                };
+
                 let mut sub_route = SubDexRouterParam1 {
                     dexId: pool.dex_id,
-                    poolId: parse_eth_address(&pool.pool_id)?,
+                    poolId: pool_id,
                     zeroForOne: pool.zero_for_one,
                     amountIn: u256_from_str(&pool.amount_in)?,
                     minAmountOut: u256_from_str(&pool.min_amount_out)?,
@@ -109,12 +115,12 @@ impl TryFrom<&SwapParams> for dexSwap1Call {
 
         Ok(dexSwap1Call {
             routerParam: router_param,
-            tokenIn: value.token_in,
-            tokenOut: value.token_out,
-            amountIn: value.amount_in,
-            minAmountOut: value.min_amount_out,
-            recipient: value.recipient,
-            allowPartialFill: value.allow_partial_fill,
+            tokenIn: value.0.token_in,
+            tokenOut: value.0.token_out,
+            amountIn: value.0.amount_in,
+            minAmountOut: value.0.min_amount_out,
+            recipient: value.0.recipient,
+            allowPartialFill: value.0.allow_partial_fill,
         })
     }
 }

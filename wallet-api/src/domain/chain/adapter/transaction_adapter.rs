@@ -899,7 +899,7 @@ impl TransactionAdapter {
                 };
 
                 let swap_params = SwapParams {
-                    aggregator_addr: req.aggregator_address()?,
+                    aggregator_addr: QuoteReq::addr_tron_to_eth(&req.aggregator_addr)?,
                     amount_in: req.amount_in_u256()?,
                     min_amount_out,
                     recipient: QuoteReq::addr_tron_to_eth(&req.recipient)?,
@@ -908,6 +908,7 @@ impl TransactionAdapter {
                     dex_router: quote_resp.dex_route_list.clone(),
                     allow_partial_fill: req.allow_partial_fill,
                 };
+
                 tron_tx::estimate_swap(&swap_params, chain).await?
             }
             _ => {
@@ -954,18 +955,19 @@ mod tests {
     async fn test_estimate_swap() {
         init_test_log();
 
-        let chain_code = "eth";
-        let rpc_url = "http://127.0.0.1:8545";
+        let chain_code = "tron";
+        // let rpc_url = "http://127.0.0.1:8545";
+        let rpc_url = "http://100.78.188.103:8090";
 
         let adapter = ChainAdapterFactory::get_node_transaction_adapter(chain_code, rpc_url)
             .await
             .unwrap();
 
-        let amount_in = unit::convert_to_u256("0.1", 18).unwrap();
+        let amount_in = unit::convert_to_u256("0.1", 6).unwrap();
 
         // 模拟聚合器的响应
         let resp = AggQuoteResp {
-            chain_code: "eth".to_string(),
+            chain_code: "tron".to_string(),
             amount_in: amount_in.to_string(),
             amount_out: "0".to_string(),
             dex_route_list: vec![DexRoute {
@@ -974,24 +976,24 @@ mod tests {
                 route_in_dex: vec![
                     RouteInDex {
                         dex_id: 3,
-                        pool_id: "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640".to_string(),
-                        zero_for_one: false,
+                        pool_id: "TSUUVjysXV8YqHytSNjfkNXnnB49QDvZpx".to_string(),
+                        zero_for_one: true,
                         amount_in: amount_in.to_string(),
                         min_amount_out: "0".to_string(),
-                        in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
-                        out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+                        in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
+                        out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
                         fee: "0".to_string(),
                     },
-                    RouteInDex {
-                        dex_id: 2,
-                        pool_id: "0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f".to_string(),
-                        zero_for_one: true,
-                        amount_in: "0".to_string(),
-                        min_amount_out: "0".to_string(),
-                        in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
-                        out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-                        fee: "0".to_string(),
-                    },
+                    // RouteInDex {
+                    //     dex_id: 2,
+                    //     pool_id: "0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f".to_string(),
+                    //     zero_for_one: true,
+                    //     amount_in: "0".to_string(),
+                    //     min_amount_out: "0".to_string(),
+                    //     in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+                    //     out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+                    //     fee: "0".to_string(),
+                    // },
                 ],
             }],
             default_slippage: 2,
@@ -999,20 +1001,20 @@ mod tests {
 
         let token_in = SwapTokenInfo {
             token_addr: "".to_string(),
-            symbol: "ETH".to_string(),
-            decimals: 18,
+            symbol: "TRX".to_string(),
+            decimals: 6,
         };
 
         let token_out = SwapTokenInfo {
-            token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+            token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
             symbol: "USDT".to_string(),
             decimals: 6,
         };
 
         let req = QuoteReq {
-            aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
-            recipient: "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string(),
-            chain_code: "eth".to_string(),
+            aggregator_addr: "TS7x5pq98ZjHPBKM2NEchvJWnevM7RJb4E".to_string(),
+            recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+            chain_code: "tron".to_string(),
             amount_in: "0.1".to_string(),
             token_in,
             token_out,

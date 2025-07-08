@@ -215,8 +215,11 @@ impl QuoteReq {
         )?)
     }
 
+    // 波场的地址 转eth alloy Address type
     pub fn addr_tron_to_eth(addr: &str) -> Result<alloy::primitives::Address, crate::ServiceError> {
-        let hex_addr = wallet_utils::address::bs58_addr_to_hex(addr)?;
+        let hex_addr = wallet_utils::address::bs58_addr_to_hex_bytes(addr)?;
+
+        let hex_addr = hex::encode(&hex_addr[1..21]);
 
         Ok(wallet_utils::address::parse_eth_address(&hex_addr)?)
     }

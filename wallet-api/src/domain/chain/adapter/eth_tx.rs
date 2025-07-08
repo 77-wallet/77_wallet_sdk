@@ -22,6 +22,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
     ResourceConsume,
 };
+use wallet_types::chain::chain::ChainCode;
 
 pub(super) async fn approve(
     chain: &EthChain,
@@ -70,7 +71,7 @@ pub(super) async fn estimate_swap(
     swap_params: SwapParams,
     chain: &EthChain,
 ) -> Result<EstimateSwapResult, crate::ServiceError> {
-    let call_value = dexSwap1Call::try_from(&swap_params)?;
+    let call_value = dexSwap1Call::try_from((&swap_params, ChainCode::Ethereum))?;
 
     let tx = TransactionRequest::default()
         .from(swap_params.recipient)
@@ -119,7 +120,7 @@ pub(super) async fn swap(
 ) -> Result<String, crate::ServiceError> {
     let fee = pare_fee_setting(fee.as_str())?;
 
-    let call_value = dexSwap1Call::try_from(swap_params)?;
+    let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
     // 构建交易
     let tx = TransactionRequest::default()
         .from(swap_params.recipient)

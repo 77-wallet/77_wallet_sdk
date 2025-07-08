@@ -16,10 +16,10 @@ impl SwapClient {
 
     fn handle_result<T: serde::de::DeserializeOwned>(
         &self,
-        res: AggregatorResp<T>,
+        res: AggregatorResp,
     ) -> Result<T, crate::ServiceError> {
         if res.code == 200 {
-            Ok(res.data)
+            Ok(wallet_utils::serde_func::serde_from_value::<T>(res.data)?)
         } else {
             Err(crate::ServiceError::AggregatorError(
                 res.msg.unwrap_or_default(),
@@ -33,19 +33,19 @@ impl SwapClient {
     ) -> Result<AggQuoteResp, crate::ServiceError> {
         let res = self
             .client
-            .post_request::<_, AggregatorResp<AggQuoteResp>>("quote", req)
+            .post_request::<_, AggregatorResp>("quote", req)
             .await?;
 
-        self.handle_result(res)
+        self.handle_result::<AggQuoteResp>(res)
     }
 
     pub async fn chain_list(&self) -> Result<Vec<SupportChain>, crate::ServiceError> {
         let res = self
             .client
-            .post_request::<_, AggregatorResp<Vec<SupportChain>>>("get_support_chain", "")
+            .post_request::<_, AggregatorResp>("get_support_chain", "")
             .await?;
 
-        self.handle_result(res)
+        self.handle_result::<Vec<SupportChain>>(res)
     }
 
     pub async fn dex_list(&self, chain_code: &str) -> Result<Vec<SupportDex>, crate::ServiceError> {
@@ -53,10 +53,10 @@ impl SwapClient {
 
         let res = self
             .client
-            .post_request::<_, AggregatorResp<Vec<SupportDex>>>("get_support_dex", payload)
+            .post_request::<_, AggregatorResp>("get_support_dex", payload)
             .await?;
 
-        self.handle_result(res)
+        self.handle_result::<Vec<SupportDex>>(res)
     }
 
     // pub async fn token_list(
@@ -85,9 +85,9 @@ impl SwapClient {
 
         let res = self
             .client
-            .post_request::<_, AggregatorResp<DefaultQuoteResp>>("get_default_quote", payload)
+            .post_request::<_, AggregatorResp>("get_default_quote", payload)
             .await?;
-        self.handle_result(res)
+        self.handle_result::<DefaultQuoteResp>(res)
     }
 
     pub async fn swap_contract(
@@ -97,12 +97,9 @@ impl SwapClient {
         let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
         let res = self
             .client
-            .post_request::<_, AggregatorResp<serde_json::Value>>(
-                "get_swap_contract_address",
-                payload,
-            )
+            .post_request::<_, AggregatorResp>("get_swap_contract_address", payload)
             .await?;
-        self.handle_result(res)
+        self.handle_result::<serde_json::Value>(res)
     }
 }
 
@@ -121,8 +118,8 @@ pub struct SupportDex {
 
 // 响应
 #[derive(Debug, serde::Deserialize)]
-pub struct AggregatorResp<T> {
-    pub data: T,
+pub struct AggregatorResp {
+    pub data: serde_json::Value,
     pub code: i32,
     pub msg: Option<String>,
 }

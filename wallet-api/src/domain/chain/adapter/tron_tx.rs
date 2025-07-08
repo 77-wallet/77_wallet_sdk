@@ -9,6 +9,7 @@ use crate::{
     request::transaction::ApproveReq,
     response_vo::TransferParams,
 };
+use alloy::sol_types::SolValue;
 use alloy::{primitives::U256, sol_types::SolCall};
 use wallet_chain_interact::{
     tron::{
@@ -23,6 +24,7 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, MultisigTxResp},
 };
+use wallet_types::chain::chain::ChainCode;
 
 // 构建多签交易
 pub(super) async fn build_build_tx(
@@ -116,21 +118,41 @@ pub(super) async fn estimate_swap(
     swap_params: &SwapParams,
     chain: &TronChain,
 ) -> Result<EstimateSwapResult, crate::ServiceError> {
-    let call_value = dexSwap1Call::try_from(swap_params)?;
+    let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Tron))?;
 
+    tracing::warn!("call value: {:#?}", call_value);
     let contract_address = swap_params.aggregator_tron_addr()?;
     let owner_address = swap_params.recipient_tron_addr()?;
 
+    let mut raw = vec![];
+    call_value.abi_encode_raw(&mut raw);
+
+    let contract_address = wallet_utils::address::bs58_addr_to_hex(&contract_address)?;
+    let owner_address = wallet_utils::address::bs58_addr_to_hex(&owner_address)?;
+
     // 构建调用合约的参数
-    let parameter = wallet_utils::hex_func::hex_encode(call_value.abi_encode());
-    let value = TriggerContractParameter::new(&contract_address, &owner_address, "", parameter);
+    let parameter = wallet_utils::hex_func::hex_encode(raw);
+    let function_selector = "dexSwap1(((uint16,address,bool,uint256,uint256)[])[],address,address,uint256,uint256,address,bool)";
+    let mut value = TriggerContractParameter::new(
+        &contract_address,
+        &owner_address,
+        &function_selector,
+        parameter,
+    );
+
+    value.call_value = Some(swap_params.amount_in.to::<u64>());
+    value.fee_limit = Some(9900000000000000);
+
+    tracing::warn!("trigger contract params: {:#?}", value);
 
     let wrap = WarpContract { params: value };
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
 
-    // 模拟的结果
-    let amount_in = constant.parse_num(&constant.constant_result[0])?;
-    let amount_out = constant.parse_num(&constant.constant_result[1])?;
+    let bytes = wallet_utils::hex_func::hex_decode(&constant.constant_result[0])?;
+
+    // 模拟的结果k
+    let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
+        .map_err(|e| crate::ServiceError::AggregatorError(e.to_string()))?;
 
     // get fee
     let consumer = chain
@@ -154,7 +176,7 @@ pub(super) async fn swap(
     swap_params: &SwapParams,
     key: ChainPrivateKey,
 ) -> Result<String, crate::ServiceError> {
-    let call_value = dexSwap1Call::try_from(swap_params)?;
+    let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Tron))?;
 
     let contract_address = swap_params.aggregator_tron_addr()?;
     let owner_address = swap_params.recipient_tron_addr()?;

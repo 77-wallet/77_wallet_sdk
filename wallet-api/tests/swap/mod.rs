@@ -142,7 +142,7 @@ async fn test_quote() {
     let token_in = SwapTokenInfo {
         token_addr: "".to_string(),
         symbol: "TRX".to_string(),
-        decimals: 18,
+        decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
@@ -155,7 +155,7 @@ async fn test_quote() {
         // aggregator_addr: "0x5C56d2f7a305A541b8655244b50511346C9009A7".to_string(),
         aggregator_addr: "TS7x5pq98ZjHPBKM2NEchvJWnevM7RJb4E".to_string(),
         recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
-        chain_code: "trx".to_string(),
+        chain_code: "tron".to_string(),
         amount_in: "0.1".to_string(),
         token_in,
         token_out,
