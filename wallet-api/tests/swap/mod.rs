@@ -113,22 +113,35 @@ async fn test_supplier() {
 async fn test_quote() {
     let wallet_manager = get_manager().await;
 
+    // let token_in = SwapTokenInfo {
+    //     token_addr: "".to_string(),
+    //     symbol: "ETH".to_string(),
+    //     decimals: 18,
+    // };
+
+    // let token_out = SwapTokenInfo {
+    //     token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+    //     symbol: "USDT".to_string(),
+    //     decimals: 6,
+    // };
+
     let token_in = SwapTokenInfo {
         token_addr: "".to_string(),
-        symbol: "ETH".to_string(),
+        symbol: "TRX".to_string(),
         decimals: 18,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         symbol: "USDT".to_string(),
         decimals: 6,
     };
 
     let req = QuoteReq {
-        aggregator_addr: "0x5C56d2f7a305A541b8655244b50511346C9009A7".to_string(),
-        recipient: "0xD5359AD68FDb8a72386aB26C68D7648D548ec70a".to_string(),
-        chain_code: "eth".to_string(),
+        // aggregator_addr: "0x5C56d2f7a305A541b8655244b50511346C9009A7".to_string(),
+        aggregator_addr: "TZ3ChHr1to5aEPoapCoU82uRK39KTcuLoV".to_string(),
+        recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        chain_code: "trx".to_string(),
         amount_in: "0.1".to_string(),
         token_in,
         token_out,

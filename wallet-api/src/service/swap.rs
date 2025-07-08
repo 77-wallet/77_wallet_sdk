@@ -8,11 +8,13 @@ use crate::{
         },
         task_queue::TaskQueueDomain,
     },
+    messaging::notify::other::{Process, TransactionProcessFrontend},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         account::BalanceInfo,
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
     },
+    FrontendNotifyEvent, NotifyEvent,
 };
 use alloy::primitives::U256;
 use wallet_database::{
@@ -36,7 +38,8 @@ pub struct SwapServer {
 
 impl SwapServer {
     pub fn new() -> Result<Self, crate::ServiceError> {
-        let url = String::from("http://127.0.0.1:28888/api");
+        // let url = String::from("http://127.0.0.1:28888/api");
+        let url = String::from("http://100.78.188.103:28888/api");
         let swap_client = SwapClient::new(&url);
 
         Ok(Self {
@@ -156,9 +159,22 @@ impl SwapServer {
         fee: String,
         password: String,
     ) -> Result<String, crate::ServiceError> {
+        // 构建事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            wallet_database::entities::bill::BillKind::Swap,
+            Process::Building,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
+
         let key =
             ChainTransDomain::get_key(&req.recipient, &req.chain_code, &password, &None).await?;
 
+        // 广播事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            wallet_database::entities::bill::BillKind::Swap,
+            Process::Broadcast,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         // 执行swap 交易
@@ -256,8 +272,22 @@ impl SwapServer {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
+        // 构建交易事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            wallet_database::entities::bill::BillKind::Approve,
+            Process::Building,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
+
         let private_key =
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
+
+        // 广播交易事件
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            wallet_database::entities::bill::BillKind::Approve,
+            Process::Broadcast,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         let value = alloy::primitives::U256::MAX;
