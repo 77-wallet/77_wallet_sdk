@@ -18,6 +18,7 @@ use wallet_chain_interact::{
             trc::{Allowance, Approve},
             TronConstantOperation as _,
         },
+        params::ResourceConsumer,
         TronChain,
     },
     types::{ChainPrivateKey, MultisigTxResp},
@@ -80,6 +81,20 @@ pub(super) async fn approve(
 
     let result = chain.exec_transaction_v1(raw_transaction, key).await?;
     Ok(result)
+}
+pub(super) async fn approve_fee(
+    chain: &TronChain,
+    req: &ApproveReq,
+    value: alloy::primitives::U256,
+) -> Result<ResourceConsumer, crate::ServiceError> {
+    let approve = Approve::new(&req.from, &req.spender, &req.contract, value);
+    let wrap = WarpContract::new(approve)?;
+
+    // get fee
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    let consumer = chain.provider.contract_fee(constant, 1, &req.from).await?;
+
+    Ok(consumer)
 }
 
 pub(super) async fn allowance(

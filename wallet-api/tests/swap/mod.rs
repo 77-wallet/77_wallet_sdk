@@ -4,6 +4,20 @@ use wallet_api::request::transaction::{
 };
 
 #[tokio::test]
+async fn test_default_quote() {
+    let wallet_manager = get_manager().await;
+
+    let chain_code = "tron".to_string();
+    let token_in = "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string();
+    let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
+
+    let resp = wallet_manager
+        .default_quote(chain_code, token_in, token_out)
+        .await;
+    println!("{}", serde_json::to_string(&resp).unwrap());
+}
+
+#[tokio::test]
 async fn test_support_chain() {
     let wallet_manager = get_manager().await;
 
@@ -55,6 +69,22 @@ async fn test_approve() {
 }
 
 #[tokio::test]
+async fn test_approve_fee() {
+    let wallet_manager = get_manager().await;
+
+    let params = ApproveReq {
+        from: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        spender: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
+        value: "10".to_string(),
+        chain_code: "tron".to_string(),
+    };
+
+    let resp = wallet_manager.approve_fee(params).await;
+    println!("{}", serde_json::to_string(&resp).unwrap());
+}
+
+#[tokio::test]
 async fn test_approve_list() {
     let wallet_manager = get_manager().await;
 
@@ -93,22 +123,6 @@ async fn test_supplier() {
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 
-// #[tokio::test]
-// async fn test_allowance() {
-//     let wallet_manager = get_manager().await;
-
-//     let from = "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string();
-//     let token = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string();
-//     let chain_code = "eth".to_string();
-//     let spender = "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string();
-
-//     let resp = wallet_manager
-//         .allowance(from, token, chain_code, spender)
-//         .await
-//         .unwrap();
-//     println!("{}", serde_json::to_string(&resp).unwrap());
-// }
-
 #[tokio::test]
 async fn test_quote() {
     let wallet_manager = get_manager().await;
@@ -139,7 +153,7 @@ async fn test_quote() {
 
     let req = QuoteReq {
         // aggregator_addr: "0x5C56d2f7a305A541b8655244b50511346C9009A7".to_string(),
-        aggregator_addr: "TZ3ChHr1to5aEPoapCoU82uRK39KTcuLoV".to_string(),
+        aggregator_addr: "TS7x5pq98ZjHPBKM2NEchvJWnevM7RJb4E".to_string(),
         recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
         chain_code: "trx".to_string(),
         amount_in: "0.1".to_string(),

@@ -13,6 +13,7 @@ use crate::{
     response_vo::{
         account::BalanceInfo,
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
+        EstimateFeeResp,
     },
     FrontendNotifyEvent, NotifyEvent,
 };
@@ -260,6 +261,22 @@ impl SwapServer {
         chain_code: String,
     ) -> Result<Vec<SupportDex>, crate::ServiceError> {
         Ok(self.client.dex_list(&chain_code).await?)
+    }
+
+    pub async fn approve_fee(
+        &self,
+        req: ApproveReq,
+    ) -> Result<EstimateFeeResp, crate::ServiceError> {
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+
+        let value = alloy::primitives::U256::MAX;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
+
+        let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;
+
+        let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);
+        Ok(fee_resp)
     }
 
     pub async fn approve(

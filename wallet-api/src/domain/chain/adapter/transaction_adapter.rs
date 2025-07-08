@@ -771,6 +771,55 @@ impl TransactionAdapter {
         Ok(hash)
     }
 
+    pub async fn approve_fee(
+        &self,
+        req: &transaction::ApproveReq,
+        value: alloy::primitives::U256,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError> {
+        let currency = {
+            let currency = crate::app_state::APP_STATE.read().await;
+            currency.currency().to_string()
+        };
+
+        let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency(
+            &currency,
+            &req.chain_code,
+            main_symbol,
+        )
+        .await?;
+
+        let fee = match self {
+            Self::Ethereum(chain) => {
+                let fee = eth_tx::approve_fee(chain, req, value).await?;
+
+                let backend = crate::manager::Context::get_global_backend_api()?;
+
+                // 使用默认的手续费配置
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend).await?;
+
+                let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
+                    .to_resp(token_currency, &currency);
+
+                wallet_utils::serde_func::serde_to_string(&fee)?
+            }
+            Self::Tron(chain) => {
+                let consumer = tron_tx::approve_fee(chain, req, value).await?;
+
+                let res = TronFeeDetails::new(consumer, token_currency, &currency)?;
+                wallet_utils::serde_func::serde_to_string(&res)?
+            }
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(fee)
+    }
+
     // pub async fn deposit(
     //     &self,
     //     req: &transaction::DepositParams,

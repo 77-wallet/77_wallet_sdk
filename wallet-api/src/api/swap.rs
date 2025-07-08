@@ -2,7 +2,10 @@ use crate::{
     api::ReturnType,
     domain::swap_client::{DefaultQuoteResp, SupportChain, SupportDex},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
-    response_vo::swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
+    response_vo::{
+        swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
+        EstimateFeeResp,
+    },
     service::swap::SwapServer,
 };
 use wallet_database::pagination::Pagination;
@@ -45,6 +48,10 @@ impl crate::WalletManager {
 
     pub async fn approve(&self, req: ApproveReq, password: String) -> ReturnType<String> {
         SwapServer::new()?.approve(req, password).await.into()
+    }
+
+    pub async fn approve_fee(&self, req: ApproveReq) -> ReturnType<EstimateFeeResp> {
+        SwapServer::new()?.approve_fee(req).await.into()
     }
 
     pub async fn approve_list(&self, uid: String, account_id: u32) -> ReturnType<Vec<ApproveList>> {

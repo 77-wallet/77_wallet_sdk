@@ -20,6 +20,7 @@ use wallet_chain_interact::{
         EthChain, FeeSetting,
     },
     types::ChainPrivateKey,
+    ResourceConsume,
 };
 
 pub(super) async fn approve(
@@ -40,24 +41,17 @@ pub(super) async fn approve(
     Ok(hash)
 }
 
-// // deposit 获取币
-// pub(super) async fn deposit(
-//     chain: &EthChain,
-//     req: &DepositParams,
-//     value: alloy::primitives::U256,
-//     key: ChainPrivateKey,
-// ) -> Result<String, crate::ServiceError> {
-//     let deposit = Deposit::new(&req.from, &req.contract, value)?;
+pub(super) async fn approve_fee(
+    chain: &EthChain,
+    req: &ApproveReq,
+    value: alloy::primitives::U256,
+) -> Result<ResourceConsume, crate::ServiceError> {
+    let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
 
-//     // 使用默认的手续费配置
-//     let gas_price = chain.provider.gas_price().await?;
-//     let fee_setting = FeeSetting::new_with_price(gas_price);
+    let fee = chain.estimate_gas(approve).await?;
 
-//     // exec tx
-//     let hash = chain.exec_transaction(deposit, fee_setting, key).await?;
-
-//     Ok(hash)
-// }
+    Ok(fee)
+}
 
 pub(super) async fn allowance(
     chain: &EthChain,
