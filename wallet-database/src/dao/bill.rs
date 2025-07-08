@@ -1,14 +1,12 @@
 use crate::{
     any_in_collection,
-    entities::bill::{
-        BillEntity, BillKind, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo,
-    },
+    entities::bill::{BillEntity, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo},
     pagination::Pagination,
     DbPool,
 };
+use chrono::Utc;
 use sqlx::{Executor, Sqlite};
 use std::collections::HashSet;
-use wallet_types::constant::chain_code;
 pub struct BillDao;
 
 impl BillDao {
@@ -311,69 +309,100 @@ impl BillDao {
     }
 
     /// Creates a new bill record in the database.
-    pub async fn create<'a, E>(tx: NewBillEntity, exec: E) -> Result<(), crate::Error>
+    pub async fn create<'a, E, T>(tx: NewBillEntity<T>, exec: E) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
+        T: serde::Serialize,
     {
         let owner = tx.get_owner();
-        let NewBillEntity {
-            hash,
-            from,
-            to,
-            token,
-            chain_code,
-            symbol,
-            status,
-            value,
-            transaction_fee,
-            resource_consume,
-            transaction_time,
-            multisig_tx,
-            tx_type,
-            tx_kind,
-            queue_id,
-            block_height,
-            notes,
-            signer,
-        } = tx;
-        let token = token.unwrap_or_default();
-        let tx_kind = tx_kind.to_i8();
-        let multisig_tx = if multisig_tx { 1 } else { 0 };
-        let time = sqlx::types::chrono::Utc::now().timestamp();
-        let signer = signer.join(",");
-        let signer = signer.trim_end_matches(",");
+        // let NewBillEntity {
+        //     hash,
+        //     from,
+        //     to,
+        //     token,
+        //     chain_code,
+        //     symbol,
+        //     status,
+        //     value,
+        //     transaction_fee,
+        //     resource_consume,
+        //     transaction_time,
+        //     multisig_tx,
+        //     tx_type,
+        //     tx_kind,
+        //     queue_id,
+        //     block_height,
+        //     notes,
+        //     signer,
+        //     extra,
+        // } = tx;
+        // let tx_kind = tx.tx_kind.to_i8();
+        // let multisig_tx = if tx.multisig_tx { 1 } else { 0 };
 
-        // 一笔代币转账两次账变通知、如果第一次是手续费的通知，symbol 为空，等第二次代币的通知在修改symbol
-        // TODO 此处需要优化 不能简单的判断value = 0,在部署多签账号的时候有问题
-        let (symbol, to) = if value == 0.0
-            && tx_kind == BillKind::Transfer.to_i8()
-            && chain_code == chain_code::TRON
-        {
-            ("".to_string(), "".to_string())
-        } else {
-            (symbol.to_uppercase(), to)
-        };
+        // let (symbol, to) = if tx.value == 0.0
+        //     && tx_kind == BillKind::Transfer.to_i8()
+        //     && tx.chain_code == chain_code::TRON
+        // {
+        //     ("".to_string(), "".to_string())
+        // } else {
+        //     (tx.symbol.to_uppercase(), tx.to)
+        // };
 
-        let transaction_time = if transaction_time == 0 {
+        // let signer = tx.signer.join(",");
+        // let signer = signer.trim_end_matches(",");
+
+        // let values = {
+        //     format!(
+        //         "('{hash}','{chain_code}','{symbol}','{tx_type}','{tx_kind}','{owner}','{from}','{to}',
+        //         '{token}','{value}','{transaction_fee}','{resource_consume}','{transaction_time}','{status}',
+        //         '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}','{signer}'
+        //     )",
+        //     )
+        // };
+
+        let time = Utc::now().timestamp();
+        let signer = tx.get_singer_str();
+        let (symbol, to) = tx.get_symbol_and_to();
+        let transaction_time = if tx.transaction_time == 0 {
             time
         } else {
-            transaction_time
+            tx.transaction_time
         };
+        let token = tx.token.clone().unwrap_or_default();
+        let multisig_tx = tx.get_multisig_i32();
+        let extra = tx.get_extra_str()?;
+        let values = format!(
+            "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
+            tx.hash,
+            tx.chain_code,
+            symbol,
+            tx.tx_type,
+            tx.tx_kind.to_i8(),
+            owner,
+            tx.from,
+            to,
+            token,
+            tx.value,
+            tx.transaction_fee,
+            tx.resource_consume,
+            transaction_time,
+            tx.status,
+            multisig_tx,
+            tx.block_height,
+            tx.queue_id,
+            tx.notes,
+            time,
+            time,
+            signer,
+            extra
+        );
 
-        let values = {
-            format!(
-                "('{hash}','{chain_code}','{symbol}','{tx_type}','{tx_kind}','{owner}','{from}','{to}',
-                '{token}','{value}','{transaction_fee}','{resource_consume}','{transaction_time}','{status}',
-                '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}','{signer}'
-            )",
-            )
-        };
         let sql = format!(
             "insert into bill 
             (
                 hash,chain_code,symbol,transfer_type,tx_kind,owner,from_addr,to_addr,token,value,
                 transaction_fee,resource_consume,transaction_time,status,is_multisig,block_height,queue_id,notes,
-                created_at,updated_at,signer
+                created_at,updated_at,signer,extra
             ) 
                 values {}
                 on conflict (hash,transfer_type,owner)

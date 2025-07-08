@@ -18,8 +18,8 @@ async fn test_account_resource() {
 async fn test_freeze_fee() {
     let manager = get_manager().await;
     let req = FreezeBalanceReq {
-        owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        resource: "bandwidth".to_string(),
+        owner_address: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        resource: "energy".to_string(),
         frozen_balance: 50,
         signer: None,
     };
@@ -43,9 +43,9 @@ async fn test_freeze() {
     let _signer = None;
 
     let req = FreezeBalanceReq {
-        owner_address: "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
-        resource: "bandwidth".to_string(),
-        frozen_balance: 300,
+        owner_address: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        resource: "energy".to_string(),
+        frozen_balance: 50,
         signer: _signer,
     };
     let password = "123456".to_string();

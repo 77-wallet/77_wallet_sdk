@@ -3,7 +3,7 @@ use crate::domain::{
     swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;
-use wallet_database::entities::bill::NewBillEntity;
+use wallet_database::entities::bill::{BillExtraSwap, NewBillEntity};
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
 #[derive(Debug, serde::Serialize)]
@@ -55,6 +55,7 @@ impl From<ApproveReq> for NewBillEntity {
             transaction_time: 0,
             block_height: "0".to_string(),
             signer: vec![],
+            extra: None,
         }
     }
 }
@@ -131,16 +132,30 @@ impl TryFrom<&SwapReq> for SwapParams {
     }
 }
 
-impl From<SwapReq> for NewBillEntity {
-    fn from(value: SwapReq) -> Self {
-        NewBillEntity {
+impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
+    type Error = crate::ServiceError;
+
+    fn try_from(value: SwapReq) -> Result<Self, Self::Error> {
+        let amount_in = wallet_utils::unit::string_to_f64(&value.amount_in)?;
+        let amount_out = wallet_utils::unit::string_to_f64(&value.amount_out)?;
+
+        let extra = BillExtraSwap {
+            from_token_symbol: value.token_in.symbol.clone(),
+            from_token_amount: amount_in,
+            to_token_symbol: value.token_out.symbol.clone(),
+            to_token_amount: amount_out,
+            supplier: "77_wallet".to_string(),
+            price: amount_out / amount_in,
+        };
+
+        Ok(NewBillEntity {
             hash: "".to_string(),
             from: value.recipient,
             to: "".to_string(),
             token: None,
             value: 0.0,
             multisig_tx: false,
-            symbol: "".to_string(),
+            symbol: value.token_in.symbol,
             chain_code: value.chain_code,
             tx_type: 1,
             tx_kind: wallet_database::entities::bill::BillKind::Swap,
@@ -152,7 +167,8 @@ impl From<SwapReq> for NewBillEntity {
             transaction_time: 0,
             block_height: "0".to_string(),
             signer: vec![],
-        }
+            extra: Some(extra),
+        })
     }
 }
 

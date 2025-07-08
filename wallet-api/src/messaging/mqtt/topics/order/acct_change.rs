@@ -112,6 +112,7 @@ impl TryFrom<&AcctChange> for NewBillEntity {
             notes: value.notes.clone(),
             signer: vec![],
             resource_consume: consumer,
+            extra: None,
         })
     }
 }

@@ -181,9 +181,8 @@ impl SwapServer {
         let hash = adapter.swap(&req, fee, key).await?;
 
         // 写入本地交易记录表
-        let mut new_bill = NewBillEntity::from(req);
+        let mut new_bill = NewBillEntity::try_from(req)?;
         new_bill.hash = hash.clone();
-        new_bill.symbol = "WETH".to_string();
 
         Ok(hash)
     }
