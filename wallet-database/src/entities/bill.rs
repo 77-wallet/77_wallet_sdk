@@ -416,22 +416,31 @@ impl NewBillEntity {
 #[derive(serde::Serialize)]
 // 代理类型的资源梳理额外信息
 pub struct BillExtraResourceValue {
+    // 具体代理了多少资源
     pub value: i64,
 }
 
 #[derive(serde::Serialize)]
 pub struct BillExtraVotes {
+    // 投票的地址
     pub vote_addr: String,
+    // 投票的数量
     pub votes: i64,
 }
 
 #[derive(serde::Serialize)]
 pub struct BillExtraSwap {
+    // 代币符号
     pub from_token_symbol: String,
+    // 金额
     pub from_token_amount: f64,
+    // 代币符号
     pub to_token_symbol: String,
+    // 代币金额
     pub to_token_amount: f64,
+    // 供应商
     pub supplier: String,
+    // 兑换比例
     pub price: f64,
 }
 

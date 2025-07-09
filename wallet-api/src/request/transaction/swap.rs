@@ -95,37 +95,25 @@ impl TryFrom<&SwapReq> for SwapParams {
         )?;
 
         if value.chain_code == chain_code::ETHEREUM {
-            let token_in = if value.token_in.token_addr.is_empty() {
-                alloy::primitives::Address::ZERO
-            } else {
-                wallet_utils::address::parse_eth_address(&value.recipient)?
-            };
-
             Ok(SwapParams {
                 aggregator_addr: wallet_utils::address::parse_eth_address(&value.aggregator_addr)?,
                 amount_in,
                 min_amount_out,
                 recipient: wallet_utils::address::parse_eth_address(&value.recipient)?,
                 dex_router: value.dex_router.clone(),
-                token_in,
-                token_out: wallet_utils::address::parse_eth_address(&value.token_out.token_addr)?,
+                token_in: SwapParams::eth_parse_or_zero_addr(&value.token_in.token_addr)?,
+                token_out: SwapParams::eth_parse_or_zero_addr(&value.token_out.token_addr)?,
                 allow_partial_fill: value.allow_partial_fill,
             })
         } else {
-            let token_in = if value.token_in.token_addr.is_empty() {
-                alloy::primitives::Address::ZERO
-            } else {
-                QuoteReq::addr_tron_to_eth(&value.recipient)?
-            };
-
             Ok(SwapParams {
                 aggregator_addr: QuoteReq::addr_tron_to_eth(&value.aggregator_addr)?,
                 amount_in,
                 min_amount_out,
                 recipient: QuoteReq::addr_tron_to_eth(&value.recipient)?,
                 dex_router: value.dex_router.clone(),
-                token_in,
-                token_out: QuoteReq::addr_tron_to_eth(&value.token_out.token_addr)?,
+                token_in: SwapParams::tron_parse_or_zero_addr(&value.token_in.token_addr)?,
+                token_out: SwapParams::tron_parse_or_zero_addr(&value.token_out.token_addr)?,
                 allow_partial_fill: value.allow_partial_fill,
             })
         }

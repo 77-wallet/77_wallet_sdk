@@ -67,22 +67,29 @@ pub(super) async fn allowance(
     Ok(amount)
 }
 
-pub(super) async fn estimate_swap(
-    swap_params: SwapParams,
-    chain: &EthChain,
-) -> Result<EstimateSwapResult, crate::ServiceError> {
-    let call_value = dexSwap1Call::try_from((&swap_params, ChainCode::Ethereum))?;
+fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, crate::ServiceError> {
+    let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
 
     let tx = TransactionRequest::default()
         .from(swap_params.recipient)
         .to(swap_params.aggregator_addr)
         .with_input(call_value.abi_encode());
 
+    // from token 如果是主币添加默认的币
     let tx = if swap_params.token_in.is_zero() {
         tx.with_value(swap_params.amount_in)
     } else {
         tx
     };
+
+    Ok(tx)
+}
+
+pub(super) async fn estimate_swap(
+    swap_params: SwapParams,
+    chain: &EthChain,
+) -> Result<EstimateSwapResult, crate::ServiceError> {
+    let tx = build_base_swap_tx(&swap_params)?;
 
     // estimate_fee
     let gas_limit = chain.provider.estimate_gas(tx.clone()).await?;
@@ -120,19 +127,7 @@ pub(super) async fn swap(
 ) -> Result<String, crate::ServiceError> {
     let fee = pare_fee_setting(fee.as_str())?;
 
-    let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
-    // 构建交易
-    let tx = TransactionRequest::default()
-        .from(swap_params.recipient)
-        .to(swap_params.aggregator_addr)
-        .with_input(call_value.abi_encode());
-
-    let tx = if swap_params.token_in.is_zero() {
-        tx.with_value(swap_params.amount_in)
-    } else {
-        tx
-    };
-
+    let tx = build_base_swap_tx(&swap_params)?;
     let tx = chain
         .provider
         .set_transaction_fee(tx, fee, chain.chain_code)

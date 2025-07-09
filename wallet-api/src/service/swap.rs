@@ -95,8 +95,10 @@ impl SwapServer {
         // 获取滑点
         let slippage = req.get_slippage(quote_resp.default_slippage);
 
+        // 构建响应
         let mut res =
             ApiQuoteResp::new(slippage, quote_resp.dex_route_list.clone(), bal_in, bal_out);
+        // 先使用报价返回的amount_out,如果可以进行模拟，那么后续使用模拟的值覆盖
         res.set_amount_out(amount_out, req.token_out.decimals);
 
         // 主币处理
@@ -127,16 +129,18 @@ impl SwapServer {
         res: &mut ApiQuoteResp,
     ) -> Result<(), crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        // 模拟报价
         let result = adapter.swap_quote(req, quote_resp).await?;
 
+        // 手续费
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
-
         let amount = wallet_utils::unit::format_to_f64(result.fee, main_coin.decimals)?;
-
         res.fee = TokenCurrencyGetter::get_balance_info(&req.chain_code, &main_coin.symbol, amount)
             .await?;
         res.consumer = result.consumer;
+
+        // 重新覆盖amount_out,使用模拟的值
         res.set_amount_out(result.amount_out, req.token_out.decimals);
 
         Ok(())

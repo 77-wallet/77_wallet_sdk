@@ -864,27 +864,19 @@ impl TransactionAdapter {
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
     ) -> Result<EstimateSwapResult, crate::ServiceError> {
-        // note:如果token_in 是主币，则传入0地址
-
         let amount_out = quote_resp.amount_out_u256(req.token_out.decimals as u8)?;
         let min_amount_out =
             calc_slippage(amount_out, req.get_slippage(quote_resp.default_slippage));
 
         let resp = match self {
             Self::Ethereum(chain) => {
-                let token_in = if req.token_in.token_addr.is_empty() {
-                    alloy::primitives::Address::ZERO
-                } else {
-                    wallet_utils::address::parse_eth_address(&req.recipient)?
-                };
-
                 let swap_params = SwapParams {
                     aggregator_addr: req.aggregator_address()?,
                     amount_in: req.amount_in_u256()?,
                     min_amount_out,
                     recipient: wallet_utils::address::parse_eth_address(&req.recipient)?,
-                    token_in,
-                    token_out: wallet_utils::address::parse_eth_address(&req.token_out.token_addr)?,
+                    token_in: SwapParams::eth_parse_or_zero_addr(&req.token_in.token_addr)?,
+                    token_out: SwapParams::eth_parse_or_zero_addr(&req.token_out.token_addr)?,
                     dex_router: quote_resp.dex_route_list.clone(),
                     allow_partial_fill: req.allow_partial_fill,
                 };
@@ -892,19 +884,13 @@ impl TransactionAdapter {
                 eth_tx::estimate_swap(swap_params, chain).await?
             }
             Self::Tron(chain) => {
-                let token_in = if req.token_in.token_addr.is_empty() {
-                    alloy::primitives::Address::ZERO
-                } else {
-                    QuoteReq::addr_tron_to_eth(&req.token_in.token_addr)?
-                };
-
                 let swap_params = SwapParams {
                     aggregator_addr: QuoteReq::addr_tron_to_eth(&req.aggregator_addr)?,
                     amount_in: req.amount_in_u256()?,
                     min_amount_out,
                     recipient: QuoteReq::addr_tron_to_eth(&req.recipient)?,
-                    token_in,
-                    token_out: QuoteReq::addr_tron_to_eth(&req.token_out.token_addr)?,
+                    token_in: SwapParams::tron_parse_or_zero_addr(&req.token_in.token_addr)?,
+                    token_out: SwapParams::tron_parse_or_zero_addr(&req.token_out.token_addr)?,
                     dex_router: quote_resp.dex_route_list.clone(),
                     allow_partial_fill: req.allow_partial_fill,
                 };

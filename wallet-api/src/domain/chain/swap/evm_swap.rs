@@ -11,8 +11,6 @@ sol!(
     #[derive(Debug)]
     struct DexRouterParam1 {
         SubDexRouterParam1[] subDexRouters;
-        // uint256 amountIn;
-        // uint256 minAmountOut;
     }
 
     #[derive(Debug)]
@@ -68,6 +66,27 @@ impl SwapParams {
         let address = self.recipient.to_string();
 
         Ok(wallet_utils::address::eth_addr_to_tron_addr(&address)?)
+    }
+
+    // 如果是主币,swap 合约接受zero地址
+    pub fn eth_parse_or_zero_addr(
+        addr: &str,
+    ) -> Result<alloy::primitives::Address, crate::ServiceError> {
+        if addr.is_empty() {
+            Ok(alloy::primitives::Address::ZERO)
+        } else {
+            Ok(wallet_utils::address::parse_eth_address(addr)?)
+        }
+    }
+
+    pub fn tron_parse_or_zero_addr(
+        addr: &str,
+    ) -> Result<alloy::primitives::Address, crate::ServiceError> {
+        if addr.is_empty() {
+            Ok(alloy::primitives::Address::ZERO)
+        } else {
+            Ok(QuoteReq::addr_tron_to_eth(addr)?)
+        }
     }
 }
 

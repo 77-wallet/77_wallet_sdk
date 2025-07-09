@@ -114,21 +114,20 @@ pub(super) async fn allowance(
     Ok(constant.parse_u256()?)
 }
 
-pub(super) async fn estimate_swap(
+fn build_base_swap(
     swap_params: &SwapParams,
-    chain: &TronChain,
-) -> Result<EstimateSwapResult, crate::ServiceError> {
+) -> Result<(TriggerContractParameter, String), crate::ServiceError> {
     let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Tron))?;
 
     tracing::warn!("call value: {:#?}", call_value);
     let contract_address = swap_params.aggregator_tron_addr()?;
     let owner_address = swap_params.recipient_tron_addr()?;
 
-    let mut raw = vec![];
-    call_value.abi_encode_raw(&mut raw);
-
     let contract_address = wallet_utils::address::bs58_addr_to_hex(&contract_address)?;
     let owner_address = wallet_utils::address::bs58_addr_to_hex(&owner_address)?;
+
+    let mut raw = vec![];
+    call_value.abi_encode_raw(&mut raw);
 
     // 构建调用合约的参数
     let parameter = wallet_utils::hex_func::hex_encode(raw);
@@ -140,14 +139,24 @@ pub(super) async fn estimate_swap(
         parameter,
     );
 
-    value.call_value = Some(swap_params.amount_in.to::<u64>());
-    value.fee_limit = Some(9900000000000000);
+    // 主币设置转账的value
+    if swap_params.token_in.is_zero() {
+        value.call_value = Some(swap_params.amount_in.to::<u64>());
+    }
 
-    tracing::warn!("trigger contract params: {:#?}", value);
+    Ok((value, owner_address))
+}
 
-    let wrap = WarpContract { params: value };
+pub(super) async fn estimate_swap(
+    swap_params: &SwapParams,
+    chain: &TronChain,
+) -> Result<EstimateSwapResult, crate::ServiceError> {
+    let (params, owner_address) = build_base_swap(swap_params)?;
+
+    let wrap = WarpContract { params };
+
+    // 模拟交易结果
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
-
     let bytes = wallet_utils::hex_func::hex_decode(&constant.constant_result[0])?;
 
     // 模拟的结果k
@@ -176,16 +185,9 @@ pub(super) async fn swap(
     swap_params: &SwapParams,
     key: ChainPrivateKey,
 ) -> Result<String, crate::ServiceError> {
-    let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Tron))?;
+    let (params, owner_address) = build_base_swap(&swap_params)?;
 
-    let contract_address = swap_params.aggregator_tron_addr()?;
-    let owner_address = swap_params.recipient_tron_addr()?;
-
-    // 构建调用合约的参数
-    let parameter = wallet_utils::hex_func::hex_encode(call_value.abi_encode());
-    let value = TriggerContractParameter::new(&contract_address, &owner_address, "", parameter);
-
-    let mut wrap = WarpContract { params: value };
+    let mut wrap = WarpContract { params };
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
     // get fee
     let consumer = chain
