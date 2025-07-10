@@ -1,19 +1,27 @@
+use crate::{Dirs, WalletManager};
 use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;
 
-use crate::{Dirs, WalletManager};
+use crate::{CreateAccountReq, CreateWalletReq, InitDeviceReq};
+use serde::Deserialize;
 
-pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)> {
+#[derive(Deserialize, Debug)]
+pub struct TestParams {
+    pub device_req: InitDeviceReq,
+    pub create_wallet_req: CreateWalletReq,
+    pub create_account_req: CreateAccountReq,
+}
+
+pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     // 获取项目根目录
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
 
-    let config_dir = dir.join("example").join("config.toml");
+    let config_dir = dir.join("examples/").join("config.toml");
     println!("example_dir: {config_dir:?}");
     let config_data = std::fs::read_to_string(config_dir)?;
 
-    let test_params: crate::test::config::TestParams =
-        wallet_utils::serde_func::toml_from_str(&config_data)?;
+    let test_params: TestParams = wallet_utils::serde_func::toml_from_str(&config_data)?;
     // std::env::set_var("RUST_BACKTRACE", "1");
 
     let client_id = "test_data";
@@ -50,7 +58,7 @@ pub fn get_config() -> Result<String> {
             .into_owned()
     });
     let dir = PathBuf::from(manifest_dir);
-    let config_dir = dir.join("example").join("config.yaml");
+    let config_dir = dir.join("examples").join("config.yaml");
     let config_data = std::fs::read_to_string(config_dir)?;
     Ok(config_data)
 }
