@@ -222,7 +222,7 @@ async fn test_swap() {
 
     let o_value = "0.1";
 
-    let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 18).unwrap();
+    let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 6).unwrap();
 
     let dex_route1 = DexRoute {
         amount_in: amount_in.to_string(),
@@ -230,46 +230,46 @@ async fn test_swap() {
         route_in_dex: vec![
             RouteInDex {
                 dex_id: 3,
-                pool_id: "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640".to_string(),
-                in_token_addr: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".to_string(),
-                out_token_addr: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".to_string(),
-                zero_for_one: false,
+                pool_id: "TSUUVjysXV8YqHytSNjfkNXnnB49QDvZpx".to_string(),
+                in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
+                out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+                zero_for_one: true,
                 fee: "500".to_string(),
                 amount_in: 0.to_string(),
                 min_amount_out: 0.to_string(),
             },
-            RouteInDex {
-                dex_id: 2,
-                pool_id: "0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f".to_string(),
-                in_token_addr: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".to_string(),
-                out_token_addr: "0xdac17f958d2ee523a2206206994597c13d831ec7".to_string(),
-                zero_for_one: true,
-                fee: "3000".to_string(),
-                amount_in: 0.to_string(),
-                min_amount_out: 0.to_string(),
-            },
+            // RouteInDex {
+            //     dex_id: 2,
+            //     pool_id: "0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f".to_string(),
+            //     in_token_addr: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".to_string(),
+            //     out_token_addr: "0xdac17f958d2ee523a2206206994597c13d831ec7".to_string(),
+            //     zero_for_one: true,
+            //     fee: "3000".to_string(),
+            //     amount_in: 0.to_string(),
+            //     min_amount_out: 0.to_string(),
+            // },
         ],
     };
 
     let token_in = SwapTokenInfo {
         token_addr: "".to_string(),
-        symbol: "ETH".to_string(),
-        decimals: 18,
+        symbol: "TRX".to_string(),
+        decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         symbol: "USDT".to_string(),
         decimals: 6,
     };
 
     let req = SwapReq {
-        aggregator_addr: "0x59a4ad52B1dEfC42033f8f109a7cF53924296112".to_string(),
+        aggregator_addr: "TRNawqG4rNmbLr3Z7qXzpbbxHqciy9BVDC".to_string(),
         amount_in: o_value.to_string(),
-        amount_out: "0".to_string(),
+        amount_out: "0.027".to_string(),
         min_amount_out: "0".to_string(),
-        chain_code: "eth".to_string(),
-        recipient: "0x14AdbbE60b214ebddc90792482F664C446d93804".to_string(),
+        chain_code: "tron".to_string(),
+        recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
         token_in,
         token_out,
         dex_router: vec![dex_route1],

@@ -944,12 +944,15 @@ mod tests {
         let chain_code = "tron";
         // let rpc_url = "http://127.0.0.1:8545";
         let rpc_url = "http://100.78.188.103:8090";
+        // let rpc_url = "https://api.nileex.io";
 
         let adapter = ChainAdapterFactory::get_node_transaction_adapter(chain_code, rpc_url)
             .await
             .unwrap();
 
         let amount_in = unit::convert_to_u256("0.1", 6).unwrap();
+
+        // TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf
 
         // 模拟聚合器的响应
         let resp = AggQuoteResp {
@@ -987,7 +990,7 @@ mod tests {
 
         let token_in = SwapTokenInfo {
             token_addr: "".to_string(),
-            symbol: "TRX".to_string(),
+            symbol: "WTRX".to_string(),
             decimals: 6,
         };
 
@@ -998,15 +1001,15 @@ mod tests {
         };
 
         let req = QuoteReq {
-            aggregator_addr: "TS7x5pq98ZjHPBKM2NEchvJWnevM7RJb4E".to_string(),
+            aggregator_addr: "TRNawqG4rNmbLr3Z7qXzpbbxHqciy9BVDC".to_string(),
             recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
             chain_code: "tron".to_string(),
             amount_in: "0.1".to_string(),
             token_in,
             token_out,
-            dex_list: vec![2, 3],
+            dex_list: vec![3],
             slippage: Some(0.2),
-            allow_partial_fill: false,
+            allow_partial_fill: true,
         };
 
         let result = adapter.swap_quote(&req, &resp).await.unwrap();

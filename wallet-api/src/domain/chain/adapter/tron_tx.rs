@@ -153,10 +153,13 @@ pub(super) async fn estimate_swap(
 ) -> Result<EstimateSwapResult, crate::ServiceError> {
     let (params, owner_address) = build_base_swap(swap_params)?;
 
+    tracing::warn!("params: {:#?}", params);
     let wrap = WarpContract { params };
 
     // 模拟交易结果
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    constant.is_success()?;
+
     let bytes = wallet_utils::hex_func::hex_decode(&constant.constant_result[0])?;
 
     // 模拟的结果k

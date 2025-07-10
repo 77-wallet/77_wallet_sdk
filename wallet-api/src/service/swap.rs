@@ -188,6 +188,7 @@ impl SwapServer {
         // 写入本地交易记录表
         let mut new_bill = NewBillEntity::try_from(req)?;
         new_bill.hash = hash.clone();
+        BillDomain::create_bill(new_bill).await?;
 
         Ok(hash)
     }
