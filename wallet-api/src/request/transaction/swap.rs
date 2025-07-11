@@ -1,6 +1,6 @@
-use crate::domain::{
-    chain::swap::{evm_swap::SwapParams, get_warp_address, SLIPPAGE},
-    swap_client::{AggQuoteRequest, DexId},
+use crate::{
+    domain::chain::swap::{evm_swap::SwapParams, get_warp_address, SLIPPAGE},
+    infrastructure::swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;
 use wallet_database::entities::bill::{BillExtraSwap, NewBillEntity};

@@ -123,6 +123,7 @@ pub(crate) async fn init_context<'a>(
 pub struct Context {
     pub(crate) dirs: Dirs,
     // pub(crate) mqtt_url: Arc<RwLock<Option<String>>>,
+    pub(crate) aggregate_api: Arc<String>,
     pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
     pub(crate) sqlite_context: wallet_database::SqliteContext,
     pub(crate) oss_client: wallet_oss::oss_client::OssClient,
@@ -172,6 +173,12 @@ impl Context {
         #[cfg(feature = "prod")]
         let api_url = config.backend_api.prod_url;
 
+        // 聚合器api
+        #[cfg(feature = "test")]
+        let aggregate_api = config.aggregate_api.test_url;
+        #[cfg(feature = "prod")]
+        let aggregate_api = config.aggregate_api.prod_url;
+
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = wallet_transport_backend::api::BackendApi::new(
@@ -208,6 +215,7 @@ impl Context {
         Ok(Context {
             dirs,
             backend_api,
+            aggregate_api: Arc::new(aggregate_api),
             sqlite_context,
             frontend_notify,
             oss_client,
@@ -247,6 +255,10 @@ impl Context {
 
     pub(crate) fn get_global_dirs() -> Result<&'static crate::manager::Dirs, crate::SystemError> {
         Ok(&Context::get_context()?.dirs)
+    }
+
+    pub(crate) fn get_aggregate_api() -> Result<String, crate::SystemError> {
+        Ok((&Context::get_context()?.aggregate_api.clone()).to_string())
     }
 
     // pub(crate) async fn get_global_mqtt_url() -> Result<Option<String>, crate::SystemError> {

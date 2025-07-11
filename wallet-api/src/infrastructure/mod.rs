@@ -5,3 +5,4 @@ pub mod inner_event;
 pub mod log;
 pub mod mqtt;
 pub mod process_unconfirm_msg;
+pub mod swap_client;

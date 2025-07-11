@@ -3,10 +3,10 @@ use crate::{
         bill::BillDomain,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::TokenCurrencyGetter,
-        swap_client::{
-            AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SupportChain, SupportDex, SwapClient,
-        },
         task_queue::TaskQueueDomain,
+    },
+    infrastructure::swap_client::{
+        AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SupportChain, SupportDex, SwapClient,
     },
     messaging::notify::other::{Process, TransactionProcessFrontend},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
@@ -39,8 +39,7 @@ pub struct SwapServer {
 
 impl SwapServer {
     pub fn new() -> Result<Self, crate::ServiceError> {
-        // let url = String::from("http://127.0.0.1:28888/api");
-        let url = String::from("http://100.78.188.103:28888/api");
+        let url = crate::manager::Context::get_aggregate_api()?;
         let swap_client = SwapClient::new(&url);
 
         Ok(Self {
@@ -58,11 +57,7 @@ impl SwapServer {
     ) -> Result<DefaultQuoteResp, crate::ServiceError> {
         let res = self
             .client
-            .default_quote(
-                &chain_code,
-                &token_in.to_lowercase(),
-                &token_out.to_lowercase(),
-            )
+            .default_quote(&chain_code, &token_in, &token_out)
             .await?;
 
         Ok(res)

@@ -12,6 +12,5 @@ pub mod multisig;
 pub mod node;
 pub mod permission;
 pub mod stake;
-pub mod swap_client;
 pub mod task_queue;
 pub mod wallet;

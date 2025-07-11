@@ -9,8 +9,8 @@ use crate::{
             transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
-        swap_client::AggQuoteResp,
     },
+    infrastructure::swap_client::AggQuoteResp,
     request::transaction::{self, QuoteReq, SwapReq},
     response_vo::{self, FeeDetails, TronFeeDetails},
 };
@@ -932,7 +932,8 @@ impl TransactionAdapter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        domain::{chain::adapter::ChainAdapterFactory, swap_client::AggQuoteResp},
+        domain::chain::adapter::ChainAdapterFactory,
+        infrastructure::swap_client::AggQuoteResp,
         request::transaction::{DexRoute, QuoteReq, RouteInDex, SwapTokenInfo},
     };
     use wallet_utils::{init_test_log, unit};

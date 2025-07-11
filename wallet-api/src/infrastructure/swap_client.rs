@@ -59,18 +59,6 @@ impl SwapClient {
         self.handle_result::<Vec<SupportDex>>(res)
     }
 
-    // pub async fn token_list(
-    //     &self,
-    //     req: SwapTokenListReq,
-    // ) -> Result<serde_json::Value, crate::ServiceError> {
-    //     let res = self
-    //         .client
-    //         .post_request::<_, AggregatorResp<serde_json::Value>>("get_support_token", req)
-    //         .await?;
-
-    //     self.handle_result(res)
-    // }
-
     pub async fn default_quote(
         &self,
         chain_code: &str,
@@ -79,13 +67,13 @@ impl SwapClient {
     ) -> Result<DefaultQuoteResp, crate::ServiceError> {
         let payload = std::collections::HashMap::from([
             ("chain_code", chain_code),
-            ("token_in", token_in),
-            ("token_out", token_out),
+            ("in_token_addr", token_in),
+            ("out_token_addr", token_out),
         ]);
 
         let res = self
             .client
-            .post_request::<_, AggregatorResp>("get_default_quote", payload)
+            .post_request::<_, AggregatorResp>("default_quote", payload)
             .await?;
         self.handle_result::<DefaultQuoteResp>(res)
     }

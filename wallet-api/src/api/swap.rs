@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType,
-    domain::swap_client::{DefaultQuoteResp, SupportChain, SupportDex},
+    infrastructure::swap_client::{DefaultQuoteResp, SupportChain, SupportDex},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
