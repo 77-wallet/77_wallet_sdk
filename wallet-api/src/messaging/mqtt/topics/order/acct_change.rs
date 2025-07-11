@@ -217,6 +217,7 @@ impl AcctChange {
             ],
             chain_code: acct_change.chain_code.to_string(),
             symbol: acct_change.symbol.to_string(),
+            token_address: acct_change.token.clone(),
         })?;
         // tracing::info!("发送同步资产事件");
         Ok(())
