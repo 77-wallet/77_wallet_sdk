@@ -10,6 +10,7 @@ use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 pub struct SwapTokenListReq {
     pub chain_code: String,
     pub search: String,
+    pub exclude_token: Vec<String>,
     pub page_num: i64,
     pub page_size: i64,
 }

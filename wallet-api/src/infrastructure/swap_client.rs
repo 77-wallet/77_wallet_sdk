@@ -59,24 +59,24 @@ impl SwapClient {
         self.handle_result::<Vec<SupportDex>>(res)
     }
 
-    pub async fn default_quote(
-        &self,
-        chain_code: &str,
-        token_in: &str,
-        token_out: &str,
-    ) -> Result<DefaultQuoteResp, crate::ServiceError> {
-        let payload = std::collections::HashMap::from([
-            ("chain_code", chain_code),
-            ("in_token_addr", token_in),
-            ("out_token_addr", token_out),
-        ]);
+    // pub async fn default_quote(
+    //     &self,
+    //     chain_code: &str,
+    //     token_in: &str,
+    //     token_out: &str,
+    // ) -> Result<DefaultQuoteResp, crate::ServiceError> {
+    //     let payload = std::collections::HashMap::from([
+    //         ("chain_code", chain_code),
+    //         ("in_token_addr", token_in),
+    //         ("out_token_addr", token_out),
+    //     ]);
 
-        let res = self
-            .client
-            .post_request::<_, AggregatorResp>("default_quote", payload)
-            .await?;
-        self.handle_result::<DefaultQuoteResp>(res)
-    }
+    //     let res = self
+    //         .client
+    //         .post_request::<_, AggregatorResp>("default_quote", payload)
+    //         .await?;
+    //     self.handle_result::<DefaultQuoteResp>(res)
+    // }
 
     pub async fn swap_contract(
         &self,
@@ -147,11 +147,10 @@ impl AggQuoteResp {
 }
 
 // 默认的兑换比例
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(serde::Serialize)]
 pub struct DefaultQuoteResp {
-    pub chain_code: String,
-    #[serde(rename = "min_amount_out")]
-    pub rate: String,
+    pub token_in: crate::response_vo::swap::SwapTokenInfo,
+    pub token_out: crate::response_vo::swap::SwapTokenInfo,
 }
 
 #[cfg(test)]

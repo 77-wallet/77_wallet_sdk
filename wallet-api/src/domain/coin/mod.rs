@@ -1,4 +1,5 @@
 pub mod token_price;
+use super::app::config::ConfigDomain;
 use crate::response_vo::coin::{TokenCurrencies, TokenCurrencyId, TokenPriceChangeRes};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
@@ -6,8 +7,7 @@ use wallet_database::{
     repositories::{coin::CoinRepoTrait, exchange_rate::ExchangeRateRepoTrait, ResourcesRepo},
 };
 use wallet_transport_backend::{request::TokenQueryPriceReq, response_vo::coin::TokenCurrency};
-
-use super::app::config::ConfigDomain;
+use wallet_types::chain::chain::ChainCode;
 
 pub struct CoinDomain {}
 impl Default for CoinDomain {
@@ -184,6 +184,18 @@ impl CoinDomain {
         Self::upsert_hot_coin_list(repo, list).await?;
 
         Ok(())
+    }
+    pub fn get_stable_coin(chain_code: ChainCode) -> Result<String, crate::ServiceError> {
+        match chain_code {
+            ChainCode::Ethereum => Ok("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
+            ChainCode::BnbSmartChain => {
+                Ok("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".to_string())
+            }
+            ChainCode::Tron => Ok("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string()),
+            _ => Err(crate::BusinessError::Coin(crate::CoinError::NotFound(
+                chain_code.to_string(),
+            )))?,
+        }
     }
 }
 

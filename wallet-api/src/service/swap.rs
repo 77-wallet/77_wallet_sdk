@@ -2,7 +2,7 @@ use crate::{
     domain::{
         bill::BillDomain,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
-        coin::TokenCurrencyGetter,
+        coin::{CoinDomain, TokenCurrencyGetter},
         task_queue::TaskQueueDomain,
     },
     infrastructure::swap_client::{
@@ -31,6 +31,7 @@ use wallet_transport_backend::{
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
     request::SwapTokenQueryReq,
 };
+use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{address::AccountIndexMap, unit};
 
 pub struct SwapServer {
@@ -53,12 +54,52 @@ impl SwapServer {
         &self,
         chain_code: String,
         token_in: String,
-        token_out: String,
     ) -> Result<DefaultQuoteResp, crate::ServiceError> {
-        let res = self
-            .client
-            .default_quote(&chain_code, &token_in, &token_out)
-            .await?;
+        let code = ChainCode::try_from(chain_code.as_str())?;
+        let token_addr = CoinDomain::get_stable_coin(code)?;
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let stable_coin = CoinRepo::coin_by_chain_address(&chain_code, &token_addr, &pool).await?;
+
+        let (from_token, out_token) = if token_in.is_empty() {
+            let token = CoinRepo::main_coin(&chain_code, &pool).await?;
+            (token, stable_coin)
+        } else if token_in == token_addr {
+            // 传入的是稳定币
+            let token = CoinRepo::main_coin(&chain_code, &pool).await?;
+
+            (stable_coin, token)
+        } else {
+            let token = CoinRepo::coin_by_chain_address(&chain_code, &token_in, &pool).await?;
+
+            (token, stable_coin)
+        };
+
+        //   pub symbol: String,
+        //     pub decimals: u32,
+        //     pub chain_code: String,
+        //     pub name: String,
+        //     pub token_addr: String,
+        //     pub balance: BalanceInfo,
+
+        let res = DefaultQuoteResp {
+            token_in: SwapTokenInfo {
+                token_addr: from_token.token_address().unwrap_or_default(),
+                decimals: from_token.decimals as u32,
+                symbol: from_token.symbol,
+                chain_code: from_token.chain_code.to_string(),
+                name: from_token.name,
+                balance: BalanceInfo::default(),
+            },
+            token_out: SwapTokenInfo {
+                token_addr: out_token.token_address().unwrap_or_default(),
+                decimals: out_token.decimals as u32,
+                symbol: out_token.symbol,
+                chain_code: out_token.chain_code.to_string(),
+                name: out_token.name,
+                balance: BalanceInfo::default(),
+            },
+        };
 
         Ok(res)
     }

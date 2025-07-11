@@ -8,12 +8,10 @@ async fn test_default_quote() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    let token_in = "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string();
-    let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
+    let token_in = "".to_string();
+    // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
 
-    let resp = wallet_manager
-        .default_quote(chain_code, token_in, token_out)
-        .await;
+    let resp = wallet_manager.default_quote(chain_code, token_in).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 
@@ -42,6 +40,7 @@ async fn test_token_list() {
     let req = SwapTokenListReq {
         chain_code: "eth".to_string(),
         search: "".to_string(),
+        exclude_token: vec![],
         page_num: 0,
         page_size: 10,
     };

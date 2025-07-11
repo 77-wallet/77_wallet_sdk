@@ -15,10 +15,9 @@ impl crate::WalletManager {
         &self,
         chain_code: String,
         token_in: String,
-        token_out: String,
     ) -> ReturnType<DefaultQuoteResp> {
         SwapServer::new()?
-            .default_quote(chain_code, token_in, token_out)
+            .default_quote(chain_code, token_in)
             .await
             .into()
     }
