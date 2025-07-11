@@ -16,6 +16,7 @@ pub struct ApproveSaveParams {
     pub value: String,
     #[serde(rename = "limitType")]
     pub limit_type: String,
+    pub hash: String,
 }
 
 impl ApproveSaveParams {
@@ -27,6 +28,8 @@ impl ApproveSaveParams {
         owner_address: &str,
         token_addr: &str,
         value: String,
+        hash: &str,
+        limit_type: &str,
     ) -> Self {
         Self {
             uid: uid.to_owned(),
@@ -37,7 +40,8 @@ impl ApproveSaveParams {
             token_addr: token_addr.to_owned(),
             status: "APPROVED".to_string(),
             value,
-            limit_type: "UN_LIMIT".to_string(),
+            limit_type: limit_type.to_owned(),
+            hash: hash.to_owned(),
         }
     }
 }
@@ -85,5 +89,11 @@ impl BackendApi {
 
         self.post_request::<_, BackApproveList>(endpoint, &req)
             .await
+    }
+
+    pub async fn update_used_approve(&self, ids: Vec<String>) -> Result<(), crate::Error> {
+        let endpoint = "swap/approve/updateUsedApprove";
+        let req = std::collections::HashMap::from([("ids", ids)]);
+        self.post_request::<_, ()>(endpoint, &req).await
     }
 }

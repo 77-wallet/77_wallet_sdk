@@ -32,6 +32,20 @@ pub struct ApproveReq {
     pub spender: String,
     pub value: String,
     pub chain_code: String,
+    // NORMAL , UN_LIMIT(无限制)
+    pub approve_type: String,
+}
+impl ApproveReq {
+    // pub const NORMAL: &'static str = "NORMAL";
+    pub const UN_LIMIT: &'static str = "UN_LIMIT";
+}
+
+#[derive(Debug)]
+pub struct ApproveCancel {
+    pub contract: String,
+    pub from: String,
+    pub spender: String,
+    pub chain_code: String,
 }
 
 impl From<ApproveReq> for NewBillEntity {

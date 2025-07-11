@@ -60,6 +60,7 @@ async fn test_approve() {
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
         value: "10".to_string(),
         chain_code: "tron".to_string(),
+        approve_type: "UN_LIMIT".to_string(),
     };
 
     let password = "123456".to_string();
@@ -78,6 +79,7 @@ async fn test_approve_fee() {
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
         value: "10".to_string(),
         chain_code: "tron".to_string(),
+        approve_type: "UN_LIMIT".to_string(),
     };
 
     let resp = wallet_manager.approve_fee(params).await;
@@ -105,6 +107,7 @@ async fn test_approve_cancel() {
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
         value: "10".to_string(),
         chain_code: "tron".to_string(),
+        approve_type: "UN_LIMIT".to_string(),
     };
 
     let password = "123456".to_string();
@@ -208,6 +211,7 @@ async fn test_deposit_and_approve() {
         contract: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
         value: "10".to_string(),
         chain_code: "eth".to_string(),
+        approve_type: "UN_LIMIT".to_string(),
     };
 
     let resp = wallet_manager.approve(params, password).await;

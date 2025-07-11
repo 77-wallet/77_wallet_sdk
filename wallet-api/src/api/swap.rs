@@ -71,16 +71,4 @@ impl crate::WalletManager {
     pub async fn supplier(&self, chain_code: String) -> ReturnType<serde_json::Value> {
         SwapServer::new()?.supplier(chain_code).await.into()
     }
-
-    // pub async fn approve_cancel(
-    //     &self,
-    //     spender: &str,
-    //     token_addr: &str,
-    //     owner_addr: &str,
-    // ) -> ReturnType<bool> {
-    //     SwapServer::new()?
-    //         .approve_cancel(spender, token_addr, owner_addr)
-    //         .await
-    //         .into()
-    // }
 }

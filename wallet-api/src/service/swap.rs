@@ -300,6 +300,17 @@ impl SwapServer {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        // check already approved
+        let allowance = adapter
+            .allowance(&req.from, &req.contract, &req.spender)
+            .await?;
+        if allowance >= alloy::primitives::U256::MAX {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::ApproveRepeated,
+            ))?;
+        }
+
         let private_key =
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
 
@@ -309,9 +320,12 @@ impl SwapServer {
             Process::Broadcast,
         ));
         FrontendNotifyEvent::new(data).send().await?;
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        let value = alloy::primitives::U256::MAX;
+        let value = if req.approve_type == ApproveReq::UN_LIMIT {
+            alloy::primitives::U256::MAX
+        } else {
+            wallet_utils::unit::convert_to_u256(&req.value, coin.decimals)?
+        };
         let hash = adapter.approve(&req, private_key, value).await?;
 
         let account = AccountRepo::account_with_wallet(&req.from, &req.chain_code, &pool).await?;
@@ -325,6 +339,8 @@ impl SwapServer {
             &req.from,
             &req.contract,
             value.to_string(),
+            &hash,
+            &req.approve_type,
         );
         TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
 
@@ -348,11 +364,37 @@ impl SwapServer {
 
         let resp = backend.approve_list(uid, index_map.input_index).await?;
 
-        let res = resp
-            .list
-            .into_iter()
-            .map(|item| ApproveList::from(item))
-            .collect::<Vec<ApproveList>>();
+        let mut res = vec![];
+
+        let mut used_ids = vec![];
+        for item in resp.list.into_iter() {
+            if item.limit_type == ApproveReq::UN_LIMIT {
+                res.push(ApproveList::from(item))
+            } else {
+                // 获取allowance 情况
+                let adapter =
+                    ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
+
+                let allowance = adapter
+                    .allowance(&item.owner_address, &item.token_addr, &item.spender)
+                    .await?;
+                if allowance == alloy::primitives::U256::ZERO {
+                    used_ids.push(item.id);
+                } else {
+                    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                    let a =
+                        CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &pool)
+                            .await?;
+                    let mut c = ApproveList::from(item);
+                    c.amount = wallet_utils::unit::format_to_string(allowance, a.decimals as u8)?;
+                }
+            }
+        }
+
+        // 通知后端哪些已经被使用
+        if !used_ids.is_empty() {
+            backend.update_used_approve(used_ids).await?;
+        }
 
         Ok(res)
     }
