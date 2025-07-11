@@ -15,10 +15,11 @@ impl TokenCurrencyGetter {
         currency: &str,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<TokenCurrency, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let coin = CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
+        let coin = CoinEntity::get_coin(chain_code, symbol, token_address, pool.as_ref())
             .await?
             .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
                 format!("chain_code = {},symbol = {}", chain_code, symbol),
@@ -55,11 +56,13 @@ impl TokenCurrencyGetter {
         chain_code: &str,
         symbol: &str,
         amount: f64,
+        token_address: Option<String>,
     ) -> Result<BalanceInfo, crate::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_price = TokenCurrencyGetter::get_currency(currency, chain_code, symbol).await?;
+        let token_price =
+            TokenCurrencyGetter::get_currency(currency, chain_code, symbol, token_address).await?;
 
         Ok(BalanceInfo::new(
             amount,

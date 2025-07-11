@@ -7,7 +7,7 @@ use wallet_chain_interact::{
     ton::address::parse_addr_from_bs64_url, BillResourceConsume,
 };
 use wallet_database::{
-    entities::coin::CoinEntity,
+    entities::{assets::WalletType, coin::CoinEntity},
     repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, ResourcesRepo},
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
@@ -315,6 +315,7 @@ impl ChainDomain {
         wallet_address: &str,
         account_name: &str,
         is_default_name: bool,
+        wallet_type: WalletType,
     ) -> Result<(), crate::error::ServiceError> {
         for chain in chain_list.iter() {
             let code: ChainCode = chain.as_str().try_into()?;
@@ -365,7 +366,7 @@ impl ChainDomain {
                     &account_address.address,
                     &code.to_string(),
                     req,
-                    tx,
+                    wallet_type.clone(),
                 )
                 .await?;
             }

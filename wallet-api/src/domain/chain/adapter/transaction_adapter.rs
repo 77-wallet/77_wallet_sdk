@@ -538,6 +538,7 @@ impl TransactionAdapter {
             currency,
             &req.chain_code,
             main_symbol,
+            None,
         )
         .await?;
 
@@ -700,6 +701,7 @@ impl TransactionAdapter {
                     currency,
                     &req.chain_code,
                     main_symbol,
+                    None,
                 )
                 .await?;
 

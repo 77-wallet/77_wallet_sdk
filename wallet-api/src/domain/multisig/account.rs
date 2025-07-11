@@ -9,7 +9,7 @@ use wallet_database::{
         multisig_queue::MultisigQueueDaoV1,
     },
     entities::{
-        assets::AssetsEntity,
+        assets::{AssetsEntity, WalletType},
         coin::CoinMultisigStatus,
         multisig_account::{
             MultiAccountOwner, MultisigAccountData, MultisigAccountEntity,
@@ -373,6 +373,7 @@ impl MultisigDomain {
             domain::assets::AssetsDomain::init_default_multisig_assets(
                 params.address.clone(),
                 params.chain_code.clone(),
+                WalletType::Normal,
             )
             .await?;
 
