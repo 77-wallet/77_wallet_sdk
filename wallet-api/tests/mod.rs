@@ -43,7 +43,10 @@ pub async fn get_manager() -> WalletManager {
     let dirs = Dirs::new(&path).unwrap();
 
     let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
-    WalletManager::new("guangxiang", "ANDROID", Some(tx), config, dirs)
+    let manager = WalletManager::new("guangxiang", "ANDROID", Some(tx), config, dirs)
         .await
-        .unwrap()
+        .unwrap();
+
+    manager.init_wallet_type("normal").await.unwrap();
+    manager
 }

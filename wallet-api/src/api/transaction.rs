@@ -18,8 +18,9 @@ impl crate::WalletManager {
         address: &str,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> ReturnType<Balance> {
-        TransactionService::chain_balance(address, chain_code, symbol)
+        TransactionService::chain_balance(address, chain_code, symbol, token_address)
             .await
             .into()
     }
@@ -34,6 +35,7 @@ impl crate::WalletManager {
             .into()
     }
 
+    /// tokenAddress前端必须传
     pub async fn transfer(&self, req: transaction::TransferReq) -> ReturnType<TransactionResult> {
         crate::service::transaction::TransactionService::transfer(req, BillKind::Transfer)
             .await
@@ -145,9 +147,10 @@ impl crate::WalletManager {
         &self,
         chain_code: String,
         symbol: String,
+        token_address: Option<String>,
     ) -> ReturnType<CoinCurrency> {
         BillService::new(self.repo_factory.resource_repo())
-            .coin_currency_price(chain_code, symbol)
+            .coin_currency_price(chain_code, symbol, token_address)
             .await
             .into()
     }

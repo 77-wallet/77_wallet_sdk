@@ -110,11 +110,13 @@ impl crate::WalletManager {
         address: String,
         chain_code: String,
         symbol: String,
+        token_address: Option<String>,
     ) -> ReturnType<Balance> {
         crate::service::transaction::TransactionService::chain_balance(
             &address,
             &chain_code,
             &symbol,
+            token_address,
         )
         .await
         .into()

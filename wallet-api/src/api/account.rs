@@ -227,6 +227,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
 
+        wallet_manager.init_wallet_type("api").await?;
         let address = test_params.create_account_req.wallet_address.clone();
         let account = wallet_manager
             .create_account(test_params.create_account_req)
@@ -285,9 +286,10 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let account_id = 1;
-        let wallet_address = "0x2A32f67D7a140d9e514348944e8911C4f6c032a5";
-        let password = "123456";
+        wallet_manager.init_wallet_type("api").await?;
+        let account_id = 2147483648;
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let password = &_test_params.create_wallet_req.wallet_password;
         let account = wallet_manager
             .physical_delete_account(wallet_address, account_id, password)
             .await;

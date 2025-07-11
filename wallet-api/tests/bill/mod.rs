@@ -125,7 +125,9 @@ async fn coin_currency_price() {
     let symbol = "TRX".to_string();
     let chain_code = "tron".to_string();
 
-    let res = wallet_manager.coin_currency_price(chain_code, symbol).await;
+    let res = wallet_manager
+        .coin_currency_price(chain_code, symbol, None)
+        .await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
 }
