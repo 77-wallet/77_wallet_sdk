@@ -27,8 +27,6 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
         Task::Initialization(initialization_task) => match initialization_task {
             InitializationTask::PullAnnouncement => 3,
             InitializationTask::PullHotCoins => 0,
-            InitializationTask::InitTokenPrice => 1,
-            // InitializationTask::ProcessUnconfirmMsg => 2,
             InitializationTask::SetBlockBrowserUrl => 0,
             InitializationTask::SetFiat => 0,
             InitializationTask::RecoverQueueData => 1,
@@ -117,7 +115,10 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
 mod tests {
     use super::*;
     use sqlx::types::chrono::Utc;
-    use wallet_database::entities::task_queue::{KnownTaskName, TaskName, TaskQueueEntity};
+    use wallet_database::entities::{
+        assets::WalletType,
+        task_queue::{KnownTaskName, TaskName, TaskQueueEntity},
+    };
 
     fn make_task_entity(
         id: &str,
@@ -125,6 +126,7 @@ mod tests {
         request_body: &str,
         task_type: u8,
         status: u8,
+        wallet_type: Option<WalletType>,
     ) -> TaskQueueEntity {
         TaskQueueEntity {
             id: id.to_string(),
@@ -134,6 +136,7 @@ mod tests {
             status,
             created_at: Utc::now(),
             updated_at: None,
+            wallet_type,
         }
     }
 
@@ -148,6 +151,7 @@ mod tests {
             }"#,
             0,
             0,
+            Some(WalletType::Normal),
         );
         let task2 = make_task_entity(
             "263099222805581824",
@@ -155,6 +159,7 @@ mod tests {
             "",
             1,
             1,
+            Some(WalletType::Normal),
         );
 
         let task1 = (&task1).try_into().unwrap();

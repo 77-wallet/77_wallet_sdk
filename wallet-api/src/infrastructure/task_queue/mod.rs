@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use crate::messaging::mqtt::topics;
 use task_manager::dispatcher::PriorityTask;
 use wallet_database::entities::{
+    assets::WalletType,
     multisig_queue::QueueTaskEntity,
     node::NodeEntity,
     task_queue::{KnownTaskName, TaskName, TaskQueueEntity},
@@ -77,11 +78,13 @@ impl Tasks {
                     id,
                     task.task.get_name(),
                     request_body,
+                    task.task.get_wallet_type()
                 )?
             } else {
                 wallet_database::entities::task_queue::CreateTaskQueueEntity::with_backend_request_string(
                     task.task.get_name(),
                     request_body,
+                    task.task.get_wallet_type()
                 )?
             };
             create_entities.push(create_req);
@@ -154,6 +157,15 @@ impl Task {
             Task::Common(_) => TaskType::Common,
         }
     }
+
+    pub fn get_wallet_type(&self) -> Option<WalletType> {
+        match self {
+            Task::Initialization(_) => None,
+            Task::BackendApi(_) => None,
+            Task::Mqtt(_) => None,
+            Task::Common(_) => None,
+        }
+    }
 }
 
 // 将 数据库实体 转换为 Task(根据name匹配对应的类型)
@@ -173,18 +185,12 @@ impl TryFrom<&TaskQueueEntity> for Task {
             TaskName::Known(KnownTaskName::PullHotCoins) => {
                 Ok(Task::Initialization(InitializationTask::PullHotCoins))
             }
-            TaskName::Known(KnownTaskName::InitTokenPrice) => {
-                Ok(Task::Initialization(InitializationTask::InitTokenPrice))
-            }
             TaskName::Known(KnownTaskName::SetBlockBrowserUrl) => {
                 Ok(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
             }
             TaskName::Known(KnownTaskName::SetFiat) => {
                 Ok(Task::Initialization(InitializationTask::SetFiat))
             }
-            // TaskName::ProcessUnconfirmMsg => Ok(Task::Initialization(
-            //     InitializationTask::ProcessUnconfirmMsg,
-            // )),
             TaskName::Known(KnownTaskName::RecoverQueueData) => {
                 Ok(Task::Initialization(InitializationTask::RecoverQueueData))
             }

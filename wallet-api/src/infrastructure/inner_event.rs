@@ -5,6 +5,7 @@ use std::{
 };
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
+use wallet_database::entities::assets::WalletType;
 
 pub type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
@@ -13,6 +14,7 @@ pub enum InnerEvent {
         addr_list: Vec<String>,
         chain_code: String,
         symbol: String,
+        token_address: Option<String>,
     },
 }
 
@@ -21,14 +23,18 @@ struct AssetKey {
     address: String,
     chain_code: String,
     symbol: String,
+    token_address: Option<String>,
 }
 
-impl From<(&str, &str, &str)> for AssetKey {
-    fn from((address, chain_code, symbol): (&str, &str, &str)) -> Self {
+impl From<(&str, &str, &str, Option<String>)> for AssetKey {
+    fn from(
+        (address, chain_code, symbol, token_address): (&str, &str, &str, Option<String>),
+    ) -> Self {
         Self {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
+            token_address,
         }
     }
 }
@@ -46,7 +52,13 @@ impl EventBuffer {
         }
     }
 
-    fn push_assets(&self, addrs: Vec<String>, chain: String, symbol: String) {
+    fn push_assets(
+        &self,
+        addrs: Vec<String>,
+        chain: String,
+        symbol: String,
+        token_address: Option<String>,
+    ) {
         if addrs.is_empty() {
             return;
         }
@@ -54,7 +66,15 @@ impl EventBuffer {
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
         for addr in addrs {
-            buf.insert((addr.as_str(), chain.as_str(), symbol.as_str()).into());
+            buf.insert(
+                (
+                    addr.as_str(),
+                    chain.as_str(),
+                    symbol.as_str(),
+                    token_address.clone(),
+                )
+                    .into(),
+            );
         }
         if was_empty && !buf.is_empty() {
             self.notifier.notify_one();
@@ -146,9 +166,10 @@ impl InnerEventHandle {
                 addr_list,
                 chain_code,
                 symbol,
+                token_address,
             } => {
                 // tracing::info!("收到资产变更通知，开始同步资产");
-                buffer.push_assets(addr_list, chain_code, symbol)
+                buffer.push_assets(addr_list, chain_code, symbol, token_address)
             }
         }
     }
@@ -166,23 +187,30 @@ impl InnerEventHandle {
                     continue;
                 }
                 // 分组 chain+symbol → address list
-                let mut grouped: HashMap<(String, String), Vec<String>> = HashMap::new();
+                let mut grouped: HashMap<(String, String, Option<String>), Vec<String>> =
+                    HashMap::new();
                 for key in batch {
                     grouped
-                        .entry((key.chain_code.clone(), key.symbol.clone()))
+                        .entry((
+                            key.chain_code.clone(),
+                            key.symbol.clone(),
+                            key.token_address.clone(),
+                        ))
                         .or_default()
                         .push(key.address.clone());
                 }
 
                 // 逐组执行
-                for ((chain_code, symbol), addr_list) in grouped {
+                for ((chain_code, symbol, token_address), addr_list) in grouped {
                     tracing::debug!(
                         "Syncing assets: chain={} symbol={} addresses={:?}",
                         chain_code,
                         symbol,
                         addr_list
                     );
-                    if let Err(e) = Self::sync_assets_once(chain_code, symbol, addr_list).await {
+                    if let Err(e) =
+                        Self::sync_assets_once(chain_code, symbol, addr_list, None).await
+                    {
                         tracing::error!("SyncAssets error: {}", e);
                     }
                 }
@@ -198,11 +226,18 @@ impl InnerEventHandle {
         chain_code: String,
         symbol: String,
         addr_list: Vec<String>,
+        wallet_type: Option<WalletType>,
     ) -> Result<(), crate::ServiceError> {
         if addr_list.is_empty() {
             return Ok(());
         }
 
-        AssetsDomain::sync_assets_by_addr_chain(addr_list, Some(chain_code), vec![symbol]).await
+        AssetsDomain::sync_assets_by_addr_chain(
+            addr_list,
+            Some(chain_code),
+            vec![symbol],
+            wallet_type,
+        )
+        .await
     }
 }
