@@ -4,6 +4,7 @@ use wallet_database::{
         account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
         device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
     },
+    GLOBAL_WALLET_TYPE,
 };
 use wallet_transport_backend::request::{
     AddressBatchInitReq, AddressUpdateAccountNameReq, TokenQueryPriceReq,
@@ -165,6 +166,7 @@ impl AccountService {
 
         let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
 
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         ChainDomain::init_chains_assets(
             &mut tx,
             &default_coins_list,
@@ -179,6 +181,7 @@ impl AccountService {
             &wallet.address,
             name,
             is_default_name,
+            wallet_type,
         )
         .await?;
 

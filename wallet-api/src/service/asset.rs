@@ -10,13 +10,14 @@ use crate::{
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
-        assets::{AssetsEntity, AssetsId},
+        assets::{AssetsEntity, AssetsId, WalletType},
         coin::SymbolId,
     },
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
         coin::CoinRepoTrait, device::DeviceRepoTrait, ResourcesRepo,
     },
+    GLOBAL_WALLET_TYPE,
 };
 use wallet_transport_backend::request::{
     TokenBalanceRefresh, TokenBalanceRefreshReq, TokenQueryPriceReq,
@@ -57,7 +58,9 @@ impl AssetsService {
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
-        let mut data = tx.get_coin_assets_in_address(address).await?;
+        let mut data = tx
+            .get_coin_assets_in_address(address, WalletType::Normal)
+            .await?;
         let account_total_assets = token_currencies
             .calculate_account_total_assets(&mut data)
             .await?;
@@ -73,6 +76,7 @@ impl AssetsService {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         let tx = &mut self.repo;
         let chains = tx.get_chain_list().await?;
         let chain_codes = if let Some(chain_code) = chain_code {
@@ -86,7 +90,14 @@ impl AssetsService {
 
         let mut data = self
             .assets_domain
-            .get_account_assets_entity(tx, account_id, wallet_address, chain_codes, Some(false))
+            .get_account_assets_entity(
+                tx,
+                account_id,
+                wallet_address,
+                chain_codes,
+                Some(false),
+                wallet_type,
+            )
             .await?;
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 
@@ -105,6 +116,7 @@ impl AssetsService {
         account_id: Option<u32>,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<CoinAssets, crate::ServiceError> {
         let tx = &mut self.repo;
 
@@ -122,9 +134,10 @@ impl AssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsId::new(&address, chain_code, symbol);
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        let assets_id = AssetsId::new(&address, chain_code, symbol, token_address);
         let assets = tx
-            .assets_by_id(&assets_id)
+            .assets_by_id(&assets_id, wallet_type)
             .await?
             .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
 
@@ -147,7 +160,10 @@ impl AssetsService {
 
         let addresses = accounts.into_iter().map(|info| info.address).collect();
 
-        let mut data = tx.get_coin_assets_in_address(addresses).await?;
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        let mut data = tx
+            .get_coin_assets_in_address(addresses, wallet_type)
+            .await?;
 
         let account_total_assets = token_currencies
             .calculate_account_total_assets(&mut data)
@@ -270,6 +286,7 @@ impl AssetsService {
         let mut res = AccountChainAssetList::default();
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
         // 根据账户地址、网络查询币资产
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         for address in account_addresses {
             let assets: Vec<AssetsEntity> = tx
                 .get_chain_assets_by_address_chain_code_symbol(
@@ -277,6 +294,7 @@ impl AssetsService {
                     Some(address.chain_code),
                     None,
                     None,
+                    wallet_type.clone(),
                 )
                 .await?;
             for asset in assets {
@@ -324,12 +342,14 @@ impl AssetsService {
         Ok(res)
     }
 
+    // TODO: 有问题：两个相同chainCode相同symbol的不知道怎么添加
     pub async fn add_coin(
         self,
         address: &str,
         account_id: Option<u32>,
         symbol: &str,
         chain_code: Option<String>,
+        // token_address: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
@@ -344,7 +364,9 @@ impl AssetsService {
             )
             .await?;
 
-        let coins = tx.coin_list(Some(symbol), chain_code.clone()).await?;
+        let coins = tx
+            .coin_list_v2(Some(symbol.to_string()), chain_code.clone())
+            .await?;
 
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
@@ -353,6 +375,7 @@ impl AssetsService {
 
         let mut token_balance_refresh_req: TokenBalanceRefreshReq =
             TokenBalanceRefreshReq(Vec::new());
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         for account in accounts {
             if let Some(coin) = coins
                 .iter()
@@ -369,12 +392,12 @@ impl AssetsService {
                     0
                 };
 
-                let assets_id = AssetsId::new(&account.address, chain_code, symbol);
+                let assets_id =
+                    AssetsId::new(&account.address, chain_code, symbol, coin.token_address());
 
                 let assets = CreateAssetsVo::new(
                     assets_id,
                     coin.decimals,
-                    coin.token_address().clone(),
                     coin.protocol.clone(),
                     is_multisig,
                 )
@@ -384,10 +407,10 @@ impl AssetsService {
                 if coin.price.is_empty() {
                     req.insert(
                         chain_code,
-                        &assets.token_address.clone().unwrap_or_default(),
+                        &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
-                tx.upsert_assets(assets).await?;
+                tx.upsert_assets(assets, wallet_type.clone()).await?;
                 token_balance_refresh_req
                     .push(TokenBalanceRefresh::new(address, chain_code, &device.sn));
             }
@@ -407,28 +430,48 @@ impl AssetsService {
         Ok(())
     }
 
+    // XXX: 移除资产现在是符号相同的都移除，包括自定义的
     pub async fn remove_coin(
         &mut self,
         address: &str,
         account_id: Option<u32>,
         symbol: &str,
+        // token_address: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
         let accounts = self
             .account_domain
             .get_addresses(tx, address, account_id, None, is_multisig)
+            .await?
+            .into_iter()
+            .map(|account| account.address)
+            .collect();
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        let assets = tx
+            .get_chain_assets_by_address_chain_code_symbol(
+                accounts,
+                None,
+                Some(symbol),
+                None,
+                wallet_type.clone(),
+            )
             .await?;
-
         let mut assets_ids = Vec::new();
         let mut coin_ids = std::collections::HashSet::new();
-        for account in accounts {
-            let assets_id = AssetsId::new(&account.address, &account.chain_code, symbol);
+        for asset in assets {
+            let assets_id = AssetsId::new(
+                &asset.address,
+                &asset.chain_code,
+                &asset.symbol,
+                Some(asset.token_address),
+            );
             assets_ids.push(assets_id);
-            let coin_id = SymbolId::new(&account.chain_code, symbol);
+            let coin_id = SymbolId::new(&asset.chain_code, symbol);
             coin_ids.insert(coin_id);
         }
-        tx.delete_multi_assets(assets_ids).await?;
+        tx.delete_multi_assets(assets_ids, wallet_type.clone())
+            .await?;
 
         let mut should_drop_coin = std::collections::HashSet::new();
         for coin in coin_ids {
@@ -438,6 +481,7 @@ impl AssetsService {
                     Some(coin.chain_code.clone()),
                     Some(&coin.symbol),
                     None,
+                    wallet_type.clone(),
                 )
                 .await?;
             if asset.is_empty() {
@@ -458,6 +502,7 @@ impl AssetsService {
         keyword: Option<&str>,
         is_multisig: Option<bool>,
     ) -> Result<crate::response_vo::coin::CoinInfoList, crate::ServiceError> {
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         let mut tx = self.repo;
         let account_addresses = self
             .account_domain
@@ -475,7 +520,14 @@ impl AssetsService {
             .collect::<Vec<String>>();
         let mut res = self
             .assets_domain
-            .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)
+            .get_local_coin_list(
+                &mut tx,
+                account_addresses,
+                chain_code,
+                keyword,
+                is_multisig,
+                wallet_type,
+            )
             .await?;
         res.mark_multi_chain_assets();
         Ok(res)
@@ -488,7 +540,8 @@ impl AssetsService {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        AssetsDomain::sync_assets_by_addr_chain(addr, chain_code, symbol).await
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        AssetsDomain::sync_assets_by_addr_chain(addr, chain_code, symbol, Some(wallet_type)).await
     }
 
     // 从后端同步余额(后端)
@@ -498,7 +551,8 @@ impl AssetsService {
         chain_code: Option<String>,
         _symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        AssetsDomain::async_balance_from_backend_addr(addr, chain_code).await
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        AssetsDomain::async_balance_from_backend_addr(addr, chain_code, Some(wallet_type)).await
     }
 
     // 根据钱包地址来同步资产余额
@@ -508,7 +562,8 @@ impl AssetsService {
         account_id: Option<u32>,
         _symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol, wallet_type).await
     }
 
     pub async fn sync_assets_by_wallet_backend(
@@ -517,6 +572,8 @@ impl AssetsService {
         account_id: Option<u32>,
         _symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        AssetsDomain::async_balance_from_backend_wallet(wallet_address, account_id).await
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        AssetsDomain::async_balance_from_backend_wallet(wallet_address, account_id, wallet_type)
+            .await
     }
 }

@@ -2,6 +2,7 @@ use crate::domain;
 use crate::domain::assets::AssetsDomain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransDomain;
+use crate::domain::coin::CoinDomain;
 use crate::domain::multisig::MultisigDomain;
 use crate::domain::task_queue::TaskQueueDomain;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
@@ -13,7 +14,7 @@ use crate::response_vo::multisig_account::{
 };
 use std::collections::HashMap;
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
-use wallet_database::entities::assets::AssetsEntity;
+use wallet_database::entities::assets::{AssetsEntity, WalletType};
 use wallet_database::entities::bill::{BillKind, NewBillEntity};
 use wallet_database::entities::chain::ChainEntity;
 use wallet_database::entities::coin::CoinMultisigStatus;
@@ -540,6 +541,7 @@ impl MultisigAccountService {
             AssetsDomain::init_default_multisig_assets(
                 resp.multisig_address.clone(),
                 multisig_account.chain_code.clone(),
+                WalletType::Normal,
             )
             .await?;
             if multisig_account.chain_code.as_str() == chain_code::TRON {
@@ -638,15 +640,18 @@ impl MultisigAccountService {
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();
-
+            let coin =
+                CoinDomain::get_coin(&payer.chain_code, &payer.symbol, payer.token_address).await?;
             // transfer parameter
-            let base = transaction::BaseTransferReq::new(
+            let mut base = transaction::BaseTransferReq::new(
                 payer.from,
                 to.to_string(),
                 value.clone(),
                 payer.chain_code.clone(),
                 payer.symbol,
             );
+            base.with_token(coin.token_address());
+            base.with_decimals(coin.decimals);
             let params = transaction::TransferReq {
                 base,
                 password: password.to_string(),

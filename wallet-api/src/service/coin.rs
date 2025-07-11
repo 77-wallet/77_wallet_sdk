@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{assets::AssetsId, coin::CoinId},
+    entities::{
+        assets::{AssetsId, WalletType},
+        coin::CoinId,
+    },
     repositories::{
         assets::AssetsRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
         exchange_rate::ExchangeRateRepoTrait, ResourcesRepo,
@@ -81,6 +84,7 @@ impl CoinService {
                 chain_code.clone(),
                 None,
                 _is_multisig,
+                WalletType::Normal,
             )
             .await
             .map_err(crate::ServiceError::Database)?;
@@ -143,93 +147,7 @@ impl CoinService {
     }
 
     pub async fn pull_hot_coins(&mut self) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
-        let tx = &mut self.repo;
-        tx.drop_coin_just_null_token_address().await?;
-
-        // let list: Vec<wallet_transport_backend::CoinInfo> =
-        //     crate::default_data::coins::init_default_coins_list()?
-        //         .iter()
-        //         .map(|coin| coin.to_owned().into())
-        //         .collect();
-        // // let exclude_name_list: Vec<String> =
-        // //     list.iter().flat_map(|coin| coin.symbol.clone()).collect();
-        // self.upsert_hot_coin_list(list, 1, 1).await?;
-
-        let mut data = Vec::new();
-        let page_size = 1000;
-        let mut page = 0;
-
-        // 拉取远程分页数据，按页获取并追加到 `data` 中
-        loop {
-            let req = wallet_transport_backend::request::TokenQueryByPageReq::new_default_token(
-                Vec::new(), // 空的 exclude_name_list
-                page,
-                page_size,
-            );
-            match backend_api.token_query_by_page(&req).await {
-                Ok(mut list) => {
-                    data.append(&mut list.list);
-                    page += 1;
-                    if page >= list.total_page {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("get_token_price error: {e:?}");
-                    break; // 出错时中断循环
-                }
-            }
-        }
-
-        // 拉取流行币种数据并追加到 `data`
-        let req =
-            wallet_transport_backend::request::TokenQueryByPageReq::new_popular_token(0, page_size);
-
-        let default_list: Vec<wallet_transport_backend::CoinInfo> =
-            crate::default_data::coin::init_default_coins_list()?
-                .coins
-                .iter()
-                .map(|coin| coin.to_owned().into())
-                .collect();
-
-        if let Ok(mut list) = backend_api.token_query_by_page(&req).await {
-            data.append(&mut list.list);
-        }
-        tracing::debug!("pull hot coins data: {data:#?}");
-        // let filtered_data: Vec<_> = data
-        //     .into_iter()
-        //     .map(|mut d| {
-        //         if d.token_address().is_none() {
-        //             d.token_address = Some("".to_string());
-        //         };
-        //         d
-        //     })
-        //     .collect();
-        let filtered_data: Vec<_> = data
-            .into_iter()
-            .filter(|coin| {
-                !default_list.iter().any(|default_coin| {
-                    tracing::debug!("coin: {coin:#?}");
-                    tracing::debug!(
-                        "default_coin symbol: {:?}, chain_code: {:?}, token_address: {:?}",
-                        default_coin.symbol,
-                        default_coin.chain_code,
-                        default_coin.token_address,
-                    );
-                    default_coin.chain_code == coin.chain_code
-                        && default_coin.symbol == coin.symbol
-                        && default_coin.token_address == coin.token_address
-                })
-            })
-            .collect();
-
-        // tracing::info!("filtered_data: {filtered_data:?}");
-        let data = filtered_data.into_iter().map(|d| d.into()).collect();
-
-        CoinDomain::upsert_hot_coin_list(tx, data).await?;
-        // self.upsert_hot_coin_list(data, 0, 1).await?;
-
+        CoinDomain::pull_hot_coins(&mut self.repo).await?;
         Ok(())
     }
 
@@ -238,7 +156,7 @@ impl CoinService {
 
         let tx = &mut self.repo;
 
-        let coin_list = tx.coin_list(None, None).await?;
+        let coin_list = tx.coin_list_v2(None, None).await?;
 
         let req: Vec<TokenQueryPrice> = coin_list
             .into_iter()
@@ -271,6 +189,7 @@ impl CoinService {
     pub async fn query_token_price(
         mut self,
         req: TokenQueryPriceReq,
+        // wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
 
@@ -288,8 +207,14 @@ impl CoinService {
             };
             tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit)
                 .await?;
-            tx.update_status(&token.chain_code, &token.symbol, token.token_address, 1)
-                .await?;
+            // tx.update_status(
+            //     &token.chain_code,
+            //     &token.symbol,
+            //     token.token_address,
+            //     1,
+            //     wallet_type.clone(),
+            // )
+            // .await?;
         }
         Ok(())
     }
@@ -469,19 +394,18 @@ impl CoinService {
         let balance = wallet_utils::unit::format_to_string(balance, decimals)
             .unwrap_or_else(|_| "0".to_string());
 
-        let assets_id = AssetsId::new(&account_addresses.address, chain_code, &symbol);
-        let assets = CreateAssetsVo::new(
-            assets_id,
-            decimals,
-            Some(token_address.to_string()),
-            None,
-            is_multisig,
-        )
-        .with_name(&name)
-        .with_balance(&balance)
-        .with_u256(alloy::primitives::U256::default(), decimals)?;
+        let assets_id = AssetsId::new(
+            &account_addresses.address,
+            chain_code,
+            &symbol,
+            Some(token_address.clone()),
+        );
+        let assets = CreateAssetsVo::new(assets_id, decimals, None, is_multisig)
+            .with_name(&name)
+            .with_balance(&balance)
+            .with_u256(alloy::primitives::U256::default(), decimals)?;
 
-        tx.upsert_assets(assets).await?;
+        tx.upsert_assets(assets, WalletType::Normal).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
             address: account_addresses.address,
             chain_code: chain_code.to_string(),

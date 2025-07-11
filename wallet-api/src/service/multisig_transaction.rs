@@ -23,7 +23,7 @@ use wallet_database::entities::multisig_signatures::{MultisigSignatureStatus, Ne
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_database::repositories::permission::PermissionRepo;
-use wallet_database::DbPool;
+use wallet_database::{DbPool, GLOBAL_WALLET_TYPE};
 use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::request::{PermissionData, SignedTranUpdateHashReq};
 use wallet_types::constant::chain_code;
@@ -38,10 +38,16 @@ impl MultisigTransactionService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
 
-        let assets =
-            ChainTransDomain::assets(&req_params.chain_code, &req_params.symbol, &req_params.from)
-                .await?;
+        let assets = ChainTransDomain::assets(
+            &req_params.chain_code,
+            &req_params.symbol,
+            &req_params.from,
+            req_params.token_address.clone(),
+            wallet_type,
+        )
+        .await?;
 
         let main_coin = ChainTransDomain::main_coin(&assets.chain_code).await?;
 
@@ -80,7 +86,15 @@ impl MultisigTransactionService {
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let assets = ChainTransDomain::assets(&req.chain_code, &req.symbol, &req.from).await?;
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        let assets = ChainTransDomain::assets(
+            &req.chain_code,
+            &req.symbol,
+            &req.from,
+            req.token_address.clone(),
+            wallet_type,
+        )
+        .await?;
 
         let account = MultisigDomain::account_by_address(&req.from, true, &pool).await?;
         MultisigDomain::validate_queue(&account)?;
@@ -129,7 +143,8 @@ impl MultisigTransactionService {
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let coin = CoinDomain::get_coin(&req.chain_code, &req.symbol).await?;
+        let coin =
+            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone()).await?;
 
         let permission =
             PermissionRepo::permission_with_user(&pool, &req.from, signer.permission_id, false)
@@ -360,7 +375,8 @@ impl MultisigTransactionService {
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
 
-        let coin = CoinDomain::get_coin(&queue.chain_code, &queue.symbol).await?;
+        let coin =
+            CoinDomain::get_coin(&queue.chain_code, &queue.symbol, queue.token_address()).await?;
 
         // 签名数
         let signs = MultisigQueueRepo::get_signed_list(&pool, queue_id).await?;
@@ -551,7 +567,8 @@ impl MultisigTransactionService {
         let signs = MultisigQueueRepo::get_signed_list(&pool, queue_id).await?;
         let signs_list = signs.get_order_sign_str();
 
-        let coin = CoinDomain::get_coin(&queue.chain_code, &queue.symbol).await?;
+        let coin =
+            CoinDomain::get_coin(&queue.chain_code, &queue.symbol, queue.token_address()).await?;
 
         let transfer_amount = wallet_utils::unit::convert_to_u256(&queue.value, coin.decimals)?;
 

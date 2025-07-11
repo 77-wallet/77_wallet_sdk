@@ -15,7 +15,6 @@ use wallet_chain_interact::BillResourceConsume;
 use wallet_database::dao::bill::BillDao;
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 use wallet_database::dao::multisig_queue::MultisigQueueDaoV1;
-use wallet_database::entities;
 use wallet_database::entities::assets::{AssetsEntity, AssetsId};
 use wallet_database::entities::bill::{
     BillEntity, BillKind, BillStatus, BillUpdateEntity, RecentBillListVo, SyncBillEntity,
@@ -29,6 +28,7 @@ use wallet_database::pagination::Pagination;
 use wallet_database::repositories::address_book::AddressBookRepo;
 use wallet_database::repositories::coin::CoinRepo;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
+use wallet_database::{entities, GLOBAL_WALLET_TYPE};
 use wallet_utils::unit;
 
 pub struct TransactionService {}
@@ -39,13 +39,15 @@ impl TransactionService {
         address: &str,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<Balance, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, &pool).await?;
+        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address.clone(), &pool)
+            .await?;
 
-        let balance = adapter.balance(address, coin.token_address()).await?;
+        let balance = adapter.balance(address, token_address).await?;
         let format_balance = unit::format_to_string(balance, coin.decimals)?;
 
         let balance = Balance {
@@ -53,8 +55,17 @@ impl TransactionService {
             decimals: coin.decimals,
             original_balance: balance.to_string(),
         };
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
 
-        ChainTransDomain::update_balance(address, chain_code, symbol, &format_balance).await?;
+        ChainTransDomain::update_balance(
+            address,
+            chain_code,
+            symbol,
+            coin.token_address,
+            &format_balance,
+            wallet_type,
+        )
+        .await?;
 
         Ok(balance)
     }
@@ -63,7 +74,12 @@ impl TransactionService {
     pub async fn transaction_fee(
         mut params: transaction::BaseTransferReq,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let coin = CoinDomain::get_coin(&params.chain_code, &params.symbol).await?;
+        let coin = CoinDomain::get_coin(
+            &params.chain_code,
+            &params.symbol,
+            params.token_address.clone(),
+        )
+        .await?;
 
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address());
@@ -270,6 +286,7 @@ impl TransactionService {
             chain_code: transaction.chain_code.clone(),
             symbol: transaction.symbol.clone(),
             address: transaction.owner.clone(),
+            token_address: transaction.token.clone(),
         };
 
         // 2. 更新账单
@@ -278,9 +295,15 @@ impl TransactionService {
             .map_err(|e| crate::SystemError::Service(format!("update bill fail:{e:?}")))?;
 
         // 1. 更新余额
-        AssetsEntity::update_balance(tx.as_mut(), &assets_id, &sync_bill.balance)
-            .await
-            .map_err(|e| crate::SystemError::Service(format!("update balance fail:{e:?}")))?;
+        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
+        AssetsEntity::update_balance(
+            tx.as_mut(),
+            &assets_id,
+            &sync_bill.balance,
+            Some(wallet_type),
+        )
+        .await
+        .map_err(|e| crate::SystemError::Service(format!("update balance fail:{e:?}")))?;
 
         // 3. 如果queue_id 存在表示是多签交易，需要同步多签队列里面的状态
         if !transaction.queue_id.is_empty() {
@@ -355,9 +378,10 @@ impl TransactionService {
             .map(|token| token.to_string());
 
         // 查询余额
-        let balance = adapter.balance(&transaction.owner, token).await?;
+        let balance = adapter.balance(&transaction.owner, token.clone()).await?;
 
-        let coin = CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol).await?;
+        let coin =
+            CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token).await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 
