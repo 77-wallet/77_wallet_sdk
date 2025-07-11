@@ -11,18 +11,43 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, CoinEntity::upsert_multi_coin, coin)
     }
 
-    async fn coin_list(
+    async fn detail(
         &mut self,
-        symbol: Option<&str>,
+        symbol: &str,
+        chain_code: &str,
+        token_address: Option<String>,
+    ) -> Result<Option<CoinEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(
+            executor,
+            CoinEntity::detail,
+            symbol,
+            chain_code,
+            token_address
+        )
+    }
+
+    // async fn coin_list(
+    //     &mut self,
+    //     symbol: Option<&str>,
+    //     chain_code: Option<String>,
+    // ) -> Result<Vec<CoinEntity>, crate::Error> {
+    //     let executor = self.get_conn_or_tx()?;
+    //     let symbol = if let Some(symbol) = symbol {
+    //         vec![symbol.to_string()]
+    //     } else {
+    //         Vec::new()
+    //     };
+    //     crate::execute_with_executor!(executor, CoinEntity::list, &symbol, chain_code, None)
+    // }
+
+    async fn coin_list_v2(
+        &mut self,
+        symbol: Option<String>,
         chain_code: Option<String>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        let symbol = if let Some(symbol) = symbol {
-            vec![symbol.to_string()]
-        } else {
-            Vec::new()
-        };
-        crate::execute_with_executor!(executor, CoinEntity::list, &symbol, chain_code, None)
+        crate::execute_with_executor!(executor, CoinEntity::list_v2, symbol, chain_code, None)
     }
 
     async fn get_coin_by_chain_code_token_address(
@@ -50,7 +75,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
 
     async fn default_coin_list(&mut self) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::list, &[], None, Some(1))
+        crate::execute_with_executor!(executor, CoinEntity::list_v2, None, None, Some(1))
     }
 
     async fn get_market_chain_list(&mut self) -> Result<Vec<String>, crate::Error> {
@@ -133,9 +158,10 @@ impl CoinRepo {
     pub async fn coin_by_symbol_chain(
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
         pool: &DbPool,
     ) -> Result<CoinEntity, crate::Error> {
-        CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
+        CoinEntity::get_coin(chain_code, symbol, token_address, pool.as_ref())
             .await?
             .ok_or(crate::Error::NotFound(format!(
                 "coin not found: chain_code: {}, symbol: {}",

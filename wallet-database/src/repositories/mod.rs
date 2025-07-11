@@ -16,6 +16,13 @@ pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
 
+use wallet_utils::async_shared_state::AsyncSharedState;
+
+use crate::entities::assets::WalletType;
+
+pub static GLOBAL_WALLET_TYPE: AsyncSharedState<WalletType> =
+    AsyncSharedState::new(Some(|| WalletType::Normal));
+
 pub struct ResourcesRepo {
     db_pool: crate::DbPool,
     transaction: Option<sqlx::Transaction<'static, sqlx::Sqlite>>,

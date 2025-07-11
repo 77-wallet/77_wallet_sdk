@@ -3,15 +3,50 @@ pub struct AssetsId {
     pub address: String,
     pub chain_code: String,
     pub symbol: String,
+    pub token_address: Option<String>,
 }
 
 impl AssetsId {
-    pub fn new(address: &str, chain_code: &str, symbol: &str) -> Self {
+    pub fn new(
+        address: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_address: Option<String>,
+    ) -> Self {
         Self {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
+            token_address,
         }
+    }
+}
+
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    sqlx::Type,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    strum_macros::EnumString,
+    strum_macros::AsRefStr,
+)]
+#[strum(serialize_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT")]
+pub enum WalletType {
+    /// 普通钱包
+    Normal,
+    /// API钱包
+    Api,
+}
+
+impl Default for WalletType {
+    fn default() -> Self {
+        Self::Normal
     }
 }
 
@@ -23,6 +58,7 @@ pub struct AssetsEntity {
     pub address: String,
     pub chain_code: String,
     pub token_address: String,
+    pub wallet_type: WalletType,
     pub protocol: Option<String>,
     pub status: u8,
     /// 0/普通资产 1/多签资产 2/待部署多签账户的普通资产
@@ -39,6 +75,7 @@ impl AssetsEntity {
             address: self.address.clone(),
             symbol: self.symbol.clone(),
             chain_code: self.chain_code.clone(),
+            token_address: self.token_address(),
         }
     }
 }
@@ -51,6 +88,7 @@ pub struct AssetsEntityWithAddressType {
     pub address: String,
     pub chain_code: String,
     pub token_address: String,
+    pub wallet_type: WalletType,
     pub protocol: Option<String>,
     address_type: String,
     pub status: u8,
