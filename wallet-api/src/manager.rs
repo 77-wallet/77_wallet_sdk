@@ -13,12 +13,14 @@ use crate::service::node::NodeService;
 use crate::{domain, infrastructure};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
+use wallet_database::entities::assets::WalletType;
 use wallet_database::factory::RepositoryFactory;
 use wallet_database::repositories::device::DeviceRepoTrait;
-use wallet_database::SqliteContext;
+use wallet_database::{SqliteContext, GLOBAL_WALLET_TYPE};
 
 pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
@@ -432,6 +434,18 @@ impl WalletManager {
                 tracing::error!("init_data error: {}", e);
             };
         });
+
+        Ok(())
+    }
+
+    pub async fn init_wallet_type(&self, wallet_type: &str) -> Result<(), crate::ServiceError> {
+        let wallet_type =
+            WalletType::from_str(wallet_type).map_err(|e| wallet_utils::Error::Parse(e.into()))?;
+        if GLOBAL_WALLET_TYPE.is_initialized().await {
+            GLOBAL_WALLET_TYPE.set(wallet_type).await;
+        } else {
+            GLOBAL_WALLET_TYPE.init_once(async || wallet_type).await;
+        }
 
         Ok(())
     }
