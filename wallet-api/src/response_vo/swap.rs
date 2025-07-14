@@ -5,6 +5,7 @@ use wallet_transport_backend::api::swap::ApproveInfo;
 
 // 查询报价的响应
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiQuoteResp {
     // 输入
     pub amount_in: BalanceInfo,

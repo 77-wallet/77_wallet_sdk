@@ -265,21 +265,33 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
 
 // 路由
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+// #[serde(rename_all = "camelCase")]
 pub struct DexRoute {
+    #[serde(rename = "amountIn", alias = "amount_in")]
     pub amount_in: String, // 可选择转换为 U256
+    #[serde(rename = "amountOut", alias = "amount_out")]
     pub amount_out: String,
+    #[serde(rename = "routeInDex", alias = "route_in_dex")]
     pub route_in_dex: Vec<RouteInDex>,
 }
 
 // 子路由
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+// #[serde(rename_all = "camelCase")]
 pub struct RouteInDex {
+    #[serde(rename = "dexId", alias = "dex_id")]
     pub dex_id: u16,
+    #[serde(rename = "poolId", alias = "pool_id")]
     pub pool_id: String,
+    #[serde(rename = "inTokenAddr", alias = "in_token_addr")]
     pub in_token_addr: String,
+    #[serde(rename = "outTokenAddr", alias = "out_token_addr")]
     pub out_token_addr: String,
+    #[serde(rename = "zeroForOne", alias = "zero_for_one")]
     pub zero_for_one: bool,
     pub fee: String,
+    #[serde(rename = "amountIn", alias = "amount_in")]
     pub amount_in: String,
+    #[serde(rename = "minAmountOut", alias = "min_amount_out")]
     pub min_amount_out: String,
 }
