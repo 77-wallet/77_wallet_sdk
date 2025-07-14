@@ -105,7 +105,7 @@ pub(super) async fn allowance(
     token: &str,
     spender: &str,
 ) -> Result<U256, crate::ServiceError> {
-    let approve = Allowance::new(from, token, spender);
+    let approve = Allowance::new(from, spender, token);
     let wrap = WarpContract::new(approve)?;
 
     // get fee

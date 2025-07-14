@@ -189,7 +189,7 @@ impl CoinDomain {
         match chain_code {
             ChainCode::Ethereum => Ok("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
             ChainCode::BnbSmartChain => {
-                Ok("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56".to_string())
+                Ok("0x55d398326f99059fF775485246999027B3197955".to_string())
             }
             ChainCode::Tron => Ok("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string()),
             _ => Err(crate::BusinessError::Coin(crate::CoinError::NotFound(

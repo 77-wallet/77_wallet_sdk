@@ -7,7 +7,7 @@ use wallet_api::request::transaction::{
 async fn test_default_quote() {
     let wallet_manager = get_manager().await;
 
-    let chain_code = "tron".to_string();
+    let chain_code = "eth".to_string();
     let token_in = "".to_string();
     // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
 
@@ -40,7 +40,7 @@ async fn test_token_list() {
     let req = SwapTokenListReq {
         chain_code: "eth".to_string(),
         search: "".to_string(),
-        exclude_token: vec![],
+        exclude_token: vec!["".to_string()],
         page_num: 0,
         page_size: 10,
     };
@@ -54,12 +54,12 @@ async fn test_approve() {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
-        from: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
-        spender: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        from: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        spender: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
-        value: "10".to_string(),
+        value: "15".to_string(),
         chain_code: "tron".to_string(),
-        approve_type: "UN_LIMIT".to_string(),
+        approve_type: "NORMAL".to_string(),
     };
 
     let password = "123456".to_string();
@@ -89,7 +89,7 @@ async fn test_approve_fee() {
 async fn test_approve_list() {
     let wallet_manager = get_manager().await;
 
-    let uid = "a1638726610a344dd3f7af9ef1f001607bafdc1b1571122840be013f1ad5ca3c".to_string();
+    let uid = "f091ca89e48bc1cd3e4cb84e8d3e3d9e2564e3616efd1feb468793687037d66f".to_string();
     let account_id = 1;
 
     let resp = wallet_manager.approve_list(uid, account_id).await;
@@ -101,8 +101,8 @@ async fn test_approve_cancel() {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
-        from: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
-        spender: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        from: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        spender: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
         value: "10".to_string(),
         chain_code: "tron".to_string(),

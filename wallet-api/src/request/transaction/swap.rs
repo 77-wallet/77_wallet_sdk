@@ -22,6 +22,7 @@ impl From<SwapTokenListReq> for wallet_transport_backend::request::SwapTokenQuer
             search: value.search,
             page_num: value.page_num,
             page_size: value.page_size,
+            exclude_tokens: value.exclude_token,
         }
     }
 }

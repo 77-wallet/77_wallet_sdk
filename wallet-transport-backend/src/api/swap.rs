@@ -91,9 +91,9 @@ impl BackendApi {
             .await
     }
 
-    pub async fn update_used_approve(&self, ids: Vec<String>) -> Result<(), crate::Error> {
-        let endpoint = "swap/approve/updateUsedApprove";
+    pub async fn update_used_approve(&self, ids: Vec<String>) -> Result<bool, crate::Error> {
+        let endpoint = "/swap/approve/usedAllQuota";
         let req = std::collections::HashMap::from([("ids", ids)]);
-        self.post_request::<_, ()>(endpoint, &req).await
+        self.post_request::<_, bool>(endpoint, &req).await
     }
 }

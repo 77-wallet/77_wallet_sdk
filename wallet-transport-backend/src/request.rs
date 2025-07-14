@@ -835,4 +835,5 @@ pub struct SwapTokenQueryReq {
     pub page_size: i64,
     pub chain_code: String,
     pub search: String,
+    pub exclude_tokens: Vec<String>,
 }

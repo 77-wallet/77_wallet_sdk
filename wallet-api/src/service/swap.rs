@@ -374,7 +374,7 @@ impl SwapServer {
             &req.spender,
             &req.from,
             &req.contract,
-            value.to_string(),
+            req.value.clone(),
             &hash,
             &req.approve_type,
         );
