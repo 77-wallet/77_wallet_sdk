@@ -31,7 +31,7 @@ impl WalletDomain {
         Self {}
     }
 
-    pub(crate) async fn init_wallet_type(wallet_type: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn set_wallet_type(wallet_type: &str) -> Result<(), crate::ServiceError> {
         use std::str::FromStr as _;
         let wallet_type =
             WalletType::from_str(wallet_type).map_err(|e| wallet_utils::Error::Parse(e.into()))?;

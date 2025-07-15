@@ -210,7 +210,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
         let account_id = 2147483648;
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id,
@@ -247,7 +247,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // wallet_manager.init_wallet_type("api").await?;
-        wallet_manager.init_wallet_type("normal").await;
+        wallet_manager.set_wallet_type("normal").await;
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account_id = Some(1);
         let chain_code = "bnb";
@@ -302,7 +302,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
         // let keyword = Some("t");
         let keyword = None;
         // let chain_code = Some("Tron");
@@ -374,7 +374,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
         let account_id = 2147483648;
         // let account_id = 1;
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
@@ -433,7 +433,7 @@ mod test {
         let is_multisig = None;
         // let account_id = Some(1);
 
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
         let account_id = Some(2147483648);
 
         wallet_manager.set_currency("USD").await;
@@ -476,7 +476,7 @@ mod test {
         // let chain_code = None;
         let chain_code = None;
         let symbol = vec![];
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
 
         let res = wallet_manager
             .sync_assets(address, chain_code, symbol)
@@ -497,7 +497,7 @@ mod test {
         // let account_id = Some(1);
         let account_id = Some(2147483648);
         let symbol = vec![];
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
 
         let res = wallet_manager
             .sync_assets_by_wallet(wallet_address, account_id, symbol)

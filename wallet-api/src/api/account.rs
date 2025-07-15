@@ -227,7 +227,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
 
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
         let address = test_params.create_account_req.wallet_address.clone();
         let account = wallet_manager
             .create_account(test_params.create_account_req)
@@ -286,7 +286,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        wallet_manager.init_wallet_type("api").await;
+        wallet_manager.set_wallet_type("api").await;
         let account_id = 2147483648;
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let password = &_test_params.create_wallet_req.wallet_password;

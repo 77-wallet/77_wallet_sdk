@@ -150,8 +150,8 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn init_wallet_type(&self, wallet_type: &str) -> ReturnType<()> {
-        WalletDomain::init_wallet_type(wallet_type).await.into()
+    pub async fn set_wallet_type(&self, wallet_type: &str) -> ReturnType<()> {
+        WalletDomain::set_wallet_type(wallet_type).await.into()
     }
 }
 

@@ -47,6 +47,6 @@ pub async fn get_manager() -> WalletManager {
         .await
         .unwrap();
 
-    manager.init_wallet_type("normal").await.unwrap();
+    manager.set_wallet_type("normal").await;
     manager
 }
