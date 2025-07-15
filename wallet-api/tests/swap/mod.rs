@@ -23,15 +23,25 @@ async fn test_support_chain() {
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 
-#[tokio::test]
-async fn test_support_dex() {
-    let wallet_manager = get_manager().await;
+// #[tokio::test]
+// async fn test_support_dex() {
+//     let wallet_manager = get_manager().await;
 
-    let chain_code = "eth".to_string();
-    let resp = wallet_manager.dex_list(chain_code).await;
+//     let chain_code = "eth".to_string();
+//     let resp = wallet_manager.dex_list(chain_code).await;
 
-    println!("{}", serde_json::to_string(&resp).unwrap());
-}
+//     println!("{}", serde_json::to_string(&resp).unwrap());
+// }
+
+// #[tokio::test]
+// async fn test_supplier() {
+//     let wallet_manager = get_manager().await;
+
+//     let chain_code = "tron".to_string();
+
+//     let resp = wallet_manager.supplier(chain_code).await;
+//     println!("{}", serde_json::to_string(&resp).unwrap());
+// }
 
 #[tokio::test]
 async fn test_token_list() {
@@ -112,16 +122,6 @@ async fn test_approve_cancel() {
     let password = "123456".to_string();
 
     let resp = wallet_manager.approve_cancel(params, password).await;
-    println!("{}", serde_json::to_string(&resp).unwrap());
-}
-
-#[tokio::test]
-async fn test_supplier() {
-    let wallet_manager = get_manager().await;
-
-    let chain_code = "tron".to_string();
-
-    let resp = wallet_manager.supplier(chain_code).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 

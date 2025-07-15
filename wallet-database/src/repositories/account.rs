@@ -301,4 +301,16 @@ impl AccountRepo {
                 address, chain_code
             )))
     }
+
+    pub async fn current_chain_address(
+        uid: String,
+        account_id: u32,
+        chain_code: &str,
+        pool: &DbPool,
+    ) -> Result<Vec<AccountEntity>, crate::Error> {
+        Ok(
+            AccountEntity::current_chain_address(uid, account_id, chain_code, pool.as_ref())
+                .await?,
+        )
+    }
 }

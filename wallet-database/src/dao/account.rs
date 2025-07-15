@@ -454,4 +454,34 @@ impl AccountEntity {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn current_chain_address<'a, E>(
+        uid: String,
+        account_id: u32,
+        chain_code: &str,
+        executor: E,
+    ) -> Result<Vec<AccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT 
+                account.*
+            FROM 
+                account
+            INNER JOIN 
+                wallet
+            ON 
+                account.wallet_address = wallet.address
+            WHERE 
+                wallet.uid = $1 AND account.account_id = $2 AND account.chain_code = $3;
+            "#;
+        sqlx::query_as::<_, AccountEntity>(sql)
+            .bind(uid)
+            .bind(account_id)
+            .bind(chain_code)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }

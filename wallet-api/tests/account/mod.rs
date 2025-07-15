@@ -158,3 +158,18 @@ async fn test_delete_account() {
 
     tracing::info!("response {:?}", c)
 }
+
+#[tokio::test]
+async fn test_current_chain_address() {
+    let wallet_manager = get_manager().await;
+
+    let uid = "f091ca89e48bc1cd3e4cb84e8d3e3d9e2564e3616efd1feb468793687037d66f".to_string();
+    let account_id = 1;
+    let chain_code = "tron".to_string();
+
+    let c = wallet_manager
+        .current_chain_address(uid, account_id, chain_code)
+        .await;
+
+    tracing::info!("response {}", serde_json::to_string(&c).unwrap());
+}

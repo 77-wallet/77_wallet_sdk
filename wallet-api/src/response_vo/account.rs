@@ -1,6 +1,7 @@
+use wallet_database::entities::account::AccountEntity;
 use wallet_types::chain::address::category::AddressCategory;
 
-use crate::domain::app::config::ConfigDomain;
+use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
 
 // 单笔交易需要花费的能量
 pub const NET_CONSUME: f64 = 270.0;
@@ -343,6 +344,22 @@ impl QueryAccountDerivationPath {
             chain_code: chain_code.to_string(),
             address_type,
         }
+    }
+}
+
+impl TryFrom<AccountEntity> for QueryAccountDerivationPath {
+    type Error = crate::ServiceError;
+
+    fn try_from(value: AccountEntity) -> Result<Self, Self::Error> {
+        let address_type =
+            AccountDomain::get_show_address_type(&value.chain_code, value.address_type())?;
+
+        Ok(QueryAccountDerivationPath {
+            address: value.address,
+            derivation_path: value.derivation_path,
+            chain_code: value.chain_code,
+            address_type,
+        })
     }
 }
 

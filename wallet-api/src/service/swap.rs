@@ -6,7 +6,7 @@ use crate::{
         task_queue::TaskQueueDomain,
     },
     infrastructure::swap_client::{
-        AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SupportChain, SupportDex, SwapClient,
+        AggQuoteRequest, AggQuoteResp, ChainDex, DefaultQuoteResp, SwapClient,
     },
     messaging::notify::other::{Process, TransactionProcessFrontend},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
@@ -293,16 +293,16 @@ impl SwapServer {
         Ok(resp)
     }
 
-    pub async fn chain_list(&self) -> Result<Vec<SupportChain>, crate::ServiceError> {
-        Ok(self.client.chain_list().await?)
+    pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
+        Ok(self.client.chain_list().await?.chain_dexs)
     }
 
-    pub async fn dex_list(
-        &self,
-        chain_code: String,
-    ) -> Result<Vec<SupportDex>, crate::ServiceError> {
-        Ok(self.client.dex_list(&chain_code).await?)
-    }
+    // pub async fn dex_list(
+    //     &self,
+    //     chain_code: String,
+    // ) -> Result<Vec<SupportDex>, crate::ServiceError> {
+    //     Ok(self.client.dex_list(&chain_code).await?)
+    // }
 
     pub async fn approve_fee(
         &self,
@@ -466,12 +466,12 @@ impl SwapServer {
         Ok(hash)
     }
 
-    pub async fn supplier(
-        &self,
-        chain_code: String,
-    ) -> Result<serde_json::Value, crate::ServiceError> {
-        Ok(self.client.swap_contract(chain_code).await?)
-    }
+    // pub async fn supplier(
+    //     &self,
+    //     chain_code: String,
+    // ) -> Result<serde_json::Value, crate::ServiceError> {
+    //     Ok(self.client.swap_contract(chain_code).await?)
+    // }
 
     // pub async fn allowance(
     //     &self,

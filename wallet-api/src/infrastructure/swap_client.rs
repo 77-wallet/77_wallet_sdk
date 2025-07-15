@@ -39,25 +39,25 @@ impl SwapClient {
         self.handle_result::<AggQuoteResp>(res)
     }
 
-    pub async fn chain_list(&self) -> Result<Vec<SupportChain>, crate::ServiceError> {
+    pub async fn chain_list(&self) -> Result<SupportChain, crate::ServiceError> {
         let res = self
             .client
-            .post_request::<_, AggregatorResp>("get_support_chain", "")
+            .post_request::<_, AggregatorResp>("get_support_chain_dex", "")
             .await?;
 
-        self.handle_result::<Vec<SupportChain>>(res)
+        self.handle_result::<SupportChain>(res)
     }
 
-    pub async fn dex_list(&self, chain_code: &str) -> Result<Vec<SupportDex>, crate::ServiceError> {
-        let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
+    // pub async fn dex_list(&self, chain_code: &str) -> Result<Vec<SupportDex>, crate::ServiceError> {
+    //     let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
 
-        let res = self
-            .client
-            .post_request::<_, AggregatorResp>("get_support_dex", payload)
-            .await?;
+    //     let res = self
+    //         .client
+    //         .post_request::<_, AggregatorResp>("get_support_dex", payload)
+    //         .await?;
 
-        self.handle_result::<Vec<SupportDex>>(res)
-    }
+    //     self.handle_result::<Vec<SupportDex>>(res)
+    // }
 
     // pub async fn default_quote(
     //     &self,
@@ -78,28 +78,36 @@ impl SwapClient {
     //     self.handle_result::<DefaultQuoteResp>(res)
     // }
 
-    pub async fn swap_contract(
-        &self,
-        chain_code: String,
-    ) -> Result<serde_json::Value, crate::ServiceError> {
-        let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
-        let res = self
-            .client
-            .post_request::<_, AggregatorResp>("get_swap_contract_address", payload)
-            .await?;
-        self.handle_result::<serde_json::Value>(res)
-    }
+    // pub async fn swap_contract(
+    //     &self,
+    //     chain_code: String,
+    // ) -> Result<serde_json::Value, crate::ServiceError> {
+    //     let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
+    //     let res = self
+    //         .client
+    //         .post_request::<_, AggregatorResp>("get_swap_contract_address", payload)
+    //         .await?;
+    //     self.handle_result::<serde_json::Value>(res)
+    // }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SupportChain {
-    pub chain_code: String,
+    pub chain_dexs: Vec<ChainDex>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SupportDex {
+pub struct ChainDex {
+    pub chain_code: String,
+    #[serde(alias = "swapContractAddr")]
+    pub aggregator_addr: String,
+    pub dexs: Vec<DexInfo>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DexInfo {
     pub dex_id: u64,
     pub dex_name: String,
 }

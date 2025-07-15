@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType,
-    infrastructure::swap_client::{DefaultQuoteResp, SupportChain, SupportDex},
+    infrastructure::swap_client::{ChainDex, DefaultQuoteResp},
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
@@ -37,12 +37,8 @@ impl crate::WalletManager {
     }
 
     // 支持兑换的链
-    pub async fn chain_list(&self) -> ReturnType<Vec<SupportChain>> {
+    pub async fn chain_list(&self) -> ReturnType<Vec<ChainDex>> {
         SwapServer::new()?.chain_list().await.into()
-    }
-
-    pub async fn dex_list(&self, chain_code: String) -> ReturnType<Vec<SupportDex>> {
-        SwapServer::new()?.dex_list(chain_code).await.into()
     }
 
     pub async fn approve(&self, req: ApproveReq, password: String) -> ReturnType<String> {
@@ -67,7 +63,11 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn supplier(&self, chain_code: String) -> ReturnType<serde_json::Value> {
-        SwapServer::new()?.supplier(chain_code).await.into()
-    }
+    // pub async fn dex_list(&self, chain_code: String) -> ReturnType<Vec<SupportDex>> {
+    //     SwapServer::new()?.dex_list(chain_code).await.into()
+    // }
+
+    // pub async fn supplier(&self, chain_code: String) -> ReturnType<serde_json::Value> {
+    //     SwapServer::new()?.supplier(chain_code).await.into()
+    // }
 }

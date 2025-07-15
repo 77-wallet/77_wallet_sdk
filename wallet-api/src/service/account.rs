@@ -1,8 +1,12 @@
 use wallet_database::{
     entities::account::AccountEntity,
     repositories::{
-        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
-        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
+        account::{AccountRepo, AccountRepoTrait},
+        chain::ChainRepoTrait,
+        coin::CoinRepoTrait,
+        device::DeviceRepoTrait,
+        wallet::WalletRepoTrait,
+        ResourcesRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -591,6 +595,23 @@ impl AccountService {
             .repo
             .get_account_list_by_wallet_address_and_account_id(wallet_address, account_id)
             .await?)
+    }
+
+    pub async fn current_chain_address(
+        uid: String,
+        account_id: u32,
+        chain_code: &str,
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let res = AccountRepo::current_chain_address(uid, account_id, chain_code, &pool).await?;
+
+        let result = res
+            .into_iter()
+            .map(QueryAccountDerivationPath::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(result)
     }
 
     // pub fn recover_subkey(

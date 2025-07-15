@@ -94,6 +94,17 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn current_chain_address(
+        &self,
+        uid: String,
+        account_id: u32,
+        chain_code: String,
+    ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
+        AccountService::current_chain_address(uid, account_id, &chain_code)
+            .await?
+            .into()
+    }
+
     // /// Recovers a subkey associated with a given wallet name and address.
     // ///
     // /// This function attempts to recover a subkey by performing the following steps:
