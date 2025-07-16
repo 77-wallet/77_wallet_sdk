@@ -26,6 +26,8 @@ pub struct MultisigServiceFeeInfo {
     pub code: String,
     // 链编码
     pub chain_code: String,
+    // 合约地址
+    pub token_address: String,
     // 符号
     pub fee_token_code: String,
     // 手续费(抵扣后的手续费)

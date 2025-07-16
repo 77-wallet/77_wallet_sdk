@@ -12,7 +12,6 @@ use crate::{
 impl BackendApi {
     pub async fn address_find_address_raw_data(
         &self,
-
         req: crate::request::FindAddressRawDataReq,
     ) -> Result<FindAddressRawDataRes, crate::Error> {
         let res = self
@@ -27,7 +26,6 @@ impl BackendApi {
 
     pub async fn signed_find_address(
         &self,
-
         req: crate::request::SignedFindAddressReq,
     ) -> Result<DepositAddress, crate::Error> {
         let res = self
@@ -42,7 +40,6 @@ impl BackendApi {
 
     pub async fn signed_fee_info(
         &self,
-
         req: crate::request::SignedFeeListReq,
     ) -> Result<MultisigServiceFeeInfo, crate::Error> {
         let res = self
@@ -55,9 +52,21 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
+    pub async fn signed_fee_info_v2(
+        &self,
+        req: crate::request::SignedFeeListReq,
+    ) -> Result<MultisigServiceFeeInfo, crate::Error> {
+        let res = self
+            .client
+            .post("signed/order/v2/feeInfo")
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+        res.process(&self.aes_cbc_cryptor)
+    }
+
     pub async fn signed_order_update_signed_hash(
         &self,
-
         req: &SignedUpdateSignedHashReq,
     ) -> Result<Option<String>, crate::Error> {
         let res = self
@@ -71,7 +80,6 @@ impl BackendApi {
 
     pub async fn signed_order_update_recharge_hash(
         &self,
-
         req: &SignedUpdateRechargeHashReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -85,7 +93,6 @@ impl BackendApi {
 
     pub async fn signed_order_save_confirm_address(
         &self,
-
         req: SignedSaveAddressReq,
     ) -> Result<Option<String>, crate::Error> {
         // /signed/order/saveConfirmAddress
@@ -101,7 +108,6 @@ impl BackendApi {
 
     pub async fn get_address_uid(
         &self,
-
         chain_code: String,
         address: Vec<String>,
     ) -> Result<AddressUidList, crate::Error> {
@@ -121,7 +127,6 @@ impl BackendApi {
 
     pub async fn signed_order_cancel(
         &self,
-
         req: &SingedOrderCancelReq,
     ) -> Result<Option<String>, crate::Error> {
         let res = self
@@ -135,7 +140,6 @@ impl BackendApi {
 
     pub async fn signed_order_create(
         &self,
-
         req: SignedCreateOrderReq,
     ) -> Result<String, crate::Error> {
         let res = self
@@ -149,7 +153,6 @@ impl BackendApi {
 
     pub async fn signed_order_accept(
         &self,
-
         req: &SignedOrderAcceptReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -164,7 +167,6 @@ impl BackendApi {
     // /signed/order/success
     pub async fn signed_order_success(
         &self,
-
         req: SignedUpdateRechargeHashReq,
     ) -> Result<String, crate::Error> {
         let res = self

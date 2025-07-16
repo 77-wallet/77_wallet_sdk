@@ -65,13 +65,17 @@ impl CoinDomain {
                 (f64::default(), f64::default())
             };
 
-            let symbol = coin.symbol.to_ascii_lowercase();
-            let name = coin.name;
+            let symbol = &coin.symbol;
+            let chain_code = &coin.chain_code;
 
-            let token_currency_id = TokenCurrencyId::new(&symbol, &coin.chain_code);
+            let token_currency_id = TokenCurrencyId::new(
+                &symbol.to_ascii_lowercase(),
+                chain_code,
+                coin.token_address(),
+            );
 
             let token_currency = TokenCurrency {
-                name,
+                name: coin.name,
                 chain_code: coin.chain_code,
                 code: symbol.clone(),
                 price: Some(price),

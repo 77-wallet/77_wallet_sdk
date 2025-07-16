@@ -1,29 +1,6 @@
 use super::account::BalanceInfo;
 use wallet_database::entities::chain::ChainEntity;
 
-pub mod assets_struct {
-
-    #[derive(Debug, serde::Serialize)]
-    pub struct AllChainAssets {
-        pub name: String,
-        pub symbol: String,
-        pub address: String,
-        pub token_address: String,
-        pub status: u8,
-        pub balance: String,
-        pub usdt_balance: String,
-        pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
-        pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-    }
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct ChainInfo {
-    pub address: String,
-    pub total_assets: wallet_types::Decimal,
-    pub token_info: std::collections::HashMap<String, TokenInfo>,
-}
-
 type ChainCode = String;
 type ChainName = String;
 #[derive(Debug, serde::Serialize)]

@@ -356,7 +356,7 @@ impl MultisigAccountService {
 
         // service fee
         let req = SignedFeeListReq::new(account_chain, pay_address, account_with_wallet.uid);
-        let res = self.backend.signed_fee_info(req).await?;
+        let res = self.backend.signed_fee_info_v2(req).await?;
 
         Ok(MultisigFeeVo::from(res))
     }
@@ -636,7 +636,7 @@ impl MultisigAccountService {
             &payer.from,
             account_with_wallet.uid,
         );
-        let amount = backend.signed_fee_info(req).await?;
+        let amount = backend.signed_fee_info_v2(req).await?;
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();

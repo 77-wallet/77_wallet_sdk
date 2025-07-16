@@ -95,7 +95,6 @@ impl BackendApi {
 
     pub async fn token_query_by_contract_address(
         &self,
-
         req: &TokenQueryByContractAddressReq,
     ) -> Result<TokenQueryByContractAddressRes, crate::Error> {
         let req = serde_json::json!(req);
@@ -111,7 +110,6 @@ impl BackendApi {
 
     pub async fn token_cancel_subscribe(
         &self,
-
         req: crate::request::TokenCancelSubscribeReq,
     ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
         let res = self
@@ -126,7 +124,6 @@ impl BackendApi {
     /// query token fee_rate
     pub async fn token_query_by_currency(
         &self,
-
         chain_code: &str,
         currency: &str,
         symbol: &str,

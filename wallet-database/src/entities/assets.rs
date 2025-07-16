@@ -102,4 +102,12 @@ impl AssetsEntityWithAddressType {
     pub fn address_type(&self) -> Option<String> {
         (!self.address_type.is_empty()).then(|| self.address_type.clone())
     }
+
+    pub fn token_address(&self) -> Option<String> {
+        if self.token_address.is_empty() {
+            None
+        } else {
+            Some(self.token_address.clone())
+        }
+    }
 }
