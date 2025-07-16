@@ -153,7 +153,6 @@ pub(super) async fn estimate_swap(
 ) -> Result<EstimateSwapResult, crate::ServiceError> {
     let (params, owner_address) = build_base_swap(swap_params)?;
 
-    tracing::warn!("params: {:#?}", params);
     let wrap = WarpContract { params };
 
     // 模拟交易结果

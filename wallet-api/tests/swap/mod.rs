@@ -129,18 +129,6 @@ async fn test_approve_cancel() {
 async fn test_quote() {
     let wallet_manager = get_manager().await;
 
-    // let token_in = SwapTokenInfo {
-    //     token_addr: "".to_string(),
-    //     symbol: "ETH".to_string(),
-    //     decimals: 18,
-    // };
-
-    // let token_out = SwapTokenInfo {
-    //     token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-    //     symbol: "USDT".to_string(),
-    //     decimals: 6,
-    // };
-
     let token_in = SwapTokenInfo {
         token_addr: "".to_string(),
         symbol: "TRX".to_string(),
@@ -154,16 +142,15 @@ async fn test_quote() {
     };
 
     let req = QuoteReq {
-        // aggregator_addr: "0x5C56d2f7a305A541b8655244b50511346C9009A7".to_string(),
-        aggregator_addr: "TS7x5pq98ZjHPBKM2NEchvJWnevM7RJb4E".to_string(),
-        recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        aggregator_addr: "TUbCW8V75w3CzxFawV2CouRkyByhRRfCNW".to_string(),
+        recipient: "TTD5EM94SmLPSTyvzjiisjB71QCD4vHQcm".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "0.1".to_string(),
+        amount_in: "15".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
         slippage: None,
-        allow_partial_fill: true,
+        allow_partial_fill: false,
     };
 
     let result = wallet_manager.quote(req).await;

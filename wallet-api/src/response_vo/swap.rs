@@ -70,18 +70,20 @@ impl ApiQuoteResp {
         amount_in: &BalanceInfo,
         amount_out: &BalanceInfo,
     ) -> (f64, f64) {
-        if let Some(amount_out) = amount_out.fiat_value
-            && amount_out > 0.0
-        {
-            if let Some(amount_in) = amount_in.fiat_value
-                && amount_in > 0.0
-            {
-                let spread = (amount_out - amount_in) / amount_in;
-                return (spread * 100.0, amount_out / amount_in);
-            }
-        }
+        let rate = if amount_in.amount > 0.0 {
+            amount_out.amount / amount_in.amount
+        } else {
+            0.0
+        };
 
-        (0.0, 0.0)
+        let spread = match (amount_in.fiat_value, amount_out.fiat_value) {
+            (Some(in_val), Some(out_val)) if in_val > 0.0 && out_val > 0.0 => {
+                ((out_val - in_val) / in_val) * 100.0
+            }
+            _ => 0.0,
+        };
+
+        (rate, spread)
     }
 }
 

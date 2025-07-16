@@ -145,8 +145,8 @@ pub struct AggQuoteResp {
     pub default_slippage: u64,
 }
 impl AggQuoteResp {
-    pub fn amount_out_u256(&self, unit: u8) -> Result<U256, crate::ServiceError> {
-        Ok(wallet_utils::unit::convert_to_u256(&self.amount_out, unit)?)
+    pub fn amount_out_u256(&self) -> Result<U256, crate::ServiceError> {
+        Ok(wallet_utils::unit::u256_from_str(&self.amount_out)?)
     }
 
     pub fn get_slippage(&self) -> f64 {

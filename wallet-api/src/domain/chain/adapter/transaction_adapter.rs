@@ -864,7 +864,7 @@ impl TransactionAdapter {
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
     ) -> Result<EstimateSwapResult, crate::ServiceError> {
-        let amount_out = quote_resp.amount_out_u256(req.token_out.decimals as u8)?;
+        let amount_out = quote_resp.amount_out_u256()?;
         let min_amount_out =
             calc_slippage(amount_out, req.get_slippage(quote_resp.default_slippage));
 
