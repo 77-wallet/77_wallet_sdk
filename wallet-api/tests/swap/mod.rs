@@ -48,7 +48,7 @@ async fn test_token_list() {
     let wallet_manager = get_manager().await;
 
     let req = SwapTokenListReq {
-        chain_code: "eth".to_string(),
+        chain_code: "tron".to_string(),
         search: "".to_string(),
         exclude_token: vec!["".to_string()],
         page_num: 0,
