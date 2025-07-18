@@ -130,13 +130,13 @@ async fn test_quote() {
     let wallet_manager = get_manager().await;
 
     let token_in = SwapTokenInfo {
-        token_addr: "".to_string(),
+        token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
         symbol: "TRX".to_string(),
         decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+        token_addr: "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd".to_string(),
         symbol: "USDT".to_string(),
         decimals: 6,
     };

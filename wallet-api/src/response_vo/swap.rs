@@ -31,6 +31,7 @@ pub struct ApiQuoteResp {
     // pub liquidity: String,
     // 需要授权的数量
     pub need_approve_amount: String,
+    pub approve_amount: String,
 }
 
 impl ApiQuoteResp {
@@ -55,6 +56,7 @@ impl ApiQuoteResp {
             // liquidity: "".to_string(),
             consumer: "".to_string(),
             need_approve_amount: "0".to_string(),
+            approve_amount: "0".to_string(),
         }
     }
 

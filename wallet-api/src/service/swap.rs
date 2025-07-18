@@ -110,7 +110,7 @@ impl SwapServer {
         let params = AggQuoteRequest::try_from(&req)?;
         let quote_resp = self.client.get_quote(params).await?;
 
-        tracing::warn!("quote = {:#?}", quote_resp);
+        // tracing::warn!("quote = {:#?}", quote_resp);
 
         let amount_out = unit::u256_from_str(&quote_resp.amount_out)?;
 
@@ -153,6 +153,7 @@ impl SwapServer {
         } else {
             let diff = amount_in - allowance;
             res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
+            res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
             return Ok(res);
         }
     }
