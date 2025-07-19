@@ -961,6 +961,7 @@ mod tests {
             amount_in: amount_in.to_string(),
             amount_out: "0".to_string(),
             dex_route_list: vec![DexRoute {
+                percentage: "100".to_string(),
                 amount_in: amount_in.to_string(),
                 amount_out: "0".to_string(),
                 route_in_dex: vec![
@@ -970,8 +971,10 @@ mod tests {
                         zero_for_one: true,
                         amount_in: amount_in.to_string(),
                         min_amount_out: "0".to_string(),
+                        in_token_symbol: "TUSD".to_string(),
                         in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
                         out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+                        out_token_symbol: "USDT".to_string(),
                         fee: "0".to_string(),
                     },
                     // RouteInDex {

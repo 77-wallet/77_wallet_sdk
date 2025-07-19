@@ -7,6 +7,7 @@ use wallet_transport_backend::api::swap::ApproveInfo;
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiQuoteResp {
+    pub chain_code: String,
     // 输入
     pub amount_in: BalanceInfo,
     // 输出
@@ -36,6 +37,7 @@ pub struct ApiQuoteResp {
 
 impl ApiQuoteResp {
     pub fn new(
+        chain_code: String,
         slippage: f64,
         dex_route_list: Vec<DexRoute>,
         bal_in: BalanceInfo,
@@ -44,6 +46,7 @@ impl ApiQuoteResp {
         let (rate, price_spread) = Self::calc_price_spread_and_rate(&bal_in, &bal_out);
 
         Self {
+            chain_code,
             amount_in: bal_in,
             amount_out: bal_out,
             price_spread,

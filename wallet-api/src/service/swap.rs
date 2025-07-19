@@ -132,8 +132,13 @@ impl SwapServer {
         let slippage = req.get_slippage(quote_resp.default_slippage);
 
         // 构建响应
-        let mut res =
-            ApiQuoteResp::new(slippage, quote_resp.dex_route_list.clone(), bal_in, bal_out);
+        let mut res = ApiQuoteResp::new(
+            quote_resp.chain_code.clone(),
+            slippage,
+            quote_resp.dex_route_list.clone(),
+            bal_in,
+            bal_out,
+        );
         // 先使用报价返回的amount_out,如果可以进行模拟，那么后续使用模拟的值覆盖
         res.set_amount_out(amount_out, req.token_out.decimals);
 

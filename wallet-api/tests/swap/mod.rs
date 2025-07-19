@@ -215,14 +215,17 @@ async fn test_swap() {
     let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 6).unwrap();
 
     let dex_route1 = DexRoute {
+        percentage: "100".to_string(),
         amount_in: amount_in.to_string(),
         amount_out: "0".to_string(),
         route_in_dex: vec![
             RouteInDex {
                 dex_id: 3,
                 pool_id: "TSUUVjysXV8YqHytSNjfkNXnnB49QDvZpx".to_string(),
+                in_token_symbol: "TUSD".to_string(),
                 in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
                 out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+                out_token_symbol: "USDT".to_string(),
                 zero_for_one: true,
                 fee: "500".to_string(),
                 amount_in: 0.to_string(),

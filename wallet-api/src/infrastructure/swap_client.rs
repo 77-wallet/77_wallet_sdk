@@ -110,6 +110,7 @@ pub struct ChainDex {
 pub struct DexInfo {
     pub dex_id: u64,
     pub dex_name: String,
+    pub icon_code: String,
 }
 
 // 响应

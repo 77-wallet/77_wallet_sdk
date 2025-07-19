@@ -268,9 +268,10 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
 // #[serde(rename_all = "camelCase")]
 pub struct DexRoute {
     #[serde(rename = "amountIn", alias = "amount_in")]
-    pub amount_in: String, // 可选择转换为 U256
+    pub amount_in: String,
     #[serde(rename = "amountOut", alias = "amount_out")]
     pub amount_out: String,
+    pub percentage: String,
     #[serde(rename = "routeInDex", alias = "route_in_dex")]
     pub route_in_dex: Vec<RouteInDex>,
 }
@@ -283,8 +284,12 @@ pub struct RouteInDex {
     pub dex_id: u16,
     #[serde(rename = "poolId", alias = "pool_id")]
     pub pool_id: String,
+    #[serde(rename = "inTokenSymbol", alias = "in_token_symbol")]
+    pub in_token_symbol: String,
     #[serde(rename = "inTokenAddr", alias = "in_token_addr")]
     pub in_token_addr: String,
+    #[serde(rename = "outTokenSymbol", alias = "out_token_symbol")]
+    pub out_token_symbol: String,
     #[serde(rename = "outTokenAddr", alias = "out_token_addr")]
     pub out_token_addr: String,
     #[serde(rename = "zeroForOne", alias = "zero_for_one")]
