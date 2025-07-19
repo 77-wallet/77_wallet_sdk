@@ -4,7 +4,7 @@ use crate::{
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
-        EstimateFeeResp,
+        CommonFeeDetails,
     },
     service::swap::SwapServer,
 };
@@ -45,7 +45,7 @@ impl crate::WalletManager {
         SwapServer::new()?.approve(req, password).await.into()
     }
 
-    pub async fn approve_fee(&self, req: ApproveReq) -> ReturnType<EstimateFeeResp> {
+    pub async fn approve_fee(&self, req: ApproveReq) -> ReturnType<CommonFeeDetails> {
         SwapServer::new()?.approve_fee(req).await.into()
     }
 

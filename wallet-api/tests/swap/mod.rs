@@ -85,7 +85,7 @@ async fn test_approve_fee() {
     let params = ApproveReq {
         from: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
         spender: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
-        contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
+        contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         value: "10".to_string(),
         chain_code: "tron".to_string(),
         approve_type: "UN_LIMIT".to_string(),

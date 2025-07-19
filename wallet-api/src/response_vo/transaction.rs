@@ -335,7 +335,7 @@ pub struct BitcoinFeeDetails {
     pub size: i64,
 }
 
-// 目前在多签交易的时候使用
+// 目前在多签交易的时候使用,以及不需要显示块中慢
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommonFeeDetails {
