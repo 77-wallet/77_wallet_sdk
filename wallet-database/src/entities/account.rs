@@ -107,9 +107,12 @@ pub struct AccountWalletMapping {
 #[serde(rename_all = "camelCase")]
 pub struct AccountWithWalletEntity {
     pub account_id: u32,
+    // 账户名称
+    pub name: String,
     pub address: String,
     pub address_type: String,
     pub wallet_address: String,
+    pub wallet_name: String,
     pub uid: String,
 }
 

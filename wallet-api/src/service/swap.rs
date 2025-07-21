@@ -403,33 +403,43 @@ impl SwapServer {
         let index_map = AccountIndexMap::from_account_id(account_id)?;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
-
         let resp = backend.approve_list(uid, index_map.input_index).await?;
 
         let mut res = vec![];
 
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut used_ids = vec![];
         for item in resp.list.into_iter() {
+            let coin =
+                CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &pool).await?;
             if item.limit_type == ApproveReq::UN_LIMIT {
-                res.push(ApproveList::from(item))
+                let mut approve_info = ApproveList::from(item);
+                approve_info.symbol = coin.symbol;
+                res.push(approve_info)
             } else {
                 // 获取allowance 情况
                 let adapter =
                     ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
-
                 let allowance = adapter
                     .allowance(&item.owner_address, &item.token_addr, &item.spender)
                     .await?;
+
+                // 实际授权为0,丢弃
                 if allowance == alloy::primitives::U256::ZERO {
                     used_ids.push(item.id);
                 } else {
-                    let pool = crate::manager::Context::get_global_sqlite_pool()?;
-                    let a =
-                        CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &pool)
-                            .await?;
-                    let mut c = ApproveList::from(item);
-                    c.amount = wallet_utils::unit::format_to_string(allowance, a.decimals as u8)?;
-                    res.push(c);
+                    let unit = coin.decimals as u8;
+                    let origin_allowance = wallet_utils::unit::convert_to_u256(&item.value, unit)?;
+                    let mut approve_info = ApproveList::from(item);
+
+                    approve_info.amount =
+                        wallet_utils::unit::format_to_string(origin_allowance, unit)?;
+                    let remain = origin_allowance - (origin_allowance - allowance);
+
+                    approve_info.remaining_allowance =
+                        wallet_utils::unit::format_to_string(remain, unit)?;
+                    approve_info.symbol = coin.symbol;
+                    res.push(approve_info);
                 }
             }
         }
@@ -467,6 +477,9 @@ impl SwapServer {
         FrontendNotifyEvent::new(data).send().await?;
         let value = alloy::primitives::U256::ZERO;
         let hash = adapter.approve(&req, private_key, value).await?;
+
+        // 授权的数量
+        // let allowance = adapter.allowance(from, token, spender).await?;
 
         let backend = ApproveCancelReq {
             spender: req.spender.clone(),

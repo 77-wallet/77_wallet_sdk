@@ -98,10 +98,12 @@ impl ApiQuoteResp {
 pub struct ApproveList {
     pub chain_code: String,
     pub token_address: String,
+    pub symbol: String,
     pub spender: String,
     pub from: String,
     pub amount: String,
     pub limit_type: String,
+    pub remaining_allowance: String,
 }
 
 impl From<ApproveInfo> for ApproveList {
@@ -110,8 +112,10 @@ impl From<ApproveInfo> for ApproveList {
             chain_code: value.chain_code,
             token_address: value.token_addr,
             from: value.owner_address,
+            symbol: "".to_string(),
             spender: value.spender,
-            amount: value.value,
+            amount: value.value.clone(),
+            remaining_allowance: value.value,
             limit_type: value.limit_type,
         }
     }

@@ -23,26 +23,6 @@ async fn test_support_chain() {
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 
-// #[tokio::test]
-// async fn test_support_dex() {
-//     let wallet_manager = get_manager().await;
-
-//     let chain_code = "eth".to_string();
-//     let resp = wallet_manager.dex_list(chain_code).await;
-
-//     println!("{}", serde_json::to_string(&resp).unwrap());
-// }
-
-// #[tokio::test]
-// async fn test_supplier() {
-//     let wallet_manager = get_manager().await;
-
-//     let chain_code = "tron".to_string();
-
-//     let resp = wallet_manager.supplier(chain_code).await;
-//     println!("{}", serde_json::to_string(&resp).unwrap());
-// }
-
 #[tokio::test]
 async fn test_token_list() {
     let wallet_manager = get_manager().await;
@@ -129,14 +109,15 @@ async fn test_approve_cancel() {
 async fn test_quote() {
     let wallet_manager = get_manager().await;
 
+    // TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR
     let token_in = SwapTokenInfo {
-        token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
+        token_addr: "".to_string(),
         symbol: "TRX".to_string(),
         decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd".to_string(),
+        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         symbol: "USDT".to_string(),
         decimals: 6,
     };
@@ -145,7 +126,7 @@ async fn test_quote() {
         aggregator_addr: "TUbCW8V75w3CzxFawV2CouRkyByhRRfCNW".to_string(),
         recipient: "TTD5EM94SmLPSTyvzjiisjB71QCD4vHQcm".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "15".to_string(),
+        amount_in: "10".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
@@ -210,7 +191,7 @@ async fn test_deposit_and_approve() {
 async fn test_swap() {
     let wallet_manager = get_manager().await;
 
-    let o_value = "0.1";
+    let o_value = "10";
 
     let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 6).unwrap();
 
@@ -257,16 +238,16 @@ async fn test_swap() {
     };
 
     let req = SwapReq {
-        aggregator_addr: "TRNawqG4rNmbLr3Z7qXzpbbxHqciy9BVDC".to_string(),
+        aggregator_addr: "TUbCW8V75w3CzxFawV2CouRkyByhRRfCNW".to_string(),
         amount_in: o_value.to_string(),
         amount_out: "0.027".to_string(),
         min_amount_out: "0".to_string(),
         chain_code: "tron".to_string(),
-        recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        recipient: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
         token_in,
         token_out,
         dex_router: vec![dex_route1],
-        allow_partial_fill: true,
+        allow_partial_fill: false,
     };
 
     let fee =

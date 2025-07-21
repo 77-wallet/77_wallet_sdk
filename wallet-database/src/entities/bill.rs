@@ -441,8 +441,6 @@ pub struct BillExtraSwap {
     pub to_token_symbol: String,
     // 代币金额
     pub to_token_amount: f64,
-    // 供应商
-    pub supplier: String,
     // 兑换比例
     pub price: f64,
 }

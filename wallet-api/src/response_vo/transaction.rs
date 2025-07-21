@@ -81,6 +81,8 @@ pub struct BillDetailVo {
     pub resource_consume: Option<wallet_chain_interact::BillResourceConsume>,
     pub fee_symbol: String,
     pub signature: Option<Vec<MemberSignedResult>>,
+    pub wallet_name: String,
+    pub account_name: String,
 }
 
 // about fee estimate fee

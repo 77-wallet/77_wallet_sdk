@@ -148,7 +148,6 @@ impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
             from_token_amount: amount_in,
             to_token_symbol: value.token_out.symbol.clone(),
             to_token_amount: amount_out,
-            supplier: "77_wallet".to_string(),
             price: amount_out / amount_in,
         };
 
@@ -157,7 +156,7 @@ impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
             from: value.recipient,
             to: "".to_string(),
             token: None,
-            value: 0.0,
+            value: wallet_utils::unit::string_to_f64(&value.amount_in)?,
             multisig_tx: false,
             symbol: value.token_in.symbol,
             chain_code: value.chain_code,
@@ -199,6 +198,13 @@ impl QuoteReq {
             get_warp_address(chain_code).unwrap().to_string()
         } else {
             self.token_in.token_addr.clone()
+        }
+    }
+    pub fn eth_or_weth(address: &str, chain_code: ChainCode) -> String {
+        if address.is_empty() {
+            get_warp_address(chain_code).unwrap().to_string()
+        } else {
+            address.to_string()
         }
     }
 
@@ -256,8 +262,8 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
         Ok(Self {
             chain_code: chain_code.to_string(),
             amount: amount.to_string(),
-            in_token_addr: value.token_in_or_warp(chain_code),
-            out_token_addr: value.token_out.token_addr.clone(),
+            in_token_addr: QuoteReq::eth_or_weth(&value.token_in.token_addr, chain_code),
+            out_token_addr: QuoteReq::eth_or_weth(&value.token_out.token_addr, chain_code),
             dex_ids,
         })
     }

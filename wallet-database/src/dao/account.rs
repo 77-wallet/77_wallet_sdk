@@ -437,7 +437,7 @@ impl AccountEntity {
         let sql = r#"
             SELECT 
                 account.*,
-                wallet.uid
+                wallet.uid,wallet.name as wallet_name
             FROM 
                 account
             LEFT JOIN 
