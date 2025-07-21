@@ -99,6 +99,7 @@ pub struct ApproveList {
     pub chain_code: String,
     pub token_address: String,
     pub spender: String,
+    pub from: String,
     pub amount: String,
     pub limit_type: String,
 }
@@ -108,6 +109,7 @@ impl From<ApproveInfo> for ApproveList {
         Self {
             chain_code: value.chain_code,
             token_address: value.token_addr,
+            from: value.owner_address,
             spender: value.spender,
             amount: value.value,
             limit_type: value.limit_type,

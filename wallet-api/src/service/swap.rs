@@ -429,6 +429,7 @@ impl SwapServer {
                             .await?;
                     let mut c = ApproveList::from(item);
                     c.amount = wallet_utils::unit::format_to_string(allowance, a.decimals as u8)?;
+                    res.push(c);
                 }
             }
         }
@@ -446,6 +447,12 @@ impl SwapServer {
         req: ApproveReq,
         password: String,
     ) -> Result<String, crate::ServiceError> {
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            wallet_database::entities::bill::BillKind::UnApprove,
+            Process::Building,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
+
         let private_key =
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
@@ -453,6 +460,11 @@ impl SwapServer {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
+        let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
+            wallet_database::entities::bill::BillKind::Approve,
+            Process::Broadcast,
+        ));
+        FrontendNotifyEvent::new(data).send().await?;
         let value = alloy::primitives::U256::ZERO;
         let hash = adapter.approve(&req, private_key, value).await?;
 
@@ -467,6 +479,7 @@ impl SwapServer {
         let mut new_bill = NewBillEntity::from(req);
         new_bill.hash = hash.clone();
         new_bill.symbol = coin.symbol;
+        new_bill.tx_kind = wallet_database::entities::bill::BillKind::UnApprove;
         BillDomain::create_bill(new_bill).await?;
 
         Ok(hash)

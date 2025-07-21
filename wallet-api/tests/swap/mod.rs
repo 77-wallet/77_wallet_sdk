@@ -62,7 +62,7 @@ async fn test_token_list() {
 #[tokio::test]
 async fn test_approve() {
     let wallet_manager = get_manager().await;
-
+    // TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc
     let params = ApproveReq {
         from: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
         spender: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
@@ -114,7 +114,7 @@ async fn test_approve_cancel() {
         from: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
         spender: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
-        value: "10".to_string(),
+        value: "15".to_string(),
         chain_code: "tron".to_string(),
         approve_type: "UN_LIMIT".to_string(),
     };

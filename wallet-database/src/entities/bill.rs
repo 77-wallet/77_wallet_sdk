@@ -127,8 +127,10 @@ pub enum BillKind {
     UpdatePermission = 22,
     // 授权交易
     Approve = 23,
+    // 授权交易
+    UnApprove = 24,
     // swap 交易
-    Swap = 24,
+    Swap = 25,
 }
 impl Serialize for BillKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -240,7 +242,8 @@ impl TryFrom<i8> for BillKind {
             21 => Ok(BillKind::WithdrawReward),
             22 => Ok(BillKind::UpdatePermission),
             23 => Ok(BillKind::Approve),
-            24 => Ok(BillKind::Swap),
+            24 => Ok(BillKind::UnApprove),
+            25 => Ok(BillKind::Swap),
             _ => Err(crate::Error::Other(format!(
                 "Invalid value for TxKind : {}",
                 value
