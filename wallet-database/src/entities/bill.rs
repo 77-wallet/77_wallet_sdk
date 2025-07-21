@@ -424,6 +424,7 @@ pub struct BillExtraResourceValue {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BillExtraVotes {
     // 投票的地址
     pub vote_addr: String,
@@ -432,6 +433,7 @@ pub struct BillExtraVotes {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BillExtraSwap {
     // 代币符号
     pub from_token_symbol: String,

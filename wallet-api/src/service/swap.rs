@@ -75,13 +75,6 @@ impl SwapServer {
             (token, stable_coin)
         };
 
-        //   pub symbol: String,
-        //     pub decimals: u32,
-        //     pub chain_code: String,
-        //     pub name: String,
-        //     pub token_addr: String,
-        //     pub balance: BalanceInfo,
-
         let res = DefaultQuoteResp {
             token_in: SwapTokenInfo {
                 token_addr: from_token.token_address().unwrap_or_default(),

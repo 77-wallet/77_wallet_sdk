@@ -315,51 +315,6 @@ impl BillDao {
         T: serde::Serialize,
     {
         let owner = tx.get_owner();
-        // let NewBillEntity {
-        //     hash,
-        //     from,
-        //     to,
-        //     token,
-        //     chain_code,
-        //     symbol,
-        //     status,
-        //     value,
-        //     transaction_fee,
-        //     resource_consume,
-        //     transaction_time,
-        //     multisig_tx,
-        //     tx_type,
-        //     tx_kind,
-        //     queue_id,
-        //     block_height,
-        //     notes,
-        //     signer,
-        //     extra,
-        // } = tx;
-        // let tx_kind = tx.tx_kind.to_i8();
-        // let multisig_tx = if tx.multisig_tx { 1 } else { 0 };
-
-        // let (symbol, to) = if tx.value == 0.0
-        //     && tx_kind == BillKind::Transfer.to_i8()
-        //     && tx.chain_code == chain_code::TRON
-        // {
-        //     ("".to_string(), "".to_string())
-        // } else {
-        //     (tx.symbol.to_uppercase(), tx.to)
-        // };
-
-        // let signer = tx.signer.join(",");
-        // let signer = signer.trim_end_matches(",");
-
-        // let values = {
-        //     format!(
-        //         "('{hash}','{chain_code}','{symbol}','{tx_type}','{tx_kind}','{owner}','{from}','{to}',
-        //         '{token}','{value}','{transaction_fee}','{resource_consume}','{transaction_time}','{status}',
-        //         '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}','{signer}'
-        //     )",
-        //     )
-        // };
-
         let time = Utc::now().timestamp();
         let signer = tx.get_singer_str();
         let (symbol, to) = tx.get_symbol_and_to();
@@ -546,3 +501,48 @@ impl BillDao {
         Ok(rs)
     }
 }
+
+// let NewBillEntity {
+//     hash,
+//     from,
+//     to,
+//     token,
+//     chain_code,
+//     symbol,
+//     status,
+//     value,
+//     transaction_fee,
+//     resource_consume,
+//     transaction_time,
+//     multisig_tx,
+//     tx_type,
+//     tx_kind,
+//     queue_id,
+//     block_height,
+//     notes,
+//     signer,
+//     extra,
+// } = tx;
+// let tx_kind = tx.tx_kind.to_i8();
+// let multisig_tx = if tx.multisig_tx { 1 } else { 0 };
+
+// let (symbol, to) = if tx.value == 0.0
+//     && tx_kind == BillKind::Transfer.to_i8()
+//     && tx.chain_code == chain_code::TRON
+// {
+//     ("".to_string(), "".to_string())
+// } else {
+//     (tx.symbol.to_uppercase(), tx.to)
+// };
+
+// let signer = tx.signer.join(",");
+// let signer = signer.trim_end_matches(",");
+
+// let values = {
+//     format!(
+//         "('{hash}','{chain_code}','{symbol}','{tx_type}','{tx_kind}','{owner}','{from}','{to}',
+//         '{token}','{value}','{transaction_fee}','{resource_consume}','{transaction_time}','{status}',
+//         '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}','{signer}'
+//     )",
+//     )
+// };
