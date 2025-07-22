@@ -40,7 +40,7 @@ async fn bill_lists() {
     let start_time = None;
     let end_time = None;
 
-    let transfer_type = None;
+    let transfer_type = vec![25];
 
     let page = 0;
     let page_size = 5;

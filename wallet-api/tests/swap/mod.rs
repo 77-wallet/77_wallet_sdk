@@ -111,27 +111,27 @@ async fn test_quote() {
 
     // TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR
     let token_in = SwapTokenInfo {
-        token_addr: "".to_string(),
-        symbol: "TRX".to_string(),
-        decimals: 6,
-    };
-
-    let token_out = SwapTokenInfo {
         token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         symbol: "USDT".to_string(),
         decimals: 6,
     };
 
+    let token_out = SwapTokenInfo {
+        token_addr: "".to_string(),
+        symbol: "TRX".to_string(),
+        decimals: 6,
+    };
+
     let req = QuoteReq {
-        aggregator_addr: "TUbCW8V75w3CzxFawV2CouRkyByhRRfCNW".to_string(),
+        aggregator_addr: "TCMGRMkGQgxQkzWazaG2TQ3ENy2qjsFViy".to_string(),
         recipient: "TTD5EM94SmLPSTyvzjiisjB71QCD4vHQcm".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "10".to_string(),
+        amount_in: "200".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
         slippage: None,
-        allow_partial_fill: false,
+        allow_partial_fill: true,
     };
 
     let result = wallet_manager.quote(req).await;
