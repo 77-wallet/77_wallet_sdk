@@ -70,6 +70,15 @@ impl ApiQuoteResp {
             wallet_utils::unit::format_to_string(min_amount, decimals as u8).unwrap_or_default();
     }
 
+    // amount out 计算  滑点
+    pub fn set_dex_amount_out(&mut self) -> Result<(), crate::ServiceError> {
+        for dex_route in self.dex_route_list.iter_mut() {
+            let amount = wallet_utils::unit::u256_from_str(&dex_route.amount_out)?;
+            dex_route.amount_out = calc_slippage(amount, self.slippage).to_string();
+        }
+        Ok(())
+    }
+
     // 计算token_in 和token_out的价差,以及兑换比例
     pub fn calc_price_spread_and_rate(
         amount_in: &BalanceInfo,

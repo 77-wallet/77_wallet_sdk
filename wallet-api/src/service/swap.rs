@@ -103,8 +103,6 @@ impl SwapServer {
         let params = AggQuoteRequest::try_from(&req)?;
         let quote_resp = self.client.get_quote(params).await?;
 
-        // tracing::warn!("quote = {:#?}", quote_resp);
-
         let amount_out = unit::u256_from_str(&quote_resp.amount_out)?;
 
         let bal_in = TokenCurrencyGetter::get_bal_by_backend(
@@ -134,6 +132,7 @@ impl SwapServer {
         );
         // 先使用报价返回的amount_out,如果可以进行模拟，那么后续使用模拟的值覆盖
         res.set_amount_out(amount_out, req.token_out.decimals);
+        res.set_dex_amount_out()?;
 
         // 主币处理
         if req.token_in.token_addr.is_empty() {

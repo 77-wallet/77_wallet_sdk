@@ -102,7 +102,6 @@ impl TryFrom<(&SwapParams, ChainCode)> for dexSwap1Call {
             let mut sub_routes = Vec::with_capacity(quote.route_in_dex.len());
 
             let amount_in = u256_from_str(&quote.amount_in)?;
-            let amount_out = u256_from_str(&quote.amount_out)?;
 
             for pool in &quote.route_in_dex {
                 let pool_id = if value.1 == ChainCode::Ethereum {
@@ -121,7 +120,6 @@ impl TryFrom<(&SwapParams, ChainCode)> for dexSwap1Call {
 
                 if sub_routes.len() == 0 {
                     sub_route.amountIn = amount_in;
-                    sub_route.minAmountOut = amount_out;
                 }
 
                 sub_routes.push(sub_route);

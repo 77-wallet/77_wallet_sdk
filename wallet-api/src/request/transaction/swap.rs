@@ -234,6 +234,7 @@ impl QuoteReq {
         Ok(wallet_utils::address::parse_eth_address(&hex_addr)?)
     }
 
+    // 前端有传入的使用前端传入的，没有使用报价返回的。
     pub fn get_slippage(&self, default_slippage: u64) -> f64 {
         self.slippage.unwrap_or(default_slippage as f64 / SLIPPAGE)
     }
