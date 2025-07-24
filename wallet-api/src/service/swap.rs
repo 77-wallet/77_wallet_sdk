@@ -1,3 +1,5 @@
+use std::time;
+
 use crate::{
     domain::{
         bill::BillDomain,
@@ -24,7 +26,9 @@ use wallet_database::{
         bill::NewBillEntity,
     },
     pagination::Pagination,
-    repositories::{account::AccountRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo},
+    repositories::{
+        account::AccountRepo, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo,
+    },
 };
 use wallet_transport_backend::{
     api::swap::{ApproveCancelReq, ApproveSaveParams},
@@ -101,17 +105,20 @@ impl SwapServer {
         use wallet_utils::unit::{convert_to_u256, format_to_f64, format_to_string, string_to_f64};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
+
+        let instance = time::Instant::now();
         let quote_resp = self.client.get_quote(params).await?;
+        tracing::warn!("quote time: {}", instance.elapsed().as_secs_f64());
 
         let amount_out = unit::u256_from_str(&quote_resp.amount_out)?;
 
+        // 查询两次后端
         let bal_in = TokenCurrencyGetter::get_bal_by_backend(
             &req.chain_code,
             &req.token_in.token_addr,
             string_to_f64(&req.amount_in)?,
         )
         .await?;
-
         let bal_out = TokenCurrencyGetter::get_bal_by_backend(
             &req.chain_code,
             &req.token_out.token_addr,
@@ -150,7 +157,13 @@ impl SwapServer {
         } else {
             let diff = amount_in - allowance;
             res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
-            res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
+
+            if allowance > U256::from(alloy::primitives::U64::MAX) {
+                res.approve_amount = "-1".to_string();
+            } else {
+                res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
+            }
+
             return Ok(res);
         }
     }
@@ -162,6 +175,8 @@ impl SwapServer {
         quote_resp: &AggQuoteResp,
         res: &mut ApiQuoteResp,
     ) -> Result<(), crate::ServiceError> {
+        let instance = time::Instant::now();
+
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         // 模拟报价
         let result = adapter.swap_quote(req, quote_resp).await?;
@@ -176,6 +191,7 @@ impl SwapServer {
 
         // 重新覆盖amount_out,使用模拟的值
         res.set_amount_out(result.amount_out, req.token_out.decimals);
+        tracing::warn!("simulate time: {}", instance.elapsed().as_secs_f64());
 
         Ok(())
     }
@@ -204,9 +220,23 @@ impl SwapServer {
             Process::Building,
         ));
         FrontendNotifyEvent::new(data).send().await?;
-
         let key =
             ChainTransDomain::get_key(&req.recipient, &req.chain_code, &password, &None).await?;
+
+        // 查询余额是否足够
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let token_in = AssetsRepo::get_by_addr_token(
+            &pool,
+            &req.chain_code,
+            &req.token_in.token_addr,
+            &req.recipient,
+        )
+        .await?;
+        if unit::string_to_f64(&req.amount_in)? > unit::string_to_f64(&token_in.balance)? {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::InsufficientBalance,
+            ))?;
+        };
 
         // 广播事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
@@ -335,6 +365,7 @@ impl SwapServer {
         FrontendNotifyEvent::new(data).send().await?;
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+
         // check already approved
         let allowance = adapter
             .allowance(&req.from, &req.contract, &req.spender)
@@ -344,6 +375,15 @@ impl SwapServer {
                 crate::ChainError::ApproveRepeated,
             ))?;
         }
+
+        // check balance
+        let token_in =
+            AssetsRepo::get_by_addr_token(&pool, &req.chain_code, &req.contract, &req.from).await?;
+        if unit::string_to_f64(&req.value)? > unit::string_to_f64(&token_in.balance)? {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::InsufficientBalance,
+            ))?;
+        };
 
         let private_key =
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;

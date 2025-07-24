@@ -44,10 +44,10 @@ async fn test_approve() {
     let wallet_manager = get_manager().await;
     // TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc
     let params = ApproveReq {
-        from: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
-        spender: "TCMGRMkGQgxQkzWazaG2TQ3ENy2qjsFViy".to_string(),
-        contract: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
-        value: "100".to_string(),
+        from: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
+        spender: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
+        contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+        value: "2".to_string(),
         chain_code: "tron".to_string(),
         approve_type: "NORMAL".to_string(),
     };
@@ -63,10 +63,10 @@ async fn test_approve_fee() {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
-        from: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
-        spender: "TCMGRMkGQgxQkzWazaG2TQ3ENy2qjsFViy".to_string(),
-        contract: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
-        value: "100".to_string(),
+        from: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
+        spender: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
+        contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+        value: "2".to_string(),
         chain_code: "tron".to_string(),
         approve_type: "UN_LIMIT".to_string(),
     };
@@ -114,22 +114,22 @@ async fn test_quote() {
     // TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S sun
 
     let token_in = SwapTokenInfo {
-        token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
-        symbol: "usdt".to_string(),
+        token_addr: "".to_string(),
+        symbol: "USDT".to_string(),
         decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
         token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-        symbol: "wtrx".to_string(),
+        symbol: "TRX".to_string(),
         decimals: 6,
     };
 
     let req = QuoteReq {
-        aggregator_addr: "TCMGRMkGQgxQkzWazaG2TQ3ENy2qjsFViy".to_string(),
-        recipient: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
+        recipient: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "50".to_string(),
+        amount_in: "2".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
@@ -146,7 +146,7 @@ async fn test_quote() {
 async fn test_swap() {
     let wallet_manager = get_manager().await;
 
-    let o_value = "50";
+    let o_value = "2";
 
     let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 6).unwrap();
 
@@ -183,24 +183,24 @@ async fn test_swap() {
     };
 
     let token_in = SwapTokenInfo {
-        token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
-        symbol: "USDT".to_string(),
+        token_addr: "".to_string(),
+        symbol: "WTRX".to_string(),
         decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
         token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-        symbol: "TRX".to_string(),
+        symbol: "USDT".to_string(),
         decimals: 6,
     };
 
     let req = SwapReq {
-        aggregator_addr: "TCMGRMkGQgxQkzWazaG2TQ3ENy2qjsFViy".to_string(),
+        aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
         amount_in: o_value.to_string(),
         amount_out: "1".to_string(),
         min_amount_out: "0".to_string(),
         chain_code: "tron".to_string(),
-        recipient: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        recipient: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
         token_in,
         token_out,
         dex_router: vec![dex_route1],
@@ -214,4 +214,11 @@ async fn test_swap() {
 
     let result = wallet_manager.swap(req, fee, password).await;
     tracing::warn!("swap hash = {}", serde_json::to_string(&result).unwrap());
+}
+
+#[test]
+fn test_address_covert() {
+    let address = "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR";
+    let res = QuoteReq::addr_tron_to_eth(&address).unwrap();
+    println!("eth address = {}", res);
 }

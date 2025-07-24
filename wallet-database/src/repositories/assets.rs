@@ -1,6 +1,7 @@
 use crate::{
     dao::assets::CreateAssetsVo,
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
+    DbPool,
 };
 
 // pub struct ChainRepo {
@@ -145,5 +146,23 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
     async fn delete_multi_assets(&mut self, assets_ids: Vec<AssetsId>) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, AssetsEntity::delete_multi_assets, assets_ids)
+    }
+}
+
+pub struct AssetsRepo;
+
+impl AssetsRepo {
+    pub async fn get_by_addr_token(
+        pool: &DbPool,
+        chain_code: &str,
+        token_address: &str,
+        address: &str,
+    ) -> Result<AssetsEntity, crate::Error> {
+        AssetsEntity::get_by_addr_token(pool.as_ref(), chain_code, token_address, address)
+            .await?
+            .ok_or(crate::Error::NotFound(format!(
+                "asset not found chain_code {}, token_address {}, address {}",
+                chain_code, token_address, address
+            )))
     }
 }

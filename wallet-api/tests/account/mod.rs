@@ -1,6 +1,10 @@
 use std::{env, path::PathBuf};
 use wallet_api::{Dirs, InitDeviceReq, WalletManager};
 use wallet_chain_instance::instance::ChainObject;
+use wallet_types::chain::{
+    address::r#type::{AddressType, TonAddressType},
+    chain::ChainCode,
+};
 use wallet_utils::init_test_log;
 
 async fn get_manager() -> WalletManager {
@@ -42,9 +46,8 @@ async fn create_device() {
 #[tokio::test]
 async fn create_wallet() {
     let wallet_manager = get_manager().await;
-    let phrase =
-        "february crunch banner cave afford chuckle left plate session tackle crash approve";
-    let salt = "qwer1234";
+    let phrase = "";
+    let salt = "";
     let wallet_name = "my_wallet";
     let account_name = "账户";
     let password = "123456";
@@ -129,13 +132,14 @@ async fn test_show_key() {
     init_test_log();
 
     let parse = "".to_string();
-    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "1234qwer").unwrap();
+    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
-    let chain_code = "eth";
+    let chain_code = ChainCode::Tron;
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
-    let address_type = Some("p2wpkh".to_string());
-    let object = ChainObject::new(chain_code, address_type, network).unwrap();
+    let address_type = AddressType::Ton(TonAddressType::V4R2);
+
+    let object: ChainObject = (&chain_code, &address_type, network).try_into().unwrap();
 
     let keypair = object
         .gen_keypair_with_index_address_type(&seed, 0)

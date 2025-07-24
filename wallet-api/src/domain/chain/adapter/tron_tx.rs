@@ -76,6 +76,15 @@ pub(super) async fn approve(
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
     let consumer = chain.provider.contract_fee(constant, 1, &req.from).await?;
 
+    // check balance
+    let balance = chain.balance(&req.from, None).await?;
+    let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
+    if balance < fee {
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
+
     // exec tx
     let raw_transaction = wrap
         .trigger_smart_contract(&chain.provider, &consumer)
@@ -119,7 +128,7 @@ fn build_base_swap(
 ) -> Result<(TriggerContractParameter, String), crate::ServiceError> {
     let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Tron))?;
 
-    tracing::warn!("call value: {:#?}", call_value);
+    // tracing::warn!("call value: {:#?}", call_value);
     let contract_address = swap_params.aggregator_tron_addr()?;
     let owner_address = swap_params.recipient_tron_addr()?;
 
@@ -197,6 +206,19 @@ pub(super) async fn swap(
         .contract_fee(constant, 1, &owner_address)
         .await?;
 
+    // check fee
+    let balance = chain
+        .balance(&swap_params.recipient_tron_addr()?, None)
+        .await?;
+    let mut fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
+    if swap_params.main_coin_swap() {
+        fee += swap_params.amount_in;
+    }
+    if balance < fee {
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
     let raw_transaction = wrap
         .trigger_smart_contract(&chain.provider, &consumer)
         .await?;

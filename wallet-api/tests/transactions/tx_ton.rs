@@ -48,10 +48,10 @@ async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
     let from = "UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb";
-    let to = "UQAj45nzNLyAKtnP038PCrqGxwUEpgdrGyz9keGedamIafpw";
-    let value = "0.1";
+    let to = "UQAPwCDD910mi8FO1cd5qYdfTHWwEyqMB-RsGkRv-PI2w05u";
+    let value = "1";
     let chain_code = "ton";
-    let symbol = "TON";
+    let symbol = "USDT";
     let password = "123456";
 
     let mut base = transaction::BaseTransferReq::new(

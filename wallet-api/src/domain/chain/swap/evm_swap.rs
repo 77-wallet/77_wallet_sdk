@@ -88,6 +88,11 @@ impl SwapParams {
             Ok(QuoteReq::addr_tron_to_eth(addr)?)
         }
     }
+
+    // 是否是主币兑换
+    pub fn main_coin_swap(&self) -> bool {
+        self.token_in == alloy::primitives::Address::ZERO
+    }
 }
 
 impl TryFrom<(&SwapParams, ChainCode)> for dexSwap1Call {
