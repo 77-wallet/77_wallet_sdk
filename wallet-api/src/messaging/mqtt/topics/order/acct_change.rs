@@ -1,7 +1,7 @@
 use wallet_database::{
     dao::bill::BillDao,
     entities::{
-        bill::{BillKind, NewBillEntity},
+        bill::{BillExtraSwap, BillKind, NewBillEntity},
         multisig_queue::MultisigQueueStatus,
     },
     factory::RepositoryFactory,
@@ -72,6 +72,9 @@ pub struct AcctChange {
     // 能量消耗
     #[serde(default)]
     pub energy_used: Option<u64>,
+
+    // 额外信息
+    pub extra: Option<String>,
 }
 
 impl TryFrom<&AcctChange> for NewBillEntity {
@@ -211,10 +214,28 @@ impl AcctChange {
                 acct_change.to_addr.to_string(),
             ],
             chain_code: acct_change.chain_code.to_string(),
-            symbol: acct_change.symbol.to_string(),
+            symbol: acct_change.get_sync_assets_symbol(),
         })?;
         // tracing::info!("发送同步资产事件");
         Ok(())
+    }
+
+    // 需要更新的资产-swap 需要更新swap的资产
+    fn get_sync_assets_symbol(&self) -> Vec<String> {
+        let mut symbol = vec![self.symbol.clone()];
+        if self.tx_kind == BillKind::Swap.to_i8() {
+            if let Some(extra) = &self.extra {
+                if let Ok(extra_swap) =
+                    wallet_utils::serde_func::serde_from_str::<BillExtraSwap>(extra)
+                {
+                    if self.symbol != extra_swap.from_token_symbol {
+                        symbol.push(extra_swap.from_token_symbol);
+                    }
+                    symbol.push(extra_swap.to_token_symbol);
+                }
+            }
+        }
+        symbol
     }
 
     pub async fn handle_ton_bill(

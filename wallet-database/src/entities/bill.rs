@@ -432,7 +432,7 @@ pub struct BillExtraVotes {
     pub votes: i64,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BillExtraSwap {
     // 代币符号
