@@ -189,9 +189,9 @@ async fn test_swap() {
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-        symbol: "USDT".to_string(),
-        decimals: 6,
+        token_addr: "AADd".to_string(),
+        symbol: "Hello Coin".to_string(),
+        decimals: 7,
     };
 
     let req = SwapReq {

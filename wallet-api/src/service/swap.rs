@@ -1,7 +1,6 @@
-use std::time;
-
 use crate::{
     domain::{
+        assets::AssetsDomain,
         bill::BillDomain,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::{CoinDomain, TokenCurrencyGetter},
@@ -20,6 +19,7 @@ use crate::{
     FrontendNotifyEvent, NotifyEvent,
 };
 use alloy::primitives::U256;
+use std::time::{self};
 use wallet_database::{
     entities::{
         assets::{AssetsEntity, AssetsId},
@@ -248,6 +248,24 @@ impl SwapServer {
 
         // 执行swap 交易
         let hash = adapter.swap(&req, fee, key).await?;
+
+        //  if token_out if new assets add it
+        let token_out = req.token_out.clone();
+        let out_assets = AssetsRepo::get_by_addr_token_opt(
+            &pool,
+            &req.chain_code,
+            &token_out.token_addr,
+            &req.recipient,
+        )
+        .await?;
+        if out_assets.is_none() {
+            AssetsDomain::swap_sync_assets(
+                token_out,
+                req.recipient.clone(),
+                req.chain_code.clone(),
+            )
+            .await?;
+        }
 
         // 写入本地交易记录表
         let mut new_bill = NewBillEntity::try_from(req)?;

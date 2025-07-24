@@ -165,4 +165,13 @@ impl AssetsRepo {
                 chain_code, token_address, address
             )))
     }
+
+    pub async fn get_by_addr_token_opt(
+        pool: &DbPool,
+        chain_code: &str,
+        token_address: &str,
+        address: &str,
+    ) -> Result<Option<AssetsEntity>, crate::Error> {
+        AssetsEntity::get_by_addr_token(pool.as_ref(), chain_code, token_address, address).await
+    }
 }

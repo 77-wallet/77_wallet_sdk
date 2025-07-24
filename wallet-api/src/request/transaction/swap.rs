@@ -240,6 +240,7 @@ impl QuoteReq {
     }
 }
 
+#[derive(Clone)]
 pub struct SwapTokenInfo {
     pub symbol: String,
     pub decimals: u32,

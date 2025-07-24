@@ -74,12 +74,6 @@ pub struct AcctChange {
     pub energy_used: Option<u64>,
 }
 
-// impl AcctChange {
-//     pub(crate) fn name(&self) -> String {
-//         "ACCT_CHANGE".to_string()
-//     }
-// }
-
 impl TryFrom<&AcctChange> for NewBillEntity {
     type Error = crate::ServiceError;
 

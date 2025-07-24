@@ -1,5 +1,8 @@
 use super::chain::adapter::ChainAdapterFactory;
-use crate::infrastructure::task_queue::{CommonTask, Task, Tasks};
+use crate::{
+    infrastructure::task_queue::{CommonTask, Task, Tasks},
+    request::transaction::SwapTokenInfo,
+};
 use futures::{stream, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -8,7 +11,7 @@ use wallet_database::{
     entities::{
         account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
-        coin::{CoinEntity, CoinMultisigStatus},
+        coin::{CoinData, CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
     repositories::{account::AccountRepoTrait, assets::AssetsRepoTrait, ResourcesRepo},
@@ -352,6 +355,47 @@ impl AssetsDomain {
 
         // 同步资产余额
         AssetsDomain::sync_assets_by_addr_chain(vec![address], Some(chain_code), symbols).await?;
+        Ok(())
+    }
+
+    // swap 增加本地不存在的资产
+    pub async fn swap_sync_assets(
+        token: SwapTokenInfo,
+        recipient: String,
+        chain_code: String,
+    ) -> Result<(), crate::ServiceError> {
+        // notes 不能更新币价
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let coin_data = CoinData::new(
+            Some(token.symbol.clone()),
+            &token.symbol,
+            &chain_code,
+            Some(token.token_addr.clone()),
+            Some("0".to_string()),
+            None,
+            token.decimals as u8,
+            0,
+            0,
+            1,
+        );
+        if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
+            tracing::error!("swap insert coin faild : {}", e);
+        };
+
+        // 资产是否存在不存在新增
+        let assets_id = AssetsId::new(&recipient, &chain_code, &token.symbol);
+        let assets = CreateAssetsVo::new(
+            assets_id,
+            token.decimals as u8,
+            Some(token.token_addr),
+            None,
+            0,
+        );
+
+        if let Err(e) = AssetsEntity::upsert_assets(pool.as_ref(), assets).await {
+            tracing::error!("swap insert assets faild : {}", e);
+        };
+
         Ok(())
     }
 }
