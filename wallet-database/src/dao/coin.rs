@@ -1,19 +1,12 @@
-use std::{collections::HashSet, sync::Arc};
-
-use sqlx::{
-    types::chrono::{DateTime, Utc},
-    Executor, Pool, Sqlite,
-};
-
 use crate::{
     entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
     pagination::Pagination,
 };
-
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
-pub struct Coins {
-    pub symbol: String,
-}
+use sqlx::{
+    types::chrono::{DateTime, Utc},
+    Executor, Pool, Sqlite,
+};
+use std::{collections::HashSet, sync::Arc};
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 pub struct CoinDao {
@@ -28,16 +21,10 @@ pub struct CoinDao {
 
 impl CoinEntity {
     pub fn token_address(&self) -> Option<String> {
-        match &self.token_address {
-            Some(token_address) => {
-                if token_address.is_empty() {
-                    None
-                } else {
-                    Some(token_address.clone())
-                }
-            }
-            None => None,
-        }
+        self.token_address
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .cloned()
     }
 
     pub async fn update_price_unit<'a, E>(
@@ -83,35 +70,6 @@ impl CoinEntity {
 
         // 执行查询
         query
-            .fetch_all(exec)
-            // .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
-
-    pub async fn symbol_list<'a, E>(
-        exec: E,
-        chain_code: Option<String>,
-    ) -> Result<Vec<Coins>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let mut sql = "SELECT DISTINCT symbol
-        FROM coin WHERE is_del = 0 AND status = 1 "
-            .to_string();
-
-        let mut conditions = Vec::new();
-
-        if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-
-        sqlx::query_as::<sqlx::Sqlite, Coins>(&sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -439,3 +397,30 @@ impl CoinEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 }
+
+// pub async fn symbol_list<'a, E>(
+//     exec: E,
+//     chain_code: Option<String>,
+// ) -> Result<Vec<Coins>, crate::Error>
+// where
+//     E: Executor<'a, Database = Sqlite>,
+// {
+//     let mut sql =
+//         "SELECT DISTINCT symbol FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
+
+//     let mut conditions = Vec::new();
+
+//     if let Some(chain_code) = chain_code {
+//         conditions.push(format!("chain_code = '{chain_code}'"));
+//     }
+
+//     if !conditions.is_empty() {
+//         sql.push_str(" AND ");
+//         sql.push_str(&conditions.join(" AND "));
+//     }
+
+//     sqlx::query_as::<sqlx::Sqlite, Coins>(&sql)
+//         .fetch_all(exec)
+//         .await
+//         .map_err(|e| crate::Error::Database(e.into()))
+// }
