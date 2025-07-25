@@ -1,8 +1,8 @@
 use crate::init;
 use wallet_transport_backend::{
     request::{
-        CustomTokenInitReq, TokenQueryByPageReq, TokenQueryHistoryPrice,
-        TokenQueryPopularByPageReq, TokenQueryPrice, TokenQueryPriceReq,
+        CustomTokenInitReq, TokenQueryHistoryPrice, TokenQueryPopularByPageReq, TokenQueryPrice,
+        TokenQueryPriceReq,
     },
     Error,
 };
@@ -73,47 +73,47 @@ async fn test_token_query_price() -> Result<(), Error> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_default_token_list() -> Result<(), Error> {
-    let backend_api = init()?; // 初始化加密器和API
+// #[tokio::test]
+// async fn test_default_token_list() -> Result<(), Error> {
+//     let backend_api = init()?; // 初始化加密器和API
 
-    let req = TokenQueryByPageReq::new_default_token(Vec::new(), 0, 100);
+//     let req = TokenQueryByPageReq::new_default_token(Vec::new(), 0, 100);
 
-    let res = backend_api.token_query_by_page(&req).await.unwrap();
+//     let res = backend_api.token_query_by_page(&req).await.unwrap();
 
-    let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-    println!("[test_token_list] res: {res_str}");
+//     let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+//     println!("[test_token_list] res: {res_str}");
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-#[tokio::test]
-async fn test_popular_token_list() -> Result<(), Error> {
-    let backend_api = init()?; // 初始化加密器和API
+// #[tokio::test]
+// async fn test_popular_token_list() -> Result<(), Error> {
+//     let backend_api = init()?; // 初始化加密器和API
 
-    let req = TokenQueryByPageReq::new_popular_token(0, 1000);
+//     let req = TokenQueryByPageReq::new_popular_token(0, 1000);
 
-    let res = backend_api.token_query_by_page(&req).await.unwrap();
+//     let res = backend_api.token_query_by_page(&req).await.unwrap();
 
-    let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-    println!("[test_popular_token_list] res: {res_str}");
+//     let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+//     println!("[test_popular_token_list] res: {res_str}");
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-#[tokio::test]
-async fn test_token_list() -> Result<(), Error> {
-    let backend_api = init()?; // 初始化加密器和API
+// #[tokio::test]
+// async fn test_token_list() -> Result<(), Error> {
+//     let backend_api = init()?; // 初始化加密器和API
 
-    let req = TokenQueryByPageReq::new_token(0, 1000);
+//     let req = TokenQueryByPageReq::new_token(0, 1000);
 
-    let res = backend_api.token_query_by_page(&req).await.unwrap();
-    println!("[test_token_list] res: {res:?}");
-    let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-    println!("[test_popular_token_list] res: {res_str}");
+//     let res = backend_api.token_query_by_page(&req).await.unwrap();
+//     println!("[test_token_list] res: {res:?}");
+//     let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+//     println!("[test_popular_token_list] res: {res_str}");
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 // #[tokio::test]
 // async fn test_token_query_by_contract_address() -> Result<(), Error> {

@@ -19,8 +19,11 @@ pub struct CoinInfo {
         deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
     )]
     pub enable: bool,
+    pub price: Option<f64>,
     pub default_token: bool,
     pub popular_token: bool,
+    pub create_time: String,
+    pub update_time: String,
 }
 impl CoinInfo {
     pub fn token_address(&self) -> Option<String> {

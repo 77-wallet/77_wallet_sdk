@@ -1,6 +1,7 @@
 use crate::{
-    request::{SwapTokenQueryReq, TokenQueryByPageReq},
+    request::{AllTokenQueryByPageReq, SwapTokenQueryReq},
     response_vo::coin::{CoinInfos, TokenPopularByPages, TokenPrice, TokenPriceInfos},
+    CoinInfo,
 };
 
 use super::BackendApi;
@@ -34,21 +35,21 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn token_query_by_page(
-        &self,
+    // pub async fn token_query_by_page(
+    //     &self,
 
-        req: &TokenQueryByPageReq,
-    ) -> Result<CoinInfos, crate::Error> {
-        let req = serde_json::json!(req);
+    //     req: &TokenQueryByPageReq,
+    // ) -> Result<CoinInfos, crate::Error> {
+    //     let req = serde_json::json!(req);
 
-        let res = self
-            .client
-            .post("token/queryByPage")
-            .json(req)
-            .send::<crate::response::BackendResponse>()
-            .await?;
-        res.process(&self.aes_cbc_cryptor)
-    }
+    //     let res = self
+    //         .client
+    //         .post("token/queryByPage")
+    //         .json(req)
+    //         .send::<crate::response::BackendResponse>()
+    //         .await?;
+    //     res.process(&self.aes_cbc_cryptor)
+    // }
 
     pub async fn query_history_price(
         &self,
@@ -103,9 +104,49 @@ impl BackendApi {
             "tokenAddress": token_addr
         });
 
-        let token = self.post_request::<_, TokenPrice>(endpoint, &req).await?;
+        Ok(self.post_request::<_, TokenPrice>(endpoint, &req).await?)
+    }
 
-        Ok(token)
+    // 查询后端所有的token(排除自定义token)
+    async fn query_all_tokens(
+        &self,
+        req: AllTokenQueryByPageReq,
+    ) -> Result<CoinInfos, crate::Error> {
+        let endpoint = "/token/queryAllExcludeCustomByPage";
+
+        Ok(self.post_request::<_, CoinInfos>(endpoint, &req).await?)
+    }
+
+    pub async fn fetch_all_tokens(
+        &self,
+        create_at: Option<String>,
+        update_at: Option<String>,
+    ) -> Result<Vec<CoinInfo>, crate::Error> {
+        let mut page = 0;
+        let page_size = 500;
+
+        let mut result = Vec::new();
+
+        loop {
+            let req =
+                AllTokenQueryByPageReq::new(create_at.clone(), update_at.clone(), page, page_size);
+
+            match self.query_all_tokens(req).await {
+                Ok(mut resp) => {
+                    result.append(&mut resp.list);
+                    page += 1;
+                    if page >= resp.total_page {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("query_all_tokens error: {e:?}");
+                    break;
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     pub async fn swap_token_list(

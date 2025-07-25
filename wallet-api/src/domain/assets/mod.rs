@@ -366,6 +366,7 @@ impl AssetsDomain {
     ) -> Result<(), crate::ServiceError> {
         // notes 不能更新币价
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let time = wallet_utils::time::now();
         let coin_data = CoinData::new(
             Some(token.symbol.clone()),
             &token.symbol,
@@ -377,6 +378,8 @@ impl AssetsDomain {
             0,
             0,
             1,
+            time,
+            time,
         );
         if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
             tracing::error!("swap insert coin faild : {}", e);

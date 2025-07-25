@@ -2,6 +2,7 @@ use crate::{
     entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
     pagination::Pagination,
 };
+use chrono::SecondsFormat;
 use sqlx::{
     types::chrono::{DateTime, Utc},
     Executor, Pool, Sqlite,
@@ -233,8 +234,8 @@ impl CoinEntity {
                 .push_bind(coin.is_popular)
                 .push_bind(coin.is_custom)
                 .push_bind(coin.status)
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+                .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
+                .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true));
         });
         // query_builder.push(" on conflict (id) do update set updated_at = excluded.updated_at");
         query_builder.push(
@@ -395,6 +396,33 @@ impl CoinEntity {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn get_last_coin<'a, E>(
+        exec: E,
+        is_create: bool,
+    ) -> Result<Option<CoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let time = if is_create {
+            "created_at"
+        } else {
+            "updated_at"
+        };
+
+        let sql = format!(
+            "select * from coin where is_custom = 0 order by {} desc limit 1",
+            time
+        );
+
+        tracing::warn!("[get_last_coin] sql: {sql}");
+
+        let res = sqlx::query_as::<_, CoinEntity>(&sql)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
     }
 }
 

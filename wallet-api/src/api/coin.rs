@@ -207,10 +207,10 @@ mod test {
     #[tokio::test]
     async fn test_pull_hot_coins() -> Result<()> {
         wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let res = wallet_manager.pull_hot_coins().await;
+
         tracing::info!("res: {res:?}");
         Ok(())
     }

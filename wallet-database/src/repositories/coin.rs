@@ -163,4 +163,11 @@ impl CoinRepo {
                 chain_code, token_address,
             )))
     }
+
+    pub async fn last_coin(
+        pool: &DbPool,
+        is_create: bool,
+    ) -> Result<Option<CoinEntity>, crate::Error> {
+        CoinEntity::get_last_coin(pool.as_ref(), is_create).await
+    }
 }

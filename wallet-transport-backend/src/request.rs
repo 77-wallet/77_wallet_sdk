@@ -297,6 +297,33 @@ impl TokenQueryByPageReq {
     }
 }
 
+#[derive(Debug, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AllTokenQueryByPageReq {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_time: Option<String>,
+    pub page_num: i32,
+    pub page_size: i32,
+}
+
+impl AllTokenQueryByPageReq {
+    pub fn new(
+        create_time: Option<String>,
+        update_time: Option<String>,
+        page_num: i32,
+        page_size: i32,
+    ) -> Self {
+        Self {
+            create_time,
+            update_time,
+            page_num,
+            page_size,
+        }
+    }
+}
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenCancelSubscribeReq {
