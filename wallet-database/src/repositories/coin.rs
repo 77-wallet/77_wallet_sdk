@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use crate::{
     entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
     DbPool,
@@ -92,6 +94,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         coin_id: &CoinId,
         price: &str,
         unit: Option<u8>,
+        status: Option<i32>,
+        time: Option<DateTime<Utc>>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
@@ -99,7 +103,9 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             CoinEntity::update_price_unit,
             coin_id,
             price,
-            unit
+            unit,
+            status,
+            time
         )
     }
 

@@ -33,6 +33,8 @@ impl CoinEntity {
         coin_id: &CoinId,
         price: &str,
         unit: Option<u8>,
+        status: Option<i32>,
+        time: Option<DateTime<Utc>>,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -40,24 +42,32 @@ impl CoinEntity {
         // 基础 SQL 语句，设置 price
         let mut sql = "UPDATE coin SET price = ?".to_string();
 
-        // 如果 unit 存在，添加 decimals 字段的更新
         if unit.is_some() {
             sql.push_str(", decimals = ?");
         }
 
-        // 添加 updated_at 字段的更新，使用当前 UTC 时间
-        sql.push_str(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+        if status.is_some() {
+            sql.push_str(", status = ?");
+        }
 
-        // 添加 WHERE 子句，指定要更新的记录
-        sql.push_str(" WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ?");
+        if time.is_some() {
+            sql.push_str(", updated_at = ?");
+        }
 
-        sql.push_str(" RETURNING *");
-        // 创建 SQL 查询，并绑定参数
+        sql.push_str(
+            " WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ? RETURNING *",
+        );
+
         let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql).bind(price); // 绑定 price 参数
 
-        // 如果 unit 存在，绑定 unit 参数
         if let Some(unit_val) = unit {
             query = query.bind(unit_val);
+        }
+        if let Some(status_val) = status {
+            query = query.bind(status_val);
+        }
+        if let Some(time_val) = time {
+            query = query.bind(time_val.to_rfc3339_opts(SecondsFormat::Secs, true));
         }
 
         // 处理 token_address，如果为空，设置为空字符串

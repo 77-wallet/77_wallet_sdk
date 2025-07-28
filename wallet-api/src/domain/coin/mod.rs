@@ -1,20 +1,17 @@
 pub mod token_price;
 use super::app::config::ConfigDomain;
-use crate::response_vo::coin::{TokenCurrencies, TokenCurrencyId, TokenPriceChangeRes};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use crate::{
+    infrastructure::parse_utc_datetime,
+    response_vo::coin::{TokenCurrencies, TokenCurrencyId},
+};
+use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
-    entities::coin::{CoinData, CoinEntity, CoinId},
-    repositories::{
-        coin::{CoinRepo, CoinRepoTrait},
-        exchange_rate::ExchangeRateRepoTrait,
-        ResourcesRepo,
-    },
+    entities::coin::{CoinData, CoinEntity},
+    repositories::{coin::CoinRepoTrait, exchange_rate::ExchangeRateRepoTrait, ResourcesRepo},
     DbPool,
 };
-use wallet_transport_backend::{
-    request::TokenQueryPriceReq, response_vo::coin::TokenCurrency, CoinInfo,
-};
+use wallet_transport_backend::{response_vo::coin::TokenCurrency, CoinInfo};
 use wallet_types::chain::chain::ChainCode;
 
 pub struct CoinDomain {}
@@ -48,9 +45,6 @@ impl CoinDomain {
         &mut self,
         repo: &mut ResourcesRepo,
     ) -> Result<TokenCurrencies, crate::ServiceError> {
-        // let config = crate::app_state::APP_STATE.read().await;
-        // let currency = config.currency();
-        // let currency = "USD";
         let currency = ConfigDomain::get_currency().await?;
 
         let coins = repo.coin_list(None, None).await?;
@@ -86,55 +80,6 @@ impl CoinDomain {
         }
 
         Ok(TokenCurrencies(map))
-    }
-
-    pub async fn get_token_price(
-        &mut self,
-        repo: &mut ResourcesRepo,
-        symbols: Vec<String>,
-    ) -> Result<Vec<TokenPriceChangeRes>, crate::ServiceError> {
-        let tx = repo;
-        let backend_api = crate::Context::get_global_backend_api()?;
-        let coins = tx.coin_list_with_symbols(&symbols, None).await?;
-
-        let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-
-        coins.into_iter().for_each(|coin| {
-            let contract_address = coin.token_address.clone().unwrap_or_default();
-            req.insert(&coin.chain_code, &contract_address);
-        });
-
-        let tokens = backend_api.token_query_price(req).await?.list;
-
-        let config = crate::app_state::APP_STATE.read().await;
-        let currency = config.currency();
-
-        let exchange_rate = ExchangeRateRepoTrait::detail(tx, Some(currency.to_string())).await?;
-
-        let mut res = Vec::new();
-        if let Some(exchange_rate) = exchange_rate {
-            for mut token in tokens {
-                if let Some(symbol) = symbols
-                    .iter()
-                    .find(|s| s.to_lowercase() == token.symbol.to_lowercase())
-                {
-                    token.symbol = symbol.to_string();
-                    let coin_id = CoinId {
-                        chain_code: token.chain_code.clone(),
-                        symbol: symbol.to_string(),
-                        token_address: token.token_address.clone(),
-                    };
-                    tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit)
-                        .await?;
-                    let data =
-                        TokenCurrencies::calculate_token_price_changes(token, exchange_rate.rate)
-                            .await?;
-                    res.push(data);
-                }
-            }
-        }
-
-        Ok(res)
     }
 
     pub(crate) async fn upsert_hot_coin_list(
@@ -184,19 +129,20 @@ impl CoinDomain {
         }
     }
 
-    pub async fn fetch_all_coin(pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
+    pub async fn fetch_all_coin(_pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
         let backend_api = crate::Context::get_global_backend_api()?;
         let mut coins = Vec::new();
 
-        let create_at = if let Some(last_coin) = CoinRepo::last_coin(pool, true).await? {
-            let formatted = last_coin.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-            Some(formatted)
-        } else {
-            None
-        };
+        // TODO 1.5 版本还是查询所有的币，避免版本更新后导致未更新的查询不到数据
+        let create_at = None;
 
-        tracing::warn!("[fetch_all_coin] create_at: {create_at:?}");
+        // let create_at = if let Some(last_coin) = CoinRepo::last_coin(pool, true).await? {
+        //     let formatted = last_coin.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+        //     Some(formatted)
+        // } else {
+        //     None
+        // };
 
         coins.append(
             &mut backend_api
@@ -275,13 +221,6 @@ pub fn coin_info_to_coin_data(coin: CoinInfo) -> CoinData {
         status: if coin.enable { 1 } else { 0 },
         created_at: parse_utc_datetime(&coin.create_time),
         updated_at: parse_utc_datetime(&coin.update_time),
-    }
-}
-
-fn parse_utc_datetime(s: &str) -> DateTime<Utc> {
-    match NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-        Ok(naive) => DateTime::from_naive_utc_and_offset(naive, Utc),
-        Err(_) => DateTime::<Utc>::default(),
     }
 }
 

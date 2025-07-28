@@ -26,16 +26,24 @@ pub struct CoinInfo {
     pub update_time: String,
 }
 impl CoinInfo {
-    pub fn token_address(&self) -> Option<String> {
-        match &self.token_address {
-            Some(token_address) => {
-                if token_address.is_empty() {
-                    None
-                } else {
-                    Some(token_address.clone())
-                }
-            }
-            None => None,
+    // pub fn token_address(&self) -> Option<String> {
+    //     match &self.token_address {
+    //         Some(token_address) => {
+    //             if token_address.is_empty() {
+    //                 None
+    //             } else {
+    //                 Some(token_address.clone())
+    //             }
+    //         }
+    //         None => None,
+    //     }
+    // }
+
+    pub fn get_status(&self) -> Option<i32> {
+        if self.enable {
+            Some(1)
+        } else {
+            Some(0)
         }
     }
 }
@@ -165,6 +173,20 @@ pub struct TokenPriceChangeBody {
     pub unit: Option<u8>,
     // 代币别名
     pub aname: Option<String>,
+    // 创建时间
+    pub create_time: String,
+    // 更新时间
+    pub update_time: String,
+}
+
+impl TokenPriceChangeBody {
+    pub fn get_status(&self) -> Option<i32> {
+        if self.enable {
+            Some(1)
+        } else {
+            Some(0)
+        }
+    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
