@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 pub struct CoinData {
     pub name: Option<String>,
@@ -11,6 +13,8 @@ pub struct CoinData {
     pub is_popular: u8,
     pub is_custom: u8,
     pub status: u8,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl CoinData {
@@ -25,6 +29,8 @@ impl CoinData {
         is_default: u8,
         is_popular: u8,
         status: u8,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
     ) -> Self {
         Self {
             name,
@@ -38,6 +44,8 @@ impl CoinData {
             is_popular,
             is_custom: 0,
             status,
+            created_at,
+            updated_at,
         }
     }
 

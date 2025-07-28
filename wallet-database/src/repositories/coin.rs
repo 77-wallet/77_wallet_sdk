@@ -1,5 +1,6 @@
+use chrono::{DateTime, Utc};
+
 use crate::{
-    dao::coin::Coins,
     entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
     DbPool,
 };
@@ -58,13 +59,13 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, CoinEntity::chain_code_list,)
     }
 
-    async fn symbol_list(
-        &mut self,
-        chain_code: Option<String>,
-    ) -> Result<Vec<Coins>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::symbol_list, chain_code)
-    }
+    // async fn symbol_list(
+    //     &mut self,
+    //     chain_code: Option<String>,
+    // ) -> Result<Vec<Coins>, crate::Error> {
+    //     let executor = self.get_conn_or_tx()?;
+    //     crate::execute_with_executor!(executor, CoinEntity::symbol_list, chain_code)
+    // }
 
     async fn hot_coin_list_symbol_not_in(
         &mut self,
@@ -93,6 +94,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         coin_id: &CoinId,
         price: &str,
         unit: Option<u8>,
+        status: Option<i32>,
+        time: Option<DateTime<Utc>>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
@@ -100,7 +103,9 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             CoinEntity::update_price_unit,
             coin_id,
             price,
-            unit
+            unit,
+            status,
+            time
         )
     }
 
@@ -163,5 +168,12 @@ impl CoinRepo {
                 "coin not found: chain_code: {}, token: {}",
                 chain_code, token_address,
             )))
+    }
+
+    pub async fn last_coin(
+        pool: &DbPool,
+        is_create: bool,
+    ) -> Result<Option<CoinEntity>, crate::Error> {
+        CoinEntity::get_last_coin(pool.as_ref(), is_create).await
     }
 }

@@ -62,6 +62,7 @@ pub(crate) async fn handle_initialization_task(
             let repo = RepositoryFactory::repo(pool.clone());
             let mut coin_service = CoinService::new(repo);
             coin_service.pull_hot_coins().await?;
+
             let repo = RepositoryFactory::repo(pool.clone());
             let coin_service = CoinService::new(repo);
             coin_service.init_token_price().await?;

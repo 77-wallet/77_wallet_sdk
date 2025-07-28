@@ -1,28 +1,35 @@
+use crate::{
+    domain::{
+        self,
+        account::AccountDomain,
+        chain::ChainDomain,
+        coin::{coin_info_to_coin_data, CoinDomain},
+    },
+    infrastructure::{
+        parse_utc_with_error,
+        task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+    },
+    response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
+};
 use std::collections::HashSet;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{assets::AssetsId, coin::CoinId},
     repositories::{
-        assets::AssetsRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
-        exchange_rate::ExchangeRateRepoTrait, ResourcesRepo,
+        assets::AssetsRepoTrait,
+        chain::ChainRepoTrait,
+        coin::{CoinRepo, CoinRepoTrait},
+        exchange_rate::ExchangeRateRepoTrait,
+        ResourcesRepo,
     },
 };
 use wallet_transport_backend::{
-    request::{TokenQueryPrice, TokenQueryPriceReq},
-    response_vo::coin::TokenHistoryPrices,
-};
-
-use crate::{
-    domain::{self, account::AccountDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
-    response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
+    request::TokenQueryPriceReq, response_vo::coin::TokenHistoryPrices,
 };
 
 pub struct CoinService {
     pub repo: ResourcesRepo,
     account_domain: AccountDomain,
-    coin_domain: CoinDomain,
-    // keystore: wallet_crypto::Keystore
 }
 
 impl CoinService {
@@ -30,7 +37,6 @@ impl CoinService {
         Self {
             repo,
             account_domain: AccountDomain::new(),
-            coin_domain: CoinDomain::new(),
         }
     }
 
@@ -143,126 +149,58 @@ impl CoinService {
     }
 
     pub async fn pull_hot_coins(&mut self) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        // 删除掉无效的token
         let tx = &mut self.repo;
+
         tx.drop_coin_just_null_token_address().await?;
 
-        // let list: Vec<wallet_transport_backend::CoinInfo> =
-        //     crate::default_data::coins::init_default_coins_list()?
-        //         .iter()
-        //         .map(|coin| coin.to_owned().into())
-        //         .collect();
-        // // let exclude_name_list: Vec<String> =
-        // //     list.iter().flat_map(|coin| coin.symbol.clone()).collect();
-        // self.upsert_hot_coin_list(list, 1, 1).await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let mut data = Vec::new();
-        let page_size = 1000;
-        let mut page = 0;
+        // 拉所有的币
+        let coins = CoinDomain::fetch_all_coin(&pool).await?;
 
-        // 拉取远程分页数据，按页获取并追加到 `data` 中
-        loop {
-            let req = wallet_transport_backend::request::TokenQueryByPageReq::new_default_token(
-                Vec::new(), // 空的 exclude_name_list
-                page,
-                page_size,
-            );
-            match backend_api.token_query_by_page(&req).await {
-                Ok(mut list) => {
-                    data.append(&mut list.list);
-                    page += 1;
-                    if page >= list.total_page {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("get_token_price error: {e:?}");
-                    break; // 出错时中断循环
-                }
-            }
-        }
-
-        // 拉取流行币种数据并追加到 `data`
-        let req =
-            wallet_transport_backend::request::TokenQueryByPageReq::new_popular_token(0, page_size);
-
-        let default_list: Vec<wallet_transport_backend::CoinInfo> =
-            crate::default_data::coin::init_default_coins_list()?
-                .coins
-                .iter()
-                .map(|coin| coin.to_owned().into())
-                .collect();
-
-        if let Ok(mut list) = backend_api.token_query_by_page(&req).await {
-            data.append(&mut list.list);
-        }
-        tracing::debug!("pull hot coins data: {data:#?}");
-        // let filtered_data: Vec<_> = data
-        //     .into_iter()
-        //     .map(|mut d| {
-        //         if d.token_address().is_none() {
-        //             d.token_address = Some("".to_string());
-        //         };
-        //         d
-        //     })
-        //     .collect();
-        let filtered_data: Vec<_> = data
+        let data = coins
             .into_iter()
-            .filter(|coin| {
-                !default_list.iter().any(|default_coin| {
-                    tracing::debug!("coin: {coin:#?}");
-                    tracing::debug!(
-                        "default_coin symbol: {:?}, chain_code: {:?}, token_address: {:?}",
-                        default_coin.symbol,
-                        default_coin.chain_code,
-                        default_coin.token_address,
-                    );
-                    default_coin.chain_code == coin.chain_code
-                        && default_coin.symbol == coin.symbol
-                        && default_coin.token_address == coin.token_address
-                })
-            })
+            .map(|d| coin_info_to_coin_data(d))
             .collect();
-
-        // tracing::info!("filtered_data: {filtered_data:?}");
-        let data = filtered_data.into_iter().map(|d| d.into()).collect();
-
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
-        // self.upsert_hot_coin_list(data, 0, 1).await?;
 
         Ok(())
     }
 
     pub async fn init_token_price(mut self) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let backend_api = crate::Context::get_global_backend_api()?;
 
+        let update_at = if let Some(last_coin) = CoinRepo::last_coin(&pool, false).await? {
+            last_coin
+                .updated_at
+                .map(|s| s.format("%Y-%m-%d %H:%M:%S").to_string())
+        } else {
+            None
+        };
+
+        let coins = backend_api.fetch_all_tokens(None, update_at).await?;
+
         let tx = &mut self.repo;
+        for token in coins {
+            let status = token.get_status();
+            let time = parse_utc_with_error(&token.update_time).ok();
 
-        let coin_list = tx.coin_list(None, None).await?;
-
-        let req: Vec<TokenQueryPrice> = coin_list
-            .into_iter()
-            .map(|coin| TokenQueryPrice {
-                chain_code: coin.chain_code,
-                contract_address_list: vec![coin.token_address.unwrap_or_default()],
-            })
-            .collect();
-
-        let tokens = backend_api
-            .token_query_price(wallet_transport_backend::request::TokenQueryPriceReq(req))
-            .await?
-            .list;
-        tracing::debug!("init_token_price resp: {tokens:#?}");
-        for token in tokens {
             let coin_id = CoinId {
-                chain_code: token.chain_code.clone(),
-                symbol: token.symbol.clone(),
+                chain_code: token.chain_code.unwrap_or_default(),
+                symbol: token.symbol.unwrap_or_default(),
                 token_address: token.token_address.clone(),
             };
-            tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit)
-                .await?;
-            // tx.update_status(&token.chain_code, &token.symbol, token.token_address, 1)
-            //     .await?;
+
+            tx.update_price_unit(
+                &coin_id,
+                &token.price.unwrap_or_default().to_string(),
+                token.decimals,
+                status,
+                time,
+            )
+            .await?;
         }
 
         Ok(())
@@ -275,34 +213,80 @@ impl CoinService {
         let backend_api = crate::Context::get_global_backend_api()?;
 
         let tx = &mut self.repo;
-        // tracing::warn!("[query_token_price] req: {req:?}");
 
         let tokens = backend_api.token_query_price(req).await?.list;
 
-        // tracing::warn!("[query_token_price] tokens: {tokens:?}");
         for token in tokens {
             let coin_id = CoinId {
                 chain_code: token.chain_code.clone(),
                 symbol: token.symbol.clone(),
                 token_address: token.token_address.clone(),
             };
-            tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit)
-                .await?;
-            tx.update_status(&token.chain_code, &token.symbol, token.token_address, 1)
+            let status = token.get_status();
+            let time = None;
+            tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit, status, time)
                 .await?;
         }
         Ok(())
     }
 
-    // btc sol bnb eth trx
-    // cake usdc usdt
+    // 查询价格 顺便更新一次币价·
     pub async fn get_token_price(
         mut self,
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::ServiceError> {
-        let mut coin_domain = self.coin_domain;
+        let tx = &mut self.repo;
+        let backend_api = crate::Context::get_global_backend_api()?;
 
-        coin_domain.get_token_price(&mut self.repo, symbols).await
+        let coins = tx.coin_list_with_symbols(&symbols, None).await?;
+        let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
+        coins.into_iter().for_each(|coin| {
+            let contract_address = coin.token_address.clone().unwrap_or_default();
+            req.insert(&coin.chain_code, &contract_address);
+        });
+
+        let tokens = backend_api.token_query_price(req).await?.list;
+
+        let currency = {
+            let config = crate::app_state::APP_STATE.read().await;
+            config.currency().to_string()
+        };
+
+        let exchange_rate = ExchangeRateRepoTrait::detail(tx, Some(currency.to_string())).await?;
+
+        let mut res = Vec::new();
+        if let Some(exchange_rate) = exchange_rate {
+            for mut token in tokens {
+                if let Some(symbol) = symbols
+                    .iter()
+                    .find(|s| s.to_lowercase() == token.symbol.to_lowercase())
+                {
+                    token.symbol = symbol.to_string();
+                    let coin_id = CoinId {
+                        chain_code: token.chain_code.clone(),
+                        symbol: symbol.to_string(),
+                        token_address: token.token_address.clone(),
+                    };
+                    let time = parse_utc_with_error(&token.update_time).ok();
+                    let status = if token.enable { Some(1) } else { Some(0) };
+
+                    tx.update_price_unit(
+                        &coin_id,
+                        &token.price.to_string(),
+                        token.unit,
+                        status,
+                        time,
+                    )
+                    .await?;
+                    let data =
+                        TokenCurrencies::calculate_token_price_changes(token, exchange_rate.rate)
+                            .await?;
+                    res.push(data);
+                }
+            }
+        }
+
+        Ok(res)
     }
 
     pub async fn query_token_info(
@@ -419,6 +403,7 @@ impl CoinService {
             (decimals, symbol, name)
         };
 
+        let time = wallet_utils::time::now();
         let cus_coin = wallet_database::entities::coin::CoinData::new(
             Some(name.clone()),
             &symbol,
@@ -430,6 +415,8 @@ impl CoinService {
             1,
             0,
             1,
+            time,
+            time,
         )
         .with_custom(1);
         let coin = vec![cus_coin];
@@ -582,3 +569,65 @@ impl CoinService {
         Ok(res)
     }
 }
+
+// let mut data = Vec::new();
+// let page_size = 1000;
+// let mut page = 0;
+
+// // 拉取远程分页数据，按页获取并追加到 `data` 中
+// loop {
+//     let req = wallet_transport_backend::request::TokenQueryByPageReq::new_default_token(
+//         Vec::new(), // 空的 exclude_name_list
+//         page,
+//         page_size,
+//     );
+//     match backend_api.token_query_by_page(&req).await {
+//         Ok(mut list) => {
+//             data.append(&mut list.list);
+//             page += 1;
+//             if page >= list.total_page {
+//                 break;
+//             }
+//         }
+//         Err(e) => {
+//             tracing::error!("get_token_price error: {e:?}");
+//             break; // 出错时中断循环
+//         }
+//     }
+// }
+
+// // 拉取流行币种数据并追加到 `data`
+// let req =
+//     wallet_transport_backend::request::TokenQueryByPageReq::new_popular_token(0, page_size);
+
+// let default_list: Vec<wallet_transport_backend::CoinInfo> =
+//     crate::default_data::coin::init_default_coins_list()?
+//         .coins
+//         .iter()
+//         .map(|coin| coin.to_owned().into())
+//         .collect();
+
+// if let Ok(mut list) = backend_api.token_query_by_page(&req).await {
+//     data.append(&mut list.list);
+// }
+// tracing::debug!("pull hot coins data: {data:#?}");
+
+// let filtered_data: Vec<_> = data
+//     .into_iter()
+//     .filter(|coin| {
+//         !default_list.iter().any(|default_coin| {
+//             tracing::debug!("coin: {coin:#?}");
+//             tracing::debug!(
+//                 "default_coin symbol: {:?}, chain_code: {:?}, token_address: {:?}",
+//                 default_coin.symbol,
+//                 default_coin.chain_code,
+//                 default_coin.token_address,
+//             );
+//             default_coin.chain_code == coin.chain_code
+//                 && default_coin.symbol == coin.symbol
+//                 && default_coin.token_address == coin.token_address
+//         })
+//     })
+//     .collect();
+
+// let data = filtered_data.into_iter().map(|d| d.into()).collect();

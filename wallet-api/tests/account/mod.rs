@@ -177,3 +177,17 @@ async fn test_current_chain_address() {
 
     tracing::info!("response {}", serde_json::to_string(&c).unwrap());
 }
+
+#[tokio::test]
+async fn test_current_address() {
+    let wallet_manager = get_manager().await;
+
+    let wallet_address = "0x32296819E5A42B04cb21f6bA16De3f3C4B024DDc".to_string();
+    let account_id = 1;
+
+    let c = wallet_manager
+        .current_account(wallet_address, account_id)
+        .await;
+
+    tracing::info!("response {}", serde_json::to_string(&c).unwrap());
+}

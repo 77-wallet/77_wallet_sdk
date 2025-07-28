@@ -11,11 +11,6 @@ pub(crate) struct DefaultCoin {
     pub(crate) active: bool,
 }
 
-// #[derive(Debug, Clone, serde::Deserialize)]
-// pub(crate) struct Coins {
-//     pub(crate) coins: Vec<DefaultCoin>,
-// }
-
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultCoinList {
     pub(crate) coins: Vec<DefaultCoin>,
@@ -33,19 +28,19 @@ pub(crate) fn init_default_coins_list() -> Result<&'static DefaultCoinList, crat
     })
 }
 
-impl From<DefaultCoin> for wallet_transport_backend::CoinInfo {
-    fn from(value: DefaultCoin) -> Self {
-        Self {
-            symbol: Some(value.symbol),
-            name: Some(value.name),
-            chain_code: Some(value.chain_code),
-            token_address: value.token_address,
-            protocol: value.protocol,
-            id: Default::default(),
-            decimals: Some(value.decimals),
-            default_token: value.default,
-            popular_token: value.popular,
-            enable: value.active,
-        }
-    }
-}
+// impl From<DefaultCoin> for wallet_transport_backend::CoinInfo {
+//     fn from(value: DefaultCoin) -> Self {
+//         Self {
+//             symbol: Some(value.symbol),
+//             name: Some(value.name),
+//             chain_code: Some(value.chain_code),
+//             token_address: value.token_address,
+//             protocol: value.protocol,
+//             id: Default::default(),
+//             decimals: Some(value.decimals),
+//             default_token: value.default,
+//             popular_token: value.popular,
+//             enable: value.active,
+//         }
+//     }
+// }
