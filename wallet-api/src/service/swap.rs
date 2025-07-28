@@ -143,7 +143,14 @@ impl SwapServer {
 
         // 主币处理
         if req.token_in.token_addr.is_empty() {
-            self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let assets =
+                AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
+            // 余额足够才进行模拟
+            if unit::string_to_f64(&req.amount_in)? < unit::string_to_f64(&assets.balance)? {
+                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+            }
+
             return Ok(res);
         }
 
@@ -152,7 +159,17 @@ impl SwapServer {
         let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
 
         if allowance >= amount_in {
-            self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let assets = AssetsRepo::get_by_addr_token(
+                &pool,
+                &req.chain_code,
+                &req.token_in.token_addr,
+                &req.recipient,
+            )
+            .await?;
+            if unit::string_to_f64(&req.amount_in)? < unit::string_to_f64(&assets.balance)? {
+                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+            }
             return Ok(res);
         } else {
             let diff = amount_in - allowance;

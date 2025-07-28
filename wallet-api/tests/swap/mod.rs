@@ -129,7 +129,7 @@ async fn test_quote() {
         aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
         recipient: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "2".to_string(),
+        amount_in: "30".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
