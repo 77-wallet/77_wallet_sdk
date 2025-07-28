@@ -21,9 +21,9 @@ pub mod test;
 
 pub use error::{
     business::{
-        account::AccountError, announcement::AnnouncementError, assets::AssetsError,
-        bill::BillError, chain::ChainError, chain_node::ChainNodeError, coin::CoinError,
-        config::ConfigError, device::DeviceError, exchange_rate::ExchangeRate,
+        account::AccountError, announcement::AnnouncementError, api_wallet::ApiWalletError,
+        assets::AssetsError, bill::BillError, chain::ChainError, chain_node::ChainNodeError,
+        coin::CoinError, config::ConfigError, device::DeviceError, exchange_rate::ExchangeRate,
         multisig_account::MultisigAccountError, multisig_queue::MultisigQueueError,
         permission::PermissionError, stake::StakeError, wallet::WalletError, BusinessError,
     },

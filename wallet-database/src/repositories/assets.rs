@@ -3,20 +3,6 @@ use crate::{
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
 };
 
-// pub struct ChainRepo {
-//     // pub repo: ResourcesRepo,
-// }
-
-// impl ChainRepo {
-//     pub fn new(db_pool: crate::DbPool) -> Self {
-//         Self {
-//             // repo: ResourcesRepo::new(db_pool),
-//         }
-//     }
-// }
-
-// impl ChainRepoTrait for ChainRepo {}
-
 #[async_trait::async_trait]
 pub trait AssetsRepoTrait: super::TransactionTrait {
     async fn upsert_assets(&mut self, assets: CreateAssetsVo) -> Result<(), crate::Error> {

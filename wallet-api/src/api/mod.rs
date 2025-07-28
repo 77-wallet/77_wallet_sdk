@@ -1,6 +1,7 @@
 pub mod account;
 pub mod address_book;
 pub mod announcement;
+pub mod api_wallet;
 pub mod app;
 pub mod asset;
 pub mod chain;

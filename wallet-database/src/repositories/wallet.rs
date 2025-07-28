@@ -1,18 +1,19 @@
-use crate::entities::wallet::WalletEntity;
+use crate::{entities::wallet::WalletEntity, DbPool};
 
-// pub struct ChainRepo {
-//     // pub repo: ResourcesRepo,
-// }
+pub struct WalletRepo {
+    // pub repo: ResourcesRepo,
+}
 
-// impl ChainRepo {
-//     pub fn new(db_pool: crate::DbPool) -> Self {
-//         Self {
-//             // repo: ResourcesRepo::new(db_pool),
-//         }
-//     }
-// }
+impl WalletRepo {
+    pub async fn detail(
+        pool: &DbPool,
+        address: &str,
+    ) -> Result<Option<WalletEntity>, crate::Error> {
+        let wallet = WalletEntity::detail(pool.as_ref(), address).await?;
 
-// impl ChainRepoTrait for ChainRepo {}
+        Ok(wallet)
+    }
+}
 
 #[async_trait::async_trait]
 pub trait WalletRepoTrait: super::TransactionTrait {

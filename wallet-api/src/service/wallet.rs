@@ -315,11 +315,19 @@ impl WalletService {
             master_key_start.elapsed()
         );
 
+        let address = &address.to_string();
+
+        if WalletDomain::check_api_wallet_exist(address).await? {
+            return Err(crate::BusinessError::Wallet(
+                crate::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
+            )
+            .into());
+        }
+
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
-        let address = &address.to_string();
         let seed = seed.clone();
 
         // 检查钱包状态

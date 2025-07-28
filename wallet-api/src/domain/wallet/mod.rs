@@ -4,7 +4,10 @@ use wallet_database::{
         device::DeviceEntity,
         wallet::WalletEntity,
     },
-    repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
+    repositories::{
+        account::AccountRepoTrait, api_wallet::ApiWalletRepo, wallet::WalletRepoTrait,
+        ResourcesRepo,
+    },
 };
 use wallet_tree::{api::KeystoreApi, KdfAlgorithm, WalletTreeStrategy};
 use wallet_types::chain::{
@@ -404,6 +407,14 @@ impl WalletDomain {
             ChainCode::Ton => TON_ADDRESS_TYPES.to_vec(),
             _ => vec![AddressType::Other],
         }
+    }
+
+    pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        Ok(ApiWalletRepo::find_by_address(&pool, address)
+            .await?
+            .is_some())
     }
 }
 

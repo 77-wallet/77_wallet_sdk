@@ -1,18 +1,21 @@
-pub mod account;
-pub mod announcement;
-pub mod assets;
-pub mod bill;
-pub mod chain;
-pub mod chain_node;
-pub mod coin;
-pub mod config;
-pub mod device;
-pub mod exchange_rate;
-pub mod multisig_account;
-pub mod multisig_queue;
-pub mod permission;
-pub mod stake;
-pub mod wallet;
+// 3000 - 4499
+
+pub mod account; // 3200 - 3299
+pub mod announcement; // 3800 - 3899
+pub mod api_wallet; // 4400 - 4499
+pub mod assets; // 3400 - 3499
+pub mod bill; // 3300 - 3399
+pub mod chain; // 3500 - 3599
+pub mod chain_node; // 4200 - 4299
+pub mod coin; // 4000 - 4099
+pub mod config; // 4300 - 4399
+pub mod device; // 3000 - 3099
+pub mod exchange_rate; // 4100 - 4199
+pub mod multisig_account; // 3600 - 3699
+pub mod multisig_queue; // 3700 - 3799
+pub mod permission; // 4300 - 4399
+pub mod stake; // 3900 - 3999
+pub mod wallet; // 3100 - 3199
 
 #[derive(Debug, thiserror::Error)]
 pub enum BusinessError {
@@ -46,6 +49,8 @@ pub enum BusinessError {
     Config(#[from] config::ConfigError),
     #[error("chain node: error: {0}")]
     Permission(#[from] permission::PermissionError),
+    #[error("api wallet error: {0}")]
+    ApiWallet(#[from] api_wallet::ApiWalletError),
 }
 
 impl BusinessError {
@@ -66,6 +71,7 @@ impl BusinessError {
             BusinessError::ChainNode(msg) => msg.get_status_code(),
             BusinessError::Config(msg) => msg.get_status_code(),
             BusinessError::Permission(msg) => msg.get_status_code(),
+            BusinessError::ApiWallet(msg) => msg.get_status_code(),
         }
     }
 }
