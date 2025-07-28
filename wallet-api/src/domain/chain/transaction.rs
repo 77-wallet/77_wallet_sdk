@@ -239,6 +239,26 @@ impl ChainTransDomain {
         }
     }
 
+    pub async fn default_gas_oracle(
+        provider: &eth::Provider,
+    ) -> Result<GasOracle, crate::ServiceError> {
+        let eth_fee = provider.get_default_fee().await?;
+
+        let propose = eth_fee.base_fee + eth_fee.priority_fee_per_gas;
+        let propose = unit::format_to_string(propose, eth::consts::ETH_GWEI)?;
+        let base = unit::format_to_string(eth_fee.base_fee, eth::consts::ETH_GWEI)?;
+
+        let gas_oracle = GasOracle {
+            safe_gas_price: None,
+            propose_gas_price: Some(propose),
+            fast_gas_price: None,
+            suggest_base_fee: Some(base),
+            gas_used_ratio: None,
+        };
+
+        Ok(gas_oracle)
+    }
+
     // check balance
     pub async fn check_eth_balance(
         from: &str,

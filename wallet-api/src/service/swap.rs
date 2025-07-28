@@ -14,7 +14,7 @@ use crate::{
     response_vo::{
         account::BalanceInfo,
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
-        CommonFeeDetails,
+        EstimateFeeResp,
     },
     FrontendNotifyEvent, NotifyEvent,
 };
@@ -370,7 +370,7 @@ impl SwapServer {
     pub async fn approve_fee(
         &self,
         req: ApproveReq,
-    ) -> Result<CommonFeeDetails, crate::ServiceError> {
+    ) -> Result<EstimateFeeResp, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         let value = alloy::primitives::U256::MAX;
@@ -379,8 +379,8 @@ impl SwapServer {
 
         let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;
 
-        // let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);
-        Ok(fee)
+        let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);
+        Ok(fee_resp)
     }
 
     pub async fn approve(

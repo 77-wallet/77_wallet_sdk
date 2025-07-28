@@ -12,7 +12,7 @@ use crate::{
     },
     infrastructure::swap_client::AggQuoteResp,
     request::transaction::{self, QuoteReq, SwapReq},
-    response_vo::{self, CommonFeeDetails, FeeDetails, TronFeeDetails},
+    response_vo::{self, FeeDetails, TronFeeDetails},
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
@@ -20,26 +20,22 @@ use wallet_chain_interact::{
     self as chain,
     btc::{self},
     dog,
-    eth::{self, FeeSetting},
+    eth::{self},
     ltc,
     sol::{self, operations::SolInstructionOperation},
     sui,
     ton::{self},
     tron::{
         self,
-        consts::TRX_TO_SUN,
         operations::{TronConstantOperation as _, TronTxOperation},
     },
     types::ChainPrivateKey,
     BillResourceConsume,
 };
 use wallet_transport::client::{HttpClient, RpcClient};
-use wallet_types::{
-    chain::{
-        address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
-        chain::ChainCode as ChainType,
-    },
-    constant::decimals::ETH_DECIMALS,
+use wallet_types::chain::{
+    address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
+    chain::ChainCode as ChainType,
 };
 use wallet_utils::unit;
 
@@ -783,7 +779,7 @@ impl TransactionAdapter {
         req: &transaction::ApproveReq,
         value: alloy::primitives::U256,
         main_symbol: &str,
-    ) -> Result<CommonFeeDetails, crate::ServiceError> {
+    ) -> Result<String, crate::ServiceError> {
         let currency = {
             let currency = crate::app_state::APP_STATE.read().await;
             currency.currency().to_string()
@@ -800,32 +796,21 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => {
                 let fee = eth_tx::approve_fee(chain, req, value).await?;
 
-                let gas_price = chain.provider.gas_price().await?;
-                let mut fee_setting = FeeSetting::new_with_price(gas_price);
-                fee_setting.gas_limit = alloy::primitives::U256::from(fee.consume);
+                let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
+                let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
+                    .to_resp(token_currency, &currency);
 
-                let fee =
-                    wallet_utils::unit::format_to_f64(fee_setting.transaction_fee(), ETH_DECIMALS)?;
-                // let backend = crate::manager::Context::get_global_backend_api()?;
-
-                // // 使用默认的手续费配置
-                // let gas_oracle =
-                //     ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend).await?;
-
-                // let fee = FeeDetails::try_from((gas_oracle, fee.consume))?
-                //     .to_resp(token_currency, &currency);
-
-                // wallet_utils::serde_func::serde_to_string(&fee)?
-                CommonFeeDetails::new(fee, token_currency, &currency)
+                wallet_utils::serde_func::serde_to_string(&fee)?
+                // CommonFeeDetails::new(fee, token_currency, &currency)
             }
             Self::Tron(chain) => {
                 let consumer = tron_tx::approve_fee(chain, req, value).await?;
 
-                let fee = consumer.transaction_fee_i64() as f64 / TRX_TO_SUN as f64;
+                // let fee = consumer.transaction_fee_i64() as f64 / TRX_TO_SUN as f64;
+                // CommonFeeDetails::new(fee, token_currency, &currency)
 
-                CommonFeeDetails::new(fee, token_currency, &currency)
-                // let res = TronFeeDetails::new(consumer, token_currency, &currency)?;
-                // wallet_utils::serde_func::serde_to_string(&res)?
+                let res = TronFeeDetails::new(consumer, token_currency, &currency)?;
+                wallet_utils::serde_func::serde_to_string(&res)?
             }
             _ => {
                 return Err(crate::BusinessError::Chain(
