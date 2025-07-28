@@ -363,6 +363,15 @@ impl TryFrom<AccountEntity> for QueryAccountDerivationPath {
     }
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentAccountInfo {
+    pub chain_code: String,
+    pub address: String,
+    pub address_type: AddressCategory,
+    pub is_multisig: bool,
+}
+
 #[cfg(test)]
 mod tests {
 

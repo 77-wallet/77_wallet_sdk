@@ -1,5 +1,7 @@
 use crate::api::ReturnType;
-use crate::response_vo::account::{DerivedAddressesList, QueryAccountDerivationPath};
+use crate::response_vo::account::{
+    CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath,
+};
 use crate::service::account::AccountService;
 use wallet_database::entities::account::AccountEntity;
 
@@ -101,6 +103,20 @@ impl crate::WalletManager {
         chain_code: String,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
         AccountService::current_chain_address(uid, account_id, &chain_code)
+            .await?
+            .into()
+    }
+
+    pub async fn current_account(
+        &self,
+        wallet_address: String,
+        account_id: i32,
+    ) -> ReturnType<Vec<CurrentAccountInfo>> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+
+        AccountService::new(repo)
+            .current_accounts(&wallet_address, account_id)
             .await?
             .into()
     }
