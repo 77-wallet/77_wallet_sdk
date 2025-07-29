@@ -262,7 +262,7 @@ impl SwapServer {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         // 执行swap 交易
-        let hash = adapter.swap(&req, fee, key).await?;
+        let resp = adapter.swap(&req, fee, key).await?;
 
         //  if token_out if new assets add it
         let token_out = req.token_out.clone();
@@ -284,10 +284,11 @@ impl SwapServer {
 
         // 写入本地交易记录表
         let mut new_bill = NewBillEntity::try_from(req)?;
-        new_bill.hash = hash.clone();
+        new_bill.hash = resp.tx_hash.clone();
+        new_bill.resource_consume = resp.resource_consume()?;
         BillDomain::create_bill(new_bill).await?;
 
-        Ok(hash)
+        Ok(resp.tx_hash)
     }
 
     pub async fn token_list(
@@ -343,67 +344,6 @@ impl SwapServer {
 
         Ok(resp)
     }
-
-    // pub async fn token_list_from_backend(
-    //     &self,
-    //     req: SwapTokenListReq,
-    // ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
-    //     let backend = crate::manager::Context::get_global_backend_api()?;
-    //     let req = SwapTokenQueryReq::from(req);
-
-    //     let result = backend.swap_token_list(req).await?;
-
-    //     let mut resp = Pagination::<SwapTokenInfo> {
-    //         page: result.page_index,
-    //         page_size: result.page_size,
-    //         total_count: result.total_count,
-    //         data: vec![],
-    //     };
-
-    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
-    //     let currency = {
-    //         let state = crate::app_state::APP_STATE.read().await;
-    //         state.currency().to_string() // 或复制 enum 值，取决于类型
-    //     };
-    //     for item in result.list.into_iter() {
-    //         // 查询资产
-    //         let assets_id = AssetsId {
-    //             address: item.token_address.clone().unwrap_or_default(),
-    //             symbol: item.aname.clone().unwrap_or_default(),
-    //             chain_code: item.chain_code.clone(),
-    //         };
-
-    //         let assets = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
-    //         let balance = if let Some(assets) = assets {
-    //             let unit_price = if currency.eq_ignore_ascii_case("usdt") {
-    //                 item.price
-    //             } else {
-    //                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    //                 let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
-
-    //                 exchange.rate * item.price
-    //             };
-
-    //             let amount = wallet_utils::unit::string_to_f64(&assets.balance)?;
-    //             BalanceInfo::new(amount, Some(unit_price), &currency)
-    //         } else {
-    //             BalanceInfo::default()
-    //         };
-
-    //         // 构建响应
-    //         let resp_item = SwapTokenInfo {
-    //             token_addr: item.token_address.unwrap_or_default(),
-    //             symbol: item.aname.unwrap_or_default(),
-    //             decimals: item.unit.unwrap_or_default() as u32,
-    //             balance,
-    //             chain_code: item.chain_code,
-    //             name: item.name.unwrap_or_default(),
-    //         };
-    //         resp.data.push(resp_item);
-    //     }
-    //     Ok(resp)
-    // }
 
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
         Ok(self.client.chain_list().await?.chain_dexs)
@@ -484,7 +424,7 @@ impl SwapServer {
         } else {
             wallet_utils::unit::convert_to_u256(&req.value, coin.decimals)?
         };
-        let hash = adapter.approve(&req, private_key, value).await?;
+        let resp = adapter.approve(&req, private_key, value).await?;
 
         let account = AccountRepo::account_with_wallet(&req.from, &req.chain_code, &pool).await?;
 
@@ -497,18 +437,19 @@ impl SwapServer {
             &req.from,
             &req.contract,
             req.value.clone(),
-            &hash,
+            &&resp.tx_hash.clone(),
             &req.approve_type,
         );
         TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
 
         // 写入本地交易
         let mut new_bill = NewBillEntity::from(req);
-        new_bill.hash = hash.clone();
+        new_bill.hash = resp.tx_hash.clone();
         new_bill.symbol = coin.symbol;
+        new_bill.resource_consume = resp.resource_consume()?;
         BillDomain::create_bill(new_bill).await?;
 
-        Ok(hash)
+        Ok(resp.tx_hash)
     }
 
     pub async fn approve_list(
@@ -592,10 +533,7 @@ impl SwapServer {
         ));
         FrontendNotifyEvent::new(data).send().await?;
         let value = alloy::primitives::U256::ZERO;
-        let hash = adapter.approve(&req, private_key, value).await?;
-
-        // 授权的数量
-        // let allowance = adapter.allowance(from, token, spender).await?;
+        let resp = adapter.approve(&req, private_key, value).await?;
 
         let backend = ApproveCancelReq {
             spender: req.spender.clone(),
@@ -606,12 +544,13 @@ impl SwapServer {
 
         // 写入本地交易
         let mut new_bill = NewBillEntity::from(req);
-        new_bill.hash = hash.clone();
+        new_bill.hash = resp.tx_hash.clone();
         new_bill.symbol = coin.symbol;
         new_bill.tx_kind = wallet_database::entities::bill::BillKind::UnApprove;
+        new_bill.resource_consume = resp.resource_consume()?;
         BillDomain::create_bill(new_bill).await?;
 
-        Ok(hash)
+        Ok(resp.tx_hash)
     }
 
     // pub async fn supplier(
@@ -635,3 +574,64 @@ impl SwapServer {
     //     Ok(result.to_string())
     // }
 }
+
+// pub async fn token_list_from_backend(
+//     &self,
+//     req: SwapTokenListReq,
+// ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
+//     let backend = crate::manager::Context::get_global_backend_api()?;
+//     let req = SwapTokenQueryReq::from(req);
+
+//     let result = backend.swap_token_list(req).await?;
+
+//     let mut resp = Pagination::<SwapTokenInfo> {
+//         page: result.page_index,
+//         page_size: result.page_size,
+//         total_count: result.total_count,
+//         data: vec![],
+//     };
+
+//     let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+//     let currency = {
+//         let state = crate::app_state::APP_STATE.read().await;
+//         state.currency().to_string() // 或复制 enum 值，取决于类型
+//     };
+//     for item in result.list.into_iter() {
+//         // 查询资产
+//         let assets_id = AssetsId {
+//             address: item.token_address.clone().unwrap_or_default(),
+//             symbol: item.aname.clone().unwrap_or_default(),
+//             chain_code: item.chain_code.clone(),
+//         };
+
+//         let assets = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
+//         let balance = if let Some(assets) = assets {
+//             let unit_price = if currency.eq_ignore_ascii_case("usdt") {
+//                 item.price
+//             } else {
+//                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
+//                 let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
+
+//                 exchange.rate * item.price
+//             };
+
+//             let amount = wallet_utils::unit::string_to_f64(&assets.balance)?;
+//             BalanceInfo::new(amount, Some(unit_price), &currency)
+//         } else {
+//             BalanceInfo::default()
+//         };
+
+//         // 构建响应
+//         let resp_item = SwapTokenInfo {
+//             token_addr: item.token_address.unwrap_or_default(),
+//             symbol: item.aname.unwrap_or_default(),
+//             decimals: item.unit.unwrap_or_default() as u32,
+//             balance,
+//             chain_code: item.chain_code,
+//             name: item.name.unwrap_or_default(),
+//         };
+//         resp.data.push(resp_item);
+//     }
+//     Ok(resp)
+// }

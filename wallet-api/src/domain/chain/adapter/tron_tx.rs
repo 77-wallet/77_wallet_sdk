@@ -1,8 +1,11 @@
 use crate::{
     domain::{
-        chain::swap::{
-            evm_swap::{dexSwap1Call, SwapParams},
-            EstimateSwapResult,
+        chain::{
+            swap::{
+                evm_swap::{dexSwap1Call, SwapParams},
+                EstimateSwapResult,
+            },
+            TransferResp,
         },
         multisig::MultisigQueueDomain,
     },
@@ -23,6 +26,7 @@ use wallet_chain_interact::{
         TronChain,
     },
     types::{ChainPrivateKey, MultisigTxResp},
+    BillResourceConsume,
 };
 use wallet_types::chain::chain::ChainCode;
 
@@ -68,7 +72,7 @@ pub(super) async fn approve(
     req: &ApproveReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
-) -> Result<String, crate::ServiceError> {
+) -> Result<TransferResp, crate::ServiceError> {
     let approve = Approve::new(&req.from, &req.spender, &req.contract, value);
     let mut wrap = WarpContract::new(approve)?;
 
@@ -85,14 +89,24 @@ pub(super) async fn approve(
         ))?;
     }
 
-    // exec tx
+    // get consumer
+    let bill_consumer = BillResourceConsume::new_tron(
+        consumer.act_bandwidth() as u64,
+        consumer.act_energy() as u64,
+    );
+
+    // exec trans
     let raw_transaction = wrap
         .trigger_smart_contract(&chain.provider, &consumer)
         .await?;
-
     let result = chain.exec_transaction_v1(raw_transaction, key).await?;
-    Ok(result)
+
+    let mut resp = TransferResp::new(result, consumer.transaction_fee());
+    resp.with_consumer(bill_consumer);
+
+    Ok(resp)
 }
+
 pub(super) async fn approve_fee(
     chain: &TronChain,
     req: &ApproveReq,
@@ -195,7 +209,7 @@ pub(super) async fn swap(
     chain: &TronChain,
     swap_params: &SwapParams,
     key: ChainPrivateKey,
-) -> Result<String, crate::ServiceError> {
+) -> Result<TransferResp, crate::ServiceError> {
     let (params, owner_address) = build_base_swap(&swap_params)?;
 
     let mut wrap = WarpContract { params };
@@ -219,11 +233,20 @@ pub(super) async fn swap(
             crate::ChainError::InsufficientFeeBalance,
         ))?;
     }
+
+    let bill_consumer = BillResourceConsume::new_tron(
+        consumer.act_bandwidth() as u64,
+        consumer.act_energy() as u64,
+    );
+
     let raw_transaction = wrap
         .trigger_smart_contract(&chain.provider, &consumer)
         .await?;
 
-    let hash = chain.exec_transaction_v1(raw_transaction, key).await?;
+    let tx_hash = chain.exec_transaction_v1(raw_transaction, key).await?;
 
-    Ok(hash)
+    let mut resp = TransferResp::new(tx_hash, consumer.transaction_fee());
+    resp.with_consumer(bill_consumer);
+
+    Ok(resp)
 }

@@ -5,6 +5,7 @@ use crate::{
             evm_swap::{dexSwap1Call, SwapParams},
             EstimateSwapResult,
         },
+        TransferResp,
     },
     request::transaction::ApproveReq,
     response_vo::EthereumFeeDetails,
@@ -16,6 +17,7 @@ use alloy::{
 use alloy::{primitives::U256, rpc::types::TransactionRequest};
 use wallet_chain_interact::{
     eth::{
+        self,
         operations::erc::{Allowance, Approve},
         EthChain, FeeSetting,
     },
@@ -23,23 +25,29 @@ use wallet_chain_interact::{
     ResourceConsume,
 };
 use wallet_types::chain::chain::ChainCode;
+use wallet_utils::unit;
 
 pub(super) async fn approve(
     chain: &EthChain,
     req: &ApproveReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
-) -> Result<String, crate::ServiceError> {
+) -> Result<TransferResp, crate::ServiceError> {
     let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
 
     // 使用默认的手续费配置
     let gas_price = chain.provider.gas_price().await?;
     let fee_setting = FeeSetting::new_with_price(gas_price);
 
-    // exec tx
-    let hash = chain.exec_transaction(approve, fee_setting, key).await?;
+    let fee = fee_setting.transaction_fee();
 
-    Ok(hash)
+    // exec tx
+    let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
+
+    Ok(TransferResp::new(
+        tx_hash,
+        unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+    ))
 }
 
 pub(super) async fn approve_fee(
@@ -124,8 +132,9 @@ pub(super) async fn swap(
     swap_params: &SwapParams,
     fee: String,
     key: ChainPrivateKey,
-) -> Result<String, crate::ServiceError> {
+) -> Result<TransferResp, crate::ServiceError> {
     let fee = pare_fee_setting(fee.as_str())?;
+    let transfer_fee = fee.transaction_fee();
 
     let tx = build_base_swap_tx(&swap_params)?;
     let tx = chain
@@ -133,7 +142,10 @@ pub(super) async fn swap(
         .set_transaction_fee(tx, fee, chain.chain_code)
         .await?;
 
-    let hash = chain.provider.send_raw_transaction(tx, &key).await?;
+    let tx_hash = chain.provider.send_raw_transaction(tx, &key).await?;
 
-    Ok(hash)
+    Ok(TransferResp::new(
+        tx_hash,
+        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
+    ))
 }

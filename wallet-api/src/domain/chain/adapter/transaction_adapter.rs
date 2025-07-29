@@ -760,7 +760,7 @@ impl TransactionAdapter {
         req: &transaction::ApproveReq,
         key: ChainPrivateKey,
         value: alloy::primitives::U256,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<TransferResp, crate::ServiceError> {
         let hash = match self {
             Self::Ethereum(chain) => eth_tx::approve(chain, req, value, key).await?,
             Self::Tron(chain) => tron_tx::approve(chain, req, value, key).await?,
@@ -914,7 +914,7 @@ impl TransactionAdapter {
         req: &SwapReq,
         fee: String,
         key: ChainPrivateKey,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<TransferResp, crate::ServiceError> {
         let swap_params = SwapParams::try_from(req)?;
 
         let resp = match self {
