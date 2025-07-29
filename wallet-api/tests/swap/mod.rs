@@ -34,7 +34,7 @@ async fn test_token_list() {
         account_id: 1,
         exclude_token: vec![],
         page_num: 0,
-        page_size: 10,
+        page_size: 3,
     };
 
     let resp = wallet_manager.token_list(req).await;

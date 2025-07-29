@@ -1,7 +1,7 @@
 use wallet_database::{
     dao::bill::BillDao,
     entities::{
-        bill::{BillExtraSwap, BillKind, NewBillEntity},
+        bill::{BillKind, NewBillEntity},
         multisig_queue::MultisigQueueStatus,
     },
     factory::RepositoryFactory,
@@ -222,19 +222,20 @@ impl AcctChange {
 
     // 需要更新的资产-swap 需要更新swap的资产
     fn get_sync_assets_symbol(&self) -> Vec<String> {
-        let mut symbol = vec![self.symbol.clone()];
-        if self.tx_kind == BillKind::Swap.to_i8() {
-            if let Some(extra) = &self.extra {
-                if let Ok(extra_swap) =
-                    wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
-                {
-                    if self.symbol != extra_swap.from_token_symbol {
-                        symbol.push(extra_swap.from_token_symbol);
-                    }
-                    symbol.push(extra_swap.to_token_symbol);
-                }
-            }
-        }
+        let symbol = vec![self.symbol.clone()];
+        // 由于目前swap会发送躲多币交易,z这个地方取消
+        // if self.tx_kind == BillKind::Swap.to_i8() {
+        //     if let Some(extra) = &self.extra {
+        //         if let Ok(extra_swap) =
+        //             wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
+        //         {
+        //             if self.symbol != extra_swap.from_token_symbol {
+        //                 symbol.push(extra_swap.from_token_symbol);
+        //             }
+        //             symbol.push(extra_swap.to_token_symbol);
+        //         }
+        //     }
+        // }
         symbol
     }
 

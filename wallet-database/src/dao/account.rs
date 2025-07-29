@@ -408,7 +408,7 @@ impl AccountEntity {
         }
 
         if let Some(chain_code) = chain_code {
-            let a = format!(" and account_id = '{}'", chain_code);
+            let a = format!(" and chain_code = '{}'", chain_code);
             sql.push_str(&a);
         }
 

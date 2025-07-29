@@ -380,6 +380,8 @@ impl BillDao {
                         CASE WHEN bill.to_addr = '' THEN excluded.to_addr ELSE bill.to_addr END,
                     value =
                         CASE WHEN bill.value = '0' THEN excluded.value ELSE bill.value END,
+                    extra = 
+                        CASE WHEN excluded.extra != '' THEN excluded.extra ELSE bill.extra END,
                     updated_at = EXCLUDED.updated_at;
             ",
             values
