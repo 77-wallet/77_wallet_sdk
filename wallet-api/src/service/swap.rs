@@ -2,7 +2,7 @@ use crate::{
     domain::{
         assets::AssetsDomain,
         bill::BillDomain,
-        chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
+        chain::{adapter::ChainAdapterFactory, swap::SLIPPAGE, transaction::ChainTransDomain},
         coin::{CoinDomain, TokenCurrencyGetter},
         task_queue::TaskQueueDomain,
     },
@@ -124,11 +124,13 @@ impl SwapServer {
 
         // 获取滑点
         let slippage = req.get_slippage(quote_resp.default_slippage);
+        let default_slippage = quote_resp.default_slippage as f64 / SLIPPAGE;
 
         // 构建响应
         let mut res = ApiQuoteResp::new(
             quote_resp.chain_code.clone(),
             slippage,
+            default_slippage,
             quote_resp.dex_route_list.clone(),
             bal_in,
             bal_out,

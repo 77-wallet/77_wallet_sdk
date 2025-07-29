@@ -9,7 +9,8 @@ pub struct SwapClient {
 
 impl SwapClient {
     pub fn new(url: &str) -> Result<Self, crate::ServiceError> {
-        let client = HttpClient::new(&url, None, None)?;
+        let timeout = Some(std::time::Duration::from_secs(20));
+        let client = HttpClient::new(&url, None, timeout)?;
 
         Ok(Self { client })
     }

@@ -22,6 +22,10 @@ pub struct ApiQuoteResp {
     pub consumer: String,
     // 转换后的值
     pub from_token_price: f64,
+
+    // 自动滑点值
+    pub default_slippage: f64,
+
     // 滑点
     pub slippage: f64,
     // 最小获得数量
@@ -39,6 +43,7 @@ impl ApiQuoteResp {
     pub fn new(
         chain_code: String,
         slippage: f64,
+        default_slippage: f64,
         dex_route_list: Vec<DexRoute>,
         bal_in: BalanceInfo,
         bal_out: BalanceInfo,
@@ -54,9 +59,9 @@ impl ApiQuoteResp {
             fee: BalanceInfo::default(),
             from_token_price: rate,
             slippage,
+            default_slippage,
             min_amount: "0".to_string(),
             dex_route_list,
-            // liquidity: "".to_string(),
             consumer: "".to_string(),
             need_approve_amount: "0".to_string(),
             approve_amount: "0".to_string(),
