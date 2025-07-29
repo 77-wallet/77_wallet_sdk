@@ -30,7 +30,8 @@ async fn test_token_list() {
     let req = SwapTokenListReq {
         chain_code: "tron".to_string(),
         search: "".to_string(),
-        exclude_token: vec!["".to_string()],
+        address: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        exclude_token: vec![],
         page_num: 0,
         page_size: 10,
     };

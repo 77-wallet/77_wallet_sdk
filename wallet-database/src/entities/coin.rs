@@ -142,3 +142,14 @@ impl CoinMultisigStatus {
         }
     }
 }
+
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+pub struct CoinWithAssets {
+    pub symbol: String,
+    pub chain_code: String,
+    pub token_address: String,
+    pub balance: String,
+    pub decimals: u32,
+    pub name: String,
+    pub price: String,
+}

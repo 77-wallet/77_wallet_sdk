@@ -1,6 +1,7 @@
 use crate::{
-    entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
+    entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
+    DbPool,
 };
 use chrono::SecondsFormat;
 use sqlx::{
@@ -433,6 +434,55 @@ impl CoinEntity {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
+    }
+    pub async fn coin_list_with_assets(
+        search: &str,
+        exclude_token: Vec<String>,
+        chain_code: String,
+        address: String,
+        page: i64,
+        page_size: i64,
+        pool: DbPool,
+    ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
+        let mut sql = format!(
+            r#"
+        SELECT coin.*, COALESCE(assets.balance, '0') AS balance
+        FROM coin 
+        LEFT JOIN assets 
+            ON coin.chain_code = assets.chain_code 
+            AND coin.token_address = assets.token_address 
+            and assets.address = '{}'
+        WHERE coin.status = 1
+        "#,
+            address,
+        );
+
+        if !chain_code.is_empty() {
+            sql.push_str(&format!(" AND coin.chain_code = '{}'", chain_code,));
+        }
+
+        if !exclude_token.is_empty() {
+            let excludes: Vec<String> = exclude_token
+                .into_iter()
+                .map(|t| format!("'{}'", t.replace("'", "''")))
+                .collect();
+            let clause = excludes.join(", ");
+            sql.push_str(&format!(" AND coin.token_address NOT IN ({})", clause));
+        }
+
+        if !search.is_empty() {
+            let escaped = search.replace("'", "''").to_lowercase();
+            sql.push_str(&format!(
+                " AND (LOWER(coin.symbol) LIKE '%{}%' OR LOWER(coin.token_address) LIKE '%{}%')",
+                escaped, escaped
+            ));
+        }
+
+        sql.push_str(" ORDER BY CAST(assets.balance AS NUMERIC) DESC");
+
+        // 分页
+        let paginate = Pagination::<CoinWithAssets>::init(page, page_size);
+        Ok(paginate.page(&pool, &sql).await?)
     }
 }
 

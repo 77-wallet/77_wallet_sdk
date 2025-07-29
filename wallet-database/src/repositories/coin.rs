@@ -1,7 +1,9 @@
+use alloy::signers::Result;
 use chrono::{DateTime, Utc};
 
 use crate::{
-    entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
+    entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    pagination::Pagination,
     DbPool,
 };
 
@@ -175,5 +177,26 @@ impl CoinRepo {
         is_create: bool,
     ) -> Result<Option<CoinEntity>, crate::Error> {
         CoinEntity::get_last_coin(pool.as_ref(), is_create).await
+    }
+
+    pub async fn coin_list_with_assets(
+        search: &str,
+        exclude_token: Vec<String>,
+        chain_code: String,
+        address: String,
+        page: i64,
+        page_size: i64,
+        pool: DbPool,
+    ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
+        CoinEntity::coin_list_with_assets(
+            search,
+            exclude_token,
+            chain_code,
+            address,
+            page,
+            page_size,
+            pool,
+        )
+        .await
     }
 }
