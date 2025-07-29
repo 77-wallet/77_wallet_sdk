@@ -183,7 +183,7 @@ impl CoinRepo {
         search: &str,
         exclude_token: Vec<String>,
         chain_code: String,
-        address: String,
+        address: Vec<String>,
         page: i64,
         page_size: i64,
         pool: DbPool,

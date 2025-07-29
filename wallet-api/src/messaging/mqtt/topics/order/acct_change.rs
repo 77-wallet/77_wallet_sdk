@@ -74,10 +74,10 @@ pub struct AcctChange {
     pub energy_used: Option<u64>,
 
     // 额外信息
-    pub extra: Option<String>,
+    pub extra: Option<serde_json::Value>,
 }
 
-impl TryFrom<&AcctChange> for NewBillEntity {
+impl TryFrom<&AcctChange> for NewBillEntity<serde_json::Value> {
     type Error = crate::ServiceError;
 
     fn try_from(value: &AcctChange) -> Result<Self, Self::Error> {
@@ -109,7 +109,7 @@ impl TryFrom<&AcctChange> for NewBillEntity {
             notes: value.notes.clone(),
             signer: vec![],
             resource_consume: consumer,
-            extra: None,
+            extra: value.extra.clone(),
         })
     }
 }
@@ -143,7 +143,7 @@ impl AcctChange {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         // bill create
-        let tx = NewBillEntity::try_from(&self)?;
+        let tx = NewBillEntity::<serde_json::Value>::try_from(&self)?;
         let tx_kind = tx.tx_kind;
 
         if tx.chain_code == chain_code::TON {
@@ -226,7 +226,7 @@ impl AcctChange {
         if self.tx_kind == BillKind::Swap.to_i8() {
             if let Some(extra) = &self.extra {
                 if let Ok(extra_swap) =
-                    wallet_utils::serde_func::serde_from_str::<BillExtraSwap>(extra)
+                    wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
                 {
                     if self.symbol != extra_swap.from_token_symbol {
                         symbol.push(extra_swap.from_token_symbol);
@@ -239,7 +239,7 @@ impl AcctChange {
     }
 
     pub async fn handle_ton_bill(
-        mut tx: NewBillEntity,
+        mut tx: NewBillEntity<serde_json::Value>,
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
         let origin_hash = tx.hash.clone();

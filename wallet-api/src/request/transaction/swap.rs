@@ -11,7 +11,8 @@ pub struct SwapTokenListReq {
     pub chain_code: String,
     pub search: String,
     pub exclude_token: Vec<String>,
-    pub address: String,
+    pub wallet_address: String,
+    pub account_id: i32,
     pub page_num: i64,
     pub page_size: i64,
 }

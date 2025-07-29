@@ -164,9 +164,13 @@ impl AssetsDomain {
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let list =
-            AccountEntity::lists_by_wallet_address(&wallet_address, account_id, pool.as_ref())
-                .await?;
+        let list = AccountEntity::lists_by_wallet_address(
+            &wallet_address,
+            account_id,
+            None,
+            pool.as_ref(),
+        )
+        .await?;
 
         // 获取地址
         let addr = list

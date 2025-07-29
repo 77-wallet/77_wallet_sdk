@@ -5,6 +5,7 @@ use crate::{
     DbPool,
 };
 use chrono::Utc;
+use serde::Serialize;
 use sqlx::{Executor, Sqlite};
 use std::collections::HashSet;
 pub struct BillDao;
@@ -276,7 +277,14 @@ impl BillDao {
     }
 
     // 包括需要更新交易的hash(ton链的in_msg 字段处理)
-    pub async fn update_all(pool: DbPool, tx: NewBillEntity, id: i32) -> Result<(), crate::Error> {
+    pub async fn update_all<T>(
+        pool: DbPool,
+        tx: NewBillEntity<T>,
+        id: i32,
+    ) -> Result<(), crate::Error>
+    where
+        T: Serialize,
+    {
         let sql = r#"
             update bill set 
                 transaction_fee = $2,

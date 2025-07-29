@@ -30,7 +30,8 @@ async fn test_token_list() {
     let req = SwapTokenListReq {
         chain_code: "tron".to_string(),
         search: "".to_string(),
-        address: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        wallet_address: "0xab17D82c9810c91DAd8842D4C8f1771DB39919bC".to_string(),
+        account_id: 1,
         exclude_token: vec![],
         page_num: 0,
         page_size: 10,

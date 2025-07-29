@@ -439,11 +439,13 @@ impl CoinEntity {
         search: &str,
         exclude_token: Vec<String>,
         chain_code: String,
-        address: String,
+        address: Vec<String>,
         page: i64,
         page_size: i64,
         pool: DbPool,
     ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
+        let address = crate::any_in_collection(address, "','");
+
         let mut sql = format!(
             r#"
         SELECT coin.*, COALESCE(assets.balance, '0') AS balance
@@ -451,7 +453,7 @@ impl CoinEntity {
         LEFT JOIN assets 
             ON coin.chain_code = assets.chain_code 
             AND coin.token_address = assets.token_address 
-            and assets.address = '{}'
+            and assets.address  IN ('{}')
         WHERE coin.status = 1
         "#,
             address,

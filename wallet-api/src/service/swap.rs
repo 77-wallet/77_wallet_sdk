@@ -21,7 +21,7 @@ use crate::{
 use alloy::primitives::U256;
 use std::time::{self};
 use wallet_database::{
-    entities::bill::NewBillEntity,
+    entities::{account::AccountEntity, bill::NewBillEntity},
     pagination::Pagination,
     repositories::{
         account::AccountRepo, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo,
@@ -297,11 +297,23 @@ impl SwapServer {
     ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
+        let list = AccountEntity::lists_by_wallet_address(
+            &req.wallet_address,
+            Some(req.account_id as u32),
+            Some(&req.chain_code),
+            pool.as_ref(),
+        )
+        .await?;
+        let address = list
+            .iter()
+            .map(|x| x.address.clone())
+            .collect::<Vec<String>>();
+
         let coins = CoinRepo::coin_list_with_assets(
             &req.search,
             req.exclude_token,
             req.chain_code,
-            req.address,
+            address,
             req.page_num,
             req.page_size,
             pool.clone(),

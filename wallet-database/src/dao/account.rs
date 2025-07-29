@@ -395,6 +395,7 @@ impl AccountEntity {
     pub async fn lists_by_wallet_address<'a, E>(
         wallet_address: &str,
         account_id: Option<u32>,
+        chain_code: Option<&str>,
         exec: E,
     ) -> Result<Vec<AccountEntity>, crate::Error>
     where
@@ -403,6 +404,11 @@ impl AccountEntity {
         let mut sql = "select * from account where wallet_address = ? and status = 1".to_string();
         if let Some(account_id) = account_id {
             let a = format!(" and account_id = '{}'", account_id);
+            sql.push_str(&a);
+        }
+
+        if let Some(chain_code) = chain_code {
+            let a = format!(" and account_id = '{}'", chain_code);
             sql.push_str(&a);
         }
 
