@@ -1,4 +1,10 @@
-use crate::entities::api_account::ApiAccountEntity;
+use crate::{
+    entities::{
+        api_account::{ApiAccountEntity, CreateApiAccountVo},
+        api_wallet::ApiWalletType,
+    },
+    DbPool,
+};
 
 use super::ResourcesRepo;
 
@@ -15,14 +21,9 @@ impl ApiAccountRepo {
 }
 
 impl ApiAccountRepo {
-    // pub async fn insert(
-    //     &mut self,
-    //     name: &str,
-    //     address: &str,
-    //     chain_code: &str,
-    // ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-    //     Ok(ApiAccountEntity::upsert(self.repo.pool().as_ref(), name, address, chain_code).await?)
-    // }
+    pub async fn upsert(pool: &DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {
+        Ok(ApiAccountEntity::upsert_multi(pool.as_ref(), input).await?)
+    }
 
     // pub async fn update(
     //     &mut self,
@@ -79,4 +80,50 @@ impl ApiAccountRepo {
     // ) -> Result<Option<ApiAccountEntity>, crate::Error> {
     //     Ok(ApiAccountEntity::detail(self.repo.pool().as_ref(), address).await?)
     // }
+    pub async fn find_one(
+        pool: &DbPool,
+        address: &str,
+        chain_code: &str,
+        address_type: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountEntity::find_one(
+            pool.as_ref(),
+            address,
+            chain_code,
+            address_type,
+            api_wallet_type,
+        )
+        .await?)
+    }
+
+    pub async fn has_account_id(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: u32,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<bool, crate::Error> {
+        Ok(ApiAccountEntity::has_account_id(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            api_wallet_type,
+        )
+        .await?)
+    }
+
+    pub async fn account_detail_by_max_id_and_wallet_address(
+        pool: &DbPool,
+        wallet_address: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error> {
+        Ok(
+            ApiAccountEntity::account_detail_by_max_id_and_wallet_address(
+                pool.as_ref(),
+                wallet_address,
+                api_wallet_type,
+            )
+            .await?,
+        )
+    }
 }

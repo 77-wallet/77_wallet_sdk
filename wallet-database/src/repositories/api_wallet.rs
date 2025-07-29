@@ -40,6 +40,30 @@ impl ApiWalletRepo {
         .await?)
     }
 
+    pub async fn update_merchant_id(
+        pool: &DbPool,
+        address: &str,
+        merchant_id: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletEntity::update_merchain_id(
+            pool.as_ref(),
+            address,
+            merchant_id,
+            api_wallet_type,
+        )
+        .await?)
+    }
+
+    pub async fn update_app_id(
+        pool: &DbPool,
+        address: &str,
+        app_id: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletEntity::update_app_id(pool.as_ref(), address, app_id, api_wallet_type).await?)
+    }
+
     // pub async fn update(
     //     &mut self,
     //     id: u32,
@@ -77,14 +101,26 @@ impl ApiWalletRepo {
         Ok(ApiWalletEntity::delete_by_address(self.repo.pool().as_ref(), wallet_addresses).await?)
     }
 
-    pub async fn list(&mut self) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::list(self.repo.pool().as_ref()).await?)
+    pub async fn list(
+        pool: &DbPool,
+        address: Option<&str>,
+        api_wallet_type: Option<ApiWalletType>,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletEntity::list(pool.as_ref(), address, api_wallet_type).await?)
     }
 
     pub async fn find_by_address(
         pool: &DbPool,
         address: &str,
+        api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::detail(pool.as_ref(), address).await?)
+        Ok(ApiWalletEntity::detail(pool.as_ref(), address, api_wallet_type).await?)
+    }
+    pub async fn find_by_uid(
+        pool: &DbPool,
+        uid: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Option<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletEntity::detail_by_uid(pool.as_ref(), uid, api_wallet_type).await?)
     }
 }

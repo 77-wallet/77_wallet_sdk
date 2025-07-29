@@ -51,24 +51,73 @@ impl ApiWalletEntity {
         Ok(res.pop().ok_or(crate::DatabaseError::ReturningNone)?)
     }
 
-    pub async fn detail<'a, E>(exec: E, address: &str) -> Result<Option<Self>, crate::Error>
+    pub async fn detail<'a, E>(
+        exec: E,
+        address: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_wallet WHERE address = ? AND status = 1;";
+        let sql = "SELECT * FROM api_wallet WHERE address = ? AND wallet_type = ? AND status = 1;";
         sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
             .bind(address)
+            .bind(api_wallet_type)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+    pub async fn detail_by_uid<'a, E>(
+        exec: E,
+        uid: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_wallet WHERE status = 1;";
+        let sql = "SELECT * FROM api_wallet WHERE uid = ? AND wallet_type = ? AND status = 1;";
         sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+            .bind(uid)
+            .bind(api_wallet_type)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list<'a, E>(
+        exec: E,
+        address: Option<&str>,
+        api_wallet_type: Option<ApiWalletType>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut sql = "SELECT * FROM api_wallet".to_string();
+        let mut conditions = Vec::new();
+
+        if address.is_some() {
+            conditions.push("address = ?".to_string());
+        }
+
+        if api_wallet_type.is_some() {
+            conditions.push("wallet_type = ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        let mut query = sqlx::query_as::<_, Self>(&sql);
+
+        if let Some(address) = address {
+            query = query.bind(address);
+        }
+        if let Some(api_wallet_type) = api_wallet_type {
+            query = query.bind(api_wallet_type);
+        }
+
+        query
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -77,7 +126,8 @@ impl ApiWalletEntity {
     pub async fn update_merchain_id<'a, E>(
         exec: E,
         address: &str,
-        merchain_id: &str,
+        merchant_id: &str,
+        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -85,16 +135,17 @@ impl ApiWalletEntity {
         let now = sqlx::types::chrono::Utc::now();
         let sql = r#"
             UPDATE api_wallet SET
-                merchain_id = ?,
-                updated_at = ?
-            WHERE address = ? AND status = 1
+                merchant_id = $1,
+                updated_at = $2
+            WHERE address = $3 AND wallet_type = $4 AND status = 1
             RETURNING *;
         "#;
 
         sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
-            .bind(merchain_id)
+            .bind(merchant_id)
             .bind(now)
             .bind(address)
+            .bind(api_wallet_type)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -104,6 +155,7 @@ impl ApiWalletEntity {
         exec: E,
         address: &str,
         app_id: &str,
+        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -111,9 +163,9 @@ impl ApiWalletEntity {
         let now = sqlx::types::chrono::Utc::now();
         let sql = r#"
             UPDATE api_wallet SET
-                app_id = ?,
-                updated_at = ?
-            WHERE address = ? AND status = 1
+                app_id = $1,
+                updated_at = $2
+            WHERE address = $3  AND wallet_type = $4 AND status = 1
             RETURNING *;
         "#;
 
@@ -121,6 +173,7 @@ impl ApiWalletEntity {
             .bind(app_id)
             .bind(now)
             .bind(address)
+            .bind(api_wallet_type)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

@@ -11,7 +11,7 @@ CREATE TABLE api_account (
     derivation_path VARCHAR(32),
     derivation_path_index VARCHAR(32),
     chain_code VARCHAR(32) NOT NULL,
-    wallet_type TEXT NOT NULL,
+    wallet_type INTEGER NOT NULL,
     status INTEGER NOT NULL,
     is_init INTEGER NOT NULL,
     created_at TIMESTAMP NOT NULL,

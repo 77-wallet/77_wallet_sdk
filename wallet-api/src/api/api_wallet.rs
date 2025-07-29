@@ -32,6 +32,13 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn bind_merchant(&self, key: &str, merchain_id: &str, uid: &str) -> ReturnType<()> {
+        ApiWalletService::new(self.repo_factory.resource_repo())
+            .bind_merchant(key, merchain_id, uid)
+            .await?
+            .into()
+    }
+
     // pub async fn edit_api_wallet_name(
     //     &self,
     //     wallet_name: &str,
@@ -106,6 +113,21 @@ mod test {
                 api_wallet_type,
             )
             .await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_bind_merchain() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let key = "app_id";
+        let merchain_id = "test_merchain";
+        let uid = "04de3a5eff89883fecd1469fbc7621f37122c83d6680b95ad5c67cd9a141cd4e";
+
+        let res = wallet_manager.bind_merchant(key, merchain_id, uid).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }

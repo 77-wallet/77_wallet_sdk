@@ -1,4 +1,7 @@
-use wallet_crypto::{EncryptedJsonGenerator as _, KeystoreJsonGenerator};
+use wallet_crypto::{
+    EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
+    KeystoreJsonGenerator,
+};
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{api_wallet::ApiWalletRepo, wallet::WalletRepo},
@@ -40,6 +43,14 @@ impl ApiWalletDomain {
         .await?;
 
         Ok(())
+    }
+
+    pub(crate) async fn decrypt_seed(
+        password: &str,
+        seed: &str,
+    ) -> Result<Vec<u8>, crate::ServiceError> {
+        let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), seed)?;
+        Ok(data)
     }
 
     pub(crate) async fn check_normal_wallet_exist(

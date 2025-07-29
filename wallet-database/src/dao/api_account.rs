@@ -1,11 +1,14 @@
-use crate::entities::api_account::ApiAccountEntity;
+use crate::entities::{
+    api_account::{ApiAccountEntity, CreateApiAccountVo},
+    api_wallet::ApiWalletType,
+};
 use sqlx::{Executor, Sqlite};
 
 impl ApiAccountEntity {
     /// 插入多个账户（存在则更新 updated_at）
     pub async fn upsert_multi<'a, E>(
         exec: E,
-        reqs: Vec<ApiAccountEntity>,
+        reqs: Vec<CreateApiAccountVo>,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -34,8 +37,8 @@ impl ApiAccountEntity {
                 .push_bind(item.derivation_path_index)
                 .push_bind(item.chain_code)
                 .push_bind(item.wallet_type)
-                .push_bind(item.status)
-                .push_bind(item.is_init)
+                .push_bind(1)
+                .push_bind(0)
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
         });
@@ -150,19 +153,21 @@ impl ApiAccountEntity {
         address: &str,
         chain_code: &str,
         address_type: &str,
+        api_wallet_type: ApiWalletType,
     ) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
             SELECT * FROM api_account 
-            WHERE address = $1 AND chain_code = $2 AND address_type = $3
+            WHERE address = $1 AND chain_code = $2 AND address_type = $3 AND wallet_type = $4
         "#;
 
         sqlx::query_as::<_, Self>(sql)
             .bind(address)
             .bind(chain_code)
             .bind(address_type)
+            .bind(api_wallet_type)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -186,6 +191,50 @@ impl ApiAccountEntity {
             .bind(wallet_address)
             .bind(account_id)
             .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn has_account_id<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: u32,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<bool, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM api_account WHERE wallet_address = $1 AND account_id = $2 AND wallet_type = $3
+            "#;
+
+        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+            .bind(wallet_address)
+            .bind(account_id)
+            .bind(api_wallet_type)
+            .fetch_optional(exec)
+            .await
+            .map(|v| v.is_some())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn account_detail_by_max_id_and_wallet_address<'a, E>(
+        executor: E,
+        wallet_address: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Option<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_account where wallet_address = $1
+            AND wallet_type = $2
+                   ORDER BY account_id DESC
+                   LIMIT 1;";
+
+        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+            .bind(wallet_address)
+            .bind(api_wallet_type)
+            .fetch_optional(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }

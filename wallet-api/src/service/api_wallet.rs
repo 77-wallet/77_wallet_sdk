@@ -1,15 +1,17 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        chain::ChainRepoTrait, coin::CoinRepoTrait, device::DeviceRepoTrait, ResourcesRepo,
+        api_wallet::ApiWalletRepo, chain::ChainRepoTrait, coin::CoinRepoTrait,
+        device::DeviceRepoTrait, ResourcesRepo,
     },
 };
-use wallet_transport_backend::request::LanguageInitReq;
+use wallet_transport_backend::request::{AddressBatchInitReq, LanguageInitReq, TokenQueryPriceReq};
 
 use crate::{
     domain::{
         api_wallet::ApiWalletDomain,
         app::{config::ConfigDomain, DeviceDomain},
+        chain::ChainDomain,
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
@@ -99,13 +101,13 @@ impl ApiWalletService {
             initialize_root_keystore_start.elapsed()
         );
 
-        let default_chain_list = tx.get_chain_list().await?;
-        let coins = tx.default_coin_list().await?;
+        // let default_chain_list = tx.get_chain_list().await?;
+        // let coins = tx.default_coin_list().await?;
 
-        let default_chain_list = default_chain_list
-            .into_iter()
-            .map(|chain| chain.chain_code)
-            .collect::<Vec<String>>();
+        // let default_chain_list = default_chain_list
+        //     .into_iter()
+        //     .map(|chain| chain.chain_code)
+        //     .collect::<Vec<String>>();
         // tracing::info!("coins: {:?}", coins);
         // let account_creation_start = std::time::Instant::now();
         // let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -116,7 +118,7 @@ impl ApiWalletService {
         //     let account_index_map =
         //         wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
 
-        //     ChainDomain::init_chains_assets(
+        //     ChainDomain::init_chains_api_assets(
         //         tx,
         //         &coins,
         //         &mut req,
@@ -202,6 +204,31 @@ impl ApiWalletService {
             .await?;
 
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
+        Ok(())
+    }
+
+    pub async fn bind_merchant(
+        self,
+        key: &str,
+        merchain_id: &str,
+        uid: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, ApiWalletType::SubAccount)
+            .await?
+            .ok_or(crate::BusinessError::ApiWallet(
+                crate::ApiWalletError::NotFound,
+            ))?;
+        ApiWalletRepo::update_merchant_id(
+            &pool,
+            &api_wallet.address,
+            merchain_id,
+            ApiWalletType::SubAccount,
+        )
+        .await?;
+        ApiWalletRepo::update_app_id(&pool, &api_wallet.address, key, ApiWalletType::SubAccount)
+            .await?;
+
         Ok(())
     }
 

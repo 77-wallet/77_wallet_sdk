@@ -1,4 +1,5 @@
 use crate::{
+    domain::api_account::ApiAccountDomain,
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
     response_vo,
 };
@@ -7,7 +8,7 @@ use wallet_chain_interact::{
     ton::address::parse_addr_from_bs64_url, BillResourceConsume,
 };
 use wallet_database::{
-    entities::coin::CoinEntity,
+    entities::{api_wallet::ApiWalletType, coin::CoinEntity},
     repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, ResourcesRepo},
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
@@ -368,6 +369,80 @@ impl ChainDomain {
                     tx,
                 )
                 .await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn init_chains_api_assets(
+        tx: &mut ResourcesRepo,
+        coins: &[CoinEntity],
+        req: &mut TokenQueryPriceReq,
+        address_batch_init_task_data: &mut AddressBatchInitReq,
+        subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
+        chain_list: &[String],
+        seed: &[u8],
+        account_index_map: &wallet_utils::address::AccountIndexMap,
+        uid: &str,
+        wallet_address: &str,
+        account_name: &str,
+        is_default_name: bool,
+        wallet_password: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<(), crate::error::ServiceError> {
+        for chain in chain_list.iter() {
+            let code: ChainCode = chain.as_str().try_into()?;
+            let address_types = WalletDomain::address_type_by_chain(code);
+
+            let Ok(node) = Self::get_node(tx, chain).await else {
+                continue;
+            };
+
+            for address_type in address_types {
+                let instance: wallet_chain_instance::instance::ChainObject =
+                    (&code, &address_type, node.network.as_str().into()).try_into()?;
+                // (&code, &address_type, "mainnet".into()).try_into()?;
+
+                let (account_address, derivation_path, address_init_req) =
+                    ApiAccountDomain::create_api_account(
+                        tx,
+                        seed,
+                        &instance,
+                        account_index_map,
+                        uid,
+                        wallet_address,
+                        account_name,
+                        is_default_name,
+                        wallet_password,
+                        api_wallet_type,
+                    )
+                    .await?;
+
+                if let Some(address_init_req) = address_init_req {
+                    address_batch_init_task_data.0.push(address_init_req);
+                } else {
+                    tracing::info!("不上报： {}", account_address.address);
+                };
+
+                subkeys.push(
+                    AccountDomain::generate_subkey(
+                        &instance,
+                        seed,
+                        &account_address.address,
+                        &code.to_string(),
+                        account_index_map,
+                        derivation_path.as_str(),
+                    )
+                    .await?,
+                );
+                // AssetsDomain::init_default_assets(
+                //     coins,
+                //     &account_address.address,
+                //     &code.to_string(),
+                //     req,
+                //     tx,
+                // )
+                // .await?;
             }
         }
         Ok(())
