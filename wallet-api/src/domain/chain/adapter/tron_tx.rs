@@ -239,9 +239,10 @@ pub(super) async fn swap(
         consumer.act_energy() as u64,
     );
 
-    let raw_transaction = wrap
-        .trigger_smart_contract(&chain.provider, &consumer)
-        .await?;
+    // let raw_transaction = wrap
+    //     .trigger_smart_contract(&chain.provider, &consumer)
+    //     .await?;
+    let raw_transaction = wrap.trigger_with_fee(&chain.provider, 300).await?;
 
     let tx_hash = chain.exec_transaction_v1(raw_transaction, key).await?;
 
