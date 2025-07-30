@@ -5,7 +5,9 @@ use wallet_database::{
         coin::CoinRepoTrait as _, ResourcesRepo,
     },
 };
-use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
+use wallet_transport_backend::request::{
+    api_wallet::address::UploadAllocatedAddressesReq, AddressBatchInitReq, TokenQueryPriceReq,
+};
 
 use crate::domain::{api_wallet::ApiWalletDomain, chain::ChainDomain, wallet::WalletDomain};
 
@@ -16,6 +18,19 @@ pub struct ApiAccountService {
 impl ApiAccountService {
     pub fn new(repo: ResourcesRepo) -> Self {
         Self { repo }
+    }
+
+    pub async fn upload_allocated_addresses(
+        self,
+        wallet_address: &str,
+        addresses: Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let backend_api = crate::Context::get_global_backend_api()?;
+
+        let req = UploadAllocatedAddressesReq::new(wallet_address, addresses);
+        backend_api.upload_allocated_addresses(&req).await?;
+
+        Ok(())
     }
 
     pub async fn create_account(

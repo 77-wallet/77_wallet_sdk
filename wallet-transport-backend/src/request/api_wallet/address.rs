@@ -10,11 +10,17 @@ impl SaveOrUpdateCollectionStrategyReq {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UploadAllocatedAddressesReq {}
+pub struct UploadAllocatedAddressesReq {
+    wallet_address: String,
+    addresses: Vec<String>,
+}
 
 impl UploadAllocatedAddressesReq {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(wallet_address: &str, addresses: Vec<String>) -> Self {
+        Self {
+            wallet_address: wallet_address.to_string(),
+            addresses,
+        }
     }
 }
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

@@ -1,29 +1,17 @@
 use crate::api::ReturnType;
-use crate::request::api_wallet::account::CreateApiAccountReq;
-use crate::service::api_wallet::account::ApiAccountService;
+use crate::service::api_wallet::strategy::StrategyService;
 
 impl crate::WalletManager {
-    pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
-        ApiAccountService::new(self.repo_factory.resource_repo())
-            .create_account(
-                &req.wallet_address,
-                &req.wallet_password,
-                req.index,
-                &req.name,
-                req.is_default_name,
-                req.api_wallet_type,
-            )
+    pub async fn update_collection_strategy(&self) -> ReturnType<()> {
+        StrategyService::new(self.repo_factory.resource_repo())
+            .update_collection_strategy()
             .await?
             .into()
     }
 
-    pub(crate) async fn upload_allocated_addresses(
-        &self,
-        wallet_address: &str,
-        addresses: Vec<String>,
-    ) -> ReturnType<()> {
-        ApiAccountService::new(self.repo_factory.resource_repo())
-            .upload_allocated_addresses(wallet_address, addresses)
+    pub async fn update_withdrawal_strategy(&self) -> ReturnType<()> {
+        StrategyService::new(self.repo_factory.resource_repo())
+            .update_withdraw_strategy()
             .await?
             .into()
     }
