@@ -1,6 +1,6 @@
 use crate::api::ReturnType;
-use crate::request::api_account::CreateApiAccountReq;
-use crate::service::api_account::ApiAccountService;
+use crate::request::api_wallet::account::CreateApiAccountReq;
+use crate::service::api_wallet::account::ApiAccountService;
 
 impl crate::WalletManager {
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
@@ -20,7 +20,7 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::{request::api_account::CreateApiAccountReq, test::env::get_manager};
+    use crate::{request::api_wallet::account::CreateApiAccountReq, test::env::get_manager};
 
     use anyhow::Result;
 
