@@ -1,4 +1,4 @@
-use super::account::BalanceInfo;
+use super::{account::BalanceInfo, EstimateFeeResp};
 use crate::{domain::chain::swap::calc_slippage, request::transaction::DexRoute};
 use alloy::primitives::U256;
 use wallet_transport_backend::api::swap::ApproveInfo;
@@ -17,7 +17,7 @@ pub struct ApiQuoteResp {
     // 提供方
     pub supplier: String,
     // 预估的手续费
-    pub fee: BalanceInfo,
+    pub fee: EstimateFeeResp,
     // 资源的消耗
     pub consumer: String,
     // 转换后的值
@@ -56,7 +56,7 @@ impl ApiQuoteResp {
             amount_out: bal_out,
             price_spread,
             supplier: "77_DexAggreagre".to_string(),
-            fee: BalanceInfo::default(),
+            fee: EstimateFeeResp::default(),
             from_token_price: rate,
             slippage,
             default_slippage,

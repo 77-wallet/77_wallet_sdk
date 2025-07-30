@@ -173,7 +173,7 @@ fn build_base_swap(
 pub(super) async fn estimate_swap(
     swap_params: &SwapParams,
     chain: &TronChain,
-) -> Result<EstimateSwapResult, crate::ServiceError> {
+) -> Result<EstimateSwapResult<ResourceConsumer>, crate::ServiceError> {
     let (params, owner_address) = build_base_swap(swap_params)?;
 
     let wrap = WarpContract { params };
@@ -197,8 +197,7 @@ pub(super) async fn estimate_swap(
     let resp = EstimateSwapResult {
         amount_in,
         amount_out,
-        fee: alloy::primitives::U256::from(consumer.transaction_fee_i64()),
-        consumer: wallet_utils::serde_func::serde_to_string(&consumer)?,
+        consumer,
     };
 
     Ok(resp)

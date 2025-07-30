@@ -86,7 +86,7 @@ pub struct BillDetailVo {
 }
 
 // about fee estimate fee
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EstimateFeeResp {
     pub symbol: String,
@@ -110,7 +110,7 @@ pub struct FeeDetails<T>(Vec<FeeStructure<T>>);
 #[serde(rename_all = "camelCase")]
 pub struct FeeDetailsVo<T> {
     default: String,
-    data: Vec<FeeStructureVo<T>>,
+    pub data: Vec<FeeStructureVo<T>>,
 }
 
 impl FeeDetails<EthereumFeeDetails> {

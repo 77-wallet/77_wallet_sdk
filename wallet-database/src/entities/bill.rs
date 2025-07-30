@@ -419,8 +419,10 @@ impl NewBillEntity {
 #[derive(serde::Serialize)]
 // 代理类型的资源梳理额外信息
 pub struct BillExtraResourceValue {
-    // 具体代理了多少资源
+    // 具体代理了多少资源(质押，代理，回收)
     pub value: i64,
+    // 资源类型:energy ,bandwidth
+    pub resource_type: String,
 }
 
 #[derive(serde::Serialize)]

@@ -8,7 +8,6 @@ use crate::{
         TransferResp,
     },
     request::transaction::ApproveReq,
-    response_vo::EthereumFeeDetails,
 };
 use alloy::{
     network::TransactionBuilder as _,
@@ -96,7 +95,7 @@ fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, cr
 pub(super) async fn estimate_swap(
     swap_params: SwapParams,
     chain: &EthChain,
-) -> Result<EstimateSwapResult, crate::ServiceError> {
+) -> Result<EstimateSwapResult<FeeSetting>, crate::ServiceError> {
     let tx = build_base_swap_tx(&swap_params)?;
 
     // estimate_fee
@@ -113,16 +112,14 @@ pub(super) async fn estimate_swap(
     let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
         .map_err(|e| crate::ServiceError::AggregatorError(e.to_string()))?;
 
-    let trans_fee = fee.transaction_fee();
-
-    let consumer = EthereumFeeDetails::from(fee);
-    let consumer = wallet_utils::serde_func::serde_to_string(&consumer)?;
+    // let trans_fee = fee.transaction_fee();
+    // let consumer = EthereumFeeDetails::from(fee);
+    // let consumer = wallet_utils::serde_func::serde_to_string(&consumer)?;
 
     let resp = EstimateSwapResult {
         amount_in,
         amount_out,
-        fee: trans_fee,
-        consumer,
+        consumer: fee,
     };
     Ok(resp)
 }

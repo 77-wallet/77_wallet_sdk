@@ -31,11 +31,9 @@ pub fn calc_slippage(amount: alloy::primitives::U256, slippage: f64) -> alloy::p
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct EstimateSwapResult {
+pub struct EstimateSwapResult<T> {
     pub amount_in: alloy::primitives::U256,
     pub amount_out: alloy::primitives::U256,
-    // 原始的值
-    pub fee: alloy::primitives::U256,
-    // 消耗的资源(bsc gas)
-    pub consumer: String,
+    // 资源消耗
+    pub consumer: T,
 }

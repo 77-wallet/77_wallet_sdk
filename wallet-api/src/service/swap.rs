@@ -192,20 +192,26 @@ impl SwapServer {
     ) -> Result<(), crate::ServiceError> {
         let instance = time::Instant::now();
 
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-        // 模拟报价
-        let result = adapter.swap_quote(req, quote_resp).await?;
-
-        // 手续费
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
-        let amount = wallet_utils::unit::format_to_f64(result.fee, main_coin.decimals)?;
-        res.fee = TokenCurrencyGetter::get_balance_info(&req.chain_code, &main_coin.symbol, amount)
+
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
+        // 模拟报价
+        let (amount_out, consumer, content) = adapter
+            .swap_quote(req, quote_resp, &main_coin.symbol)
             .await?;
-        res.consumer = result.consumer;
+
+        let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
+        res.consumer = consumer;
+        res.fee = fee_resp;
+
+        // let amount = wallet_utils::unit::format_to_f64(result.fee, main_coin.decimals)?;
+        // res.fee = TokenCurrencyGetter::get_balance_info(&req.chain_code, &main_coin.symbol, amount)
+        //     .await?;
+        // res.consumer = result.consumer;
 
         // 重新覆盖amount_out,使用模拟的值
-        res.set_amount_out(result.amount_out, req.token_out.decimals);
+        res.set_amount_out(amount_out, req.token_out.decimals);
         tracing::warn!("simulate time: {}", instance.elapsed().as_secs_f64());
 
         Ok(())

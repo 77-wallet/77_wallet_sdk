@@ -242,6 +242,7 @@ impl StackService {
         key: ChainPrivateKey,
         bill_kind: BillKind,
         txs: Vec<TempBuildTransaction>,
+        resource_type: ops::stake::ResourceType,
     ) -> Result<(Vec<BatchRes>, Vec<String>), crate::ServiceError> {
         let mut exec_res = vec![];
         let mut tx_hash = vec![];
@@ -268,6 +269,7 @@ impl StackService {
 
                     let extra = BillExtraResourceValue {
                         value: item.resource_value,
+                        resource_type: resource_type.to_string(),
                     };
 
                     let entity = NewBillEntity::new_stake_bill(
@@ -1047,6 +1049,7 @@ impl StackService {
 
         let extra = BillExtraResourceValue {
             value: resource_value as i64,
+            resource_type: resource_type.to_string(),
         };
 
         let tx_hash = self
@@ -1166,7 +1169,9 @@ impl StackService {
         }
 
         let key = self.get_key(owner_address, signer, password).await?;
-        let res = self.batch_exec(owner_address, key, bill_kind, txs).await?;
+        let res = self
+            .batch_exec(owner_address, key, bill_kind, txs, resource_type)
+            .await?;
 
         let resource_value = resource.resource_value(resource_type, amount)?;
         let resource = ResourceResp::new(amount, resource_type, resource_value);
@@ -1277,6 +1282,7 @@ impl StackService {
 
         let extra = BillExtraResourceValue {
             value: resource_value as i64,
+            resource_type: resource_type.to_string(),
         };
 
         let tx_hash = self
