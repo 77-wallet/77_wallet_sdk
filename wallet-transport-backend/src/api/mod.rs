@@ -4,6 +4,7 @@ use crate::response::BackendResponse;
 
 pub mod address;
 pub mod announcement;
+pub mod api_wallet;
 pub mod app;
 pub mod chain;
 pub mod coin;

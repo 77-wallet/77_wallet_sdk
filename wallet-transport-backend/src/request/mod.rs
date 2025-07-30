@@ -1,3 +1,5 @@
+pub mod api_wallet;
+
 use std::ops::{Deref, DerefMut};
 
 use serde_json::Value;
