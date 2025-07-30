@@ -81,7 +81,7 @@ impl BillDomain {
             block_height: item.block_height.to_string(),
             notes: item.notes,
             signer: item.signer,
-            extra: None,
+            extra: item.extra,
         };
 
         if new_entity.chain_code == chain_code::TON {

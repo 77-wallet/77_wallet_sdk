@@ -81,7 +81,7 @@ async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    let address = "TYGC6LQMB1eCNDQzUSXKdb5R5uxbL4sPsd".to_string();
+    let address = "TMgiqqdyLCvnZtjzKpesqciGNaB99KwHQx".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
     tracing::warn!("同步结果{:?}", _c);
 }
