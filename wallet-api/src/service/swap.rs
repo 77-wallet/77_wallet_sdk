@@ -145,7 +145,7 @@ impl SwapServer {
             let assets =
                 AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
             // 余额足够才进行模拟
-            if unit::string_to_f64(&req.amount_in)? < unit::string_to_f64(&assets.balance)? {
+            if unit::string_to_f64(&req.amount_in)? <= unit::string_to_f64(&assets.balance)? {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
@@ -156,6 +156,12 @@ impl SwapServer {
         let allowance = self.check_allowance(&req).await?;
         let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
 
+        if allowance > U256::from(alloy::primitives::U64::MAX) {
+            res.approve_amount = "-1".to_string();
+        } else {
+            res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
+        }
+
         if allowance >= amount_in {
             let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let assets = AssetsRepo::get_by_addr_token(
@@ -165,19 +171,13 @@ impl SwapServer {
                 &req.recipient,
             )
             .await?;
-            if unit::string_to_f64(&req.amount_in)? < unit::string_to_f64(&assets.balance)? {
+            if unit::string_to_f64(&req.amount_in)? <= unit::string_to_f64(&assets.balance)? {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
             return Ok(res);
         } else {
             let diff = amount_in - allowance;
             res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
-
-            if allowance > U256::from(alloy::primitives::U64::MAX) {
-                res.approve_amount = "-1".to_string();
-            } else {
-                res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
-            }
 
             return Ok(res);
         }

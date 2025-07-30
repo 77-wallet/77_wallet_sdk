@@ -116,13 +116,13 @@ async fn test_quote() {
     // TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S sun
 
     let token_in = SwapTokenInfo {
-        token_addr: "".to_string(),
-        symbol: "USDT".to_string(),
+        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+        symbol: "TRX".to_string(),
         decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+        token_addr: "".to_string(),
         symbol: "TRX".to_string(),
         decimals: 6,
     };
@@ -131,7 +131,7 @@ async fn test_quote() {
         aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
         recipient: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "30".to_string(),
+        amount_in: "2".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
