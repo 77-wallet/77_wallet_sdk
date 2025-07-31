@@ -163,7 +163,7 @@ impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
             multisig_tx: false,
             symbol: value.token_in.symbol,
             chain_code: value.chain_code,
-            tx_type: 1,
+            tx_type: 0,
             tx_kind: wallet_database::entities::bill::BillKind::Swap,
             status: 1,
             queue_id: "".to_owned(),
