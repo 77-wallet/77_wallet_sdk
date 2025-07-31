@@ -99,7 +99,6 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
             MqttTask::MultiSignTransAcceptCompleteMsg(_) => 1,
             MqttTask::MultiSignTransExecute(_) => 0,
             MqttTask::AcctChange(_) => 3,
-            MqttTask::Init(_) => 0,
             MqttTask::BulletinMsg(_) => 4,
             MqttTask::PermissionAccept(_) => 2,
             MqttTask::CleanPermission(_) => 2,

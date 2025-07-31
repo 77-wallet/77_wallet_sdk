@@ -158,7 +158,6 @@ pub enum KnownTaskName {
     MultiSignTransAcceptCompleteMsg,
     MultiSignTransExecute,
     AcctChange,
-    Init,
     OrderMultiSignCreated,
     BulletinMsg,
     // TronSignFreezeDelegateVoteChange,

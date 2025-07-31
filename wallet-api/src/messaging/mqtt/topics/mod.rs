@@ -2,8 +2,6 @@ mod bulletin_info;
 pub use bulletin_info::*;
 mod chain_change;
 pub use chain_change::*;
-mod common;
-pub use common::*;
 mod order;
 pub use order::*;
 mod switch;

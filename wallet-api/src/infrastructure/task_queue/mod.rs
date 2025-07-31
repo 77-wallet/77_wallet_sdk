@@ -249,10 +249,6 @@ impl TryFrom<&TaskQueueEntity> for Task {
                 let req = serde_func::serde_from_str::<topics::AcctChange>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::AcctChange(req))))
             }
-            TaskName::Known(KnownTaskName::Init) => {
-                let req = serde_func::serde_from_str::<topics::Init>(&value.request_body)?;
-                Ok(Task::Mqtt(Box::new(MqttTask::Init(req))))
-            }
             TaskName::Known(KnownTaskName::BulletinMsg) => {
                 let req = serde_func::serde_from_str::<topics::BulletinMsg>(&value.request_body)?;
                 Ok(Task::Mqtt(Box::new(MqttTask::BulletinMsg(req))))

@@ -14,7 +14,6 @@ pub(crate) enum MqttTask {
     MultiSignTransAcceptCompleteMsg(topics::MultiSignTransAcceptCompleteMsg),
     MultiSignTransExecute(topics::MultiSignTransExecute),
     AcctChange(topics::AcctChange),
-    Init(topics::Init),
     BulletinMsg(topics::BulletinMsg),
     PermissionAccept(topics::PermissionAccept),
     CleanPermission(topics::CleanPermission),
@@ -48,7 +47,6 @@ impl MqttTask {
                 TaskName::Known(KnownTaskName::MultiSignTransAcceptCompleteMsg)
             }
             MqttTask::AcctChange(_) => TaskName::Known(KnownTaskName::AcctChange),
-            MqttTask::Init(_) => TaskName::Known(KnownTaskName::Init),
             MqttTask::BulletinMsg(_) => TaskName::Known(KnownTaskName::BulletinMsg),
 
             MqttTask::PermissionAccept(_) => TaskName::Known(KnownTaskName::PermissionAccept),
@@ -87,7 +85,6 @@ impl MqttTask {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
             MqttTask::AcctChange(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-            MqttTask::Init(init) => Some(wallet_utils::serde_func::serde_to_string(init)?),
             MqttTask::BulletinMsg(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::PermissionAccept(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
@@ -118,7 +115,6 @@ pub(crate) async fn handle_mqtt_task(
         MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
         MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
         MqttTask::AcctChange(data) => data.exec(id).await?,
-        MqttTask::Init(data) => data.exec(id).await?,
         MqttTask::BulletinMsg(data) => data.exec(id).await?,
         MqttTask::PermissionAccept(data) => data.exec(id).await?,
         MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
