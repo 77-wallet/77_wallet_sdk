@@ -257,9 +257,13 @@ impl SwapServer {
         )
         .await?;
         if unit::string_to_f64(&req.amount_in)? > unit::string_to_f64(&token_in.balance)? {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            // return Err(crate::BusinessError::Chain(
+            //     crate::ChainError::InsufficientBalance,
+            // ))?;
+            return Err(crate::error::ServiceError::Parameter(format!(
+                "InsufficientBalance amount_in {}, balance {}",
+                req.amount_in, token_in.balance
+            )))?;
         };
 
         // 广播事件

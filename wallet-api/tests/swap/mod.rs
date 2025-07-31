@@ -148,7 +148,7 @@ async fn test_quote() {
 async fn test_swap() {
     let wallet_manager = get_manager().await;
 
-    let o_value = "2";
+    let o_value = "0.632469866819847695";
 
     let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 6).unwrap();
 
