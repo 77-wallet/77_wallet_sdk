@@ -296,25 +296,20 @@ impl TryFrom<&TaskQueueEntity> for Task {
 }
 
 /// 0: initialization, 1: backend_api, 2: mqtt
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
+#[repr(i64)]
 pub(crate) enum TaskType {
-    Initialization,
-    BackendApi,
-    Mqtt,
-    Common,
+    Initialization = 0,
+    BackendApi = 1,
+    Mqtt = 2,
+    Common = 3,
 }
 
 impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for TaskType {
     fn from_row(row: &sqlx::sqlite::SqliteRow) -> sqlx::Result<Self> {
         use sqlx::Row as _;
         let value = row.try_get::<i64, _>("type")?;
-        match value {
-            0 => Ok(TaskType::Initialization),
-            1 => Ok(TaskType::BackendApi),
-            2 => Ok(TaskType::Mqtt),
-            3 => Ok(TaskType::Common),
-            _ => Err(sqlx::Error::RowNotFound),
-        }
+        Self::try_from(value).map_err(|_| sqlx::Error::RowNotFound)
     }
 }
 
@@ -323,12 +318,8 @@ impl sqlx::Encode<'_, sqlx::sqlite::Sqlite> for TaskType {
         &self,
         buf: &mut <sqlx::sqlite::Sqlite as sqlx::database::HasArguments<'_>>::ArgumentBuffer,
     ) -> sqlx::encode::IsNull {
-        match self {
-            TaskType::Initialization => buf.push(sqlx::sqlite::SqliteArgumentValue::Int64(0)),
-            TaskType::BackendApi => buf.push(sqlx::sqlite::SqliteArgumentValue::Int64(1)),
-            TaskType::Mqtt => buf.push(sqlx::sqlite::SqliteArgumentValue::Int64(2)),
-            TaskType::Common => buf.push(sqlx::sqlite::SqliteArgumentValue::Int64(3)),
-        }
+        let value = *self as i64;
+        buf.push(sqlx::sqlite::SqliteArgumentValue::Int64(value));
         sqlx::encode::IsNull::No
     }
 }
@@ -338,6 +329,14 @@ impl sqlx::Decode<'_, sqlx::sqlite::Sqlite> for TaskType {
         value: <sqlx::sqlite::Sqlite as sqlx::database::HasValueRef<'_>>::ValueRef,
     ) -> Result<Self, sqlx::error::BoxDynError> {
         let value = <i64 as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+        Self::try_from(value)
+    }
+}
+
+impl TryFrom<i64> for TaskType {
+    type Error = sqlx::error::BoxDynError;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(TaskType::Initialization),
             1 => Ok(TaskType::BackendApi),
