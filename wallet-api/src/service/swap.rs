@@ -566,6 +566,7 @@ impl SwapServer {
             spender: req.spender.clone(),
             token_addr: req.contract.clone(),
             owner_address: req.from.clone(),
+            tx_hash: resp.tx_hash.clone(),
         };
         TaskQueueDomain::send_or_to_queue(backend, SWAP_APPROVE_CANCEL).await?;
 
