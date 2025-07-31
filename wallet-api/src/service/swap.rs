@@ -32,7 +32,7 @@ use wallet_transport_backend::{
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
 };
 use wallet_types::chain::chain::ChainCode;
-use wallet_utils::{address::AccountIndexMap, unit};
+use wallet_utils::{address::AccountIndexMap, conversion, unit};
 
 pub struct SwapServer {
     pub client: SwapClient,
@@ -98,7 +98,7 @@ impl SwapServer {
     }
 
     pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
-        use wallet_utils::unit::{convert_to_u256, format_to_f64, format_to_string, string_to_f64};
+        use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
 
@@ -112,13 +112,13 @@ impl SwapServer {
         let bal_in = TokenCurrencyGetter::get_bal_by_backend(
             &req.chain_code,
             &req.token_in.token_addr,
-            string_to_f64(&req.amount_in)?,
+            &req.amount_in,
         )
         .await?;
         let bal_out = TokenCurrencyGetter::get_bal_by_backend(
             &req.chain_code,
             &req.token_out.token_addr,
-            format_to_f64(amount_out, req.token_out.decimals as u8)?,
+            &format_to_string(amount_out, req.token_out.decimals as u8)?,
         )
         .await?;
 
@@ -176,7 +176,10 @@ impl SwapServer {
             .ok_or(crate::BusinessError::Assets(
                 crate::AssetsError::NotFoundAssets,
             ))?;
-            if unit::string_to_f64(&req.amount_in)? <= unit::string_to_f64(&assets.balance)? {
+
+            if conversion::decimal_from_str(&req.amount_in)?
+                <= conversion::decimal_from_str(&assets.balance)?
+            {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
             return Ok(res);

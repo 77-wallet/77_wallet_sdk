@@ -305,7 +305,7 @@ impl MultisigAdapter {
                     .await?
                     .transaction_fee();
 
-                CommonFeeDetails::new(fee, token_currency, currency).to_json_str()
+                CommonFeeDetails::new(fee, token_currency, currency)?.to_json_str()
             }
             Self::Tron(chain) => {
                 // check account is init an chain
@@ -390,7 +390,7 @@ impl MultisigAdapter {
                 ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
                 let fee =
-                    CommonFeeDetails::new(fee_setting.transaction_fee(), token_currency, currency);
+                    CommonFeeDetails::new(fee_setting.transaction_fee(), token_currency, currency)?;
                 Ok(serde_func::serde_to_string(&fee)?)
             }
             MultisigAdapter::BitCoin(chain) => {
@@ -416,7 +416,7 @@ impl MultisigAdapter {
                     .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
 
                 let fee =
-                    CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency);
+                    CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
                 Ok(serde_func::serde_to_string(&fee)?)
             }
             _ => Ok("".to_string()),
@@ -597,7 +597,7 @@ impl MultisigAdapter {
                 )
                 .await?;
 
-                let fee = CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency);
+                let fee = CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency)?;
                 Ok(serde_func::serde_to_string(&fee)?)
             }
             _ => Ok(" ".to_string()),
@@ -730,7 +730,7 @@ impl MultisigAdapter {
                     .await
                     .map_err(domain::chain::transaction::ChainTransDomain::handle_btc_fee_error)?;
 
-                CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)
+                CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?
                     .to_json_str()
             }
             Self::Solana(chain) => {
@@ -743,7 +743,8 @@ impl MultisigAdapter {
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
                 ChainTransDomain::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
 
-                CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency).to_json_str()
+                CommonFeeDetails::new(fee.transaction_fee(), token_currency, currency)?
+                    .to_json_str()
             }
             Self::Tron(chain) => {
                 let signature_num = sign_list.len() as u8;

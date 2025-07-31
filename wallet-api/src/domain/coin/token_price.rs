@@ -59,7 +59,7 @@ impl TokenCurrencyGetter {
     pub async fn get_bal_by_backend(
         chain_code: &str,
         token_addr: &str,
-        amount: f64,
+        amount: &str,
     ) -> Result<BalanceNotTruncate, crate::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
@@ -80,7 +80,13 @@ impl TokenCurrencyGetter {
 
             exchange.rate * price
         };
+        let amount = wallet_utils::conversion::decimal_from_str(amount)?;
+        let unit_price = wallet_utils::conversion::decimal_from_f64(unit_price)?;
 
-        Ok(BalanceNotTruncate::new(amount, Some(unit_price), &currency))
+        Ok(BalanceNotTruncate::new(
+            amount,
+            Some(unit_price),
+            &currency,
+        )?)
     }
 }

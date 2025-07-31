@@ -591,7 +591,7 @@ impl TransactionAdapter {
                     fee.transaction_fee_f64(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Ltc(chain) => {
@@ -617,7 +617,7 @@ impl TransactionAdapter {
                     fee.transaction_fee_f64(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Doge(chain) => {
@@ -643,7 +643,7 @@ impl TransactionAdapter {
                     fee.transaction_fee_f64(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Solana(chain) => {
@@ -666,7 +666,7 @@ impl TransactionAdapter {
                     fee_setting.transaction_fee(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Tron(chain) => {
@@ -727,8 +727,11 @@ impl TransactionAdapter {
                     .estimate_fee(msg_cell.clone(), &req.from, address_type)
                     .await?;
 
-                let res =
-                    response_vo::CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency);
+                let res = response_vo::CommonFeeDetails::new(
+                    fee.get_fee_ton(),
+                    token_currency,
+                    currency,
+                )?;
 
                 wallet_utils::serde_func::serde_to_string(&res)
             }
@@ -746,8 +749,11 @@ impl TransactionAdapter {
 
                 let gas = chain.estimate_fee(&req.from, pt).await?;
 
-                let res =
-                    response_vo::CommonFeeDetails::new(gas.get_fee_f64(), token_currency, currency);
+                let res = response_vo::CommonFeeDetails::new(
+                    gas.get_fee_f64(),
+                    token_currency,
+                    currency,
+                )?;
 
                 wallet_utils::serde_func::serde_to_string(&res)
             }

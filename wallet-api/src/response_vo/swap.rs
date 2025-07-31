@@ -4,6 +4,7 @@ use super::{
 };
 use crate::{domain::chain::swap::calc_slippage, request::transaction::DexRoute};
 use alloy::primitives::U256;
+use rust_decimal::Decimal;
 use wallet_transport_backend::api::swap::ApproveInfo;
 
 // 查询报价的响应
@@ -92,8 +93,9 @@ impl ApiQuoteResp {
         amount_in: &BalanceNotTruncate,
         amount_out: &BalanceNotTruncate,
     ) -> (f64, f64) {
-        let rate = if amount_in.amount > 0.0 {
-            amount_out.amount / amount_in.amount
+        let rate = if amount_in.amount > Decimal::ZERO {
+            wallet_utils::conversion::decimal_to_f64(&(amount_out.amount / amount_in.amount))
+                .unwrap_or(0.0)
         } else {
             0.0
         };

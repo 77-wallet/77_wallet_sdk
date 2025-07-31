@@ -1,7 +1,7 @@
+use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
+use rust_decimal::Decimal;
 use wallet_database::entities::account::AccountEntity;
 use wallet_types::chain::address::category::AddressCategory;
-
-use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
 
 // 单笔交易需要花费的能量
 pub const NET_CONSUME: f64 = 270.0;
@@ -242,8 +242,7 @@ impl BalanceInfo {
 #[serde(rename_all = "camelCase")]
 pub struct BalanceNotTruncate {
     // amount of token
-    #[serde(serialize_with = "serialize_f64_string")]
-    pub amount: f64,
+    pub amount: Decimal,
     // currency of symbol
     pub currency: String,
     // unit price or currency
@@ -255,23 +254,36 @@ pub struct BalanceNotTruncate {
 }
 
 impl BalanceNotTruncate {
-    pub fn new(amount: f64, unit_price: Option<f64>, currency: &str) -> Self {
-        let fiat_value = unit_price.map(|price| amount * price);
-        Self {
+    pub fn new(
+        amount: Decimal,
+        unit_price: Option<Decimal>,
+        currency: &str,
+    ) -> Result<Self, crate::ServiceError> {
+        let fiat_decimal = unit_price.map(|p| amount * p);
+
+        let unit_price_f64 = unit_price
+            .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
+            .transpose()?;
+
+        let fiat_value_f64 = fiat_decimal
+            .map(|v| wallet_utils::conversion::decimal_to_f64(&v))
+            .transpose()?;
+
+        Ok(Self {
             amount,
             currency: currency.to_string(),
-            unit_price,
-            fiat_value,
-        }
+            unit_price: unit_price_f64,
+            fiat_value: fiat_value_f64,
+        })
     }
 }
 
-pub fn serialize_f64_string<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    s.serialize_str(&x.to_string())
-}
+// pub fn serialize_f64_string<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
+// where
+//     S: serde::Serializer,
+// {
+//     s.serialize_str(&x.to_string())
+// }
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

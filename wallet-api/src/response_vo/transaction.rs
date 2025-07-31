@@ -346,14 +346,22 @@ pub struct CommonFeeDetails {
 
 impl CommonFeeDetails {
     // fee unit is format
-    pub fn new(fee: f64, token_currency: TokenCurrency, currency: &str) -> Self {
-        Self {
-            estimate_fee: BalanceNotTruncate::new(
-                fee,
-                token_currency.get_price(currency),
-                currency,
-            ),
-        }
+    pub fn new(
+        fee: f64,
+        token_currency: TokenCurrency,
+        currency: &str,
+    ) -> Result<Self, crate::ServiceError> {
+        let amount = wallet_utils::conversion::decimal_from_f64(fee).unwrap_or_default();
+
+        let unit_pice = token_currency.get_price(currency);
+
+        let unit_price = unit_pice
+            .map(|p| wallet_utils::conversion::decimal_from_f64(p))
+            .transpose()?;
+
+        Ok(Self {
+            estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)?,
+        })
     }
 
     pub fn to_json_str(&self) -> Result<String, crate::ServiceError> {
