@@ -129,6 +129,8 @@ impl SwapServer {
         // 构建响应
         let mut res = ApiQuoteResp::new(
             quote_resp.chain_code.clone(),
+            req.token_in.symbol.clone(),
+            req.token_out.symbol.clone(),
             slippage,
             default_slippage,
             quote_resp.dex_route_list.clone(),

@@ -416,8 +416,9 @@ impl NewBillEntity {
     }
 }
 
-#[derive(serde::Serialize)]
 // 代理类型的资源梳理额外信息
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BillExtraResourceValue {
     // 具体代理了多少资源(质押，代理，回收)
     pub value: i64,

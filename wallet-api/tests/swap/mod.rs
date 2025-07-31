@@ -123,7 +123,7 @@ async fn test_quote() {
 
     let token_out = SwapTokenInfo {
         token_addr: "".to_string(),
-        symbol: "TRX".to_string(),
+        symbol: "USDT".to_string(),
         decimals: 6,
     };
 

@@ -13,38 +13,37 @@ pub struct ApiQuoteResp {
     pub chain_code: String,
     // 输入
     pub amount_in: BalanceNotTruncate,
+    pub amount_in_symbol: String,
     // 输出
     pub amount_out: BalanceNotTruncate,
+    pub amount_out_symbol: String,
     // 输入和输出的价值差
     pub price_spread: f64,
-    // 提供方
-    pub supplier: String,
     // 预估的手续费
     pub fee: EstimateFeeResp,
     // 资源的消耗
     pub consumer: String,
     // 转换后的值
     pub from_token_price: f64,
-
     // 自动滑点值
     pub default_slippage: f64,
-
     // 滑点
     pub slippage: f64,
     // 最小获得数量
     pub min_amount: String,
     // 兑换路径
     pub dex_route_list: Vec<DexRoute>,
-    // // (选择的流动性)流动性
-    // pub liquidity: String,
     // 需要授权的数量
     pub need_approve_amount: String,
+    // 已经授权的数量
     pub approve_amount: String,
 }
 
 impl ApiQuoteResp {
     pub fn new(
         chain_code: String,
+        token_in_symbol: String,
+        token_out_symbol: String,
         slippage: f64,
         default_slippage: f64,
         dex_route_list: Vec<DexRoute>,
@@ -56,9 +55,10 @@ impl ApiQuoteResp {
         Self {
             chain_code,
             amount_in: bal_in,
+            amount_in_symbol: token_in_symbol,
             amount_out: bal_out,
+            amount_out_symbol: token_out_symbol,
             price_spread,
-            supplier: "77_DexAggreagre".to_string(),
             fee: EstimateFeeResp::default(),
             from_token_price: rate,
             slippage,
