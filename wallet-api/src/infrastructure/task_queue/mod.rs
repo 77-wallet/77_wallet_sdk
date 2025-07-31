@@ -7,8 +7,9 @@ use task_manager::dispatcher::PriorityTask;
 use wallet_database::entities::{
     multisig_queue::QueueTaskEntity,
     node::NodeEntity,
-    task_queue::{KnownTaskName, TaskName, TaskQueueEntity},
+    task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
 };
+use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
 pub(crate) mod initialization;
@@ -59,20 +60,13 @@ impl Tasks {
         self
     }
 
-    pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
-        use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
-        let task_sender = crate::manager::Context::get_global_task_manager()?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        if self.0.is_empty() {
-            return Ok(());
-        }
-
+    async fn create_task_entities(
+        &self,
+    ) -> Result<Vec<CreateTaskQueueEntity>, crate::ServiceError> {
         let mut create_entities = Vec::new();
-        for task in self.0 {
+        for task in self.0.iter() {
             let request_body = task.task.get_request_body()?;
-            let create_req = if let Some(id) = task.id {
+            let create_req = if let Some(id) = &task.id {
                 wallet_database::entities::task_queue::CreateTaskQueueEntity::with_mqtt_request_string(
                     id,
                     task.task.get_name(),
@@ -87,22 +81,27 @@ impl Tasks {
             create_entities.push(create_req);
         }
 
-        let entities = repo.create_multi_task(&create_entities).await?;
+        Ok(create_entities)
+    }
+
+    async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::ServiceError> {
+        let task_sender = crate::manager::Context::get_global_task_manager()?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
         for task_entity in entities.into_iter() {
-            let task = match (&task_entity).try_into() {
-                Ok(task) => task,
+            match (&task_entity).try_into() {
+                Ok(task) => {
+                    let priority = task_manager::scheduler::assign_priority(&task, false)?;
+                    grouped_tasks.entry(priority).or_default().push(task_entity);
+                }
                 Err(e) => {
                     tracing::error!("task_entity.try_into() error: {}", e);
                     repo.delete_task(&task_entity.id).await?;
-                    continue;
                 }
             };
-
-            let priority = task_manager::scheduler::assign_priority(&task, false)?;
-            grouped_tasks.entry(priority).or_default().push(task_entity);
         }
 
         for (priority, tasks) in grouped_tasks {
@@ -116,6 +115,19 @@ impl Tasks {
 
         repo.delete_oldest_by_status_when_exceeded(200000, 2)
             .await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
+        if self.0.is_empty() {
+            return Ok(());
+        }
+        let create_entities = self.create_task_entities().await?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        let entities = repo.create_multi_task(&create_entities).await?;
+        Self::dispatch_tasks(entities).await?;
         Ok(())
     }
 }

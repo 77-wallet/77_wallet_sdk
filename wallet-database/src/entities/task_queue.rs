@@ -51,11 +51,11 @@ impl CreateTaskQueueEntity {
     }
 
     pub fn with_mqtt_request_string(
-        id: String,
+        id: &str,
         task_name: TaskName,
         request_body: Option<String>,
     ) -> Result<Self, crate::Error> {
-        Self::new(Some(id), task_name, request_body, 2, 0)
+        Self::new(Some(id.to_string()), task_name, request_body, 2, 0)
     }
 
     pub fn with_backend_request<T: serde::Serialize>(
