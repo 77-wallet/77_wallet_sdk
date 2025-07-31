@@ -2,10 +2,9 @@ use crate::infrastructure::inner_event::InnerEventHandle;
 use crate::infrastructure::process_unconfirm_msg::{
     UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
 };
+use crate::infrastructure::task_queue::task::{Task, Tasks};
 use crate::infrastructure::task_queue::task_manager::TaskManager;
-use crate::infrastructure::task_queue::{
-    BackendApiTask, BackendApiTaskData, InitializationTask, Task, Tasks,
-};
+use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, InitializationTask};
 use crate::infrastructure::SharedCache;
 use crate::messaging::mqtt::subscribed::Topics;
 use crate::messaging::notify::FrontendNotifyEvent;

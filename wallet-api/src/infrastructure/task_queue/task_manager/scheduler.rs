@@ -1,6 +1,9 @@
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
-use crate::infrastructure::task_queue::{CommonTask, InitializationTask, MqttTask, Task, TaskType};
+use crate::infrastructure::task_queue::{
+    task::{task_type::TaskType, Task},
+    CommonTask, InitializationTask, MqttTask,
+};
 
 const HISTORICAL_TASK_OFFSET: u8 = 10;
 

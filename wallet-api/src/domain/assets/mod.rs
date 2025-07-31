@@ -1,6 +1,9 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
-    infrastructure::task_queue::{CommonTask, Task, Tasks},
+    infrastructure::task_queue::{
+        task::{Task, Tasks},
+        CommonTask,
+    },
     request::transaction::SwapTokenInfo,
 };
 use futures::{stream, StreamExt};

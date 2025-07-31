@@ -1,6 +1,9 @@
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{
+        task::{Task, Tasks},
+        BackendApiTask, BackendApiTaskData,
+    },
     response_vo,
 };
 use wallet_chain_interact::{

@@ -1,6 +1,9 @@
 use crate::{
     domain::{self, chain::adapter::ChainAdapterFactory},
-    infrastructure::task_queue::{BackendApiTask, Task, Tasks},
+    infrastructure::task_queue::{
+        task::{Task, Tasks},
+        BackendApiTask,
+    },
 };
 use sqlx::{Pool, Sqlite};
 use wallet_database::{

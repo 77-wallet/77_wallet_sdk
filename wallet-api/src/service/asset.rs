@@ -2,7 +2,10 @@ use crate::{
     domain::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+    infrastructure::task_queue::{
+        task::{Task, Tasks},
+        BackendApiTask, BackendApiTaskData, CommonTask,
+    },
     response_vo::assets::{
         AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
     },

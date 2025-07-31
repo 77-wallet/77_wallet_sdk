@@ -9,6 +9,8 @@ use crate::domain::stake::StakeArgs;
 use crate::domain::stake::StakeDomain;
 use crate::error::business::stake::StakeError;
 use crate::infrastructure::task_queue;
+use crate::infrastructure::task_queue::task::Task;
+use crate::infrastructure::task_queue::task::Tasks;
 use crate::infrastructure::task_queue::BackendApiTaskData;
 use crate::manager::Context;
 use crate::messaging::notify::event::NotifyEvent;
@@ -177,10 +179,10 @@ impl StackService {
                 },
             };
 
-            let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
+            let task = Task::BackendApi(task_queue::BackendApiTask::BackendApi(
                 BackendApiTaskData::new(endpoint::UPLOAD_PERMISSION_TRANS, &params)?,
             ));
-            let _ = task_queue::Tasks::new().push(task).send().await;
+            let _ = Tasks::new().push(task).send().await;
             entity.signer = users;
         }
 

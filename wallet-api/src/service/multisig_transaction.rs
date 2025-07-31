@@ -4,7 +4,10 @@ use crate::domain::chain::TransferResp;
 use crate::domain::coin::CoinDomain;
 use crate::domain::multisig::{MultisigDomain, MultisigQueueDomain};
 use crate::domain::task_queue::TaskQueueDomain;
-use crate::infrastructure::task_queue::{CommonTask, Task, Tasks};
+use crate::infrastructure::task_queue::{
+    task::{Task, Tasks},
+    CommonTask,
+};
 use crate::request::transaction::Signer;
 use crate::response_vo::multisig_account::QueueInfo;
 use crate::response_vo::MultisigQueueFeeParams;

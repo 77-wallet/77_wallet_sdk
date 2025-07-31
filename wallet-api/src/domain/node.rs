@@ -7,7 +7,8 @@ use wallet_database::{
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
 use crate::infrastructure::task_queue::{
-    BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks,
+    task::{Task, Tasks},
+    BackendApiTask, BackendApiTaskData, CommonTask,
 };
 
 pub struct NodeDomain;

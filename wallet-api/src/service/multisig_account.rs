@@ -4,7 +4,10 @@ use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::multisig::MultisigDomain;
 use crate::domain::task_queue::TaskQueueDomain;
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
+use crate::infrastructure::task_queue::{
+    task::{Task, Tasks},
+    BackendApiTask, BackendApiTaskData,
+};
 use crate::messaging::mqtt::topics::OrderMultiSignAccept;
 use crate::request::transaction;
 use crate::response_vo;

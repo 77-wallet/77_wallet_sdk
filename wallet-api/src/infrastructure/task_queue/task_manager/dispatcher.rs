@@ -1,6 +1,8 @@
-use crate::infrastructure::task_queue::task_manager::scheduler::TASK_CATEGORY_LIMIT;
+use crate::infrastructure::task_queue::task::Task;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
-use crate::infrastructure::task_queue::{Task, TaskType};
+use crate::infrastructure::task_queue::{
+    task::task_type::TaskType, task_manager::scheduler::TASK_CATEGORY_LIMIT,
+};
 
 use super::RunningTasks;
 

@@ -3,7 +3,10 @@ use wallet_database::{entities::task_queue::TaskQueueEntity, factory::Repository
 use wallet_utils::serde_func;
 
 use crate::{
-    infrastructure::task_queue::{MqttTask, Task, Tasks},
+    infrastructure::task_queue::{
+        task::{Task, Tasks},
+        MqttTask,
+    },
     messaging::{
         mqtt::topics::OutgoingPayload,
         notify::{event::NotifyEvent, FrontendNotifyEvent},

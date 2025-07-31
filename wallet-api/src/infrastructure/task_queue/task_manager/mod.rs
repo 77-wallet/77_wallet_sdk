@@ -1,10 +1,11 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
 use crate::domain::app::config::ConfigDomain;
+use crate::infrastructure::task_queue::task::task_type::TaskType;
+use crate::infrastructure::task_queue::task::Task;
 
 use super::{
     handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task,
-    Task, TaskType,
 };
 use dashmap::DashSet;
 use dispatcher::{Dispatcher, PriorityTask, TaskSender};

@@ -18,7 +18,10 @@ use wallet_transport_backend::{
 
 use crate::{
     domain::app::{config::ConfigDomain, DeviceDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{
+        task::{Task, Tasks},
+        BackendApiTask, BackendApiTaskData,
+    },
     response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 

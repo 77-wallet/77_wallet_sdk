@@ -1,6 +1,9 @@
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+    infrastructure::task_queue::{
+        task::{Task, Tasks},
+        BackendApiTask, BackendApiTaskData, CommonTask,
+    },
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{

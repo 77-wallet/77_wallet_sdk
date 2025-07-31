@@ -1,4 +1,7 @@
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
+use crate::infrastructure::task_queue::{
+    task::{Task, Tasks},
+    BackendApiTask, BackendApiTaskData,
+};
 use wallet_transport_backend::request::SendMsgConfirm;
 
 pub(crate) struct TaskQueueDomain;

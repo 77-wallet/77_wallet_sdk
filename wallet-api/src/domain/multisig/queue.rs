@@ -5,7 +5,7 @@ use crate::{
         chain::{adapter::MultisigAdapter, transaction::ChainTransDomain},
         task_queue::TaskQueueDomain,
     },
-    infrastructure::task_queue::{self},
+    infrastructure::task_queue::task::Tasks,
     messaging::mqtt::topics::MultiSignTransAcceptCompleteMsgBody,
     response_vo::multisig_transaction::ExtraData,
 };
@@ -395,7 +395,7 @@ impl MultisigQueueDomain {
             permission_data: opt_data,
         };
 
-        let mut tasks = task_queue::Tasks::new();
+        let mut tasks = Tasks::new();
         let task =
             TaskQueueDomain::send_or_wrap_task(req, endpoint::multisig::SIGNED_TRAN_CREATE).await?;
         if let Some(task) = task {

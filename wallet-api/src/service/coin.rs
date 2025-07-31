@@ -7,7 +7,10 @@ use crate::{
     },
     infrastructure::{
         parse_utc_with_error,
-        task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+        task_queue::{
+            task::{Task, Tasks},
+            BackendApiTask, BackendApiTaskData, CommonTask,
+        },
     },
     response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
 };
