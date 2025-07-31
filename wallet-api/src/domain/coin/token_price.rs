@@ -1,4 +1,4 @@
-use crate::response_vo::account::BalanceInfo;
+use crate::response_vo::account::{BalanceInfo, BalanceNotTruncate};
 use wallet_database::repositories::{coin::CoinRepo, exchange_rate::ExchangeRateRepo};
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
 use wallet_utils::unit;
@@ -60,7 +60,7 @@ impl TokenCurrencyGetter {
         chain_code: &str,
         token_addr: &str,
         amount: f64,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceNotTruncate, crate::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型
@@ -81,6 +81,6 @@ impl TokenCurrencyGetter {
             exchange.rate * price
         };
 
-        Ok(BalanceInfo::new(amount, Some(unit_price), &currency))
+        Ok(BalanceNotTruncate::new(amount, Some(unit_price), &currency))
     }
 }

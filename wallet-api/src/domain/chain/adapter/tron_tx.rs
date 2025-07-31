@@ -186,7 +186,10 @@ pub(super) async fn estimate_swap(
 
     // 模拟的结果k
     let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
-        .map_err(|e| crate::ServiceError::AggregatorError(e.to_string()))?;
+        .map_err(|e| crate::ServiceError::AggregatorError {
+            code: -1,
+            msg: e.to_string(),
+        })?;
 
     // get fee
     let consumer = chain

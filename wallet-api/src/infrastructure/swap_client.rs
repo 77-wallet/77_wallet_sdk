@@ -15,6 +15,26 @@ impl SwapClient {
         Ok(Self { client })
     }
 
+    // - **10000**: dex_id 不支持
+    // - **10100**: token 不支持
+    // - **10200**: token pair之间没有兑换路径
+    // - **10300**: 池子不支持, 获取到的池子不在我们的支持列表中
+    // - **10400**: 池子获取失败
+    // - **10500**: 流动性拆分失败, 也可以显示为流动性不足
+    // - **20000**: 其它不常见的特殊错误, 按照错误消息字符串显示
+    // - **30000**: 未知错误, 保留, 按照错误消息字符串显示
+    fn match_error(&self, res: AggregatorResp) -> crate::ServiceError {
+        let code = match res.code {
+            10100 => 4402,
+            10200 | 10300 | 10400 | 10500 => 4403,
+            _ => -1,
+        };
+        crate::ServiceError::AggregatorError {
+            code,
+            msg: res.msg.unwrap_or_default(),
+        }
+    }
+
     fn handle_result<T: serde::de::DeserializeOwned>(
         &self,
         res: AggregatorResp,
@@ -22,9 +42,7 @@ impl SwapClient {
         if res.code == 200 {
             Ok(wallet_utils::serde_func::serde_from_value::<T>(res.data)?)
         } else {
-            Err(crate::ServiceError::AggregatorError(
-                res.msg.unwrap_or_default(),
-            ))
+            Err(self.match_error(res))
         }
     }
 
@@ -127,6 +145,7 @@ pub struct AggQuoteRequest {
     pub chain_code: String,
     // 处理精度后的值
     pub amount: String,
+    pub unique: String,
     pub in_token_addr: String,
     pub out_token_addr: String,
     pub dex_ids: Vec<DexId>,
@@ -184,6 +203,7 @@ mod tests {
             in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
             out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
             dex_ids: vec![dex_id1, dex_id2],
+            unique: "1".to_string(),
         };
         let res = client.get_quote(req).await.unwrap();
 

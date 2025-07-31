@@ -110,11 +110,10 @@ pub(super) async fn estimate_swap(
     let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
 
     let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
-        .map_err(|e| crate::ServiceError::AggregatorError(e.to_string()))?;
-
-    // let trans_fee = fee.transaction_fee();
-    // let consumer = EthereumFeeDetails::from(fee);
-    // let consumer = wallet_utils::serde_func::serde_to_string(&consumer)?;
+        .map_err(|e| crate::ServiceError::AggregatorError {
+            code: -1,
+            msg: e.to_string(),
+        })?;
 
     let resp = EstimateSwapResult {
         amount_in,

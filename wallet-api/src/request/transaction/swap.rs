@@ -3,6 +3,7 @@ use crate::{
     infrastructure::swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;
+use rand::Rng as _;
 use wallet_database::entities::bill::{BillExtraSwap, NewBillEntity};
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
@@ -257,6 +258,15 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
         let amount =
             wallet_utils::unit::convert_to_u256(&value.amount_in, value.token_in.decimals as u8)?;
 
+        let mut rng = rand::thread_rng();
+        let n: u32 = rng.gen_range(0..1000);
+
+        let unique = format!(
+            "{}_{}_{}",
+            value.recipient,
+            wallet_utils::time::now().timestamp(),
+            n,
+        );
         let dex_ids = value
             .dex_list
             .iter()
@@ -266,6 +276,7 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
         Ok(Self {
             chain_code: chain_code.to_string(),
             amount: amount.to_string(),
+            unique,
             in_token_addr: QuoteReq::eth_or_weth(&value.token_in.token_addr, chain_code),
             out_token_addr: QuoteReq::eth_or_weth(&value.token_out.token_addr, chain_code),
             dex_ids,

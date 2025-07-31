@@ -1,4 +1,7 @@
-use super::{account::BalanceInfo, EstimateFeeResp};
+use super::{
+    account::{BalanceInfo, BalanceNotTruncate},
+    EstimateFeeResp,
+};
 use crate::{domain::chain::swap::calc_slippage, request::transaction::DexRoute};
 use alloy::primitives::U256;
 use wallet_transport_backend::api::swap::ApproveInfo;
@@ -9,9 +12,9 @@ use wallet_transport_backend::api::swap::ApproveInfo;
 pub struct ApiQuoteResp {
     pub chain_code: String,
     // 输入
-    pub amount_in: BalanceInfo,
+    pub amount_in: BalanceNotTruncate,
     // 输出
-    pub amount_out: BalanceInfo,
+    pub amount_out: BalanceNotTruncate,
     // 输入和输出的价值差
     pub price_spread: f64,
     // 提供方
@@ -45,8 +48,8 @@ impl ApiQuoteResp {
         slippage: f64,
         default_slippage: f64,
         dex_route_list: Vec<DexRoute>,
-        bal_in: BalanceInfo,
-        bal_out: BalanceInfo,
+        bal_in: BalanceNotTruncate,
+        bal_out: BalanceNotTruncate,
     ) -> Self {
         let (rate, price_spread) = Self::calc_price_spread_and_rate(&bal_in, &bal_out);
 
@@ -86,8 +89,8 @@ impl ApiQuoteResp {
 
     // 计算token_in 和token_out的价差,以及兑换比例
     pub fn calc_price_spread_and_rate(
-        amount_in: &BalanceInfo,
-        amount_out: &BalanceInfo,
+        amount_in: &BalanceNotTruncate,
+        amount_out: &BalanceNotTruncate,
     ) -> (f64, f64) {
         let rate = if amount_in.amount > 0.0 {
             amount_out.amount / amount_in.amount
