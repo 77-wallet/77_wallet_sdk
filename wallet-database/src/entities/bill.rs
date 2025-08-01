@@ -205,7 +205,14 @@ impl BillKind {
 
     // 哪些交易类型是转入的的(在freeze中)
     pub fn in_transfer_type(&self) -> bool {
-        matches!(self, BillKind::WithdrawUnFreeze | BillKind::WithdrawReward)
+        matches!(
+            self,
+            BillKind::WithdrawUnFreeze
+                | BillKind::WithdrawReward
+                | BillKind::Swap
+                | BillKind::Approve
+                | BillKind::UnApprove
+        )
     }
 
     // 这个交易类型是否需要创建系统通知
