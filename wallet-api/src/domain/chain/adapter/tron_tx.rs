@@ -188,6 +188,7 @@ pub(super) async fn estimate_swap(
     let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
         .map_err(|e| crate::ServiceError::AggregatorError {
             code: -1,
+            agg_code: 0,
             msg: e.to_string(),
         })?;
 

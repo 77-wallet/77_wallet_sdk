@@ -31,6 +31,7 @@ impl SwapClient {
         };
         crate::ServiceError::AggregatorError {
             code,
+            agg_code: res.code,
             msg: res.msg.unwrap_or_default(),
         }
     }
