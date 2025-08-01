@@ -147,7 +147,9 @@ impl SwapServer {
             let assets =
                 AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
             // 余额足够才进行模拟
-            if unit::string_to_f64(&req.amount_in)? <= unit::string_to_f64(&assets.balance)? {
+            if conversion::decimal_from_str(&req.amount_in)?
+                <= conversion::decimal_from_str(&assets.balance)?
+            {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
