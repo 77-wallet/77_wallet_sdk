@@ -149,7 +149,8 @@ impl AcctChange {
         if tx.chain_code == chain_code::TON {
             Self::handle_ton_bill(tx, &pool).await?;
         } else {
-            BillDao::create(tx, pool.as_ref()).await?;
+            BillDomain::create_check_swap(tx, &pool).await?;
+            // BillDao::create(tx, pool.as_ref()).await?;
         }
 
         if !self.queue_id.is_empty() {
@@ -269,6 +270,11 @@ impl AcctChange {
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
         let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
+        if let Some(bill) = BillDao::get_one_by_hash(&acct_change.tx_hash, pool.as_ref()).await? {
+            if bill.tx_kind == BillKind::Swap.to_i8() {
+                return Ok(());
+            }
+        }
 
         // 交易方式 0转入 1转出 2初始化
         let address = match acct_change.transfer_type {

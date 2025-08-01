@@ -285,21 +285,30 @@ impl BillDao {
     where
         T: Serialize,
     {
-        let sql = r#"
-            update bill set 
-                transaction_fee = $2,
-                transaction_time = $3,
-                status = $4,
-                block_height = $5,
-                updated_at = $6,
-                resource_consume = $7,
-                hash = $8
-            where id = $1
-            RETURNING *
-            "#;
-
+        let extra_str = tx.get_extra_str()?;
         let time = sqlx::types::chrono::Utc::now().timestamp();
-        let _res = sqlx::query(sql)
+
+        let mut sql = String::from(
+            r#"
+        UPDATE bill SET 
+            transaction_fee = $2,
+            transaction_time = $3,
+            status = $4,
+            block_height = $5,
+            updated_at = $6,
+            resource_consume = $7,
+            hash = $8
+        "#,
+        );
+
+        // 判断 extra 是否为空，决定是否追加字段
+        if !extra_str.is_empty() {
+            sql.push_str(", extra = $9");
+        }
+
+        sql.push_str(" WHERE id = $1 RETURNING *");
+
+        let mut query = sqlx::query(&sql)
             .bind(id)
             .bind(tx.transaction_fee.clone())
             .bind(tx.transaction_time.to_string())
@@ -307,7 +316,13 @@ impl BillDao {
             .bind(tx.block_height.to_string())
             .bind(time)
             .bind(tx.resource_consume.clone())
-            .bind(tx.hash)
+            .bind(tx.hash);
+
+        if !extra_str.is_empty() {
+            query = query.bind(extra_str);
+        }
+
+        query
             .execute(pool.as_ref())
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
