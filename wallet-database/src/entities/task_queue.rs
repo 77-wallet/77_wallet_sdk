@@ -133,6 +133,7 @@ impl From<String> for TaskName {
     sqlx::Type,
     PartialEq,
     Eq,
+    Hash,
     strum_macros::EnumString,
     strum_macros::AsRefStr,
 )]
