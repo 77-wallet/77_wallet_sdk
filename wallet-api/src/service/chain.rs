@@ -157,7 +157,7 @@ impl ChainService {
     pub async fn get_hot_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        let res = tx.get_chain_list().await?;
+        let res = tx.get_chain_list_v2().await?;
         tx.commit_transaction().await?;
 
         Ok(res)

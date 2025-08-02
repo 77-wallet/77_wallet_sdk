@@ -1,5 +1,8 @@
-use crate::entities::account::{
-    AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
+use crate::{
+    entities::account::{
+        AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
+    },
+    sql_utils::query_builder::{DynamicQueryBuilder, SqlArg},
 };
 use sqlx::{Executor, Sqlite};
 
@@ -138,6 +141,39 @@ impl AccountEntity {
             .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn account_list_v2<'a, E>(
+        executor: E,
+        wallet_address: Option<&str>,
+        address: Option<&str>,
+        derivation_path: Option<&str>,
+        chain_codes: Vec<String>,
+        account_id: Option<u32>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut builder = DynamicQueryBuilder::new("SELECT * FROM account");
+
+        if !chain_codes.is_empty() {
+            builder.and_where_in("chain_code", &chain_codes);
+        }
+
+        if let Some(w) = wallet_address {
+            builder.and_where_eq("wallet_address", SqlArg::Str(w.to_string()));
+        }
+        if let Some(a) = address {
+            builder.and_where_eq("address", SqlArg::Str(a.to_string()));
+        }
+        if let Some(p) = derivation_path {
+            builder.and_where_eq("derivation_path", SqlArg::Str(p.to_string()));
+        }
+        if let Some(id) = account_id {
+            builder.and_where_eq("account_id", SqlArg::Int(id as i64));
+        }
+
+        crate::sql_utils::query_builder::execute_query_as(executor, &builder).await
     }
 
     pub async fn account_list<'a, E>(

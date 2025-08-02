@@ -6,6 +6,7 @@ pub mod factory;
 mod init;
 pub mod pagination;
 pub mod repositories;
+pub(crate) mod sql_utils;
 
 // database pool
 pub type DbPool = std::sync::Arc<sqlx::Pool<Sqlite>>;

@@ -233,7 +233,7 @@ impl<
 
     pub async fn get_configs(self) -> Result<Vec<ConfigEntity>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let res = ConfigDao::lists(pool.as_ref()).await?;
+        let res = ConfigDao::list_v2(pool.as_ref()).await?;
         Ok(res)
     }
 

@@ -346,12 +346,13 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account_id = 1;
         let account = wallet_manager
             .get_account_list(Some(wallet_address), Some(account_id))
             .await;
-        tracing::info!("[test_] account: {account:?}");
+        let res = serde_json::to_string(&account).unwrap();
+        tracing::info!("[test_] account: {res:?}");
 
         Ok(())
     }

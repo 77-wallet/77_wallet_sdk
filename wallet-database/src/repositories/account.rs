@@ -192,7 +192,7 @@ pub trait AccountRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
             executor,
-            AccountEntity::account_list,
+            AccountEntity::account_list_v2,
             wallet_address,
             None,
             None,
@@ -210,7 +210,7 @@ pub trait AccountRepoTrait: super::TransactionTrait {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
             executor,
-            AccountEntity::account_list,
+            AccountEntity::account_list_v2,
             wallet_address,
             None,
             None,
@@ -229,7 +229,7 @@ pub trait AccountRepoTrait: super::TransactionTrait {
 
         crate::execute_with_executor!(
             executor,
-            AccountEntity::account_list,
+            AccountEntity::account_list_v2,
             wallet_address,
             None,
             None,

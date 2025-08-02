@@ -1,4 +1,4 @@
-use crate::entities::config::ConfigEntity;
+use crate::{entities::config::ConfigEntity, sql_utils::query_builder::DynamicQueryBuilder};
 use sqlx::{Executor, Sqlite};
 
 pub struct ConfigDao;
@@ -29,6 +29,14 @@ impl ConfigDao {
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(res.pop().ok_or(crate::DatabaseError::ReturningNone)?)
+    }
+
+    pub async fn list_v2<'a, E>(exec: E) -> Result<Vec<ConfigEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let builder = DynamicQueryBuilder::new("SELECT * FROM config where types = 0");
+        crate::sql_utils::query_builder::execute_query_as(exec, &builder).await
     }
 
     pub async fn lists<'a, E>(exec: E) -> Result<Vec<ConfigEntity>, crate::Error>

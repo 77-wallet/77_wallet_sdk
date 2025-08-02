@@ -1,6 +1,9 @@
 use sqlx::{Executor, Sqlite};
 
-use crate::entities::task_queue::{CreateTaskQueueEntity, TaskQueueEntity};
+use crate::{
+    entities::task_queue::{CreateTaskQueueEntity, TaskQueueEntity},
+    sql_utils::query_builder::{DynamicQueryBuilder, SqlArg},
+};
 
 impl TaskQueueEntity {
     pub async fn upsert_multi_task<'a, E>(
@@ -239,30 +242,15 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let mut sql = "SELECT * FROM task_queue".to_string();
-        let mut conditions = Vec::new();
-        if status.is_some() {
-            conditions.push("status = ?".to_string());
-        }
-
-        if typ.is_some() {
-            conditions.push("type = ?".to_string());
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
-        let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql);
-
+        let mut builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
         if let Some(status) = status {
-            query = query.bind(status);
+            builder.and_where_eq("status", SqlArg::Int(status as i64));
+        }
+        if let Some(typ) = typ {
+            builder.and_where_eq("type", SqlArg::Int(typ as i64));
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        crate::sql_utils::query_builder::execute_query_as(exec, &builder).await
     }
 
     pub async fn has_unfinished_task<'a, E>(exec: E) -> Result<bool, crate::Error>
