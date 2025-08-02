@@ -1562,6 +1562,7 @@ impl StackService {
             extra.push(BillExtraVotes {
                 vote_addr: item.vote_address.clone(),
                 votes: item.vote_count,
+                name: item.name.clone(),
             });
         }
 

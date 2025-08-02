@@ -88,7 +88,11 @@ async fn test_build_vote() {
     let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
     let req = VoteWitnessReq::new(
         owner_address,
-        vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1)],
+        vec![VotesReq::new(
+            "TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX",
+            1,
+            "name",
+        )],
         None,
     );
     let bill_kind = BillKind::Vote.to_i8() as i64;

@@ -440,6 +440,8 @@ pub struct BillExtraVotes {
     pub vote_addr: String,
     // 投票的数量
     pub votes: i64,
+    // 节点名称
+    pub name: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

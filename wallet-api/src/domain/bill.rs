@@ -124,6 +124,7 @@ impl BillDomain {
         address: &str,
     ) -> Result<(), crate::ServiceError> {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
+        // let start_time = None;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
         let resp = backend
