@@ -304,6 +304,7 @@ impl SwapServer {
         let mut new_bill = NewBillEntity::try_from(req)?;
         new_bill.hash = resp.tx_hash.clone();
         new_bill.resource_consume = resp.resource_consume()?;
+        new_bill.transaction_fee = resp.fee;
         BillDomain::create_bill(new_bill).await?;
 
         Ok(resp.tx_hash)
@@ -477,6 +478,7 @@ impl SwapServer {
         new_bill.hash = resp.tx_hash.clone();
         new_bill.symbol = coin.symbol;
         new_bill.resource_consume = resp.resource_consume()?;
+        new_bill.transaction_fee = resp.fee;
         BillDomain::create_bill(new_bill).await?;
 
         Ok(resp.tx_hash)
@@ -579,6 +581,7 @@ impl SwapServer {
         new_bill.symbol = coin.symbol;
         new_bill.tx_kind = wallet_database::entities::bill::BillKind::UnApprove;
         new_bill.resource_consume = resp.resource_consume()?;
+        new_bill.transaction_fee = resp.fee;
         BillDomain::create_bill(new_bill).await?;
 
         Ok(resp.tx_hash)

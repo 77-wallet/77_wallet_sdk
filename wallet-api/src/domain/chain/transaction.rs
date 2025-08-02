@@ -1,6 +1,6 @@
 use super::adapter::TransactionAdapter;
 use crate::{
-    domain::coin::CoinDomain,
+    domain::{bill::BillDomain, coin::CoinDomain},
     infrastructure::task_queue::{self, BackendApiTaskData},
     request::transaction::{self, Signer},
 };
@@ -199,7 +199,7 @@ impl ChainTransDomain {
             new_bill.signer = users;
         }
 
-        crate::domain::bill::BillDomain::create_bill(new_bill).await?;
+        BillDomain::create_bill(new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;
