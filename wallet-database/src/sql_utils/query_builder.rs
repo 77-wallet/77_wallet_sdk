@@ -1,5 +1,6 @@
-use sqlx::{query_as, Sqlite};
 use std::fmt::Debug;
+
+use crate::sql_utils::SqlArg;
 
 #[derive(Debug)]
 pub struct DynamicQueryBuilder {
@@ -9,13 +10,6 @@ pub struct DynamicQueryBuilder {
     limit: Option<u32>,
     offset: Option<u32>,
     params: Vec<SqlArg>,
-}
-
-#[derive(Debug, Clone)]
-pub enum SqlArg {
-    Str(String),
-    Int(i64),
-    Bool(bool),
 }
 
 impl DynamicQueryBuilder {
@@ -30,20 +24,30 @@ impl DynamicQueryBuilder {
         }
     }
 
-    pub fn and_where(&mut self, clause: &str, arg: SqlArg) {
+    pub fn and_where(mut self, clause: &str, arg: SqlArg) -> Self {
         self.where_clauses.push(clause.to_string());
         self.params.push(arg);
+        self
     }
 
-    pub fn and_where_eq(&mut self, field: &str, arg: SqlArg) {
+    pub fn and_where_eq(mut self, field: &str, arg: SqlArg) -> Self {
         let clause = format!("{} = ?", field);
         self.where_clauses.push(clause);
         self.params.push(arg);
+        self
     }
 
-    pub fn and_where_in<T: ToString>(&mut self, field: &str, values: &[T]) {
+    pub fn and_where_like(mut self, field: &str, keyword: &str) -> Self {
+        let clause = format!("{} LIKE ?", field);
+        let pattern = format!("%{}%", keyword);
+        self.where_clauses.push(clause);
+        self.params.push(SqlArg::Str(pattern));
+        self
+    }
+
+    pub fn and_where_in<T: ToString>(mut self, field: &str, values: &[T]) -> Self {
         if values.is_empty() {
-            return;
+            return self;
         }
 
         let placeholders = (0..values.len())
@@ -56,21 +60,34 @@ impl DynamicQueryBuilder {
         for v in values {
             self.params.push(SqlArg::Str(v.to_string())); // 可扩展为泛型类型
         }
+        self
     }
 
-    pub fn order_by(&mut self, order: &str) {
+    pub fn order_by(mut self, order: &str) -> Self {
         self.order_by = Some(order.to_string());
+        self
     }
 
-    pub fn limit(&mut self, limit: u32) {
+    pub fn limit(mut self, limit: u32) -> Self {
         self.limit = Some(limit);
+        self
     }
 
-    pub fn offset(&mut self, offset: u32) {
+    pub fn offset(mut self, offset: u32) -> Self {
         self.offset = Some(offset);
+        self
     }
+}
 
-    pub fn build(&self) -> (String, Vec<SqlArg>) {
+#[async_trait::async_trait]
+impl<T> super::SqlExecutableReturn<T> for DynamicQueryBuilder where
+    T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin + 'static
+{
+}
+
+#[async_trait::async_trait]
+impl super::SqlBuilder for DynamicQueryBuilder {
+    fn build(&self) -> (String, Vec<SqlArg>) {
         let mut sql = self.base_sql.clone();
 
         if !self.where_clauses.is_empty() {
@@ -93,33 +110,4 @@ impl DynamicQueryBuilder {
 
         (sql, self.params.clone())
     }
-}
-
-pub async fn execute_query_as<'e, E, T>(
-    executor: E,
-    builder: &DynamicQueryBuilder,
-) -> Result<Vec<T>, crate::Error>
-where
-    E: sqlx::Executor<'e, Database = Sqlite>,
-    T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
-{
-    let (sql, args) = builder.build();
-
-    tracing::info!("sql: {sql}");
-
-    let mut query = query_as::<_, T>(&sql);
-
-    // tracing::info!("args: {args:#?}");
-    for arg in args {
-        query = match arg {
-            SqlArg::Str(s) => query.bind(s),
-            SqlArg::Int(i) => query.bind(i),
-            SqlArg::Bool(b) => query.bind(b),
-        };
-    }
-
-    query
-        .fetch_all(executor)
-        .await
-        .map_err(|e| crate::Error::Database(e.into()))
 }

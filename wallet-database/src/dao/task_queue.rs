@@ -2,7 +2,10 @@ use sqlx::{Executor, Sqlite};
 
 use crate::{
     entities::task_queue::{CreateTaskQueueEntity, TaskQueueEntity},
-    sql_utils::query_builder::{DynamicQueryBuilder, SqlArg},
+    sql_utils::{
+        delete_builder::DynamicDeleteBuilder, query_builder::DynamicQueryBuilder, SqlArg,
+        SqlExecutableNoReturn, SqlExecutableReturn,
+    },
 };
 
 impl TaskQueueEntity {
@@ -206,15 +209,11 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "SELECT * FROM task_queue WHERE request_body LIKE ?";
-
-        let pattern = format!("%{}%", keyword);
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(pattern)
+        let builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
+        builder
+            .and_where_like("request_body", keyword)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn delete_tasks_with_request_body_like<'a, E>(
@@ -224,18 +223,13 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "DELETE FROM task_queue WHERE request_body LIKE ?";
-        let pattern = format!("%{}%", keyword);
-        sqlx::query(sql)
-            .bind(pattern)
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        let mut builder = DynamicDeleteBuilder::new("task_queue");
+        builder.and_where_like("request_body", keyword);
+        SqlExecutableNoReturn::execute(&builder, exec).await
     }
 
     pub async fn list<'a, E>(
-        exec: E,
+        executor: E,
         status: Option<u8>,
         typ: Option<u8>,
     ) -> Result<Vec<Self>, crate::Error>
@@ -244,13 +238,13 @@ impl TaskQueueEntity {
     {
         let mut builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
         if let Some(status) = status {
-            builder.and_where_eq("status", SqlArg::Int(status as i64));
+            builder = builder.and_where_eq("status", SqlArg::Int(status as i64));
         }
         if let Some(typ) = typ {
-            builder.and_where_eq("type", SqlArg::Int(typ as i64));
+            builder = builder.and_where_eq("type", SqlArg::Int(typ as i64));
         }
 
-        crate::sql_utils::query_builder::execute_query_as(exec, &builder).await
+        builder.fetch_all(executor).await
     }
 
     pub async fn has_unfinished_task<'a, E>(exec: E) -> Result<bool, crate::Error>

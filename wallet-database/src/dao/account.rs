@@ -2,7 +2,10 @@ use crate::{
     entities::account::{
         AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
     },
-    sql_utils::query_builder::{DynamicQueryBuilder, SqlArg},
+    sql_utils::{
+        query_builder::DynamicQueryBuilder, update_builder::DynamicUpdateBuilder, SqlArg,
+        SqlExecutableReturn as _,
+    },
 };
 use sqlx::{Executor, Sqlite};
 
@@ -54,7 +57,7 @@ impl AccountEntity {
     }
 
     pub async fn edit_account_name<'a, E>(
-        exec: E,
+        executor: E,
         account_id: u32,
         wallet_address: &str,
         name: &str,
@@ -62,21 +65,15 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            UPDATE account SET 
-                name = $3,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE wallet_address = $1 AND account_id = $2
-            RETURNING *
-        "#;
+        let mut builder = DynamicUpdateBuilder::new("account");
 
-        sqlx::query_as::<sqlx::Sqlite, AccountEntity>(sql)
-            .bind(wallet_address)
-            .bind(account_id)
-            .bind(name)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        builder.set("name", SqlArg::Str(name.to_string()));
+        builder.set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+
+        builder.and_where_eq("wallet_address", SqlArg::Str(wallet_address.to_string()));
+        builder.and_where_eq("account_id", SqlArg::Int(account_id as i64));
+
+        builder.fetch_all(executor).await
     }
 
     pub async fn account_detail_by_max_id_and_wallet_address<'a, E>(
@@ -86,15 +83,16 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM account where wallet_address = $1
-                   ORDER BY account_id DESC
-                   LIMIT 1;";
+        let builder = DynamicQueryBuilder::new("SELECT * FROM account")
+            .and_where_eq("wallet_address", SqlArg::Str(wallet_address.to_string()))
+            .order_by("account_id DESC")
+            .limit(1);
 
-        sqlx::query_as::<sqlx::Sqlite, AccountEntity>(sql)
-            .bind(wallet_address)
-            .fetch_optional(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        // let sql = "SELECT * FROM account where wallet_address = $1
+        //            ORDER BY account_id DESC
+        //            LIMIT 1;";
+
+        builder.fetch_optional(executor).await
     }
 
     pub async fn account_wallet_mapping<'a, E>(
@@ -157,23 +155,23 @@ impl AccountEntity {
         let mut builder = DynamicQueryBuilder::new("SELECT * FROM account");
 
         if !chain_codes.is_empty() {
-            builder.and_where_in("chain_code", &chain_codes);
+            builder = builder.and_where_in("chain_code", &chain_codes);
         }
 
         if let Some(w) = wallet_address {
-            builder.and_where_eq("wallet_address", SqlArg::Str(w.to_string()));
+            builder = builder.and_where_eq("wallet_address", SqlArg::Str(w.to_string()));
         }
         if let Some(a) = address {
-            builder.and_where_eq("address", SqlArg::Str(a.to_string()));
+            builder = builder.and_where_eq("address", SqlArg::Str(a.to_string()));
         }
         if let Some(p) = derivation_path {
-            builder.and_where_eq("derivation_path", SqlArg::Str(p.to_string()));
+            builder = builder.and_where_eq("derivation_path", SqlArg::Str(p.to_string()));
         }
         if let Some(id) = account_id {
-            builder.and_where_eq("account_id", SqlArg::Int(id as i64));
+            builder = builder.and_where_eq("account_id", SqlArg::Int(id as i64));
         }
 
-        crate::sql_utils::query_builder::execute_query_as(executor, &builder).await
+        builder.fetch_all(executor).await
     }
 
     pub async fn account_list<'a, E>(
@@ -324,24 +322,13 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = if wallet_addresses.is_empty() {
-            "DELETE FROM account RETURNING *".to_string()
-        } else {
-            let addresses = crate::any_in_collection(wallet_addresses, "','");
-            format!(
-                r#"
-                DELETE FROM account
-                WHERE wallet_address IN ('{}')
-                RETURNING *
-                "#,
-                addresses
-            )
-        };
+        // use crate::sql_utils::SqlExecutableReturn;
+        let mut builder = crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("account");
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(&sql)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        if !wallet_addresses.is_empty() {
+            builder.and_where_in("wallet_address", wallet_addresses);
+        }
+        builder.fetch_all(exec).await
     }
 
     pub async fn physical_delete<'a, E>(
