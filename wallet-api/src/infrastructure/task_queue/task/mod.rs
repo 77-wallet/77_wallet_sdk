@@ -15,7 +15,7 @@ use wallet_database::entities::{
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
 use wallet_transport_backend::request::TokenQueryPriceReq;
 #[async_trait::async_trait]
-pub trait TaskTrait: Send + Sync {
+pub(crate) trait TaskTrait: Send + Sync {
     fn get_name(&self) -> TaskName;
     fn get_type(&self) -> TaskType;
     fn get_body(&self) -> Result<Option<String>, crate::ServiceError>;
