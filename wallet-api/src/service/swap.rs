@@ -579,13 +579,14 @@ impl SwapServer {
         }
 
         // check balance
-        let token_in =
-            AssetsRepo::get_by_addr_token(&pool, &req.chain_code, &req.contract, &req.from).await?;
-        if unit::string_to_f64(&req.value)? > unit::string_to_f64(&token_in.balance)? {
+        let token_in = self
+            .token0_assets(&pool, &req.chain_code, &req.contract, &req.from)
+            .await?;
+        if !self.check_bal(&req.value, &token_in.balance)? {
             return Err(crate::BusinessError::Chain(
                 crate::ChainError::InsufficientBalance,
             ))?;
-        };
+        }
 
         let private_key =
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
