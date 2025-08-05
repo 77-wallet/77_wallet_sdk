@@ -150,7 +150,7 @@ impl CoinDomain {
                 .await?,
         );
 
-        // // 如果本地没有币，则添加默认币种并进行去重
+        // // 如果本地没有币，则添加默认币种并进行去重(感觉不是一个很好的逻辑)
         // if create_at.is_none() {
         //     let default = crate::default_data::coin::init_default_coins_list()?;
 

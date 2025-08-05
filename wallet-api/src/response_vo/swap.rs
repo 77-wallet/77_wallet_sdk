@@ -41,6 +41,38 @@ pub struct ApiQuoteResp {
 }
 
 impl ApiQuoteResp {
+    // native coin default slippage
+    pub const DEFAULT_SLIPPAGE: f64 = 0.005;
+
+    pub fn new_with_default_slippage(
+        chain_code: String,
+        token_in_symbol: String,
+        token_out_symbol: String,
+        dex_route_list: Vec<DexRoute>,
+        bal_in: BalanceNotTruncate,
+        bal_out: BalanceNotTruncate,
+    ) -> Self {
+        let (rate, price_spread) = Self::calc_price_spread_and_rate(&bal_in, &bal_out);
+
+        Self {
+            chain_code,
+            amount_in: bal_in,
+            amount_in_symbol: token_in_symbol,
+            amount_out: bal_out,
+            amount_out_symbol: token_out_symbol,
+            price_spread,
+            fee: EstimateFeeResp::default(),
+            from_token_price: rate,
+            slippage: ApiQuoteResp::DEFAULT_SLIPPAGE,
+            default_slippage: ApiQuoteResp::DEFAULT_SLIPPAGE,
+            min_amount: "0".to_string(),
+            dex_route_list,
+            consumer: "".to_string(),
+            need_approve_amount: "0".to_string(),
+            approve_amount: "0".to_string(),
+        }
+    }
+
     pub fn new(
         chain_code: String,
         token_in_symbol: String,

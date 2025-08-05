@@ -30,6 +30,29 @@ impl From<SwapTokenListReq> for wallet_transport_backend::request::SwapTokenQuer
     }
 }
 
+// deposit,和withdraw 统一认为swap
+#[derive(Debug)]
+pub enum SwapInnerType {
+    Swap,
+    Deposit,
+    Withdraw,
+}
+
+pub struct DepositReq {
+    pub from: String,
+    pub amount: String,
+    pub token: String,
+    pub chain_code: String,
+}
+
+#[derive(Debug)]
+pub struct WithdrawReq {
+    pub from: String,
+    pub amount: String,
+    pub token: String,
+    pub chain_code: String,
+}
+
 #[derive(Debug)]
 pub struct ApproveReq {
     pub contract: String,
@@ -237,6 +260,19 @@ impl QuoteReq {
         Ok(wallet_utils::address::parse_eth_address(&hex_addr)?)
     }
 
+    // 根据token地址判断是 进行那种swap交易
+    pub fn swap_type(chain_code: ChainCode, token_in: &str, token_out: &str) -> SwapInnerType {
+        let warp_coin = get_warp_address(chain_code).unwrap();
+
+        if token_in.is_empty() && token_out == warp_coin {
+            SwapInnerType::Deposit
+        } else if token_in == warp_coin && token_out.is_empty() {
+            SwapInnerType::Withdraw
+        } else {
+            SwapInnerType::Swap
+        }
+    }
+
     // 前端有传入的使用前端传入的，没有使用报价返回的。
     pub fn get_slippage(&self, default_slippage: u64) -> f64 {
         self.slippage.unwrap_or(default_slippage as f64 / SLIPPAGE)
@@ -295,6 +331,31 @@ pub struct DexRoute {
     pub percentage: String,
     #[serde(rename = "routeInDex", alias = "route_in_dex")]
     pub route_in_dex: Vec<RouteInDex>,
+}
+
+impl DexRoute {
+    // 针对 deposit 和 withdraw 的路由
+    pub fn new(amount: String, token_in: &SwapTokenInfo, token_out: &SwapTokenInfo) -> Self {
+        let router = RouteInDex {
+            dex_id: 0,
+            pool_id: "".to_string(),
+            in_token_symbol: token_in.symbol.clone(),
+            in_token_addr: token_in.token_addr.clone(),
+            out_token_symbol: token_out.symbol.clone(),
+            out_token_addr: token_out.token_addr.clone(),
+            zero_for_one: false,
+            fee: "500".to_string(),
+            amount_in: amount.clone(),
+            min_amount_out: amount.clone(),
+        };
+
+        Self {
+            amount_in: amount.clone(),
+            amount_out: amount.clone(),
+            percentage: "10000".to_string(),
+            route_in_dex: vec![router],
+        }
+    }
 }
 
 // 子路由

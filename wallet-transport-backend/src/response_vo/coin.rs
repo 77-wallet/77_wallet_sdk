@@ -26,19 +26,6 @@ pub struct CoinInfo {
     pub update_time: String,
 }
 impl CoinInfo {
-    // pub fn token_address(&self) -> Option<String> {
-    //     match &self.token_address {
-    //         Some(token_address) => {
-    //             if token_address.is_empty() {
-    //                 None
-    //             } else {
-    //                 Some(token_address.clone())
-    //             }
-    //         }
-    //         None => None,
-    //     }
-    // }
-
     pub fn get_status(&self) -> Option<i32> {
         if self.enable {
             Some(1)
