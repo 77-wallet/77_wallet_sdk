@@ -1,9 +1,6 @@
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
-    infrastructure::task_queue::{
-        task::{Task, Tasks},
-        BackendApiTask, BackendApiTaskData,
-    },
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
     response_vo,
 };
 use wallet_chain_interact::{
@@ -220,9 +217,7 @@ impl ChainDomain {
             &ChainRpcListReq::new(chain_codes),
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                chain_rpc_list_req,
-            )))
+            .push(BackendApiTask::BackendApi(chain_rpc_list_req))
             .send()
             .await?;
 

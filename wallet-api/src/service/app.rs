@@ -18,10 +18,7 @@ use wallet_transport_backend::{
 
 use crate::{
     domain::app::{config::ConfigDomain, DeviceDomain},
-    infrastructure::task_queue::{
-        task::{Task, Tasks},
-        BackendApiTask, BackendApiTaskData,
-    },
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
     response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
@@ -153,7 +150,7 @@ impl<
             &req,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .push(BackendApiTask::BackendApi(task_data))
             .send()
             .await?;
 
@@ -340,12 +337,8 @@ impl<
             }),
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                app_install_save_data,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                keys_reset_data,
-            )))
+            .push(BackendApiTask::BackendApi(app_install_save_data))
+            .push(BackendApiTask::BackendApi(keys_reset_data))
             .send()
             .await?;
         // backend.keys_reset(sn).await?;
@@ -437,7 +430,7 @@ impl<
             &req,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .push(BackendApiTask::BackendApi(task_data))
             .send()
             .await?;
 

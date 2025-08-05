@@ -6,6 +6,7 @@ use crate::{
     infrastructure::task_queue::{task::task_type::TaskType, *},
     messaging::mqtt::topics,
 };
+use std::any::Any;
 use wallet_database::entities::{
     multisig_queue::QueueTaskEntity,
     node::NodeEntity,
@@ -13,23 +14,47 @@ use wallet_database::entities::{
 };
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
 use wallet_transport_backend::request::TokenQueryPriceReq;
+#[async_trait::async_trait]
+pub trait TaskTrait: Send + Sync {
+    fn get_name(&self) -> TaskName;
+    fn get_type(&self) -> TaskType;
+    fn get_body(&self) -> Result<Option<String>, crate::ServiceError>;
+
+    async fn execute(&self, id: &str) -> Result<(), crate::ServiceError>;
+
+    fn as_any(&self) -> &dyn Any;
+}
 
 pub(crate) struct TaskItem {
     pub(crate) id: Option<String>,
-    pub(crate) task: Task,
+    pub(crate) task: Box<dyn TaskTrait>,
 }
 
 impl TaskItem {
-    pub fn new(task: Task) -> Self {
-        Self { id: None, task }
-    }
-
-    pub fn new_with_id(id: &str, task: Task) -> Self {
+    pub fn new<T: TaskTrait + 'static>(task: T) -> Self {
         Self {
-            id: Some(id.to_string()),
-            task,
+            id: None,
+            task: Box::new(task),
         }
     }
+
+    pub fn new_with_id<T: TaskTrait + 'static>(id: &str, task: T) -> Self {
+        Self {
+            id: Some(id.to_string()),
+            task: Box::new(task),
+        }
+    }
+
+    // pub fn new(task: Task) -> Self {
+    //     Self { id: None, task }
+    // }
+
+    // pub fn new_with_id(id: &str, task: Task) -> Self {
+    //     Self {
+    //         id: Some(id.to_string()),
+    //         task,
+    //     }
+    // }
 }
 
 pub(crate) struct Tasks(Vec<TaskItem>);
@@ -39,22 +64,32 @@ impl Tasks {
         Self(Vec::new())
     }
 
-    pub fn push(mut self, task: Task) -> Self {
+    pub fn push<T: TaskTrait + 'static>(mut self, task: T) -> Self {
         self.0.push(TaskItem::new(task));
         self
     }
 
-    pub fn push_with_id(mut self, id: &str, task: Task) -> Self {
+    // pub fn push(mut self, task: Task) -> Self {
+    //     self.0.push(TaskItem::new(task));
+    //     self
+    // }
+
+    pub fn push_with_id<T: TaskTrait + 'static>(mut self, id: &str, task: T) -> Self {
         self.0.push(TaskItem::new_with_id(id, task));
         self
     }
+
+    // pub fn push_with_id(mut self, id: &str, task: Task) -> Self {
+    //     self.0.push(TaskItem::new_with_id(id, task));
+    //     self
+    // }
 
     async fn create_task_entities(
         &self,
     ) -> Result<Vec<CreateTaskQueueEntity>, crate::ServiceError> {
         let mut create_entities = Vec::new();
         for task in self.0.iter() {
-            let request_body = task.task.get_request_body()?;
+            let request_body = task.task.get_body()?;
             let create_req = if let Some(id) = &task.id {
                 wallet_database::entities::task_queue::CreateTaskQueueEntity::with_mqtt_request_string(
                     id,
@@ -81,9 +116,9 @@ impl Tasks {
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
         for task_entity in entities.into_iter() {
-            match (&task_entity).try_into() {
+            match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
                 Ok(task) => {
-                    let priority = super::task_manager::scheduler::assign_priority(&task, false)?;
+                    let priority = super::task_manager::scheduler::assign_priority(&*task, false)?;
                     grouped_tasks.entry(priority).or_default().push(task_entity);
                 }
                 Err(e) => {
@@ -121,43 +156,7 @@ impl Tasks {
     }
 }
 
-pub(crate) enum Task {
-    Initialization(InitializationTask),
-    BackendApi(BackendApiTask),
-    Mqtt(Box<MqttTask>),
-    Common(CommonTask),
-}
-
-impl Task {
-    pub fn get_name(&self) -> TaskName {
-        match self {
-            Task::Initialization(task) => task.get_name(),
-            Task::BackendApi(task) => task.get_name(),
-            Task::Mqtt(task) => task.get_name(),
-            Task::Common(task) => task.get_name(),
-        }
-    }
-
-    pub fn get_request_body(&self) -> Result<Option<String>, crate::ServiceError> {
-        Ok(match self {
-            Task::Initialization(task) => task.get_body()?,
-            Task::BackendApi(task) => task.get_body()?,
-            Task::Mqtt(task) => task.get_body()?,
-            Task::Common(task) => task.get_body()?,
-        })
-    }
-
-    pub fn get_type(&self) -> TaskType {
-        match self {
-            Task::Initialization(_) => TaskType::Initialization,
-            Task::BackendApi(_) => TaskType::BackendApi,
-            Task::Mqtt(_) => TaskType::Mqtt,
-            Task::Common(_) => TaskType::Common,
-        }
-    }
-}
-
-type TaskBuilderFn = fn(&str) -> Result<Task, crate::ServiceError>;
+type TaskFactoryFn = fn(&str) -> Result<Box<dyn TaskTrait>, crate::ServiceError>;
 
 #[macro_export]
 macro_rules! register_tasks {
@@ -180,57 +179,57 @@ macro_rules! register_tasks_no_parse {
     };
 }
 
-static TASK_BUILDERS: once_cell::sync::Lazy<
-    std::collections::HashMap<KnownTaskName, TaskBuilderFn>,
+static TASK_REGISTRY: once_cell::sync::Lazy<
+    std::collections::HashMap<KnownTaskName, TaskFactoryFn>,
 > = once_cell::sync::Lazy::new(|| {
-    let mut map: HashMap<KnownTaskName, TaskBuilderFn> = HashMap::new();
+    let mut map: HashMap<KnownTaskName, TaskFactoryFn> = HashMap::new();
 
     // Backend + Mqtt + Common：需要解析 request_body 的任务
     register_tasks!(map,
-        KnownTaskName::BackendApi => BackendApiTaskData => |parsed| Task::BackendApi(BackendApiTask::BackendApi(parsed)),
+        KnownTaskName::BackendApi => BackendApiTaskData => |parsed| Box::new(BackendApiTask::BackendApi(parsed)),
 
-        KnownTaskName::OrderMultiSignAccept => topics::OrderMultiSignAccept => |parsed| Task::Mqtt(Box::new(MqttTask::OrderMultiSignAccept(parsed))),
-        KnownTaskName::MultiSignTransCancel => topics::MultiSignTransCancel => |parsed| Task::Mqtt(Box::new(MqttTask::MultiSignTransCancel(parsed))),
-        KnownTaskName::OrderMultiSignAcceptCompleteMsg => topics::OrderMultiSignAcceptCompleteMsg =>|parsed| Task::Mqtt(Box::new(MqttTask::OrderMultiSignAcceptCompleteMsg(parsed))),
-        KnownTaskName::OrderMultiSignServiceComplete => topics::OrderMultiSignServiceComplete => |parsed| Task::Mqtt(Box::new(MqttTask::OrderMultiSignServiceComplete(parsed))),
-        KnownTaskName::OrderMultiSignCreated => topics::OrderMultiSignCreated => |parsed| Task::Mqtt(Box::new(MqttTask::OrderMultiSignCreated(parsed))),
-        KnownTaskName::OrderMultiSignCancel => topics::OrderMultiSignCancel =>|parsed| Task::Mqtt(Box::new(MqttTask::OrderMultiSignCancel(parsed))),
-        KnownTaskName::MultiSignTransAccept => topics::MultiSignTransAccept => |parsed| Task::Mqtt(Box::new(MqttTask::MultiSignTransAccept(parsed))),
-        KnownTaskName::MultiSignTransAcceptCompleteMsg => topics::MultiSignTransAcceptCompleteMsg =>|parsed| Task::Mqtt(Box::new(MqttTask::MultiSignTransAcceptCompleteMsg(parsed))),
-        KnownTaskName::AcctChange => topics::AcctChange => |parsed| Task::Mqtt(Box::new(MqttTask::AcctChange(parsed))),
-        KnownTaskName::BulletinMsg => topics::BulletinMsg => |parsed| Task::Mqtt(Box::new(MqttTask::BulletinMsg(parsed))),
-        KnownTaskName::PermissionAccept => topics::PermissionAccept => |parsed| Task::Mqtt(Box::new(MqttTask::PermissionAccept(parsed))),
-        KnownTaskName::MultiSignTransExecute => topics::MultiSignTransExecute =>|parsed| Task::Mqtt(Box::new(MqttTask::MultiSignTransExecute(parsed))),
-        KnownTaskName::CleanPermission => topics::CleanPermission => |parsed| Task::Mqtt(Box::new(MqttTask::CleanPermission(parsed))),
-        KnownTaskName::OrderAllConfirmed => topics::OrderAllConfirmed => |parsed| Task::Mqtt(Box::new(MqttTask::OrderAllConfirmed(parsed))),
+        KnownTaskName::OrderMultiSignAccept => topics::OrderMultiSignAccept => |parsed| Box::new(MqttTask::OrderMultiSignAccept(parsed)),
+        KnownTaskName::MultiSignTransCancel => topics::MultiSignTransCancel => |parsed| Box::new(MqttTask::MultiSignTransCancel(parsed)),
+        KnownTaskName::OrderMultiSignAcceptCompleteMsg => topics::OrderMultiSignAcceptCompleteMsg =>|parsed| Box::new(MqttTask::OrderMultiSignAcceptCompleteMsg(parsed)),
+        KnownTaskName::OrderMultiSignServiceComplete => topics::OrderMultiSignServiceComplete => |parsed| Box::new(MqttTask::OrderMultiSignServiceComplete(parsed)),
+        KnownTaskName::OrderMultiSignCreated => topics::OrderMultiSignCreated => |parsed| Box::new(MqttTask::OrderMultiSignCreated(parsed)),
+        KnownTaskName::OrderMultiSignCancel => topics::OrderMultiSignCancel =>|parsed| Box::new(MqttTask::OrderMultiSignCancel(parsed)),
+        KnownTaskName::MultiSignTransAccept => topics::MultiSignTransAccept => |parsed| Box::new(MqttTask::MultiSignTransAccept(parsed)),
+        KnownTaskName::MultiSignTransAcceptCompleteMsg => topics::MultiSignTransAcceptCompleteMsg =>|parsed| Box::new(MqttTask::MultiSignTransAcceptCompleteMsg(parsed)),
+        KnownTaskName::AcctChange => topics::AcctChange => |parsed| Box::new(MqttTask::AcctChange(parsed)),
+        KnownTaskName::BulletinMsg => topics::BulletinMsg => |parsed| Box::new(MqttTask::BulletinMsg(parsed)),
+        KnownTaskName::PermissionAccept => topics::PermissionAccept => |parsed| Box::new(MqttTask::PermissionAccept(parsed)),
+        KnownTaskName::MultiSignTransExecute => topics::MultiSignTransExecute =>|parsed| Box::new(MqttTask::MultiSignTransExecute(parsed)),
+        KnownTaskName::CleanPermission => topics::CleanPermission => |parsed| Box::new(MqttTask::CleanPermission(parsed)),
+        KnownTaskName::OrderAllConfirmed => topics::OrderAllConfirmed => |parsed| Box::new(MqttTask::OrderAllConfirmed(parsed)),
 
-        KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Task::Common(CommonTask::QueryCoinPrice(parsed)),
-        KnownTaskName::QueryQueueResult => QueueTaskEntity =>|parsed| Task::Common(CommonTask::QueryQueueResult(parsed)),
-        KnownTaskName::RecoverMultisigAccountData => RecoverDataBody =>|parsed| Task::Common(CommonTask::RecoverMultisigAccountData(parsed)),
-        KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> =>|parsed| Task::Common(CommonTask::SyncNodesAndLinkToChains(parsed))
+        KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
+        KnownTaskName::QueryQueueResult => QueueTaskEntity =>|parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
+        KnownTaskName::RecoverMultisigAccountData => RecoverDataBody =>|parsed| Box::new(CommonTask::RecoverMultisigAccountData(parsed)),
+        KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> =>|parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed))
     );
 
     // Initialization：不需要解析 request_body 的任务
     register_tasks_no_parse!(map,
-        KnownTaskName::PullAnnouncement => Task::Initialization(InitializationTask::PullAnnouncement),
-        KnownTaskName::PullHotCoins => Task::Initialization(InitializationTask::PullHotCoins),
-        KnownTaskName::InitTokenPrice => Task::Initialization(InitializationTask::InitTokenPrice),
-        KnownTaskName::SetBlockBrowserUrl => Task::Initialization(InitializationTask::SetBlockBrowserUrl),
-        KnownTaskName::SetFiat => Task::Initialization(InitializationTask::SetFiat),
-        KnownTaskName::RecoverQueueData => Task::Initialization(InitializationTask::RecoverQueueData),
-        KnownTaskName::InitMqtt => Task::Initialization(InitializationTask::InitMqtt)
+        KnownTaskName::PullAnnouncement => Box::new(InitializationTask::PullAnnouncement),
+        KnownTaskName::PullHotCoins => Box::new(InitializationTask::PullHotCoins),
+        KnownTaskName::InitTokenPrice => Box::new(InitializationTask::InitTokenPrice),
+        KnownTaskName::SetBlockBrowserUrl => Box::new(InitializationTask::SetBlockBrowserUrl),
+        KnownTaskName::SetFiat => Box::new(InitializationTask::SetFiat),
+        KnownTaskName::RecoverQueueData => Box::new(InitializationTask::RecoverQueueData),
+        KnownTaskName::InitMqtt => Box::new(InitializationTask::InitMqtt)
     );
 
     map
 });
 
-impl TryFrom<&TaskQueueEntity> for Task {
+impl TryFrom<&TaskQueueEntity> for Box<dyn TaskTrait> {
     type Error = crate::ServiceError;
 
     fn try_from(value: &TaskQueueEntity) -> Result<Self, Self::Error> {
         match &value.task_name {
             TaskName::Known(name) => {
-                if let Some(builder) = TASK_BUILDERS.get(name) {
+                if let Some(builder) = TASK_REGISTRY.get(name) {
                     builder(&value.request_body)
                 } else {
                     Err(crate::SystemError::Service(format!("Unknown task: {:?}", name)).into())

@@ -1,9 +1,6 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
-    infrastructure::task_queue::{
-        task::{Task, Tasks},
-        CommonTask,
-    },
+    infrastructure::task_queue::{task::Tasks, CommonTask},
     request::transaction::SwapTokenInfo,
 };
 use futures::{stream, StreamExt};
@@ -68,7 +65,7 @@ impl AssetsDomain {
                 chain_code,
                 &assets.token_address.clone().unwrap_or_default(),
             );
-            let task = Task::Common(CommonTask::QueryCoinPrice(req));
+            let task = CommonTask::QueryCoinPrice(req);
             Tasks::new().push(task).send().await?;
         }
         tx.upsert_assets(assets).await?;

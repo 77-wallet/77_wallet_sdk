@@ -1,4 +1,4 @@
-use crate::infrastructure::task_queue::task::Task;
+use crate::infrastructure::task_queue::task::TaskTrait;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{
     task::task_type::TaskType, task_manager::scheduler::TASK_CATEGORY_LIMIT,
@@ -239,13 +239,21 @@ impl Dispatcher {
     ) {
         let task_id = &task_entity.id;
 
-        let task: Task = match (&task_entity).try_into() {
+        let task: Box<dyn TaskTrait> = match (&task_entity).try_into() {
             Ok(t) => t,
             Err(_) => {
                 tracing::warn!("任务解析失败，跳过：id = {:?}", task_id);
                 return;
             } // 转换失败直接跳过
         };
+
+        // let task: Task = match (&task_entity).try_into() {
+        //     Ok(t) => t,
+        //     Err(_) => {
+        //         tracing::warn!("任务解析失败，跳过：id = {:?}", task_id);
+        //         return;
+        //     } // 转换失败直接跳过
+        // };
 
         // === 限速逻辑 ===
         let category = task.get_type();

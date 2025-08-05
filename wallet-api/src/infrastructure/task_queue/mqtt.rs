@@ -1,6 +1,46 @@
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
-use crate::messaging::mqtt::topics;
+use crate::{
+    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
+    messaging::mqtt::topics,
+};
+
+#[async_trait::async_trait]
+impl TaskTrait for MqttTask {
+    fn get_name(&self) -> TaskName {
+        self.get_name()
+    }
+    fn get_type(&self) -> TaskType {
+        TaskType::Mqtt
+    }
+    fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+        self.get_body()
+    }
+
+    async fn execute(&self, id: &str) -> Result<(), crate::ServiceError> {
+        match self {
+            MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
+            MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,
+            MqttTask::OrderMultiSignServiceComplete(data) => data.exec(id).await?,
+            MqttTask::OrderMultiSignCreated(data) => data.exec(id).await?,
+            MqttTask::OrderMultiSignCancel(data) => data.exec(id).await?,
+            MqttTask::MultiSignTransAccept(data) => data.exec(id).await?,
+            MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
+            MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
+            MqttTask::AcctChange(data) => data.exec(id).await?,
+            MqttTask::BulletinMsg(data) => data.exec(id).await?,
+            MqttTask::PermissionAccept(data) => data.exec(id).await?,
+            MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
+            MqttTask::CleanPermission(data) => data.exec(id).await?,
+            MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
+        }
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 pub(crate) enum MqttTask {
     OrderMultiSignAccept(topics::OrderMultiSignAccept),
@@ -99,27 +139,4 @@ impl MqttTask {
         };
         Ok(res)
     }
-}
-
-pub(crate) async fn handle_mqtt_task(
-    task: Box<MqttTask>,
-    id: &str,
-) -> Result<(), crate::ServiceError> {
-    match *task {
-        MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignServiceComplete(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignCreated(data) => data.exec(id).await?,
-        MqttTask::OrderMultiSignCancel(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransAccept(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransCancel(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransAcceptCompleteMsg(data) => data.exec(id).await?,
-        MqttTask::AcctChange(data) => data.exec(id).await?,
-        MqttTask::BulletinMsg(data) => data.exec(id).await?,
-        MqttTask::PermissionAccept(data) => data.exec(id).await?,
-        MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
-        MqttTask::CleanPermission(data) => data.exec(id).await?,
-        MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
-    }
-    Ok(())
 }

@@ -58,7 +58,7 @@ impl TryFrom<&MultiSignTransAcceptCompleteMsgBody> for NewSignatureEntity {
 
 // 签名的结果同步给所有人
 impl MultiSignTransAcceptCompleteMsg {
-    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         tracing::info!(

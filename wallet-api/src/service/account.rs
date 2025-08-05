@@ -23,8 +23,7 @@ use crate::{
         permission::PermissionDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        task::{Task, Tasks},
-        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
+        task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
     },
     response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
 };
@@ -213,21 +212,18 @@ impl AccountService {
         if let Some(tron_address) = tron_address {
             body.tron_address = Some(tron_address);
         };
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
 
         let address_batch_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
             &address_batch_init_task_data,
         )?;
         Tasks::new()
-            .push(task)
+            .push(CommonTask::QueryCoinPrice(req))
             // .push(Task::BackendApi(BackendApiTask::BackendApi(
             //     device_bind_address_task_data,
             // )))
-            .push(Task::Common(CommonTask::RecoverMultisigAccountData(body)))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                address_batch_init_task_data,
-            )))
+            .push(CommonTask::RecoverMultisigAccountData(body))
+            .push(BackendApiTask::BackendApi(address_batch_init_task_data))
             .send()
             .await?;
         // for task in address_init_task_data {
@@ -390,7 +386,7 @@ impl AccountService {
             &req,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(req)))
+            .push(BackendApiTask::BackendApi(req))
             .send()
             .await?;
 
@@ -435,9 +431,11 @@ impl AccountService {
                 PermissionDomain::delete_by_address(&pool, &account.address).await?;
             }
         }
-        let device_unbind_address_task =
-            Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
-        Tasks::new().push(device_unbind_address_task).send().await?;
+
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(device_unbind_address_task))
+            .send()
+            .await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;

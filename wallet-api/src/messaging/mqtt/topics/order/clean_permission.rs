@@ -14,7 +14,7 @@ impl CleanPermission {
         "CLEAN_PERMISSION".to_string()
     }
 
-    pub async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         let event_name = self.name();

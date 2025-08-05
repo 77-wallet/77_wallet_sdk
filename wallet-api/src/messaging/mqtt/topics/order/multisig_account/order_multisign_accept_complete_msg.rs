@@ -32,7 +32,7 @@ impl OrderMultiSignAcceptCompleteMsg {
 
 // 参与方同意后、同步数据给其他的成员同步对应的状态数据(多签账号数据状态流转)
 impl OrderMultiSignAcceptCompleteMsg {
-    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,
@@ -68,7 +68,13 @@ impl OrderMultiSignAcceptCompleteMsg {
             multisig_account_id = %account.id,
             "All members confirmed for account"
         );
-        Self::send_to_frontend(status as i8, &account.address, address_list, accept_status).await?;
+        Self::send_to_frontend(
+            *status as i8,
+            &account.address,
+            address_list.to_vec(),
+            *accept_status,
+        )
+        .await?;
 
         Ok(())
     }

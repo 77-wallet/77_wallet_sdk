@@ -65,7 +65,7 @@ async fn test_token_query_price() -> Result<(), Error> {
         chain_code: "ltc".to_string(),
         contract_address_list: vec!["".to_string()],
     }]);
-    let res = backend_api.token_query_price(req).await.unwrap();
+    let res = backend_api.token_query_price(&req).await.unwrap();
 
     let res_str = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("[test_token_query_price] res: {res_str}");

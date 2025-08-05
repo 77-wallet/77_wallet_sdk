@@ -65,7 +65,7 @@ impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
 }
 
 impl MultiSignTransAccept {
-    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
@@ -75,7 +75,7 @@ impl MultiSignTransAccept {
             "Starting MultiSignTransAccept processing");
 
         // 新增交易队列数据
-        let mut params = NewMultisigQueueEntity::try_from(&self)?;
+        let mut params = NewMultisigQueueEntity::try_from(self)?;
         let queue = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut params).await?;
 
         // 同步签名的状态
@@ -83,7 +83,7 @@ impl MultiSignTransAccept {
 
         // self.system_notify(&queue, pool).await?;
 
-        let data = NotifyEvent::Confirmation(ConfirmationFrontend::try_from(&self)?);
+        let data = NotifyEvent::Confirmation(ConfirmationFrontend::try_from(self)?);
         FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())

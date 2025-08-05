@@ -23,8 +23,7 @@ impl BackendApi {
 
     pub async fn token_query_price(
         &self,
-
-        req: crate::request::TokenQueryPriceReq,
+        req: &crate::request::TokenQueryPriceReq,
     ) -> Result<TokenPriceInfos, crate::Error> {
         let res = self
             .client

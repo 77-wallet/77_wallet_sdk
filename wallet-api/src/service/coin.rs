@@ -7,10 +7,7 @@ use crate::{
     },
     infrastructure::{
         parse_utc_with_error,
-        task_queue::{
-            task::{Task, Tasks},
-            BackendApiTask, BackendApiTaskData, CommonTask,
-        },
+        task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
     },
     response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
 };
@@ -211,7 +208,7 @@ impl CoinService {
 
     pub async fn query_token_price(
         mut self,
-        req: TokenQueryPriceReq,
+        req: &TokenQueryPriceReq,
     ) -> Result<(), crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
 
@@ -248,7 +245,7 @@ impl CoinService {
             req.insert(&coin.chain_code, &contract_address);
         });
 
-        let tokens = backend_api.token_query_price(req).await?.list;
+        let tokens = backend_api.token_query_price(&req).await?.list;
 
         let currency = {
             let config = crate::app_state::APP_STATE.read().await;
@@ -488,11 +485,9 @@ impl CoinService {
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         req.insert(chain_code, &token_address);
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
+        let task = CommonTask::QueryCoinPrice(req);
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                token_custom_init_task_data,
-            )))
+            .push(BackendApiTask::BackendApi(token_custom_init_task_data))
             .push(task)
             .send()
             .await?;

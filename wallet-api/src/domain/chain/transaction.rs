@@ -1,11 +1,7 @@
 use super::adapter::TransactionAdapter;
 use crate::{
     domain::coin::CoinDomain,
-    infrastructure::task_queue::{
-        self,
-        task::{Task, Tasks},
-        BackendApiTaskData,
-    },
+    infrastructure::task_queue::{self, task::Tasks, BackendApiTaskData},
     request::transaction::{self, Signer},
 };
 use wallet_chain_interact::{
@@ -195,9 +191,10 @@ impl ChainTransDomain {
                 },
             };
 
-            let task = Task::BackendApi(task_queue::BackendApiTask::BackendApi(
-                BackendApiTaskData::new(endpoint::UPLOAD_PERMISSION_TRANS, &params)?,
-            ));
+            let task = task_queue::BackendApiTask::BackendApi(BackendApiTaskData::new(
+                endpoint::UPLOAD_PERMISSION_TRANS,
+                &params,
+            )?);
             let _ = Tasks::new().push(task).send().await;
 
             new_bill.signer = users;

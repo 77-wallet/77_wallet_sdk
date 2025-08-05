@@ -7,8 +7,7 @@ use wallet_database::{
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
 use crate::infrastructure::task_queue::{
-    task::{Task, Tasks},
-    BackendApiTask, BackendApiTaskData, CommonTask,
+    task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask,
 };
 
 pub struct NodeDomain;
@@ -88,9 +87,7 @@ impl NodeDomain {
                 Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
 
                 Tasks::new()
-                    .push(Task::Common(CommonTask::SyncNodesAndLinkToChains(
-                        backend_nodes,
-                    )))
+                    .push(CommonTask::SyncNodesAndLinkToChains(backend_nodes))
                     .send()
                     .await?;
             }
@@ -101,9 +98,7 @@ impl NodeDomain {
                     &ChainRpcListReq::new(local_chains),
                 )?;
                 Tasks::new()
-                    .push(Task::BackendApi(BackendApiTask::BackendApi(
-                        chain_rpc_list_req,
-                    )))
+                    .push(BackendApiTask::BackendApi(chain_rpc_list_req))
                     .send()
                     .await?;
             }

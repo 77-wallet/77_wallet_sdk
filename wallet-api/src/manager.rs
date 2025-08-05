@@ -2,7 +2,7 @@ use crate::infrastructure::inner_event::InnerEventHandle;
 use crate::infrastructure::process_unconfirm_msg::{
     UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
 };
-use crate::infrastructure::task_queue::task::{Task, Tasks};
+use crate::infrastructure::task_queue::task::Tasks;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, InitializationTask};
 use crate::infrastructure::SharedCache;
@@ -69,29 +69,24 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
 
     let mut repo = RepositoryFactory::repo(pool.clone());
     let device = repo.get_device_info().await?;
-    let task = if let Some(device) = device
+
+    let mut tasks = Tasks::new().push(InitializationTask::InitMqtt);
+    if let Some(device) = device
         && device.language_init == 1
     {
-        domain::app::DeviceDomain::language_init(&device, "CHINESE_SIMPLIFIED").await?
+        tasks = tasks
+            .push(domain::app::DeviceDomain::language_init(&device, "CHINESE_SIMPLIFIED").await?);
     } else {
-        Task::Initialization(InitializationTask::PullAnnouncement)
-    };
-    Tasks::new()
-        .push(Task::Initialization(InitializationTask::InitMqtt))
-        .push(task)
-        .push(Task::Initialization(InitializationTask::PullHotCoins))
-        .push(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
-        .push(Task::Initialization(InitializationTask::SetFiat))
-        .push(Task::Initialization(InitializationTask::RecoverQueueData))
-        .push(Task::BackendApi(BackendApiTask::BackendApi(
-            token_query_rates_req,
-        )))
-        .push(Task::BackendApi(BackendApiTask::BackendApi(
-            set_official_website_req,
-        )))
-        .push(Task::BackendApi(BackendApiTask::BackendApi(
-            set_app_install_download_req,
-        )))
+        tasks = tasks.push(InitializationTask::PullAnnouncement);
+    }
+    tasks
+        .push(InitializationTask::PullHotCoins)
+        .push(InitializationTask::SetBlockBrowserUrl)
+        .push(InitializationTask::SetFiat)
+        .push(InitializationTask::RecoverQueueData)
+        .push(BackendApiTask::BackendApi(token_query_rates_req))
+        .push(BackendApiTask::BackendApi(set_official_website_req))
+        .push(BackendApiTask::BackendApi(set_app_install_download_req))
         .send()
         .await?;
 

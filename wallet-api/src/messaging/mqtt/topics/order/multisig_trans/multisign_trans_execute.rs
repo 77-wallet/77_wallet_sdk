@@ -19,7 +19,7 @@ impl MultiSignTransExecute {
 
 // 当某一个参与放执行交易后同步其他参与放交易的状态
 impl MultiSignTransExecute {
-    pub async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         // 并发可能导致查询不出来结果(事件的先后顺序不一致，导致错误)

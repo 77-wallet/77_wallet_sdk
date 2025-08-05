@@ -3,10 +3,7 @@ use wallet_database::{entities::task_queue::TaskQueueEntity, factory::Repository
 use wallet_utils::serde_func;
 
 use crate::{
-    infrastructure::task_queue::{
-        task::{Task, Tasks},
-        MqttTask,
-    },
+    infrastructure::task_queue::{task::Tasks, MqttTask},
     messaging::{
         mqtt::topics::OutgoingPayload,
         notify::{event::NotifyEvent, FrontendNotifyEvent},
@@ -190,7 +187,10 @@ where
 {
     let data = serde_func::serde_from_value::<T>(payload.body.clone())?;
     Tasks::new()
-        .push_with_id(&payload.msg_id, Task::Mqtt(Box::new(task_ctor(data))))
+        .push_with_id(
+            &payload.msg_id,
+            task_ctor(data), // Task::Mqtt(Box::new())
+        )
         .send()
         .await?;
     Ok(())

@@ -103,7 +103,7 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
 }
 
 impl PermissionAccept {
-    pub async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
