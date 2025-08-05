@@ -427,14 +427,24 @@ impl CoinEntity {
             time
         );
 
-        tracing::warn!("[get_last_coin] sql: {sql}");
-
         let res = sqlx::query_as::<_, CoinEntity>(&sql)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
     }
+
+    pub async fn coin_count<'a, E>(exec: E) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(*) FROM coin";
+        sqlx::query_scalar::<_, i64>(sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn coin_list_with_assets(
         search: &str,
         exclude_token: Vec<String>,

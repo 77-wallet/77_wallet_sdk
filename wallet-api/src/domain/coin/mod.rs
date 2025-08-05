@@ -8,7 +8,11 @@ use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     entities::coin::{CoinData, CoinEntity},
-    repositories::{coin::CoinRepoTrait, exchange_rate::ExchangeRateRepoTrait, ResourcesRepo},
+    repositories::{
+        coin::{CoinRepo, CoinRepoTrait},
+        exchange_rate::ExchangeRateRepoTrait,
+        ResourcesRepo,
+    },
     DbPool,
 };
 use wallet_transport_backend::{response_vo::coin::TokenCurrency, CoinInfo};
@@ -129,20 +133,24 @@ impl CoinDomain {
         }
     }
 
-    pub async fn fetch_all_coin(_pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
+    pub async fn fetch_all_coin(pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
         let backend_api = crate::Context::get_global_backend_api()?;
         let mut coins = Vec::new();
 
-        // TODO 1.5 版本还是查询所有的币，避免版本更新后导致未更新的查询不到数据
-        let create_at = None;
-
-        // let create_at = if let Some(last_coin) = CoinRepo::last_coin(pool, true).await? {
-        //     let formatted = last_coin.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-        //     Some(formatted)
-        // } else {
-        //     None
-        // };
+        // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。
+        // let create_at = None;
+        let count = CoinRepo::coin_count(pool).await?;
+        let create_at = if count > 500 {
+            if let Some(last_coin) = CoinRepo::last_coin(pool, true).await? {
+                let formatted = last_coin.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+                Some(formatted)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         coins.append(
             &mut backend_api
