@@ -1,10 +1,9 @@
 use super::{
-    account::{BalanceInfo, BalanceNotTruncate},
+    account::{BalanceInfo, BalanceStr},
     EstimateFeeResp,
 };
 use crate::{domain::chain::swap::calc_slippage, request::transaction::DexRoute};
 use alloy::primitives::U256;
-use rust_decimal::Decimal;
 use wallet_transport_backend::api::swap::ApproveInfo;
 
 // 查询报价的响应
@@ -13,10 +12,10 @@ use wallet_transport_backend::api::swap::ApproveInfo;
 pub struct ApiQuoteResp {
     pub chain_code: String,
     // 输入
-    pub amount_in: BalanceNotTruncate,
+    pub amount_in: BalanceStr,
     pub amount_in_symbol: String,
     // 输出
-    pub amount_out: BalanceNotTruncate,
+    pub amount_out: BalanceStr,
     pub amount_out_symbol: String,
     // 输入和输出的价值差
     pub price_spread: f64,
@@ -49,8 +48,8 @@ impl ApiQuoteResp {
         token_in_symbol: String,
         token_out_symbol: String,
         dex_route_list: Vec<DexRoute>,
-        bal_in: BalanceNotTruncate,
-        bal_out: BalanceNotTruncate,
+        bal_in: BalanceStr,
+        bal_out: BalanceStr,
     ) -> Self {
         let (rate, price_spread) = Self::calc_price_spread_and_rate(&bal_in, &bal_out);
 
@@ -80,8 +79,8 @@ impl ApiQuoteResp {
         slippage: f64,
         default_slippage: f64,
         dex_route_list: Vec<DexRoute>,
-        bal_in: BalanceNotTruncate,
-        bal_out: BalanceNotTruncate,
+        bal_in: BalanceStr,
+        bal_out: BalanceStr,
     ) -> Self {
         let (rate, price_spread) = Self::calc_price_spread_and_rate(&bal_in, &bal_out);
 
@@ -122,12 +121,14 @@ impl ApiQuoteResp {
 
     // 计算token_in 和token_out的价差,以及兑换比例
     pub fn calc_price_spread_and_rate(
-        amount_in: &BalanceNotTruncate,
-        amount_out: &BalanceNotTruncate,
+        amount_in: &BalanceStr,
+        amount_out: &BalanceStr,
     ) -> (f64, f64) {
-        let rate = if amount_in.amount > Decimal::ZERO {
-            wallet_utils::conversion::decimal_to_f64(&(amount_out.amount / amount_in.amount))
-                .unwrap_or(0.0)
+        let a_in = wallet_utils::unit::string_to_f64(&amount_in.amount).unwrap_or_default();
+
+        let rate = if a_in > 0.0 {
+            let a_out = wallet_utils::unit::string_to_f64(&amount_out.amount).unwrap_or_default();
+            a_out / a_in
         } else {
             0.0
         };

@@ -15,7 +15,7 @@ use crate::{
         WithdrawReq,
     },
     response_vo::{
-        account::{BalanceInfo, BalanceNotTruncate},
+        account::{BalanceInfo, BalanceStr},
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
         EstimateFeeResp,
     },
@@ -109,12 +109,13 @@ impl SwapServer {
         &self,
         req: &QuoteReq,
         amount_out: U256,
-    ) -> Result<(BalanceNotTruncate, BalanceNotTruncate), crate::ServiceError> {
+    ) -> Result<(BalanceStr, BalanceStr), crate::ServiceError> {
         // 查询两次后端
         let bal_in = TokenCurrencyGetter::get_bal_by_backend(
             &req.chain_code,
             &req.token_in.token_addr,
             &req.amount_in,
+            req.token_in.decimals as u8,
         )
         .await?;
 
@@ -122,6 +123,7 @@ impl SwapServer {
             &req.chain_code,
             &req.token_out.token_addr,
             &format_to_string(amount_out, req.token_out.decimals as u8)?,
+            req.token_out.decimals as u8,
         )
         .await?;
 

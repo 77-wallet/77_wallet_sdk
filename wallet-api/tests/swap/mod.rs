@@ -120,20 +120,20 @@ async fn test_quote() {
     let token_in = SwapTokenInfo {
         token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
         symbol: "TRX".to_string(),
-        decimals: 6,
+        decimals: 18,
     };
 
     let token_out = SwapTokenInfo {
         token_addr: "".to_string(),
         symbol: "WTRX".to_string(),
-        decimals: 6,
+        decimals: 18,
     };
 
     let req = QuoteReq {
         aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
         recipient: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "2".to_string(),
+        amount_in: "11111111111111111133.222222222222222225".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],

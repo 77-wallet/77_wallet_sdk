@@ -1,4 +1,5 @@
 use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
+use alloy::primitives::U256;
 use rust_decimal::Decimal;
 use wallet_database::entities::account::AccountEntity;
 use wallet_types::chain::address::category::AddressCategory;
@@ -278,12 +279,51 @@ impl BalanceNotTruncate {
     }
 }
 
-// pub fn serialize_f64_string<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
-// where
-//     S: serde::Serializer,
-// {
-//     s.serialize_str(&x.to_string())
-// }
+// 现在用于 quote的响应
+#[derive(Debug, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceStr {
+    // amount of token
+    pub amount: String,
+    // currency of symbol
+    pub currency: String,
+    // unit price or currency
+    #[serde(serialize_with = "default_unit_price_as_zero")]
+    pub unit_price: Option<f64>,
+    #[serde(serialize_with = "default_unit_price_as_zero")]
+    pub fiat_value: Option<f64>,
+}
+
+impl BalanceStr {
+    pub fn new(
+        amount: U256,
+        unit_price: Option<f64>,
+        currency: &str,
+        decimals: u8,
+    ) -> Result<Self, crate::ServiceError> {
+        let price_precision = 1_000_000_00u64;
+
+        let fiat_value = if let Some(price) = unit_price {
+            // 将价格扩大为整数
+            let p = U256::from((price * price_precision as f64) as u64);
+
+            let fiat_value = (amount * p) / U256::from(price_precision);
+
+            Some(wallet_utils::unit::format_to_f64(fiat_value, decimals)?)
+        } else {
+            None
+        };
+
+        let amount = wallet_utils::unit::format_to_string(amount, decimals)?;
+
+        Ok(Self {
+            amount: amount.to_string(),
+            currency: currency.to_string(),
+            unit_price,
+            fiat_value,
+        })
+    }
+}
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
