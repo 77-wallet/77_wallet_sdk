@@ -1,4 +1,4 @@
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
+use crate::infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData};
 use wallet_transport_backend::request::SendMsgConfirm;
 
 pub(crate) struct TaskQueueDomain;
@@ -23,7 +23,7 @@ impl TaskQueueDomain {
     pub async fn send_or_wrap_task<T: serde::Serialize + std::fmt::Debug>(
         req: T,
         endpoint: &str,
-    ) -> Result<Option<Task>, crate::ServiceError> {
+    ) -> Result<Option<BackendApiTask>, crate::ServiceError> {
         let backend = crate::Context::get_global_backend_api()?;
 
         let res = backend
@@ -33,9 +33,7 @@ impl TaskQueueDomain {
         if let Err(e) = res {
             tracing::error!("request backend:{},req:{:?} error:{}", endpoint, req, e);
 
-            let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                endpoint, &req,
-            )?));
+            let task = BackendApiTask::BackendApi(BackendApiTaskData::new(endpoint, &req)?);
             return Ok(Some(task));
         }
         Ok(None)

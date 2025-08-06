@@ -2,7 +2,7 @@ use crate::{
     domain::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
     response_vo::assets::{
         AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
     },
@@ -398,10 +398,9 @@ impl AssetsService {
             &token_balance_refresh_req,
         )?;
 
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new()
-            .push(task)
-            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .push(CommonTask::QueryCoinPrice(req))
+            .push(BackendApiTask::BackendApi(task_data))
             .send()
             .await?;
         Ok(())

@@ -11,7 +11,7 @@ pub struct ChainChange(Vec<ChainUrlInfo>);
 
 // biz_type = CHAIN_CHANGE
 impl ChainChange {
-    pub(crate) async fn exec(self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self) -> Result<(), crate::ServiceError> {
         let ChainChange(body) = &self;
         ConfigDomain::set_block_browser_url(body).await?;
 
@@ -19,7 +19,7 @@ impl ChainChange {
             crate::domain::chain::ChainDomain::upsert_multi_chain_than_toggle(body.into()).await?;
         let data = ChainChangeFrontend {
             has_new_chain,
-            chains: self.0,
+            chains: self.0.to_vec(),
         };
         let data = NotifyEvent::ChainChange(data);
         FrontendNotifyEvent::new(data).send().await?;

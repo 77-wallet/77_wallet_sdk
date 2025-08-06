@@ -1,8 +1,8 @@
+use super::has_expiration;
 use serde::{Serialize, Serializer};
 use sqlx::types::chrono::{DateTime, Utc};
 use wallet_types::constant::chain_code;
 
-use super::has_expiration;
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct BillEntity {
@@ -33,18 +33,13 @@ pub struct BillEntity {
     pub queue_id: String,
     pub notes: String,
     pub signer: String,
-    pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
-    pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+    // 针对每种订单的额外数据类 默认 “”
+    pub extra: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 impl BillEntity {
-    pub fn get_token(&self) -> String {
-        if let Some(token) = &self.token {
-            return token.clone();
-        }
-        "".to_string()
-    }
-
     pub fn get_other_address(&self) -> String {
         if self.transfer_type == 1 {
             self.to_addr.clone()
@@ -130,6 +125,12 @@ pub enum BillKind {
     WithdrawReward = 21,
     // 更新权限
     UpdatePermission = 22,
+    // 授权交易
+    Approve = 23,
+    // 授权交易
+    UnApprove = 24,
+    // swap 交易
+    Swap = 25,
 }
 impl Serialize for BillKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -145,46 +146,48 @@ impl BillKind {
         *self as i8
     }
 
-    // 订单类型进行转换
-    pub fn get_kinds(&self) -> Vec<i8> {
-        match self {
-            BillKind::Transfer => vec![BillKind::Transfer.to_i8()],
-            BillKind::ServiceCharge => vec![BillKind::ServiceCharge.to_i8()],
-            BillKind::MultiSignTx => vec![BillKind::MultiSignTx.to_i8()],
-            BillKind::SigningFee => vec![BillKind::SigningFee.to_i8()],
-            BillKind::DeployMultiSign => vec![BillKind::DeployMultiSign.to_i8()],
-            BillKind::FreezeBandwidth | BillKind::FreezeEnergy => vec![
-                BillKind::FreezeBandwidth.to_i8(),
-                BillKind::FreezeEnergy.to_i8(),
-            ],
-            BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => vec![
-                BillKind::UnFreezeBandwidth.to_i8(),
-                BillKind::UnFreezeEnergy.to_i8(),
-            ],
-            BillKind::CancelAllUnFreeze => vec![BillKind::CancelAllUnFreeze.to_i8()],
-            BillKind::WithdrawUnFreeze => vec![BillKind::WithdrawUnFreeze.to_i8()],
-            BillKind::DelegateBandwidth | BillKind::DelegateEnergy => vec![
-                BillKind::DelegateBandwidth.to_i8(),
-                BillKind::DelegateEnergy.to_i8(),
-            ],
-            BillKind::BatchDelegateBandwidth | BillKind::BatchDelegateEnergy => vec![
-                BillKind::BatchDelegateBandwidth.to_i8(),
-                BillKind::BatchDelegateEnergy.to_i8(),
-            ],
+    // // 订单类型进行转换(不需要了-按照最细的订单进行查询)
+    // pub fn get_kinds(&self) -> Vec<i8> {
+    //     match self {
+    //         BillKind::Transfer => vec![BillKind::Transfer.to_i8()],
+    //         BillKind::ServiceCharge => vec![BillKind::ServiceCharge.to_i8()],
+    //         BillKind::MultiSignTx => vec![BillKind::MultiSignTx.to_i8()],
+    //         BillKind::SigningFee => vec![BillKind::SigningFee.to_i8()],
+    //         BillKind::DeployMultiSign => vec![BillKind::DeployMultiSign.to_i8()],
+    //         BillKind::FreezeBandwidth | BillKind::FreezeEnergy => vec![
+    //             BillKind::FreezeBandwidth.to_i8(),
+    //             BillKind::FreezeEnergy.to_i8(),
+    //         ],
+    //         BillKind::UnFreezeBandwidth | BillKind::UnFreezeEnergy => vec![
+    //             BillKind::UnFreezeBandwidth.to_i8(),
+    //             BillKind::UnFreezeEnergy.to_i8(),
+    //         ],
+    //         BillKind::CancelAllUnFreeze => vec![BillKind::CancelAllUnFreeze.to_i8()],
+    //         BillKind::WithdrawUnFreeze => vec![BillKind::WithdrawUnFreeze.to_i8()],
+    //         BillKind::DelegateBandwidth | BillKind::DelegateEnergy => vec![
+    //             BillKind::DelegateBandwidth.to_i8(),
+    //             BillKind::DelegateEnergy.to_i8(),
+    //         ],
+    //         BillKind::BatchDelegateBandwidth | BillKind::BatchDelegateEnergy => vec![
+    //             BillKind::BatchDelegateBandwidth.to_i8(),
+    //             BillKind::BatchDelegateEnergy.to_i8(),
+    //         ],
 
-            BillKind::UnDelegateBandwidth | BillKind::UnDelegateEnergy => vec![
-                BillKind::UnDelegateBandwidth.to_i8(),
-                BillKind::UnDelegateEnergy.to_i8(),
-            ],
-            BillKind::BatchUnDelegateBandwidth | BillKind::BatchUnDelegateEnergy => vec![
-                BillKind::BatchUnDelegateBandwidth.to_i8(),
-                BillKind::BatchUnDelegateEnergy.to_i8(),
-            ],
-            BillKind::Vote => vec![BillKind::Vote.to_i8()],
-            BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
-            BillKind::UpdatePermission => vec![BillKind::UpdatePermission.to_i8()],
-        }
-    }
+    //         BillKind::UnDelegateBandwidth | BillKind::UnDelegateEnergy => vec![
+    //             BillKind::UnDelegateBandwidth.to_i8(),
+    //             BillKind::UnDelegateEnergy.to_i8(),
+    //         ],
+    //         BillKind::BatchUnDelegateBandwidth | BillKind::BatchUnDelegateEnergy => vec![
+    //             BillKind::BatchUnDelegateBandwidth.to_i8(),
+    //             BillKind::BatchUnDelegateEnergy.to_i8(),
+    //         ],
+    //         BillKind::Vote => vec![BillKind::Vote.to_i8()],
+    //         BillKind::WithdrawReward => vec![BillKind::WithdrawReward.to_i8()],
+    //         BillKind::UpdatePermission => vec![BillKind::UpdatePermission.to_i8()],
+    //         BillKind::Approve => vec![BillKind::Approve.to_i8()],
+    //         BillKind::Swap => vec![BillKind::Swap.to_i8()],
+    //     }
+    // }
 
     // 金额是否转出的交易类型(针对本地的交易)
     pub fn out_transfer_type(&self) -> bool {
@@ -238,6 +241,9 @@ impl TryFrom<i8> for BillKind {
             20 => Ok(BillKind::Vote),
             21 => Ok(BillKind::WithdrawReward),
             22 => Ok(BillKind::UpdatePermission),
+            23 => Ok(BillKind::Approve),
+            24 => Ok(BillKind::UnApprove),
+            25 => Ok(BillKind::Swap),
             _ => Err(crate::Error::Other(format!(
                 "Invalid value for TxKind : {}",
                 value
@@ -248,7 +254,7 @@ impl TryFrom<i8> for BillKind {
 
 // 创建的账单的类型
 #[derive(Debug)]
-pub struct NewBillEntity {
+pub struct NewBillEntity<T: serde::Serialize = String> {
     pub hash: String,
     pub from: String,
     pub to: String,
@@ -267,6 +273,7 @@ pub struct NewBillEntity {
     pub block_height: String,
     pub notes: String,
     pub signer: Vec<String>,
+    pub extra: Option<T>,
 }
 impl NewBillEntity {
     pub fn new(
@@ -301,6 +308,7 @@ impl NewBillEntity {
             transaction_time: 0,
             block_height: "0".to_string(),
             signer: vec![],
+            extra: None,
         }
     }
 
@@ -329,9 +337,119 @@ impl NewBillEntity {
             block_height: "0".to_string(),
             notes: "".to_string(),
             signer: vec![],
+            extra: None,
         }
     }
 
+    pub fn new_signed_bill(hash: String, from: String, chain_code: String) -> Self {
+        Self {
+            hash,
+            from,
+            to: "".to_string(),
+            token: None,
+            chain_code,
+            symbol: "SOL".to_string(),
+            status: 1,
+            value: 0.0,
+            transaction_fee: "0.000005".to_string(),
+            resource_consume: "".to_string(),
+            transaction_time: 0,
+            multisig_tx: false,
+            tx_type: 1,
+            tx_kind: BillKind::SigningFee,
+            queue_id: "".to_string(),
+            block_height: "0".to_string(),
+            notes: "sign multisig tx transaction".to_string(),
+            signer: vec![],
+            extra: None,
+        }
+    }
+
+    pub fn with_notes(mut self, notes: &str) -> Self {
+        self.notes = notes.to_owned();
+        self
+    }
+
+    pub fn with_token(mut self, token: &str) -> Self {
+        self.token = Some(token.to_owned());
+        self
+    }
+
+    pub fn with_status(mut self, status: i8) -> Self {
+        self.status = status;
+        self
+    }
+
+    pub fn with_tx_type(mut self, types: i8) -> Self {
+        self.tx_type = types;
+        self
+    }
+
+    pub fn with_queue_id(mut self, queue_id: &str) -> Self {
+        self.queue_id = queue_id.to_owned();
+        self
+    }
+
+    pub fn with_transaction_fee(mut self, transaction_fee: &str) -> Self {
+        self.transaction_fee = transaction_fee.to_owned();
+        self
+    }
+
+    pub fn with_transaction_time(mut self, transaction_time: i64) -> Self {
+        self.transaction_time = transaction_time;
+        self
+    }
+
+    pub fn with_block_height(mut self, block_height: &str) -> Self {
+        self.block_height = block_height.to_owned();
+        self
+    }
+
+    pub fn with_resource_consume(mut self, resource_consume: &str) -> Self {
+        self.resource_consume = resource_consume.to_owned();
+        self
+    }
+
+    pub fn with_signer(mut self, signer: Vec<String>) -> Self {
+        self.signer = signer;
+        self
+    }
+}
+
+#[derive(serde::Serialize)]
+// 代理类型的资源梳理额外信息
+pub struct BillExtraResourceValue {
+    // 具体代理了多少资源(质押，代理，回收)
+    pub value: i64,
+    // 资源类型:energy ,bandwidth
+    pub resource_type: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillExtraVotes {
+    // 投票的地址
+    pub vote_addr: String,
+    // 投票的数量
+    pub votes: i64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BillExtraSwap {
+    // 代币符号
+    pub from_token_symbol: String,
+    // 金额
+    pub from_token_amount: f64,
+    // 代币符号
+    pub to_token_symbol: String,
+    // 代币金额
+    pub to_token_amount: f64,
+    // 兑换比例
+    pub price: f64,
+}
+
+impl<T: serde::Serialize> NewBillEntity<T> {
     // 构建质押相关的交易
     pub fn new_stake_bill(
         hash: String,
@@ -341,6 +459,7 @@ impl NewBillEntity {
         bill_kind: BillKind,
         bill_consumer: String,
         transaction_fee: String,
+        extra: Option<T>,
     ) -> Self {
         let tx_type = if bill_kind.in_transfer_type() { 0 } else { 1 };
 
@@ -363,76 +482,11 @@ impl NewBillEntity {
             block_height: "0".to_string(),
             notes: "".to_string(),
             signer: vec![],
+            extra,
         }
     }
 
-    pub fn new_signed_bill(hash: String, from: String, chain_code: String) -> Self {
-        // TODO 现在sol 链默认确认中的手续费 0.000005
-        Self {
-            hash,
-            from,
-            to: "".to_string(),
-            token: None,
-            chain_code,
-            symbol: "SOL".to_string(),
-            status: 1,
-            value: 0.0,
-            transaction_fee: "0.000005".to_string(),
-            resource_consume: "".to_string(),
-            transaction_time: 0,
-            multisig_tx: false,
-            tx_type: 1,
-            tx_kind: BillKind::SigningFee,
-            queue_id: "".to_string(),
-            block_height: "0".to_string(),
-            notes: "sign multisig tx transaction".to_string(),
-            signer: vec![],
-        }
-    }
-
-    pub fn with_notes(mut self, notes: &str) -> Self {
-        self.notes = notes.to_owned();
-        self
-    }
-
-    pub fn with_token(mut self, token: &str) -> Self {
-        self.token = Some(token.to_owned());
-        self
-    }
-    pub fn with_status(mut self, status: i8) -> Self {
-        self.status = status;
-        self
-    }
-    pub fn with_tx_type(mut self, types: i8) -> Self {
-        self.tx_type = types;
-        self
-    }
-    pub fn with_queue_id(mut self, queue_id: &str) -> Self {
-        self.queue_id = queue_id.to_owned();
-        self
-    }
-    pub fn with_transaction_fee(mut self, transaction_fee: &str) -> Self {
-        self.transaction_fee = transaction_fee.to_owned();
-        self
-    }
-    pub fn with_transaction_time(mut self, transaction_time: i64) -> Self {
-        self.transaction_time = transaction_time;
-        self
-    }
-    pub fn with_block_height(mut self, block_height: &str) -> Self {
-        self.block_height = block_height.to_owned();
-        self
-    }
-    pub fn with_resource_consume(mut self, resource_consume: &str) -> Self {
-        self.resource_consume = resource_consume.to_owned();
-        self
-    }
-
-    pub fn with_signer(mut self, signer: Vec<String>) -> Self {
-        self.signer = signer;
-        self
-    }
-
+    // 获取到订单的拥有者
     pub fn get_owner(&self) -> String {
         if self.tx_kind.in_transfer_type() {
             self.from.clone()
@@ -440,6 +494,40 @@ impl NewBillEntity {
             self.to.clone()
         } else {
             self.from.clone()
+        }
+    }
+
+    pub fn get_multisig_i32(&self) -> i32 {
+        if self.multisig_tx {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub fn get_symbol_and_to(&self) -> (String, String) {
+        // 一笔代币转账两次账变通知、如果第一次是手续费的通知，symbol 为空，等第二次代币的通知在修改symbol
+        // TODO 此处需要优化 不能简单的判断value = 0,在部署多签账号的时候有问题
+        if self.value == 0.0
+            && self.tx_kind.to_i8() == BillKind::Transfer.to_i8()
+            && self.chain_code == chain_code::TRON
+        {
+            ("".to_string(), "".to_string())
+        } else {
+            (self.symbol.to_uppercase(), self.to.clone())
+        }
+    }
+
+    pub fn get_singer_str(&self) -> String {
+        let signer = self.signer.join(",");
+        signer.trim_end_matches(",").to_string()
+    }
+
+    pub fn get_extra_str(&self) -> Result<String, crate::Error> {
+        if let Some(extra) = &self.extra {
+            Ok(wallet_utils::serde_func::serde_to_string(extra)?)
+        } else {
+            Ok("".to_string())
         }
     }
 }

@@ -1,7 +1,7 @@
 use super::adapter::TransactionAdapter;
 use crate::{
     domain::coin::CoinDomain,
-    infrastructure::task_queue::{self, BackendApiTaskData},
+    infrastructure::task_queue::{self, task::Tasks, BackendApiTaskData},
     request::transaction::{self, Signer},
 };
 use wallet_chain_interact::{
@@ -191,10 +191,11 @@ impl ChainTransDomain {
                 },
             };
 
-            let task = task_queue::Task::BackendApi(task_queue::BackendApiTask::BackendApi(
-                BackendApiTaskData::new(endpoint::UPLOAD_PERMISSION_TRANS, &params)?,
-            ));
-            let _ = task_queue::Tasks::new().push(task).send().await;
+            let task = task_queue::BackendApiTask::BackendApi(BackendApiTaskData::new(
+                endpoint::UPLOAD_PERMISSION_TRANS,
+                &params,
+            )?);
+            let _ = Tasks::new().push(task).send().await;
 
             new_bill.signer = users;
         }
@@ -237,6 +238,26 @@ impl ChainTransDomain {
                 Ok(gas_oracle)
             }
         }
+    }
+
+    pub async fn default_gas_oracle(
+        provider: &eth::Provider,
+    ) -> Result<GasOracle, crate::ServiceError> {
+        let eth_fee = provider.get_default_fee().await?;
+
+        let propose = eth_fee.base_fee + eth_fee.priority_fee_per_gas;
+        let propose = unit::format_to_string(propose, eth::consts::ETH_GWEI)?;
+        let base = unit::format_to_string(eth_fee.base_fee, eth::consts::ETH_GWEI)?;
+
+        let gas_oracle = GasOracle {
+            safe_gas_price: None,
+            propose_gas_price: Some(propose),
+            fast_gas_price: None,
+            suggest_base_fee: Some(base),
+            gas_used_ratio: None,
+        };
+
+        Ok(gas_oracle)
     }
 
     // check balance

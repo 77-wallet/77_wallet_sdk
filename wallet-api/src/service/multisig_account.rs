@@ -4,7 +4,7 @@ use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransDomain;
 use crate::domain::multisig::MultisigDomain;
 use crate::domain::task_queue::TaskQueueDomain;
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
+use crate::infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData};
 use crate::messaging::mqtt::topics::OrderMultiSignAccept;
 use crate::request::transaction;
 use crate::response_vo;
@@ -347,11 +347,8 @@ impl MultisigAccountService {
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let account_with_wallet = AccountRepo::account_with_wallet(pay_address, pay_chain, pool)
-            .await?
-            .ok_or(crate::BusinessError::Account(
-                crate::AccountError::NotFound(pay_address.to_string()),
-            ))?;
+        let account_with_wallet =
+            AccountRepo::account_with_wallet(pay_address, pay_chain, &pool).await?;
 
         // service fee
         let req = SignedFeeListReq::new(account_chain, pay_address, account_with_wallet.uid);
@@ -577,10 +574,10 @@ impl MultisigAccountService {
             "businessId":&multisig_account.id.clone(),
             "rawData":raw_data.to_string()?
         });
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+        let task = BackendApiTask::BackendApi(BackendApiTaskData {
             endpoint: endpoint::multisig::SIGNED_ORDER_SAVE_RAW_DATA.to_string(),
             body,
-        }));
+        });
         Tasks::new().push(task).send().await?;
 
         Ok(())
@@ -623,11 +620,7 @@ impl MultisigAccountService {
         // fetch value
         let pool = crate::Context::get_global_sqlite_pool()?;
         let account_with_wallet =
-            AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, pool)
-                .await?
-                .ok_or(crate::BusinessError::Account(
-                    crate::AccountError::NotFound(payer.from.to_string()),
-                ))?;
+            AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, &pool).await?;
 
         let req = SignedFeeListReq::new(
             &multisig_account.chain_code,
@@ -675,10 +668,10 @@ impl MultisigAccountService {
             raw_data: "".to_string(),
             score_trans_id: amount.score_trans_id,
         };
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+        let task = BackendApiTask::BackendApi(BackendApiTaskData {
             endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_RECHARGE_HASH.to_string(),
             body: serde_func::serde_to_value(&req)?,
-        }));
+        });
         Tasks::new().push(task).send().await?;
 
         let status = if amount.free != 0.0 {
@@ -745,10 +738,10 @@ impl MultisigAccountService {
             &account.authority_addr,
             multisig_args.to_json_str()?,
         );
-        let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData {
+        let task = BackendApiTask::BackendApi(BackendApiTaskData {
             endpoint: endpoint::multisig::SIGNED_ORDER_UPDATE_SIGNED_HASH.to_string(),
             body: serde_func::serde_to_value(&req)?,
-        }));
+        });
         Tasks::new().push(task).send().await?;
 
         Ok(hash)

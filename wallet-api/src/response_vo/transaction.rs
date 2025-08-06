@@ -4,6 +4,7 @@ use super::account::default_unit_price_as_zero;
 use super::account::BalanceInfo;
 use super::account::BalanceNotTruncate;
 use alloy::primitives::U256;
+use wallet_chain_interact::eth::FeeSetting;
 use wallet_chain_interact::{eth, tron};
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::{
@@ -80,10 +81,12 @@ pub struct BillDetailVo {
     pub resource_consume: Option<wallet_chain_interact::BillResourceConsume>,
     pub fee_symbol: String,
     pub signature: Option<Vec<MemberSignedResult>>,
+    pub wallet_name: String,
+    pub account_name: String,
 }
 
 // about fee estimate fee
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EstimateFeeResp {
     pub symbol: String,
@@ -107,7 +110,7 @@ pub struct FeeDetails<T>(Vec<FeeStructure<T>>);
 #[serde(rename_all = "camelCase")]
 pub struct FeeDetailsVo<T> {
     default: String,
-    data: Vec<FeeStructureVo<T>>,
+    pub data: Vec<FeeStructureVo<T>>,
 }
 
 impl FeeDetails<EthereumFeeDetails> {
@@ -272,6 +275,16 @@ impl EthereumFeeDetails {
         }
     }
 }
+impl From<FeeSetting> for EthereumFeeDetails {
+    fn from(value: FeeSetting) -> Self {
+        Self {
+            gas_limit: value.gas_limit.to::<u64>() as i64,
+            base_fee: value.base_fee.to_string(),
+            priority_fee: value.max_priority_fee_per_gas.to_string(),
+            max_fee_per_gas: value.max_fee_per_gas.to_string(),
+        }
+    }
+}
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -324,7 +337,7 @@ pub struct BitcoinFeeDetails {
     pub size: i64,
 }
 
-// 目前在多签交易的时候使用
+// 目前在多签交易的时候使用,以及不需要显示块中慢
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommonFeeDetails {

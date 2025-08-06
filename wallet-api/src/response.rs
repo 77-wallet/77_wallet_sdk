@@ -62,6 +62,10 @@ impl From<crate::ServiceError> for (i64, String) {
             crate::ServiceError::Tree(_) => (640, err.to_string()),
             crate::ServiceError::Oss(_) => (650, err.to_string()),
             crate::ServiceError::System(_) => (660, err.to_string()),
+            crate::ServiceError::AggregatorError { code, msg: _ } => {
+                let error = if code != -1 { code } else { 670 };
+                (error as i64, err.to_string())
+            }
         };
         (code, message)
     }

@@ -1,8 +1,13 @@
 use wallet_database::{
     entities::account::AccountEntity,
     repositories::{
-        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
-        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo,
+        account::{AccountRepo, AccountRepoTrait},
+        chain::ChainRepoTrait,
+        coin::CoinRepoTrait,
+        device::DeviceRepoTrait,
+        multisig_account::MultisigAccountRepo,
+        wallet::WalletRepoTrait,
+        ResourcesRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -18,9 +23,9 @@ use crate::{
         permission::PermissionDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, Task, Tasks,
+        task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
     },
-    response_vo::account::{DerivedAddressesList, QueryAccountDerivationPath},
+    response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
 };
 
 pub struct AccountService {
@@ -207,21 +212,18 @@ impl AccountService {
         if let Some(tron_address) = tron_address {
             body.tron_address = Some(tron_address);
         };
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
 
         let address_batch_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
             &address_batch_init_task_data,
         )?;
         Tasks::new()
-            .push(task)
+            .push(CommonTask::QueryCoinPrice(req))
             // .push(Task::BackendApi(BackendApiTask::BackendApi(
             //     device_bind_address_task_data,
             // )))
-            .push(Task::Common(CommonTask::RecoverMultisigAccountData(body)))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                address_batch_init_task_data,
-            )))
+            .push(CommonTask::RecoverMultisigAccountData(body))
+            .push(BackendApiTask::BackendApi(address_batch_init_task_data))
             .send()
             .await?;
         // for task in address_init_task_data {
@@ -384,7 +386,7 @@ impl AccountService {
             &req,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(req)))
+            .push(BackendApiTask::BackendApi(req))
             .send()
             .await?;
 
@@ -429,9 +431,11 @@ impl AccountService {
                 PermissionDomain::delete_by_address(&pool, &account.address).await?;
             }
         }
-        let device_unbind_address_task =
-            Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
-        Tasks::new().push(device_unbind_address_task).send().await?;
+
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(device_unbind_address_task))
+            .send()
+            .await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -591,6 +595,60 @@ impl AccountService {
             .repo
             .get_account_list_by_wallet_address_and_account_id(wallet_address, account_id)
             .await?)
+    }
+
+    pub async fn current_chain_address(
+        uid: String,
+        account_id: u32,
+        chain_code: &str,
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let res = AccountRepo::current_chain_address(uid, account_id, chain_code, &pool).await?;
+
+        let result = res
+            .into_iter()
+            .map(QueryAccountDerivationPath::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(result)
+    }
+
+    pub async fn current_accounts(
+        &mut self,
+        wallet_address: &str,
+        account_id: i32,
+    ) -> Result<Vec<CurrentAccountInfo>, crate::ServiceError> {
+        let accounts = self
+            .repo
+            .get_account_list_by_wallet_address_and_account_id(
+                Some(wallet_address),
+                Some(account_id as u32),
+            )
+            .await?;
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut repo = MultisigAccountRepo::new(pool);
+
+        let mut result = vec![];
+        for account in accounts.into_iter() {
+            let is_multisig = if account.chain_code == chain_code::TRON {
+                repo.found_by_address(&account.address).await?.is_some()
+            } else {
+                false
+            };
+            let address_type =
+                AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
+
+            result.push(CurrentAccountInfo {
+                chain_code: account.chain_code,
+                address: account.address,
+                address_type,
+                is_multisig,
+            });
+        }
+
+        Ok(result)
     }
 
     // pub fn recover_subkey(

@@ -1,6 +1,7 @@
+use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
     domain::api_account::ApiAccountDomain,
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
     response_vo,
 };
 use wallet_chain_interact::{
@@ -18,9 +19,8 @@ use wallet_types::chain::{
 };
 use wallet_utils::address;
 
-use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
-
 pub mod adapter;
+pub mod swap;
 pub mod transaction;
 
 pub struct TransferResp {
@@ -218,9 +218,7 @@ impl ChainDomain {
             &ChainRpcListReq::new(chain_codes),
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                chain_rpc_list_req,
-            )))
+            .push(BackendApiTask::BackendApi(chain_rpc_list_req))
             .send()
             .await?;
 

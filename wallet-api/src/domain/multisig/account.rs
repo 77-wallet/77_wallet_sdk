@@ -1,6 +1,6 @@
 use crate::{
     domain::{self, chain::adapter::ChainAdapterFactory},
-    infrastructure::task_queue::{BackendApiTask, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask},
 };
 use sqlx::{Pool, Sqlite};
 use wallet_database::{
@@ -667,8 +667,7 @@ impl MultisigDomain {
             )
             .await?;
 
-        let device_unbind_address_task =
-            Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
+        let device_unbind_address_task = BackendApiTask::BackendApi(device_unbind_address_task);
         Tasks::new().push(device_unbind_address_task).send().await?;
         Ok(())
     }

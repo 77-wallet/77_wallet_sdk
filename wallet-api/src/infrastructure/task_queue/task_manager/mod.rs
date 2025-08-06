@@ -1,11 +1,9 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
 use crate::domain::app::config::ConfigDomain;
+use crate::infrastructure::task_queue::task::task_type::TaskType;
+use crate::infrastructure::task_queue::task::TaskTrait;
 
-use super::{
-    handle_backend_api_task, handle_common_task, handle_initialization_task, handle_mqtt_task,
-    Task, TaskType,
-};
 use dashmap::DashSet;
 use dispatcher::{Dispatcher, PriorityTask, TaskSender};
 use rand::Rng as _;
@@ -94,7 +92,7 @@ impl TaskManager {
         // tracing::info!("failed_queue: {:#?}", failed_queue);
         for task_entity in failed_queue.into_iter() {
             if !running_tasks.contains(&task_entity.id) {
-                let Ok(task) = (&task_entity).try_into() else {
+                let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {
                     tracing::error!(
                         "task queue entity convert to task error: {}",
                         task_entity.id
@@ -103,7 +101,7 @@ impl TaskManager {
                     continue;
                 };
 
-                let priority = scheduler::assign_priority(&task, true)?;
+                let priority = scheduler::assign_priority(&*task, true)?;
                 grouped_tasks.entry(priority).or_default().push(task_entity);
             }
         }
@@ -245,7 +243,7 @@ impl TaskManager {
         let backend_api = crate::Context::get_global_backend_api()?;
         backend_api.client_task_log_upload(req).await?;
 
-        let task: Task = task_entity.try_into()?;
+        let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
             let unconfirmed_msg_collector =
                 crate::manager::Context::get_global_unconfirmed_msg_collector()?;
@@ -275,23 +273,12 @@ impl TaskManager {
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         let id = task_entity.id.clone();
-        let task: Task = task_entity.try_into()?;
-        let task_type = task.get_type();
-        let backend_api = crate::manager::Context::get_global_backend_api()?;
-        // update task running status
+        let task: Box<dyn TaskTrait> = task_entity.try_into()?;
+        let task_type = task.get_type(); // update task running status
 
         repo.task_running(&id).await?;
 
-        match task {
-            Task::Initialization(initialization_task) => {
-                handle_initialization_task(initialization_task, pool).await?
-            }
-            Task::BackendApi(backend_api_task) => {
-                handle_backend_api_task(backend_api_task, backend_api).await?
-            }
-            Task::Mqtt(mqtt_task) => handle_mqtt_task(mqtt_task, &id).await?,
-            Task::Common(common_task) => handle_common_task(common_task, pool).await?,
-        }
+        task.execute(&id).await?;
 
         repo.task_done(&id).await?;
 

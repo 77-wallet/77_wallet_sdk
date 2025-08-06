@@ -1,4 +1,7 @@
-use crate::entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode};
+use crate::{
+    entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
+    sql_utils::{query_builder::DynamicQueryBuilder, SqlArg, SqlExecutableReturn as _},
+};
 use sqlx::{Executor, Sqlite};
 
 impl ChainEntity {
@@ -199,6 +202,19 @@ impl ChainEntity {
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_v2<'a, E>(executor: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut builder = DynamicQueryBuilder::new("SELECT * FROM chain");
+
+        if let Some(status) = status {
+            builder = builder.and_where_eq("status", SqlArg::Int(status as i64));
+        }
+
+        builder.fetch_all(executor).await
     }
 
     pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<Self>, crate::Error>

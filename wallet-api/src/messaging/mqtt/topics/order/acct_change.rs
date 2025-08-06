@@ -72,15 +72,12 @@ pub struct AcctChange {
     // 能量消耗
     #[serde(default)]
     pub energy_used: Option<u64>,
+
+    // 额外信息
+    pub extra: Option<serde_json::Value>,
 }
 
-// impl AcctChange {
-//     pub(crate) fn name(&self) -> String {
-//         "ACCT_CHANGE".to_string()
-//     }
-// }
-
-impl TryFrom<&AcctChange> for NewBillEntity {
+impl TryFrom<&AcctChange> for NewBillEntity<serde_json::Value> {
     type Error = crate::ServiceError;
 
     fn try_from(value: &AcctChange) -> Result<Self, Self::Error> {
@@ -112,6 +109,7 @@ impl TryFrom<&AcctChange> for NewBillEntity {
             notes: value.notes.clone(),
             signer: vec![],
             resource_consume: consumer,
+            extra: value.extra.clone(),
         })
     }
 }
@@ -140,12 +138,12 @@ impl From<&AcctChange> for AcctChangeFrontend {
 }
 
 impl AcctChange {
-    pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, msg_id: &str) -> Result<(), crate::ServiceError> {
         // let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         // bill create
-        let tx = NewBillEntity::try_from(&self)?;
+        let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
         let tx_kind = tx.tx_kind;
 
         if tx.chain_code == chain_code::TON {
@@ -172,7 +170,7 @@ impl AcctChange {
         }
 
         // send acct_change to frontend
-        let change_frontend = AcctChangeFrontend::from(&self);
+        let change_frontend = AcctChangeFrontend::from(self);
         let data = NotifyEvent::AcctChange(change_frontend);
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
@@ -216,14 +214,33 @@ impl AcctChange {
                 acct_change.to_addr.to_string(),
             ],
             chain_code: acct_change.chain_code.to_string(),
-            symbol: acct_change.symbol.to_string(),
+            symbol: acct_change.get_sync_assets_symbol(),
         })?;
         // tracing::info!("发送同步资产事件");
         Ok(())
     }
 
+    // 需要更新的资产-swap 需要更新swap的资产
+    fn get_sync_assets_symbol(&self) -> Vec<String> {
+        let symbol = vec![self.symbol.clone()];
+        // 由于目前swap会发送躲多币交易,z这个地方取消
+        // if self.tx_kind == BillKind::Swap.to_i8() {
+        //     if let Some(extra) = &self.extra {
+        //         if let Ok(extra_swap) =
+        //             wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
+        //         {
+        //             if self.symbol != extra_swap.from_token_symbol {
+        //                 symbol.push(extra_swap.from_token_symbol);
+        //             }
+        //             symbol.push(extra_swap.to_token_symbol);
+        //         }
+        //     }
+        // }
+        symbol
+    }
+
     pub async fn handle_ton_bill(
-        mut tx: NewBillEntity,
+        mut tx: NewBillEntity<serde_json::Value>,
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
         let origin_hash = tx.hash.clone();

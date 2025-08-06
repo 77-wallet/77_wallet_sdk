@@ -15,7 +15,7 @@ pub struct TokenPriceChange {
 }
 
 impl TokenPriceChange {
-    pub(crate) async fn exec(self) -> Result<(), anyhow::Error> {
+    pub(crate) async fn exec(&self) -> Result<(), anyhow::Error> {
         let chain_code = &self.body.chain_code;
         let symbol = &self.body.symbol;
         let token_address = &self.body.token_address;
@@ -31,7 +31,7 @@ impl TokenPriceChange {
         let repo = RepositoryFactory::repo(pool.clone());
         let coin_service = CoinService::new(repo);
         let mut tx = coin_service.repo;
-        tx.update_price_unit(&coin_id, &price.to_string(), unit)
+        tx.update_price_unit(&coin_id, &price.to_string(), unit, None, None)
             .await?;
 
         let app_state = crate::app_state::APP_STATE.read().await;

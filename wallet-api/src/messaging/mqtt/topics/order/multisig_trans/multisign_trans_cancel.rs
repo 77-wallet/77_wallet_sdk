@@ -17,7 +17,7 @@ impl MultiSignTransCancel {
 }
 
 impl MultiSignTransCancel {
-    pub async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::Context::get_global_sqlite_pool()?;
 

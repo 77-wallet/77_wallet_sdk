@@ -65,6 +65,10 @@ pub mod endpoint {
 
     pub const CLIENT_TASK_LOG_UPLOAD: &str = "client/taskLog/upload";
     pub const TOKEN_BALANCE_REFRESH: &str = "token/balance/refresh";
+
+    //  swap 相关的交易
+    pub const SWAP_APPROVE_CANCEL: &str = "swap/approve/cancel";
+    pub const SWAP_APPROVE_SAVE: &str = "swap/approve/save";
 }
 
 /// 代理的全局rpc节点

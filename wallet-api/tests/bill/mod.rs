@@ -4,8 +4,8 @@ use crate::get_manager;
 async fn bill_detail() {
     let wallet_manager = get_manager().await;
 
-    let hash = "aee2d57509dcef22a8b3eda863598114cf092cc19df81b911f0550717f4580ae";
-    let owner = "UQDaL1eH_9TU3hceiO7ZsPDEdcmwDhZ0eDZ_NCOIrmjHoSQb";
+    let hash = "22d88a9855cc19d46ff268f5d2906b474ef7eecd2b44728916f2bff66e27c95a";
+    let owner = "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ";
     let detail = wallet_manager.bill_detail(&hash, &owner).await;
 
     tracing::info!("result {}", serde_json::to_string(&detail).unwrap());
@@ -40,7 +40,7 @@ async fn bill_lists() {
     let start_time = None;
     let end_time = None;
 
-    let transfer_type = None;
+    let transfer_type = vec![25];
 
     let page = 0;
     let page_size = 5;
@@ -81,7 +81,7 @@ async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    let address = "TYGC6LQMB1eCNDQzUSXKdb5R5uxbL4sPsd".to_string();
+    let address = "TMgiqqdyLCvnZtjzKpesqciGNaB99KwHQx".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
     tracing::warn!("同步结果{:?}", _c);
 }

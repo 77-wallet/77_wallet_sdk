@@ -15,6 +15,7 @@ mod multisig_tx;
 mod permission;
 mod phrase;
 mod stake;
+mod swap;
 mod transactions;
 
 pub async fn get_manager() -> WalletManager {

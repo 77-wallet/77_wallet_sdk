@@ -12,7 +12,7 @@ use wallet_database::{
 };
 
 use crate::{
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData},
     service::device::APP_ID,
 };
 
@@ -140,7 +140,7 @@ impl DeviceDomain {
     pub(crate) async fn language_init(
         device_info: &DeviceEntity,
         language: &str,
-    ) -> Result<Task, crate::ServiceError> {
+    ) -> Result<BackendApiTask, crate::ServiceError> {
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device_info)?;
         let language_req = wallet_transport_backend::request::LanguageInitReq {
             client_id,
@@ -151,9 +151,7 @@ impl DeviceDomain {
             &language_req,
         )?;
 
-        Ok(Task::BackendApi(BackendApiTask::BackendApi(
-            language_init_task_data,
-        )))
+        Ok(BackendApiTask::BackendApi(language_init_task_data))
     }
 }
 

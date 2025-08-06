@@ -119,6 +119,7 @@ impl PermissionService {
             BillKind::UpdatePermission,
             bill_consumer.to_json_str()?,
             transaction_fee,
+            None::<String>,
         );
         domain::bill::BillDomain::create_bill(entity).await?;
 

@@ -15,6 +15,7 @@ pub mod multisig_transaction;
 pub mod node;
 pub mod permission;
 pub mod stake;
+pub mod swap;
 pub mod system_notification;
 pub mod task_queue;
 pub mod transaction;

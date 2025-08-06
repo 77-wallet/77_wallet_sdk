@@ -24,6 +24,11 @@ pub trait ChainRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, ChainEntity::set_chain_node_id_empty, node_id)
     }
 
+    async fn get_chain_list_v2(&mut self) -> Result<Vec<ChainEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, ChainEntity::list_v2, Some(1))
+    }
+
     async fn get_chain_list(&mut self) -> Result<Vec<ChainEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, ChainEntity::list, Some(1))

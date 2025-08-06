@@ -1,6 +1,6 @@
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{
@@ -132,19 +132,13 @@ impl ChainService {
         // let device_bind_address_task_data =
         //     DeviceDomain::gen_device_bind_address_task_data().await?;
 
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         let address_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
             &address_batch_init_task_data,
         )?;
         Tasks::new()
-            .push(task)
-            // .push(Task::BackendApi(BackendApiTask::BackendApi(
-            //     device_bind_address_task_data,
-            // )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                address_init_task_data,
-            )))
+            .push(CommonTask::QueryCoinPrice(req))
+            .push(BackendApiTask::BackendApi(address_init_task_data))
             .send()
             .await?;
 
@@ -154,7 +148,7 @@ impl ChainService {
     pub async fn get_hot_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        let res = tx.get_chain_list().await?;
+        let res = tx.get_chain_list_v2().await?;
         tx.commit_transaction().await?;
 
         Ok(res)

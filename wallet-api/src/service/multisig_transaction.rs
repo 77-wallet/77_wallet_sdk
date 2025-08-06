@@ -4,7 +4,7 @@ use crate::domain::chain::TransferResp;
 use crate::domain::coin::CoinDomain;
 use crate::domain::multisig::{MultisigDomain, MultisigQueueDomain};
 use crate::domain::task_queue::TaskQueueDomain;
-use crate::infrastructure::task_queue::{CommonTask, Task, Tasks};
+use crate::infrastructure::task_queue::{task::Tasks, CommonTask};
 use crate::request::transaction::Signer;
 use crate::response_vo::multisig_account::QueueInfo;
 use crate::response_vo::MultisigQueueFeeParams;
@@ -197,12 +197,10 @@ impl MultisigTransactionService {
         for item in lists.data.iter_mut() {
             // if queue status has exec , add to task query result
             if item.status == MultisigQueueStatus::InConfirmation.to_i8() {
-                task = task.push(Task::Common(CommonTask::QueryQueueResult(
-                    QueueTaskEntity {
-                        id: item.id.clone(),
-                        status: item.status,
-                    },
-                )));
+                task = task.push(CommonTask::QueryQueueResult(QueueTaskEntity {
+                    id: item.id.clone(),
+                    status: item.status,
+                }));
             }
 
             let signature = MultisigQueueRepo::signed_result(

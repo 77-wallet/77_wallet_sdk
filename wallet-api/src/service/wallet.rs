@@ -25,7 +25,7 @@ use crate::{
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, Task, Tasks,
+        task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
     },
     response_vo::{
         account::BalanceInfo,
@@ -103,9 +103,7 @@ impl WalletService {
                 &language_req,
             )?;
             Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    language_init_task_data,
-                )))
+                .push(BackendApiTask::BackendApi(language_init_task_data))
                 .send()
                 .await?;
         }
@@ -137,9 +135,7 @@ impl WalletService {
                 &keys_update_wallet_name,
             )?;
             Tasks::new()
-                .push(Task::BackendApi(BackendApiTask::BackendApi(
-                    keys_update_wallet_name,
-                )))
+                .push(BackendApiTask::BackendApi(keys_update_wallet_name))
                 .send()
                 .await?;
         }
@@ -239,9 +235,7 @@ impl WalletService {
             &address_batch_init_task_data,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                address_init_task_data,
-            )))
+            .push(BackendApiTask::BackendApi(address_init_task_data))
             .send()
             .await?;
         Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
@@ -423,8 +417,10 @@ impl WalletService {
             child_keystore_start.elapsed()
         );
 
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
-        Tasks::new().push(task).send().await?;
+        Tasks::new()
+            .push(CommonTask::QueryCoinPrice(req))
+            .send()
+            .await?;
         tx.update_uid(Some(&uid)).await?;
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
@@ -476,24 +472,10 @@ impl WalletService {
             &address_init_task_data,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                keys_init_task_data,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                language_init_task_data,
-            )))
-            // .push(Task::BackendApi(BackendApiTask::BackendApi(
-            //     device_delete_task_data,
-            // )))
-            // .push(Task::BackendApi(BackendApiTask::BackendApi(
-            //     device_bind_address_task_data,
-            // )))
-            .push(Task::Common(CommonTask::RecoverMultisigAccountData(
-                recover_data,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                address_init_task_data,
-            )))
+            .push(BackendApiTask::BackendApi(keys_init_task_data))
+            .push(BackendApiTask::BackendApi(language_init_task_data))
+            .push(CommonTask::RecoverMultisigAccountData(recover_data))
+            .push(BackendApiTask::BackendApi(address_init_task_data))
             .send()
             .await?;
 
@@ -692,11 +674,13 @@ impl WalletService {
 
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
 
-            let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                endpoint::DEVICE_DELETE,
-                &req,
-            )?));
-            Tasks::new().push(task).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                    endpoint::DEVICE_DELETE,
+                    &req,
+                )?))
+                .send()
+                .await?;
         };
 
         Ok(())
@@ -738,9 +722,6 @@ impl WalletService {
 
         if let Some(wallet) = wallet {
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
-            let device_delete_task = Task::BackendApi(BackendApiTask::BackendApi(
-                BackendApiTaskData::new(endpoint::DEVICE_DELETE, &req)?,
-            ));
 
             let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool)
                 .await
@@ -757,11 +738,12 @@ impl WalletService {
             )
             .await?;
 
-            let device_unbind_address_task =
-                Task::BackendApi(BackendApiTask::BackendApi(device_unbind_address_task));
             Tasks::new()
-                .push(device_delete_task)
-                .push(device_unbind_address_task)
+                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                    endpoint::DEVICE_DELETE,
+                    &req,
+                )?))
+                .push(BackendApiTask::BackendApi(device_unbind_address_task))
                 .send()
                 .await?;
         };
@@ -777,7 +759,7 @@ impl WalletService {
             let body = RecoverDataBody::new(&uid);
 
             Tasks::new()
-                .push(Task::Common(CommonTask::RecoverMultisigAccountData(body)))
+                .push(CommonTask::RecoverMultisigAccountData(body))
                 .send()
                 .await?;
         }
@@ -800,11 +782,13 @@ impl WalletService {
         if let Some(device) = &device {
             let req = DeviceDeleteReq::new(&device.sn, &[]);
 
-            let task = Task::BackendApi(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                endpoint::DEVICE_DELETE,
-                &req,
-            )?));
-            Tasks::new().push(task).send().await?;
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                    endpoint::DEVICE_DELETE,
+                    &req,
+                )?))
+                .send()
+                .await?;
         };
 
         Ok(())
@@ -842,10 +826,8 @@ impl WalletService {
         )?;
 
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                device_delete_task,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(reset_task)))
+            .push(BackendApiTask::BackendApi(device_delete_task))
+            .push(BackendApiTask::BackendApi(reset_task))
             .send()
             .await?;
 

@@ -363,7 +363,7 @@ mod test {
         let list = wallet_manager.get_wallet_list(None, chain_code, None).await;
         let res = serde_json::to_string(&list).unwrap();
         tracing::info!("res: {res:?}");
-        tracing::info!("list: {list:#?}");
+        // tracing::info!("list: {list:#?}");
         Ok(())
     }
 

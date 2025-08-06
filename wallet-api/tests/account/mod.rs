@@ -1,6 +1,10 @@
 use std::{env, path::PathBuf};
 use wallet_api::{Dirs, InitDeviceReq, WalletManager};
 use wallet_chain_instance::instance::ChainObject;
+use wallet_types::chain::{
+    address::r#type::{AddressType, TonAddressType},
+    chain::ChainCode,
+};
 use wallet_utils::init_test_log;
 
 async fn get_manager() -> WalletManager {
@@ -42,9 +46,8 @@ async fn create_device() {
 #[tokio::test]
 async fn create_wallet() {
     let wallet_manager = get_manager().await;
-    let phrase =
-        "february crunch banner cave afford chuckle left plate session tackle crash approve";
-    let salt = "qwer1234";
+    let phrase = "";
+    let salt = "";
     let wallet_name = "my_wallet";
     let account_name = "账户";
     let password = "123456";
@@ -119,7 +122,9 @@ async fn test_generate_phrase() {
     let wallet_manager = get_manager().await;
     let c = wallet_manager.generate_phrase(1, 12);
 
-    tracing::info!("response {:?}", c)
+    let phrase = c.result.unwrap().phrases.join(" ");
+
+    tracing::info!("{}", phrase)
 }
 
 #[tokio::test]
@@ -129,11 +134,12 @@ async fn test_show_key() {
     let parse = "".to_string();
     let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
-    let chain_code = "sui";
+    let chain_code = ChainCode::Tron;
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
-    let address_type = Some("p2wpkh".to_string());
-    let object = ChainObject::new(chain_code, address_type, network).unwrap();
+    let address_type = AddressType::Ton(TonAddressType::V4R2);
+
+    let object: ChainObject = (&chain_code, &address_type, network).try_into().unwrap();
 
     let keypair = object
         .gen_keypair_with_index_address_type(&seed, 0)
@@ -155,4 +161,33 @@ async fn test_delete_account() {
         .await;
 
     tracing::info!("response {:?}", c)
+}
+
+#[tokio::test]
+async fn test_current_chain_address() {
+    let wallet_manager = get_manager().await;
+
+    let uid = "f091ca89e48bc1cd3e4cb84e8d3e3d9e2564e3616efd1feb468793687037d66f".to_string();
+    let account_id = 1;
+    let chain_code = "tron".to_string();
+
+    let c = wallet_manager
+        .current_chain_address(uid, account_id, chain_code)
+        .await;
+
+    tracing::info!("response {}", serde_json::to_string(&c).unwrap());
+}
+
+#[tokio::test]
+async fn test_current_address() {
+    let wallet_manager = get_manager().await;
+
+    let wallet_address = "0x32296819E5A42B04cb21f6bA16De3f3C4B024DDc".to_string();
+    let account_id = 1;
+
+    let c = wallet_manager
+        .current_account(wallet_address, account_id)
+        .await;
+
+    tracing::info!("response {}", serde_json::to_string(&c).unwrap());
 }

@@ -14,7 +14,7 @@ use crate::{
         chain::ChainDomain,
         wallet::WalletDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
 };
 
 pub struct ApiWalletService {
@@ -191,12 +191,8 @@ impl ApiWalletService {
         //     &address_init_task_data,
         // )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                keys_init_task_data,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                language_init_task_data,
-            )))
+            .push(BackendApiTask::BackendApi(keys_init_task_data))
+            .push(BackendApiTask::BackendApi(language_init_task_data))
             //     .push(Task::BackendApi(BackendApiTask::BackendApi(
             //         address_init_task_data,
             //     )))

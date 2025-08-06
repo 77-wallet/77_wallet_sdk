@@ -25,6 +25,7 @@ use wallet_database::entities::multisig_account::{
 };
 use wallet_database::entities::multisig_queue::{MemberSignedResult, MultisigQueueStatus};
 use wallet_database::pagination::Pagination;
+use wallet_database::repositories::account::AccountRepo;
 use wallet_database::repositories::address_book::AddressBookRepo;
 use wallet_database::repositories::bill::BillRepo;
 use wallet_database::repositories::coin::CoinRepo;
@@ -166,12 +167,24 @@ impl TransactionService {
             None
         };
 
-        let res = BillDetailVo {
+        let mut res = BillDetailVo {
             bill,
             resource_consume,
             signature: sign,
             fee_symbol: main_coin.symbol,
+            wallet_name: "".to_string(),
+            account_name: "".to_string(),
         };
+        if !res.bill.to_addr.is_empty() {
+            // 根据地址和链获取钱包名称
+            let account =
+                AccountRepo::account_with_wallet(&res.bill.to_addr, &res.bill.chain_code, &pool)
+                    .await;
+            if let Ok(account) = account {
+                res.wallet_name = account.wallet_name;
+                res.account_name = account.name;
+            }
+        }
 
         Ok(res)
     }

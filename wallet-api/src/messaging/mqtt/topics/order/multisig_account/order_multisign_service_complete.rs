@@ -33,7 +33,7 @@ impl OrderMultiSignServiceComplete {
 }
 
 impl OrderMultiSignServiceComplete {
-    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         tracing::info!(
@@ -53,7 +53,7 @@ impl OrderMultiSignServiceComplete {
         let multi_account_id = account.id;
 
         // 更新多签账户手续费状态
-        let (status, pay_status) = Self::get_status(r#type, status);
+        let (status, pay_status) = Self::get_status(*r#type, *status);
         MultisigAccountDaoV1::update_status(&multi_account_id, status, pay_status, pool.as_ref())
             .await
             .map_err(crate::ServiceError::Database)?;
@@ -67,7 +67,7 @@ impl OrderMultiSignServiceComplete {
             NotifyEvent::OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend {
                 multisign_address: account.address,
                 status: self.status,
-                r#type,
+                r#type: *r#type,
             });
         FrontendNotifyEvent::new(data).send().await?;
 

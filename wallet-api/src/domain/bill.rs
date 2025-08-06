@@ -1,3 +1,4 @@
+use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
     dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
@@ -11,14 +12,15 @@ use wallet_database::{
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
 
-use crate::messaging::mqtt::topics::AcctChange;
-
 pub struct BillDomain;
 
 impl BillDomain {
-    pub async fn create_bill(
-        params: entities::bill::NewBillEntity,
-    ) -> Result<(), crate::ServiceError> {
+    pub async fn create_bill<T>(
+        params: entities::bill::NewBillEntity<T>,
+    ) -> Result<(), crate::ServiceError>
+    where
+        T: serde::Serialize,
+    {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         Ok(BillDao::create(params, &*pool).await?)
     }
@@ -79,6 +81,7 @@ impl BillDomain {
             block_height: item.block_height.to_string(),
             notes: item.notes,
             signer: item.signer,
+            extra: item.extra,
         };
 
         if new_entity.chain_code == chain_code::TON {
