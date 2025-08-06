@@ -60,4 +60,16 @@ impl ApiWalletDomain {
 
         Ok(WalletRepo::detail(&pool, address).await?.is_some())
     }
+
+    pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, ApiWalletType::SubAccount)
+            .await?
+            .ok_or(crate::BusinessError::ApiWallet(
+                crate::ApiWalletError::NotFound,
+            ))?;
+        ApiWalletRepo::upbind_uid(&pool, &api_wallet.address, ApiWalletType::SubAccount).await?;
+
+        Ok(())
+    }
 }

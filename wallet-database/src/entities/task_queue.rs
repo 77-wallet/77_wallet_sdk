@@ -172,4 +172,5 @@ pub enum KnownTaskName {
     SyncNodesAndLinkToChains,
     // RecoverPermission,
     OrderAllConfirmed,
+    UnbindUid,
 }

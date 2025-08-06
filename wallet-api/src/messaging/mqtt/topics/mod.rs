@@ -1,5 +1,7 @@
 mod bulletin_info;
 pub use bulletin_info::*;
+mod unbind_uid;
+pub use unbind_uid::*;
 mod chain_change;
 pub use chain_change::*;
 mod order;

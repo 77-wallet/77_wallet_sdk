@@ -9,7 +9,9 @@ use wallet_transport_backend::request::{
     api_wallet::address::UploadAllocatedAddressesReq, AddressBatchInitReq, TokenQueryPriceReq,
 };
 
-use crate::domain::{api_wallet::ApiWalletDomain, chain::ChainDomain, wallet::WalletDomain};
+use crate::domain::{
+    api_wallet::wallet::ApiWalletDomain, chain::ChainDomain, wallet::WalletDomain,
+};
 
 pub struct ApiAccountService {
     pub repo: ResourcesRepo,

@@ -179,6 +179,33 @@ impl ApiWalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn unbind_uid<'a, E>(
+        exec: E,
+        address: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let now = sqlx::types::chrono::Utc::now();
+        let sql = r#"
+            UPDATE api_wallet SET
+                app_id = null,
+                merchant_id = null,
+                updated_at = $1
+            WHERE address = $2  AND wallet_type = $3 AND status = 1
+            RETURNING *;
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+            .bind(now)
+            .bind(address)
+            .bind(api_wallet_type)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn edit_name<'a, E>(
         exec: E,
         address: &str,

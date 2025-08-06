@@ -9,7 +9,7 @@ use wallet_transport_backend::request::{AddressBatchInitReq, LanguageInitReq, To
 
 use crate::{
     domain::{
-        api_wallet::ApiWalletDomain,
+        api_wallet::wallet::ApiWalletDomain,
         app::{config::ConfigDomain, DeviceDomain},
         chain::ChainDomain,
         wallet::WalletDomain,

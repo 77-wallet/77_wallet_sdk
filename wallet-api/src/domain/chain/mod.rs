@@ -1,6 +1,6 @@
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
-    domain::api_account::ApiAccountDomain,
+    domain::api_wallet::account::ApiAccountDomain,
     infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
     response_vo,
 };

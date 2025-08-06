@@ -5,7 +5,7 @@ use wallet_utils::serde_func;
 use crate::{
     infrastructure::task_queue::{task::Tasks, MqttTask},
     messaging::{
-        mqtt::topics::OutgoingPayload,
+        mqtt::topics::{OutgoingPayload, UnbindUidMsg},
         notify::{event::NotifyEvent, FrontendNotifyEvent},
     },
     service::{app::AppService, device::DeviceService},
@@ -169,6 +169,7 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         BizType::CleanPermission => {
             exec_task::<CleanPermission, _>(&payload, MqttTask::CleanPermission).await?
         }
+        BizType::UnbindUid => exec_task::<UnbindUidMsg, _>(&payload, MqttTask::UnbindUid).await?,
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
             return Err(crate::ServiceError::System(
