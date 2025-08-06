@@ -8,13 +8,85 @@ use crate::{
 #[async_trait::async_trait]
 impl TaskTrait for MqttTask {
     fn get_name(&self) -> TaskName {
-        self.get_name()
+        match self {
+            MqttTask::OrderMultiSignAccept(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignAccept)
+            }
+            MqttTask::OrderMultiSignAcceptCompleteMsg(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignAcceptCompleteMsg)
+            }
+            MqttTask::OrderMultiSignServiceComplete(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignServiceComplete)
+            }
+            MqttTask::OrderMultiSignCreated(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignCreated)
+            }
+            MqttTask::OrderMultiSignCancel(_) => {
+                TaskName::Known(KnownTaskName::OrderMultiSignCancel)
+            }
+            MqttTask::MultiSignTransAccept(_) => {
+                TaskName::Known(KnownTaskName::MultiSignTransAccept)
+            }
+            MqttTask::MultiSignTransCancel(_) => {
+                TaskName::Known(KnownTaskName::MultiSignTransCancel)
+            }
+            MqttTask::MultiSignTransAcceptCompleteMsg(_) => {
+                TaskName::Known(KnownTaskName::MultiSignTransAcceptCompleteMsg)
+            }
+            MqttTask::AcctChange(_) => TaskName::Known(KnownTaskName::AcctChange),
+            MqttTask::BulletinMsg(_) => TaskName::Known(KnownTaskName::BulletinMsg),
+
+            MqttTask::PermissionAccept(_) => TaskName::Known(KnownTaskName::PermissionAccept),
+            MqttTask::MultiSignTransExecute(_) => {
+                TaskName::Known(KnownTaskName::MultiSignTransExecute)
+            }
+            MqttTask::CleanPermission(_) => TaskName::Known(KnownTaskName::CleanPermission),
+            MqttTask::OrderAllConfirmed(_) => TaskName::Known(KnownTaskName::OrderAllConfirmed),
+        }
     }
     fn get_type(&self) -> TaskType {
         TaskType::Mqtt
     }
     fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
-        self.get_body()
+        let res = match self {
+            MqttTask::OrderMultiSignAccept(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::OrderMultiSignAcceptCompleteMsg(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::OrderMultiSignServiceComplete(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::OrderMultiSignCancel(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::MultiSignTransAccept(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::MultiSignTransCancel(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::MultiSignTransAcceptCompleteMsg(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::OrderMultiSignCreated(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::AcctChange(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
+            MqttTask::BulletinMsg(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
+            MqttTask::PermissionAccept(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::MultiSignTransExecute(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::OrderAllConfirmed(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
+            MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
+        };
+        Ok(res)
     }
 
     async fn execute(&self, id: &str) -> Result<(), crate::ServiceError> {
@@ -57,86 +129,4 @@ pub(crate) enum MqttTask {
     BulletinMsg(topics::BulletinMsg),
     PermissionAccept(topics::PermissionAccept),
     CleanPermission(topics::CleanPermission),
-}
-
-impl MqttTask {
-    pub(crate) fn get_name(&self) -> TaskName {
-        match self {
-            MqttTask::OrderMultiSignAccept(_) => {
-                TaskName::Known(KnownTaskName::OrderMultiSignAccept)
-            }
-            MqttTask::OrderMultiSignAcceptCompleteMsg(_) => {
-                TaskName::Known(KnownTaskName::OrderMultiSignAcceptCompleteMsg)
-            }
-            MqttTask::OrderMultiSignServiceComplete(_) => {
-                TaskName::Known(KnownTaskName::OrderMultiSignServiceComplete)
-            }
-            MqttTask::OrderMultiSignCreated(_) => {
-                TaskName::Known(KnownTaskName::OrderMultiSignCreated)
-            }
-            MqttTask::OrderMultiSignCancel(_) => {
-                TaskName::Known(KnownTaskName::OrderMultiSignCancel)
-            }
-            MqttTask::MultiSignTransAccept(_) => {
-                TaskName::Known(KnownTaskName::MultiSignTransAccept)
-            }
-            MqttTask::MultiSignTransCancel(_) => {
-                TaskName::Known(KnownTaskName::MultiSignTransCancel)
-            }
-            MqttTask::MultiSignTransAcceptCompleteMsg(_) => {
-                TaskName::Known(KnownTaskName::MultiSignTransAcceptCompleteMsg)
-            }
-            MqttTask::AcctChange(_) => TaskName::Known(KnownTaskName::AcctChange),
-            MqttTask::BulletinMsg(_) => TaskName::Known(KnownTaskName::BulletinMsg),
-
-            MqttTask::PermissionAccept(_) => TaskName::Known(KnownTaskName::PermissionAccept),
-            MqttTask::MultiSignTransExecute(_) => {
-                TaskName::Known(KnownTaskName::MultiSignTransExecute)
-            }
-            MqttTask::CleanPermission(_) => TaskName::Known(KnownTaskName::CleanPermission),
-            MqttTask::OrderAllConfirmed(_) => TaskName::Known(KnownTaskName::OrderAllConfirmed),
-        }
-    }
-
-    pub(crate) fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
-        let res = match self {
-            MqttTask::OrderMultiSignAccept(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::OrderMultiSignAcceptCompleteMsg(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::OrderMultiSignServiceComplete(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::OrderMultiSignCancel(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::MultiSignTransAccept(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::MultiSignTransCancel(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::MultiSignTransAcceptCompleteMsg(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::OrderMultiSignCreated(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::AcctChange(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-            MqttTask::BulletinMsg(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-            MqttTask::PermissionAccept(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::MultiSignTransExecute(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::OrderAllConfirmed(req) => {
-                Some(wallet_utils::serde_func::serde_to_string(req)?)
-            }
-            MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-        };
-        Ok(res)
-    }
 }

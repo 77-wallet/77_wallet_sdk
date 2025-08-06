@@ -14,13 +14,28 @@ use wallet_database::{
 #[async_trait::async_trait]
 impl TaskTrait for InitializationTask {
     fn get_name(&self) -> TaskName {
-        self.get_name()
+        match self {
+            InitializationTask::PullAnnouncement => {
+                TaskName::Known(KnownTaskName::PullAnnouncement)
+            }
+            InitializationTask::PullHotCoins => TaskName::Known(KnownTaskName::PullHotCoins),
+            InitializationTask::InitTokenPrice => TaskName::Known(KnownTaskName::InitTokenPrice),
+            // InitializationTask::ProcessUnconfirmMsg => TaskName::ProcessUnconfirmMsg,
+            InitializationTask::SetBlockBrowserUrl => {
+                TaskName::Known(KnownTaskName::SetBlockBrowserUrl)
+            }
+            InitializationTask::SetFiat => TaskName::Known(KnownTaskName::SetFiat),
+            InitializationTask::RecoverQueueData => {
+                TaskName::Known(KnownTaskName::RecoverQueueData)
+            }
+            InitializationTask::InitMqtt => TaskName::Known(KnownTaskName::InitMqtt),
+        }
     }
     fn get_type(&self) -> TaskType {
         TaskType::Initialization
     }
     fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
-        self.get_body()
+        Ok(None)
     }
 
     async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
@@ -83,28 +98,4 @@ pub(crate) enum InitializationTask {
     SetFiat,
     RecoverQueueData,
     InitMqtt,
-}
-impl InitializationTask {
-    pub(crate) fn get_name(&self) -> TaskName {
-        match self {
-            InitializationTask::PullAnnouncement => {
-                TaskName::Known(KnownTaskName::PullAnnouncement)
-            }
-            InitializationTask::PullHotCoins => TaskName::Known(KnownTaskName::PullHotCoins),
-            InitializationTask::InitTokenPrice => TaskName::Known(KnownTaskName::InitTokenPrice),
-            // InitializationTask::ProcessUnconfirmMsg => TaskName::ProcessUnconfirmMsg,
-            InitializationTask::SetBlockBrowserUrl => {
-                TaskName::Known(KnownTaskName::SetBlockBrowserUrl)
-            }
-            InitializationTask::SetFiat => TaskName::Known(KnownTaskName::SetFiat),
-            InitializationTask::RecoverQueueData => {
-                TaskName::Known(KnownTaskName::RecoverQueueData)
-            }
-            InitializationTask::InitMqtt => TaskName::Known(KnownTaskName::InitMqtt),
-        }
-    }
-
-    pub(crate) fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
-        Ok(None)
-    }
 }

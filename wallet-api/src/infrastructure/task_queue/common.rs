@@ -23,13 +23,37 @@ use crate::{
 #[async_trait::async_trait]
 impl TaskTrait for CommonTask {
     fn get_name(&self) -> TaskName {
-        self.get_name()
+        match self {
+            CommonTask::QueryCoinPrice(_) => TaskName::Known(KnownTaskName::QueryCoinPrice),
+            CommonTask::QueryQueueResult(_) => TaskName::Known(KnownTaskName::QueryQueueResult),
+            CommonTask::RecoverMultisigAccountData(_) => {
+                TaskName::Known(KnownTaskName::RecoverMultisigAccountData)
+            }
+            CommonTask::SyncNodesAndLinkToChains(_) => {
+                TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains)
+            }
+        }
     }
     fn get_type(&self) -> TaskType {
         TaskType::Common
     }
     fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
-        self.get_body()
+        let res = match self {
+            CommonTask::QueryCoinPrice(query_coin_price) => {
+                Some(wallet_utils::serde_func::serde_to_string(query_coin_price)?)
+            }
+            CommonTask::QueryQueueResult(queue) => {
+                Some(wallet_utils::serde_func::serde_to_string(queue)?)
+            }
+            CommonTask::RecoverMultisigAccountData(recover_data) => {
+                Some(wallet_utils::serde_func::serde_to_string(recover_data)?)
+            }
+            // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
+            CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => Some(
+                wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?,
+            ),
+        };
+        Ok(res)
     }
 
     async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
@@ -78,39 +102,6 @@ pub(crate) enum CommonTask {
     QueryQueueResult(QueueTaskEntity),
     RecoverMultisigAccountData(RecoverDataBody),
     SyncNodesAndLinkToChains(Vec<NodeEntity>),
-}
-impl CommonTask {
-    pub(crate) fn get_name(&self) -> TaskName {
-        match self {
-            CommonTask::QueryCoinPrice(_) => TaskName::Known(KnownTaskName::QueryCoinPrice),
-            CommonTask::QueryQueueResult(_) => TaskName::Known(KnownTaskName::QueryQueueResult),
-            CommonTask::RecoverMultisigAccountData(_) => {
-                TaskName::Known(KnownTaskName::RecoverMultisigAccountData)
-            }
-            CommonTask::SyncNodesAndLinkToChains(_) => {
-                TaskName::Known(KnownTaskName::SyncNodesAndLinkToChains)
-            }
-        }
-    }
-
-    pub(crate) fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
-        let res = match self {
-            CommonTask::QueryCoinPrice(query_coin_price) => {
-                Some(wallet_utils::serde_func::serde_to_string(query_coin_price)?)
-            }
-            CommonTask::QueryQueueResult(queue) => {
-                Some(wallet_utils::serde_func::serde_to_string(queue)?)
-            }
-            CommonTask::RecoverMultisigAccountData(recover_data) => {
-                Some(wallet_utils::serde_func::serde_to_string(recover_data)?)
-            }
-            // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
-            CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => Some(
-                wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?,
-            ),
-        };
-        Ok(res)
-    }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
