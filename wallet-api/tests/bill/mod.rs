@@ -4,8 +4,8 @@ use crate::get_manager;
 async fn bill_detail() {
     let wallet_manager = get_manager().await;
 
-    let hash = "9b3b41e2223e128fb86c953fa1bde4e62b22fdaf26fb6f0ff44e5c9e35e5e834";
-    let owner = "TQHq9gP34tLiE2Eg1MeAQjhN6KA6oLRBos";
+    let hash = "22d88a9855cc19d46ff268f5d2906b474ef7eecd2b44728916f2bff66e27c95a";
+    let owner = "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ";
     let detail = wallet_manager.bill_detail(&hash, &owner).await;
 
     tracing::info!("result {}", serde_json::to_string(&detail).unwrap());
@@ -13,10 +13,10 @@ async fn bill_detail() {
 
 #[tokio::test]
 async fn bill_list_by_hashs() {
-    let owner = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
+    let owner = "UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY".to_string();
     let hashs = vec![
-        "8428e5eab37eab44a477bd252a1e08025dd7f0ca725ff469475865e981d36554".to_string(),
-        "ff3cc86c69983e774469aa3cc309b51aedb83dae9a4053427e35b88d20397ffb".to_string(),
+        "a86da9424486b91a4adb4aa11e4acbc0edf67bf1a716ed00029aeff09bd1d59f".to_string(),
+        "977eafff958563dbc79030d74c8b31fea0668cac2b08139f4f594e0f434af2aa".to_string(),
     ];
 
     let wallet_manager = get_manager().await;
@@ -40,7 +40,7 @@ async fn bill_lists() {
     let start_time = None;
     let end_time = None;
 
-    let transfer_type = None;
+    let transfer_type = vec![25];
 
     let page = 0;
     let page_size = 5;
@@ -81,7 +81,7 @@ async fn test_sync_bill() {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
-    let address = "TYGC6LQMB1eCNDQzUSXKdb5R5uxbL4sPsd".to_string();
+    let address = "TMgiqqdyLCvnZtjzKpesqciGNaB99KwHQx".to_string();
     let _c = wallet_manager.sync_bill(chain_code, address).await;
     tracing::warn!("同步结果{:?}", _c);
 }
@@ -102,9 +102,9 @@ async fn test_sync_bill_by_address() {
 async fn recent_bill() {
     let wallet_manager = get_manager().await;
 
-    let symbol = "TRX".to_string();
-    let addr = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
-    let chain_code = "tron".to_string();
+    let symbol = "TON".to_string();
+    let addr = "UQBbNvHNr_Lcqe-Vq8xrLUONWdK-3Di4LbeuWNuLxnRfThq6".to_string();
+    let chain_code = "ton".to_string();
     let page = 0;
     let page_size = 10;
 
@@ -112,10 +112,6 @@ async fn recent_bill() {
         .recent_bill(symbol, addr, chain_code, page, page_size)
         .await;
 
-    // tracing::info!(
-    //     "recent bill lists = {}",
-    //     serde_json::to_string(&detail).unwrap()
-    // );
     tracing::warn!("{:#?}", detail);
 }
 #[tokio::test]

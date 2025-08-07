@@ -347,11 +347,8 @@ impl MultisigAccountService {
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let account_with_wallet = AccountRepo::account_with_wallet(pay_address, pay_chain, pool)
-            .await?
-            .ok_or(crate::BusinessError::Account(
-                crate::AccountError::NotFound(pay_address.to_string()),
-            ))?;
+        let account_with_wallet =
+            AccountRepo::account_with_wallet(pay_address, pay_chain, &pool).await?;
 
         // service fee
         let req = SignedFeeListReq::new(account_chain, pay_address, account_with_wallet.uid);
@@ -623,11 +620,7 @@ impl MultisigAccountService {
         // fetch value
         let pool = crate::Context::get_global_sqlite_pool()?;
         let account_with_wallet =
-            AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, pool)
-                .await?
-                .ok_or(crate::BusinessError::Account(
-                    crate::AccountError::NotFound(payer.from.to_string()),
-                ))?;
+            AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, &pool).await?;
 
         let req = SignedFeeListReq::new(
             &multisig_account.chain_code,

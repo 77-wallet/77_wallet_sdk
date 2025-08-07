@@ -207,10 +207,10 @@ mod test {
     #[tokio::test]
     async fn test_pull_hot_coins() -> Result<()> {
         wallet_utils::init_test_log();
-        // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let res = wallet_manager.pull_hot_coins().await;
+
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -339,7 +339,7 @@ mod test {
         //     "SOL".to_string(),
         //     "BTC".to_string(),
         // ];
-        let symbols = vec!["USDT".to_string()];
+        let symbols = vec!["TRX".to_string()];
 
         let res = wallet_manager.get_token_price(symbols).await;
         let res = serde_json::to_string(&res).unwrap();

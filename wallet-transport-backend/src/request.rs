@@ -1,8 +1,11 @@
+use std::ops::{Deref, DerefMut};
+
 use serde_json::Value;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomTokenInitReq {
+    pub address: String,
     pub chain_code: String,
     pub symbol: String,
     pub token_name: String,
@@ -171,10 +174,6 @@ impl KeysUpdateWalletNameReq {
 pub struct TokenQueryPriceReq(pub Vec<TokenQueryPrice>);
 
 impl TokenQueryPriceReq {
-    pub fn new(token_query_price: Vec<TokenQueryPrice>) -> Self {
-        Self(token_query_price)
-    }
-
     pub fn insert(&mut self, chain_code: &str, contract_address: &str) {
         // 尝试查找已存在的请求
         if let Some(existing_req) = self.0.iter_mut().find(|r| r.chain_code == chain_code) {
@@ -294,6 +293,33 @@ impl TokenQueryByPageReq {
             exclude_name_list: None,
             page_num: Some(page_num),
             page_size: Some(page_size),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AllTokenQueryByPageReq {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_time: Option<String>,
+    pub page_num: i32,
+    pub page_size: i32,
+}
+
+impl AllTokenQueryByPageReq {
+    pub fn new(
+        create_time: Option<String>,
+        update_time: Option<String>,
+        page_num: i32,
+        page_size: i32,
+    ) -> Self {
+        Self {
+            create_time,
+            update_time,
+            page_num,
+            page_size,
         }
     }
 }
@@ -791,4 +817,50 @@ impl ClientTaskLogUploadReq {
             remark: remark.to_string(),
         }
     }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenBalanceRefreshReq(pub Vec<TokenBalanceRefresh>);
+
+impl Deref for TokenBalanceRefreshReq {
+    type Target = Vec<TokenBalanceRefresh>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for TokenBalanceRefreshReq {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenBalanceRefresh {
+    pub address: String,
+    pub chain_code: String,
+    pub sn: String,
+}
+
+impl TokenBalanceRefresh {
+    pub fn new(address: &str, chain_code: &str, sn: &str) -> Self {
+        Self {
+            address: address.to_string(),
+            sn: sn.to_string(),
+            chain_code: chain_code.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapTokenQueryReq {
+    pub page_num: i64,
+    pub page_size: i64,
+    pub chain_code: String,
+    pub search: String,
+    pub exclude_tokens: Vec<String>,
 }

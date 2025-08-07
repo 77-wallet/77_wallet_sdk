@@ -2,7 +2,7 @@ use crate::{
     domain::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
-    infrastructure::task_queue::{CommonTask, Task, Tasks},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
     response_vo::assets::{
         AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
     },
@@ -15,10 +15,12 @@ use wallet_database::{
     },
     repositories::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, ResourcesRepo,
+        coin::CoinRepoTrait, device::DeviceRepoTrait, ResourcesRepo,
     },
 };
-use wallet_transport_backend::request::TokenQueryPriceReq;
+use wallet_transport_backend::request::{
+    TokenBalanceRefresh, TokenBalanceRefreshReq, TokenQueryPriceReq,
+};
 
 #[derive(Debug, Clone)]
 pub struct AddressChainCode {
@@ -285,9 +287,9 @@ impl AssetsService {
                 } else {
                     let balance = token_currencies.calculate_assets_entity(&asset).await?;
 
-                    if balance.unit_price == Some(0.0) {
-                        continue;
-                    }
+                    // if balance.unit_price == Some(0.0) {
+                    //     continue;
+                    // }
                     let chain_code = if chain_code.is_none()
                         && let Some(chain) = tx.detail_with_main_symbol(&asset.symbol).await?
                     {
@@ -343,8 +345,14 @@ impl AssetsService {
             .await?;
 
         let coins = tx.coin_list(Some(symbol), chain_code.clone()).await?;
+
+        let Some(device) = tx.get_device_info().await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
 
+        let mut token_balance_refresh_req: TokenBalanceRefreshReq =
+            TokenBalanceRefreshReq(Vec::new());
         for account in accounts {
             if let Some(coin) = coins
                 .iter()
@@ -380,10 +388,22 @@ impl AssetsService {
                     );
                 }
                 tx.upsert_assets(assets).await?;
+                token_balance_refresh_req
+                    .push(TokenBalanceRefresh::new(address, chain_code, &device.sn));
             }
         }
+
+        let task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::TOKEN_BALANCE_REFRESH,
+            &token_balance_refresh_req,
+        )?;
+
         let task = Task::Common(CommonTask::QueryCoinPrice(req));
-        Tasks::new().push(task).send().await?;
+        Tasks::new()
+            .push(task)
+            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .send()
+            .await?;
         Ok(())
     }
 

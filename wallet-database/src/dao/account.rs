@@ -395,6 +395,7 @@ impl AccountEntity {
     pub async fn lists_by_wallet_address<'a, E>(
         wallet_address: &str,
         account_id: Option<u32>,
+        chain_code: Option<&str>,
         exec: E,
     ) -> Result<Vec<AccountEntity>, crate::Error>
     where
@@ -403,6 +404,11 @@ impl AccountEntity {
         let mut sql = "select * from account where wallet_address = ? and status = 1".to_string();
         if let Some(account_id) = account_id {
             let a = format!(" and account_id = '{}'", account_id);
+            sql.push_str(&a);
+        }
+
+        if let Some(chain_code) = chain_code {
+            let a = format!(" and chain_code = '{}'", chain_code);
             sql.push_str(&a);
         }
 
@@ -437,7 +443,7 @@ impl AccountEntity {
         let sql = r#"
             SELECT 
                 account.*,
-                wallet.uid
+                wallet.uid,wallet.name as wallet_name
             FROM 
                 account
             LEFT JOIN 
@@ -451,6 +457,36 @@ impl AccountEntity {
             .bind(address)
             .bind(chain_code)
             .fetch_optional(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn current_chain_address<'a, E>(
+        uid: String,
+        account_id: u32,
+        chain_code: &str,
+        executor: E,
+    ) -> Result<Vec<AccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT 
+                account.*
+            FROM 
+                account
+            INNER JOIN 
+                wallet
+            ON 
+                account.wallet_address = wallet.address
+            WHERE 
+                wallet.uid = $1 AND account.account_id = $2 AND account.chain_code = $3;
+            "#;
+        sqlx::query_as::<_, AccountEntity>(sql)
+            .bind(uid)
+            .bind(account_id)
+            .bind(chain_code)
+            .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }

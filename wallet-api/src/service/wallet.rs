@@ -179,13 +179,14 @@ impl WalletService {
             )?;
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(hd_path.get_account_id()?)?;
-            let Some(chain) = tx.detail_with_node(&data.chain_code).await? else {
+            let Ok(node) = ChainDomain::get_node(&mut tx, &data.chain_code).await else {
                 continue;
             };
+
             let instance = wallet_chain_instance::instance::ChainObject::new(
                 &data.chain_code,
                 data.address_type,
-                chain.network.as_str().into(),
+                node.network.as_str().into(),
             )?;
 
             let (account, _, address_init_req) = AccountDomain::create_account_v2(

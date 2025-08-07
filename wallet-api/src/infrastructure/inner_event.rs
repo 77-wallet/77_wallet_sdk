@@ -12,7 +12,7 @@ pub enum InnerEvent {
     SyncAssets {
         addr_list: Vec<String>,
         chain_code: String,
-        symbol: String,
+        symbol: Vec<String>,
     },
 }
 
@@ -46,7 +46,7 @@ impl EventBuffer {
         }
     }
 
-    fn push_assets(&self, addrs: Vec<String>, chain: String, symbol: String) {
+    fn push_assets(&self, addrs: Vec<String>, chain: String, symbol: Vec<String>) {
         if addrs.is_empty() {
             return;
         }
@@ -54,7 +54,9 @@ impl EventBuffer {
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
         for addr in addrs {
-            buf.insert((addr.as_str(), chain.as_str(), symbol.as_str()).into());
+            for s in &symbol {
+                buf.insert((addr.as_str(), chain.as_str(), s.as_str()).into());
+            }
         }
         if was_empty && !buf.is_empty() {
             self.notifier.notify_one();

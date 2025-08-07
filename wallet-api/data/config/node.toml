@@ -21,6 +21,14 @@ http_url = ""
 network = "testnet"
 active = false
 
+
+[[nodes.tron.nodes]]
+node_name = "本地节点"
+rpc_url = "http://100.78.188.103:8090"
+http_url = ""
+network = "testnet"
+active = true
+
 # [[nodes.tron.nodes]]
 # node_name = "Platform Node"
 # rpc_url = "http://rpc.88ai.fun/tron"

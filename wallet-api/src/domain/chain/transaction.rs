@@ -1,6 +1,6 @@
 use super::adapter::TransactionAdapter;
 use crate::{
-    domain::coin::CoinDomain,
+    domain::{bill::BillDomain, coin::CoinDomain},
     infrastructure::task_queue::{self, BackendApiTaskData},
     request::transaction::{self, Signer},
 };
@@ -199,7 +199,7 @@ impl ChainTransDomain {
             new_bill.signer = users;
         }
 
-        crate::domain::bill::BillDomain::create_bill(new_bill).await?;
+        BillDomain::create_bill(new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;
@@ -237,6 +237,26 @@ impl ChainTransDomain {
                 Ok(gas_oracle)
             }
         }
+    }
+
+    pub async fn default_gas_oracle(
+        provider: &eth::Provider,
+    ) -> Result<GasOracle, crate::ServiceError> {
+        let eth_fee = provider.get_default_fee().await?;
+
+        let propose = eth_fee.base_fee + eth_fee.priority_fee_per_gas;
+        let propose = unit::format_to_string(propose, eth::consts::ETH_GWEI)?;
+        let base = unit::format_to_string(eth_fee.base_fee, eth::consts::ETH_GWEI)?;
+
+        let gas_oracle = GasOracle {
+            safe_gas_price: None,
+            propose_gas_price: Some(propose),
+            fast_gas_price: None,
+            suggest_base_fee: Some(base),
+            gas_used_ratio: None,
+        };
+
+        Ok(gas_oracle)
     }
 
     // check balance

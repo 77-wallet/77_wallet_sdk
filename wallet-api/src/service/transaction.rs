@@ -12,7 +12,6 @@ use crate::response_vo::{
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use wallet_chain_interact::BillResourceConsume;
-use wallet_database::dao::bill::BillDao;
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 use wallet_database::dao::multisig_queue::MultisigQueueDaoV1;
 use wallet_database::entities;
@@ -26,12 +25,14 @@ use wallet_database::entities::multisig_account::{
 };
 use wallet_database::entities::multisig_queue::{MemberSignedResult, MultisigQueueStatus};
 use wallet_database::pagination::Pagination;
+use wallet_database::repositories::account::AccountRepo;
 use wallet_database::repositories::address_book::AddressBookRepo;
+use wallet_database::repositories::bill::BillRepo;
 use wallet_database::repositories::coin::CoinRepo;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_utils::unit;
 
-pub struct TransactionService {}
+pub struct TransactionService;
 
 impl TransactionService {
     // 本币的余额
@@ -86,9 +87,7 @@ impl TransactionService {
     ) -> Result<TransactionResult, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.base.chain_code).await?;
 
-        let tx_hash =
-            domain::chain::transaction::ChainTransDomain::transfer(params, bill_kind, &adapter)
-                .await?;
+        let tx_hash = ChainTransDomain::transfer(params, bill_kind, &adapter).await?;
         Ok(TransactionResult { tx_hash })
     }
 
@@ -149,10 +148,9 @@ impl TransactionService {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let mut bill = BillDao::get_by_hash_and_owner(pool.as_ref(), &tx_hash, owner)
-            .await?
-            .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
-        bill.value = wallet_utils::unit::truncate_to_8_decimals(&bill.value);
+
+        let mut bill = BillRepo::get_by_hash_and_owner(&tx_hash, owner, &pool).await?;
+        bill.truncate_to_8_decimals();
 
         let sign = Self::handle_queue_member(&bill, pool.clone()).await;
 
@@ -169,12 +167,24 @@ impl TransactionService {
             None
         };
 
-        let res = BillDetailVo {
+        let mut res = BillDetailVo {
             bill,
             resource_consume,
             signature: sign,
             fee_symbol: main_coin.symbol,
+            wallet_name: "".to_string(),
+            account_name: "".to_string(),
         };
+        if !res.bill.to_addr.is_empty() {
+            // 根据地址和链获取钱包名称
+            let account =
+                AccountRepo::account_with_wallet(&res.bill.to_addr, &res.bill.chain_code, &pool)
+                    .await;
+            if let Ok(account) = account {
+                res.wallet_name = account.wallet_name;
+                res.account_name = account.name;
+            }
+        }
 
         Ok(res)
     }
@@ -188,13 +198,7 @@ impl TransactionService {
     ) -> Result<Pagination<RecentBillListVo>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        // let min_value = ConfigDomain::get_config_min_value(chain_code, symbol).await?;
-        let min_value = None;
-
-        let lists =
-            BillDao::recent_bill(symbol, addr, chain_code, min_value, page, page_size, pool)
-                .await?;
-        Ok(lists)
+        Ok(BillRepo::recent_bill(symbol, addr, chain_code, page, page_size, pool).await?)
     }
 
     pub async fn query_tx_result(req: Vec<String>) -> Result<Vec<BillEntity>, crate::ServiceError> {
@@ -216,16 +220,14 @@ impl TransactionService {
         id: &str,
         pool: wallet_database::DbPool,
     ) -> Result<BillEntity, crate::ServiceError> {
-        // let transaction =
-        //     BillDao::get_by_hash_and_owner(pool.as_ref(), &query_rx.tx_hash, &query_rx.owner)
-        //         .await?
-        //         .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
-
-        let transaction = BillDao::find_by_id(pool.as_ref(), id)
-            .await?
-            .ok_or(crate::BusinessError::Bill(crate::BillError::NotFound))?;
+        let transaction = BillRepo::find_by_id(id, &pool).await?;
 
         if transaction.status != wallet_database::entities::bill::BillStatus::Pending.to_i8() {
+            return Ok(transaction);
+        }
+
+        // 不处理swap 类型的交易
+        if transaction.tx_kind == BillKind::Swap.to_i8() {
             return Ok(transaction);
         }
 
@@ -234,11 +236,7 @@ impl TransactionService {
             None => {
                 // 处理交易是否失败的逻辑
                 if transaction.is_failed() {
-                    BillDao::update_fail(&transaction.hash, pool.as_ref())
-                        .await
-                        .map_err(|e| {
-                            crate::SystemError::Service(format!("update bill fail:{e:?}"))
-                        })?;
+                    BillRepo::update_fail(&transaction.hash, &pool).await?;
                 }
                 return Ok(transaction);
             }
@@ -273,9 +271,7 @@ impl TransactionService {
         };
 
         // 2. 更新账单
-        let tx_result = BillDao::update(&sync_bill.tx_update, tx.as_mut())
-            .await
-            .map_err(|e| crate::SystemError::Service(format!("update bill fail:{e:?}")))?;
+        let tx_result = BillRepo::update(&sync_bill.tx_update, tx.as_mut()).await?;
 
         // 1. 更新余额
         AssetsEntity::update_balance(tx.as_mut(), &assets_id, &sync_bill.balance)
@@ -376,5 +372,14 @@ impl TransactionService {
         };
 
         Ok(Some(sync_bill))
+    }
+
+    pub async fn list_by_hashs(
+        owner: String,
+        hashs: Vec<String>,
+    ) -> Result<Vec<BillEntity>, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        Ok(BillRepo::lists_by_hashs(&owner, hashs, &pool).await?)
     }
 }
