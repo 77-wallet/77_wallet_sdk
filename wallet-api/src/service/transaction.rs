@@ -226,6 +226,11 @@ impl TransactionService {
             return Ok(transaction);
         }
 
+        // 不处理swap 类型的交易
+        if transaction.tx_kind == BillKind::Swap.to_i8() {
+            return Ok(transaction);
+        }
+
         let sync_bill = match Self::get_tx_res(&transaction).await? {
             Some(tx_result) => tx_result,
             None => {
