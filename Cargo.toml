@@ -20,13 +20,13 @@ wallet-transport-backend = { version = "0.1.0", default-features = false, path =
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree" }
 
-wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "15a1b52fc2b7a640a2ea7e40a1e964223e109268" }
-wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "15a1b52fc2b7a640a2ea7e40a1e964223e109268" }
-wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "15a1b52fc2b7a640a2ea7e40a1e964223e109268" }
-wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "15a1b52fc2b7a640a2ea7e40a1e964223e109268" }
-wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "15a1b52fc2b7a640a2ea7e40a1e964223e109268" }
-wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "15a1b52fc2b7a640a2ea7e40a1e964223e109268" }
-wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "15a1b52fc2b7a640a2ea7e40a1e964223e109268" }
+wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "1a03fd3661b402c60e20d63b5bc3b3be83a8f3b8" }
+wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "1a03fd3661b402c60e20d63b5bc3b3be83a8f3b8" }
+wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "1a03fd3661b402c60e20d63b5bc3b3be83a8f3b8" }
+wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "1a03fd3661b402c60e20d63b5bc3b3be83a8f3b8" }
+wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "1a03fd3661b402c60e20d63b5bc3b3be83a8f3b8" }
+wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "1a03fd3661b402c60e20d63b5bc3b3be83a8f3b8" }
+wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "1a03fd3661b402c60e20d63b5bc3b3be83a8f3b8" }
 
 # wallet-crypto = { default-features = false, path = "../wallet_core/wallet-crypto" }
 # wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
