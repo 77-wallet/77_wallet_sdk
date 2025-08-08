@@ -478,7 +478,7 @@ impl SwapServer {
         let coins = CoinRepo::coin_list_with_assets(
             &req.search,
             req.exclude_token,
-            req.chain_code,
+            "tron".to_string(),
             address,
             req.page_num,
             req.page_size,
