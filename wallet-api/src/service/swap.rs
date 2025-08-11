@@ -463,12 +463,12 @@ impl SwapServer {
     ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let chain_code = "tron";
+        let chain_code = (!req.chain_code.is_empty()).then(|| req.chain_code.clone());
 
         let list = AccountEntity::lists_by_wallet_address(
             &req.wallet_address,
             Some(req.account_id as u32),
-            Some(chain_code),
+            chain_code.as_deref(),
             pool.as_ref(),
         )
         .await?;
@@ -480,7 +480,7 @@ impl SwapServer {
         let coins = CoinRepo::coin_list_with_assets(
             &req.search,
             req.exclude_token,
-            chain_code.to_string(),
+            req.chain_code.to_string(),
             address,
             req.page_num,
             req.page_size,
@@ -528,13 +528,6 @@ impl SwapServer {
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
         Ok(self.client.chain_list().await?.chain_dexs)
     }
-
-    // pub async fn dex_list(
-    //     &self,
-    //     chain_code: String,
-    // ) -> Result<Vec<SupportDex>, crate::ServiceError> {
-    //     Ok(self.client.dex_list(&chain_code).await?)
-    // }
 
     pub async fn approve_fee(
         &self,
@@ -737,112 +730,3 @@ impl SwapServer {
         Ok(resp.tx_hash)
     }
 }
-
-// async fn widthdraw_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
-//     let amount_out =
-//         wallet_utils::unit::convert_to_u256(&req.amount_in, req.token_out.decimals as u8)?;
-
-//     let (bal_in, bal_out) = self.get_bal_in_and_out(&req, amount_out).await?;
-
-//     let dex_route_list = DexRoute::new(req.amount_in.clone(), &req.token_in, &req.token_out);
-//     let mut res = ApiQuoteResp::new_with_default_slippage(
-//         req.chain_code.clone(),
-//         req.token_in.symbol.clone(),
-//         req.token_out.symbol.clone(),
-//         vec![dex_route_list],
-//         bal_in,
-//         bal_out,
-//     );
-//     res.set_amount_out(amount_out, req.token_out.decimals);
-
-//     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-//     let assets = AssetsRepo::get_by_addr_token_opt(
-//         &pool,
-//         &req.chain_code,
-//         &req.token_in.token_addr,
-//         &req.recipient,
-//     )
-//     .await?
-//     .ok_or(crate::BusinessError::Assets(
-//         crate::AssetsError::NotFoundAssets,
-//     ))?;
-
-//     if self.check_bal(&req.amount_in, &assets.balance)? {
-//         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-//         let params = WithdrawReq {
-//             from: req.recipient.clone(),
-//             token: req.token_out.token_addr.clone(),
-//             amount: req.amount_in.clone(),
-//             chain_code: req.chain_code.clone(),
-//         };
-
-//         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
-//         let value =
-//             wallet_utils::unit::convert_to_u256(&req.amount_in, req.token_out.decimals as u8)?;
-//         // 模拟报价
-//         let (consumer, content) = adapter
-//             .withdraw_fee(params, &main_coin.symbol, value)
-//             .await?;
-
-//         let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
-//         res.consumer = consumer;
-//         res.fee = fee_resp;
-//     }
-
-//     Ok(res)
-// }
-
-// async fn deposit_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
-//     let amount_out =
-//         wallet_utils::unit::convert_to_u256(&req.amount_in, req.token_out.decimals as u8)?;
-
-//     let (bal_in, bal_out) = self.get_bal_in_and_out(&req, amount_out).await?;
-
-//     let dex_route_list = DexRoute::new(req.amount_in.clone(), &req.token_in, &req.token_out);
-//     let mut res = ApiQuoteResp::new_with_default_slippage(
-//         req.chain_code.clone(),
-//         req.token_in.symbol.clone(),
-//         req.token_out.symbol.clone(),
-//         vec![dex_route_list],
-//         bal_in,
-//         bal_out,
-//     );
-//     res.set_amount_out(amount_out, req.token_out.decimals);
-
-//     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-//     let assets = AssetsRepo::get_by_addr_token_opt(
-//         &pool,
-//         &req.chain_code,
-//         &req.token_in.token_addr,
-//         &req.recipient,
-//     )
-//     .await?
-//     .ok_or(crate::BusinessError::Assets(
-//         crate::AssetsError::NotFoundAssets,
-//     ))?;
-
-//     if self.check_bal(&req.amount_in, &assets.balance)? {
-//         // 模拟需要消耗的手续费
-//         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-//         let params = DepositReq {
-//             from: req.recipient.clone(),
-//             token: req.token_out.token_addr.clone(),
-//             amount: req.amount_in.clone(),
-//             chain_code: req.chain_code.clone(),
-//         };
-
-//         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
-//         let value =
-//             wallet_utils::unit::convert_to_u256(&req.amount_in, req.token_out.decimals as u8)?;
-//         // 模拟报价
-//         let (consumer, content) = adapter
-//             .deposit_fee(params, &main_coin.symbol, value)
-//             .await?;
-
-//         let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
-//         res.consumer = consumer;
-//         res.fee = fee_resp;
-//     }
-
-//     Ok(res)
-// }

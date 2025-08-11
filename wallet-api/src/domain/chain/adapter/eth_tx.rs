@@ -7,7 +7,7 @@ use crate::{
         },
         TransferResp,
     },
-    request::transaction::ApproveReq,
+    request::transaction::{ApproveReq, DepositReq, WithdrawReq},
 };
 use alloy::{
     network::TransactionBuilder as _,
@@ -17,7 +17,7 @@ use alloy::{primitives::U256, rpc::types::TransactionRequest};
 use wallet_chain_interact::{
     eth::{
         self,
-        operations::erc::{Allowance, Approve},
+        operations::erc::{Allowance, Approve, Deposit, Withdraw},
         EthChain, FeeSetting,
     },
     types::ChainPrivateKey,
@@ -59,6 +59,70 @@ pub(super) async fn approve_fee(
     let fee = chain.estimate_gas(approve).await?;
 
     Ok(fee)
+}
+
+pub(super) async fn withdraw_fee(
+    chain: &EthChain,
+    req: &WithdrawReq,
+    value: alloy::primitives::U256,
+) -> Result<ResourceConsume, crate::ServiceError> {
+    let withdraw = Withdraw::new(&req.from, &req.token, value)?;
+
+    Ok(chain.estimate_gas(withdraw).await?)
+}
+
+pub(super) async fn withdraw(
+    chain: &EthChain,
+    req: &WithdrawReq,
+    value: alloy::primitives::U256,
+    fee: String,
+    key: ChainPrivateKey,
+) -> Result<TransferResp, crate::ServiceError> {
+    let withdraw = Withdraw::new(&req.from, &req.token, value)?;
+
+    // 使用默认的手续费配置
+    let fee_setting = pare_fee_setting(fee.as_str())?;
+    let transfer_fee = fee_setting.transaction_fee();
+
+    // exec tx
+    let tx_hash = chain.exec_transaction(withdraw, fee_setting, key).await?;
+
+    Ok(TransferResp::new(
+        tx_hash,
+        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
+    ))
+}
+
+pub(super) async fn deposit_fee(
+    chain: &EthChain,
+    req: &DepositReq,
+    amount: alloy::primitives::U256,
+) -> Result<ResourceConsume, crate::ServiceError> {
+    let approve = Deposit::new(&req.from, &req.token, amount)?;
+
+    Ok(chain.estimate_gas(approve).await?)
+}
+
+pub(super) async fn deposit(
+    chain: &EthChain,
+    req: &DepositReq,
+    amount: alloy::primitives::U256,
+    fee: String,
+    key: ChainPrivateKey,
+) -> Result<TransferResp, crate::ServiceError> {
+    let approve = Deposit::new(&req.from, &req.token, amount)?;
+
+    // 使用默认的手续费配置
+    let fee_setting = pare_fee_setting(fee.as_str())?;
+    let transfer_fee = fee_setting.transaction_fee();
+
+    // exec tx
+    let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
+
+    Ok(TransferResp::new(
+        tx_hash,
+        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
+    ))
 }
 
 pub(super) async fn allowance(

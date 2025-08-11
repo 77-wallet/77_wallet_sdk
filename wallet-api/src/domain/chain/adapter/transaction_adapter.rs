@@ -977,6 +977,18 @@ impl TransactionAdapter {
 
                 (consumer, fee)
             }
+            Self::Ethereum(chain) => {
+                let resource = eth_tx::deposit_fee(chain, &req, value).await?;
+
+                let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
+                let fee = FeeDetails::try_from((gas_oracle, resource.consume))?
+                    .to_resp(token_currency, &currency);
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
+                let fee = wallet_utils::serde_func::serde_to_string(&fee)?;
+
+                (consumer, fee)
+            }
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -990,12 +1002,13 @@ impl TransactionAdapter {
     pub async fn deposit(
         &self,
         req: &DepositReq,
-        _fee: String,
+        fee: String,
         key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, crate::ServiceError> {
         let resp = match self {
             Self::Tron(chain) => tron_tx::deposit(chain, &req, value, key).await?,
+            Self::Ethereum(chain) => eth_tx::deposit(chain, &req, value, fee, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -1033,6 +1046,18 @@ impl TransactionAdapter {
 
                 (consumer, fee)
             }
+            Self::Ethereum(chain) => {
+                let resource = eth_tx::withdraw_fee(chain, &req, value).await?;
+
+                let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
+                let fee = FeeDetails::try_from((gas_oracle, resource.consume))?
+                    .to_resp(token_currency, &currency);
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
+                let fee = wallet_utils::serde_func::serde_to_string(&fee)?;
+
+                (consumer, fee)
+            }
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -1046,12 +1071,13 @@ impl TransactionAdapter {
     pub async fn withdraw(
         &self,
         req: &WithdrawReq,
-        _fee: String,
+        fee: String,
         key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, crate::ServiceError> {
         let resp = match self {
             Self::Tron(chain) => tron_tx::withdraw(chain, &req, value, key).await?,
+            Self::Ethereum(chain) => eth_tx::withdraw(chain, &req, value, fee, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
