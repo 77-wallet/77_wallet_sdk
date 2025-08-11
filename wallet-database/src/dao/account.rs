@@ -3,7 +3,7 @@ use crate::{
         AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
     },
     sql_utils::{
-        query_builder::DynamicQueryBuilder, update_builder::DynamicUpdateBuilder, SqlArg,
+        query_builder::DynamicQueryBuilder, update_builder::DynamicUpdateBuilder,
         SqlExecutableReturn as _,
     },
 };
@@ -67,11 +67,11 @@ impl AccountEntity {
     {
         let mut builder = DynamicUpdateBuilder::new("account");
 
-        builder.set("name", SqlArg::Str(name.to_string()));
+        builder.set("name", name);
         builder.set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
 
-        builder.and_where_eq("wallet_address", SqlArg::Str(wallet_address.to_string()));
-        builder.and_where_eq("account_id", SqlArg::Int(account_id as i64));
+        builder.and_where_eq("wallet_address", wallet_address);
+        builder.and_where_eq("account_id", account_id);
 
         builder.fetch_all(executor).await
     }
@@ -84,7 +84,7 @@ impl AccountEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let builder = DynamicQueryBuilder::new("SELECT * FROM account")
-            .and_where_eq("wallet_address", SqlArg::Str(wallet_address.to_string()))
+            .and_where_eq("wallet_address", wallet_address)
             .order_by("account_id DESC")
             .limit(1);
 
@@ -159,16 +159,16 @@ impl AccountEntity {
         }
 
         if let Some(w) = wallet_address {
-            builder = builder.and_where_eq("wallet_address", SqlArg::Str(w.to_string()));
+            builder = builder.and_where_eq("wallet_address", w);
         }
         if let Some(a) = address {
-            builder = builder.and_where_eq("address", SqlArg::Str(a.to_string()));
+            builder = builder.and_where_eq("address", a);
         }
         if let Some(p) = derivation_path {
-            builder = builder.and_where_eq("derivation_path", SqlArg::Str(p.to_string()));
+            builder = builder.and_where_eq("derivation_path", p);
         }
         if let Some(id) = account_id {
-            builder = builder.and_where_eq("account_id", SqlArg::Int(id as i64));
+            builder = builder.and_where_eq("account_id", id);
         }
 
         builder.fetch_all(executor).await
@@ -242,17 +242,12 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            SELECT * FROM account WHERE wallet_address = $1 AND account_id = $2
-            "#;
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(wallet_address)
-            .bind(account_id)
+        DynamicQueryBuilder::new("SELECT * FROM account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
             .fetch_optional(exec)
             .await
-            .map(|v| v.is_some())
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map(|v: Option<AccountEntity>| v.is_some())
     }
 
     pub async fn reset_account<'a, E>(

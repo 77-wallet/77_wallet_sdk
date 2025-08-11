@@ -1,6 +1,6 @@
 use crate::{
     entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
-    sql_utils::{query_builder::DynamicQueryBuilder, SqlArg, SqlExecutableReturn as _},
+    sql_utils::{query_builder::DynamicQueryBuilder, SqlExecutableReturn as _},
 };
 use sqlx::{Executor, Sqlite};
 
@@ -211,7 +211,7 @@ impl ChainEntity {
         let mut builder = DynamicQueryBuilder::new("SELECT * FROM chain");
 
         if let Some(status) = status {
-            builder = builder.and_where_eq("status", SqlArg::Int(status as i64));
+            builder = builder.and_where_eq("status", status);
         }
 
         builder.fetch_all(executor).await
