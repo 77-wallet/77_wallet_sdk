@@ -463,10 +463,12 @@ impl SwapServer {
     ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
+        let chain_code = "tron";
+
         let list = AccountEntity::lists_by_wallet_address(
             &req.wallet_address,
             Some(req.account_id as u32),
-            Some(&req.chain_code),
+            Some(chain_code),
             pool.as_ref(),
         )
         .await?;
@@ -478,7 +480,7 @@ impl SwapServer {
         let coins = CoinRepo::coin_list_with_assets(
             &req.search,
             req.exclude_token,
-            "tron".to_string(),
+            chain_code.to_string(),
             address,
             req.page_num,
             req.page_size,
