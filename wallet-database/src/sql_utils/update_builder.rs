@@ -1,48 +1,64 @@
-use crate::sql_utils::SqlArg;
+use std::sync::Arc;
 
-#[derive(Debug)]
-pub struct DynamicUpdateBuilder {
+use crate::sql_utils::ArgFn;
+use sqlx::Arguments as _;
+
+pub struct DynamicUpdateBuilder<'a> {
     table: String,
     set_clauses: Vec<String>,
     where_clauses: Vec<String>,
-    params: Vec<SqlArg>,
+    arg_fns: Vec<ArgFn<'a>>,
 }
 
-impl DynamicUpdateBuilder {
+impl<'a> DynamicUpdateBuilder<'a> {
     pub fn new(table: &str) -> Self {
         Self {
             table: table.to_string(),
             set_clauses: vec![],
             where_clauses: vec![],
-            params: vec![],
+            arg_fns: vec![],
         }
     }
 
-    pub fn set(&mut self, field: &str, arg: SqlArg) {
+    pub fn set<T>(&mut self, field: &str, val: T)
+    where
+        T: Clone + Send + Sync + 'a + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
+    {
         self.set_clauses.push(format!("{} = ?", field));
-        self.params.push(arg);
+
+        self.arg_fns.push(Arc::new(
+            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+                args.add(val.clone());
+            },
+        ));
     }
 
     pub fn set_raw(&mut self, expr: &str) {
-        // like: updated_at = strftime(...)
         self.set_clauses.push(expr.to_string());
     }
 
-    pub fn and_where_eq(&mut self, field: &str, arg: SqlArg) {
+    pub fn and_where_eq<T>(&mut self, field: &str, val: T)
+    where
+        T: Clone + Send + Sync + 'a + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
+    {
         self.where_clauses.push(format!("{} = ?", field));
-        self.params.push(arg);
+
+        self.arg_fns.push(Arc::new(
+            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+                args.add(val.clone());
+            },
+        ));
     }
 }
 
 #[async_trait::async_trait]
-impl<T> super::SqlExecutableReturn<T> for DynamicUpdateBuilder where
+impl<'a, T> super::SqlExecutableReturn<'a, T> for DynamicUpdateBuilder<'a> where
     T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin + 'static
 {
 }
 
-#[async_trait::async_trait]
-impl super::SqlBuilder for DynamicUpdateBuilder {
-    fn build(&self) -> (String, Vec<SqlArg>) {
+impl<'q> super::SqlQueryBuilder<'q> for DynamicUpdateBuilder<'q> {
+    fn build_sql(&self) -> (String, Vec<ArgFn<'q>>) {
         let mut sql = format!("UPDATE {} SET ", self.table);
         sql.push_str(&self.set_clauses.join(", "));
 
@@ -52,7 +68,12 @@ impl super::SqlBuilder for DynamicUpdateBuilder {
         }
 
         sql.push_str(" RETURNING *");
-
-        (sql, self.params.clone())
+        let arg_fns = self
+            .arg_fns
+            .iter()
+            .cloned()
+            .map(|f| f as ArgFn<'q>)
+            .collect();
+        (sql, arg_fns)
     }
 }
