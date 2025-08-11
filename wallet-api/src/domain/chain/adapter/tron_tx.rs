@@ -324,10 +324,12 @@ pub(super) async fn estimate_swap(
         })?;
 
     // get fee
-    let consumer = chain
+    let mut consumer = chain
         .provider
         .contract_fee(constant, 1, &owner_address)
         .await?;
+    // 手续费增加0.2trx
+    consumer.set_extra_fee(200000);
 
     let resp = EstimateSwapResult {
         amount_in,
@@ -349,7 +351,7 @@ pub(super) async fn swap(
     let mut wrap = WarpContract { params };
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
     // get fee
-    let consumer = chain
+    let mut consumer = chain
         .provider
         .contract_fee(constant, 1, &owner_address)
         .await?;
@@ -358,6 +360,9 @@ pub(super) async fn swap(
     let balance = chain
         .balance(&swap_params.recipient_tron_addr()?, None)
         .await?;
+    // 手续费增加0.2trx
+    consumer.set_extra_fee(200000);
+
     let mut fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if swap_params.main_coin_swap() {
         fee += swap_params.amount_in;
