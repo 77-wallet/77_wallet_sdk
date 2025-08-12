@@ -8,7 +8,7 @@ async fn test_balance() {
     let addr = "0xD5359AD68FDb8a72386aB26C68D7648D548ec70a";
     let chain_code = "eth";
     // let symbol = "ETH";
-    let symbol = "USDT";
+    let symbol = "WETH";
 
     let balance = wallet_manager
         .chain_balance(addr, chain_code, &symbol)

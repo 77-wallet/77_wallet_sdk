@@ -30,11 +30,11 @@ async fn test_support_chain() {
 async fn test_approve() {
     let wallet_manager = get_manager().await;
     let params = ApproveReq {
-        from: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
-        spender: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
-        contract: AGGREGATOR.to_string(),
-        value: "2".to_string(),
-        chain_code: "tron".to_string(),
+        from: "0xD5359AD68FDb8a72386aB26C68D7648D548ec70a".to_string(),
+        spender: AGGREGATOR.to_string(),
+        contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+        value: "400".to_string(),
+        chain_code: "eth".to_string(),
         approve_type: "NORMAL".to_string(),
     };
 
@@ -107,6 +107,17 @@ async fn test_quote() {
         decimals: 6,
     };
 
+    // let token_in = SwapTokenInfo {
+    //     token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+    //     symbol: "weth".to_string(),
+    //     decimals: 18,
+    // };
+    // let token_out = SwapTokenInfo {
+    //     token_addr: "".to_string(),
+    //     symbol: "WETH".to_string(),
+    //     decimals: 18,
+    // };
+
     let req = QuoteReq {
         aggregator_addr: AGGREGATOR.to_string(),
         recipient: "0xD5359AD68FDb8a72386aB26C68D7648D548ec70a".to_string(),
@@ -128,7 +139,7 @@ async fn test_quote() {
 async fn test_swap() {
     let wallet_manager = get_manager().await;
 
-    let o_value = "0.1";
+    let o_value = "50";
 
     let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 18).unwrap();
 
@@ -139,11 +150,11 @@ async fn test_swap() {
         route_in_dex: vec![RouteInDex {
             dex_id: 3,
             pool_id: "0xc7bbec68d12a0d1830360f8ec58fa599ba1b0e9b".to_string(),
-            in_token_symbol: "WETH".to_string(),
-            in_token_addr: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".to_string(),
-            out_token_addr: "0xdac17f958d2ee523a2206206994597c13d831ec7".to_string(),
-            out_token_symbol: "USDT".to_string(),
-            zero_for_one: true,
+            in_token_symbol: "USDT".to_string(),
+            in_token_addr: "0xdac17f958d2ee523a2206206994597c13d831ec7".to_string(),
+            out_token_addr: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".to_string(),
+            out_token_symbol: "WETH".to_string(),
+            zero_for_one: false,
             fee: "100".to_string(),
             amount_in: 0.to_string(),
             min_amount_out: 0.to_string(),
@@ -151,22 +162,22 @@ async fn test_swap() {
     };
 
     let token_in = SwapTokenInfo {
+        token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
+        symbol: "USDT".to_string(),
+        decimals: 18,
+    };
+
+    let token_out = SwapTokenInfo {
         token_addr: "".to_string(),
         symbol: "WETH".to_string(),
         decimals: 18,
     };
 
-    let token_out = SwapTokenInfo {
-        token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-        symbol: "USDT".to_string(),
-        decimals: 6,
-    };
-
     let req = SwapReq {
         aggregator_addr: AGGREGATOR.to_string(),
         amount_in: o_value.to_string(),
-        amount_out: "400".to_string(),
-        min_amount_out: "400".to_string(),
+        amount_out: "0.01".to_string(),
+        min_amount_out: "0.01".to_string(),
         chain_code: "eth".to_string(),
         recipient: "0xD5359AD68FDb8a72386aB26C68D7648D548ec70a".to_string(),
         token_in,

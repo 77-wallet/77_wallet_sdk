@@ -139,8 +139,6 @@ impl SwapServer {
             &req.token_out.token_addr,
         );
 
-        tracing::warn!("swap_inner_type = {:?}", swap_inner_type);
-
         match swap_inner_type {
             SwapInnerType::Withdraw => self.common_quote(req, SwapInnerType::Withdraw).await,
             SwapInnerType::Deposit => self.common_quote(req, SwapInnerType::Deposit).await,
