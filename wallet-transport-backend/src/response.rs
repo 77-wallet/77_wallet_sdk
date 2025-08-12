@@ -66,10 +66,12 @@ pub struct Data {
 
 impl Data {
     pub fn serde<T: for<'de> serde::Deserialize<'de>>(self) -> Result<T, crate::Error> {
-        if self.success
-            && let Some(module) = self.module
-        {
-            Ok(wallet_utils::serde_func::serde_from_value(module)?)
+        if self.success {
+            if let Some(module) = self.module {
+                Ok(wallet_utils::serde_func::serde_from_value(module)?)
+            } else {
+                Err(crate::Error::Backend(self.message))
+            }
         } else {
             Err(crate::Error::Backend(self.message))
         }
