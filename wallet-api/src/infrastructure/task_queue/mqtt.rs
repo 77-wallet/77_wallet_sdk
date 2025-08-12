@@ -43,6 +43,7 @@ impl TaskTrait for MqttTask {
             MqttTask::CleanPermission(_) => TaskName::Known(KnownTaskName::CleanPermission),
             MqttTask::OrderAllConfirmed(_) => TaskName::Known(KnownTaskName::OrderAllConfirmed),
             MqttTask::UnbindUid(_) => TaskName::Known(KnownTaskName::UnbindUid),
+            MqttTask::AddressUse(_) => TaskName::Known(KnownTaskName::AddressUse),
         }
     }
     fn get_type(&self) -> TaskType {
@@ -87,6 +88,7 @@ impl TaskTrait for MqttTask {
             }
             MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::UnbindUid(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
+            MqttTask::AddressUse(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
         };
         Ok(res)
     }
@@ -108,6 +110,7 @@ impl TaskTrait for MqttTask {
             MqttTask::CleanPermission(data) => data.exec(id).await?,
             MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
             MqttTask::UnbindUid(data) => data.exec(id).await?,
+            MqttTask::AddressUse(data) => data.exec(id).await?,
         }
         Ok(())
     }
@@ -133,4 +136,5 @@ pub(crate) enum MqttTask {
     PermissionAccept(topics::PermissionAccept),
     CleanPermission(topics::CleanPermission),
     UnbindUid(topics::UnbindUidMsg),
+    AddressUse(topics::AddressUseMsg),
 }

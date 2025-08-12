@@ -1,5 +1,5 @@
 use crate::messaging::mqtt::topics::{
-    AcctChange, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
+    AcctChange, AddressUseMsg, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange, UnbindUidMsg,
@@ -78,6 +78,8 @@ pub enum BizType {
     CleanPermission,
     // 解绑uid
     UnbindUid,
+    // 地址使用
+    AddressUse,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -108,4 +110,5 @@ pub enum Body {
     OrderMultiTransExecute(MultiSignTransExecute),
     CleanPermission(CleanPermission),
     UnbindUid(UnbindUidMsg),
+    AddressUse(AddressUseMsg),
 }

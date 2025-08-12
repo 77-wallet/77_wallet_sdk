@@ -1,6 +1,9 @@
-use crate::entities::{
-    api_account::{ApiAccountEntity, CreateApiAccountVo},
-    api_wallet::ApiWalletType,
+use crate::{
+    entities::{
+        api_account::{ApiAccountEntity, CreateApiAccountVo},
+        api_wallet::ApiWalletType,
+    },
+    sql_utils::{query_builder::DynamicQueryBuilder, SqlExecutableReturn as _},
 };
 use sqlx::{Executor, Sqlite};
 
@@ -21,7 +24,7 @@ impl ApiAccountEntity {
             "INSERT INTO api_account (
                 account_id, name, address, pubkey, private_key, address_type,
                 wallet_address, derivation_path, derivation_path_index,
-                chain_code, wallet_type, status, is_init, created_at, updated_at
+                chain_code, wallet_type, status, is_init, is_used, created_at, updated_at
             ) ",
         );
 
@@ -39,6 +42,7 @@ impl ApiAccountEntity {
                 .push_bind(item.wallet_type)
                 .push_bind(1)
                 .push_bind(0)
+                .push_bind(false)
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
         });
@@ -95,6 +99,33 @@ impl ApiAccountEntity {
             .bind(wallet_address)
             .bind(account_id)
             .bind(name)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    /// 标记is_used
+    pub async fn update_is_used<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: u32,
+        is_used: bool,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_account SET 
+                is_used = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE wallet_address = $1 AND account_id = $2
+            RETURNING *
+        "#;
+
+        sqlx::query_as::<_, Self>(sql)
+            .bind(wallet_address)
+            .bind(account_id)
+            .bind(is_used)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -171,6 +202,25 @@ impl ApiAccountEntity {
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn find_one_by_wallet_address_index<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        chain_code: &str,
+        account_id: u32,
+    ) -> Result<Option<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let builder = DynamicQueryBuilder::new("SELECT * FROM api_account");
+
+        builder
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("chain_code", chain_code)
+            .and_where_eq("account_id", account_id)
+            .fetch_optional(exec)
+            .await
     }
 
     pub async fn physical_delete<'a, E>(

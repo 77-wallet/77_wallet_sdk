@@ -4,6 +4,8 @@ mod unbind_uid;
 pub use unbind_uid::*;
 mod chain_change;
 pub use chain_change::*;
+mod address_use;
+pub use address_use::*;
 mod order;
 pub use order::*;
 mod switch;

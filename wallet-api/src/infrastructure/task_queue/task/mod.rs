@@ -203,6 +203,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::CleanPermission => topics::CleanPermission => |parsed| Box::new(MqttTask::CleanPermission(parsed)),
         KnownTaskName::OrderAllConfirmed => topics::OrderAllConfirmed => |parsed| Box::new(MqttTask::OrderAllConfirmed(parsed)),
         KnownTaskName::UnbindUid => topics::UnbindUidMsg => |parsed| Box::new(MqttTask::UnbindUid(parsed)),
+        KnownTaskName::AddressUse => topics::AddressUseMsg => |parsed| Box::new(MqttTask::AddressUse(parsed)),
 
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
         KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),

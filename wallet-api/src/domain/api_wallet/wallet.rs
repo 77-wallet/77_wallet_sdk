@@ -63,7 +63,7 @@ impl ApiWalletDomain {
 
     pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, ApiWalletType::SubAccount)
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))
             .await?
             .ok_or(crate::BusinessError::ApiWallet(
                 crate::ApiWalletError::NotFound,

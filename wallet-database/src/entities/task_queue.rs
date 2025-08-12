@@ -173,4 +173,5 @@ pub enum KnownTaskName {
     // RecoverPermission,
     OrderAllConfirmed,
     UnbindUid,
+    AddressUse,
 }
