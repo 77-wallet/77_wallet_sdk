@@ -1,13 +1,16 @@
+use anyhow::Result;
 use hkdf::Hkdf;
 use k256::sha2::Sha256;
-use k256::ecdsa::signature::Signer;
+use k256::{ecdh::{EphemeralSecret, SharedSecret}, ecdsa::{Signature, SigningKey, signature::{Signer, Verifier}}, PublicKey, Secp256k1, SecretKey};
+use rand_core::OsRng;
+
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
 
 // 从 ECDH 共享密钥派生 ECDSA 密钥对
-pub fn derive_ecdsa_from_shared_secret(shared_secret: &k256::ecdh::SharedSecret) -> (k256::SecretKey, k256::PublicKey) {
+pub fn derive_ecdsa_from_shared_secret(shared_secret: &SharedSecret) -> (SecretKey, PublicKey) {
     
     // 1. 使用 HKDF 从共享密钥派生私钥
     let shared_bytes = shared_secret.raw_secret_bytes();
@@ -18,19 +21,21 @@ pub fn derive_ecdsa_from_shared_secret(shared_secret: &k256::ecdh::SharedSecret)
     hkdf.expand(b"ecdsa_private_key", &mut private_key_bytes).unwrap();
     
     // 3. 创建 ECDSA 密钥对
-    let secret_key = k256::SecretKey::from_bytes(&private_key_bytes.into()).unwrap();
+    let secret_key = SecretKey::from_bytes(&private_key_bytes.into()).unwrap();
     let public_key = secret_key.public_key();
-    
     (secret_key, public_key)
 }
 
 // 使用派生的 ECDSA 密钥进行签名
-pub fn sign_with_derived_ecdsa(message: &[u8], shared_secret: &k256::ecdh::SharedSecret) -> k256::ecdsa::Signature {
-    
-    
+pub fn sign_with_derived_ecdsa(message: &[u8], shared_secret: &SharedSecret) -> Result<Signature> {
     let (secret_key, _) = derive_ecdsa_from_shared_secret(shared_secret);
-    let signing_key = k256::ecdsa::SigningKey::from(secret_key);
-    signing_key.sign(message)
+    // 创建 SigningKey
+    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes())?;
+
+    // 生成签名
+    let (signature, _) = signing_key.sign(message);
+
+    Ok(signature)
 }
 
 // 验证使用派生 ECDSA 密钥的签名
@@ -183,13 +188,13 @@ mod tests {
         
         // 5. 测试签名和验证
         let message = b"Hello, ECDSA derived from ECDH!";
-        let signature = sign_with_derived_ecdsa(message, &shared_secret);
+        let signature = sign_with_derived_ecdsa(message, &shared_secret).unwrap();
         let is_valid = verify_derived_ecdsa_signature(message, &signature, &shared_secret);
         
         assert!(is_valid, "ECDSA 签名验证失败");
         println!("ECDSA 签名验证成功！");
         
         // 6. 打印签名
-        println!("ECDSA Signature (hex): 0x{}", hex::encode(signature.to_bytes()));
+        // println!("ECDSA Signature (hex): 0x{}", hex::encode(signature.to_bytes()));
     }
 }

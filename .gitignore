@@ -18,3 +18,5 @@ wallet.toml
 config.yaml
 
 */sdk*
+/.idea
+/wallet-ecdh/.idea

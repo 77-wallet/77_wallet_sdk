@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-k256 = { version = "0.13", features = ["ecdh", "ecdsa-core", "sha2"] }
+k256 = { version = "0.13", features = ["ecdh", "ecdsa-core"] }
 rand_core = "0.6"
 hex = "0.4"
 # 加密相关依赖
@@ -12,5 +12,8 @@ aes-gcm = "0.10"
 base64 = "0.21"
 # HKDF 和哈希函数
 hkdf = "0.12"
+rand = "0.8.5"
+
+anyhow = {workspace = true}
 
 [dev-dependencies]
