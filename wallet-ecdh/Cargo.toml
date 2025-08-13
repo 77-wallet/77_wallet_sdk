@@ -9,7 +9,6 @@ rand_core = "0.6"
 hex = "0.4"
 # 加密相关依赖
 aes-gcm = {version = "0.10.3", features = ["aes"]}
-base64 = "0.21"
 # HKDF 和哈希函数
 hkdf = "0.12"
 

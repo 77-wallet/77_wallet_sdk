@@ -1,17 +1,17 @@
+mod data;
 mod encryption;
+mod error;
 
 // 重新导出主要的加密功能
 pub use encryption::{
-    EncryptedData, EncryptionError, decrypt_file_content, decrypt_string, decrypt_with_aad,
-    decrypt_with_shared_secret, encrypt_file_content, encrypt_string, encrypt_with_aad,
-    encrypt_with_shared_secret,
+    decrypt_with_aad, decrypt_with_shared_secret, encrypt_with_aad, encrypt_with_shared_secret,
 };
 
 use anyhow::Result;
 use hkdf::Hkdf;
 use k256::sha2::Sha256;
 use k256::{
-    PublicKey, Secp256k1, SecretKey,
+    PublicKey, SecretKey,
     ecdh::{EphemeralSecret, SharedSecret},
     ecdsa::{
         Signature, SigningKey,
