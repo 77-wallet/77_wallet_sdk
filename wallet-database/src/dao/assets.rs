@@ -346,6 +346,49 @@ impl AssetsEntity {
         }
     }
 
+    pub async fn get_by_addr_token<'a, E>(
+        exec: E,
+        chain_code: &str,
+        token_address: &str,
+        address: &str,
+    ) -> Result<Option<AssetsEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT 
+                name, symbol,decimals, address, chain_code, token_address, protocol, status, balance,is_multisig,created_at, updated_at
+            FROM 
+                assets
+            WHERE status = 1 AND chain_code =$1 AND token_address = $2 AND address = $3
+                AND EXISTS (
+                    SELECT 1
+                    FROM chain
+                    WHERE chain.chain_code = assets.chain_code
+                    AND chain.status = 1
+                )
+                AND EXISTS (
+                    SELECT 1
+                    FROM coin
+                    WHERE coin.chain_code = assets.chain_code
+                    AND coin.token_address = assets.token_address
+                    AND coin.symbol = assets.symbol
+                    AND coin.status = 1
+                );"#;
+
+        let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
+            .bind(chain_code)
+            .bind(token_address)
+            .bind(address)
+            .fetch_optional(exec)
+            .await;
+
+        match rs {
+            Ok(rs) => Ok(rs),
+            Err(_e) => Err(crate::Error::Database(DatabaseError::QueryFailed)),
+        }
+    }
+
     // 更新余额
     pub async fn update_balance<'a, E>(
         exec: E,

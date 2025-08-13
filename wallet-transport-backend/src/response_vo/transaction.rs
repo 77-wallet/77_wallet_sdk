@@ -49,6 +49,8 @@ pub struct SyncBillResp {
     pub notes: String,
     #[serde(default)]
     pub signer: Vec<String>,
+    #[serde(default)]
+    pub extra: Option<serde_json::Value>,
 }
 impl SyncBillResp {
     pub fn transaction_fee(&self) -> String {

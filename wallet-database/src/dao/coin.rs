@@ -1,19 +1,14 @@
-use std::{collections::HashSet, sync::Arc};
-
+use crate::{
+    entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    pagination::Pagination,
+    DbPool,
+};
+use chrono::SecondsFormat;
 use sqlx::{
     types::chrono::{DateTime, Utc},
     Executor, Pool, Sqlite,
 };
-
-use crate::{
-    entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
-    pagination::Pagination,
-};
-
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
-pub struct Coins {
-    pub symbol: String,
-}
+use std::{collections::HashSet, sync::Arc};
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 pub struct CoinDao {
@@ -28,16 +23,10 @@ pub struct CoinDao {
 
 impl CoinEntity {
     pub fn token_address(&self) -> Option<String> {
-        match &self.token_address {
-            Some(token_address) => {
-                if token_address.is_empty() {
-                    None
-                } else {
-                    Some(token_address.clone())
-                }
-            }
-            None => None,
-        }
+        self.token_address
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .cloned()
     }
 
     pub async fn update_price_unit<'a, E>(
@@ -45,6 +34,8 @@ impl CoinEntity {
         coin_id: &CoinId,
         price: &str,
         unit: Option<u8>,
+        status: Option<i32>,
+        time: Option<DateTime<Utc>>,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -52,24 +43,32 @@ impl CoinEntity {
         // 基础 SQL 语句，设置 price
         let mut sql = "UPDATE coin SET price = ?".to_string();
 
-        // 如果 unit 存在，添加 decimals 字段的更新
         if unit.is_some() {
             sql.push_str(", decimals = ?");
         }
 
-        // 添加 updated_at 字段的更新，使用当前 UTC 时间
-        sql.push_str(", updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+        if status.is_some() {
+            sql.push_str(", status = ?");
+        }
 
-        // 添加 WHERE 子句，指定要更新的记录
-        sql.push_str(" WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ?");
+        if time.is_some() {
+            sql.push_str(", updated_at = ?");
+        }
 
-        sql.push_str(" RETURNING *");
-        // 创建 SQL 查询，并绑定参数
+        sql.push_str(
+            " WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ? RETURNING *",
+        );
+
         let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql).bind(price); // 绑定 price 参数
 
-        // 如果 unit 存在，绑定 unit 参数
         if let Some(unit_val) = unit {
             query = query.bind(unit_val);
+        }
+        if let Some(status_val) = status {
+            query = query.bind(status_val);
+        }
+        if let Some(time_val) = time {
+            query = query.bind(time_val.to_rfc3339_opts(SecondsFormat::Secs, true));
         }
 
         // 处理 token_address，如果为空，设置为空字符串
@@ -110,33 +109,33 @@ impl CoinEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn symbol_list<'a, E>(
-        exec: E,
-        chain_code: Option<String>,
-    ) -> Result<Vec<Coins>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let mut sql = "SELECT DISTINCT symbol
-        FROM coin WHERE is_del = 0 AND status = 1 "
-            .to_string();
+    // pub async fn symbol_list<'a, E>(
+    //     exec: E,
+    //     chain_code: Option<String>,
+    // ) -> Result<Vec<Coins>, crate::Error>
+    // where
+    //     E: Executor<'a, Database = Sqlite>,
+    // {
+    //     let mut sql = "SELECT DISTINCT symbol
+    //     FROM coin WHERE is_del = 0 AND status = 1 "
+    //         .to_string();
 
-        let mut conditions = Vec::new();
+    //     let mut conditions = Vec::new();
 
-        if let Some(chain_code) = chain_code {
-            conditions.push(format!("chain_code = '{chain_code}'"));
-        }
+    //     if let Some(chain_code) = chain_code {
+    //         conditions.push(format!("chain_code = '{chain_code}'"));
+    //     }
 
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
+    //     if !conditions.is_empty() {
+    //         sql.push_str(" AND ");
+    //         sql.push_str(&conditions.join(" AND "));
+    //     }
 
-        sqlx::query_as::<sqlx::Sqlite, Coins>(&sql)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
-    }
+    //     sqlx::query_as::<sqlx::Sqlite, Coins>(&sql)
+    //         .fetch_all(exec)
+    //         .await
+    //         .map_err(|e| crate::Error::Database(e.into()))
+    // }
 
     pub async fn chain_code_list<'a, E>(exec: E) -> Result<Vec<String>, crate::Error>
     where
@@ -332,8 +331,8 @@ impl CoinEntity {
                 .push_bind(coin.is_popular)
                 .push_bind(coin.is_custom)
                 .push_bind(coin.status)
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
-                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+                .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
+                .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true));
         });
         // query_builder.push(" on conflict (id) do update set updated_at = excluded.updated_at");
         query_builder.push(
@@ -499,4 +498,119 @@ impl CoinEntity {
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn get_last_coin<'a, E>(
+        exec: E,
+        is_create: bool,
+    ) -> Result<Option<CoinEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let time = if is_create {
+            "created_at"
+        } else {
+            "updated_at"
+        };
+
+        let sql = format!(
+            "select * from coin where is_custom = 0 order by {} desc limit 1",
+            time
+        );
+
+        let res = sqlx::query_as::<_, CoinEntity>(&sql)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
+    pub async fn coin_count<'a, E>(exec: E) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(*) FROM coin";
+        sqlx::query_scalar::<_, i64>(sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn coin_list_with_assets(
+        search: &str,
+        exclude_token: Vec<String>,
+        chain_code: String,
+        address: Vec<String>,
+        page: i64,
+        page_size: i64,
+        pool: DbPool,
+    ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
+        let address = crate::any_in_collection(address, "','");
+
+        let mut sql = format!(
+            r#"
+        SELECT coin.*, COALESCE(assets.balance, '0') AS balance
+        FROM coin 
+        LEFT JOIN assets 
+            ON coin.chain_code = assets.chain_code 
+            AND coin.token_address = assets.token_address 
+            and assets.address  IN ('{}')
+        WHERE coin.status = 1
+        "#,
+            address,
+        );
+
+        if !chain_code.is_empty() {
+            sql.push_str(&format!(" AND coin.chain_code = '{}'", chain_code,));
+        }
+
+        if !exclude_token.is_empty() {
+            let excludes: Vec<String> = exclude_token
+                .into_iter()
+                .map(|t| format!("'{}'", t.replace("'", "''")))
+                .collect();
+            let clause = excludes.join(", ");
+            sql.push_str(&format!(" AND coin.token_address NOT IN ({})", clause));
+        }
+
+        if !search.is_empty() {
+            let escaped = search.replace("'", "''").to_lowercase();
+            sql.push_str(&format!(
+                " AND (LOWER(coin.symbol) LIKE '%{}%' OR LOWER(coin.token_address) LIKE '%{}%')",
+                escaped, escaped
+            ));
+        }
+
+        sql.push_str(" ORDER BY CAST(assets.balance AS NUMERIC) DESC");
+
+        // 分页
+        let paginate = Pagination::<CoinWithAssets>::init(page, page_size);
+        Ok(paginate.page(&pool, &sql).await?)
+    }
 }
+
+// pub async fn symbol_list<'a, E>(
+//     exec: E,
+//     chain_code: Option<String>,
+// ) -> Result<Vec<Coins>, crate::Error>
+// where
+//     E: Executor<'a, Database = Sqlite>,
+// {
+//     let mut sql =
+//         "SELECT DISTINCT symbol FROM coin WHERE is_del = 0 AND status = 1 ".to_string();
+
+//     let mut conditions = Vec::new();
+
+//     if let Some(chain_code) = chain_code {
+//         conditions.push(format!("chain_code = '{chain_code}'"));
+//     }
+
+//     if !conditions.is_empty() {
+//         sql.push_str(" AND ");
+//         sql.push_str(&conditions.join(" AND "));
+//     }
+
+//     sqlx::query_as::<sqlx::Sqlite, Coins>(&sql)
+//         .fetch_all(exec)
+//         .await
+//         .map_err(|e| crate::Error::Database(e.into()))
+// }

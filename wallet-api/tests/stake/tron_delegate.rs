@@ -59,19 +59,20 @@ async fn test_delegate_fee() {
 async fn test_delegate() {
     let manager = get_manager().await;
 
-    let sign = Signer {
+    let _sign = Signer {
         address: "TCZYpvSt36MXdnPhhFMyqwfpoqSHrjUg2b".to_string(),
         permission_id: 3,
     };
+    let sign = None;
 
     let req = DelegateReq {
-        owner_address: "TBtrFfwCQEtR8HZ4hEgfmYWiVetMF11czn".to_string(),
-        receiver_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        balance: 1,
+        owner_address: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
+        receiver_address: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
+        balance: 50,
         resource: "energy".to_string(),
         lock: true,
         lock_period: 3.0,
-        signer: Some(sign),
+        signer: sign,
     };
     let password = "123456".to_string();
     let res = manager.delegate_resource(req, password).await;

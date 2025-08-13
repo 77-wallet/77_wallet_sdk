@@ -7,6 +7,7 @@ use std::{fs, path::Path};
 pub struct Config {
     pub oss: OssConfig,
     pub backend_api: BackendApiConfig,
+    pub aggregate_api: AggregateApi,
     pub crypto: CryptoConfig,
     pub app_code: String,
 }
@@ -14,6 +15,12 @@ pub struct Config {
 pub struct CryptoConfig {
     pub aes_key: String,
     pub aes_iv: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AggregateApi {
+    pub test_url: String,
+    pub prod_url: String,
 }
 
 #[derive(Deserialize, Debug)]

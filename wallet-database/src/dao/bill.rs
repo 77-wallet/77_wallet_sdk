@@ -1,14 +1,13 @@
 use crate::{
     any_in_collection,
-    entities::bill::{
-        BillEntity, BillKind, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo,
-    },
+    entities::bill::{BillEntity, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo},
     pagination::Pagination,
     DbPool,
 };
-use sqlx::{Executor, Pool, Sqlite};
-use std::{collections::HashSet, sync::Arc};
-use wallet_types::constant::chain_code;
+use chrono::Utc;
+use serde::Serialize;
+use sqlx::{Executor, Sqlite};
+use std::collections::HashSet;
 pub struct BillDao;
 
 impl BillDao {
@@ -142,7 +141,7 @@ impl BillDao {
         min_value: Option<f64>,
         start: Option<i64>,
         end: Option<i64>,
-        transfer_type: Option<i64>,
+        transfer_type: Vec<i32>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::Error>
@@ -154,10 +153,9 @@ impl BillDao {
         sql.push_str(&placeholders.join(","));
         sql.push(')');
 
-        if let Some(types) = transfer_type {
-            // let kind = BillKind::try_from(types as i8)?.get_kinds();
-            // let kinds_str = any_in_collection(kind, "','");
-            sql.push_str(format!(" AND tx_kind  = {}", types).as_str());
+        if !transfer_type.is_empty() {
+            let kinds_str = any_in_collection(transfer_type, "','");
+            sql.push_str(format!(" AND tx_kind  in ('{}')", kinds_str).as_str());
         }
 
         if let Some(chain_code) = chain_code {
@@ -187,6 +185,7 @@ impl BillDao {
         Ok(paginate.page(pool, &sql).await?)
     }
 
+    // 最近转列
     pub async fn recent_bill(
         symbol: &str,
         addr: &str,
@@ -194,7 +193,7 @@ impl BillDao {
         min_value: Option<f64>,
         page: i64,
         page_size: i64,
-        pool: Arc<Pool<Sqlite>>,
+        pool: DbPool,
     ) -> Result<Pagination<RecentBillListVo>, crate::Error> {
         let min_value_condition = if let Some(value) = min_value {
             format!("AND CAST(value as REAL) >= {}", value)
@@ -278,22 +277,38 @@ impl BillDao {
     }
 
     // 包括需要更新交易的hash(ton链的in_msg 字段处理)
-    pub async fn update_all(pool: DbPool, tx: NewBillEntity, id: i32) -> Result<(), crate::Error> {
-        let sql = r#"
-            update bill set 
-                transaction_fee = $2,
-                transaction_time = $3,
-                status = $4,
-                block_height = $5,
-                updated_at = $6,
-                resource_consume = $7,
-                hash = $8
-            where id = $1
-            RETURNING *
-            "#;
-
+    pub async fn update_all<T>(
+        pool: DbPool,
+        tx: NewBillEntity<T>,
+        id: i32,
+    ) -> Result<(), crate::Error>
+    where
+        T: Serialize,
+    {
+        let extra_str = tx.get_extra_str()?;
         let time = sqlx::types::chrono::Utc::now().timestamp();
-        let _res = sqlx::query(sql)
+
+        let mut sql = String::from(
+            r#"
+        UPDATE bill SET 
+            transaction_fee = $2,
+            transaction_time = $3,
+            status = $4,
+            block_height = $5,
+            updated_at = $6,
+            resource_consume = $7,
+            hash = $8
+        "#,
+        );
+
+        // 判断 extra 是否为空，决定是否追加字段
+        if !extra_str.is_empty() {
+            sql.push_str(", extra = $9");
+        }
+
+        sql.push_str(" WHERE id = $1 RETURNING *");
+
+        let mut query = sqlx::query(&sql)
             .bind(id)
             .bind(tx.transaction_fee.clone())
             .bind(tx.transaction_time.to_string())
@@ -301,7 +316,13 @@ impl BillDao {
             .bind(tx.block_height.to_string())
             .bind(time)
             .bind(tx.resource_consume.clone())
-            .bind(tx.hash)
+            .bind(tx.hash);
+
+        if !extra_str.is_empty() {
+            query = query.bind(extra_str);
+        }
+
+        query
             .execute(pool.as_ref())
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -310,69 +331,55 @@ impl BillDao {
     }
 
     /// Creates a new bill record in the database.
-    pub async fn create<'a, E>(tx: NewBillEntity, exec: E) -> Result<(), crate::Error>
+    pub async fn create<'a, E, T>(tx: NewBillEntity<T>, exec: E) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
+        T: serde::Serialize,
     {
         let owner = tx.get_owner();
-        let NewBillEntity {
-            hash,
-            from,
-            to,
-            token,
-            chain_code,
-            symbol,
-            status,
-            value,
-            transaction_fee,
-            resource_consume,
-            transaction_time,
-            multisig_tx,
-            tx_type,
-            tx_kind,
-            queue_id,
-            block_height,
-            notes,
-            signer,
-        } = tx;
-        let token = token.unwrap_or_default();
-        let tx_kind = tx_kind.to_i8();
-        let multisig_tx = if multisig_tx { 1 } else { 0 };
-        let time = sqlx::types::chrono::Utc::now().timestamp();
-        let signer = signer.join(",");
-        let signer = signer.trim_end_matches(",");
-
-        // 一笔代币转账两次账变通知、如果第一次是手续费的通知，symbol 为空，等第二次代币的通知在修改symbol
-        // TODO 此处需要优化 不能简单的判断value = 0,在部署多签账号的时候有问题
-        let (symbol, to) = if value == 0.0
-            && tx_kind == BillKind::Transfer.to_i8()
-            && chain_code == chain_code::TRON
-        {
-            ("".to_string(), "".to_string())
-        } else {
-            (symbol.to_uppercase(), to)
-        };
-
-        let transaction_time = if transaction_time == 0 {
+        let time = Utc::now().timestamp();
+        let signer = tx.get_singer_str();
+        let (symbol, to) = tx.get_symbol_and_to();
+        let transaction_time = if tx.transaction_time == 0 {
             time
         } else {
-            transaction_time
+            tx.transaction_time
         };
+        let token = tx.token.clone().unwrap_or_default();
+        let multisig_tx = tx.get_multisig_i32();
+        let extra = tx.get_extra_str()?;
+        let values = format!(
+            "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
+            tx.hash,
+            tx.chain_code,
+            symbol,
+            tx.tx_type,
+            tx.tx_kind.to_i8(),
+            owner,
+            tx.from,
+            to,
+            token,
+            tx.value,
+            tx.transaction_fee,
+            tx.resource_consume,
+            transaction_time,
+            tx.status,
+            multisig_tx,
+            tx.block_height,
+            tx.queue_id,
+            tx.notes,
+            time,
+            time,
+            signer,
+            extra
+        );
 
-        let values = {
-            format!(
-                "('{hash}','{chain_code}','{symbol}','{tx_type}','{tx_kind}','{owner}','{from}','{to}',
-                '{token}','{value}','{transaction_fee}','{resource_consume}','{transaction_time}','{status}',
-                '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}','{signer}'
-            )",
-            )
-        };
         let sql = format!(
             "insert into bill 
             (
                 hash,chain_code,symbol,transfer_type,tx_kind,owner,from_addr,to_addr,token,value,
                 transaction_fee,resource_consume,transaction_time,status,is_multisig,block_height,queue_id,notes,
-                created_at,updated_at,signer
+                created_at,updated_at,signer,extra
             ) 
                 values {}
                 on conflict (hash,transfer_type,owner)
@@ -388,6 +395,8 @@ impl BillDao {
                         CASE WHEN bill.to_addr = '' THEN excluded.to_addr ELSE bill.to_addr END,
                     value =
                         CASE WHEN bill.value = '0' THEN excluded.value ELSE bill.value END,
+                    extra = 
+                        CASE WHEN excluded.extra != '' THEN excluded.extra ELSE bill.extra END,
                     updated_at = EXCLUDED.updated_at;
             ",
             values
@@ -516,3 +525,48 @@ impl BillDao {
         Ok(rs)
     }
 }
+
+// let NewBillEntity {
+//     hash,
+//     from,
+//     to,
+//     token,
+//     chain_code,
+//     symbol,
+//     status,
+//     value,
+//     transaction_fee,
+//     resource_consume,
+//     transaction_time,
+//     multisig_tx,
+//     tx_type,
+//     tx_kind,
+//     queue_id,
+//     block_height,
+//     notes,
+//     signer,
+//     extra,
+// } = tx;
+// let tx_kind = tx.tx_kind.to_i8();
+// let multisig_tx = if tx.multisig_tx { 1 } else { 0 };
+
+// let (symbol, to) = if tx.value == 0.0
+//     && tx_kind == BillKind::Transfer.to_i8()
+//     && tx.chain_code == chain_code::TRON
+// {
+//     ("".to_string(), "".to_string())
+// } else {
+//     (tx.symbol.to_uppercase(), tx.to)
+// };
+
+// let signer = tx.signer.join(",");
+// let signer = signer.trim_end_matches(",");
+
+// let values = {
+//     format!(
+//         "('{hash}','{chain_code}','{symbol}','{tx_type}','{tx_kind}','{owner}','{from}','{to}',
+//         '{token}','{value}','{transaction_fee}','{resource_consume}','{transaction_time}','{status}',
+//         '{multisig_tx}','{block_height}','{queue_id}','{notes}','{time}','{time}','{signer}'
+//     )",
+//     )
+// };

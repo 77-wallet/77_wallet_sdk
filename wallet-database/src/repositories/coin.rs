@@ -1,6 +1,9 @@
+use alloy::signers::Result;
+use chrono::{DateTime, Utc};
+
 use crate::{
-    dao::coin::Coins,
-    entities::coin::{CoinData, CoinEntity, CoinId, SymbolId},
+    entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    pagination::Pagination,
     DbPool,
 };
 
@@ -83,13 +86,13 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, CoinEntity::chain_code_list,)
     }
 
-    async fn symbol_list(
-        &mut self,
-        chain_code: Option<String>,
-    ) -> Result<Vec<Coins>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::symbol_list, chain_code)
-    }
+    // async fn symbol_list(
+    //     &mut self,
+    //     chain_code: Option<String>,
+    // ) -> Result<Vec<Coins>, crate::Error> {
+    //     let executor = self.get_conn_or_tx()?;
+    //     crate::execute_with_executor!(executor, CoinEntity::symbol_list, chain_code)
+    // }
 
     async fn hot_coin_list_symbol_not_in(
         &mut self,
@@ -118,6 +121,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         coin_id: &CoinId,
         price: &str,
         unit: Option<u8>,
+        status: Option<i32>,
+        time: Option<DateTime<Utc>>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
@@ -125,7 +130,9 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             CoinEntity::update_price_unit,
             coin_id,
             price,
-            unit
+            unit,
+            status,
+            time
         )
     }
 
@@ -167,5 +174,59 @@ impl CoinRepo {
                 "coin not found: chain_code: {}, symbol: {}",
                 chain_code, symbol
             )))
+    }
+
+    pub async fn main_coin(chain_code: &str, pool: &DbPool) -> Result<CoinEntity, crate::Error> {
+        CoinEntity::main_coin(chain_code, pool.as_ref())
+            .await?
+            .ok_or(crate::Error::NotFound(format!(
+                "main coin not found: chain_code: {}",
+                chain_code
+            )))
+    }
+
+    pub async fn coin_by_chain_address(
+        chain_code: &str,
+        token_address: &str,
+        pool: &DbPool,
+    ) -> Result<CoinEntity, crate::Error> {
+        CoinEntity::get_coin_by_chain_code_token_address(pool.as_ref(), chain_code, token_address)
+            .await?
+            .ok_or(crate::Error::NotFound(format!(
+                "coin not found: chain_code: {}, token: {}",
+                chain_code, token_address,
+            )))
+    }
+
+    pub async fn last_coin(
+        pool: &DbPool,
+        is_create: bool,
+    ) -> Result<Option<CoinEntity>, crate::Error> {
+        CoinEntity::get_last_coin(pool.as_ref(), is_create).await
+    }
+
+    pub async fn coin_count(pool: &DbPool) -> Result<i64, crate::Error> {
+        CoinEntity::coin_count(pool.as_ref()).await
+    }
+
+    pub async fn coin_list_with_assets(
+        search: &str,
+        exclude_token: Vec<String>,
+        chain_code: String,
+        address: Vec<String>,
+        page: i64,
+        page_size: i64,
+        pool: DbPool,
+    ) -> Result<Pagination<CoinWithAssets>, crate::Error> {
+        CoinEntity::coin_list_with_assets(
+            search,
+            exclude_token,
+            chain_code,
+            address,
+            page,
+            page_size,
+            pool,
+        )
+        .await
     }
 }

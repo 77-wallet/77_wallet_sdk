@@ -19,20 +19,18 @@ pub struct CoinInfo {
         deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
     )]
     pub enable: bool,
+    pub price: Option<f64>,
     pub default_token: bool,
     pub popular_token: bool,
+    pub create_time: String,
+    pub update_time: String,
 }
 impl CoinInfo {
-    pub fn token_address(&self) -> Option<String> {
-        match &self.token_address {
-            Some(token_address) => {
-                if token_address.is_empty() {
-                    None
-                } else {
-                    Some(token_address.clone())
-                }
-            }
-            None => None,
+    pub fn get_status(&self) -> Option<i32> {
+        if self.enable {
+            Some(1)
+        } else {
+            Some(0)
         }
     }
 }
@@ -162,9 +160,41 @@ pub struct TokenPriceChangeBody {
     pub unit: Option<u8>,
     // 代币别名
     pub aname: Option<String>,
+    // 创建时间
+    pub create_time: String,
+    // 更新时间
+    pub update_time: String,
+}
+
+impl TokenPriceChangeBody {
+    pub fn get_status(&self) -> Option<i32> {
+        if self.enable {
+            Some(1)
+        } else {
+            Some(0)
+        }
+    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct TokenPopularByPages {
     pub list: Vec<TokenPriceChangeBody>,
+    #[serde(rename = "pageIndex")]
+    pub page_index: i64,
+    #[serde(rename = "totalPage")]
+    pub total_page: i64,
+    #[serde(rename = "pageSize")]
+    pub page_size: i64,
+    #[serde(rename = "totalCount")]
+    pub total_count: i64,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenPrice {
+    pub token_address: String,
+    pub code: String,
+    pub name: String,
+    pub unit: u8,
+    pub price: String,
 }

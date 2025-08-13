@@ -5,9 +5,9 @@ use wallet_api::request::transaction::{self, Signer};
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "TQsWaoYYwZ4EVj9wgDG4bfdjwYYRejQsTC";
+    let addr = "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr";
     let chain_code = "tron";
-    let symbol = "TRX";
+    let symbol = "WTRX";
     // let symbol = "USDT";
     let token_address = None;
     let balance = wallet_manager

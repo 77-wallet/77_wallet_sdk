@@ -9,12 +9,14 @@ mod assets;
 mod backend;
 mod bill;
 mod chain;
+mod coin;
 mod config;
 mod multisig_account;
 mod multisig_tx;
 mod permission;
 mod phrase;
 mod stake;
+mod swap;
 mod transactions;
 
 pub async fn get_manager() -> WalletManager {

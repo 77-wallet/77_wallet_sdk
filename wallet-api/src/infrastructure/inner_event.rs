@@ -12,8 +12,7 @@ pub enum InnerEvent {
     SyncAssets {
         addr_list: Vec<String>,
         chain_code: String,
-        symbol: String,
-        token_address: Option<String>,
+        symbol: Vec<String>,
     },
 }
 
@@ -22,18 +21,14 @@ struct AssetKey {
     address: String,
     chain_code: String,
     symbol: String,
-    token_address: Option<String>,
 }
 
-impl From<(&str, &str, &str, Option<String>)> for AssetKey {
-    fn from(
-        (address, chain_code, symbol, token_address): (&str, &str, &str, Option<String>),
-    ) -> Self {
+impl From<(&str, &str, &str)> for AssetKey {
+    fn from((address, chain_code, symbol): (&str, &str, &str)) -> Self {
         Self {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
-            token_address,
         }
     }
 }
@@ -51,13 +46,7 @@ impl EventBuffer {
         }
     }
 
-    fn push_assets(
-        &self,
-        addrs: Vec<String>,
-        chain: String,
-        symbol: String,
-        token_address: Option<String>,
-    ) {
+    fn push_assets(&self, addrs: Vec<String>, chain: String, symbol: Vec<String>) {
         if addrs.is_empty() {
             return;
         }
@@ -65,15 +54,9 @@ impl EventBuffer {
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
         for addr in addrs {
-            buf.insert(
-                (
-                    addr.as_str(),
-                    chain.as_str(),
-                    symbol.as_str(),
-                    token_address.clone(),
-                )
-                    .into(),
-            );
+            for s in &symbol {
+                buf.insert((addr.as_str(), chain.as_str(), s.as_str()).into());
+            }
         }
         if was_empty && !buf.is_empty() {
             self.notifier.notify_one();
@@ -165,10 +148,9 @@ impl InnerEventHandle {
                 addr_list,
                 chain_code,
                 symbol,
-                token_address,
             } => {
                 // tracing::info!("收到资产变更通知，开始同步资产");
-                buffer.push_assets(addr_list, chain_code, symbol, token_address)
+                buffer.push_assets(addr_list, chain_code, symbol)
             }
         }
     }
@@ -186,21 +168,16 @@ impl InnerEventHandle {
                     continue;
                 }
                 // 分组 chain+symbol → address list
-                let mut grouped: HashMap<(String, String, Option<String>), Vec<String>> =
-                    HashMap::new();
+                let mut grouped: HashMap<(String, String), Vec<String>> = HashMap::new();
                 for key in batch {
                     grouped
-                        .entry((
-                            key.chain_code.clone(),
-                            key.symbol.clone(),
-                            key.token_address.clone(),
-                        ))
+                        .entry((key.chain_code.clone(), key.symbol.clone()))
                         .or_default()
                         .push(key.address.clone());
                 }
 
                 // 逐组执行
-                for ((chain_code, symbol, token_address), addr_list) in grouped {
+                for ((chain_code, symbol), addr_list) in grouped {
                     tracing::debug!(
                         "Syncing assets: chain={} symbol={} addresses={:?}",
                         chain_code,

@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use crate::response::BackendResponse;
+use std::collections::HashMap;
 
 pub mod address;
 pub mod announcement;
@@ -13,6 +12,7 @@ pub mod mqtt;
 pub mod permission;
 pub mod signed;
 pub mod stake;
+pub mod swap;
 pub mod transaction;
 
 #[derive(Debug, Clone)]

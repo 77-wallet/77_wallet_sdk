@@ -38,6 +38,8 @@ pub enum ChainError {
     WitnessAccountDoesNotHaveAnyReward,
     #[error("The lock period for this time cannot be less than the remaining time")]
     LockPeriodTooShort,
+    #[error("ApproveRepeated")]
+    ApproveRepeated,
 }
 
 impl ChainError {
@@ -61,6 +63,7 @@ impl ChainError {
             ChainError::WithdrawTooSoon => 3516,
             ChainError::WitnessAccountDoesNotHaveAnyReward => 3517,
             ChainError::LockPeriodTooShort => 3518,
+            ChainError::ApproveRepeated => 3519,
         }
     }
 }

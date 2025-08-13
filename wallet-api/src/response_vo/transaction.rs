@@ -4,6 +4,7 @@ use super::account::default_unit_price_as_zero;
 use super::account::BalanceInfo;
 use super::account::BalanceNotTruncate;
 use alloy::primitives::U256;
+use wallet_chain_interact::eth::FeeSetting;
 use wallet_chain_interact::{eth, tron};
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::{
@@ -82,10 +83,12 @@ pub struct BillDetailVo {
     pub resource_consume: Option<wallet_chain_interact::BillResourceConsume>,
     pub fee_symbol: String,
     pub signature: Option<Vec<MemberSignedResult>>,
+    pub wallet_name: String,
+    pub account_name: String,
 }
 
 // about fee estimate fee
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct EstimateFeeResp {
     pub symbol: String,
@@ -109,7 +112,7 @@ pub struct FeeDetails<T>(Vec<FeeStructure<T>>);
 #[serde(rename_all = "camelCase")]
 pub struct FeeDetailsVo<T> {
     default: String,
-    data: Vec<FeeStructureVo<T>>,
+    pub data: Vec<FeeStructureVo<T>>,
 }
 
 impl FeeDetails<EthereumFeeDetails> {
@@ -274,6 +277,16 @@ impl EthereumFeeDetails {
         }
     }
 }
+impl From<FeeSetting> for EthereumFeeDetails {
+    fn from(value: FeeSetting) -> Self {
+        Self {
+            gas_limit: value.gas_limit.to::<u64>() as i64,
+            base_fee: value.base_fee.to_string(),
+            priority_fee: value.max_priority_fee_per_gas.to_string(),
+            max_fee_per_gas: value.max_fee_per_gas.to_string(),
+        }
+    }
+}
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -326,7 +339,7 @@ pub struct BitcoinFeeDetails {
     pub size: i64,
 }
 
-// 目前在多签交易的时候使用
+// 目前在多签交易的时候使用,以及不需要显示块中慢
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommonFeeDetails {
@@ -335,14 +348,22 @@ pub struct CommonFeeDetails {
 
 impl CommonFeeDetails {
     // fee unit is format
-    pub fn new(fee: f64, token_currency: TokenCurrency, currency: &str) -> Self {
-        Self {
-            estimate_fee: BalanceNotTruncate::new(
-                fee,
-                token_currency.get_price(currency),
-                currency,
-            ),
-        }
+    pub fn new(
+        fee: f64,
+        token_currency: TokenCurrency,
+        currency: &str,
+    ) -> Result<Self, crate::ServiceError> {
+        let amount = wallet_utils::conversion::decimal_from_f64(fee).unwrap_or_default();
+
+        let unit_pice = token_currency.get_price(currency);
+
+        let unit_price = unit_pice
+            .map(|p| wallet_utils::conversion::decimal_from_f64(p))
+            .transpose()?;
+
+        Ok(Self {
+            estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)?,
+        })
     }
 
     pub fn to_json_str(&self) -> Result<String, crate::ServiceError> {

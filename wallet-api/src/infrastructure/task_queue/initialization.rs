@@ -1,8 +1,10 @@
-use crate::domain::{
-    announcement::AnnouncementDomain,
-    app::{config::ConfigDomain, mqtt::MqttDomain},
-    coin::CoinDomain,
-    multisig::MultisigQueueDomain,
+use crate::{
+    domain::{
+        announcement::AnnouncementDomain,
+        app::{config::ConfigDomain, mqtt::MqttDomain},
+        multisig::MultisigQueueDomain,
+    },
+    service::coin::CoinService,
 };
 use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName},
@@ -52,10 +54,59 @@ pub(crate) async fn handle_initialization_task(
             AnnouncementDomain::pull_announcement(&mut repo).await?;
         }
         InitializationTask::PullHotCoins => {
-            let mut repo = RepositoryFactory::repo(pool.clone());
-            CoinDomain::pull_hot_coins(&mut repo).await?;
-            CoinDomain::init_token_price(&mut repo).await?;
+            let repo = RepositoryFactory::repo(pool.clone());
+            let mut coin_service = CoinService::new(repo);
+            coin_service.pull_hot_coins().await?;
+
+            let repo = RepositoryFactory::repo(pool.clone());
+            let coin_service = CoinService::new(repo);
+            coin_service.init_token_price().await?;
         }
+        // InitializationTask::ProcessUnconfirmMsg => {
+        //     let repo = RepositoryFactory::repo(pool.clone());
+        //     let device_service = DeviceService::new(repo);
+        //     let Some(device) = device_service.get_device_info().await? else {
+        //         return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        //     };
+
+        //     if device.is_init != 1 {
+        //         return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        //     }
+
+        //     let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
+        //     tokio::spawn(async move {
+        //         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        //         loop {
+        //             interval.tick().await;
+        //             match TaskQueueEntity::has_unfinished_task(&*pool).await {
+        //                 Ok(true) => {
+        //                     tracing::debug!("存在未完成任务，跳过处理未确认消息");
+        //                     continue;
+        //                 }
+        //                 Ok(false) => {
+        //                     tracing::debug!("不存在未完成任务，处理未确认消息");
+        //                 }
+        //                 Err(e) => {
+        //                     tracing::error!("has_unfinished_task error: {}", e);
+        //                     continue;
+        //                 }
+        //             }
+
+        //             if let Err(e) = MqttDomain::process_unconfirm_msg(&client_id).await {
+        //                 if let Err(e) = FrontendNotifyEvent::send_error(
+        //                     "InitializationTask::ProcessUnconfirmMsg",
+        //                     e.to_string(),
+        //                 )
+        //                 .await
+        //                 {
+        //                     tracing::error!("send_error error: {}", e);
+        //                 }
+        //                 tracing::error!("process unconfirm msg error:{}", e);
+        //             };
+        //             // tracing::warn!("处理未确认消息");
+        //         }
+        //     });
+        // }
         InitializationTask::SetBlockBrowserUrl => {
             let repo = RepositoryFactory::repo(pool.clone());
             let mut app_service = crate::service::app::AppService::new(repo);

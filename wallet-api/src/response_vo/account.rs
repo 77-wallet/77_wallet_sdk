@@ -1,6 +1,8 @@
+use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
+use alloy::primitives::U256;
+use rust_decimal::Decimal;
+use wallet_database::entities::account::AccountEntity;
 use wallet_types::chain::address::category::AddressCategory;
-
-use crate::domain::app::config::ConfigDomain;
 
 // 单笔交易需要花费的能量
 pub const NET_CONSUME: f64 = 270.0;
@@ -237,12 +239,11 @@ impl BalanceInfo {
 }
 
 // 不使用截断的返回原始的
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceNotTruncate {
     // amount of token
-    #[serde(serialize_with = "serialize_f64_string")]
-    pub amount: f64,
+    pub amount: Decimal,
     // currency of symbol
     pub currency: String,
     // unit price or currency
@@ -254,22 +255,74 @@ pub struct BalanceNotTruncate {
 }
 
 impl BalanceNotTruncate {
-    pub fn new(amount: f64, unit_price: Option<f64>, currency: &str) -> Self {
-        let fiat_value = unit_price.map(|price| amount * price);
-        Self {
+    pub fn new(
+        amount: Decimal,
+        unit_price: Option<Decimal>,
+        currency: &str,
+    ) -> Result<Self, crate::ServiceError> {
+        let fiat_decimal = unit_price.map(|p| amount * p);
+
+        let unit_price_f64 = unit_price
+            .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
+            .transpose()?;
+
+        let fiat_value_f64 = fiat_decimal
+            .map(|v| wallet_utils::conversion::decimal_to_f64(&v))
+            .transpose()?;
+
+        Ok(Self {
             amount,
             currency: currency.to_string(),
-            unit_price,
-            fiat_value,
-        }
+            unit_price: unit_price_f64,
+            fiat_value: fiat_value_f64,
+        })
     }
 }
 
-pub fn serialize_f64_string<S>(x: &f64, s: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    s.serialize_str(&x.to_string())
+// 现在用于 quote的响应
+#[derive(Debug, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceStr {
+    // amount of token
+    pub amount: String,
+    // currency of symbol
+    pub currency: String,
+    // unit price or currency
+    #[serde(serialize_with = "default_unit_price_as_zero")]
+    pub unit_price: Option<f64>,
+    #[serde(serialize_with = "default_unit_price_as_zero")]
+    pub fiat_value: Option<f64>,
+}
+
+impl BalanceStr {
+    pub fn new(
+        amount: U256,
+        unit_price: Option<f64>,
+        currency: &str,
+        decimals: u8,
+    ) -> Result<Self, crate::ServiceError> {
+        let price_precision = 1_000_000_00u64;
+
+        let fiat_value = if let Some(price) = unit_price {
+            // 将价格扩大为整数
+            let p = U256::from((price * price_precision as f64) as u64);
+
+            let fiat_value = (amount * p) / U256::from(price_precision);
+
+            Some(wallet_utils::unit::format_to_f64(fiat_value, decimals)?)
+        } else {
+            None
+        };
+
+        let amount = wallet_utils::unit::format_to_string(amount, decimals)?;
+
+        Ok(Self {
+            amount: amount.to_string(),
+            currency: currency.to_string(),
+            unit_price,
+            fiat_value,
+        })
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -344,6 +397,31 @@ impl QueryAccountDerivationPath {
             address_type,
         }
     }
+}
+
+impl TryFrom<AccountEntity> for QueryAccountDerivationPath {
+    type Error = crate::ServiceError;
+
+    fn try_from(value: AccountEntity) -> Result<Self, Self::Error> {
+        let address_type =
+            AccountDomain::get_show_address_type(&value.chain_code, value.address_type())?;
+
+        Ok(QueryAccountDerivationPath {
+            address: value.address,
+            derivation_path: value.derivation_path,
+            chain_code: value.chain_code,
+            address_type,
+        })
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentAccountInfo {
+    pub chain_code: String,
+    pub address: String,
+    pub address_type: AddressCategory,
+    pub is_multisig: bool,
 }
 
 #[cfg(test)]

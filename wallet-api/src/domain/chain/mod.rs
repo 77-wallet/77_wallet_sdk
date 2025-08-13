@@ -1,3 +1,4 @@
+use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
     response_vo,
@@ -17,9 +18,8 @@ use wallet_types::chain::{
 };
 use wallet_utils::address;
 
-use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
-
 pub mod adapter;
+pub mod swap;
 pub mod transaction;
 
 pub struct TransferResp {

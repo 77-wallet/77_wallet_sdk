@@ -45,6 +45,8 @@ use wallet_chain_interact::tron::TronChain;
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::dao::bill::BillDao;
+use wallet_database::entities::bill::BillExtraResourceValue;
+use wallet_database::entities::bill::BillExtraVotes;
 use wallet_database::entities::bill::BillKind;
 use wallet_database::entities::bill::NewBillEntity;
 use wallet_database::entities::multisig_queue::NewMultisigQueueEntity;
@@ -61,7 +63,8 @@ use wallet_utils::serde_func;
 struct TempBuildTransaction {
     to: String,
     value: f64,
-    conusmer: tron::params::ResourceConsumer,
+    resource_value: i64,
+    consumer: tron::params::ResourceConsumer,
     raw_data: RawTransactionParams,
 }
 
@@ -85,7 +88,7 @@ impl StackService {
         ChainTransDomain::get_key(from, chain_code::TRON, password, signer).await
     }
 
-    async fn process_transaction<T>(
+    async fn process_transaction<T, E>(
         &self,
         args: impl ops::TronTxOperation<T>,
         bill_kind: BillKind,
@@ -94,7 +97,11 @@ impl StackService {
         bill_value: f64,
         signer: &Option<Signer>,
         password: &str,
-    ) -> Result<String, crate::ServiceError> {
+        extra: Option<E>,
+    ) -> Result<String, crate::ServiceError>
+    where
+        E: serde::Serialize,
+    {
         // 构建交易事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             bill_kind,
@@ -145,6 +152,7 @@ impl StackService {
             bill_kind,
             bill_consumer.to_json_str()?,
             transaction_fee,
+            extra,
         );
 
         // if use permission upload backend
@@ -188,6 +196,7 @@ impl StackService {
         bill_kind: BillKind,
         chain_param: &ChainParameter,
         resource: &AccountResourceDetail,
+        resource_type: ops::stake::ResourceType,
     ) -> Result<Vec<TempBuildTransaction>, crate::ServiceError> {
         let mut result = vec![];
 
@@ -210,11 +219,15 @@ impl StackService {
                 "bandwidth",
             );
 
+            let resource_value =
+                resource.resource_value(resource_type, item.get_value() as i64)? as i64;
+
             let temp = TempBuildTransaction {
                 raw_data: res,
                 to: item.get_to(),
                 value: item.get_value(),
-                conusmer: ResourceConsumer::new(bandwidth, None),
+                resource_value,
+                consumer: ResourceConsumer::new(bandwidth, None),
             };
 
             result.push(temp);
@@ -229,8 +242,9 @@ impl StackService {
         key: ChainPrivateKey,
         bill_kind: BillKind,
         txs: Vec<TempBuildTransaction>,
+        resource_type: ops::stake::ResourceType,
     ) -> Result<(Vec<BatchRes>, Vec<String>), crate::ServiceError> {
-        let mut exce_res = vec![];
+        let mut exec_res = vec![];
         let mut tx_hash = vec![];
 
         for (i, item) in txs.into_iter().enumerate() {
@@ -247,11 +261,17 @@ impl StackService {
                 .await;
             match result {
                 Ok(hash) => {
-                    let transaction_fee = item.conusmer.transaction_fee();
+                    let transaction_fee = item.consumer.transaction_fee();
 
                     let bill_consumer =
-                        BillResourceConsume::new_tron(item.conusmer.act_bandwidth() as u64, 0)
+                        BillResourceConsume::new_tron(item.consumer.act_bandwidth() as u64, 0)
                             .to_json_str()?;
+
+                    let extra = BillExtraResourceValue {
+                        value: item.resource_value,
+                        resource_type: resource_type.to_string(),
+                    };
+
                     let entity = NewBillEntity::new_stake_bill(
                         hash.clone(),
                         from.to_string(),
@@ -260,6 +280,7 @@ impl StackService {
                         bill_kind,
                         bill_consumer,
                         transaction_fee,
+                        Some(extra),
                     );
                     domain::bill::BillDomain::create_bill(entity).await?;
 
@@ -267,7 +288,7 @@ impl StackService {
                         address: item.to.clone(),
                         status: true,
                     };
-                    exce_res.push(ra);
+                    exec_res.push(ra);
                     tx_hash.push(hash);
                 }
                 Err(_e) => {
@@ -275,11 +296,11 @@ impl StackService {
                         address: item.to,
                         status: false,
                     };
-                    exce_res.push(ra);
+                    exec_res.push(ra);
                 }
             }
         }
-        Ok((exce_res, tx_hash))
+        Ok((exec_res, tx_hash))
     }
 
     async fn resource_value(
@@ -617,6 +638,7 @@ impl StackService {
                 0.0,
                 &req.signer,
                 password,
+                None::<String>,
             )
             .await?;
 
@@ -749,7 +771,16 @@ impl StackService {
         let args = ops::stake::UnFreezeBalanceArgs::try_from(&req)?;
 
         let tx_hash = self
-            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, password)
+            .process_transaction(
+                args,
+                bill_kind,
+                &from,
+                0,
+                0.0,
+                &req.signer,
+                password,
+                None::<String>,
+            )
             .await?;
 
         let resource_value = self
@@ -794,6 +825,7 @@ impl StackService {
                 (bandwidth + energy) as f64,
                 &req.signer,
                 &password,
+                None::<String>,
             )
             .await?;
 
@@ -840,6 +872,7 @@ impl StackService {
                 can_widthdraw.to_sun() as f64,
                 &req.signer,
                 &password,
+                None::<String>,
             )
             .await?;
 
@@ -1011,12 +1044,26 @@ impl StackService {
         };
         let args = ops::stake::DelegateArgs::try_from(&req)?;
 
-        let tx_hash = self
-            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, password)
-            .await?;
-
         let resource_value = self
             .resource_value(&req.owner_address, req.balance, resource_type)
+            .await?;
+
+        let extra = BillExtraResourceValue {
+            value: resource_value as i64,
+            resource_type: resource_type.to_string(),
+        };
+
+        let tx_hash = self
+            .process_transaction(
+                args,
+                bill_kind,
+                &from,
+                0,
+                0.0,
+                &req.signer,
+                password,
+                Some(extra),
+            )
             .await?;
 
         let resource = resp::ResourceResp::new(req.balance, resource_type, resource_value);
@@ -1106,14 +1153,14 @@ impl StackService {
 
         // 批量构建交易
         let txs: Vec<TempBuildTransaction> = self
-            .batch_build_transaction(args, bill_kind, &chain_param, &resource)
+            .batch_build_transaction(args, bill_kind, &chain_param, &resource, resource_type)
             .await?;
 
         // check balance
         let balance = self.chain.balance(owner_address, None).await?;
         let fee = txs
             .iter()
-            .map(|item| item.conusmer.transaction_fee_i64())
+            .map(|item| item.consumer.transaction_fee_i64())
             .sum::<i64>();
 
         if balance.to::<i64>() < fee {
@@ -1123,7 +1170,9 @@ impl StackService {
         }
 
         let key = self.get_key(owner_address, signer, password).await?;
-        let res = self.batch_exec(owner_address, key, bill_kind, txs).await?;
+        let res = self
+            .batch_exec(owner_address, key, bill_kind, txs, resource_type)
+            .await?;
 
         let resource_value = resource.resource_value(resource_type, amount)?;
         let resource = ResourceResp::new(amount, resource_type, resource_value);
@@ -1228,12 +1277,26 @@ impl StackService {
             ops::stake::ResourceType::ENERGY => BillKind::UnDelegateEnergy,
         };
 
-        let tx_hash = self
-            .process_transaction(args, bill_kind, &from, 0, 0.0, &req.signer, &password)
-            .await?;
-
         let resource_value = self
             .resource_value(&req.owner_address, req.balance, resource_type)
+            .await?;
+
+        let extra = BillExtraResourceValue {
+            value: resource_value as i64,
+            resource_type: resource_type.to_string(),
+        };
+
+        let tx_hash = self
+            .process_transaction(
+                args,
+                bill_kind,
+                &from,
+                0,
+                0.0,
+                &req.signer,
+                &password,
+                Some(extra),
+            )
             .await?;
 
         let resource = resp::ResourceResp::new(req.balance, resource_type, resource_value);
@@ -1494,6 +1557,16 @@ impl StackService {
         req: stake::VoteWitnessReq,
         password: &str,
     ) -> Result<String, crate::error::ServiceError> {
+        let mut extra = vec![];
+
+        for item in req.votes.iter() {
+            extra.push(BillExtraVotes {
+                vote_addr: item.vote_address.clone(),
+                votes: item.vote_count,
+                name: item.name.clone(),
+            });
+        }
+
         let args = ops::stake::VoteWitnessArgs::try_from(&req)?;
 
         let bill_value = req.get_votes() as f64;
@@ -1507,6 +1580,7 @@ impl StackService {
                 bill_value,
                 &req.signer,
                 password,
+                Some(extra),
             )
             .await?;
 
@@ -1543,6 +1617,7 @@ impl StackService {
                 0.0,
                 &req.signer,
                 password,
+                None::<String>,
             )
             .await?;
 
