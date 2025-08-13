@@ -137,7 +137,7 @@ mod tests {
         let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1).unwrap();
 
         // 解密
-        let decrypted = decrypt_with_shared_secret(&encrypted, &shared_secret1).unwrap();
+        let decrypted = decrypt_with_shared_secret(&encrypted, &shared_secret2).unwrap();
 
         // 验证
         assert_eq!(plaintext, decrypted.as_slice());
@@ -160,6 +160,8 @@ mod tests {
 
         // 序列化
         let serialized = encrypted.to_bytes();
+
+        println!("len: {}", serialized.len());
 
         // 反序列化
         let deserialized = EncryptedData::from_bytes(&serialized).unwrap();
@@ -191,7 +193,7 @@ mod tests {
         let decrypted = decrypt_with_aad(&mut encrypted, additional_data, &shared_secret2).unwrap();
 
         // 验证
-        // assert_eq!(plaintext, decrypted.as_slice());
+        assert_eq!(plaintext, decrypted.as_slice());
         println!("AAD 加密解密测试通过！");
     }
 }

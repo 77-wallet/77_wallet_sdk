@@ -12,8 +12,8 @@ impl EncryptedData {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
         result.extend_from_slice(&(self.nonce.len() as u32).to_le_bytes());
-        result.extend_from_slice(&self.nonce);
         result.extend_from_slice(&(self.ciphertext.len() as u32).to_le_bytes());
+        result.extend_from_slice(&self.nonce);
         result.extend_from_slice(&self.ciphertext);
         result
     }

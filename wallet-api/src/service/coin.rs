@@ -200,7 +200,7 @@ impl CoinService {
                 status,
                 time,
             )
-            .await?;
+                .await?;
         }
 
         Ok(())
@@ -277,7 +277,7 @@ impl CoinService {
                         status,
                         time,
                     )
-                    .await?;
+                        .await?;
                     let data =
                         TokenCurrencies::calculate_token_price_changes(token, exchange_rate.rate)
                             .await?;
@@ -303,7 +303,7 @@ impl CoinService {
             chain_code,
             &token_address,
         )
-        .await?;
+            .await?;
         let res = if let Some(coin) = coin {
             crate::response_vo::coin::TokenInfo {
                 symbol: Some(coin.symbol),
@@ -418,7 +418,7 @@ impl CoinService {
             time,
             time,
         )
-        .with_custom(1);
+            .with_custom(1);
         let coin = vec![cus_coin];
         tx.upsert_multi_coin(coin).await?;
 
@@ -464,9 +464,9 @@ impl CoinService {
             None,
             is_multisig,
         )
-        .with_name(&name)
-        .with_balance(&balance)
-        .with_u256(alloy::primitives::U256::default(), decimals)?;
+            .with_name(&name)
+            .with_balance(&balance)
+            .with_u256(alloy::primitives::U256::default(), decimals)?;
 
         tx.upsert_assets(assets).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
