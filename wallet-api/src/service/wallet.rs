@@ -4,7 +4,6 @@ use wallet_database::{
         account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
         device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
-    GLOBAL_WALLET_TYPE,
 };
 use wallet_transport_backend::{
     consts::endpoint,
@@ -367,7 +366,6 @@ impl WalletService {
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
 
         let mut address_init_task_data = AddressBatchInitReq(Vec::new());
-        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         for account_id in account_ids {
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
@@ -386,7 +384,6 @@ impl WalletService {
                 address,
                 account_name,
                 is_default_name,
-                wallet_type.clone(),
             )
             .await?;
         }
@@ -574,7 +571,6 @@ impl WalletService {
         chain_code: Option<String>,
         account_id: Option<u32>,
     ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
-        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         let tx = &mut self.repo;
         let chains = tx.get_chain_list().await?;
         let chain_codes = if let Some(chain_code) = chain_code {
@@ -622,7 +618,6 @@ impl WalletService {
                         &wallet_info.address,
                         chain_codes.clone(),
                         None,
-                        wallet_type.clone(),
                     )
                     .await?;
 

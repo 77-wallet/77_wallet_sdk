@@ -14,7 +14,7 @@ use wallet_database::{
     dao::bill::BillDao,
     entities::{
         account::AccountEntity,
-        assets::{AssetsEntity, AssetsId, WalletType},
+        assets::{AssetsEntity, AssetsId},
         bill::BillKind,
         coin::CoinEntity,
     },
@@ -40,7 +40,6 @@ impl ChainTransDomain {
         symbol: &str,
         from: &str,
         token_address: Option<String>,
-        wallet_type: WalletType,
     ) -> Result<AssetsEntity, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
@@ -50,7 +49,7 @@ impl ChainTransDomain {
             symbol: symbol.to_string(),
             token_address,
         };
-        let assets = AssetsEntity::assets_by_id(&*pool, &assets_id, wallet_type)
+        let assets = AssetsEntity::assets_by_id(&*pool, &assets_id)
             .await?
             .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
 
@@ -77,7 +76,6 @@ impl ChainTransDomain {
         symbol: &str,
         token_address: Option<String>,
         balance: &str,
-        wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
@@ -89,13 +87,12 @@ impl ChainTransDomain {
         };
 
         // 查询余额
-        let asset =
-            AssetsEntity::assets_by_id(pool.as_ref(), &assets_id, wallet_type.clone()).await?;
+        let asset = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
         if let Some(asset) = asset {
             // 余额不一致
             if asset.balance != balance {
                 // 更新本地余额后在上报后端
-                AssetsEntity::update_balance(&*pool, &assets_id, balance, Some(wallet_type))
+                AssetsEntity::update_balance(&*pool, &assets_id, balance)
                     .await
                     .map_err(crate::ServiceError::Database)?;
 

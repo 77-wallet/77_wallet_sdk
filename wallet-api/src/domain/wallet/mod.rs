@@ -1,12 +1,10 @@
 use wallet_database::{
     entities::{
-        assets::WalletType,
         config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
         device::DeviceEntity,
         wallet::WalletEntity,
     },
     repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
-    GLOBAL_WALLET_TYPE,
 };
 use wallet_tree::{api::KeystoreApi, KdfAlgorithm, WalletTreeStrategy};
 use wallet_types::chain::{
@@ -29,19 +27,6 @@ impl Default for WalletDomain {
 impl WalletDomain {
     pub fn new() -> Self {
         Self {}
-    }
-
-    pub(crate) async fn set_wallet_type(wallet_type: &str) -> Result<(), crate::ServiceError> {
-        use std::str::FromStr as _;
-        let wallet_type =
-            WalletType::from_str(wallet_type).map_err(|e| wallet_utils::Error::Parse(e.into()))?;
-        if GLOBAL_WALLET_TYPE.is_initialized().await {
-            GLOBAL_WALLET_TYPE.set(wallet_type).await;
-        } else {
-            GLOBAL_WALLET_TYPE.init_once(async || wallet_type).await;
-        }
-
-        Ok(())
     }
 
     pub(crate) fn encrypt_password(

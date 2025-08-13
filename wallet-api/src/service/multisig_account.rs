@@ -14,7 +14,7 @@ use crate::response_vo::multisig_account::{
 };
 use std::collections::HashMap;
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
-use wallet_database::entities::assets::{AssetsEntity, WalletType};
+use wallet_database::entities::assets::AssetsEntity;
 use wallet_database::entities::bill::{BillKind, NewBillEntity};
 use wallet_database::entities::chain::ChainEntity;
 use wallet_database::entities::coin::CoinMultisigStatus;
@@ -541,7 +541,6 @@ impl MultisigAccountService {
             AssetsDomain::init_default_multisig_assets(
                 resp.multisig_address.clone(),
                 multisig_account.chain_code.clone(),
-                WalletType::Normal,
             )
             .await?;
             if multisig_account.chain_code.as_str() == chain_code::TRON {

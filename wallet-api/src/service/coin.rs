@@ -1,10 +1,7 @@
 use std::collections::HashSet;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{
-        assets::{AssetsId, WalletType},
-        coin::CoinId,
-    },
+    entities::{assets::AssetsId, coin::CoinId},
     repositories::{
         assets::AssetsRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
         exchange_rate::ExchangeRateRepoTrait, ResourcesRepo,
@@ -84,7 +81,6 @@ impl CoinService {
                 chain_code.clone(),
                 None,
                 _is_multisig,
-                WalletType::Normal,
             )
             .await
             .map_err(crate::ServiceError::Database)?;
@@ -405,7 +401,7 @@ impl CoinService {
             .with_balance(&balance)
             .with_u256(alloy::primitives::U256::default(), decimals)?;
 
-        tx.upsert_assets(assets, WalletType::Normal).await?;
+        tx.upsert_assets(assets).await?;
         let req = wallet_transport_backend::request::CustomTokenInitReq {
             address: account_addresses.address,
             chain_code: chain_code.to_string(),

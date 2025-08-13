@@ -23,7 +23,7 @@ use wallet_database::entities::multisig_signatures::{MultisigSignatureStatus, Ne
 use wallet_database::pagination::Pagination;
 use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_database::repositories::permission::PermissionRepo;
-use wallet_database::{DbPool, GLOBAL_WALLET_TYPE};
+use wallet_database::DbPool;
 use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::request::{PermissionData, SignedTranUpdateHashReq};
 use wallet_types::constant::chain_code;
@@ -38,14 +38,12 @@ impl MultisigTransactionService {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
-        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
 
         let assets = ChainTransDomain::assets(
             &req_params.chain_code,
             &req_params.symbol,
             &req_params.from,
             req_params.token_address.clone(),
-            wallet_type,
         )
         .await?;
 
@@ -86,13 +84,11 @@ impl MultisigTransactionService {
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         let assets = ChainTransDomain::assets(
             &req.chain_code,
             &req.symbol,
             &req.from,
             req.token_address.clone(),
-            wallet_type,
         )
         .await?;
 

@@ -22,34 +22,6 @@ impl AssetsId {
     }
 }
 
-#[derive(
-    Debug,
-    serde::Serialize,
-    serde::Deserialize,
-    sqlx::Type,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    strum_macros::EnumString,
-    strum_macros::AsRefStr,
-)]
-#[strum(serialize_all = "lowercase")]
-#[sqlx(rename_all = "lowercase")]
-#[sqlx(type_name = "TEXT")]
-pub enum WalletType {
-    /// 普通钱包
-    Normal,
-    /// API钱包
-    Api,
-}
-
-impl Default for WalletType {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
-
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 pub struct AssetsEntity {
     pub name: String,
@@ -58,7 +30,6 @@ pub struct AssetsEntity {
     pub address: String,
     pub chain_code: String,
     pub token_address: String,
-    pub wallet_type: WalletType,
     pub protocol: Option<String>,
     pub status: u8,
     /// 0/普通资产 1/多签资产 2/待部署多签账户的普通资产
@@ -88,7 +59,6 @@ pub struct AssetsEntityWithAddressType {
     pub address: String,
     pub chain_code: String,
     pub token_address: String,
-    pub wallet_type: WalletType,
     pub protocol: Option<String>,
     address_type: String,
     pub status: u8,

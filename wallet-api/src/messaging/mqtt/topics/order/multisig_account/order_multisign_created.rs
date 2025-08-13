@@ -4,7 +4,7 @@ use crate::{
         event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend, FrontendNotifyEvent,
     },
 };
-use wallet_database::{dao::multisig_account::MultisigAccountDaoV1, entities::assets::WalletType};
+use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
 
 /*
     {
@@ -101,7 +101,6 @@ impl OrderMultiSignCreated {
             crate::domain::assets::AssetsDomain::init_default_multisig_assets(
                 multisig_account_address.clone(),
                 account.chain_code.clone(),
-                WalletType::Normal,
             )
             .await?;
             // let notification = Notification::new_multisig_notification(

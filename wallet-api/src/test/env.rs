@@ -8,7 +8,7 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
     // 获取项目根目录
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
 
-    let config_dir = dir.join("example").join("config.toml");
+    let config_dir = dir.join("examples").join("config.toml");
     println!("example_dir: {config_dir:?}");
     let config_data = std::fs::read_to_string(config_dir)?;
 
@@ -38,7 +38,6 @@ pub async fn get_manager() -> Result<(WalletManager, super::config::TestParams)>
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();
-    wallet_manager.set_wallet_type("normal").await;
 
     Ok((wallet_manager, test_params))
 }
@@ -51,7 +50,7 @@ pub fn get_config() -> Result<String> {
             .into_owned()
     });
     let dir = PathBuf::from(manifest_dir);
-    let config_dir = dir.join("example").join("config.yaml");
+    let config_dir = dir.join("examples").join("config.yaml");
     let config_data = std::fs::read_to_string(config_dir)?;
     Ok(config_data)
 }

@@ -9,7 +9,6 @@ use wallet_database::{
         account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
         coin::CoinRepoTrait, ResourcesRepo, TransactionTrait as _,
     },
-    GLOBAL_WALLET_TYPE,
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
 use wallet_tree::api::KeystoreApi;
@@ -89,7 +88,6 @@ impl ChainService {
         let coins = tx.default_coin_list().await?;
 
         let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
-        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         for wallet in account_wallet_mapping {
             let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
             let account_index_map =
@@ -116,7 +114,6 @@ impl ChainService {
                 &wallet.wallet_address,
                 &wallet.account_name,
                 false,
-                wallet_type.clone(),
             )
             .await?;
 
@@ -238,15 +235,8 @@ impl ChainService {
                 }
             }
         }
-        let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
         let datas = tx
-            .get_assets_by_address(
-                account_addresses,
-                None,
-                Some(symbol),
-                is_multisig,
-                wallet_type,
-            )
+            .get_assets_by_address(account_addresses, None, Some(symbol), is_multisig)
             .await?;
         let chains = tx.get_chain_list().await?;
         let res = token_currencies

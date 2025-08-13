@@ -11,14 +11,13 @@ impl TaskQueueEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
-            "insert into task_queue (id, task_name, request_body, type, wallet_type, status, created_at, updated_at) ",
+            "insert into task_queue (id, task_name, request_body, type, status, created_at, updated_at) ",
         );
         query_builder.push_values(reqs, |mut b, req| {
             b.push_bind(req.id.clone())
                 .push_bind(req.task_name.clone())
                 .push_bind(req.request_body.clone().unwrap_or_default())
                 .push_bind(req.r#type)
-                .push_bind(req.wallet_type.clone())
                 .push_bind(req.status)
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
                 .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
@@ -41,16 +40,15 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let sql = "INSERT INTO task_queue (id, task_name, request_body, type, wallet_type, status, created_at, updated_at)
+        let sql = "INSERT INTO task_queue (id, task_name, request_body, type, status, created_at, updated_at)
             VALUES
-            (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT (id) DO UPDATE SET updated_at = excluded.updated_at";
         sqlx::query(sql)
             .bind(req.id)
             .bind(req.task_name)
             .bind(req.request_body)
             .bind(req.r#type)
-            .bind(req.wallet_type)
             .bind(req.status)
             .execute(exec)
             .await

@@ -5,7 +5,6 @@ use std::{
 };
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
-use wallet_database::entities::assets::WalletType;
 
 pub type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
@@ -208,9 +207,7 @@ impl InnerEventHandle {
                         symbol,
                         addr_list
                     );
-                    if let Err(e) =
-                        Self::sync_assets_once(chain_code, symbol, addr_list, None).await
-                    {
+                    if let Err(e) = Self::sync_assets_once(chain_code, symbol, addr_list).await {
                         tracing::error!("SyncAssets error: {}", e);
                     }
                 }
@@ -226,18 +223,11 @@ impl InnerEventHandle {
         chain_code: String,
         symbol: String,
         addr_list: Vec<String>,
-        wallet_type: Option<WalletType>,
     ) -> Result<(), crate::ServiceError> {
         if addr_list.is_empty() {
             return Ok(());
         }
 
-        AssetsDomain::sync_assets_by_addr_chain(
-            addr_list,
-            Some(chain_code),
-            vec![symbol],
-            wallet_type,
-        )
-        .await
+        AssetsDomain::sync_assets_by_addr_chain(addr_list, Some(chain_code), vec![symbol]).await
     }
 }

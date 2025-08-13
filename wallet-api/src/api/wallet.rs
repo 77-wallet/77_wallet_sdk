@@ -1,5 +1,4 @@
 use crate::api::ReturnType;
-use crate::domain::wallet::WalletDomain;
 use crate::response_vo::wallet::CreateWalletRes;
 use crate::service::wallet::WalletService;
 
@@ -148,10 +147,6 @@ impl crate::WalletManager {
             .upgrade_algorithm(password)
             .await?
             .into()
-    }
-
-    pub async fn set_wallet_type(&self, wallet_type: &str) -> ReturnType<()> {
-        WalletDomain::set_wallet_type(wallet_type).await.into()
     }
 }
 

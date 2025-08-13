@@ -7,7 +7,7 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
-        assets::{AssetsEntity, AssetsId, WalletType},
+        assets::{AssetsEntity, AssetsId},
         coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
@@ -80,7 +80,6 @@ impl AssetsDomain {
         wallet_address: &str,
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
-        wallet_type: WalletType,
     ) -> Result<Vec<AssetsEntity>, crate::ServiceError> {
         let tx = repo;
 
@@ -92,9 +91,7 @@ impl AssetsDomain {
             )
             .await?;
         let addresses = accounts.into_iter().map(|info| info.address).collect();
-        let data = tx
-            .get_coin_assets_in_address(addresses, wallet_type)
-            .await?;
+        let data = tx.get_coin_assets_in_address(addresses).await?;
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
                 return Ok(data
@@ -118,7 +115,6 @@ impl AssetsDomain {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-        wallet_type: WalletType,
     ) -> Result<crate::response_vo::coin::CoinInfoList, crate::ServiceError> {
         let tx = repo;
 
@@ -131,13 +127,7 @@ impl AssetsDomain {
         };
 
         let coin_list = tx
-            .lists(
-                addresses,
-                chain_code,
-                keyword,
-                _is_multisig,
-                Some(wallet_type),
-            )
+            .lists(addresses, chain_code, keyword, _is_multisig)
             .await
             .map_err(crate::ServiceError::Database)?;
 
@@ -173,7 +163,6 @@ impl AssetsDomain {
         wallet_address: String,
         account_id: Option<u32>,
         symbol: Vec<String>,
-        wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
@@ -187,25 +176,23 @@ impl AssetsDomain {
             .map(|a| a.address.clone())
             .collect::<Vec<String>>();
 
-        Self::do_async_balance(pool, addr, None, symbol, Some(wallet_type)).await
+        Self::do_async_balance(pool, addr, None, symbol).await
     }
 
     pub async fn sync_assets_by_addr_chain(
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-        wallet_type: Option<WalletType>,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        Self::do_async_balance(pool, addr, chain_code, symbol, wallet_type).await
+        Self::do_async_balance(pool, addr, chain_code, symbol).await
     }
 
     // 从后端同步余额(根据地址-链)
     pub async fn async_balance_from_backend_addr(
         addr: String,
         chain_code: Option<String>,
-        wallet_type: Option<WalletType>,
     ) -> Result<(), crate::ServiceError> {
         // 单个地址处理
         let pool = crate::Context::get_global_sqlite_pool()?;
@@ -238,13 +225,8 @@ impl AssetsDomain {
                         token_address: item.contract_address,
                     };
 
-                    let r = AssetsEntity::update_balance(
-                        pool.as_ref(),
-                        &assets_id,
-                        &item.amount,
-                        wallet_type.clone(),
-                    )
-                    .await;
+                    let r =
+                        AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
 
                     if let Err(e) = r {
                         tracing::warn!("udpate balance error {}", e);
@@ -260,7 +242,6 @@ impl AssetsDomain {
     pub async fn async_balance_from_backend_wallet(
         wallet_address: String,
         account_id: Option<u32>,
-        wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
@@ -283,13 +264,8 @@ impl AssetsDomain {
                         token_address: item.contract_address,
                     };
 
-                    let r = AssetsEntity::update_balance(
-                        pool.as_ref(),
-                        &assets_id,
-                        &item.amount,
-                        Some(wallet_type.clone()),
-                    )
-                    .await;
+                    let r =
+                        AssetsEntity::update_balance(pool.as_ref(), &assets_id, &item.amount).await;
 
                     if let Err(e) = r {
                         tracing::warn!("udpate balance error {}", e);
@@ -306,17 +282,9 @@ impl AssetsDomain {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-        wallet_type: Option<WalletType>,
     ) -> Result<(), crate::ServiceError> {
-        let mut assets = AssetsEntity::all_assets(
-            pool.as_ref(),
-            addr,
-            chain_code,
-            None,
-            wallet_type.clone(),
-            None,
-        )
-        .await?;
+        let mut assets =
+            AssetsEntity::all_assets(pool.as_ref(), addr, chain_code, None, None).await?;
         if !symbol.is_empty() {
             assets.retain(|asset| symbol.contains(&asset.symbol));
         }
@@ -324,10 +292,7 @@ impl AssetsDomain {
         let results = ChainBalance::sync_address_balance(&assets).await?;
 
         for (assets_id, balance) in &results {
-            if let Err(e) =
-                AssetsEntity::update_balance(pool.as_ref(), assets_id, balance, wallet_type.clone())
-                    .await
-            {
+            if let Err(e) = AssetsEntity::update_balance(pool.as_ref(), assets_id, balance).await {
                 tracing::error!("更新余额出错: {}", e);
             }
         }
@@ -340,7 +305,6 @@ impl AssetsDomain {
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
-        wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         for coin in coins {
@@ -361,7 +325,7 @@ impl AssetsDomain {
                         &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
-                AssetsEntity::upsert_assets(&*pool, assets, wallet_type.clone()).await?;
+                AssetsEntity::upsert_assets(&*pool, assets).await?;
             }
         }
         Ok(())
@@ -372,7 +336,6 @@ impl AssetsDomain {
     pub async fn init_default_multisig_assets(
         address: String,
         chain_code: String,
-        wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let default_coins =
@@ -390,18 +353,12 @@ impl AssetsDomain {
             .with_name(&coin.name)
             .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
 
-            AssetsEntity::upsert_assets(&*pool, assets, WalletType::Normal).await?;
+            AssetsEntity::upsert_assets(&*pool, assets).await?;
             symbols.push(coin.symbol);
         }
 
         // 同步资产余额
-        AssetsDomain::sync_assets_by_addr_chain(
-            vec![address],
-            Some(chain_code),
-            symbols,
-            Some(wallet_type),
-        )
-        .await?;
+        AssetsDomain::sync_assets_by_addr_chain(vec![address], Some(chain_code), symbols).await?;
         Ok(())
     }
 }
