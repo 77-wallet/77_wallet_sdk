@@ -139,9 +139,6 @@ impl ChainService {
         )?;
         Tasks::new()
             .push(task)
-            // .push(Task::BackendApi(BackendApiTask::BackendApi(
-            //     device_bind_address_task_data,
-            // )))
             .push(Task::BackendApi(BackendApiTask::BackendApi(
                 address_init_task_data,
             )))

@@ -53,6 +53,7 @@ async fn test_deploy_multisig_account() {
         symbol: "USDT".to_string(),
         fee_setting: fee_setting.clone(),
         request_resource_id: None,
+        token_address: None,
     };
     let deploy_fee = fee_setting;
     let password = "123456".to_string();

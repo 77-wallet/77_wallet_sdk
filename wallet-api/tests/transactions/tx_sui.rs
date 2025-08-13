@@ -9,9 +9,10 @@ async fn test_balance() {
     let addr = "0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd";
     let chain_code = "sui";
     let symbol = "USDT";
+    let token_address = None;
 
     let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol)
+        .chain_balance(addr, chain_code, &symbol, token_address)
         .await;
 
     println!("balance: {:?}", balance);

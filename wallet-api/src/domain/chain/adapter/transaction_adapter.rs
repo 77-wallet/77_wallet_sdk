@@ -545,6 +545,7 @@ impl TransactionAdapter {
             currency,
             &req.chain_code,
             main_symbol,
+            None,
         )
         .await?;
 
@@ -707,6 +708,7 @@ impl TransactionAdapter {
                     currency,
                     &req.chain_code,
                     main_symbol,
+                    None,
                 )
                 .await?;
 
@@ -797,6 +799,7 @@ impl TransactionAdapter {
             &currency,
             &req.chain_code,
             main_symbol,
+            None,
         )
         .await?;
 
@@ -870,6 +873,7 @@ impl TransactionAdapter {
             &currency,
             &req.chain_code,
             symbol,
+            None,
         )
         .await?;
 
@@ -962,7 +966,7 @@ impl TransactionAdapter {
         };
 
         let token_currency =
-            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol)
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
                 .await?;
         let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;
 
@@ -1017,7 +1021,7 @@ impl TransactionAdapter {
         };
 
         let token_currency =
-            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol)
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
                 .await?;
 
         let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;

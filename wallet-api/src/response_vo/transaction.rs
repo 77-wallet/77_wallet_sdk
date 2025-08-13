@@ -26,6 +26,7 @@ pub struct MultisigQueueFeeParams {
     pub value: String,
     pub chain_code: String,
     pub symbol: String,
+    pub token_address: Option<String>,
     pub spend_all: Option<bool>,
 }
 
@@ -37,6 +38,7 @@ pub struct TransferParams {
     pub expiration: Option<i64>,
     pub chain_code: String,
     pub symbol: String,
+    pub token_address: Option<String>,
     pub notes: Option<String>,
     pub spend_all: bool,
     pub signer: Option<Signer>,

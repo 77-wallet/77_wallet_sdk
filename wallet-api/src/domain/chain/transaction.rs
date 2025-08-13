@@ -39,6 +39,7 @@ impl ChainTransDomain {
         chain_code: &str,
         symbol: &str,
         from: &str,
+        token_address: Option<String>,
     ) -> Result<AssetsEntity, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
@@ -46,6 +47,7 @@ impl ChainTransDomain {
             address: from.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
+            token_address,
         };
         let assets = AssetsEntity::assets_by_id(&*pool, &assets_id)
             .await?
@@ -72,6 +74,7 @@ impl ChainTransDomain {
         address: &str,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -80,6 +83,7 @@ impl ChainTransDomain {
             address: address.to_string(),
             chain_code: chain_code.to_string(),
             symbol: symbol.to_string(),
+            token_address,
         };
 
         // 查询余额
@@ -152,8 +156,14 @@ impl ChainTransDomain {
         )
         .await?;
 
-        let coin = CoinDomain::get_coin(&params.base.chain_code, &params.base.symbol).await?;
-        params.base.with_token(coin.token_address());
+        let coin = CoinDomain::get_coin(
+            &params.base.chain_code,
+            &params.base.symbol,
+            params.base.token_address.clone(),
+        )
+        .await?;
+
+        // params.base.with_token(coin.token_address());
         params.base.with_decimals(coin.decimals);
 
         let resp = adapter.transfer(&params, private_key).await?;

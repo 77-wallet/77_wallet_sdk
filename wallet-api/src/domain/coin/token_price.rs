@@ -12,10 +12,11 @@ impl TokenCurrencyGetter {
         currency: &str,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<TokenCurrency, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, &pool).await?;
+        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
         // get rate
         let exchange = ExchangeRateRepo::exchange_rate(currency, &pool).await?;
 
@@ -40,13 +41,15 @@ impl TokenCurrencyGetter {
         chain_code: &str,
         symbol: &str,
         amount: f64,
+        token_address: Option<String>,
     ) -> Result<BalanceInfo, crate::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型
         };
 
-        let token_price = TokenCurrencyGetter::get_currency(&currency, chain_code, symbol).await?;
+        let token_price =
+            TokenCurrencyGetter::get_currency(&currency, chain_code, symbol, token_address).await?;
 
         Ok(BalanceInfo::new(
             amount,

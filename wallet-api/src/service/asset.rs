@@ -105,6 +105,7 @@ impl AssetsService {
         account_id: Option<u32>,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<CoinAssets, crate::ServiceError> {
         let tx = &mut self.repo;
 
@@ -122,7 +123,7 @@ impl AssetsService {
         } else {
             address.to_string()
         };
-        let assets_id = AssetsId::new(&address, chain_code, symbol);
+        let assets_id = AssetsId::new(&address, chain_code, symbol, token_address);
         let assets = tx
             .assets_by_id(&assets_id)
             .await?
@@ -324,12 +325,14 @@ impl AssetsService {
         Ok(res)
     }
 
+    // TODO: 有问题：两个相同chainCode相同symbol的不知道怎么添加
     pub async fn add_coin(
         self,
         address: &str,
         account_id: Option<u32>,
         symbol: &str,
         chain_code: Option<String>,
+        // token_address: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
@@ -344,7 +347,9 @@ impl AssetsService {
             )
             .await?;
 
-        let coins = tx.coin_list(Some(symbol), chain_code.clone()).await?;
+        let coins = tx
+            .coin_list_v2(Some(symbol.to_string()), chain_code.clone())
+            .await?;
 
         let Some(device) = tx.get_device_info().await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
@@ -369,12 +374,12 @@ impl AssetsService {
                     0
                 };
 
-                let assets_id = AssetsId::new(&account.address, chain_code, symbol);
+                let assets_id =
+                    AssetsId::new(&account.address, chain_code, symbol, coin.token_address());
 
                 let assets = CreateAssetsVo::new(
                     assets_id,
                     coin.decimals,
-                    coin.token_address().clone(),
                     coin.protocol.clone(),
                     is_multisig,
                 )
@@ -384,7 +389,7 @@ impl AssetsService {
                 if coin.price.is_empty() {
                     req.insert(
                         chain_code,
-                        &assets.token_address.clone().unwrap_or_default(),
+                        &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
                 tx.upsert_assets(assets).await?;
@@ -407,25 +412,37 @@ impl AssetsService {
         Ok(())
     }
 
+    // XXX: 移除资产现在是符号相同的都移除，包括自定义的
     pub async fn remove_coin(
         &mut self,
         address: &str,
         account_id: Option<u32>,
         symbol: &str,
+        // token_address: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
         let accounts = self
             .account_domain
             .get_addresses(tx, address, account_id, None, is_multisig)
+            .await?
+            .into_iter()
+            .map(|account| account.address)
+            .collect();
+        let assets = tx
+            .get_chain_assets_by_address_chain_code_symbol(accounts, None, Some(symbol), None)
             .await?;
-
         let mut assets_ids = Vec::new();
         let mut coin_ids = std::collections::HashSet::new();
-        for account in accounts {
-            let assets_id = AssetsId::new(&account.address, &account.chain_code, symbol);
+        for asset in assets {
+            let assets_id = AssetsId::new(
+                &asset.address,
+                &asset.chain_code,
+                &asset.symbol,
+                Some(asset.token_address),
+            );
             assets_ids.push(assets_id);
-            let coin_id = SymbolId::new(&account.chain_code, symbol);
+            let coin_id = SymbolId::new(&asset.chain_code, symbol);
             coin_ids.insert(coin_id);
         }
         tx.delete_multi_assets(assets_ids).await?;

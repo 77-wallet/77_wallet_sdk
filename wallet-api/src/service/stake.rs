@@ -596,7 +596,8 @@ impl StackService {
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-        let token_currency = TokenCurrencyGetter::get_currency(currency, "tron", "TRX").await?;
+        let token_currency =
+            TokenCurrencyGetter::get_currency(currency, "tron", "TRX", None).await?;
 
         let (args, account, _, _) = self.convert_stake_args(bill_kind, content).await?;
 
@@ -935,7 +936,7 @@ impl StackService {
 
         // 当前的币价
         let token_price =
-            TokenCurrencyGetter::get_currency(currency, chain_code::TRON, "TRX").await?;
+            TokenCurrencyGetter::get_currency(currency, chain_code::TRON, "TRX", None).await?;
         let unit_price = token_price.get_price(currency);
 
         // 总质押

@@ -25,6 +25,7 @@ pub struct MultisigAccountList {
 #[serde(rename_all = "camelCase")]
 pub struct MultisigFeeVo {
     pub symbol: String,
+    pub token_address: String,
     pub fee: String,
     pub old_fee: String,
     pub remain_score: i32,
@@ -35,6 +36,7 @@ impl From<MultisigServiceFeeInfo> for MultisigFeeVo {
     fn from(value: MultisigServiceFeeInfo) -> Self {
         Self {
             symbol: value.fee_token_code.to_uppercase(),
+            token_address: value.token_address,
             fee: value.free.to_string(),
             old_fee: value.old_free.to_string(),
             score_trans_id: value.score_trans_id,

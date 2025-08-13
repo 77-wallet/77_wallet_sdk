@@ -34,27 +34,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .result;
     tracing::warn!("wallet: {wallet:#?}");
 
-    let topics = vec![
-        "wallet/token/eth/usdc".to_string(),
-        "wallet/token/tron/trx".to_string(),
-        "wallet/token/doge/doge".to_string(),
-        "wallet/token/tron/sun".to_string(),
-        "wallet/token/tron/win".to_string(),
-        "wallet/token/eth/hkby".to_string(),
-        "wallet/token/btc/btc".to_string(),
-        "wallet/token/eth/eth".to_string(),
-        "wallet/token/bnb/bnb".to_string(),
-        "wallet/token/sol/sol".to_string(),
-        "wallet/token/ltc/ltc".to_string(),
-        "wallet/token/eth/link".to_string(),
-        "wallet/token/ton/ton".to_string(),
-        "wallet/token/sui/sui".to_string(),
-        "wallet/token/eth/cake".to_string(),
-        "wallet/token/sol/usdt".to_string(),
-    ];
-    {
-        wallet_manager.mqtt_subscribe(topics, None).await;
-    }
+    // let topics = vec![
+    //     "wallet/token/eth/usdc".to_string(),
+    //     "wallet/token/tron/trx".to_string(),
+    //     "wallet/token/doge/doge".to_string(),
+    //     "wallet/token/tron/sun".to_string(),
+    //     "wallet/token/tron/win".to_string(),
+    //     "wallet/token/eth/hkby".to_string(),
+    //     "wallet/token/btc/btc".to_string(),
+    //     "wallet/token/eth/eth".to_string(),
+    //     "wallet/token/bnb/bnb".to_string(),
+    //     "wallet/token/sol/sol".to_string(),
+    //     "wallet/token/ltc/ltc".to_string(),
+    //     "wallet/token/eth/link".to_string(),
+    //     "wallet/token/ton/ton".to_string(),
+    //     "wallet/token/sui/sui".to_string(),
+    //     "wallet/token/eth/cake".to_string(),
+    //     "wallet/token/sol/usdt".to_string(),
+    // ];
+    // {
+    //     wallet_manager.mqtt_subscribe(topics, None).await;
+    // }
 
     // let sync_res = wallet_manager.sync_assets(vec![], None, vec![]).await;
     // tracing::info!("sync res: {sync_res:#?}");

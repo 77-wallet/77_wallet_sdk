@@ -173,18 +173,12 @@ impl TryFrom<&TaskQueueEntity> for Task {
             TaskName::Known(KnownTaskName::PullHotCoins) => {
                 Ok(Task::Initialization(InitializationTask::PullHotCoins))
             }
-            TaskName::Known(KnownTaskName::InitTokenPrice) => {
-                Ok(Task::Initialization(InitializationTask::InitTokenPrice))
-            }
             TaskName::Known(KnownTaskName::SetBlockBrowserUrl) => {
                 Ok(Task::Initialization(InitializationTask::SetBlockBrowserUrl))
             }
             TaskName::Known(KnownTaskName::SetFiat) => {
                 Ok(Task::Initialization(InitializationTask::SetFiat))
             }
-            // TaskName::ProcessUnconfirmMsg => Ok(Task::Initialization(
-            //     InitializationTask::ProcessUnconfirmMsg,
-            // )),
             TaskName::Known(KnownTaskName::RecoverQueueData) => {
                 Ok(Task::Initialization(InitializationTask::RecoverQueueData))
             }

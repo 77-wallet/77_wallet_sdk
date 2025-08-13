@@ -1,9 +1,10 @@
 use crate::{
     domain::{
+        announcement::AnnouncementDomain,
         app::{config::ConfigDomain, mqtt::MqttDomain},
         multisig::MultisigQueueDomain,
     },
-    service::{announcement::AnnouncementService, coin::CoinService},
+    service::coin::CoinService,
 };
 use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName},
@@ -14,8 +15,6 @@ use wallet_database::{
 pub(crate) enum InitializationTask {
     PullAnnouncement,
     PullHotCoins,
-    InitTokenPrice,
-    // ProcessUnconfirmMsg,
     SetBlockBrowserUrl,
     SetFiat,
     RecoverQueueData,
@@ -28,8 +27,6 @@ impl InitializationTask {
                 TaskName::Known(KnownTaskName::PullAnnouncement)
             }
             InitializationTask::PullHotCoins => TaskName::Known(KnownTaskName::PullHotCoins),
-            InitializationTask::InitTokenPrice => TaskName::Known(KnownTaskName::InitTokenPrice),
-            // InitializationTask::ProcessUnconfirmMsg => TaskName::ProcessUnconfirmMsg,
             InitializationTask::SetBlockBrowserUrl => {
                 TaskName::Known(KnownTaskName::SetBlockBrowserUrl)
             }
@@ -46,17 +43,15 @@ impl InitializationTask {
     }
 }
 
+// TODO： 不需要walletType
 pub(crate) async fn handle_initialization_task(
     task: InitializationTask,
     pool: DbPool,
 ) -> Result<(), crate::ServiceError> {
     match task {
         InitializationTask::PullAnnouncement => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let announcement_service = AnnouncementService::new(repo);
-            let res = announcement_service.pull_announcement().await;
-
-            res?;
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            AnnouncementDomain::pull_announcement(&mut repo).await?;
         }
         InitializationTask::PullHotCoins => {
             let repo = RepositoryFactory::repo(pool.clone());
@@ -65,12 +60,6 @@ pub(crate) async fn handle_initialization_task(
 
             let repo = RepositoryFactory::repo(pool.clone());
             let coin_service = CoinService::new(repo);
-            coin_service.init_token_price().await?;
-        }
-        InitializationTask::InitTokenPrice => {
-            let repo = RepositoryFactory::repo(pool.clone());
-            let coin_service = CoinService::new(repo);
-
             coin_service.init_token_price().await?;
         }
         // InitializationTask::ProcessUnconfirmMsg => {

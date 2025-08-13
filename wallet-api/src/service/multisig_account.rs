@@ -2,6 +2,7 @@ use crate::domain;
 use crate::domain::assets::AssetsDomain;
 use crate::domain::chain::adapter::ChainAdapterFactory;
 use crate::domain::chain::transaction::ChainTransDomain;
+use crate::domain::coin::CoinDomain;
 use crate::domain::multisig::MultisigDomain;
 use crate::domain::task_queue::TaskQueueDomain;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks};
@@ -352,7 +353,7 @@ impl MultisigAccountService {
 
         // service fee
         let req = SignedFeeListReq::new(account_chain, pay_address, account_with_wallet.uid);
-        let res = self.backend.signed_fee_info(req).await?;
+        let res = self.backend.signed_fee_info_v2(req).await?;
 
         Ok(MultisigFeeVo::from(res))
     }
@@ -627,19 +628,22 @@ impl MultisigAccountService {
             &payer.from,
             account_with_wallet.uid,
         );
-        let amount = backend.signed_fee_info(req).await?;
+        let amount = backend.signed_fee_info_v2(req).await?;
 
         let tx_hash = if amount.free != 0.0 {
             let value = amount.free.to_string();
-
+            let coin =
+                CoinDomain::get_coin(&payer.chain_code, &payer.symbol, payer.token_address).await?;
             // transfer parameter
-            let base = transaction::BaseTransferReq::new(
+            let mut base = transaction::BaseTransferReq::new(
                 payer.from,
                 to.to_string(),
                 value.clone(),
                 payer.chain_code.clone(),
                 payer.symbol,
             );
+            base.with_token(coin.token_address());
+            base.with_decimals(coin.decimals);
             let params = transaction::TransferReq {
                 base,
                 password: password.to_string(),

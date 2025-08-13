@@ -258,6 +258,7 @@ impl MultisigAdapter {
             currency,
             &account.chain_code,
             main_symbol,
+            None,
         )
         .await?;
 
@@ -333,6 +334,7 @@ impl MultisigAdapter {
                     currency,
                     &account.chain_code,
                     main_symbol,
+                    None,
                 )
                 .await?;
 
@@ -356,9 +358,13 @@ impl MultisigAdapter {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency =
-            domain::coin::TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol)
-                .await?;
+        let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
+            currency,
+            &req.chain_code,
+            main_symbol,
+            None,
+        )
+        .await?;
         match self {
             MultisigAdapter::Solana(solana_chain) => {
                 let base = sol::operations::transfer::TransferOpt::new(
@@ -594,6 +600,7 @@ impl MultisigAdapter {
                     currency,
                     &account.chain_code,
                     main_symbol,
+                    None,
                 )
                 .await?;
 
@@ -669,6 +676,7 @@ impl MultisigAdapter {
             currency,
             &queue.chain_code,
             main_symbol,
+            None,
         )
         .await?;
 
@@ -779,6 +787,7 @@ impl MultisigAdapter {
                     currency,
                     &queue.chain_code,
                     main_symbol,
+                    None,
                 )
                 .await?;
 

@@ -27,8 +27,6 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
         Task::Initialization(initialization_task) => match initialization_task {
             InitializationTask::PullAnnouncement => 3,
             InitializationTask::PullHotCoins => 0,
-            InitializationTask::InitTokenPrice => 1,
-            // InitializationTask::ProcessUnconfirmMsg => 2,
             InitializationTask::SetBlockBrowserUrl => 0,
             InitializationTask::SetFiat => 0,
             InitializationTask::RecoverQueueData => 1,

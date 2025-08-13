@@ -32,14 +32,11 @@ impl CoinDomain {
     pub async fn get_coin(
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<CoinEntity, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let coin = CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
-            .await?
-            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                symbol.to_string(),
-            )))?;
+        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
 
         Ok(coin)
     }
@@ -51,7 +48,7 @@ impl CoinDomain {
     ) -> Result<TokenCurrencies, crate::ServiceError> {
         let currency = ConfigDomain::get_currency().await?;
 
-        let coins = repo.coin_list(None, None).await?;
+        let coins = repo.coin_list_v2(None, None).await?;
 
         let exchange_rate_list = repo.list().await?;
         // 查询本地的所有币符号
@@ -67,13 +64,17 @@ impl CoinDomain {
                 (f64::default(), f64::default())
             };
 
-            let symbol = coin.symbol.to_ascii_lowercase();
-            let name = coin.name;
+            let symbol = &coin.symbol;
+            let chain_code = &coin.chain_code;
 
-            let token_currency_id = TokenCurrencyId::new(&symbol, &coin.chain_code);
+            let token_currency_id = TokenCurrencyId::new(
+                &symbol.to_ascii_lowercase(),
+                chain_code,
+                coin.token_address(),
+            );
 
             let token_currency = TokenCurrency {
-                name,
+                name: coin.name,
                 chain_code: coin.chain_code,
                 code: symbol.clone(),
                 price: Some(price),
