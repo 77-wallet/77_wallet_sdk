@@ -215,7 +215,6 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
     register_tasks_no_parse!(map,
         KnownTaskName::PullAnnouncement => Box::new(InitializationTask::PullAnnouncement),
         KnownTaskName::PullHotCoins => Box::new(InitializationTask::PullHotCoins),
-        KnownTaskName::InitTokenPrice => Box::new(InitializationTask::InitTokenPrice),
         KnownTaskName::SetBlockBrowserUrl => Box::new(InitializationTask::SetBlockBrowserUrl),
         KnownTaskName::SetFiat => Box::new(InitializationTask::SetFiat),
         KnownTaskName::RecoverQueueData => Box::new(InitializationTask::RecoverQueueData),

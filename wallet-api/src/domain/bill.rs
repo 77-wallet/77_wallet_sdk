@@ -8,6 +8,7 @@ use wallet_database::{
         bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
+    DbPool,
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
@@ -23,6 +24,26 @@ impl BillDomain {
     {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         Ok(BillDao::create(params, &*pool).await?)
+    }
+
+    // 对于swap的交易，先判断有没有对应的交易
+    pub async fn create_check_swap<T>(
+        tx: entities::bill::NewBillEntity<T>,
+        pool: &DbPool,
+    ) -> Result<(), crate::ServiceError>
+    where
+        T: serde::Serialize,
+    {
+        match BillDao::get_one_by_hash(&tx.hash, pool.as_ref()).await? {
+            Some(bill) if bill.tx_kind == BillKind::Swap.to_i8() => {
+                BillDao::update_all(pool.clone(), tx, bill.id).await?;
+            }
+            _ => {
+                BillDao::create(tx, pool.as_ref()).await?;
+            }
+        }
+
+        Ok(())
     }
 
     // query tx resource consume
@@ -50,6 +71,10 @@ impl BillDomain {
     }
 
     pub async fn handle_sync_bill(item: SyncBillResp) -> Result<(), crate::ServiceError> {
+        if item.value == 0.0 {
+            return Ok(());
+        }
+
         let status = if item.status {
             BillStatus::Success.to_i8()
         } else {
@@ -84,11 +109,11 @@ impl BillDomain {
             extra: item.extra,
         };
 
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         if new_entity.chain_code == chain_code::TON {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
             AcctChange::handle_ton_bill(new_entity, &pool).await?;
         } else {
-            BillDomain::create_bill(new_entity).await?;
+            BillDomain::create_check_swap(new_entity, &pool).await?;
         }
 
         Ok(())
@@ -99,6 +124,7 @@ impl BillDomain {
         address: &str,
     ) -> Result<(), crate::ServiceError> {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
+        // let start_time = None;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
         let resp = backend

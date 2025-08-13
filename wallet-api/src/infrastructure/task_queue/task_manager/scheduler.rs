@@ -34,7 +34,6 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
             match known_task_name {
                 KnownTaskName::PullAnnouncement => 3,
                 KnownTaskName::PullHotCoins => 0,
-                KnownTaskName::InitTokenPrice => 1,
                 KnownTaskName::SetBlockBrowserUrl => 0,
                 KnownTaskName::SetFiat => 0,
                 KnownTaskName::RecoverQueueData => 1,

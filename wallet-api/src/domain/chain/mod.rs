@@ -364,7 +364,6 @@ impl ChainDomain {
                     &account_address.address,
                     &code.to_string(),
                     req,
-                    tx,
                 )
                 .await?;
             }

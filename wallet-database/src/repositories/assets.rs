@@ -152,6 +152,7 @@ impl AssetsRepo {
             )))
     }
 
+    // option 类型
     pub async fn get_by_addr_token_opt(
         pool: &DbPool,
         chain_code: &str,

@@ -205,7 +205,14 @@ impl BillKind {
 
     // 哪些交易类型是转入的的(在freeze中)
     pub fn in_transfer_type(&self) -> bool {
-        matches!(self, BillKind::WithdrawUnFreeze | BillKind::WithdrawReward)
+        matches!(
+            self,
+            BillKind::WithdrawUnFreeze
+                | BillKind::WithdrawReward
+                | BillKind::Swap
+                | BillKind::Approve
+                | BillKind::UnApprove
+        )
     }
 
     // 这个交易类型是否需要创建系统通知
@@ -416,8 +423,9 @@ impl NewBillEntity {
     }
 }
 
-#[derive(serde::Serialize)]
 // 代理类型的资源梳理额外信息
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BillExtraResourceValue {
     // 具体代理了多少资源(质押，代理，回收)
     pub value: i64,
@@ -432,6 +440,8 @@ pub struct BillExtraVotes {
     pub vote_addr: String,
     // 投票的数量
     pub votes: i64,
+    // 节点名称
+    pub name: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

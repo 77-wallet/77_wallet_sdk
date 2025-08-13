@@ -49,6 +49,7 @@ impl BackendTaskHandle {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        // wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let handler = Self::get_handler(endpoint);
         handler.handle(endpoint, body, backend).await?;
@@ -78,6 +79,7 @@ trait EndpointHandler {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        // wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError>;
 }
 
@@ -91,6 +93,7 @@ impl EndpointHandler for DefaultHandler {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        // _wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -125,6 +128,8 @@ impl EndpointHandler for SpecialHandler {
         endpoint: &str,
         body: serde_json::Value,
         backend: &BackendApi,
+        // TODO： 完全不需要这个
+        // wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -332,37 +337,6 @@ impl EndpointHandler for SpecialHandler {
                 };
                 ConfigDomain::set_keys_reset_status(Some(true)).await?;
             }
-            // endpoint::DEVICE_BIND_ADDRESS => {
-            //     let Some(device) = repo.get_device_info().await? else {
-            //         return Err(
-            //             crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
-            //         );
-            //     };
-            //     let mut device_bind_address_req =
-            //         wallet_transport_backend::request::DeviceBindAddressReq::new(&device.sn);
-
-            //     let accounts =
-            //         AccountEntity::account_list(&*pool, None, None, None, vec![], None).await?;
-
-            //     let multisig_accounts =
-            //         wallet_database::dao::multisig_account::MultisigAccountDaoV1::find_owner_on_chain_account(&*pool)
-            //             .await
-            //             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
-
-            //     for account in accounts {
-            //         device_bind_address_req.push(&account.chain_code, &account.address);
-            //     }
-            //     for multisig_account in multisig_accounts {
-            //         device_bind_address_req
-            //             .push(&multisig_account.chain_code, &multisig_account.address);
-            //     }
-
-            //     let body = wallet_utils::serde_func::serde_to_value(device_bind_address_req)?;
-
-            //     backend
-            //         .post_req_str::<Option<()>>(endpoint, &body)
-            //         .await?;
-            // }
             _ => {
                 // 未知的 endpoint
                 tracing::warn!("unknown endpoint: {}", endpoint);

@@ -1,7 +1,7 @@
 use wallet_database::{
     dao::bill::BillDao,
     entities::{
-        bill::{BillKind, NewBillEntity},
+        bill::{BillExtraSwap, BillKind, NewBillEntity},
         multisig_queue::MultisigQueueStatus,
     },
     factory::RepositoryFactory,
@@ -149,7 +149,8 @@ impl AcctChange {
         if tx.chain_code == chain_code::TON {
             Self::handle_ton_bill(tx, &pool).await?;
         } else {
-            BillDao::create(tx, pool.as_ref()).await?;
+            BillDomain::create_check_swap(tx, &pool).await?;
+            // BillDao::create(tx, pool.as_ref()).await?;
         }
 
         if !self.queue_id.is_empty() {
@@ -222,20 +223,20 @@ impl AcctChange {
 
     // 需要更新的资产-swap 需要更新swap的资产
     fn get_sync_assets_symbol(&self) -> Vec<String> {
-        let symbol = vec![self.symbol.clone()];
+        let mut symbol = vec![self.symbol.clone()];
         // 由于目前swap会发送躲多币交易,z这个地方取消
-        // if self.tx_kind == BillKind::Swap.to_i8() {
-        //     if let Some(extra) = &self.extra {
-        //         if let Ok(extra_swap) =
-        //             wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
-        //         {
-        //             if self.symbol != extra_swap.from_token_symbol {
-        //                 symbol.push(extra_swap.from_token_symbol);
-        //             }
-        //             symbol.push(extra_swap.to_token_symbol);
-        //         }
-        //     }
-        // }
+        if self.tx_kind == BillKind::Swap.to_i8() {
+            if let Some(extra) = &self.extra {
+                if let Ok(extra_swap) =
+                    wallet_utils::serde_func::serde_from_value::<BillExtraSwap>(extra.clone())
+                {
+                    if self.symbol != extra_swap.from_token_symbol {
+                        symbol.push(extra_swap.from_token_symbol);
+                    }
+                    symbol.push(extra_swap.to_token_symbol);
+                }
+            }
+        }
         symbol
     }
 
@@ -269,6 +270,11 @@ impl AcctChange {
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError> {
         let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
+        if let Some(bill) = BillDao::get_one_by_hash(&acct_change.tx_hash, pool.as_ref()).await? {
+            if bill.tx_kind == BillKind::Swap.to_i8() {
+                return Ok(());
+            }
+        }
 
         // 交易方式 0转入 1转出 2初始化
         let address = match acct_change.transfer_type {

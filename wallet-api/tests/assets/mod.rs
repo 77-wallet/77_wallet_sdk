@@ -8,9 +8,9 @@ async fn test_asset_detail() {
     let account_id = None;
     let chain_code = "sui";
     let symbol = "USDT";
-
+    let token_address = None;
     let assets = wallet
-        .get_assets(address, account_id, chain_code, symbol)
+        .get_assets(address, account_id, chain_code, symbol, token_address)
         .await;
 
     tracing::warn!("assets: {:?}", serde_json::to_string(&assets).unwrap());
