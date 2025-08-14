@@ -75,6 +75,7 @@ pub struct ApproveCancelReq {
     pub spender: String,
     pub token_addr: String,
     pub owner_address: String,
+    pub tx_hash: String,
 }
 
 impl BackendApi {

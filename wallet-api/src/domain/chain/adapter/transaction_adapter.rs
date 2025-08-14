@@ -9,9 +9,10 @@ use crate::{
             transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
+        coin::TokenCurrencyGetter,
     },
     infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{self, QuoteReq, SwapReq},
+    request::transaction::{self, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     response_vo::{self, FeeDetails, TronFeeDetails},
 };
 use alloy::primitives::U256;
@@ -32,6 +33,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
     BillResourceConsume,
 };
+use wallet_database::entities::coin::CoinEntity;
 use wallet_transport::client::{HttpClient, RpcClient};
 use wallet_types::chain::{
     address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
@@ -543,6 +545,7 @@ impl TransactionAdapter {
             currency,
             &req.chain_code,
             main_symbol,
+            None,
         )
         .await?;
 
@@ -591,7 +594,7 @@ impl TransactionAdapter {
                     fee.transaction_fee_f64(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Ltc(chain) => {
@@ -617,7 +620,7 @@ impl TransactionAdapter {
                     fee.transaction_fee_f64(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Doge(chain) => {
@@ -643,7 +646,7 @@ impl TransactionAdapter {
                     fee.transaction_fee_f64(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Solana(chain) => {
@@ -666,7 +669,7 @@ impl TransactionAdapter {
                     fee_setting.transaction_fee(),
                     token_currency,
                     currency,
-                );
+                )?;
                 wallet_utils::serde_func::serde_to_string(&res)
             }
             Self::Tron(chain) => {
@@ -705,6 +708,7 @@ impl TransactionAdapter {
                     currency,
                     &req.chain_code,
                     main_symbol,
+                    None,
                 )
                 .await?;
 
@@ -727,8 +731,11 @@ impl TransactionAdapter {
                     .estimate_fee(msg_cell.clone(), &req.from, address_type)
                     .await?;
 
-                let res =
-                    response_vo::CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency);
+                let res = response_vo::CommonFeeDetails::new(
+                    fee.get_fee_ton(),
+                    token_currency,
+                    currency,
+                )?;
 
                 wallet_utils::serde_func::serde_to_string(&res)
             }
@@ -746,8 +753,11 @@ impl TransactionAdapter {
 
                 let gas = chain.estimate_fee(&req.from, pt).await?;
 
-                let res =
-                    response_vo::CommonFeeDetails::new(gas.get_fee_f64(), token_currency, currency);
+                let res = response_vo::CommonFeeDetails::new(
+                    gas.get_fee_f64(),
+                    token_currency,
+                    currency,
+                )?;
 
                 wallet_utils::serde_func::serde_to_string(&res)
             }
@@ -789,6 +799,7 @@ impl TransactionAdapter {
             &currency,
             &req.chain_code,
             main_symbol,
+            None,
         )
         .await?;
 
@@ -862,6 +873,7 @@ impl TransactionAdapter {
             &currency,
             &req.chain_code,
             symbol,
+            None,
         )
         .await?;
 
@@ -933,6 +945,117 @@ impl TransactionAdapter {
         let resp = match self {
             Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
             Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(resp)
+    }
+
+    pub async fn deposit_fee(
+        &self,
+        req: DepositReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), crate::ServiceError> {
+        let currency = {
+            let currency = crate::app_state::APP_STATE.read().await;
+            currency.currency().to_string()
+        };
+
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
+                .await?;
+        let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;
+
+        let resp = match self {
+            Self::Tron(chain) => {
+                let resource = tron_tx::deposit_fee(chain, &req, value).await?;
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
+
+                let res = TronFeeDetails::new(resource, token_currency, &currency)?;
+                let fee = wallet_utils::serde_func::serde_to_string(&res)?;
+
+                (consumer, fee)
+            }
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(resp)
+    }
+
+    pub async fn deposit(
+        &self,
+        req: &DepositReq,
+        _fee: String,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError> {
+        let resp = match self {
+            Self::Tron(chain) => tron_tx::deposit(chain, &req, value, key).await?,
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(resp)
+    }
+
+    pub async fn withdraw_fee(
+        &self,
+        req: WithdrawReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), crate::ServiceError> {
+        let currency = {
+            let currency = crate::app_state::APP_STATE.read().await;
+            currency.currency().to_string()
+        };
+
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
+                .await?;
+
+        let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;
+
+        let resp = match self {
+            Self::Tron(chain) => {
+                let resource = tron_tx::withdraw_fee(chain, &req, value).await?;
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
+
+                let res = TronFeeDetails::new(resource, token_currency, &currency)?;
+                let fee = wallet_utils::serde_func::serde_to_string(&res)?;
+
+                (consumer, fee)
+            }
+            _ => {
+                return Err(crate::BusinessError::Chain(
+                    crate::ChainError::NotSupportChain,
+                ))?
+            }
+        };
+
+        Ok(resp)
+    }
+
+    pub async fn withdraw(
+        &self,
+        req: &WithdrawReq,
+        _fee: String,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError> {
+        let resp = match self {
+            Self::Tron(chain) => tron_tx::withdraw(chain, &req, value, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,

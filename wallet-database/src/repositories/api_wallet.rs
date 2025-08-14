@@ -64,6 +64,14 @@ impl ApiWalletRepo {
         Ok(ApiWalletEntity::update_app_id(pool.as_ref(), address, app_id, api_wallet_type).await?)
     }
 
+    pub async fn upbind_uid(
+        pool: &DbPool,
+        address: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletEntity::unbind_uid(pool.as_ref(), address, api_wallet_type).await?)
+    }
+
     // pub async fn update(
     //     &mut self,
     //     id: u32,
@@ -119,7 +127,7 @@ impl ApiWalletRepo {
     pub async fn find_by_uid(
         pool: &DbPool,
         uid: &str,
-        api_wallet_type: ApiWalletType,
+        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
         Ok(ApiWalletEntity::detail_by_uid(pool.as_ref(), uid, api_wallet_type).await?)
     }

@@ -25,6 +25,28 @@ impl ApiAccountRepo {
         Ok(ApiAccountEntity::upsert_multi(pool.as_ref(), input).await?)
     }
 
+    pub async fn mark_as_used(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(
+            ApiAccountEntity::update_is_used(pool.as_ref(), wallet_address, account_id, true)
+                .await?,
+        )
+    }
+
+    // pub async fn mark_as_unused(
+    //     pool: &DbPool,
+    //     wallet_address: &str,
+    //     account_id: u32,
+    // ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+    //     Ok(
+    //         ApiAccountEntity::update_is_used(pool.as_ref(), wallet_address, account_id, false)
+    //             .await?,
+    //     )
+    // }
+
     // pub async fn update(
     //     &mut self,
     //     id: u32,
@@ -93,6 +115,21 @@ impl ApiAccountRepo {
             chain_code,
             address_type,
             api_wallet_type,
+        )
+        .await?)
+    }
+
+    pub async fn find_one_by_wallet_address_index(
+        pool: &DbPool,
+        wallet_address: &str,
+        chain_code: &str,
+        account_id: u32,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountEntity::find_one_by_wallet_address_index(
+            pool.as_ref(),
+            wallet_address,
+            chain_code,
+            account_id,
         )
         .await?)
     }

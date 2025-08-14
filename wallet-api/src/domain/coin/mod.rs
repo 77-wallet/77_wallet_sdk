@@ -8,7 +8,11 @@ use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
     entities::coin::{CoinData, CoinEntity},
-    repositories::{coin::CoinRepoTrait, exchange_rate::ExchangeRateRepoTrait, ResourcesRepo},
+    repositories::{
+        coin::{CoinRepo, CoinRepoTrait},
+        exchange_rate::ExchangeRateRepoTrait,
+        ResourcesRepo,
+    },
     DbPool,
 };
 use wallet_transport_backend::{response_vo::coin::TokenCurrency, CoinInfo};
@@ -28,14 +32,11 @@ impl CoinDomain {
     pub async fn get_coin(
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<CoinEntity, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let coin = CoinEntity::get_coin(chain_code, symbol, pool.as_ref())
-            .await?
-            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                symbol.to_string(),
-            )))?;
+        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
 
         Ok(coin)
     }
@@ -47,7 +48,7 @@ impl CoinDomain {
     ) -> Result<TokenCurrencies, crate::ServiceError> {
         let currency = ConfigDomain::get_currency().await?;
 
-        let coins = repo.coin_list(None, None).await?;
+        let coins = repo.coin_list_v2(None, None).await?;
 
         let exchange_rate_list = repo.list().await?;
         // 查询本地的所有币符号
@@ -63,13 +64,17 @@ impl CoinDomain {
                 (f64::default(), f64::default())
             };
 
-            let symbol = coin.symbol.to_ascii_lowercase();
-            let name = coin.name;
+            let symbol = &coin.symbol;
+            let chain_code = &coin.chain_code;
 
-            let token_currency_id = TokenCurrencyId::new(&symbol, &coin.chain_code);
+            let token_currency_id = TokenCurrencyId::new(
+                &symbol.to_ascii_lowercase(),
+                chain_code,
+                coin.token_address(),
+            );
 
             let token_currency = TokenCurrency {
-                name,
+                name: coin.name,
                 chain_code: coin.chain_code,
                 code: symbol.clone(),
                 price: Some(price),
@@ -129,20 +134,24 @@ impl CoinDomain {
         }
     }
 
-    pub async fn fetch_all_coin(_pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
+    pub async fn fetch_all_coin(pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
         let backend_api = crate::Context::get_global_backend_api()?;
         let mut coins = Vec::new();
 
-        // TODO 1.5 版本还是查询所有的币，避免版本更新后导致未更新的查询不到数据
-        let create_at = None;
-
-        // let create_at = if let Some(last_coin) = CoinRepo::last_coin(pool, true).await? {
-        //     let formatted = last_coin.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-        //     Some(formatted)
-        // } else {
-        //     None
-        // };
+        // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。
+        // let create_at = None;
+        let count = CoinRepo::coin_count(pool).await?;
+        let create_at = if count > 500 {
+            if let Some(last_coin) = CoinRepo::last_coin(pool, true).await? {
+                let formatted = last_coin.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+                Some(formatted)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         coins.append(
             &mut backend_api
@@ -150,7 +159,7 @@ impl CoinDomain {
                 .await?,
         );
 
-        // // 如果本地没有币，则添加默认币种并进行去重
+        // // 如果本地没有币，则添加默认币种并进行去重(感觉不是一个很好的逻辑)
         // if create_at.is_none() {
         //     let default = crate::default_data::coin::init_default_coins_list()?;
 

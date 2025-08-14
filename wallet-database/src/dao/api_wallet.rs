@@ -1,4 +1,7 @@
-use crate::entities::api_wallet::{ApiWalletEntity, ApiWalletType};
+use crate::{
+    entities::api_wallet::{ApiWalletEntity, ApiWalletType},
+    sql_utils::{query_builder::DynamicQueryBuilder, SqlExecutableReturn as _},
+};
 use sqlx::{Executor, Sqlite};
 
 impl ApiWalletEntity {
@@ -71,18 +74,22 @@ impl ApiWalletEntity {
     pub async fn detail_by_uid<'a, E>(
         exec: E,
         uid: &str,
-        api_wallet_type: ApiWalletType,
+        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Option<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_wallet WHERE uid = ? AND wallet_type = ? AND status = 1;";
-        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
-            .bind(uid)
-            .bind(api_wallet_type)
+        let mut builder = DynamicQueryBuilder::new("SELECT * FROM api_wallet");
+
+        if let Some(api_wallet_type) = api_wallet_type {
+            builder = builder.and_where_eq("wallet_type", api_wallet_type)
+        }
+
+        builder
+            .and_where_eq("uid", uid)
+            .and_where_eq("status", "1")
             .fetch_optional(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn list<'a, E>(
@@ -171,6 +178,33 @@ impl ApiWalletEntity {
 
         sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
             .bind(app_id)
+            .bind(now)
+            .bind(address)
+            .bind(api_wallet_type)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn unbind_uid<'a, E>(
+        exec: E,
+        address: &str,
+        api_wallet_type: ApiWalletType,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let now = sqlx::types::chrono::Utc::now();
+        let sql = r#"
+            UPDATE api_wallet SET
+                app_id = null,
+                merchant_id = null,
+                updated_at = $1
+            WHERE address = $2  AND wallet_type = $3 AND status = 1
+            RETURNING *;
+        "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
             .bind(now)
             .bind(address)
             .bind(api_wallet_type)

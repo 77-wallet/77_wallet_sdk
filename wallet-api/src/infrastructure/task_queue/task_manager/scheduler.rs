@@ -34,7 +34,6 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
             match known_task_name {
                 KnownTaskName::PullAnnouncement => 3,
                 KnownTaskName::PullHotCoins => 0,
-                KnownTaskName::InitTokenPrice => 1,
                 KnownTaskName::SetBlockBrowserUrl => 0,
                 KnownTaskName::SetFiat => 0,
                 KnownTaskName::RecoverQueueData => 1,
@@ -62,6 +61,8 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
                 KnownTaskName::RecoverMultisigAccountData => 1, // 多签账户恢复，重要流程，高优先级
                 KnownTaskName::SyncNodesAndLinkToChains => 4, // 链接节点的同步任务，后台操作，较低优先级
                 KnownTaskName::OrderAllConfirmed => 1,
+                KnownTaskName::UnbindUid => 2,
+                KnownTaskName::AddressUse => 2,
             }
         }
         wallet_database::entities::task_queue::TaskName::Unknown(_) => 0,

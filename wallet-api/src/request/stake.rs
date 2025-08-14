@@ -146,13 +146,15 @@ impl VoteWitnessReq {
 pub struct VotesReq {
     pub vote_address: String,
     pub vote_count: i64,
+    pub name: String,
 }
 
 impl VotesReq {
-    pub fn new(vote_address: &str, vote_count: i64) -> Self {
+    pub fn new(vote_address: &str, vote_count: i64, name: &str) -> Self {
         Self {
             vote_address: vote_address.to_string(),
             vote_count,
+            name: name.to_string(),
         }
     }
 }

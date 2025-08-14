@@ -13,7 +13,7 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
-use crate::messaging::mqtt::topics::BulletinMsg;
+use crate::messaging::mqtt::topics::{AddressUseMsg, BulletinMsg, UnbindUidMsg};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
@@ -56,6 +56,10 @@ pub enum NotifyEvent {
     // 其他
     // 同步资产
     SyncAssets,
+
+    // API wallet
+    UnbindUid(UnbindUidMsg),
+    AddressUse(AddressUseMsg),
 }
 
 impl NotifyEvent {
@@ -100,6 +104,8 @@ impl NotifyEvent {
             // 其他
             // 同步资产
             NotifyEvent::SyncAssets => "SYNC_ASSETS".to_string(),
+            NotifyEvent::UnbindUid(_) => "UNBIND_UID".to_string(),
+            NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
         }
     }
 }

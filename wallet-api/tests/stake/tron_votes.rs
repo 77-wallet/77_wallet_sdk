@@ -10,8 +10,8 @@ async fn test_vote() {
     let vote_witness_req = VoteWitnessReq::new(
         owner_address,
         vec![
-            VotesReq::new("TEp1ru7opCexkbFM9ChK6DFfL2XFSfUo2N", 20),
-            VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 20),
+            VotesReq::new("TEp1ru7opCexkbFM9ChK6DFfL2XFSfUo2N", 20, "name"),
+            VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 20, "name"),
         ],
         None,
     );
@@ -27,7 +27,7 @@ async fn test_votes_fee() {
     let manager = get_manager().await;
     let vote_address = "TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX";
     let vote_count = 1;
-    let votes = VotesReq::new(vote_address, vote_count);
+    let votes = VotesReq::new(vote_address, vote_count, "name");
     let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
     let req = VoteWitnessReq::new(owner_address, vec![votes], None);
 

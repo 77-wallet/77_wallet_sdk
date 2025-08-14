@@ -56,8 +56,9 @@ async fn test_balance() {
     let addr = "2t2bb63CcxSE6gWZHvAHc6q24ub9vyoWFEKuxqALkyfX";
     let chain_code = "sol";
     let symbol = "SOL";
+    let token_address = None;
     let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol)
+        .chain_balance(addr, chain_code, &symbol, token_address)
         .await;
 
     tracing::info!("balance: {:?}", balance);
@@ -74,6 +75,7 @@ async fn test_create_queue_fee() {
         chain_code: "sol".to_owned(),
         symbol: "SOL".to_owned(),
         spend_all: None,
+        token_address: None,
     };
 
     // 创建交易
@@ -98,6 +100,7 @@ async fn test_create_transfer() {
         notes: Some("salary".to_string()),
         spend_all: false,
         signer: None,
+        token_address: None,
     };
 
     // 创建交易

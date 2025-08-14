@@ -133,13 +133,15 @@ pub struct QueryHistoryPriceRes(pub Vec<QueryHistoryPrice>);
 pub struct TokenCurrencyId {
     pub symbol: String,
     pub chain_code: String,
+    pub token_address: Option<String>,
 }
 
 impl TokenCurrencyId {
-    pub fn new(symbol: &str, chain_code: &str) -> Self {
+    pub fn new(symbol: &str, chain_code: &str, token_address: Option<String>) -> Self {
         Self {
             symbol: symbol.to_ascii_lowercase(),
             chain_code: chain_code.to_string(),
+            token_address,
         }
     }
 }
@@ -214,7 +216,12 @@ impl TokenCurrencies {
                 .find(|chain| chain.chain_code == assets.chain_code)
             {
                 let balance = self
-                    .calculate_to_balance(&assets.balance, &assets.symbol, &assets.chain_code)
+                    .calculate_to_balance(
+                        &assets.balance,
+                        &assets.symbol,
+                        &assets.chain_code,
+                        assets.token_address(),
+                    )
                     .await?;
 
                 let name = if assets.chain_code == "btc" || assets.chain_code == "ltc" {
@@ -248,6 +255,7 @@ impl TokenCurrencies {
         balance: &str,
         symbol: &str,
         chain_code: &str,
+        token_address: Option<String>,
     ) -> Result<BalanceInfo, crate::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(balance)?;
 
@@ -255,7 +263,7 @@ impl TokenCurrencies {
         // let currency = config.currency();
         // let currency = "USD";
         let currency = ConfigDomain::get_currency().await?;
-        let token_currency_id = TokenCurrencyId::new(symbol, chain_code);
+        let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
             let price = token_currency
@@ -291,7 +299,8 @@ impl TokenCurrencies {
         // let currency = "USD";
         let currency = ConfigDomain::get_currency().await?;
         for assets in data.iter_mut() {
-            let token_currency_id = TokenCurrencyId::new(&assets.symbol, &assets.chain_code);
+            let token_currency_id =
+                TokenCurrencyId::new(&assets.symbol, &assets.chain_code, assets.token_address());
             // let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
             //     let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
 
@@ -341,7 +350,8 @@ impl TokenCurrencies {
         }
         let balance_f = wallet_utils::parse_func::f64_from_str(&data.balance)?;
 
-        let token_currency_id = TokenCurrencyId::new(&data.symbol, &data.chain_code);
+        let token_currency_id =
+            TokenCurrencyId::new(&data.symbol, &data.chain_code, data.token_address());
         let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
             // let config = crate::app_state::APP_STATE.read().await;
             // let currency = config.currency();
@@ -378,8 +388,13 @@ impl TokenCurrencies {
         &self,
         assets: &wallet_database::entities::assets::AssetsEntity,
     ) -> Result<BalanceInfo, crate::ServiceError> {
-        self.calculate_to_balance(&assets.balance, &assets.symbol, &assets.chain_code)
-            .await
+        self.calculate_to_balance(
+            &assets.balance,
+            &assets.symbol,
+            &assets.chain_code,
+            assets.token_address(),
+        )
+        .await
     }
 
     pub async fn calculate_account_infos(

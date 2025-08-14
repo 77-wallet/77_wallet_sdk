@@ -9,17 +9,18 @@ use crate::{
         },
         multisig::MultisigQueueDomain,
     },
-    request::transaction::ApproveReq,
+    request::transaction::{ApproveReq, DepositReq, WithdrawReq},
     response_vo::TransferParams,
 };
 use alloy::sol_types::SolValue;
 use alloy::{primitives::U256, sol_types::SolCall};
 use wallet_chain_interact::{
+    abi_encode_u256,
     tron::{
         operations::{
             contract::{TriggerContractParameter, WarpContract},
             transfer::{ContractTransferOpt, TransferOpt},
-            trc::{Allowance, Approve},
+            trc::{Allowance, Approve, Deposit},
             TronConstantOperation as _,
         },
         params::ResourceConsumer,
@@ -122,6 +123,136 @@ pub(super) async fn approve_fee(
     Ok(consumer)
 }
 
+pub(super) async fn deposit_fee(
+    chain: &TronChain,
+    req: &DepositReq,
+    value: alloy::primitives::U256,
+) -> Result<ResourceConsumer, crate::ServiceError> {
+    let approve = Deposit::new(&req.from, &req.token, value);
+    let wrap = WarpContract::new(approve)?;
+
+    // get fee
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    let consumer = chain.provider.contract_fee(constant, 1, &req.from).await?;
+
+    Ok(consumer)
+}
+
+pub(super) async fn deposit(
+    chain: &TronChain,
+    req: &DepositReq,
+    value: alloy::primitives::U256,
+    key: ChainPrivateKey,
+) -> Result<TransferResp, crate::ServiceError> {
+    let approve = Deposit::new(&req.from, &req.token, value);
+    let mut wrap = WarpContract::new(approve)?;
+
+    // get fee
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    let consumer = chain.provider.contract_fee(constant, 1, &req.from).await?;
+
+    // check balance
+    let balance = chain.balance(&req.from, None).await?;
+    let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64()) + value;
+    if balance < fee {
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
+
+    // get consumer
+    let bill_consumer = BillResourceConsume::new_tron(
+        consumer.act_bandwidth() as u64,
+        consumer.act_energy() as u64,
+    );
+
+    // exec trans
+    let raw_transaction = wrap
+        .trigger_smart_contract(&chain.provider, &consumer)
+        .await?;
+    let result = chain.exec_transaction_v1(raw_transaction, key).await?;
+
+    let mut resp = TransferResp::new(result, consumer.transaction_fee());
+    resp.with_consumer(bill_consumer);
+
+    Ok(resp)
+}
+
+fn build_base_withdraw(
+    req: &WithdrawReq,
+    value: U256,
+) -> Result<TriggerContractParameter, crate::ServiceError> {
+    // 构建调用合约的参数
+    let parameter = abi_encode_u256(value);
+    let function_selector = "withdraw(uint256)";
+
+    let contract_address = wallet_utils::address::bs58_addr_to_hex(&req.token)?;
+    let owner_address = wallet_utils::address::bs58_addr_to_hex(&req.from)?;
+
+    let value = TriggerContractParameter::new(
+        &contract_address,
+        &owner_address,
+        &function_selector,
+        parameter,
+    );
+
+    Ok(value)
+}
+
+pub(super) async fn withdraw_fee(
+    chain: &TronChain,
+    req: &WithdrawReq,
+    value: alloy::primitives::U256,
+) -> Result<ResourceConsumer, crate::ServiceError> {
+    let trigger = build_base_withdraw(req, value)?;
+    let wrap = WarpContract { params: trigger };
+
+    // get fee
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    let consumer = chain.provider.contract_fee(constant, 1, &req.from).await?;
+
+    Ok(consumer)
+}
+
+pub(super) async fn withdraw(
+    chain: &TronChain,
+    req: &WithdrawReq,
+    value: alloy::primitives::U256,
+    key: ChainPrivateKey,
+) -> Result<TransferResp, crate::ServiceError> {
+    let trigger = build_base_withdraw(req, value)?;
+    let mut wrap = WarpContract { params: trigger };
+
+    // get fee
+    let constant = wrap.trigger_constant_contract(&chain.provider).await?;
+    let consumer = chain.provider.contract_fee(constant, 1, &req.from).await?;
+
+    let balance = chain.balance(&req.from, None).await?;
+    let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
+    if balance < fee {
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
+
+    // get consumer
+    let bill_consumer = BillResourceConsume::new_tron(
+        consumer.act_bandwidth() as u64,
+        consumer.act_energy() as u64,
+    );
+
+    // exec trans
+    let raw_transaction = wrap
+        .trigger_smart_contract(&chain.provider, &consumer)
+        .await?;
+    let result = chain.exec_transaction_v1(raw_transaction, key).await?;
+
+    let mut resp = TransferResp::new(result, consumer.transaction_fee());
+    resp.with_consumer(bill_consumer);
+
+    Ok(resp)
+}
+
 pub(super) async fn allowance(
     chain: &TronChain,
     from: &str,
@@ -188,14 +319,17 @@ pub(super) async fn estimate_swap(
     let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
         .map_err(|e| crate::ServiceError::AggregatorError {
             code: -1,
+            agg_code: 0,
             msg: e.to_string(),
         })?;
 
     // get fee
-    let consumer = chain
+    let mut consumer = chain
         .provider
         .contract_fee(constant, 1, &owner_address)
         .await?;
+    // 手续费增加0.2trx
+    consumer.set_extra_fee(200000);
 
     let resp = EstimateSwapResult {
         amount_in,
@@ -217,7 +351,7 @@ pub(super) async fn swap(
     let mut wrap = WarpContract { params };
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
     // get fee
-    let consumer = chain
+    let mut consumer = chain
         .provider
         .contract_fee(constant, 1, &owner_address)
         .await?;
@@ -226,6 +360,9 @@ pub(super) async fn swap(
     let balance = chain
         .balance(&swap_params.recipient_tron_addr()?, None)
         .await?;
+    // 手续费增加0.2trx
+    consumer.set_extra_fee(200000);
+
     let mut fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if swap_params.main_coin_swap() {
         fee += swap_params.amount_in;
@@ -241,9 +378,6 @@ pub(super) async fn swap(
         consumer.act_energy() as u64,
     );
 
-    // let raw_transaction = wrap
-    //     .trigger_smart_contract(&chain.provider, &consumer)
-    //     .await?;
     let raw_transaction = wrap.trigger_with_fee(&chain.provider, 300).await?;
 
     let tx_hash = chain.exec_transaction_v1(raw_transaction, key).await?;

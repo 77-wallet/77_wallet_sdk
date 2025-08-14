@@ -10,6 +10,7 @@ pub struct TaskQueueEntity {
     pub r#type: u8,
     /// 0: pending, 1: running, 2: success, 3: failed, 4: hang up
     pub status: u8,
+    // pub wallet_type: Option<WalletType>,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
@@ -23,6 +24,7 @@ pub struct CreateTaskQueueEntity {
     pub request_body: Option<String>,
     pub r#type: u8,
     pub status: u8,
+    // pub wallet_type: Option<WalletType>,
 }
 
 impl CreateTaskQueueEntity {
@@ -32,6 +34,7 @@ impl CreateTaskQueueEntity {
         request_body: Option<String>,
         r#type: u8,
         status: u8,
+        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         let id = id.unwrap_or_else(|| wallet_utils::snowflake::get_uid().unwrap().to_string());
         Ok(Self {
@@ -40,12 +43,14 @@ impl CreateTaskQueueEntity {
             request_body,
             r#type,
             status,
+            // wallet_type,
         })
     }
 
     pub fn with_backend_request_string(
         task_name: TaskName,
         request_body: Option<String>,
+        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         Self::new(None, task_name, request_body, 1, 0)
     }
@@ -54,6 +59,7 @@ impl CreateTaskQueueEntity {
         id: &str,
         task_name: TaskName,
         request_body: Option<String>,
+        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         Self::new(Some(id.to_string()), task_name, request_body, 2, 0)
     }
@@ -61,6 +67,7 @@ impl CreateTaskQueueEntity {
     pub fn with_backend_request<T: serde::Serialize>(
         task_name: TaskName,
         request_body: Option<&T>,
+        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         let request_body = request_body
             .map(wallet_utils::serde_func::serde_to_string)
@@ -142,8 +149,6 @@ impl From<String> for TaskName {
 pub enum KnownTaskName {
     PullAnnouncement,
     PullHotCoins,
-    InitTokenPrice,
-    // ProcessUnconfirmMsg,
     SetBlockBrowserUrl,
     SetFiat,
     RecoverQueueData,
@@ -172,4 +177,6 @@ pub enum KnownTaskName {
     SyncNodesAndLinkToChains,
     // RecoverPermission,
     OrderAllConfirmed,
+    UnbindUid,
+    AddressUse,
 }

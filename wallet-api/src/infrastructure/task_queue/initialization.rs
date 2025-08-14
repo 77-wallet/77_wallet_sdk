@@ -19,8 +19,6 @@ impl TaskTrait for InitializationTask {
                 TaskName::Known(KnownTaskName::PullAnnouncement)
             }
             InitializationTask::PullHotCoins => TaskName::Known(KnownTaskName::PullHotCoins),
-            InitializationTask::InitTokenPrice => TaskName::Known(KnownTaskName::InitTokenPrice),
-            // InitializationTask::ProcessUnconfirmMsg => TaskName::ProcessUnconfirmMsg,
             InitializationTask::SetBlockBrowserUrl => {
                 TaskName::Known(KnownTaskName::SetBlockBrowserUrl)
             }
@@ -57,12 +55,6 @@ impl TaskTrait for InitializationTask {
                 let coin_service = CoinService::new(repo);
                 coin_service.init_token_price().await?;
             }
-            InitializationTask::InitTokenPrice => {
-                let repo = RepositoryFactory::repo(pool.clone());
-                let coin_service = CoinService::new(repo);
-
-                coin_service.init_token_price().await?;
-            }
             InitializationTask::SetBlockBrowserUrl => {
                 let repo = RepositoryFactory::repo(pool.clone());
                 let mut app_service = crate::service::app::AppService::new(repo);
@@ -92,7 +84,6 @@ impl TaskTrait for InitializationTask {
 pub(crate) enum InitializationTask {
     PullAnnouncement,
     PullHotCoins,
-    InitTokenPrice,
     // ProcessUnconfirmMsg,
     SetBlockBrowserUrl,
     SetFiat,

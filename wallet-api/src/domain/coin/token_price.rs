@@ -1,4 +1,4 @@
-use crate::response_vo::account::{BalanceInfo, BalanceNotTruncate};
+use crate::response_vo::account::{BalanceInfo, BalanceStr};
 use wallet_database::repositories::{coin::CoinRepo, exchange_rate::ExchangeRateRepo};
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
 use wallet_utils::unit;
@@ -12,10 +12,11 @@ impl TokenCurrencyGetter {
         currency: &str,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<TokenCurrency, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, &pool).await?;
+        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
         // get rate
         let exchange = ExchangeRateRepo::exchange_rate(currency, &pool).await?;
 
@@ -40,13 +41,15 @@ impl TokenCurrencyGetter {
         chain_code: &str,
         symbol: &str,
         amount: f64,
+        token_address: Option<String>,
     ) -> Result<BalanceInfo, crate::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型
         };
 
-        let token_price = TokenCurrencyGetter::get_currency(&currency, chain_code, symbol).await?;
+        let token_price =
+            TokenCurrencyGetter::get_currency(&currency, chain_code, symbol, token_address).await?;
 
         Ok(BalanceInfo::new(
             amount,
@@ -59,8 +62,9 @@ impl TokenCurrencyGetter {
     pub async fn get_bal_by_backend(
         chain_code: &str,
         token_addr: &str,
-        amount: f64,
-    ) -> Result<BalanceNotTruncate, crate::ServiceError> {
+        amount: &str,
+        decimals: u8,
+    ) -> Result<BalanceStr, crate::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型
@@ -80,7 +84,13 @@ impl TokenCurrencyGetter {
 
             exchange.rate * price
         };
+        let amount = wallet_utils::unit::convert_to_u256(amount, decimals)?;
 
-        Ok(BalanceNotTruncate::new(amount, Some(unit_price), &currency))
+        Ok(BalanceStr::new(
+            amount,
+            Some(unit_price),
+            &currency,
+            decimals,
+        )?)
     }
 }

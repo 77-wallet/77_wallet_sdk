@@ -115,23 +115,25 @@ async fn test_quote() {
     // TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t usdt
     // TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S sun
 
+    // testnet wtrx TYsbWxNnyTgsZaTFaue9hqpxkU3Fkco94a
+
     let token_in = SwapTokenInfo {
-        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-        symbol: "TRX".to_string(),
+        token_addr: "".to_string(),
+        symbol: "trx".to_string(),
         decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "".to_string(),
-        symbol: "TRX".to_string(),
+        token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+        symbol: "WTRX".to_string(),
         decimals: 6,
     };
 
     let req = QuoteReq {
-        aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
+        aggregator_addr: "TSPSEgjQS1gChQLXW8qiVQtwrPdu1E4iCn".to_string(),
         recipient: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
         chain_code: "tron".to_string(),
-        amount_in: "2".to_string(),
+        amount_in: "1".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
@@ -148,7 +150,7 @@ async fn test_quote() {
 async fn test_swap() {
     let wallet_manager = get_manager().await;
 
-    let o_value = "0.632469866819847695";
+    let o_value = "2";
 
     let amount_in = wallet_utils::unit::convert_to_u256(&o_value, 6).unwrap();
 
@@ -156,51 +158,37 @@ async fn test_swap() {
         percentage: "10000".to_string(),
         amount_in: amount_in.to_string(),
         amount_out: "0".to_string(),
-        route_in_dex: vec![
-            RouteInDex {
-                dex_id: 3,
-                pool_id: "TSUUVjysXV8YqHytSNjfkNXnnB49QDvZpx".to_string(),
-                in_token_symbol: "TUSD".to_string(),
-                in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
-                out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-                out_token_symbol: "USDT".to_string(),
-                zero_for_one: true,
-                fee: "500".to_string(),
-                amount_in: 0.to_string(),
-                min_amount_out: 0.to_string(),
-            },
-            // RouteInDex {
-            //     dex_id: 2,
-            //     pool_id: "TTdeCobmYxhfFBYUZbiQqbZ56zrFkSE5DG".to_string(),
-            //     in_token_symbol: "USDT".to_string(),
-            //     in_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-            //     out_token_addr: "TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S".to_string(),
-            //     out_token_symbol: "SUN".to_string(),
-            //     zero_for_one: true,
-            //     fee: "3000".to_string(),
-            //     amount_in: 0.to_string(),
-            //     min_amount_out: 0.to_string(),
-            // },
-        ],
+        route_in_dex: vec![RouteInDex {
+            dex_id: 3,
+            pool_id: "TSUUVjysXV8YqHytSNjfkNXnnB49QDvZpx".to_string(),
+            in_token_symbol: "TUSD".to_string(),
+            in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
+            out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+            out_token_symbol: "USDT".to_string(),
+            zero_for_one: true,
+            fee: "500".to_string(),
+            amount_in: 0.to_string(),
+            min_amount_out: 0.to_string(),
+        }],
     };
 
     let token_in = SwapTokenInfo {
-        token_addr: "".to_string(),
+        token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
         symbol: "WTRX".to_string(),
         decimals: 6,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "AADd".to_string(),
-        symbol: "Hello Coin".to_string(),
-        decimals: 7,
+        token_addr: "".to_string(),
+        symbol: "TRX".to_string(),
+        decimals: 6,
     };
 
     let req = SwapReq {
         aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),
         amount_in: o_value.to_string(),
-        amount_out: "1".to_string(),
-        min_amount_out: "0".to_string(),
+        amount_out: "2".to_string(),
+        min_amount_out: "2".to_string(),
         chain_code: "tron".to_string(),
         recipient: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
         token_in,

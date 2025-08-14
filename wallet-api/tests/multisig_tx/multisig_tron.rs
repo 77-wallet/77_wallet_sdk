@@ -63,6 +63,7 @@ async fn test_create_transfer() {
         notes: Some("salary".to_string()),
         spend_all: false,
         signer,
+        token_address: None,
     };
 
     // 创建交易

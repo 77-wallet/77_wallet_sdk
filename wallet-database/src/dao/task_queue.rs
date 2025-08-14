@@ -3,7 +3,7 @@ use sqlx::{Executor, Sqlite};
 use crate::{
     entities::task_queue::{CreateTaskQueueEntity, TaskQueueEntity},
     sql_utils::{
-        delete_builder::DynamicDeleteBuilder, query_builder::DynamicQueryBuilder, SqlArg,
+        delete_builder::DynamicDeleteBuilder, query_builder::DynamicQueryBuilder,
         SqlExecutableNoReturn, SqlExecutableReturn,
     },
 };
@@ -238,10 +238,10 @@ impl TaskQueueEntity {
     {
         let mut builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
         if let Some(status) = status {
-            builder = builder.and_where_eq("status", SqlArg::Int(status as i64));
+            builder = builder.and_where_eq("status", status);
         }
         if let Some(typ) = typ {
-            builder = builder.and_where_eq("type", SqlArg::Int(typ as i64));
+            builder = builder.and_where_eq("type", typ);
         }
 
         builder.fetch_all(executor).await

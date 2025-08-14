@@ -46,8 +46,9 @@ async fn test_balance() {
     let chain_code = "eth";
     // let symbol = "bnb";
     let symbol = "ETH";
+    let token_address = None;
     let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol)
+        .chain_balance(addr, chain_code, &symbol, token_address)
         .await;
 
     tracing::info!("balance: {:?}", balance);
@@ -68,6 +69,7 @@ async fn test_create_transfer() {
         notes: Some("salary".to_string()),
         spend_all: false,
         signer: None,
+        token_address: None,
     };
 
     // 创建交易

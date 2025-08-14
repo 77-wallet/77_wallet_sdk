@@ -2,29 +2,30 @@ pub mod delete_builder;
 pub mod query_builder;
 pub mod update_builder;
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use sqlx::{Executor, Sqlite};
+use sqlx::{sqlite::SqliteArguments, Executor, Sqlite};
 
-#[derive(Debug, Clone)]
-pub enum SqlArg {
-    Str(String),
-    Int(i64),
-    Bool(bool),
-    // Option<T> 扩展后可加：OptionalStr(Option<String>) 等
-}
+pub type ArgFn<'q> = Arc<dyn Fn(&mut SqliteArguments<'q>) + Send + Sync + 'q>;
 
-pub trait SqlBuilder {
-    fn build(&self) -> (String, Vec<SqlArg>);
+pub trait SqlQueryBuilder<'q> {
+    fn build_sql(&self) -> (String, Vec<ArgFn<'q>>);
 }
 
 #[async_trait]
-pub trait SqlExecutableNoReturn: SqlBuilder + Sync {
+pub trait SqlExecutableNoReturn<'a>: SqlQueryBuilder<'a> {
     async fn execute<'e, E>(&self, executor: E) -> Result<(), crate::Error>
     where
         E: Executor<'e, Database = Sqlite> + Send,
     {
-        let (sql, args) = self.build();
-        let query = bind_all_execute(sqlx::query(&sql), &args);
+        let (sql, args_fn) = self.build_sql();
+        let mut args = SqliteArguments::default();
+        for f in args_fn {
+            f(&mut args);
+        }
+        let query = sqlx::query_with(&sql, args);
+
         query
             .execute(executor)
             .await
@@ -34,19 +35,23 @@ pub trait SqlExecutableNoReturn: SqlBuilder + Sync {
 }
 
 #[async_trait]
-pub trait SqlExecutableReturn<T>: Sync + SqlBuilder
+pub trait SqlExecutableReturn<'a, T>: SqlQueryBuilder<'a>
 where
-    T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin + 'static,
+    for<'r> T: sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin + 'a,
 {
-    // fn build(&self) -> (String, Vec<SqlArg>);
-
     async fn fetch_all<'e, E>(&self, executor: E) -> Result<Vec<T>, crate::Error>
     where
         E: Executor<'e, Database = Sqlite> + Send,
     {
-        let (sql, args) = self.build();
+        let (sql, arg_fns) = self.build_sql();
         tracing::info!("query: {}", sql);
-        let query = bind_all_args(sqlx::query_as::<_, T>(&sql), &args);
+
+        let mut args = SqliteArguments::default();
+        for f in arg_fns {
+            f(&mut args);
+        }
+        let query = sqlx::query_as_with::<_, T, _>(&sql, args);
+
         query
             .fetch_all(executor)
             .await
@@ -58,9 +63,15 @@ where
         E: Executor<'e, Database = Sqlite> + Send,
     {
         {
-            let (sql, args) = self.build();
+            let (sql, arg_fns) = self.build_sql();
             tracing::info!("query: {}", sql);
-            let query = bind_all_args(sqlx::query_as::<_, T>(&sql), &args);
+
+            let mut args = SqliteArguments::default();
+            for f in arg_fns {
+                f(&mut args);
+            }
+            let query = sqlx::query_as_with::<_, T, _>(&sql, args);
+
             query
                 .fetch_optional(executor)
                 .await
@@ -72,38 +83,19 @@ where
     where
         E: Executor<'e, Database = Sqlite> + Send,
     {
-        let (sql, args) = self.build();
+        let (sql, args_fn) = self.build_sql();
         tracing::info!("execute: {}", sql);
-        let query = bind_all_execute(sqlx::query(&sql), &args);
+
+        let mut args = SqliteArguments::default();
+        for f in args_fn {
+            f(&mut args);
+        }
+        let query = sqlx::query_with(&sql, args);
+
         query
             .execute(executor)
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
-}
-
-pub fn bind_all_execute<'q>(
-    query: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
-    args: &'q [SqlArg],
-) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
-    args.iter().fold(query, |query, arg| match arg {
-        SqlArg::Str(s) => query.bind(s),
-        SqlArg::Int(i) => query.bind(i),
-        SqlArg::Bool(b) => query.bind(b),
-    })
-}
-
-pub fn bind_all_args<'q, T>(
-    query: sqlx::query::QueryAs<'q, Sqlite, T, sqlx::sqlite::SqliteArguments<'q>>,
-    args: &'q [SqlArg],
-) -> sqlx::query::QueryAs<'q, Sqlite, T, sqlx::sqlite::SqliteArguments<'q>>
-where
-    T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
-{
-    args.iter().fold(query, |query, arg| match arg {
-        SqlArg::Str(s) => query.bind(s),
-        SqlArg::Int(i) => query.bind(i),
-        SqlArg::Bool(b) => query.bind(b),
-    })
 }

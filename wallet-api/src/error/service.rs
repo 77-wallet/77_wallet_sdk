@@ -29,8 +29,12 @@ pub enum ServiceError {
     Business(#[from] super::business::BusinessError),
     #[error("parameter error: {0}")]
     Parameter(String),
-    #[error("aggregator code: {code} error: {msg}")]
-    AggregatorError { code: i32, msg: String },
+    #[error("aggregator code: {agg_code} error: {msg}")]
+    AggregatorError {
+        code: i32,
+        agg_code: i32,
+        msg: String,
+    },
 }
 
 impl ServiceError {

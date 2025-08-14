@@ -202,18 +202,19 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::MultiSignTransExecute => topics::MultiSignTransExecute =>|parsed| Box::new(MqttTask::MultiSignTransExecute(parsed)),
         KnownTaskName::CleanPermission => topics::CleanPermission => |parsed| Box::new(MqttTask::CleanPermission(parsed)),
         KnownTaskName::OrderAllConfirmed => topics::OrderAllConfirmed => |parsed| Box::new(MqttTask::OrderAllConfirmed(parsed)),
+        KnownTaskName::UnbindUid => topics::UnbindUidMsg => |parsed| Box::new(MqttTask::UnbindUid(parsed)),
+        KnownTaskName::AddressUse => topics::AddressUseMsg => |parsed| Box::new(MqttTask::AddressUse(parsed)),
 
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
-        KnownTaskName::QueryQueueResult => QueueTaskEntity =>|parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
-        KnownTaskName::RecoverMultisigAccountData => RecoverDataBody =>|parsed| Box::new(CommonTask::RecoverMultisigAccountData(parsed)),
-        KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> =>|parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed))
+        KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
+        KnownTaskName::RecoverMultisigAccountData => RecoverDataBody => |parsed| Box::new(CommonTask::RecoverMultisigAccountData(parsed)),
+        KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> => |parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed)),
     );
 
     // Initialization：不需要解析 request_body 的任务
     register_tasks_no_parse!(map,
         KnownTaskName::PullAnnouncement => Box::new(InitializationTask::PullAnnouncement),
         KnownTaskName::PullHotCoins => Box::new(InitializationTask::PullHotCoins),
-        KnownTaskName::InitTokenPrice => Box::new(InitializationTask::InitTokenPrice),
         KnownTaskName::SetBlockBrowserUrl => Box::new(InitializationTask::SetBlockBrowserUrl),
         KnownTaskName::SetFiat => Box::new(InitializationTask::SetFiat),
         KnownTaskName::RecoverQueueData => Box::new(InitializationTask::RecoverQueueData),
