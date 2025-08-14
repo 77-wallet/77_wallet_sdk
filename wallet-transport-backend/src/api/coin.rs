@@ -9,7 +9,6 @@ use super::BackendApi;
 impl BackendApi {
     pub async fn custom_token_init(
         &self,
-
         req: crate::request::CustomTokenInitReq,
     ) -> Result<bool, crate::Error> {
         let res = self

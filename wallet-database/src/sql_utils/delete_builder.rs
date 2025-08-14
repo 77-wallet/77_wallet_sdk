@@ -20,7 +20,7 @@ impl<'a> DynamicDeleteBuilder<'a> {
         }
     }
 
-    pub fn and_where_eq<T>(&mut self, field: &str, val: T)
+    pub fn and_where_eq<T>(mut self, field: &str, val: T) -> Self
     where
         T: Clone + Send + Sync + 'a + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
     {
@@ -30,9 +30,10 @@ impl<'a> DynamicDeleteBuilder<'a> {
                 args.add(val.clone());
             },
         ));
+        self
     }
 
-    pub fn and_where_like(&mut self, field: &str, keyword: &str) {
+    pub fn and_where_like(mut self, field: &str, keyword: &str) -> Self {
         self.where_clauses.push(format!("{} LIKE ?", field));
         let pattern = format!("%{}%", keyword);
         self.arg_fns.push(Arc::new(
@@ -40,14 +41,15 @@ impl<'a> DynamicDeleteBuilder<'a> {
                 args.add(pattern.clone());
             },
         ));
+        self
     }
 
-    pub fn and_where_in<T>(&mut self, field: &str, values: &[T])
+    pub fn and_where_in<T>(mut self, field: &str, values: &[T]) -> Self
     where
         T: ToString + Send + 'a,
     {
         if values.is_empty() {
-            return;
+            return self;
         }
         let placeholders = std::iter::repeat("?")
             .take(values.len())
@@ -63,6 +65,7 @@ impl<'a> DynamicDeleteBuilder<'a> {
                 },
             ));
         }
+        self
     }
 }
 

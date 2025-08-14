@@ -20,7 +20,7 @@ impl<'a> DynamicUpdateBuilder<'a> {
         }
     }
 
-    pub fn set<T>(&mut self, field: &str, val: T)
+    pub fn set<T>(mut self, field: &str, val: T) -> Self
     where
         T: Clone + Send + Sync + 'a + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
     {
@@ -31,13 +31,15 @@ impl<'a> DynamicUpdateBuilder<'a> {
                 args.add(val.clone());
             },
         ));
+        self
     }
 
-    pub fn set_raw(&mut self, expr: &str) {
+    pub fn set_raw(mut self, expr: &str) -> Self {
         self.set_clauses.push(expr.to_string());
+        self
     }
 
-    pub fn and_where_eq<T>(&mut self, field: &str, val: T)
+    pub fn and_where_eq<T>(mut self, field: &str, val: T) -> Self
     where
         T: Clone + Send + Sync + 'a + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
     {
@@ -48,6 +50,7 @@ impl<'a> DynamicUpdateBuilder<'a> {
                 args.add(val.clone());
             },
         ));
+        self
     }
 }
 
