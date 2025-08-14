@@ -365,6 +365,10 @@ impl TokenCurrencies {
             (None, None)
         };
 
+        // existing_asset
+        //     .chain_list
+        //     .insert(data.chain_code, data.token_address);
+
         let BalanceInfo {
             amount,
             currency: _,

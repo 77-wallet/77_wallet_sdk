@@ -67,6 +67,8 @@ pub struct AccountChainAsset {
     pub chain_code: String,
     pub symbol: String,
     pub name: String,
+    /// key: chainCode, value: tokenAddress
+    // pub chain_list: HashMap<String, String>,
     pub balance: BalanceInfo,
     pub is_multichain: bool,
     pub is_multisig: i8,
