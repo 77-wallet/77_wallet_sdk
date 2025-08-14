@@ -223,8 +223,8 @@ impl TaskQueueEntity {
     where
         E: Executor<'a, Database = Sqlite> + 'a,
     {
-        let mut builder = DynamicDeleteBuilder::new("task_queue");
-        builder.and_where_like("request_body", keyword);
+        let builder =
+            DynamicDeleteBuilder::new("task_queue").and_where_like("request_body", keyword);
         SqlExecutableNoReturn::execute(&builder, exec).await
     }
 

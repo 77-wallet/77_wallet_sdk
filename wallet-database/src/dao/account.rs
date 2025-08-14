@@ -65,15 +65,13 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut builder = DynamicUpdateBuilder::new("account");
-
-        builder.set("name", name);
-        builder.set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
-
-        builder.and_where_eq("wallet_address", wallet_address);
-        builder.and_where_eq("account_id", account_id);
-
-        builder.fetch_all(executor).await
+        DynamicUpdateBuilder::new("account")
+            .set("name", name)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
+            .fetch_all(executor)
+            .await
     }
 
     pub async fn account_detail_by_max_id_and_wallet_address<'a, E>(
@@ -83,16 +81,12 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let builder = DynamicQueryBuilder::new("SELECT * FROM account")
+        DynamicQueryBuilder::new("SELECT * FROM account")
             .and_where_eq("wallet_address", wallet_address)
             .order_by("account_id DESC")
-            .limit(1);
-
-        // let sql = "SELECT * FROM account where wallet_address = $1
-        //            ORDER BY account_id DESC
-        //            LIMIT 1;";
-
-        builder.fetch_optional(executor).await
+            .limit(1)
+            .fetch_optional(executor)
+            .await
     }
 
     pub async fn account_wallet_mapping<'a, E>(
@@ -257,35 +251,23 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            update account set 
-                status = 2,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where wallet_address = $1
-            RETURNING *
-            "#;
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(wallet_address)
+        DynamicUpdateBuilder::new("account")
+            .set("status", 2)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("wallet_address", wallet_address)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn reset_all_account<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            update account set
-                status = 2,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            RETURNING *
-            "#;
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        DynamicUpdateBuilder::new("account")
+            .set("status", 2)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn restart_account<'a, E>(
@@ -295,19 +277,12 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            update account set 
-                status = 1,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where wallet_address = $1
-            RETURNING *
-            "#;
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(wallet_address)
+        DynamicUpdateBuilder::new("account")
+            .set("status", 1)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("wallet_address", wallet_address)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn physical_delete_all<'a, E>(
@@ -321,7 +296,7 @@ impl AccountEntity {
         let mut builder = crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("account");
 
         if !wallet_addresses.is_empty() {
-            builder.and_where_in("wallet_address", wallet_addresses);
+            builder = builder.and_where_in("wallet_address", wallet_addresses);
         }
         builder.fetch_all(exec).await
     }
@@ -334,18 +309,11 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-        DELETE FROM account
-        WHERE wallet_address = $1 AND account_id = $2
-        RETURNING *
-        "#;
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(wallet_address)
-            .bind(account_id)
+        crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn count_unique_account_ids<'a, E>(
@@ -376,20 +344,13 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            update account set 
-                is_init = 1,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            where address = $1 AND chain_code = $2
-            RETURNING *
-            "#;
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(address)
-            .bind(chain_code)
+        DynamicUpdateBuilder::new("account")
+            .set("is_init", 1)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("address", address)
+            .and_where_eq("chain_code", chain_code)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn find_one_by_address_chain_code<'a, E>(
@@ -400,14 +361,11 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "select * from account where chain_code = $1 and address = $2";
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
-            .bind(chain_code)
-            .bind(address)
+        DynamicQueryBuilder::new("SELECT * FROM account")
+            .and_where_eq("address", address)
+            .and_where_eq("chain_code", chain_code)
             .fetch_optional(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn lists_by_wallet_address<'a, E>(
