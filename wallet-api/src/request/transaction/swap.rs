@@ -1,5 +1,5 @@
 use crate::{
-    domain::chain::swap::{evm_swap::SwapParams, get_warp_address, SLIPPAGE},
+    domain::chain::swap::{SLIPPAGE, evm_swap::SwapParams, get_warp_address},
     infrastructure::swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;

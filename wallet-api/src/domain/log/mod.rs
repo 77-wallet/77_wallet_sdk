@@ -2,18 +2,18 @@ use crate::manager::Context;
 use std::time::Duration;
 use tokio::time;
 
-pub async fn periodic_log_report(interval: Duration) {
-    tokio::spawn(async move {
-        let mut interval = time::interval(interval);
-        loop {
-            interval.tick().await;
-
-            if let Err(e) = upload_log_file().await {
-                tracing::error!("upload log file error:{}", e);
-            };
-        }
-    });
-}
+// pub async fn periodic_log_report(interval: Duration) {
+//     tokio::spawn(async move {
+//         let mut interval = time::interval(interval);
+//         loop {
+//             interval.tick().await;
+//
+//             if let Err(e) = upload_log_file().await {
+//                 tracing::error!("upload log file error:{}", e);
+//             };
+//         }
+//     });
+// }
 
 pub async fn upload_log_file() -> Result<(), crate::ServiceError> {
     let oss_client = crate::manager::Context::get_global_oss_client()?;

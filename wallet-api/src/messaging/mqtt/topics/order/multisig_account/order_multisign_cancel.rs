@@ -32,7 +32,7 @@ impl OrderMultiSignCancel {
             "Starting to process OrderMultiSignCancel"
         );
         let OrderMultiSignCancel {
-            ref multisig_account_id,
+             multisig_account_id,
         } = self;
 
         let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool)

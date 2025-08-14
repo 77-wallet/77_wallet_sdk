@@ -386,7 +386,7 @@ impl Default for RpcToken {
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
-    pub repo_factory: wallet_database::factory::RepositoryFactory,
+    pub repo_factory: RepositoryFactory,
 }
 
 impl WalletManager {

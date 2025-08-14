@@ -98,8 +98,8 @@ pub enum Operation {
 impl BulletinMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let Self {
-            ref id,
-            ref operation,
+            id,
+            operation,
             ..
         } = self;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;

@@ -43,7 +43,7 @@ impl OrderMultiSignServiceComplete {
         );
 
         let OrderMultiSignServiceComplete {
-            ref multisig_account_id,
+            multisig_account_id,
             status,
             r#type,
         } = self;

@@ -42,7 +42,7 @@ impl OrderMultiSignAcceptCompleteMsg {
 
         let OrderMultiSignAcceptCompleteMsg {
             status,
-            ref multisig_account_id,
+            multisig_account_id,
             accept_address_list: _,
             address_list,
             accept_status,
