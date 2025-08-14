@@ -22,7 +22,7 @@ INSERT INTO assets_v2 (
 SELECT
     name, symbol, decimals, address, token_address, protocol,
     chain_code, status, is_multisig, balance,
-    'normal' AS created_at, updated_at
+    created_at, updated_at
 FROM assets;
 
 -- 3. 删除旧表

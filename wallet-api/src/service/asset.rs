@@ -298,10 +298,12 @@ impl AssetsService {
                     } else {
                         asset.chain_code
                     };
+
                     res.push(AccountChainAsset {
-                        chain_code,
+                        chain_code: chain_code.clone(),
                         symbol: asset.symbol,
                         name: asset.name,
+                        // chain_list: HashMap::from([(chain_code, asset.token_address)]),
                         balance,
                         is_multichain: false,
                         is_multisig: asset.is_multisig, // chains: vec![chain_assets],

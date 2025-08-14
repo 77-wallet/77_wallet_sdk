@@ -113,6 +113,8 @@ pub struct MultisigQueueSimpleEntity {
     pub expiration: i64,
     pub symbol: String,
     pub chain_code: String,
+    #[serde(rename = "tokenAddress")]
+    pub token_addr: String,
     pub fail_reason: String,
     pub transfer_type: i8,
     pub msg_hash: String,

@@ -21,26 +21,8 @@ static INIT_COINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultC
 
 pub(crate) fn init_default_coins_list() -> Result<&'static DefaultCoinList, crate::ServiceError> {
     INIT_COINS_INFO.get_or_try_init(|| {
-        // let mut res = std::collections::HashMap::new();
         let toml_content = include_str!("../../data/config/coin.toml");
         let toml_data: DefaultCoinList = wallet_utils::serde_func::toml_from_str(toml_content)?;
         Ok(toml_data)
     })
 }
-
-// impl From<DefaultCoin> for wallet_transport_backend::CoinInfo {
-//     fn from(value: DefaultCoin) -> Self {
-//         Self {
-//             symbol: Some(value.symbol),
-//             name: Some(value.name),
-//             chain_code: Some(value.chain_code),
-//             token_address: value.token_address,
-//             protocol: value.protocol,
-//             id: Default::default(),
-//             decimals: Some(value.decimals),
-//             default_token: value.default,
-//             popular_token: value.popular,
-//             enable: value.active,
-//         }
-//     }
-// }
