@@ -79,6 +79,27 @@ where
         }
     }
 
+    async fn fetch_one<'e, E>(&self, executor: E) -> Result<T, crate::Error>
+    where
+        E: Executor<'e, Database = Sqlite> + Send,
+    {
+        {
+            let (sql, arg_fns) = self.build_sql();
+            tracing::info!("query: {}", sql);
+
+            let mut args = SqliteArguments::default();
+            for f in arg_fns {
+                f(&mut args);
+            }
+            let query = sqlx::query_as_with::<_, T, _>(&sql, args);
+
+            query
+                .fetch_one(executor)
+                .await
+                .map_err(|e| crate::Error::Database(e.into()))
+        }
+    }
+
     async fn execute<'e, E>(&self, executor: E) -> Result<(), crate::Error>
     where
         E: Executor<'e, Database = Sqlite> + Send,

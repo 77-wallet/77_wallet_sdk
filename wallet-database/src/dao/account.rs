@@ -122,17 +122,23 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let addresses = crate::any_in_collection(addresses, "','");
-        let mut sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
+        let builder = DynamicQueryBuilder::new("SELECT * FROM account")
+            .and_where_in("address", addresses)
+            .and_where_eq_opt("chain_code", chain_code);
 
-        if let Some(chain_code) = chain_code {
-            sql.push_str(&format!(" and chain_code = '{}'", chain_code));
-        }
+        builder.fetch_all(executor).await
 
-        sqlx::query_as::<sqlx::Sqlite, AccountEntity>(&sql)
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        // let addresses = crate::any_in_collection(addresses, "','");
+        // let mut sql = format!("SELECT * FROM account WHERE address IN ('{}')", addresses);
+
+        // if let Some(chain_code) = chain_code {
+        //     sql.push_str(&format!(" and chain_code = '{}'", chain_code));
+        // }
+
+        // sqlx::query_as::<sqlx::Sqlite, AccountEntity>(&sql)
+        //     .fetch_all(executor)
+        //     .await
+        //     .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn account_list_v2<'a, E>(
@@ -146,87 +152,76 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut builder = DynamicQueryBuilder::new("SELECT * FROM account");
-
-        if !chain_codes.is_empty() {
-            builder = builder.and_where_in("chain_code", &chain_codes);
-        }
-
-        if let Some(w) = wallet_address {
-            builder = builder.and_where_eq("wallet_address", w);
-        }
-        if let Some(a) = address {
-            builder = builder.and_where_eq("address", a);
-        }
-        if let Some(p) = derivation_path {
-            builder = builder.and_where_eq("derivation_path", p);
-        }
-        if let Some(id) = account_id {
-            builder = builder.and_where_eq("account_id", id);
-        }
-
-        builder.fetch_all(executor).await
+        DynamicQueryBuilder::new("SELECT * FROM account")
+            .and_where_in("chain_code", &chain_codes)
+            .and_where_eq_opt("wallet_address", wallet_address)
+            .and_where_eq_opt("address", address)
+            .and_where_eq_opt("derivation_path", derivation_path)
+            .and_where_eq_opt("account_id", account_id)
+            .fetch_all(executor)
+            .await
     }
 
-    pub async fn account_list<'a, E>(
-        executor: E,
-        wallet_address: Option<&str>,
-        address: Option<&str>,
-        derivation_path: Option<&str>,
-        chain_codes: Vec<String>,
-        account_id: Option<u32>,
-    ) -> Result<Vec<Self>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let chain_codes = crate::any_in_collection(chain_codes, "','");
-        let mut sql = "SELECT * FROM account".to_string();
-        let mut conditions = Vec::new();
+    // TODO: delete it
+    // pub async fn account_list<'a, E>(
+    //     executor: E,
+    //     wallet_address: Option<&str>,
+    //     address: Option<&str>,
+    //     derivation_path: Option<&str>,
+    //     chain_codes: Vec<String>,
+    //     account_id: Option<u32>,
+    // ) -> Result<Vec<Self>, crate::Error>
+    // where
+    //     E: Executor<'a, Database = Sqlite>,
+    // {
+    //     let chain_codes = crate::any_in_collection(chain_codes, "','");
+    //     let mut sql = "SELECT * FROM account".to_string();
+    //     let mut conditions = Vec::new();
 
-        if !chain_codes.is_empty() {
-            let str = format!("chain_code in ('{}')", chain_codes);
-            conditions.push(str)
-        }
+    //     if !chain_codes.is_empty() {
+    //         let str = format!("chain_code in ('{}')", chain_codes);
+    //         conditions.push(str)
+    //     }
 
-        if wallet_address.is_some() {
-            conditions.push("wallet_address = ?".to_string());
-        }
-        if address.is_some() {
-            conditions.push("address = ?".to_string());
-        }
-        if derivation_path.is_some() {
-            conditions.push("derivation_path = ?".to_string());
-        }
+    //     if wallet_address.is_some() {
+    //         conditions.push("wallet_address = ?".to_string());
+    //     }
+    //     if address.is_some() {
+    //         conditions.push("address = ?".to_string());
+    //     }
+    //     if derivation_path.is_some() {
+    //         conditions.push("derivation_path = ?".to_string());
+    //     }
 
-        if account_id.is_some() {
-            conditions.push("account_id = ?".to_string());
-        }
+    //     if account_id.is_some() {
+    //         conditions.push("account_id = ?".to_string());
+    //     }
 
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
+    //     if !conditions.is_empty() {
+    //         sql.push_str(" WHERE ");
+    //         sql.push_str(&conditions.join(" AND "));
+    //     }
 
-        let mut query = sqlx::query_as::<_, AccountEntity>(&sql);
+    //     let mut query = sqlx::query_as::<_, AccountEntity>(&sql);
 
-        // 绑定参数
-        if let Some(wallet_address) = wallet_address {
-            query = query.bind(wallet_address);
-        }
-        if let Some(address) = address {
-            query = query.bind(address);
-        }
-        if let Some(derivation_path) = derivation_path {
-            query = query.bind(derivation_path);
-        }
-        if let Some(account_id) = account_id {
-            query = query.bind(account_id);
-        }
-        // 执行查询并返回结果
-        let result = query.fetch_all(executor).await;
+    //     // 绑定参数
+    //     if let Some(wallet_address) = wallet_address {
+    //         query = query.bind(wallet_address);
+    //     }
+    //     if let Some(address) = address {
+    //         query = query.bind(address);
+    //     }
+    //     if let Some(derivation_path) = derivation_path {
+    //         query = query.bind(derivation_path);
+    //     }
+    //     if let Some(account_id) = account_id {
+    //         query = query.bind(account_id);
+    //     }
+    //     // 执行查询并返回结果
+    //     let result = query.fetch_all(executor).await;
 
-        result.map_err(|e| crate::Error::Database(e.into()))
-    }
+    //     result.map_err(|e| crate::Error::Database(e.into()))
+    // }
 
     pub async fn has_account_id<'a, E>(
         exec: E,
@@ -293,12 +288,10 @@ impl AccountEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         // use crate::sql_utils::SqlExecutableReturn;
-        let mut builder = crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("account");
-
-        if !wallet_addresses.is_empty() {
-            builder = builder.and_where_in("wallet_address", wallet_addresses);
-        }
-        builder.fetch_all(exec).await
+        crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("account")
+            .and_where_in("wallet_address", wallet_addresses)
+            .fetch_all(exec)
+            .await
     }
 
     pub async fn physical_delete<'a, E>(
@@ -323,17 +316,22 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            SELECT COUNT(DISTINCT account_id) as count
-            FROM account
-            WHERE wallet_address = $1
-            "#;
-        sqlx::query_as::<_, (u32,)>(sql)
-            .bind(wallet_address)
+        DynamicQueryBuilder::new("SELECT COUNT(DISTINCT account_id) as count FROM account")
+            .and_where_eq("wallet_address", wallet_address)
             .fetch_one(exec)
             .await
             .map(|(count,)| count)
-            .map_err(|e| crate::Error::Database(e.into()))
+        // let sql = r#"
+        //     SELECT COUNT(DISTINCT account_id) as count
+        //     FROM account
+        //     WHERE wallet_address = $1
+        //     "#;
+        // sqlx::query_as::<_, (u32,)>(sql)
+        //     .bind(wallet_address)
+        //     .fetch_one(exec)
+        //     .await
+        //     .map(|(count,)| count)
+        //     .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn init<'a, E>(
@@ -377,36 +375,39 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = "select * from account where wallet_address = ? and status = 1".to_string();
-        if let Some(account_id) = account_id {
-            let a = format!(" and account_id = '{}'", account_id);
-            sql.push_str(&a);
-        }
-
-        if let Some(chain_code) = chain_code {
-            let a = format!(" and chain_code = '{}'", chain_code);
-            sql.push_str(&a);
-        }
-
-        sqlx::query_as::<sqlx::Sqlite, Self>(&sql)
-            .bind(wallet_address)
+        DynamicQueryBuilder::new("SELECT * FROM account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("status", 1)
+            .and_where_eq_opt("account_id", account_id)
+            .and_where_eq_opt("chain_code", chain_code)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_all_account_indices<'a, E>(exec: E) -> Result<Vec<u32>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT DISTINCT account_id FROM account ORDER BY account_id";
-
-        sqlx::query_as::<_, (u32,)>(sql)
+        DynamicQueryBuilder::new("SELECT DISTINCT account_id FROM account")
+            .order_by("account_id")
             .fetch_all(exec)
             .await
-            .map(|rows| rows.into_iter().map(|(id,)| id).collect())
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map(|rows: Vec<(u32,)>| rows.into_iter().map(|(id,)| id).collect())
+        // let sql = "SELECT DISTINCT account_id FROM account ORDER BY account_id";
+
+        // sqlx::query_as::<_, (u32,)>(sql)
+        //     .fetch_all(exec)
+        //     .await
+        //     .map(|rows| rows.into_iter().map(|(id,)| id).collect())
+        //     .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    // let builder = DynamicQueryBuilder::new(
+    //     "SELECT account.*, wallet.uid, wallet.name as wallet_name FROM account",
+    // )
+    // .left_join("wallet ON account.wallet_address = wallet.address")
+    // .and_where_eq("account.address", address)
+    // .and_where_eq("account.chain_code", chain_code);
 
     pub async fn account_with_wallet<'a, E>(
         address: &str,
@@ -416,25 +417,34 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            SELECT 
-                account.*,
-                wallet.uid,wallet.name as wallet_name
-            FROM 
-                account
-            LEFT JOIN 
-                wallet
-            ON 
-                account.wallet_address = wallet.address
-            WHERE 
-                account.address = $1 AND account.chain_code = $2;
-            "#;
-        sqlx::query_as::<_, AccountWithWalletEntity>(sql)
-            .bind(address)
-            .bind(chain_code)
-            .fetch_optional(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        DynamicQueryBuilder::new(
+            "SELECT account.*, wallet.uid, wallet.name as wallet_name FROM account",
+        )
+        .left_join("wallet ON account.wallet_address = wallet.address")
+        .and_where_eq("account.address", address)
+        .and_where_eq("account.chain_code", chain_code)
+        .fetch_optional(executor)
+        .await
+
+        // let sql = r#"
+        //     SELECT
+        //         account.*,
+        //         wallet.uid,wallet.name as wallet_name
+        //     FROM
+        //         account
+        //     LEFT JOIN
+        //         wallet
+        //     ON
+        //         account.wallet_address = wallet.address
+        //     WHERE
+        //         account.address = $1 AND account.chain_code = $2;
+        //     "#;
+        // sqlx::query_as::<_, AccountWithWalletEntity>(sql)
+        //     .bind(address)
+        //     .bind(chain_code)
+        //     .fetch_optional(executor)
+        //     .await
+        //     .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn current_chain_address<'a, E>(
@@ -446,24 +456,32 @@ impl AccountEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            SELECT 
-                account.*
-            FROM 
-                account
-            INNER JOIN 
-                wallet
-            ON 
-                account.wallet_address = wallet.address
-            WHERE 
-                wallet.uid = $1 AND account.account_id = $2 AND account.chain_code = $3;
-            "#;
-        sqlx::query_as::<_, AccountEntity>(sql)
-            .bind(uid)
-            .bind(account_id)
-            .bind(chain_code)
+        DynamicQueryBuilder::new("SELECT account.* FROM account")
+            .inner_join("wallet ON account.wallet_address = wallet.address")
+            .and_where_eq("wallet.uid", uid)
+            .and_where_eq("account.account_id", account_id)
+            .and_where_eq("account.chain_code", chain_code)
             .fetch_all(executor)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+
+        // let sql = r#"
+        //     SELECT
+        //         account.*
+        //     FROM
+        //         account
+        //     INNER JOIN
+        //         wallet
+        //     ON
+        //         account.wallet_address = wallet.address
+        //     WHERE
+        //         wallet.uid = $1 AND account.account_id = $2 AND account.chain_code = $3;
+        //     "#;
+        // sqlx::query_as::<_, AccountEntity>(sql)
+        //     .bind(uid)
+        //     .bind(account_id)
+        //     .bind(chain_code)
+        //     .fetch_all(executor)
+        //     .await
+        //     .map_err(|e| crate::Error::Database(e.into()))
     }
 }
