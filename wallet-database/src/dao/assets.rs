@@ -19,26 +19,31 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql =
-        "SELECT name, symbol, decimals, address, chain_code, token_address, protocol, status, balance,is_multisig,
-    created_at, updated_at
-    FROM assets WHERE status = 1
-        AND EXISTS (
-                SELECT 1
-                FROM chain
-                WHERE chain.chain_code = assets.chain_code
-                AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
-            );";
+        let sql = String::from("SELECT * FROM assets WHERE status = 1");
+        let mut conditions = Vec::new();
+        conditions.push(
+            " EXISTS (
+                    SELECT 1
+                    FROM chain
+                    WHERE chain.chain_code = assets.chain_code
+                    AND chain.status = 1
+                )"
+            .to_string(),
+        );
 
-        sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
+        conditions.push(
+            " EXISTS (
+                    SELECT 1
+                    FROM coin
+                    WHERE coin.chain_code = assets.chain_code
+                    AND coin.token_address = assets.token_address
+                    AND coin.symbol = assets.symbol
+                    AND coin.status = 1
+                )"
+            .to_string(),
+        );
+
+        sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -48,26 +53,37 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql =
-        "SELECT name, symbol, decimals, address, chain_code, token_address, protocol, status, balance,is_multisig,
-    created_at, updated_at
-    FROM assets WHERE status = 0
-        AND EXISTS (
+        let mut sql = String::from("SELECT * FROM assets");
+        let mut conditions = Vec::new();
+        conditions.push(" status = 0".to_string());
+
+        conditions.push(
+            " EXISTS (
                 SELECT 1
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )
-            AND EXISTS (
+            )"
+            .to_string(),
+        );
+        conditions.push(
+            " EXISTS (
                 SELECT 1
                 FROM coin
                 WHERE coin.chain_code = assets.chain_code
                 AND coin.token_address = assets.token_address
                 AND coin.symbol = assets.symbol
                 AND coin.status = 1
-            );";
+            )"
+            .to_string(),
+        );
 
-        sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+
+        sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -81,10 +97,7 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = String::from(
-            "SELECT name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
-            FROM assets"
-        );
+        let mut sql = String::from("SELECT * FROM assets");
 
         let mut conditions = Vec::new();
         if !address.is_empty() {
@@ -151,7 +164,7 @@ impl AssetsEntity {
             format!(
                 "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code, 
                 a.token_address, a.protocol, a.status, a.balance, a.is_multisig, 
-                a.created_at, a.updated_at, acc.address_type 
+                a.created_at, a.updated_at, acc.address_type
                 FROM assets AS a
                 JOIN {table_name} AS acc 
                 ON a.address = acc.address AND a.chain_code = acc.chain_code
@@ -238,8 +251,7 @@ impl AssetsEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let addresses = crate::any_in_collection(address, "','");
-        let mut sql = "SELECT name, symbol, decimals, address, chain_code, 
-        token_address, protocol, status, balance,is_multisig, created_at, updated_at FROM assets 
+        let mut sql = "SELECT * FROM assets 
         WHERE status = 1
             AND EXISTS (
                 SELECT 1
@@ -302,11 +314,9 @@ impl AssetsEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            SELECT 
-                name, symbol,decimals, address, chain_code, token_address, protocol, status, balance,is_multisig,created_at, updated_at
-            FROM 
+            SELECT * FROM 
                 assets
-            WHERE status = 1 AND address =$1 AND symbol = $2 AND chain_code = $3
+            WHERE status = 1 AND address =$1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
                 AND EXISTS (
                     SELECT 1
                     FROM chain
@@ -326,6 +336,7 @@ impl AssetsEntity {
             .bind(assets_id.address.clone())
             .bind(assets_id.symbol.clone())
             .bind(assets_id.chain_code.clone())
+            .bind(assets_id.token_address.clone())
             .fetch_optional(exec)
             .await;
 
@@ -387,20 +398,27 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-        UPDATE assets SET 
-            balance = $4,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE address = $1 
-        AND symbol = $2 
-        AND chain_code = $3;
-    "#;
+        let sql = String::from(
+            r#"
+            UPDATE assets SET 
+                balance = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE address = ?
+            AND symbol = ?
+            AND chain_code = ?
+            AND token_address IS ?
+        "#,
+        );
 
-        sqlx::query(sql)
+        let token_address = assets_id.token_address.clone().unwrap_or_default();
+        let query = sqlx::query(&sql)
+            .bind(balance)
             .bind(assets_id.address.to_string())
             .bind(assets_id.symbol.to_string())
             .bind(assets_id.chain_code.to_string())
-            .bind(balance)
+            .bind(token_address);
+
+        query
             .execute(exec)
             .await
             .map(|_| ())
@@ -419,13 +437,15 @@ impl AssetsEntity {
         UPDATE assets SET 
             is_multisig = 1,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE address = $1 AND symbol = $2 AND chain_code = $3;
+        WHERE address = $1 AND symbol = $2 AND chain_code = $3 AND token_address = $4;
     "#;
 
+        let token_address = assets_id.token_address.clone().unwrap_or_default();
         sqlx::query(sql)
             .bind(assets_id.address.to_string())
             .bind(assets_id.symbol.to_string())
             .bind(assets_id.chain_code.to_string())
+            .bind(token_address)
             .execute(exec)
             .await
             .map(|_| ())
@@ -441,14 +461,13 @@ impl AssetsEntity {
             assets_id,
             name,
             decimals,
-            token_address,
             protocol,
             status,
             is_multisig,
             balance,
         } = assets;
 
-        let token_address = token_address.unwrap_or_default();
+        let token_address = assets_id.token_address.unwrap_or_default();
         let protocol = protocol.unwrap_or_default();
 
         let sql = r#"
@@ -457,7 +476,7 @@ impl AssetsEntity {
             name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-        ON CONFLICT (symbol, address, chain_code)
+        ON CONFLICT (symbol, address, chain_code, token_address)
         DO UPDATE SET
             status = EXCLUDED.status,
             is_multisig = EXCLUDED.is_multisig,
@@ -549,14 +568,14 @@ impl AssetsEntity {
     }
 
     // 删除单个资产
-    pub async fn delete_assets<'a, E>(assets_id: &AssetsId, exec: E) -> Result<(), crate::Error>
+    pub async fn delete_assets<'a, E>(exec: E, assets_id: &AssetsId) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
         UPDATE assets 
-        SET status = $4, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE address = $1 AND symbol = $2 AND chain_code = $3
+        SET status = $5, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE address = $1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
             AND EXISTS (
                 SELECT 1
                 FROM chain
@@ -577,6 +596,7 @@ impl AssetsEntity {
             .bind(assets_id.address.to_string())
             .bind(assets_id.symbol.to_string())
             .bind(assets_id.chain_code.to_string())
+            .bind(assets_id.token_address.clone())
             .bind(0) // Assuming 0 is the status for deletion
             .execute(exec)
             .await
@@ -640,13 +660,13 @@ impl AssetsEntity {
         }
         let placeholders = assets_ids
             .iter()
-            .map(|_| "(?, ?, ?)")
+            .map(|_| "(?, ?, ?, ?)")
             .collect::<Vec<_>>()
             .join(", ");
 
         // 构建 SQL 查询
         let sql = format!(
-            "UPDATE assets SET status = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE (address, symbol, chain_code) IN ({})",
+            "UPDATE assets SET status = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE (address, symbol, chain_code, token_address) IN ({})",
             placeholders
         );
 
@@ -654,10 +674,15 @@ impl AssetsEntity {
 
         // 绑定参数
         for assets_id in &assets_ids {
+            let token_address = match &assets_id.token_address {
+                Some(token_address) => token_address.to_string(),
+                None => String::new(),
+            };
             query = query
                 .bind(&assets_id.address)
                 .bind(&assets_id.symbol)
-                .bind(&assets_id.chain_code);
+                .bind(&assets_id.chain_code)
+                .bind(token_address);
         }
 
         // 执行查询
@@ -701,7 +726,6 @@ pub struct CreateAssetsVo {
     pub assets_id: AssetsId,
     pub name: String,
     pub decimals: u8,
-    pub token_address: Option<String>,
     pub protocol: Option<String>,
     pub status: u8,
     pub is_multisig: i32,
@@ -712,7 +736,6 @@ impl CreateAssetsVo {
     pub fn new(
         assets_id: AssetsId,
         decimals: u8,
-        token_address: Option<String>,
         protocol: Option<String>,
         is_multisig: i32,
     ) -> Self {
@@ -720,7 +743,6 @@ impl CreateAssetsVo {
             assets_id,
             name: "name".to_string(),
             decimals,
-            token_address,
             protocol,
             status: 1,
             is_multisig,

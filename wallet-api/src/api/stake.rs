@@ -317,7 +317,11 @@ mod tests {
         let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
         let vote_witness_req = VoteWitnessReq::new(
             owner_address,
-            vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1)],
+            vec![VotesReq::new(
+                "TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX",
+                1,
+                "helo",
+            )],
             None,
         ); // You may need to import this struct
         let password = "123456"; // Replace with the actual password

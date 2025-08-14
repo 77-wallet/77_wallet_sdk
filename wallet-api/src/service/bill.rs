@@ -123,12 +123,18 @@ impl BillService {
     pub async fn coin_currency_price(
         chain_code: String,
         symbol: String,
+        token_address: Option<String>,
     ) -> Result<CoinCurrency, crate::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token =
-            domain::coin::TokenCurrencyGetter::get_currency(currency, &chain_code, &symbol).await?;
+        let token = domain::coin::TokenCurrencyGetter::get_currency(
+            currency,
+            &chain_code,
+            &symbol,
+            token_address,
+        )
+        .await?;
 
         Ok(CoinCurrency {
             currency: currency.to_string(),

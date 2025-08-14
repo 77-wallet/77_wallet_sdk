@@ -10,6 +10,8 @@ pub enum WalletError {
     PasswordNotSet,
     #[error("Wallet not init")]
     NotInit,
+    #[error("Wallet type not set")]
+    WalletTypeNotSet,
 }
 
 impl WalletError {
@@ -20,6 +22,7 @@ impl WalletError {
             WalletError::PasswordIncorrect => 3102,
             WalletError::PasswordNotSet => 3103,
             WalletError::NotInit => 3104,
+            WalletError::WalletTypeNotSet => 3105,
         }
     }
 }

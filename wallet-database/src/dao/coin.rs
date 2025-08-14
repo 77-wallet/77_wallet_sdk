@@ -83,9 +83,59 @@ impl CoinEntity {
         // 执行查询
         query
             .fetch_all(exec)
+            // .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn detail<'a, E>(
+        executor: E,
+        symbol: &str,
+        chain_code: &str,
+        token_address: Option<String>,
+    ) -> Result<Option<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM coin where symbol = $1
+        AND chain_code = $2 AND token_address = $3 AND is_del = 0 AND status = 1;";
+        let token_address = token_address.unwrap_or_default();
+        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+            .bind(symbol)
+            .bind(chain_code)
+            .bind(token_address)
+            .fetch_optional(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    // pub async fn symbol_list<'a, E>(
+    //     exec: E,
+    //     chain_code: Option<String>,
+    // ) -> Result<Vec<Coins>, crate::Error>
+    // where
+    //     E: Executor<'a, Database = Sqlite>,
+    // {
+    //     let mut sql = "SELECT DISTINCT symbol
+    //     FROM coin WHERE is_del = 0 AND status = 1 "
+    //         .to_string();
+
+    //     let mut conditions = Vec::new();
+
+    //     if let Some(chain_code) = chain_code {
+    //         conditions.push(format!("chain_code = '{chain_code}'"));
+    //     }
+
+    //     if !conditions.is_empty() {
+    //         sql.push_str(" AND ");
+    //         sql.push_str(&conditions.join(" AND "));
+    //     }
+
+    //     sqlx::query_as::<sqlx::Sqlite, Coins>(&sql)
+    //         .fetch_all(exec)
+    //         .await
+    //         .map_err(|e| crate::Error::Database(e.into()))
+    // }
 
     pub async fn chain_code_list<'a, E>(exec: E) -> Result<Vec<String>, crate::Error>
     where
@@ -94,6 +144,42 @@ impl CoinEntity {
         let sql = "SELECT DISTINCT chain_code FROM coin WHERE is_del = 0 AND status = 1 ";
 
         sqlx::query_scalar::<_, String>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_v2<'a, E>(
+        exec: E,
+        symbol: Option<String>,
+        chain_code: Option<String>,
+        is_default: Option<u8>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1".to_string();
+
+        let mut conditions = Vec::new();
+
+        if let Some(symbol) = symbol {
+            conditions.push(format!("symbol = '{symbol}'"));
+        }
+
+        if let Some(chain_code) = chain_code {
+            conditions.push(format!("chain_code = '{chain_code}'"));
+        }
+
+        if let Some(is_default) = is_default {
+            conditions.push(format!("is_default = {is_default}"));
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" AND ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+
+        sqlx::query_as::<sqlx::Sqlite, Self>(&sql)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -289,16 +375,20 @@ impl CoinEntity {
     pub async fn get_coin<'a, E>(
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
         exec: E,
     ) -> Result<Option<CoinEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1  and chain_code = $1 and lower(symbol) = lower($2)";
+        let sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1  and chain_code = $1 and lower(symbol) = lower($2) and token_address = $3";
+
+        let token_address = token_address.unwrap_or_default();
 
         let res = sqlx::query_as::<_, CoinEntity>(sql)
             .bind(chain_code)
             .bind(symbol)
+            .bind(token_address)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -427,14 +517,24 @@ impl CoinEntity {
             time
         );
 
-        tracing::warn!("[get_last_coin] sql: {sql}");
-
         let res = sqlx::query_as::<_, CoinEntity>(&sql)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
     }
+
+    pub async fn coin_count<'a, E>(exec: E) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(*) FROM coin";
+        sqlx::query_scalar::<_, i64>(sql)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn coin_list_with_assets(
         search: &str,
         exclude_token: Vec<String>,

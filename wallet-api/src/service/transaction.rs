@@ -40,13 +40,15 @@ impl TransactionService {
         address: &str,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> Result<Balance, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, &pool).await?;
+        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address.clone(), &pool)
+            .await?;
 
-        let balance = adapter.balance(address, coin.token_address()).await?;
+        let balance = adapter.balance(address, token_address).await?;
         let format_balance = unit::format_to_string(balance, coin.decimals)?;
 
         let balance = Balance {
@@ -55,7 +57,14 @@ impl TransactionService {
             original_balance: balance.to_string(),
         };
 
-        ChainTransDomain::update_balance(address, chain_code, symbol, &format_balance).await?;
+        ChainTransDomain::update_balance(
+            address,
+            chain_code,
+            symbol,
+            coin.token_address,
+            &format_balance,
+        )
+        .await?;
 
         Ok(balance)
     }
@@ -64,7 +73,12 @@ impl TransactionService {
     pub async fn transaction_fee(
         mut params: transaction::BaseTransferReq,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let coin = CoinDomain::get_coin(&params.chain_code, &params.symbol).await?;
+        let coin = CoinDomain::get_coin(
+            &params.chain_code,
+            &params.symbol,
+            params.token_address.clone(),
+        )
+        .await?;
 
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address());
@@ -226,6 +240,11 @@ impl TransactionService {
             return Ok(transaction);
         }
 
+        // 不处理swap 类型的交易
+        if transaction.tx_kind == BillKind::Swap.to_i8() {
+            return Ok(transaction);
+        }
+
         let sync_bill = match Self::get_tx_res(&transaction).await? {
             Some(tx_result) => tx_result,
             None => {
@@ -263,6 +282,7 @@ impl TransactionService {
             chain_code: transaction.chain_code.clone(),
             symbol: transaction.symbol.clone(),
             address: transaction.owner.clone(),
+            token_address: transaction.token.clone(),
         };
 
         // 2. 更新账单
@@ -346,9 +366,10 @@ impl TransactionService {
             .map(|token| token.to_string());
 
         // 查询余额
-        let balance = adapter.balance(&transaction.owner, token).await?;
+        let balance = adapter.balance(&transaction.owner, token.clone()).await?;
 
-        let coin = CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol).await?;
+        let coin =
+            CoinDomain::get_coin(&transaction.chain_code, &transaction.symbol, token).await?;
 
         let balance = unit::format_to_string(balance, coin.decimals)?;
 

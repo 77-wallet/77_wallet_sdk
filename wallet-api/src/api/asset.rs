@@ -45,9 +45,10 @@ impl crate::WalletManager {
         account_id: Option<u32>,
         chain_code: &str,
         symbol: &str,
+        token_address: Option<String>,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .detail(address, account_id, chain_code, symbol)
+            .detail(address, account_id, chain_code, symbol, token_address)
             .await?
             .into()
     }
@@ -208,11 +209,15 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
+        // let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
+        let account_id = 2147483648;
         let add_coin_req = crate::request::coin::AddCoinReq {
-            account_id: 1,
-            symbol: "BNB".to_string(),
+            account_id,
+            // symbol: "BNB".to_string(),
+            symbol: "USDT".to_string(),
             wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
             chain_code: None,
+            // token_address,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;
         tracing::info!("res: {res:?}");
@@ -226,7 +231,8 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         let add_coin_req = crate::request::coin::AddMultisigCoinReq {
             symbol: "USDT".to_string(),
-            address: "0x3bAc24b73c7A03C8715697cA1646a6f85B91023a".to_string(),
+            address: "TBtrFfwCQEtR8HZ4hEgfmYWiVetMF11czn".to_string(),
+            // token_address: token_address,
         };
         let res = wallet_manager.add_multisig_coin(add_coin_req).await;
         tracing::info!("res: {res:?}");
@@ -239,12 +245,14 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let address = "0xC24FCE9Ae9dEF3d18B926B363EaE25a22Ed71F9f";
-        let account_id = None;
+        // wallet_manager.init_wallet_type("api").await?;
+        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let account_id = Some(1);
         let chain_code = "bnb";
         let symbol = "USDT";
+        let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
         let res = wallet_manager
-            .get_assets(address, account_id, chain_code, symbol)
+            .get_assets(address, account_id, chain_code, symbol, token_address)
             .await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
@@ -258,13 +266,17 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
+        // wallet_manager.init_wallet_type("api").await?;
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         // let wallet_address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
-        let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let account_id = 1;
         // let symbol = "LTC";
         // let symbol = "BEANS";
         let symbol = "USDT";
-        let res = wallet_manager.remove_coin(wallet_address, 1, symbol).await;
+        let res = wallet_manager
+            .remove_coin(wallet_address, account_id, symbol)
+            .await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -294,9 +306,13 @@ mod test {
         let chain_code = None;
         // let is_multisig = None;
         let is_multisig = Some(false);
-        let wallet_address = "0x82C818D352BAf6cC7dd007B89E5CC82B4DAF2c9c";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+
+        // let account_id = Some(1);
+        let account_id = Some(2147483648);
+
         let res = wallet_manager
-            .get_coin_list(wallet_address, Some(1), chain_code, keyword, is_multisig)
+            .get_coin_list(wallet_address, account_id, chain_code, keyword, is_multisig)
             .await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
@@ -354,10 +370,12 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
-        let address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
+        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let account_id = 2147483648;
+        // let account_id = 1;
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
         let account_asset = wallet_manager
-            .get_all_account_assets(1, Some(address))
+            .get_all_account_assets(account_id, Some(address))
             .await;
         tracing::info!("account_asset: {account_asset:?}");
 
@@ -372,11 +390,14 @@ mod test {
         wallet_manager.set_currency("USD").await;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
-        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
         let chain_code = Some("sol".to_string());
+        // wallet_manager.init_wallet_type("api").await?;
+        // let account_id = 2147483648;
+        let account_id = 1;
         let account_asset = wallet_manager
-            .get_account_assets(1, address, chain_code)
+            .get_account_assets(account_id, address, chain_code)
             .await;
         tracing::info!("account_asset: {account_asset:?}");
         let res = wallet_utils::serde_func::serde_to_string(&account_asset).unwrap();
@@ -406,6 +427,8 @@ mod test {
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let chain_code = None;
         let is_multisig = None;
+        // let account_id = Some(1);
+
         let account_id = Some(1);
 
         wallet_manager.set_currency("USD").await;
@@ -431,6 +454,46 @@ mod test {
 
         let res = wallet_manager
             .get_assets_list_v2(address, account_id, chain_code, is_multisig)
+            .await;
+        tracing::info!("res: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sync_assets() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "TCZYpvSt36MXdnPhhFMyqwfpoqSHrjUg2b".to_string();
+        let address = "TX3f4nAzaVsPJYNSxr3KYGDqEKTn6w599F".to_string();
+        // let chain_code = None;
+        let chain_code = None;
+        let symbol = vec![];
+
+        let res = wallet_manager
+            .sync_assets(address, chain_code, symbol)
+            .await;
+        tracing::info!("res: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sync_assets_by_wallet() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "TCZYpvSt36MXdnPhhFMyqwfpoqSHrjUg2b".to_string();
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string();
+        // let account_id = Some(1);
+        let account_id = Some(2147483648);
+        let symbol = vec![];
+
+        let res = wallet_manager
+            .sync_assets_by_wallet(wallet_address, account_id, symbol)
             .await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;

@@ -1,11 +1,17 @@
 mod transaction_adapter;
 pub use transaction_adapter::*;
-use wallet_chain_interact::tron::{self, TronChain};
+use wallet_chain_interact::{
+    tron::{self, TronChain},
+    types::ChainPrivateKey,
+};
 use wallet_transport::client::HttpClient;
 use wallet_types::constant::chain_code;
 mod multisig_adapter;
+use crate::request::transaction::TransferReq;
+
 use super::rpc_need_header;
 pub use multisig_adapter::*;
+pub mod eth;
 pub mod eth_tx;
 pub mod ton_tx;
 pub mod tron_tx;
@@ -104,4 +110,24 @@ impl ChainAdapterFactory {
 
         Ok(TransactionAdapter::new(chain, rpc_url, header_opt)?)
     }
+}
+
+// transfer estimate fee t
+#[async_trait::async_trait]
+pub trait ChainAction {
+    type Provider;
+    type FeeInfo;
+
+    // 获取 gas 估算
+    async fn estimate_fee(
+        &self,
+        provider: Self::FeeInfo,
+    ) -> Result<Self::FeeInfo, crate::ServiceError>;
+
+    // 执行操作（包含签名、广播）
+    async fn execute(
+        &self,
+        fee: String,
+        key: ChainPrivateKey,
+    ) -> Result<TransferReq, crate::ServiceError>;
 }

@@ -53,8 +53,9 @@ async fn test_balance() {
     let addr = "bcrt1qrdx3vk9shh7yshszmss0qrdyd8mqxs4muldel0fnrd64wm4zsh8q87d3y5";
     let chain_code = "btc";
     let symbol = "BTC";
+    let token_address = None;
     let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol)
+        .chain_balance(addr, chain_code, &symbol, token_address)
         .await;
 
     tracing::info!("balance: {:?}", balance);
@@ -71,6 +72,7 @@ async fn test_create_queue_fee() {
         chain_code: "btc".to_owned(),
         symbol: "BTC".to_owned(),
         spend_all: Some(true),
+        token_address: None,
     };
 
     // 创建交易
@@ -94,6 +96,7 @@ async fn test_create_transfer() {
         notes: Some("salary".to_string()),
         spend_all: true,
         signer: None,
+        token_address: None,
     };
 
     // 创建交易

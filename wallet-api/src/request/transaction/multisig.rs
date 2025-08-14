@@ -4,6 +4,7 @@ pub struct ServiceFeePayer {
     pub symbol: String,
     pub fee_setting: Option<String>,
     pub request_resource_id: Option<String>,
+    pub token_address: Option<String>,
 }
 
 pub struct DeployFeePayer {
