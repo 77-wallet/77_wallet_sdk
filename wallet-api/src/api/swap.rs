@@ -62,12 +62,4 @@ impl crate::WalletManager {
             .await
             .into()
     }
-
-    // pub async fn dex_list(&self, chain_code: String) -> ReturnType<Vec<SupportDex>> {
-    //     SwapServer::new()?.dex_list(chain_code).await.into()
-    // }
-
-    // pub async fn supplier(&self, chain_code: String) -> ReturnType<serde_json::Value> {
-    //     SwapServer::new()?.supplier(chain_code).await.into()
-    // }
 }
