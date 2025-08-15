@@ -432,14 +432,13 @@ impl ChainDomain {
                     )
                     .await?,
                 );
-                // AssetsDomain::init_default_assets(
-                //     coins,
-                //     &account_address.address,
-                //     &code.to_string(),
-                //     req,
-                //     tx,
-                // )
-                // .await?;
+                AssetsDomain::init_default_api_assets(
+                    coins,
+                    &account_address.address,
+                    &code.to_string(),
+                    req,
+                )
+                .await?;
             }
         }
         Ok(())

@@ -60,6 +60,9 @@ impl<'a, T> super::SqlExecutableReturn<'a, T> for DynamicUpdateBuilder<'a> where
 {
 }
 
+#[async_trait::async_trait]
+impl<'a> super::SqlExecutableNoReturn<'a> for DynamicUpdateBuilder<'a> {}
+
 impl<'q> super::SqlQueryBuilder<'q> for DynamicUpdateBuilder<'q> {
     fn build_sql(&self) -> (String, Vec<ArgFn<'q>>) {
         let mut sql = format!("UPDATE {} SET ", self.table);

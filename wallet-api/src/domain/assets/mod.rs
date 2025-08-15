@@ -7,6 +7,7 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
+        api_assets::ApiAssetsEntity,
         assets::{AssetsEntity, AssetsId},
         coin::{CoinData, CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
@@ -330,6 +331,37 @@ impl AssetsDomain {
                     );
                 }
                 AssetsEntity::upsert_assets(&*pool, assets).await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn init_default_api_assets(
+        coins: &[CoinEntity],
+        address: &str,
+        chain_code: &str,
+        req: &mut TokenQueryPriceReq,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        for coin in coins {
+            if chain_code == coin.chain_code {
+                let assets_id = AssetsId::new(
+                    address,
+                    &coin.chain_code,
+                    &coin.symbol,
+                    coin.token_address(),
+                );
+                let assets =
+                    CreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
+                        .with_name(&coin.name)
+                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                if coin.price.is_empty() {
+                    req.insert(
+                        chain_code,
+                        &assets.assets_id.token_address.clone().unwrap_or_default(),
+                    );
+                }
+                ApiAssetsEntity::upsert_assets(&*pool, assets).await?;
             }
         }
         Ok(())

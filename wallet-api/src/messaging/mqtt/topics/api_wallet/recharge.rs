@@ -3,10 +3,10 @@ use crate::{
     messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
 };
 
-// biz_type = UNBIND_UID
+// biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AddressUseMsg {
+pub struct RechargeMsg {
     /// uid
     pub uid: String,
     pub chain_code: String,
@@ -14,13 +14,19 @@ pub struct AddressUseMsg {
     pub address: String,
 }
 
-// 按下标递增
-impl AddressUseMsg {
+// 充值
+impl RechargeMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
+        // 验证金额是否需要输入密码
 
-        let data = NotifyEvent::AddressUse(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        // 生成订单
+
+        // 上链
+
+        // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
+
+        // let data = NotifyEvent::AddressUse(self.to_owned());
+        // FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }

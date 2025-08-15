@@ -1,15 +1,15 @@
 mod bulletin_info;
 pub use bulletin_info::*;
-mod unbind_uid;
-pub use unbind_uid::*;
+
 mod chain_change;
 pub use chain_change::*;
-mod address_use;
-pub use address_use::*;
+
 mod order;
 pub use order::*;
+
 mod switch;
 pub(crate) use switch::*;
+pub(crate) mod api_wallet;
 #[cfg(feature = "token")]
 pub(crate) mod token_price;
 #[cfg(feature = "token")]
@@ -59,6 +59,9 @@ define_topic_patterns! {
     Token => ["wallet", "token"],
     RpcChange => ["wallet", "rpc", "change"],
     ChainChange => ["wallet", "chain", "change"],
+    MerchantTrans => ["wallet", "merchant", "trans"] (with_client_id),
+    MerchantAddressBind => ["wallet", "merchant", "address", "bind"] (with_client_id),
+    MerchantAddressAllock => ["wallet", "merchant", "address", "allock"] (with_client_id),
 }
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -77,6 +80,12 @@ pub(crate) enum Topic {
     RpcChange,
     #[serde(rename = "wallet/chain/change")]
     ChainChange,
+    #[serde(rename = "wallet/merchant/trans")]
+    MerchantTrans,
+    #[serde(rename = "wallet/merchant/address/bind")]
+    MerchantAddressBind,
+    #[serde(rename = "wallet/merchant/address/allock")]
+    MerchantAddressAllock,
 }
 
 impl Topic {

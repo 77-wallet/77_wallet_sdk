@@ -43,6 +43,7 @@ impl ApiAccountService {
         index: Option<i32>,
         name: &str,
         is_default_name: bool,
+        number: u32,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
