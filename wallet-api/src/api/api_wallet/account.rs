@@ -11,6 +11,7 @@ impl crate::WalletManager {
                 req.index,
                 &req.name,
                 req.is_default_name,
+                req.number,
                 req.api_wallet_type,
             )
             .await?
@@ -48,6 +49,7 @@ mod test {
         let index = None;
         let name = "666";
         let is_default_name = true;
+        let number = 3;
         let api_wallet_type = ApiWalletType::SubAccount;
 
         let req = CreateApiAccountReq::new(
@@ -56,6 +58,7 @@ mod test {
             index,
             name,
             is_default_name,
+            number,
             api_wallet_type,
         );
         let res = wallet_manager.create_api_account(req).await;

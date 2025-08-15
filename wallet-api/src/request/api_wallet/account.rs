@@ -7,6 +7,7 @@ pub struct CreateApiAccountReq {
     pub index: Option<i32>,
     pub name: String,
     pub is_default_name: bool,
+    pub number: u32,
     pub api_wallet_type: ApiWalletType,
 }
 
@@ -17,6 +18,7 @@ impl CreateApiAccountReq {
         index: Option<i32>,
         name: &str,
         is_default_name: bool,
+        number: u32,
         api_wallet_type: ApiWalletType,
     ) -> Self {
         Self {
@@ -25,6 +27,7 @@ impl CreateApiAccountReq {
             index,
             name: name.to_string(),
             is_default_name,
+            number,
             api_wallet_type,
         }
     }
