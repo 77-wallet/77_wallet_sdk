@@ -13,7 +13,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::{
     request::{AppInstallSaveReq, VersionViewReq},
-    response_vo::app::{AppVersionRes, GetFiatRes, GetOfficialWebsiteRes},
+    response_vo::app::{AppVersionRes, FindConfigByKeyRes, GetFiatRes, GetOfficialWebsiteRes},
 };
 
 use crate::{
@@ -439,5 +439,12 @@ impl<
             .await?;
 
         Ok(())
+    }
+
+    pub async fn backend_config(
+        self,
+    ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        Ok(backend.all_config().await?.configs)
     }
 }

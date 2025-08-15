@@ -75,3 +75,12 @@ async fn test_mqtt_uri() {
 
     tracing::info!("uri : {}", serde_json::to_string(&rs).unwrap());
 }
+
+#[tokio::test]
+async fn test_backend_config() {
+    let wallet_manager = get_manager().await;
+
+    let res = wallet_manager.backend_config().await;
+
+    tracing::info!("uri : {}", serde_json::to_string(&res).unwrap());
+}
