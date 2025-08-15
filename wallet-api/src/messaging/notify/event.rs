@@ -13,7 +13,10 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
-use crate::messaging::mqtt::topics::{AddressUseMsg, BulletinMsg, UnbindUidMsg};
+use crate::messaging::mqtt::topics::{
+    api_wallet::{AddressUseMsg, UnbindUidMsg},
+    BulletinMsg,
+};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]

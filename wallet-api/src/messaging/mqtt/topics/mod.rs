@@ -1,15 +1,15 @@
 mod bulletin_info;
 pub use bulletin_info::*;
-mod unbind_uid;
-pub use unbind_uid::*;
+
 mod chain_change;
 pub use chain_change::*;
-mod address_use;
-pub use address_use::*;
+
 mod order;
 pub use order::*;
+
 mod switch;
 pub(crate) use switch::*;
+pub(crate) mod api_wallet;
 #[cfg(feature = "token")]
 pub(crate) mod token_price;
 #[cfg(feature = "token")]

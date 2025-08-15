@@ -5,7 +5,10 @@ use wallet_utils::serde_func;
 use crate::{
     infrastructure::task_queue::{task::Tasks, MqttTask},
     messaging::{
-        mqtt::topics::{AddressUseMsg, OutgoingPayload, UnbindUidMsg},
+        mqtt::topics::{
+            api_wallet::{AddressUseMsg, UnbindUidMsg},
+            OutgoingPayload,
+        },
         notify::{event::NotifyEvent, FrontendNotifyEvent},
     },
     service::{app::AppService, device::DeviceService},

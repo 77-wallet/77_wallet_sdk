@@ -1,8 +1,9 @@
 use crate::messaging::mqtt::topics::{
-    AcctChange, AddressUseMsg, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
+    api_wallet::{AddressUseMsg, UnbindUidMsg},
+    AcctChange, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
-    RpcChange, UnbindUidMsg,
+    RpcChange,
 };
 
 use super::topics::{multisign_trans_execute::MultiSignTransExecute, CleanPermission};

@@ -135,6 +135,6 @@ pub(crate) enum MqttTask {
     BulletinMsg(topics::BulletinMsg),
     PermissionAccept(topics::PermissionAccept),
     CleanPermission(topics::CleanPermission),
-    UnbindUid(topics::UnbindUidMsg),
-    AddressUse(topics::AddressUseMsg),
+    UnbindUid(topics::api_wallet::UnbindUidMsg),
+    AddressUse(topics::api_wallet::AddressUseMsg),
 }
