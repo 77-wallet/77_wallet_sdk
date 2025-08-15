@@ -1,7 +1,7 @@
 use wallet_database::{
     dao::config::ConfigDao,
     entities::{
-        config::{config_key::LANGUAGE, ConfigEntity, MinValueSwitchConfig},
+        config::{ConfigEntity, MinValueSwitchConfig, config_key::LANGUAGE},
         multisig_account::{MultiAccountOwner, MultisigAccountStatus},
         multisig_queue::MultisigQueueStatus,
     },
@@ -17,8 +17,8 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::app::{config::ConfigDomain, DeviceDomain},
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
+    domain::app::{DeviceDomain, config::ConfigDomain},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
     response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
@@ -27,9 +27,8 @@ pub struct AppService<T> {
     // keystore: wallet_crypto::Keystore
 }
 
-impl<
-        T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotificationRepoTrait,
-    > AppService<T>
+impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotificationRepoTrait>
+    AppService<T>
 {
     pub fn new(repo: T) -> Self {
         Self { repo }

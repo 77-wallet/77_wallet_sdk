@@ -1,8 +1,8 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        api_wallet::ApiWalletRepo, chain::ChainRepoTrait, coin::CoinRepoTrait,
-        device::DeviceRepoTrait, ResourcesRepo,
+        ResourcesRepo, api_wallet::ApiWalletRepo, chain::ChainRepoTrait, coin::CoinRepoTrait,
+        device::DeviceRepoTrait,
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, LanguageInitReq, TokenQueryPriceReq};
@@ -10,11 +10,11 @@ use wallet_transport_backend::request::{AddressBatchInitReq, LanguageInitReq, To
 use crate::{
     domain::{
         api_wallet::wallet::ApiWalletDomain,
-        app::{config::ConfigDomain, DeviceDomain},
+        app::{DeviceDomain, config::ConfigDomain},
         chain::ChainDomain,
         wallet::WalletDomain,
     },
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
 };
 
 pub struct ApiWalletService {

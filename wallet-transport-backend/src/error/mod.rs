@@ -23,6 +23,6 @@ impl Error {
 
 #[derive(Debug, thiserror::Error)]
 pub enum BackendServiceError {
-    #[error("not platfrom address")]
+    #[error("not platform address")]
     NotPlatformAddress,
 }

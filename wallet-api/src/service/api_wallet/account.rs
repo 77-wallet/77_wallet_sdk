@@ -1,12 +1,12 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, chain::ChainRepoTrait as _,
-        coin::CoinRepoTrait as _, ResourcesRepo,
+        ResourcesRepo, api_account::ApiAccountRepo, api_wallet::ApiWalletRepo,
+        chain::ChainRepoTrait as _, coin::CoinRepoTrait as _,
     },
 };
 use wallet_transport_backend::request::{
-    api_wallet::address::UploadAllocatedAddressesReq, AddressBatchInitReq, TokenQueryPriceReq,
+    AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::UploadAllocatedAddressesReq,
 };
 
 use crate::domain::{
