@@ -214,7 +214,7 @@ impl CoinService {
 
         let tx = &mut self.repo;
 
-        let tokens = backend_api.token_query_price(req).await?.list;
+        let tokens = backend_api.token_query_price(&req).await?.list;
 
         for token in tokens {
             let coin_id = CoinId {
