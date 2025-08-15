@@ -219,18 +219,14 @@ pub struct QuoteReq {
     pub allow_partial_fill: bool,
 }
 impl QuoteReq {
-    pub fn token_in_or_warp(&self, chain_code: ChainCode) -> String {
-        if self.token_in.token_addr.is_empty() {
-            get_warp_address(chain_code).unwrap().to_string()
-        } else {
-            self.token_in.token_addr.clone()
-        }
-    }
-    pub fn eth_or_weth(address: &str, chain_code: ChainCode) -> String {
+    pub fn eth_or_weth(
+        address: &str,
+        chain_code: ChainCode,
+    ) -> Result<String, crate::ServiceError> {
         if address.is_empty() {
-            get_warp_address(chain_code).unwrap().to_string()
+            get_warp_address(chain_code).map(|x| x.to_string())
         } else {
-            address.to_string()
+            Ok(address.to_string())
         }
     }
 
@@ -261,15 +257,19 @@ impl QuoteReq {
     }
 
     // 根据token地址判断是 进行那种swap交易
-    pub fn swap_type(chain_code: ChainCode, token_in: &str, token_out: &str) -> SwapInnerType {
-        let warp_coin = get_warp_address(chain_code).unwrap();
+    pub fn swap_type(
+        chain_code: ChainCode,
+        token_in: &str,
+        token_out: &str,
+    ) -> Result<SwapInnerType, crate::ServiceError> {
+        let warp_coin = get_warp_address(chain_code)?;
 
         if token_in.is_empty() && token_out == warp_coin {
-            SwapInnerType::Deposit
+            Ok(SwapInnerType::Deposit)
         } else if token_in == warp_coin && token_out.is_empty() {
-            SwapInnerType::Withdraw
+            Ok(SwapInnerType::Withdraw)
         } else {
-            SwapInnerType::Swap
+            Ok(SwapInnerType::Swap)
         }
     }
 
@@ -313,8 +313,8 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
             chain_code: chain_code.to_string(),
             amount: amount.to_string(),
             unique,
-            in_token_addr: QuoteReq::eth_or_weth(&value.token_in.token_addr, chain_code),
-            out_token_addr: QuoteReq::eth_or_weth(&value.token_out.token_addr, chain_code),
+            in_token_addr: QuoteReq::eth_or_weth(&value.token_in.token_addr, chain_code)?,
+            out_token_addr: QuoteReq::eth_or_weth(&value.token_out.token_addr, chain_code)?,
             dex_ids,
         })
     }

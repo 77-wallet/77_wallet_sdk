@@ -13,6 +13,7 @@ use super::rpc_need_header;
 pub use multisig_adapter::*;
 pub mod eth;
 pub mod eth_tx;
+pub mod sol_tx;
 pub mod ton_tx;
 pub mod tron_tx;
 

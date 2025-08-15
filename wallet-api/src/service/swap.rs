@@ -137,7 +137,7 @@ impl SwapServer {
             chain_code,
             &req.token_in.token_addr,
             &req.token_out.token_addr,
-        );
+        )?;
 
         match swap_inner_type {
             SwapInnerType::Withdraw => self.common_quote(req, SwapInnerType::Withdraw).await,
@@ -396,7 +396,7 @@ impl SwapServer {
             chain_code,
             &req.token_in.token_addr,
             &req.token_out.token_addr,
-        );
+        )?;
 
         let resp = match swap_inner_type {
             SwapInnerType::Deposit => {

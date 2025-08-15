@@ -1,6 +1,8 @@
 use crate::get_manager;
 
 pub mod eth_swap;
+pub mod sol_swap;
+
 use wallet_api::request::transaction::{
     ApproveReq, DexRoute, QuoteReq, RouteInDex, SwapReq, SwapTokenInfo, SwapTokenListReq,
 };
