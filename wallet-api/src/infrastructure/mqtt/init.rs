@@ -36,7 +36,7 @@ async fn handle_eventloop(tx: UnboundedSender<rumqttc::v5::Event>, mut eventloop
         match eventloop.poll().await {
             Ok(event) => {
                 if let Err(e) = tx.send(event) {
-                    tracing::error!("[handle eventloop] send channel error: {e}");
+                    tracing::error!("[handle event loop] send channel error: {e}");
                 };
             }
             Err(err) => {
@@ -56,7 +56,7 @@ async fn handle_eventloop(tx: UnboundedSender<rumqttc::v5::Event>, mut eventloop
 }
 
 pub async fn exec_event(
-    mut rx: tokio_stream::wrappers::UnboundedReceiverStream<rumqttc::v5::Event>,
+    mut rx: tokio_stream::wrappers::UnboundedReceiverStream<Event>,
     client: rumqttc::v5::AsyncClient,
 ) -> Result<(), crate::ServiceError> {
     while let Some(event) = rx.next().await {

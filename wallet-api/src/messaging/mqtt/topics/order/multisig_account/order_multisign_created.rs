@@ -1,7 +1,7 @@
 use crate::{
     domain::multisig::MultisigDomain,
     messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend, FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignCreatedFrontend,
     },
 };
 use wallet_database::dao::multisig_account::MultisigAccountDaoV1;

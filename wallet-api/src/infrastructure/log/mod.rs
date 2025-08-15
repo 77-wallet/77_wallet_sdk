@@ -1,3 +1,7 @@
+mod format;
+mod offset_tracker;
+mod rotator;
+
 use offset_tracker::OffsetTracker;
 use rotator::SizeRotatingWriter;
 use std::{
@@ -13,10 +17,7 @@ use tokio::{
 use tracing_subscriber::EnvFilter;
 use wallet_oss::oss_client;
 
-mod format;
 pub use format::*;
-mod offset_tracker;
-mod rotator;
 
 // 初始化日志。
 pub fn init_logger(
