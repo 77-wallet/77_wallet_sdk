@@ -7,18 +7,6 @@ use wallet_api::request::transaction::{
 const AGGREGATOR: &str = "0xb0635793E700E8A5AFbB94e12086E921FB0E3E3E";
 
 #[tokio::test]
-async fn test_default_quote() {
-    let wallet_manager = get_manager().await;
-
-    let chain_code = "eth".to_string();
-    let token_in = "".to_string();
-    // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
-
-    let resp = wallet_manager.default_quote(chain_code, token_in).await;
-    println!("{}", serde_json::to_string(&resp).unwrap());
-}
-
-#[tokio::test]
 async fn test_support_chain() {
     let wallet_manager = get_manager().await;
 

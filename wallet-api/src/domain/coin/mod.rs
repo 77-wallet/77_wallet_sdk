@@ -18,6 +18,13 @@ use wallet_database::{
 use wallet_transport_backend::{response_vo::coin::TokenCurrency, CoinInfo};
 use wallet_types::chain::chain::ChainCode;
 
+mod chain_stable_coin {
+    pub const ETHEREUM: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+    pub const BNB_SMART_CHAIN: &str = "0x55d398326f99059fF775485246999027B3197955";
+    pub const TRON: &str = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    pub const SOLANA: &str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+}
+
 pub struct CoinDomain {}
 impl Default for CoinDomain {
     fn default() -> Self {
@@ -121,13 +128,13 @@ impl CoinDomain {
         Ok(())
     }
 
-    pub fn get_stable_coin(chain_code: ChainCode) -> Result<String, crate::ServiceError> {
+    // 每个链的主流 usdt代币合约地址
+    pub fn get_stable_coin(chain_code: ChainCode) -> Result<&'static str, crate::ServiceError> {
         match chain_code {
-            ChainCode::Ethereum => Ok("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
-            ChainCode::BnbSmartChain => {
-                Ok("0x55d398326f99059fF775485246999027B3197955".to_string())
-            }
-            ChainCode::Tron => Ok("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string()),
+            ChainCode::Ethereum => Ok(chain_stable_coin::ETHEREUM),
+            ChainCode::BnbSmartChain => Ok(chain_stable_coin::BNB_SMART_CHAIN),
+            ChainCode::Tron => Ok(chain_stable_coin::TRON),
+            ChainCode::Solana => Ok(chain_stable_coin::SOLANA),
             _ => Err(crate::BusinessError::Coin(crate::CoinError::NotFound(
                 chain_code.to_string(),
             )))?,
