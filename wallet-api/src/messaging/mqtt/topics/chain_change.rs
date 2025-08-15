@@ -1,6 +1,6 @@
 use crate::{
     domain::app::config::ConfigDomain,
-    messaging::notify::{event::NotifyEvent, other::ChainChangeFrontend, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent, other::ChainChangeFrontend},
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 

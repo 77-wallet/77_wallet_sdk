@@ -386,7 +386,7 @@ impl Default for RpcToken {
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
-    pub repo_factory: wallet_database::factory::RepositoryFactory,
+    pub repo_factory: RepositoryFactory,
 }
 
 impl WalletManager {
@@ -414,7 +414,7 @@ impl WalletManager {
         Context::get_global_task_manager()?
             .start_task_check()
             .await?;
-        let pool = context.sqlite_context.get_pool().unwrap();
+        let pool = context.sqlite_context.get_pool()?;
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
         let manager = WalletManager { repo_factory };
@@ -486,7 +486,7 @@ impl WalletManager {
         &self,
         sender: UnboundedSender<FrontendNotifyEvent>,
     ) -> Result<(), crate::ServiceError> {
-        crate::manager::Context::set_frontend_notify_sender(Some(sender)).await
+        Context::set_frontend_notify_sender(Some(sender)).await
     }
 }
 
@@ -619,8 +619,7 @@ mod tests {
 
         let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
         let _manager = crate::WalletManager::new("sn", "ANDROID", None, config, dirs)
-            .await
-            .unwrap();
+            .await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(

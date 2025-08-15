@@ -1,0 +1,199 @@
+use crate::data::EncryptedData;
+use crate::error::EncryptionError;
+use aes_gcm::aead::{Aead, OsRng};
+use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm, Key, KeyInit, Nonce};
+use hkdf::Hkdf;
+use k256::ecdh::SharedSecret;
+use k256::sha2::Sha256;
+
+/// 从共享密钥派生 AES 加密密钥
+pub fn derive_aes_key_from_shared_secret(
+    shared_secret: &SharedSecret,
+) -> Result<[u8; 32], EncryptionError> {
+    let shared_bytes = shared_secret.raw_secret_bytes();
+    let hkdf = Hkdf::<Sha256>::new(None, shared_bytes);
+
+    let mut aes_key = [0u8; 32];
+    hkdf.expand(b"aes_encryption_key", &mut aes_key)
+        .map_err(|e| EncryptionError::KeyDerivationFailed(e.to_string()))?;
+
+    Ok(aes_key)
+}
+
+/// 使用共享密钥加密数据
+pub fn encrypt_with_shared_secret(
+    plaintext: &[u8],
+    shared_secret: &SharedSecret,
+) -> Result<EncryptedData, EncryptionError> {
+    // 1. 从共享密钥派生 AES 密钥
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
+    let cipher = Aes256Gcm::new(key);
+
+    // 2. 生成随机 nonce
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+    // 3. 加密数据
+    let ciphertext = cipher
+        .encrypt(&nonce, plaintext)
+        .map_err(|e| EncryptionError::EncryptionFailed(e.to_string()))?;
+
+    Ok(EncryptedData {
+        nonce: nonce.to_vec(),
+        ciphertext,
+    })
+}
+
+/// 使用共享密钥解密数据
+pub fn decrypt_with_shared_secret(
+    encrypted_data: &EncryptedData,
+    shared_secret: &SharedSecret,
+) -> Result<Vec<u8>, EncryptionError> {
+    // 1. 从共享密钥派生 AES 密钥
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
+    let cipher = Aes256Gcm::new(key);
+
+    // 2. 从字节数组重建 nonce
+    let nonce = Nonce::from_slice(&encrypted_data.nonce);
+
+    // 3. 解密数据
+    let plaintext = cipher
+        .decrypt(nonce, encrypted_data.ciphertext.as_slice())
+        .map_err(|e| EncryptionError::DecryptionFailed(e.to_string()))?;
+
+    Ok(plaintext)
+}
+
+/// 带认证的加密（包含额外数据）
+pub fn encrypt_with_aad(
+    plaintext: &mut [u8],
+    additional_data: &[u8],
+    shared_secret: &SharedSecret,
+) -> Result<EncryptedData, EncryptionError> {
+    // 1. 从共享密钥派生 AES 密钥
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
+    let cipher = Aes256Gcm::new(key);
+
+    // 2. 生成随机 nonce
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+    // 3. 加密数据（包含额外认证数据）
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, additional_data, plaintext)
+        .map_err(|e| EncryptionError::EncryptionFailed(e.to_string()))?;
+
+    // 4. 组合 nonce 和密文
+    let mut combined_ciphertext = nonce.to_vec();
+    combined_ciphertext.extend_from_slice(&tag);
+
+    Ok(EncryptedData {
+        nonce: nonce.to_vec(),
+        ciphertext: combined_ciphertext,
+    })
+}
+
+/// 带认证的解密（包含额外数据）
+pub fn decrypt_with_aad(
+    encrypted_data: &mut EncryptedData,
+    additional_data: &[u8],
+    shared_secret: &SharedSecret,
+) -> Result<Vec<u8>, EncryptionError> {
+    // 1. 从共享密钥派生 AES 密钥
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
+    let cipher = Aes256Gcm::new(key);
+
+    // 2. 从字节数组重建 nonce
+    let nonce = Nonce::from_slice(&encrypted_data.nonce);
+
+    // 3. 解密数据（包含额外认证数据）
+    let plaintext = cipher
+        .encrypt_in_place_detached(nonce, additional_data, &mut encrypted_data.ciphertext)
+        .map_err(|e| EncryptionError::DecryptionFailed(e.to_string()))?;
+
+    Ok(plaintext.to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use k256::ecdh::EphemeralSecret;
+    use rand_core::OsRng;
+
+    #[test]
+    fn test_basic_encryption_decryption() {
+        // 生成 ECDH 共享密钥
+        let alice_secret = EphemeralSecret::random(&mut OsRng);
+        let bob_secret = EphemeralSecret::random(&mut OsRng);
+        let shared_secret1 = alice_secret.diffie_hellman(&bob_secret.public_key());
+        let shared_secret2 = bob_secret.diffie_hellman(&alice_secret.public_key());
+
+        // 测试数据
+        let plaintext = b"Hello, AES encryption!";
+
+        // 加密
+        let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1).unwrap();
+
+        // 解密
+        let decrypted = decrypt_with_shared_secret(&encrypted, &shared_secret2).unwrap();
+
+        // 验证
+        assert_eq!(plaintext, decrypted.as_slice());
+        println!("基本加密解密测试通过！");
+    }
+
+    #[test]
+    fn test_serialization_deserialization() {
+        // 生成 ECDH 共享密钥
+        let alice_secret = EphemeralSecret::random(&mut OsRng);
+        let bob_secret = EphemeralSecret::random(&mut OsRng);
+        let shared_secret1 = alice_secret.diffie_hellman(&bob_secret.public_key());
+        let shared_secret2 = bob_secret.diffie_hellman(&alice_secret.public_key());
+
+        // 测试数据
+        let plaintext = b"Test serialization and deserialization";
+
+        // 加密
+        let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1).unwrap();
+
+        // 序列化
+        let serialized = encrypted.to_bytes();
+
+        println!("len: {}", serialized.len());
+
+        // 反序列化
+        let deserialized = EncryptedData::from_bytes(&serialized).unwrap();
+
+        // 解密
+        let decrypted = decrypt_with_shared_secret(&deserialized, &shared_secret2).unwrap();
+
+        // 验证
+        assert_eq!(plaintext, decrypted.as_slice());
+        println!("序列化反序列化测试通过！");
+    }
+
+    #[test]
+    fn test_aad_encryption_decryption() {
+        // 生成 ECDH 共享密钥
+        let alice_secret = EphemeralSecret::random(&mut OsRng);
+        let bob_secret = EphemeralSecret::random(&mut OsRng);
+        let shared_secret1 = alice_secret.diffie_hellman(&bob_secret.public_key());
+        let shared_secret2 = bob_secret.diffie_hellman(&alice_secret.public_key());
+
+        // 测试数据
+        let mut  plaintext = b"Sensitive data".to_vec();
+        let additional_data = b"Header information";
+
+        // 加密（带额外认证数据）
+        let mut encrypted = encrypt_with_aad(&mut plaintext, additional_data, &shared_secret1).unwrap();
+
+        // 解密（带额外认证数据）
+        let decrypted = decrypt_with_aad(&mut encrypted, additional_data, &shared_secret2).unwrap();
+
+        // 验证
+        assert_eq!(plaintext, decrypted.as_slice());
+        println!("AAD 加密解密测试通过！");
+    }
+}

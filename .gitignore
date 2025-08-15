@@ -12,9 +12,11 @@ wallet-api/test_data_back/
 data_**
 
 account.toml
-config.toml
+wallet-api/examples/config.toml
 example.toml
 wallet.toml
-config.yaml
+wallet-api/examples/config.yaml
 
 */sdk*
+/.idea
+/wallet-ecdh/.idea

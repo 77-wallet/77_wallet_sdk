@@ -6,13 +6,12 @@ use std::sync::Arc;
 pub struct RepositoryFactory {
     db_pool: crate::DbPool,
 }
+
 impl RepositoryFactory {
     pub fn new(db_pool: crate::DbPool) -> Self {
         Self { db_pool }
     }
-}
 
-impl RepositoryFactory {
     pub fn stake_repo(&self) -> stake::StakeRepo {
         stake::StakeRepo::new(self.db_pool.clone())
     }

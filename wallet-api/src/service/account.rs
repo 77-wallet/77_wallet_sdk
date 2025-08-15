@@ -1,13 +1,13 @@
 use wallet_database::{
     entities::account::AccountEntity,
     repositories::{
+        ResourcesRepo,
         account::{AccountRepo, AccountRepoTrait},
         chain::ChainRepoTrait,
         coin::CoinRepoTrait,
         device::DeviceRepoTrait,
         multisig_account::MultisigAccountRepo,
         wallet::WalletRepoTrait,
-        ResourcesRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -23,7 +23,7 @@ use crate::{
         permission::PermissionDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
+        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, task::Tasks,
     },
     response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
 };
