@@ -8,3 +8,5 @@ mod collection;
 pub use collection::*;
 mod withdraw_token;
 pub use withdraw_token::*;
+mod address_allock;
+pub use address_allock::*;

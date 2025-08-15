@@ -59,6 +59,9 @@ define_topic_patterns! {
     Token => ["wallet", "token"],
     RpcChange => ["wallet", "rpc", "change"],
     ChainChange => ["wallet", "chain", "change"],
+    MerchantTrans => ["wallet", "merchant", "trans"] (with_client_id),
+    MerchantAddressBind => ["wallet", "merchant", "address", "bind"] (with_client_id),
+    MerchantAddressAllock => ["wallet", "merchant", "address", "allock"] (with_client_id),
 }
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -77,6 +80,12 @@ pub(crate) enum Topic {
     RpcChange,
     #[serde(rename = "wallet/chain/change")]
     ChainChange,
+    #[serde(rename = "wallet/merchant/trans")]
+    MerchantTrans,
+    #[serde(rename = "wallet/merchant/address/bind")]
+    MerchantAddressBind,
+    #[serde(rename = "wallet/merchant/address/allock")]
+    MerchantAddressAllock,
 }
 
 impl Topic {

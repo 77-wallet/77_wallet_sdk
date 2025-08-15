@@ -3,24 +3,24 @@ use crate::{
     messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
 };
 
-// biz_type = ADDRESS_USE
+// biz_type = ADDRESS_ALLOCK
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AddressUseMsg {
+pub struct AddressAllockMsg {
     /// uid
-    pub uid: String,
+    pub r#type: String,
     pub chain: String,
     pub index: i32,
-    pub address: String,
+    pub uid: String,
 }
 
-// 按下标递增
-impl AddressUseMsg {
+// 地址池扩容
+impl AddressAllockMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        ApiAccountDomain::address_used(&self.chain, self.index, &self.uid, None).await?;
+        // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
 
-        let data = NotifyEvent::AddressUse(self.to_owned());
-        FrontendNotifyEvent::new(data).send().await?;
+        // let data = NotifyEvent::AddressUse(self.to_owned());
+        // FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())
     }
