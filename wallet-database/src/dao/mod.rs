@@ -4,6 +4,7 @@ pub mod announcement;
 pub mod api_account;
 pub mod api_assets;
 pub mod api_wallet;
+pub mod api_withdraw;
 pub mod assets;
 pub mod bill;
 pub mod chain;
@@ -27,11 +28,12 @@ pub mod wallet;
 pub trait Dao {
     type Input;
     type Output;
-    async fn upsert<'c, E>(executor: E, input: Self::Input) -> Result<Self::Output, crate::Error>
+    type Error;
+    async fn upsert<'c, E>(executor: E, input: Self::Input) -> Result<Self::Output, Self::Error>
     where
         E: sqlx::Executor<'c, Database = sqlx::Sqlite>;
 
-    async fn list<'c, E>(executor: E) -> Result<Vec<Self::Output>, crate::Error>
+    async fn list<'c, E>(executor: E) -> Result<Vec<Self::Output>, Self::Error>
     where
         E: sqlx::Executor<'c, Database = sqlx::Sqlite>;
 }

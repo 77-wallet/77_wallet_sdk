@@ -1,0 +1,46 @@
+use crate::api::ReturnType;
+use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
+use wallet_database::repositories::ResourcesRepo;
+use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
+
+pub struct WithdrawService {
+    pub repo: ResourcesRepo,
+}
+
+impl WithdrawService {
+    pub fn new(repo: ResourcesRepo) -> Self {
+        Self { repo }
+    }
+
+    pub async fn get_withdraw_order_list(
+        &self,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::ServiceError> {
+        Ok(vec![])
+    }
+
+    pub async fn sign_withdrawal_order(
+        &self,
+        order_id: &str,
+        status: i8,
+    ) -> Result<(), crate::ServiceError> {
+        let backend_api = crate::Context::get_global_backend_api()?;
+
+        let req = AuditResultReportReq::new();
+        backend_api.report_audit_result(&req).await?;
+
+        Ok(())
+    }
+
+    pub async fn reject_withdrawal_order(
+        &self,
+        order_id: &str,
+        status: i8,
+    ) -> Result<(), crate::ServiceError> {
+        let backend_api = crate::Context::get_global_backend_api()?;
+
+        let req = AuditResultReportReq::new();
+        backend_api.report_audit_result(&req).await?;
+
+        Ok(())
+    }
+}

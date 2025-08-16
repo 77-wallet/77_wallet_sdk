@@ -1,0 +1,17 @@
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct ApiWithdrawEntity {
+    pub id: i64,
+    pub name: String,
+    pub uid: String,
+    pub from_addr: String,
+    pub to_addr: String,
+    pub value: String,
+    pub decimals: i32,
+    pub token_addr: String,
+    pub symbol: String,
+    pub trade_no: String,
+    pub trade_type: String,
+    pub status: u8,
+    pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}

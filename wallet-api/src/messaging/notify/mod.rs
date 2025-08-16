@@ -2,6 +2,7 @@
 use event::NotifyEvent;
 use other::{DebugFront, ErrFront};
 
+pub(crate) mod api_wallet;
 pub(crate) mod event;
 pub(crate) mod multisig;
 pub(crate) mod other;

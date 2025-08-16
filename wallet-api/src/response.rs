@@ -1,5 +1,3 @@
-use std::convert::Infallible;
-
 #[derive(serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq, Clone)]
 pub struct Response<T> {
     pub code: i64,

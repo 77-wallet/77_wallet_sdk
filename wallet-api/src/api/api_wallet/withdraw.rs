@@ -1,17 +1,25 @@
 use crate::api::ReturnType;
-use crate::service::api_wallet::audit::AuditService;
+use crate::service::api_wallet::withdraw::WithdrawService;
+use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
 impl crate::WalletManager {
+    pub async fn get_withdraw_order_list(&self) -> ReturnType<Vec<ApiWithdrawEntity>> {
+        WithdrawService::new(self.repo_factory.resource_repo())
+            .get_withdraw_order_list()
+            .await?
+            .into()
+    }
+
     pub async fn sign_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        AuditService::new(self.repo_factory.resource_repo())
-            .audit_withdrawal_order(order_id, 1)
+        WithdrawService::new(self.repo_factory.resource_repo())
+            .sign_withdrawal_order(order_id, 1)
             .await?
             .into()
     }
 
     pub async fn reject_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        AuditService::new(self.repo_factory.resource_repo())
-            .audit_withdrawal_order(order_id, 2)
+        WithdrawService::new(self.repo_factory.resource_repo())
+            .reject_withdrawal_order(order_id, 2)
             .await?
             .into()
     }

@@ -5,6 +5,7 @@ pub mod announcement;
 pub mod api_account;
 pub mod api_assets;
 pub mod api_wallet;
+pub mod api_withdraw;
 pub mod assets;
 pub mod bill;
 pub mod chain;
