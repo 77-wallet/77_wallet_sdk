@@ -1,5 +1,5 @@
 use serde::Serialize;
-use sqlx::{sqlite::SqliteRow, Executor, FromRow, Sqlite};
+use sqlx::{Executor, FromRow, Sqlite, sqlite::SqliteRow};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

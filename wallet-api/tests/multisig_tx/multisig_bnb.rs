@@ -1,5 +1,5 @@
 use crate::get_manager;
-use wallet_api::{response_vo::transaction::TransferParams, MemberVo};
+use wallet_api::{MemberVo, response_vo::transaction::TransferParams};
 
 #[tokio::test]
 async fn test_create_multisig_account() {

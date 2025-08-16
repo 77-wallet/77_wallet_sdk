@@ -198,28 +198,28 @@ mod tests {
             (
                 "bnb-0x79276834D1c11039df3eFdE8204aA27CB661a0ff-m%2F44%27%2F60%27%2F0%27%2F0%2F0-pk",
                 "bnb",
-                "m/44'/60'/0'/0/0"
+                "m/44'/60'/0'/0/0",
             ),
             (
                 "btc-1Fykerj4TT5CuoXCUw6UxhS9ZrZync61Lf-m%2F44%27%2F0%27%2F0%27%2F0%2F0-pk",
                 "btc",
-                "m/44'/0'/0'/0/0"
+                "m/44'/0'/0'/0/0",
             ),
             (
                 "btc-bc1gr0wh89tnckm5g677aepcw37504qu5etf96gm20-m%2F84%27%2F0%27%2F0%27%2F0%2F0-pk",
                 "btc",
-                "m/84'/0'/0'/0/0"
+                "m/84'/0'/0'/0/0",
             ),
             (
                 "sol-33wDijijcuZwaBEGmgfMoFeyFbXphoCYmdNhHPwYJZ8e-m%2F44%27%2F501%27%2F0%27%2F0-pk",
                 "sol",
-                "m/44'/501'/0'/0"
+                "m/44'/501'/0'/0",
             ),
             (
                 "tron-TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn-m%2F44%27%2F195%27%2F0%27%2F0%2F0-pk",
                 "tron",
-                "m/44'/195'/0'/0/0"
-            )
+                "m/44'/195'/0'/0/0",
+            ),
         ];
 
         #[test]

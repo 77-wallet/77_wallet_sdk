@@ -6,8 +6,8 @@ use wallet_database::{
 use crate::{
     domain::multisig::MultisigDomain,
     messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignAcceptCompleteMsgFrontend, other::ErrFront,
-        FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignAcceptCompleteMsgFrontend,
+        other::ErrFront,
     },
 };
 // 参与放同意参与多签

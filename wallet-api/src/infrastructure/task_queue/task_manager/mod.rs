@@ -1,8 +1,8 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
 use crate::domain::app::config::ConfigDomain;
-use crate::infrastructure::task_queue::task::task_type::TaskType;
 use crate::infrastructure::task_queue::task::TaskTrait;
+use crate::infrastructure::task_queue::task::task_type::TaskType;
 
 use dashmap::DashSet;
 use dispatcher::{Dispatcher, PriorityTask, TaskSender};
@@ -122,7 +122,7 @@ impl TaskManager {
 
         let mut retry_count = 0;
         let mut delay = 200; // 初始延迟设为 200 毫秒
-                             // const MAX_RETRY_COUNT: i32 = 5;
+        // const MAX_RETRY_COUNT: i32 = 5;
 
         loop {
             // if retry_count >= MAX_RETRY_COUNT {

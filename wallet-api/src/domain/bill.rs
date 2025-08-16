@@ -1,6 +1,7 @@
 use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
+    DbPool,
     dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
     entities::{
         self,
@@ -8,7 +9,6 @@ use wallet_database::{
         bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
-    DbPool,
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;

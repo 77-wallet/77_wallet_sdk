@@ -1,6 +1,6 @@
 use crate::{
     entities::api_wallet::{ApiWalletEntity, ApiWalletType},
-    sql_utils::{query_builder::DynamicQueryBuilder, SqlExecutableReturn as _},
+    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 use sqlx::{Executor, Sqlite};
 

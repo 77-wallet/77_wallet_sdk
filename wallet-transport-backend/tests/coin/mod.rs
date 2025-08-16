@@ -1,10 +1,10 @@
 use crate::init;
 use wallet_transport_backend::{
+    Error,
     request::{
         CustomTokenInitReq, TokenQueryHistoryPrice, TokenQueryPopularByPageReq, TokenQueryPrice,
         TokenQueryPriceReq,
     },
-    Error,
 };
 
 #[tokio::test]

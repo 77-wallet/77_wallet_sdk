@@ -1,13 +1,13 @@
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{
     entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     repositories::{
-        account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, ResourcesRepo, TransactionTrait as _,
+        ResourcesRepo, TransactionTrait as _, account::AccountRepoTrait, assets::AssetsRepoTrait,
+        chain::ChainRepoTrait, coin::CoinRepoTrait,
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};

@@ -1,19 +1,21 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::request::transaction::SwapTokenInfo;
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use wallet_database::{
+    DbPool,
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
-        api_assets::ApiAssetsEntity,
         assets::{AssetsEntity, AssetsId},
         coin::{CoinData, CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
-    repositories::{account::AccountRepoTrait, assets::AssetsRepoTrait, ResourcesRepo},
-    DbPool,
+    repositories::{
+        ResourcesRepo, account::AccountRepoTrait, api_assets::ApiAssetsRepo,
+        assets::AssetsRepoTrait,
+    },
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -361,7 +363,7 @@ impl AssetsDomain {
                         &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
-                ApiAssetsEntity::upsert_assets(&*pool, assets).await?;
+                ApiAssetsRepo::upsert(pool.clone(), assets).await?;
             }
         }
         Ok(())

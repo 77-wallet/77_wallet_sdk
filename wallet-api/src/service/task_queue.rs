@@ -1,4 +1,4 @@
-use wallet_database::repositories::{bill::BillRepoTrait, ResourcesRepo};
+use wallet_database::repositories::{ResourcesRepo, bill::BillRepoTrait};
 
 use crate::response_vo::task_queue::TaskQueueStatus;
 

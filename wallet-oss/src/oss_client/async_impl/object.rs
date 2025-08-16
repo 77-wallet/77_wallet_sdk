@@ -91,14 +91,14 @@ impl Oss {
         json_data = json_data.replacen("{bucket}", &self.bucket(), 1);
         //limit 1GB bytes
         json_data = json_data.replacen("{size}", &build.max_upload_size.to_string(), 1); //允许上传的最大文件大小
-                                                                                         //success status
+        //success status
         json_data = json_data.replacen(
             "{success_action_status}",
             success_action_status.to_string().as_str(),
             1,
         );
         json_data = json_data.replacen("{prefix}", &build.upload_dir, 1); //只允许上传到哪个目录上
-                                                                          //text file
+        //text file
         json_data = json_data.replacen("{content_type}", &build.content_type, 1);
         //只允许上传哪个类型文件
         debug!("oss log: policy json: {}", json_data);

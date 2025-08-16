@@ -1,8 +1,7 @@
 use crate::{
-    any_in_collection,
+    DbPool, any_in_collection,
     entities::bill::{BillEntity, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo},
     pagination::Pagination,
-    DbPool,
 };
 use chrono::Utc;
 use serde::Serialize;
@@ -89,7 +88,10 @@ impl BillDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let kinds = crate::any_in_collection(bill_kind, "','");
-        let sql = format!("select * from bill where owner = '{}' and tx_kind in ('{}') ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1",owner_address,kinds);
+        let sql = format!(
+            "select * from bill where owner = '{}' and tx_kind in ('{}') ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1",
+            owner_address, kinds
+        );
         sqlx::query_as::<_, BillEntity>(&sql)
             .fetch_optional(exec)
             .await
@@ -474,8 +476,7 @@ impl BillDao {
         // 一个 半小时
         let time = wallet_utils::time::now().timestamp() - (90 * 60);
 
-        let sql =
-            "select * from bill where owner = $1 and status = $2 and chain_code = $3 and created_at > $4";
+        let sql = "select * from bill where owner = $1 and status = $2 and chain_code = $3 and created_at > $4";
 
         let rs = sqlx::query_as::<_, BillEntity>(sql)
             .bind(address)

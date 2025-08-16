@@ -1,9 +1,9 @@
 use crate::{
+    DbPool,
     entities::{
         api_account::{ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
-    DbPool,
 };
 
 use super::ResourcesRepo;

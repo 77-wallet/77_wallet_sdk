@@ -5,7 +5,7 @@ pub mod update_builder;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sqlx::{sqlite::SqliteArguments, Executor, Sqlite};
+use sqlx::{Executor, Sqlite, sqlite::SqliteArguments};
 
 pub type ArgFn<'q> = Arc<dyn Fn(&mut SqliteArguments<'q>) + Send + Sync + 'q>;
 

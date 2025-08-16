@@ -2,8 +2,8 @@
 CREATE TABLE api_withdraws (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uid VARCHAR(20) NULL,
-    from VARCHAR(64) NOT NULL,
-    to VARCHAR(64) NOT NULL,
+    from_addr VARCHAR(64) NOT NULL,
+    to_addr VARCHAR(64) NOT NULL,
     value VARCHAR(64) NOT NULL,
     decimals INTEGER NOT NULL,
     token_address VARCHAR(128) DEFAULT "" NOT NULL,
@@ -14,6 +14,5 @@ CREATE TABLE api_withdraws (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );
-
-CREATE INDEX api_withdraws_from ON api_withdraws (uid, from);
+CREATE INDEX api_withdraws_from ON api_withdraws (uid, from_addr);
 CREATE UNIQUE INDEX api_withdraws_trade_no ON api_withdraws (trade_no);

@@ -1,7 +1,7 @@
 use crate::{
+    CoinInfo,
     request::{AllTokenQueryByPageReq, SwapTokenQueryReq},
     response_vo::coin::{CoinInfos, TokenPopularByPages, TokenPrice, TokenPriceInfos},
-    CoinInfo,
 };
 
 use super::BackendApi;

@@ -1,7 +1,7 @@
 use super::{client::MqttAsyncClient, property::UserProperty};
 use crate::{
     infrastructure::mqtt::client::MqttClientBuilder,
-    messaging::notify::{event::NotifyEvent, other::ConnectionErrorFrontend, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent, other::ConnectionErrorFrontend},
 };
 use rumqttc::v5::{Event, EventLoop};
 use tokio::sync::mpsc::UnboundedSender;

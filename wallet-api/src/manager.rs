@@ -1,3 +1,4 @@
+use crate::infrastructure::SharedCache;
 use crate::infrastructure::inner_event::InnerEventHandle;
 use crate::infrastructure::process_unconfirm_msg::{
     UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
@@ -5,7 +6,6 @@ use crate::infrastructure::process_unconfirm_msg::{
 use crate::infrastructure::task_queue::task::Tasks;
 use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, InitializationTask};
-use crate::infrastructure::SharedCache;
 use crate::messaging::mqtt::subscribed::Topics;
 use crate::messaging::notify::FrontendNotifyEvent;
 use crate::service::node::NodeService;
@@ -13,11 +13,11 @@ use crate::{domain, infrastructure};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
+use tokio::sync::mpsc::UnboundedSender;
+use wallet_database::SqliteContext;
 use wallet_database::factory::RepositoryFactory;
 use wallet_database::repositories::device::DeviceRepoTrait;
-use wallet_database::SqliteContext;
 
 pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
@@ -242,8 +242,8 @@ impl Context {
         Ok(Context::get_context()?.sqlite_context.get_pool()?.clone())
     }
 
-    pub(crate) fn get_global_backend_api(
-    ) -> Result<&'static wallet_transport_backend::api::BackendApi, crate::ServiceError> {
+    pub(crate) fn get_global_backend_api()
+    -> Result<&'static wallet_transport_backend::api::BackendApi, crate::ServiceError> {
         Ok(&Context::get_context()?.backend_api)
     }
 
@@ -274,8 +274,8 @@ impl Context {
     //     Ok(())
     // }
 
-    pub(crate) fn get_global_oss_client(
-    ) -> Result<&'static wallet_oss::oss_client::OssClient, crate::SystemError> {
+    pub(crate) fn get_global_oss_client()
+    -> Result<&'static wallet_oss::oss_client::OssClient, crate::SystemError> {
         Ok(&Context::get_context()?.oss_client)
     }
 
@@ -287,8 +287,8 @@ impl Context {
         Ok(Context::get_context()?.cache.clone())
     }
 
-    pub(crate) fn get_global_mqtt_topics(
-    ) -> Result<&'static std::sync::Arc<RwLock<Topics>>, crate::SystemError> {
+    pub(crate) fn get_global_mqtt_topics()
+    -> Result<&'static std::sync::Arc<RwLock<Topics>>, crate::SystemError> {
         Ok(&Context::get_context()?.mqtt_topics)
     }
 
@@ -299,8 +299,8 @@ impl Context {
         Ok(&Context::get_context()?.frontend_notify)
     }
 
-    pub(crate) async fn get_rpc_header(
-    ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
+    pub(crate) async fn get_rpc_header()
+    -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
         let cx = Context::get_context()?;
 
         let token_expired = {
@@ -349,8 +349,8 @@ impl Context {
         }
     }
 
-    pub(crate) fn get_global_inner_event_handle(
-    ) -> Result<&'static InnerEventHandle, crate::SystemError> {
+    pub(crate) fn get_global_inner_event_handle()
+    -> Result<&'static InnerEventHandle, crate::SystemError> {
         Ok(&Context::get_context()?.inner_event_handle)
     }
 
@@ -358,13 +358,13 @@ impl Context {
         Ok(Context::get_context()?.task_manager.notify.clone())
     }
 
-    pub(crate) fn get_global_unconfirmed_msg_collector(
-    ) -> Result<&'static UnconfirmedMsgCollector, crate::SystemError> {
+    pub(crate) fn get_global_unconfirmed_msg_collector()
+    -> Result<&'static UnconfirmedMsgCollector, crate::SystemError> {
         Ok(&Context::get_context()?.unconfirmed_msg_collector)
     }
 
-    pub(crate) fn get_global_unconfirmed_msg_processor(
-    ) -> Result<&'static UnconfirmedMsgProcessor, crate::SystemError> {
+    pub(crate) fn get_global_unconfirmed_msg_processor()
+    -> Result<&'static UnconfirmedMsgProcessor, crate::SystemError> {
         Ok(&Context::get_context()?.unconfirmed_msg_processor)
     }
 }
@@ -618,8 +618,7 @@ mod tests {
         let dirs = Dirs::new(dir)?;
 
         let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
-        let _manager = crate::WalletManager::new("sn", "ANDROID", None, config, dirs)
-            .await?;
+        let _manager = crate::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(

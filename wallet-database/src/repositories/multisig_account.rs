@@ -1,4 +1,5 @@
 use crate::{
+    DbPool,
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
     entities::{
         self,
@@ -13,7 +14,6 @@ use crate::{
         wallet::WalletEntity,
     },
     pagination::Pagination,
-    DbPool,
 };
 
 use super::ResourcesRepo;

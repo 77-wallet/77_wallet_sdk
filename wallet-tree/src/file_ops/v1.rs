@@ -1,8 +1,8 @@
-use secrecy::{zeroize::Zeroize as _, ExposeSecret};
+use secrecy::{ExposeSecret, zeroize::Zeroize as _};
 use serde::Serialize;
 use wallet_crypto::{KeystoreBuilder, RecoverableData};
 
-use crate::naming::{v1::LegacyNaming, FileType};
+use crate::naming::{FileType, v1::LegacyNaming};
 
 use super::IoStrategy;
 

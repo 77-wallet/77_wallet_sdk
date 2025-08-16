@@ -1,11 +1,11 @@
 use crate::{
     domain::{
         chain::{
-            swap::{
-                evm_swap::{dexSwap1Call, SwapParams},
-                EstimateSwapResult,
-            },
             TransferResp,
+            swap::{
+                EstimateSwapResult,
+                evm_swap::{SwapParams, dexSwap1Call},
+            },
         },
         multisig::MultisigQueueDomain,
     },
@@ -15,19 +15,18 @@ use crate::{
 use alloy::sol_types::SolValue;
 use alloy::{primitives::U256, sol_types::SolCall};
 use wallet_chain_interact::{
-    abi_encode_u256,
+    BillResourceConsume, abi_encode_u256,
     tron::{
+        TronChain,
         operations::{
+            TronConstantOperation as _,
             contract::{TriggerContractParameter, WarpContract},
             transfer::{ContractTransferOpt, TransferOpt},
             trc::{Allowance, Approve, Deposit},
-            TronConstantOperation as _,
         },
         params::ResourceConsumer,
-        TronChain,
     },
     types::{ChainPrivateKey, MultisigTxResp},
-    BillResourceConsume,
 };
 use wallet_types::chain::chain::ChainCode;
 

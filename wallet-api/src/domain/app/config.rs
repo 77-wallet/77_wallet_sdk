@@ -3,13 +3,13 @@ use wallet_crypto::KdfAlgorithm;
 use wallet_database::{
     dao::config::ConfigDao,
     entities::config::{
-        config_key::{
-            APP_DOWNLOAD_QR_CODE_URL, APP_VERSION, BLOCK_BROWSER_URL_LIST, CURRENCY, INVITE_CODE,
-            KEYSTORE_KDF_ALGORITHM, KEYS_RESET_STATUS, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE,
-            WALLET_TREE_STRATEGY,
-        },
         AppVersion, Currency, InviteCode, KeysResetStatus, MinValueSwitchConfig, MqttUrl,
         OfficialWebsite,
+        config_key::{
+            APP_DOWNLOAD_QR_CODE_URL, APP_VERSION, BLOCK_BROWSER_URL_LIST, CURRENCY, INVITE_CODE,
+            KEYS_RESET_STATUS, KEYSTORE_KDF_ALGORITHM, LANGUAGE, MQTT_URL, OFFICIAL_WEBSITE,
+            WALLET_TREE_STRATEGY,
+        },
     },
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
@@ -253,8 +253,8 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub(crate) async fn get_keys_reset_status(
-    ) -> Result<Option<KeysResetStatus>, crate::ServiceError> {
+    pub(crate) async fn get_keys_reset_status()
+    -> Result<Option<KeysResetStatus>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let keys_reset_status = ConfigDao::find_by_key(KEYS_RESET_STATUS, pool.as_ref()).await?;
@@ -317,8 +317,8 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_wallet_tree_strategy(
-    ) -> Result<wallet_tree::WalletTreeStrategy, crate::ServiceError> {
+    pub(crate) async fn get_wallet_tree_strategy()
+    -> Result<wallet_tree::WalletTreeStrategy, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let wallet_tree_strategy =
             ConfigDao::find_by_key(WALLET_TREE_STRATEGY, pool.as_ref()).await?;

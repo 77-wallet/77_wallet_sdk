@@ -1,9 +1,9 @@
 use super::ResourcesRepo;
 use crate::{
+    DbPool,
     dao::bill::BillDao,
     entities::bill::{BillEntity, BillUpdateEntity, RecentBillListVo},
     pagination::Pagination,
-    DbPool,
 };
 use sqlx::{Executor, Sqlite};
 

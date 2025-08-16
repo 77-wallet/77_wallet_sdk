@@ -1,4 +1,4 @@
-use crate::{entities::wallet::WalletEntity, DbPool};
+use crate::{DbPool, entities::wallet::WalletEntity};
 
 pub struct WalletRepo {
     // pub repo: ResourcesRepo,

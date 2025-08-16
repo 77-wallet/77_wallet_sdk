@@ -1,7 +1,7 @@
 use crate::{
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
     messaging::notify::{
-        event::NotifyEvent, permission::PermissionChangeFrontend, FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, permission::PermissionChangeFrontend,
     },
     request::permission::PermissionReq,
 };
@@ -10,12 +10,12 @@ use wallet_chain_interact::tron::{
     protocol::account::TronAccount,
 };
 use wallet_database::{
+    DbPool,
     entities::{
         permission::{PermissionEntity, PermissionWithUserEntity},
         permission_user::PermissionUserEntity,
     },
     repositories::permission::PermissionRepo,
-    DbPool,
 };
 use wallet_types::constant::chain_code;
 

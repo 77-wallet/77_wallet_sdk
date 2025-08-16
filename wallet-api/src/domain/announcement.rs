@@ -1,4 +1,4 @@
-use crate::messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
+use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 use wallet_database::repositories::{announcement::AnnouncementRepoTrait, device::DeviceRepoTrait};
 
 pub struct AnnouncementDomain;

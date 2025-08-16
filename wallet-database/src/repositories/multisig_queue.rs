@@ -1,5 +1,6 @@
 use super::ResourcesRepo;
 use crate::{
+    DbPool,
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
         multisig_queue::MultisigQueueDaoV1, multisig_signatures::MultisigSignatureDaoV1,
@@ -8,15 +9,14 @@ use crate::{
     entities::{
         multisig_member::MultisigMemberEntities,
         multisig_queue::{
-            fail_reason::SIGN_FAILED, MemberSignedResult, MultisigQueueData, MultisigQueueEntity,
-            MultisigQueueSimpleEntity, MultisigQueueStatus, NewMultisigQueueEntity,
+            MemberSignedResult, MultisigQueueData, MultisigQueueEntity, MultisigQueueSimpleEntity,
+            MultisigQueueStatus, NewMultisigQueueEntity, fail_reason::SIGN_FAILED,
         },
         multisig_signatures::{
             MultisigSignatureEntities, MultisigSignatureStatus, NewSignatureEntity,
         },
     },
     pagination::Pagination,
-    DbPool,
 };
 use once_cell::sync::Lazy;
 use sqlx::{Pool, Sqlite};

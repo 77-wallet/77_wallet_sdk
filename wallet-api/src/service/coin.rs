@@ -3,11 +3,11 @@ use crate::{
         self,
         account::AccountDomain,
         chain::ChainDomain,
-        coin::{coin_info_to_coin_data, CoinDomain},
+        coin::{CoinDomain, coin_info_to_coin_data},
     },
     infrastructure::{
         parse_utc_with_error,
-        task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
+        task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
     },
     response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
 };
@@ -16,11 +16,11 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{assets::AssetsId, coin::CoinId},
     repositories::{
+        ResourcesRepo,
         assets::AssetsRepoTrait,
         chain::ChainRepoTrait,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
-        ResourcesRepo,
     },
 };
 use wallet_transport_backend::{

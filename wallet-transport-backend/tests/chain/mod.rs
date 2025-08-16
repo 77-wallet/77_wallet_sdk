@@ -1,6 +1,6 @@
 use wallet_transport_backend::{
-    request::{ChainListReq, ChainRpcListReq},
     Error,
+    request::{ChainListReq, ChainRpcListReq},
 };
 
 use crate::init;

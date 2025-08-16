@@ -11,10 +11,8 @@ CREATE TABLE api_assets (
     status INTEGER NOT NULL,
     is_multisig INTEGER DEFAULT 0 NOT NULL,
     balance VARCHAR(256) NULL,
-    type INTEGER NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );
-
 CREATE UNIQUE INDEX api_assets_symbol_address_chain_token_idx ON api_assets (symbol, address, chain_code, token_address);
 CREATE INDEX api_assets_symbol_address_chain_idx ON api_assets (symbol, address, chain_code);

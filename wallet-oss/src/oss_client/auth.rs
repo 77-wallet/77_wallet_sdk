@@ -2,8 +2,8 @@ use crate::{
     debug,
     oss_client::oss::{Api as _, OSSInfo as _},
 };
-use base64::engine::general_purpose;
 use base64::Engine;
+use base64::engine::general_purpose;
 use hmac::{Hmac, Mac};
 use reqwest::header::DATE;
 

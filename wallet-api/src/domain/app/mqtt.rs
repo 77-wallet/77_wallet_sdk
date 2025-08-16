@@ -1,6 +1,6 @@
-use super::{config::ConfigDomain, DeviceDomain};
+use super::{DeviceDomain, config::ConfigDomain};
 use crate::infrastructure::mqtt::{init::init_mqtt_processor, property::UserProperty};
-use wallet_database::repositories::{device::DeviceRepoTrait, ResourcesRepo};
+use wallet_database::repositories::{ResourcesRepo, device::DeviceRepoTrait};
 
 pub(crate) struct MqttDomain;
 

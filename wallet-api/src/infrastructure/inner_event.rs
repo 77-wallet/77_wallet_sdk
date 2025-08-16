@@ -1,4 +1,4 @@
-use crate::{domain::assets::AssetsDomain, FrontendNotifyEvent, NotifyEvent};
+use crate::{FrontendNotifyEvent, NotifyEvent, domain::assets::AssetsDomain};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -75,7 +75,7 @@ impl EventBuffer {
         &self,
         delay_secs: u64,
     ) -> impl tokio_stream::Stream<Item = Vec<AssetKey>> + '_ {
-        use tokio_stream::{wrappers::IntervalStream, StreamExt};
+        use tokio_stream::{StreamExt, wrappers::IntervalStream};
 
         tracing::debug!("等待第一次资产变更通知...");
         self.notifier.notified().await;

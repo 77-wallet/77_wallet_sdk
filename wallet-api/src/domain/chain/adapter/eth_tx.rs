@@ -1,11 +1,10 @@
 use crate::{
     domain::chain::{
-        pare_fee_setting,
+        TransferResp, pare_fee_setting,
         swap::{
-            evm_swap::{dexSwap1Call, SwapParams},
             EstimateSwapResult,
+            evm_swap::{SwapParams, dexSwap1Call},
         },
-        TransferResp,
     },
     request::transaction::{ApproveReq, DepositReq, WithdrawReq},
 };
@@ -15,13 +14,12 @@ use alloy::{
 };
 use alloy::{primitives::U256, rpc::types::TransactionRequest};
 use wallet_chain_interact::{
+    ResourceConsume,
     eth::{
-        self,
+        self, EthChain, FeeSetting,
         operations::erc::{Allowance, Approve, Deposit, Withdraw},
-        EthChain, FeeSetting,
     },
     types::ChainPrivateKey,
-    ResourceConsume,
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::unit;

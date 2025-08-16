@@ -2,13 +2,15 @@ use crate::{
     dao::assets::CreateAssetsVo,
     entities::{api_assets::ApiAssetsEntity, assets::AssetsId},
     error::DatabaseError,
-    sql_utils::{update_builder::DynamicUpdateBuilder, SqlExecutableNoReturn},
+    sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
 
 use sqlx::{Executor, Sqlite};
 
-impl ApiAssetsEntity {
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+pub struct ApiAssetsDao;
+
+impl ApiAssetsDao {
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<ApiAssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -109,9 +111,11 @@ impl ApiAssetsEntity {
         let sql = r#"
         INSERT INTO api_assets
         (
-            name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
+            name, symbol, decimals, address, chain_code, token_address, 
+            protocol, status, balance, is_multisig, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 
+        strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT (symbol, address, chain_code, token_address)
         DO UPDATE SET
             status = EXCLUDED.status,
@@ -133,7 +137,10 @@ impl ApiAssetsEntity {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
+            .map_err(|e| {
+                tracing::error!("erorr: {e}");
+                crate::Error::Database(DatabaseError::DatabaseCreateFailed)
+            })
     }
 
     pub async fn delete_assets<'a, E>(exec: E, assets_id: &AssetsId) -> Result<(), crate::Error>

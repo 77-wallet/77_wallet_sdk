@@ -1,13 +1,13 @@
 use super::adapter::TransactionAdapter;
 use crate::{
     domain::{bill::BillDomain, coin::CoinDomain},
-    infrastructure::task_queue::{self, task::Tasks, BackendApiTaskData},
+    infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
     request::transaction::{self, Signer},
 };
 use wallet_chain_interact::{
     eth,
     sol::{self, SolFeeSetting},
-    tron::{protocol::account::AccountResourceDetail, TronChain},
+    tron::{TronChain, protocol::account::AccountResourceDetail},
     types::ChainPrivateKey,
 };
 use wallet_database::{
@@ -21,7 +21,7 @@ use wallet_database::{
     repositories::permission::PermissionRepo,
 };
 use wallet_transport_backend::{
-    api::{permission::TransPermission, BackendApi},
+    api::{BackendApi, permission::TransPermission},
     consts::endpoint,
     request::PermissionData,
     response_vo::chain::GasOracle,

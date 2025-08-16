@@ -508,11 +508,7 @@ impl<T: serde::Serialize> NewBillEntity<T> {
     }
 
     pub fn get_multisig_i32(&self) -> i32 {
-        if self.multisig_tx {
-            1
-        } else {
-            0
-        }
+        if self.multisig_tx { 1 } else { 0 }
     }
 
     pub fn get_symbol_and_to(&self) -> (String, String) {

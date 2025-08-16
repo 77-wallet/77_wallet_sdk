@@ -1,6 +1,6 @@
 use crate::{
-    dao::address_book::AddressBookDao, entities::address_book::AddressBookEntity,
-    pagination::Pagination, DbPool,
+    DbPool, dao::address_book::AddressBookDao, entities::address_book::AddressBookEntity,
+    pagination::Pagination,
 };
 
 use super::ResourcesRepo;

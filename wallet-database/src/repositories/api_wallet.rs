@@ -1,6 +1,6 @@
 use crate::{
-    entities::api_wallet::{ApiWalletEntity, ApiWalletType},
     DbPool,
+    entities::api_wallet::{ApiWalletEntity, ApiWalletType},
 };
 
 use super::ResourcesRepo;

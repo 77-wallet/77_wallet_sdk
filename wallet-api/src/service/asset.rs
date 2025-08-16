@@ -2,7 +2,7 @@ use crate::{
     domain::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
     response_vo::assets::{
         AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
     },
@@ -14,8 +14,8 @@ use wallet_database::{
         coin::SymbolId,
     },
     repositories::{
-        account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait, ResourcesRepo,
+        ResourcesRepo, account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
+        coin::CoinRepoTrait, device::DeviceRepoTrait,
     },
 };
 use wallet_transport_backend::request::{

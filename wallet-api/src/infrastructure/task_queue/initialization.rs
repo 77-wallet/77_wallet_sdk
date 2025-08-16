@@ -3,7 +3,7 @@ use crate::{
         app::{config::ConfigDomain, mqtt::MqttDomain},
         multisig::MultisigQueueDomain,
     },
-    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
     service::{announcement::AnnouncementService, coin::CoinService},
 };
 use wallet_database::{

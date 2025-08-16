@@ -1,9 +1,8 @@
 use crate::{
     api::ReturnType,
     response_vo::{
-        self, account::Balance, multisig_account::QueueInfo,
+        self, MultisigQueueFeeParams, account::Balance, multisig_account::QueueInfo,
         multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
-        MultisigQueueFeeParams,
     },
     service::multisig_transaction::MultisigTransactionService,
 };

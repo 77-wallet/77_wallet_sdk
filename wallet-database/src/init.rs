@@ -1,5 +1,5 @@
 use crate::DbPool;
-use sqlx::{migrate::MigrateDatabase as _, Pool, Sqlite};
+use sqlx::{Pool, Sqlite, migrate::MigrateDatabase as _};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]

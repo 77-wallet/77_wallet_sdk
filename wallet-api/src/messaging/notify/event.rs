@@ -14,8 +14,8 @@ use super::{
     },
 };
 use crate::messaging::mqtt::topics::{
-    api_wallet::{AddressUseMsg, UnbindUidMsg},
     BulletinMsg,
+    api_wallet::{AddressUseMsg, UnbindUidMsg},
 };
 
 #[derive(Debug, serde::Serialize)]
