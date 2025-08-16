@@ -13,9 +13,12 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
-use crate::messaging::mqtt::topics::{
-    api_wallet::{AddressUseMsg, UnbindUidMsg},
-    BulletinMsg,
+use crate::messaging::{
+    mqtt::topics::{
+        api_wallet::{AddressUseMsg, UnbindUidMsg, WithdrawMsg},
+        BulletinMsg,
+    },
+    notify::api_wallet::WithdrawFront,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -63,6 +66,7 @@ pub enum NotifyEvent {
     // API wallet
     UnbindUid(UnbindUidMsg),
     AddressUse(AddressUseMsg),
+    Withdraw(WithdrawFront),
 }
 
 impl NotifyEvent {
@@ -109,6 +113,7 @@ impl NotifyEvent {
             NotifyEvent::SyncAssets => "SYNC_ASSETS".to_string(),
             NotifyEvent::UnbindUid(_) => "UNBIND_UID".to_string(),
             NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
+            NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
         }
     }
 }

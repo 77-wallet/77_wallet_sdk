@@ -22,16 +22,18 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
+pub mod api_withdraw;
 
 #[async_trait::async_trait]
 pub trait Dao {
     type Input;
     type Output;
-    async fn upsert<'c, E>(executor: E, input: Self::Input) -> Result<Self::Output, crate::Error>
+    type Error;
+    async fn upsert<'c, E>(executor: E, input: Self::Input) -> Result<Self::Output, Self::Error>
     where
         E: sqlx::Executor<'c, Database = sqlx::Sqlite>;
 
-    async fn list<'c, E>(executor: E) -> Result<Vec<Self::Output>, crate::Error>
+    async fn list<'c, E>(executor: E) -> Result<Vec<Self::Output>, Self::Error>
     where
         E: sqlx::Executor<'c, Database = sqlx::Sqlite>;
 }
