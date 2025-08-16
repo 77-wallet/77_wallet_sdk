@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::exchange_rate::ExchangeRateEntity,
-    repositories::{exchange_rate::ExchangeRateRepoTrait, ResourcesRepo, TransactionTrait as _},
+    repositories::{ResourcesRepo, TransactionTrait as _, exchange_rate::ExchangeRateRepoTrait},
 };
 
 use crate::domain::coin::CoinDomain;

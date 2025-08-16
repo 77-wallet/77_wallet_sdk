@@ -7,6 +7,7 @@ pub(crate) mod multisig;
 pub(crate) mod other;
 pub(crate) mod permission;
 pub(crate) mod transaction;
+pub(crate) mod api_wallet;
 
 #[derive(Debug)]
 pub struct FrontendNotifyEvent {

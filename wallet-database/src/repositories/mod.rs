@@ -3,6 +3,7 @@ pub mod address_book;
 pub mod announcement;
 pub mod api_account;
 pub mod api_wallet;
+pub mod api_withdraw;
 pub mod assets;
 pub mod bill;
 pub mod chain;
@@ -54,36 +55,6 @@ impl node::NodeRepoTrait for ResourcesRepo {}
 
 #[async_trait::async_trait]
 impl TransactionTrait for ResourcesRepo {
-    fn get_transaction(self) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
-        self.transaction.ok_or(crate::Error::Database(
-            crate::DatabaseError::TransactionNotBegin,
-        ))
-    }
-
-    fn get_db_pool(&self) -> &crate::DbPool {
-        &self.db_pool
-    }
-
-    fn get_mut_transaction(
-        &mut self,
-    ) -> Result<&mut sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
-        self.transaction.as_mut().ok_or(crate::Error::Database(
-            crate::DatabaseError::TransactionNotBegin,
-        ))
-    }
-
-    fn insert_transaction(&mut self, tx: sqlx::Transaction<'static, sqlx::Sqlite>) {
-        self.transaction = Some(tx);
-    }
-
-    fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
-        if let Some(tx) = self.transaction.as_mut() {
-            Ok(ExecutorWrapper::Transaction(tx))
-        } else {
-            Ok(ExecutorWrapper::Pool(&self.db_pool))
-        }
-    }
-
     async fn begin_transaction(&mut self) -> Result<(), crate::Error>
     where
         Self: Sized,
@@ -109,6 +80,36 @@ impl TransactionTrait for ResourcesRepo {
         }
 
         Ok(())
+    }
+
+    fn get_mut_transaction(
+        &mut self,
+    ) -> Result<&mut sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
+        self.transaction.as_mut().ok_or(crate::Error::Database(
+            crate::DatabaseError::TransactionNotBegin,
+        ))
+    }
+
+    fn get_transaction(self) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
+        self.transaction.ok_or(crate::Error::Database(
+            crate::DatabaseError::TransactionNotBegin,
+        ))
+    }
+
+    fn get_db_pool(&self) -> &crate::DbPool {
+        &self.db_pool
+    }
+
+    fn insert_transaction(&mut self, tx: sqlx::Transaction<'static, sqlx::Sqlite>) {
+        self.transaction = Some(tx);
+    }
+
+    fn get_conn_or_tx(&mut self) -> Result<ExecutorWrapper<'_>, crate::Error> {
+        if let Some(tx) = self.transaction.as_mut() {
+            Ok(ExecutorWrapper::Transaction(tx))
+        } else {
+            Ok(ExecutorWrapper::Pool(&self.db_pool))
+        }
     }
 }
 

@@ -1,10 +1,10 @@
 use crate::{
     domain::{self, chain::ChainDomain, node::NodeDomain},
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
 };
 use wallet_database::{
     entities::node::NodeCreateVo,
-    repositories::{chain::ChainRepoTrait, node::NodeRepoTrait, ResourcesRepo},
+    repositories::{ResourcesRepo, chain::ChainRepoTrait, node::NodeRepoTrait},
 };
 pub struct NodeService {
     pub repo: ResourcesRepo,
