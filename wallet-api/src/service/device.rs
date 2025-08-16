@@ -9,7 +9,7 @@ use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
 pub const APP_ID: &str = "ada7d9308190fe45";
 
 use crate::{
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
     request::devices::InitDeviceReq,
 };
 

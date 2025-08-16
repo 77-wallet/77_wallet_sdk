@@ -1,7 +1,7 @@
 use wallet_database::{
     entities::announcement::AnnouncementEntity,
     pagination::Pagination,
-    repositories::{announcement::AnnouncementRepoTrait, ResourcesRepo, TransactionTrait as _},
+    repositories::{ResourcesRepo, TransactionTrait as _, announcement::AnnouncementRepoTrait},
 };
 
 use crate::domain::announcement::AnnouncementDomain;

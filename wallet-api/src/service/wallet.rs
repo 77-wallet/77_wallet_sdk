@@ -1,8 +1,8 @@
 use wallet_database::{
     dao::multisig_member::MultisigMemberDaoV1,
     repositories::{
-        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
-        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo, TransactionTrait as _,
+        ResourcesRepo, TransactionTrait as _, account::AccountRepoTrait, chain::ChainRepoTrait,
+        coin::CoinRepoTrait, device::DeviceRepoTrait, wallet::WalletRepoTrait,
     },
 };
 use wallet_transport_backend::{
@@ -16,7 +16,7 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        app::{config::ConfigDomain, DeviceDomain},
+        app::{DeviceDomain, config::ConfigDomain},
         assets::AssetsDomain,
         chain::ChainDomain,
         coin::CoinDomain,
@@ -25,7 +25,7 @@ use crate::{
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
+        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, task::Tasks,
     },
     response_vo::{
         account::BalanceInfo,
