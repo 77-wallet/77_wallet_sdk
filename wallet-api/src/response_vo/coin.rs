@@ -165,7 +165,7 @@ impl DerefMut for TokenCurrencies {
 
 impl TokenCurrencies {
     pub async fn calculate_token_price_changes(
-        data: TokenPriceChangeBody,
+        data: &TokenPriceChangeBody,
         exchange_rate: f64,
     ) -> Result<TokenPriceChangeRes, crate::ServiceError> {
         // let market_value = wallet_utils::conversion::decimal_from_f64(data.market_value)?;
@@ -504,32 +504,32 @@ pub struct TokenInfo {
     pub decimals: u8,
 }
 
-impl From<(TokenPriceChangeBody, BalanceInfo, BalanceInfo, BalanceInfo)> for TokenPriceChangeRes {
+impl From<(&TokenPriceChangeBody, BalanceInfo, BalanceInfo, BalanceInfo)> for TokenPriceChangeRes {
     fn from(
         (body, balance, market_value, day_change_amount): (
-            TokenPriceChangeBody,
+            &TokenPriceChangeBody,
             BalanceInfo,
             BalanceInfo,
             BalanceInfo,
         ),
     ) -> Self {
         Self {
-            id: body.id,
-            chain_code: body.chain_code,
-            symbol: body.symbol,
+            id: body.id.clone(),
+            chain_code: body.chain_code.clone(),
+            symbol: body.symbol.clone(),
             default_token: body.default_token,
             enable: body.enable,
             market_value,
             master: body.master,
-            name: body.name,
+            name: body.name.clone(),
             balance,
             price_percentage: body.price_percentage,
             status: body.status,
-            token_address: body.token_address,
+            token_address: body.token_address.clone(),
             unit: body.unit,
             // price: body.price,
             day_change_amount,
-            aname: body.aname,
+            aname: body.aname.clone(),
         }
     }
 }

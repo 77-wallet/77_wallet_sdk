@@ -280,7 +280,7 @@ impl CoinService {
                     )
                     .await?;
                     let data =
-                        TokenCurrencies::calculate_token_price_changes(token, exchange_rate.rate)
+                        TokenCurrencies::calculate_token_price_changes(&token, exchange_rate.rate)
                             .await?;
                     res.push(data);
                 }
@@ -554,8 +554,8 @@ impl CoinService {
         let mut data = Vec::new();
         if let Some(exchange_rate) = exchange_rate {
             for val in list {
-                let res =
-                    TokenCurrencies::calculate_token_price_changes(val, exchange_rate.rate).await?;
+                let res = TokenCurrencies::calculate_token_price_changes(&val, exchange_rate.rate)
+                    .await?;
                 data.push(res);
             }
         }
