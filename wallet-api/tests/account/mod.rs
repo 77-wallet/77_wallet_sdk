@@ -131,10 +131,8 @@ async fn test_generate_phrase() {
 async fn test_show_key() {
     init_test_log();
 
-    let parse =
-        "other phrase banana execute acquire scorpion amused route garage close hole barely"
-            .to_string();
-    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "123456a!").unwrap();
+    let parse = "".to_string();
+    let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
     let chain_code = ChainCode::Ethereum;
     let network = wallet_types::chain::network::NetworkKind::Mainnet;

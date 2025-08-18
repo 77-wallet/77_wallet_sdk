@@ -5,7 +5,7 @@ use crate::{
 };
 use wallet_database::entities::config::{ConfigEntity, MinValueSwitchConfig};
 use wallet_transport_backend::response_vo::app::{
-    AppVersionRes, GetFiatRes, GetOfficialWebsiteRes,
+    AppVersionRes, FindConfigByKeyRes, GetFiatRes, GetOfficialWebsiteRes,
 };
 
 impl crate::WalletManager {
@@ -164,6 +164,13 @@ impl crate::WalletManager {
     pub async fn set_invite_code(&self, invite_code: Option<String>) -> ReturnType<()> {
         AppService::new(self.repo_factory.resource_repo())
             .set_invite_code(invite_code)
+            .await?
+            .into()
+    }
+
+    pub async fn backend_config(&self) -> ReturnType<std::collections::HashMap<String, String>> {
+        AppService::new(self.repo_factory.resource_repo())
+            .backend_config()
             .await?
             .into()
     }

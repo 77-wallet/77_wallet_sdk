@@ -65,50 +65,12 @@ http_url = ""
 network = "mainnet"
 active = true
 
-# [[nodes.eth.nodes]]
-# node_name = "Ethereum-Test"
-# rpc_url = "https://eth-sepolia.g.alchemy.com/v2/qEXgxpQOj5nsCYP2QryFL4R_HdFYAc05"
-# http_url = ""
-# network = "testnet"
-# active = false
-
-# [nodes.bnb]
-# [[nodes.bnb.nodes]]
-# node_name = "Platform Node"
-# rpc_url = "http://rpc.88ai.fun/bnb"
-# http_url = ""
-# network = "mainnet"
-# active = false
-
-# [[nodes.bnb.nodes]]
-# node_name = "Third-Party Node"
-# rpc_url = "https://rpc.ankr.com/bsc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
-# http_url = ""
-# network = "mainnet"
-# active = true
-
 [[nodes.bnb.nodes]]
 node_name = "77 Official Nodes"
 rpc_url = "https://apprpc.safew.cc/bnb"
 http_url = ""
 network = "mainnet"
 active = true
-
-# [[nodes.bnb.nodes]]
-# node_name = "BNB-Test"
-# rpc_url = "https://go.getblock.io/d51b9998c91b42c281a5da0eea5567a0"
-# http_url = ""
-# network = "testnet"
-# active = false
-
-
-# [nodes.sol]
-# [[nodes.sol.nodes]]
-# node_name = "Platform Node"
-# rpc_url = "http://rpc.88ai.fun/sol"
-# http_url = ""
-# network = "mainnet"
-# active = false
 
 [[nodes.sol.nodes]]
 node_name = "77 Official Nodes"
@@ -123,28 +85,6 @@ rpc_url = "https://api.mainnet-beta.solana.com"
 http_url = ""
 network = "mainnet"
 active = true
-
-# [[nodes.sol.nodes]]
-# node_name = "Third-Party Node"
-# rpc_url = "https://solana-mainnet.g.alchemy.com/v2/I6EHAmjDJfTGik1rvtt6TRTGwARrBFtg"
-# http_url = ""
-# network = "mainnet"
-# active = true
-
-# [nodes.btc]
-# [[nodes.btc.nodes]]
-# node_name = "Platform Node"
-# rpc_url = "http://rpc.88ai.fun/btc"
-# http_url = "http://rpc.88ai.fun/btc/http/btc_blockbook/api/v2/"
-# network = "mainnet"
-# active = false
-
-# [[nodes.btc.nodes]]
-# node_name = "Third-Party Node"
-# rpc_url = "https://rpc.ankr.com/btc/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb"
-# http_url = "https://rpc.ankr.com/premium-http/btc_blockbook/32c99b7a1638ea489c32e97b41a22deb7df585d751f194eb4cc57e49649892eb/api/v2"
-# network = "mainnet"
-# active = true
 
 [[nodes.btc.nodes]]
 node_name = "77 Official Nodes"
@@ -170,7 +110,7 @@ active = true
 
 [[nodes.ton.nodes]]
 node_name = "77 Official Nodes"
-rpc_url = "https://quiet-quick-rain.ton-mainnet.quiknode.pro/c810e9e5a4bff2ca191a43fcb46e6ad5fecf78dd"
+rpc_url = "https://apprpc.safew.cc/ton"
 http_url = ""
 network = "mainnet"
 active = false
@@ -181,7 +121,6 @@ rpc_url = "https://apprpc.safew.cc/sui"
 http_url = ""
 network = "mainnet"
 active = true
-
 
 [[nodes.sui.nodes]]
 node_name = "Sui Official Node"

@@ -5,11 +5,10 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "0xD5359AD68FDb8a72386aB26C68D7648D548ec70a";
+    let addr = "0x998522f928A37837Fa8d6743713170243b95f98a";
     let chain_code = "eth";
-    let symbol = "ETH";
-    // let symbol = "USDT";
-    let token_address = None;
+    let symbol = "USDT";
+    let token_address = Some("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string());
 
     let balance = wallet_manager
         .chain_balance(addr, chain_code, &symbol, token_address)
