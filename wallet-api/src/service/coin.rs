@@ -11,7 +11,7 @@ use crate::{
     },
     response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{assets::AssetsId, coin::CoinId},
@@ -117,26 +117,31 @@ impl CoinService {
                 .iter_mut()
                 .find(|d: &&mut crate::response_vo::coin::CoinInfo| d.symbol == coin.symbol)
             {
-                d.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                    chain_code: coin.chain_code.clone(),
-                    token_address: coin.token_address().clone(),
-                    protocol: coin.protocol.clone(),
-                });
+                d.chain_list
+                    .entry(coin.chain_code.clone())
+                    .or_insert(coin.token_address().clone());
+                // d.chain_list.insert(crate::response_vo::coin::ChainInfo {
+                //     chain_code: coin.chain_code.clone(),
+                //     token_address: coin.token_address().clone(),
+                //     protocol: coin.protocol.clone(),
+                // });
             } else {
                 data.push(crate::response_vo::coin::CoinInfo {
                     symbol: coin.symbol.clone(),
                     name: Some(coin.name.clone()),
-                    chain_list: HashSet::from([crate::response_vo::coin::ChainInfo {
-                        chain_code: coin.chain_code.clone(),
-                        token_address: coin.token_address(),
-                        protocol: coin.protocol,
-                    }]),
-                    is_multichain: false,
+                    // chain_list: HashSet::from([crate::response_vo::coin::ChainInfo {
+                    //     chain_code: coin.chain_code.clone(),
+                    //     token_address: coin.token_address(),
+                    //     protocol: coin.protocol,
+                    // }]),
+                    chain_list: HashMap::from([(coin.chain_code.clone(), coin.token_address())]),
+                    // is_multichain: false,
+                    is_default: true,
                 })
             }
         }
 
-        data.mark_multi_chain_assets();
+        // data.mark_multi_chain_assets();
 
         let res = wallet_database::pagination::Pagination {
             page,
@@ -412,7 +417,7 @@ impl CoinService {
             None,
             protocol,
             decimals,
-            1,
+            0,
             0,
             1,
             time,

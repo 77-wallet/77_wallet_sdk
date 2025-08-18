@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     domain::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
@@ -272,7 +274,7 @@ impl AssetsService {
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
-            let assets: Vec<AssetsEntity> = tx
+            let assets_list: Vec<AssetsEntity> = tx
                 .get_chain_assets_by_address_chain_code_symbol(
                     vec![address.address],
                     Some(address.chain_code),
@@ -280,34 +282,48 @@ impl AssetsService {
                     None,
                 )
                 .await?;
-            for asset in assets {
-                if let Some(existing_asset) = res.iter_mut().find(|a| a.symbol == asset.symbol) {
+            for assets in assets_list {
+                let coin = CoinDomain::get_coin(
+                    &assets.chain_code,
+                    &assets.symbol,
+                    assets.token_address(),
+                )
+                .await?;
+                if let Some(existing_asset) = res
+                    .iter_mut()
+                    .find(|a| a.symbol == assets.symbol && coin.is_default == 1)
+                {
                     token_currencies
-                        .calculate_assets(asset, existing_asset)
+                        .calculate_assets(assets, existing_asset)
                         .await?;
+                    existing_asset
+                        .chain_list
+                        .entry(coin.chain_code.clone())
+                        .or_insert(coin.token_address().clone());
                 } else {
-                    let balance = token_currencies.calculate_assets_entity(&asset).await?;
+                    let balance = token_currencies.calculate_assets_entity(&assets).await?;
 
                     // if balance.unit_price == Some(0.0) {
                     //     continue;
                     // }
                     let chain_code = if chain_code.is_none()
-                        && let Some(chain) = tx.detail_with_main_symbol(&asset.symbol).await?
+                        && let Some(chain) = tx.detail_with_main_symbol(&assets.symbol).await?
                     {
                         chain.chain_code
                     } else {
-                        asset.chain_code
+                        assets.chain_code
                     };
 
                     res.push(AccountChainAsset {
                         chain_code: chain_code.clone(),
-                        symbol: asset.symbol,
-                        name: asset.name,
-                        // chain_list: HashMap::from([(chain_code, asset.token_address)]),
+                        symbol: assets.symbol,
+                        name: assets.name,
+                        chain_list: HashMap::from([(chain_code, Some(assets.token_address))]),
                         balance,
-                        is_multichain: false,
-                        is_multisig: asset.is_multisig, // chains: vec![chain_assets],
-                    });
+                        // is_multichain: false,
+                        is_multisig: assets.is_multisig, // chains: vec![chain_assets],
+                        is_default: coin.is_default == 1,
+                    })
                 }
             }
         }
@@ -322,7 +338,7 @@ impl AssetsService {
                 }
             });
         }
-        res.mark_multichain_assets();
+        // res.mark_multichain_assets();
         res.sort_account_chain_assets();
         Ok(res)
     }
@@ -491,11 +507,11 @@ impl AssetsService {
             .into_iter()
             .map(|address| address.address)
             .collect::<Vec<String>>();
-        let mut res = self
+        let res = self
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)
             .await?;
-        res.mark_multi_chain_assets();
+        // res.mark_multi_chain_assets();
         Ok(res)
     }
 

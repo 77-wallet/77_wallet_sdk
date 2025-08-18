@@ -309,7 +309,7 @@ mod test {
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
 
         // let account_id = Some(1);
-        let account_id = Some(2147483648);
+        let account_id = Some(1);
 
         let res = wallet_manager
             .get_coin_list(wallet_address, account_id, chain_code, keyword, is_multisig)

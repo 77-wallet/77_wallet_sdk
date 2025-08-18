@@ -1,6 +1,5 @@
 use std::{
     cmp::Ordering,
-    collections::HashSet,
     ops::{Deref, DerefMut},
 };
 
@@ -68,10 +67,12 @@ pub struct AccountChainAsset {
     pub symbol: String,
     pub name: String,
     /// key: chainCode, value: tokenAddress
-    // pub chain_list: HashMap<String, String>,
+    pub chain_list: HashMap<String, Option<String>>,
     pub balance: BalanceInfo,
-    pub is_multichain: bool,
+
+    // pub is_multichain: bool,
     pub is_multisig: i8,
+    pub is_default: bool,
 }
 
 #[derive(Debug, serde::Serialize, Default)]
@@ -93,26 +94,26 @@ impl DerefMut for AccountChainAssetList {
 }
 
 impl AccountChainAssetList {
-    // 标记多链资产的 is_multichain 属性
-    pub(crate) fn mark_multichain_assets(&mut self) {
-        // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
-        let mut symbol_chain_map: HashMap<String, HashSet<String>> = HashMap::new();
+    // // 标记多链资产的 is_multichain 属性
+    // pub(crate) fn mark_multichain_assets(&mut self) {
+    //     // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
+    //     let mut symbol_chain_map: HashMap<String, HashSet<String>> = HashMap::new();
 
-        // 先填充 symbol_chain_map，每个 symbol 对应的 HashSet 包含不同的 chain_code
-        for asset in self.iter() {
-            symbol_chain_map
-                .entry(asset.symbol.clone())
-                .or_default()
-                .insert(asset.chain_code.clone());
-        }
+    //     // 先填充 symbol_chain_map，每个 symbol 对应的 HashSet 包含不同的 chain_code
+    //     for asset in self.iter() {
+    //         symbol_chain_map
+    //             .entry(asset.symbol.clone())
+    //             .or_default()
+    //             .insert(asset.chain_code.clone());
+    //     }
 
-        // 再次遍历 self，设置 is_multichain 标记
-        for asset in self.iter_mut() {
-            if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
-                asset.is_multichain = chain_codes.len() > 1;
-            }
-        }
-    }
+    //     // 再次遍历 self，设置 is_multichain 标记
+    //     for asset in self.iter_mut() {
+    //         if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
+    //             // asset.is_multichain = chain_codes.len() > 1;
+    //         }
+    //     }
+    // }
 
     // 排序函数
     pub(crate) fn sort_account_chain_assets(&mut self) {
