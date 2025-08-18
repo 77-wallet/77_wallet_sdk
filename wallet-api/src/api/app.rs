@@ -5,7 +5,7 @@ use crate::{
 };
 use wallet_database::entities::config::{ConfigEntity, MinValueSwitchConfig};
 use wallet_transport_backend::response_vo::app::{
-    AppVersionRes, FindConfigByKeyRes, GetFiatRes, GetOfficialWebsiteRes,
+    AppVersionRes, GetFiatRes, GetOfficialWebsiteRes,
 };
 
 impl crate::WalletManager {

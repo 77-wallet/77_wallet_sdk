@@ -13,7 +13,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::{
     request::{AppInstallSaveReq, VersionViewReq},
-    response_vo::app::{AppVersionRes, FindConfigByKeyRes, GetFiatRes, GetOfficialWebsiteRes},
+    response_vo::app::{AppVersionRes, GetFiatRes, GetOfficialWebsiteRes},
 };
 
 use crate::{
