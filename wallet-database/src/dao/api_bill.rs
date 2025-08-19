@@ -134,7 +134,7 @@ impl ApiBillDao {
     }
 
     pub async fn bill_lists<'a, E>(
-        pool: &E,
+        pool: E,
         addr: &[String],
         chain_code: Option<&str>,
         symbol: Option<&str>,
@@ -147,7 +147,7 @@ impl ApiBillDao {
         page_size: i64,
     ) -> Result<Pagination<ApiBillEntity>, crate::Error>
     where
-            for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+        E: Executor<'a, Database = Sqlite>,
     {
         let mut sql = String::from("SELECT * FROM bill WHERE owner IN (");
         let placeholders: Vec<String> = addr.iter().map(|item| format!("'{}'", item)).collect();
@@ -187,15 +187,18 @@ impl ApiBillDao {
     }
 
     // 最近转列
-    pub async fn recent_bill(
+    pub async fn recent_bill<'a, E>(
         symbol: &str,
         addr: &str,
         chain_code: &str,
         min_value: Option<f64>,
         page: i64,
         page_size: i64,
-        pool: DbPool,
-    ) -> Result<Pagination<ApiRecentBillListVo>, crate::Error> {
+        pool: &E,
+    ) -> Result<Pagination<ApiRecentBillListVo>, crate::Error>
+    where
+            for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+    {
         let min_value_condition = if let Some(value) = min_value {
             format!("AND CAST(value as REAL) >= {}", value)
         } else {
@@ -229,8 +232,8 @@ impl ApiBillDao {
 
         // 查询1000条数据作为过滤重复的数据
         let mut paginate = Pagination::<ApiBillEntity>::init(0, 1000);
-        paginate.total_count = paginate.group_count(&count_sql, pool.as_ref()).await?;
-        paginate.data = paginate.data(&sql, pool.as_ref()).await?;
+        paginate.total_count = paginate.group_count(&count_sql, pool).await?;
+        paginate.data = paginate.data(&sql, pool).await?;
 
         let res = paginate
             .data
@@ -262,7 +265,7 @@ impl ApiBillDao {
     /// Fetches all bill details from the database with the given status.
     /// A `Vec` of `BillDetail` instances representing the fetched bill details.
     pub async fn fetch_all_by_status<'a, E>(
-        executor: E,
+        executor: &E,
         status: i8,
     ) -> Result<Vec<ApiBillEntity>, crate::Error>
     where
@@ -278,15 +281,15 @@ impl ApiBillDao {
     }
 
     // 包括需要更新交易的hash(ton链的in_msg 字段处理)
-    pub async fn update_all<T>(
-        pool: DbPool,
-        tx: ApiBillEntity<T>,
+    pub async fn update_all<'a, E>(
+        executor: E,
+        tx: ApiBillEntity,
         id: i32,
     ) -> Result<(), crate::Error>
     where
-        T: Serialize,
+        E: Executor<'a, Database = Sqlite>,
     {
-        let extra_str = tx.get_extra_str()?;
+        let extra_str = tx.extra;
         let time = sqlx::types::chrono::Utc::now().timestamp();
 
         let mut sql = String::from(
@@ -324,7 +327,7 @@ impl ApiBillDao {
         }
 
         query
-            .execute(pool.as_ref())
+            .execute(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
