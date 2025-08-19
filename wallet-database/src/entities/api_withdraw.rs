@@ -11,7 +11,17 @@ pub struct ApiWithdrawEntity {
     pub symbol : String,
     pub trade_no : String,
     pub trade_type : String,
-    pub status: u8,
+    pub status: ApiWithdrawStatus,
+    pub send_tx_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}
+
+#[derive(sqlx::Type)]
+#[derive(Debug, Clone, Copy, serde_repr::Deserialize_repr, serde_repr::Serialize_repr)]
+#[repr(u8)]
+pub enum ApiWithdrawStatus {
+    Init,
+    AuditPass,
+    AuditReject,
 }

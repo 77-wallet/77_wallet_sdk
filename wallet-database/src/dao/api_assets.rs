@@ -7,8 +7,10 @@ use crate::{
 
 use sqlx::{Executor, Sqlite};
 
-impl ApiAssetsEntity {
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
+pub(crate) struct ApiAssetsDao;
+
+impl ApiAssetsDao {
+    pub async fn list<'a, E>(exec: E) -> Result<Vec<ApiAssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

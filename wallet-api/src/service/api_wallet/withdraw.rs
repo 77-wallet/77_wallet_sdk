@@ -1,5 +1,7 @@
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
+use wallet_database::repositories::api_withdraw::{ApiWithdrawRepo};
 use wallet_database::repositories::ResourcesRepo;
+use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 use crate::api::ReturnType;
 
@@ -13,7 +15,8 @@ impl WithdrawService {
     }
 
     pub async fn get_withdraw_order_list(&self) ->Result<Vec<ApiWithdrawEntity>, crate::ServiceError> {
-        Ok(vec![])
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiWithdrawRepo::list_api_withdraw(&pool).await.map_err(|e| e.into())
     }
 
     pub async fn sign_withdrawal_order(

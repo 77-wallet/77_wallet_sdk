@@ -13,7 +13,7 @@ use crate::{
     },
     service::{app::AppService, device::DeviceService},
 };
-
+use crate::messaging::mqtt::topics::api_wallet::WithdrawMsg;
 use super::{
     message::BizType,
     topics::{
@@ -175,7 +175,8 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         BizType::UnbindUid => exec_task::<UnbindUidMsg, _>(&payload, MqttTask::UnbindUid).await?,
         BizType::AddressUse => {
             exec_task::<AddressUseMsg, _>(&payload, MqttTask::AddressUse).await?
-        }
+        },
+        BizType::ApiWithdraw => exec_task::<WithdrawMsg, _>(&payload, MqttTask::ApiWithdraw).await?,
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
             return Err(crate::ServiceError::System(

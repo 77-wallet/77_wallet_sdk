@@ -4,7 +4,9 @@ use crate::{
 };
 use sqlx::{Executor, Sqlite};
 
-impl ApiWalletEntity {
+pub(crate) struct ApiWalletDao;
+
+impl ApiWalletDao {
     pub async fn upsert<'a, E>(
         exec: E,
         address: &str,
@@ -16,7 +18,7 @@ impl ApiWalletEntity {
         wallet_type: ApiWalletType,
         // merchant_id: &str,
         // app_id: &str,
-    ) -> Result<Self, crate::Error>
+    ) -> Result<ApiWalletEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -58,7 +60,7 @@ impl ApiWalletEntity {
         exec: E,
         address: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -75,7 +77,7 @@ impl ApiWalletEntity {
         exec: E,
         uid: &str,
         api_wallet_type: Option<ApiWalletType>,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -96,7 +98,7 @@ impl ApiWalletEntity {
         exec: E,
         address: Option<&str>,
         api_wallet_type: Option<ApiWalletType>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -115,7 +117,7 @@ impl ApiWalletEntity {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
-        let mut query = sqlx::query_as::<_, Self>(&sql);
+        let mut query = sqlx::query_as::<_, ApiWalletEntity>(&sql);
 
         if let Some(address) = address {
             query = query.bind(address);
@@ -135,7 +137,7 @@ impl ApiWalletEntity {
         address: &str,
         merchant_id: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -163,7 +165,7 @@ impl ApiWalletEntity {
         address: &str,
         app_id: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -190,7 +192,7 @@ impl ApiWalletEntity {
         exec: E,
         address: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -217,7 +219,7 @@ impl ApiWalletEntity {
         exec: E,
         address: &str,
         name: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -239,7 +241,7 @@ impl ApiWalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn mark_init<'a, E>(exec: E, uid: &str) -> Result<Self, crate::Error>
+    pub async fn mark_init<'a, E>(exec: E, uid: &str) -> Result<ApiWalletEntity, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -265,7 +267,7 @@ impl ApiWalletEntity {
     pub async fn delete_by_address<'a, E>(
         exec: E,
         addresses: &[&str],
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -285,7 +287,7 @@ impl ApiWalletEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn reset_status<'a, E>(exec: E, address: &str) -> Result<Vec<Self>, crate::Error>
+    pub async fn reset_status<'a, E>(exec: E, address: &str) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

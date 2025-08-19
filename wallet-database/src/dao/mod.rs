@@ -23,6 +23,7 @@ pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
 pub mod api_withdraw;
+mod api_bill;
 
 #[async_trait::async_trait]
 pub trait Dao {

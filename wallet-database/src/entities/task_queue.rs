@@ -179,4 +179,5 @@ pub enum KnownTaskName {
     OrderAllConfirmed,
     UnbindUid,
     AddressUse,
+    ApiWithdraw,
 }
