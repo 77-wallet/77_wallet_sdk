@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 use wallet_database::entities::chain::ChainEntity;
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
 

@@ -3,7 +3,6 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use alloy::primitives::map::HashMap;
 use wallet_database::entities::assets::AssetsEntity;
 
 use crate::response_vo::chain::ChainList;
