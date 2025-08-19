@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
     infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
@@ -187,7 +189,8 @@ impl ChainService {
         mut self,
         address: &str,
         account_id: Option<u32>,
-        symbol: &str,
+        // symbol: &str,
+        chain_list: HashMap<String, String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
         let mut tx = self.repo;
@@ -233,8 +236,18 @@ impl ChainService {
             }
         }
         let datas = tx
-            .get_assets_by_address(account_addresses, None, Some(symbol), is_multisig)
+            .get_assets_by_address(account_addresses, is_multisig)
             .await?;
+
+        let datas = datas
+            .into_iter()
+            .filter(|data| {
+                chain_list
+                    .get(&data.chain_code)
+                    .is_some_and(|token_address| data.token_address == *token_address)
+            })
+            .collect();
+
         let chains = tx.get_chain_list().await?;
         let res = token_currencies
             .calculate_chain_assets_list(datas, chains)

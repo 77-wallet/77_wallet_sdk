@@ -9,7 +9,10 @@ use crate::{
         parse_utc_with_error,
         task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
     },
-    response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
+    response_vo::{
+        chain::ChainList,
+        coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
+    },
 };
 use std::collections::{HashMap, HashSet};
 use wallet_database::{
@@ -120,7 +123,7 @@ impl CoinService {
             {
                 d.chain_list
                     .entry(coin.chain_code.clone())
-                    .or_insert(coin.token_address().clone());
+                    .or_insert(coin.token_address.unwrap_or_default());
                 // d.chain_list.insert(crate::response_vo::coin::ChainInfo {
                 //     chain_code: coin.chain_code.clone(),
                 //     token_address: coin.token_address().clone(),
@@ -135,7 +138,10 @@ impl CoinService {
                     //     token_address: coin.token_address(),
                     //     protocol: coin.protocol,
                     // }]),
-                    chain_list: HashMap::from([(coin.chain_code.clone(), coin.token_address())]),
+                    chain_list: ChainList(HashMap::from([(
+                        coin.chain_code.clone(),
+                        coin.token_address.unwrap_or_default(),
+                    )])),
                     // is_multichain: false,
                     is_default: true,
                 })

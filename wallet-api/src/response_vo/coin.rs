@@ -1,11 +1,11 @@
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 use wallet_database::entities::chain::ChainEntity;
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
 
-use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
+use crate::{
+    domain::{account::AccountDomain, app::config::ConfigDomain},
+    response_vo::chain::ChainList,
+};
 
 use super::{
     account::BalanceInfo,
@@ -19,7 +19,7 @@ pub struct CoinInfo {
     pub symbol: String,
     pub name: Option<String>,
     // pub chain_list: HashSet<ChainInfo>,
-    pub chain_list: HashMap<String, Option<String>>,
+    pub chain_list: ChainList,
     // pub is_multichain: bool,
     pub is_default: bool,
 }
