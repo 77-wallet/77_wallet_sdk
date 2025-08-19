@@ -1,3 +1,5 @@
+use rust_decimal::Decimal;
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoinInfo {
@@ -197,4 +199,12 @@ pub struct TokenPrice {
     pub name: String,
     pub unit: u8,
     pub price: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoinMarketValue {
+    pub market_value: Decimal,
+    pub max_supply_quantity: Option<Decimal>,
+    pub circulating_supply: Option<Decimal>,
 }

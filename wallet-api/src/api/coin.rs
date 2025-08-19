@@ -1,5 +1,5 @@
 use crate::{api::ReturnType, response_vo::coin::TokenPriceChangeRes, service::coin::CoinService};
-use wallet_transport_backend::response_vo::coin::TokenHistoryPrices;
+use wallet_transport_backend::response_vo::coin::{CoinMarketValue, TokenHistoryPrices};
 
 impl crate::WalletManager {
     pub async fn get_hot_coin_list(
@@ -123,6 +123,16 @@ impl crate::WalletManager {
     ) -> ReturnType<TokenHistoryPrices> {
         CoinService::new(self.repo_factory.resource_repo())
             .query_history_price(req)
+            .await?
+            .into()
+    }
+
+    pub async fn coin_market_value(
+        &self,
+        req: std::collections::HashMap<String, String>,
+    ) -> ReturnType<CoinMarketValue> {
+        CoinService::new(self.repo_factory.resource_repo())
+            .market_value(req)
             .await?
             .into()
     }

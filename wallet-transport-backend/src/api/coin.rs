@@ -1,6 +1,10 @@
+use serde_json::json;
+
 use crate::{
     request::{AllTokenQueryByPageReq, SwapTokenQueryReq},
-    response_vo::coin::{CoinInfos, TokenPopularByPages, TokenPrice, TokenPriceInfos},
+    response_vo::coin::{
+        CoinInfos, CoinMarketValue, TokenPopularByPages, TokenPrice, TokenPriceInfos,
+    },
     CoinInfo,
 };
 
@@ -158,6 +162,21 @@ impl BackendApi {
             .await?;
 
         Ok(token)
+    }
+
+    // 查询代币的市值
+    pub async fn coin_market_value(
+        &self,
+        coin: std::collections::HashMap<String, String>,
+    ) -> Result<CoinMarketValue, crate::Error> {
+        let endpoint = "token/queryTokenSummaryDetail";
+        let req = json!({
+            "chainTokenAddrMap":coin
+        });
+        let market_value = self
+            .post_request::<_, CoinMarketValue>(endpoint, &req)
+            .await?;
+        Ok(market_value)
     }
 }
 // pub async fn token_subscribe(
