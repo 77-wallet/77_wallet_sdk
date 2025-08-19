@@ -12,7 +12,7 @@ pub struct ApiBillEntity {
     // 0转入 1转出
     pub transfer_type: i8,
     // 1:普通交易，2:部署多签账号手续费 3:服务费
-    pub tx_kind: i8,
+    pub tx_kind: ApiBillKind,
     // 订单归属
     pub owner: String,
     pub from_addr: String,
@@ -77,10 +77,11 @@ impl ApiBillStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, serde_repr::Serialize_repr, serde_repr::Deserialize_repr)]
+#[derive(Debug, Default, Clone, Copy, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type)]
 #[repr(u8)]
 pub enum ApiBillKind {
     // 普通交易
+    #[default]
     Transfer = 1,
     // 部署多签账号手续费
     DeployMultiSign = 2,
@@ -231,6 +232,36 @@ impl From<&ApiBillEntity> for ApiRecentBillListVo {
             transaction_time: item.transaction_time,
             transfer_type: item.transfer_type,
             created_at: item.created_at,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ApiBillUpdateEntity {
+    pub hash: String,
+    pub format_fee: String,
+    pub transaction_time: u128,
+    pub status: i8,
+    pub block_height: u128,
+    pub resource_consume: String,
+}
+
+impl ApiBillUpdateEntity {
+    pub fn new(
+        hash: String,
+        format_fee: String,
+        time: u128,
+        status: i8,
+        block_height: u128,
+        resource_consume: String,
+    ) -> Self {
+        Self {
+            hash,
+            format_fee,
+            transaction_time: time,
+            status,
+            block_height,
+            resource_consume,
         }
     }
 }

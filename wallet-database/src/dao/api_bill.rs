@@ -8,6 +8,7 @@ use chrono::Utc;
 use serde::Serialize;
 use sqlx::{Executor, Sqlite};
 use std::collections::HashSet;
+use crate::entities::api_bill::ApiBillUpdateEntity;
 
 pub(crate) struct ApiBillDao;
 
@@ -265,7 +266,7 @@ impl ApiBillDao {
     /// Fetches all bill details from the database with the given status.
     /// A `Vec` of `BillDetail` instances representing the fetched bill details.
     pub async fn fetch_all_by_status<'a, E>(
-        executor: &E,
+        executor: E,
         status: i8,
     ) -> Result<Vec<ApiBillEntity>, crate::Error>
     where
@@ -335,32 +336,32 @@ impl ApiBillDao {
     }
 
     /// Creates a new bill record in the database.
-    pub async fn create<'a, E, T>(tx: ApiBillEntity<T>, exec: E) -> Result<(), crate::Error>
+    pub async fn create<'a, E, T>(tx: ApiBillEntity, exec: E) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
         T: serde::Serialize,
     {
-        let owner = tx.get_owner();
+        let owner = tx.owner;
         let time = Utc::now().timestamp();
-        let signer = tx.get_singer_str();
-        let (symbol, to) = tx.get_symbol_and_to();
-        let transaction_time = if tx.transaction_time == 0 {
+        let signer = tx.signer;
+        let (symbol, to) = (tx.symbol, tx.to_addr);
+        let transaction_time = if tx.transaction_time.timestamp() == 0 {
             time
         } else {
-            tx.transaction_time
+            tx.transaction_time.timestamp()
         };
         let token = tx.token.clone().unwrap_or_default();
-        let multisig_tx = tx.get_multisig_i32();
-        let extra = tx.get_extra_str()?;
+        let multisig_tx = tx.is_multisig;
+        let extra = tx.extra;
         let values = format!(
             "('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}')",
             tx.hash,
             tx.chain_code,
             symbol,
-            tx.tx_type,
+            tx.transfer_type,
             tx.tx_kind.to_i8(),
             owner,
-            tx.from,
+            tx.from_addr,
             to,
             token,
             tx.value,
@@ -415,7 +416,7 @@ impl ApiBillDao {
 
     // 修改交易
     pub async fn update<'a, E>(
-        transaction: &BillUpdateEntity,
+        transaction: &ApiBillUpdateEntity,
         tx: E,
     ) -> Result<Option<ApiBillEntity>, crate::Error>
     where
@@ -471,7 +472,7 @@ impl ApiBillDao {
         chain_code: &str,
         address: &str,
         exec: E,
-    ) -> Result<Vec<BillEntity>, crate::Error>
+    ) -> Result<Vec<ApiBillEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -481,7 +482,7 @@ impl ApiBillDao {
         let sql =
             "select * from bill where owner = $1 and status = $2 and chain_code = $3 and created_at > $4";
 
-        let rs = sqlx::query_as::<_, BillEntity>(sql)
+        let rs = sqlx::query_as::<_, ApiBillEntity>(sql)
             .bind(address)
             .bind(ApiBillStatus::Pending.to_i8())
             .bind(chain_code)
@@ -497,13 +498,13 @@ impl ApiBillDao {
         chain_code: &str,
         address: &str,
         exec: E,
-    ) -> Result<Option<BillEntity>, crate::DatabaseError>
+    ) -> Result<Option<ApiBillEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "select * from bill where owner = $1 and chain_code = $2 order by block_height desc limit 1";
 
-        let rs = sqlx::query_as::<_, BillEntity>(sql)
+        let rs = sqlx::query_as::<_, ApiBillEntity>(sql)
             .bind(address)
             .bind(chain_code)
             .fetch_optional(exec)
@@ -515,13 +516,13 @@ impl ApiBillDao {
         address: &str,
         chain_code: &str,
         exec: E,
-    ) -> Result<Option<BillEntity>, crate::DatabaseError>
+    ) -> Result<Option<ApiBillEntity>, crate::DatabaseError>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "select * from bill where to_addr = ? and chain_code = ?";
 
-        let rs = sqlx::query_as::<_, BillEntity>(sql)
+        let rs = sqlx::query_as::<_, ApiBillEntity>(sql)
             .bind(address)
             .bind(chain_code)
             .fetch_optional(exec)
