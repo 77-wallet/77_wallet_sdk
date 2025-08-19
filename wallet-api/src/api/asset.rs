@@ -47,6 +47,7 @@ impl crate::WalletManager {
         symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
+        let token_address = token_address.filter(|s| !s.is_empty());
         AssetsService::new(self.repo_factory.resource_repo())
             .detail(address, account_id, chain_code, symbol, token_address)
             .await?

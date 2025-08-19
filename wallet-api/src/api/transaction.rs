@@ -20,6 +20,7 @@ impl crate::WalletManager {
         symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<Balance> {
+        let token_address = token_address.filter(|s| !s.is_empty());
         TransactionService::chain_balance(address, chain_code, symbol, token_address)
             .await
             .into()
