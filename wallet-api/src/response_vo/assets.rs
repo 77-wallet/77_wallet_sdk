@@ -6,6 +6,8 @@ use std::{
 use alloy::primitives::map::HashMap;
 use wallet_database::entities::assets::AssetsEntity;
 
+use crate::response_vo::chain::ChainList;
+
 use super::account::BalanceInfo;
 
 #[derive(Debug, serde::Serialize)]
@@ -67,9 +69,8 @@ pub struct AccountChainAsset {
     pub symbol: String,
     pub name: String,
     /// key: chainCode, value: tokenAddress
-    pub chain_list: HashMap<String, Option<String>>,
+    pub chain_list: ChainList,
     pub balance: BalanceInfo,
-
     // pub is_multichain: bool,
     pub is_multisig: i8,
     pub is_default: bool,

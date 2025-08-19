@@ -5,8 +5,9 @@ use crate::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
     infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
-    response_vo::assets::{
-        AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
+    response_vo::{
+        assets::{AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes},
+        chain::ChainList,
     },
 };
 use wallet_database::{
@@ -299,7 +300,7 @@ impl AssetsService {
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
-                        .or_insert(coin.token_address().clone());
+                        .or_insert(coin.token_address.unwrap_or_default());
                 } else {
                     let balance = token_currencies.calculate_assets_entity(&assets).await?;
 
@@ -318,7 +319,7 @@ impl AssetsService {
                         chain_code: chain_code.clone(),
                         symbol: assets.symbol,
                         name: assets.name,
-                        chain_list: HashMap::from([(chain_code, Some(assets.token_address))]),
+                        chain_list: ChainList(HashMap::from([(chain_code, assets.token_address)])),
                         balance,
                         // is_multichain: false,
                         is_multisig: assets.is_multisig, // chains: vec![chain_assets],
