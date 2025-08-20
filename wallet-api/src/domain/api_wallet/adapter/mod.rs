@@ -9,19 +9,18 @@ use wallet_types::constant::chain_code;
 mod multisig_adapter;
 use crate::request::transaction::TransferReq;
 
-use super::rpc_need_header;
 pub use multisig_adapter::*;
-pub mod eth;
 pub mod eth_tx;
 pub mod ton_tx;
 pub mod tron_tx;
 
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
+use crate::domain::chain::rpc_need_header;
 
 const TIME_OUT: u64 = 30;
 
 #[macro_export]
-macro_rules! dispatch {
+macro_rules! dispatch1 {
     ($self:expr, $method:ident, $($arg:expr),*) => {
         match $self {
             Self::BitCoin(chain) => chain.$method($($arg),*).await,

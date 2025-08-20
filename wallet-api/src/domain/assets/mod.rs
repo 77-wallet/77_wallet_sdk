@@ -361,7 +361,7 @@ impl AssetsDomain {
                         &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
-                ApiAssetsEntity::upsert_assets(&*pool, assets).await?;
+                AssetsEntity::upsert_assets(&*pool, assets).await?;
             }
         }
         Ok(())

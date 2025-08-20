@@ -6,6 +6,7 @@ use crate::{
 };
 
 use sqlx::{Executor, Sqlite};
+use crate::entities::api_assets::ApiCreateAssetsVo;
 
 pub(crate) struct ApiAssetsDao;
 
@@ -91,11 +92,11 @@ impl ApiAssetsDao {
         //     .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
-    pub async fn upsert_assets<'a, E>(exec: E, assets: CreateAssetsVo) -> Result<(), crate::Error>
+    pub async fn upsert_assets<'a, E>(exec: E, assets: ApiCreateAssetsVo) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let CreateAssetsVo {
+        let ApiCreateAssetsVo {
             assets_id,
             name,
             decimals,
@@ -160,7 +161,7 @@ impl ApiAssetsDao {
                 AND coin.symbol = api_assets.symbol
                 AND coin.status = 1
             );
-    "#;
+        "#;
 
         sqlx::query(sql)
             .bind(assets_id.address.to_string())
@@ -217,5 +218,48 @@ impl ApiAssetsDao {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn update_status<'a, E>(
+        exec: E,
+        chain_code: &str,
+        symbol: &str,
+        token_address: Option<String>,
+        status: u8,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE api_assets
+        SET status = $4, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE chain_code = $1 AND LOWER(symbol) = LOWER($2) AND token_address = $3
+            AND EXISTS (
+                SELECT 1
+                FROM chain
+                WHERE chain.chain_code = assets.chain_code
+                AND chain.status = 1
+            )
+            AND EXISTS (
+                SELECT 1
+                FROM coin
+                WHERE coin.chain_code = assets.chain_code
+                AND coin.token_address = assets.token_address
+                AND coin.symbol = assets.symbol
+                AND coin.status = 1
+            );
+        "#;
+
+        sqlx::query(sql)
+            .bind(chain_code)
+            .bind(symbol)
+            .bind(token_address.unwrap_or_default())
+            .bind(status)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))?;
+
+        Ok(())
     }
 }

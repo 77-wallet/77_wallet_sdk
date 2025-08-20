@@ -28,6 +28,9 @@ use wallet_transport_backend::{
 };
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
+use wallet_database::entities::api_account::ApiAccountEntity;
+use wallet_database::entities::api_assets::ApiAssetsEntity;
+use wallet_database::repositories::api_assets::ApiAssetsRepo;
 
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
@@ -49,7 +52,7 @@ impl ApiChainTransDomain {
             symbol: symbol.to_string(),
             token_address,
         };
-        let assets = AssetsEntity::assets_by_id(&*pool, &assets_id)
+        let assets = ApiAssetsRepo::assets_by_id(&pool, &assets_id)
             .await?
             .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
 
@@ -59,10 +62,10 @@ impl ApiChainTransDomain {
     pub async fn account(
         chain_code: &str,
         address: &str,
-    ) -> Result<AccountEntity, crate::ServiceError> {
+    ) -> Result<ApiAccountEntity, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account =
-            AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
+            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
                 .await?
                 .ok_or(crate::BusinessError::Account(
                     crate::AccountError::NotFound(address.to_string()),

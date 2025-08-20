@@ -17,13 +17,13 @@ pub struct ApiBillDomain;
 
 impl ApiBillDomain {
     pub async fn create_bill<T>(
-        params: entities::api_bill::ApiBillEntity<T>,
+        params: entities::api_bill::ApiBillEntity,
     ) -> Result<(), crate::ServiceError>
     where
         T: serde::Serialize,
     {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        Ok(BillDao::create(params, &*pool).await?)
+        Ok(ApiBillDao::create(params, &*pool).await?)
     }
 
     // 对于swap的交易，先判断有没有对应的交易

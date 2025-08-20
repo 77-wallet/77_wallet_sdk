@@ -53,9 +53,9 @@ impl WithdrawMsg {
 
         // 可能发交易
         let value = Decimal::from_str(&self.value).unwrap();
-        if (value < dec!(10)) {
+        if (value < Decimal::from(10)) {
             // 发交易
-            let tx_hash = ChainTransDomain::transfer(params, bill_kind, &adapter).await?;
+            // let tx_hash = ChainTransDomain::transfer(params, bill_kind, &adapter).await?;
         }
         Ok(())
     }

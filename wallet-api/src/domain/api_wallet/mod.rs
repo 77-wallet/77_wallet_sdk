@@ -4,4 +4,4 @@ pub(crate) mod withdraw;
 pub(crate) mod transaction;
 
 pub (crate) mod adapter;
-mod bill;
+pub (crate) mod bill;

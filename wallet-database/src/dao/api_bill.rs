@@ -1,18 +1,46 @@
+use crate::entities::api_bill::ApiBillUpdateEntity;
 use crate::{
-    any_in_collection,
+    DbPool, any_in_collection,
     entities::api_bill::{ApiBillEntity, ApiBillStatus, ApiRecentBillListVo},
     pagination::Pagination,
-    DbPool,
 };
 use chrono::Utc;
 use serde::Serialize;
-use sqlx::{Executor, Sqlite};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Executor, FromRow, Sqlite};
 use std::collections::HashSet;
-use crate::entities::api_bill::ApiBillUpdateEntity;
 
 pub(crate) struct ApiBillDao;
 
 impl ApiBillDao {
+    pub async fn page<'a, E>(
+        exec: E,
+        sql: &str,
+        page_size: i64,
+        page: i64,
+    ) -> Result<(i64, Vec<ApiBillEntity>), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + Send + Copy,
+    {
+        let count_sql = "SELECT count(*) FROM";
+        let start = sql.find("FROM").unwrap_or(0) + 4;
+        let count_sql1 = format!("{} {}", count_sql, &sql[start..]);
+
+        let count = sqlx::query_scalar::<_, i64>(&count_sql1)
+            .fetch_one(exec.clone())
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        let sql1 = format!("{} LIMIT {} OFFSET {}", sql, page_size, page * page_size);
+
+        let data = sqlx::query_as::<_, ApiBillEntity>(&sql1)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok((count, data))
+    }
+
     pub async fn get_one_by_hash<'a, E>(
         hash: &str,
         exec: E,
@@ -91,7 +119,10 @@ impl ApiBillDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let kinds = crate::any_in_collection(bill_kind, "','");
-        let sql = format!("select * from bill where owner = '{}' and tx_kind in ('{}') ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1",owner_address,kinds);
+        let sql = format!(
+            "select * from bill where owner = '{}' and tx_kind in ('{}') ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1",
+            owner_address, kinds
+        );
         sqlx::query_as::<_, ApiBillEntity>(&sql)
             .fetch_optional(exec)
             .await
@@ -148,7 +179,7 @@ impl ApiBillDao {
         page_size: i64,
     ) -> Result<Pagination<ApiBillEntity>, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        E: Executor<'a, Database = Sqlite> + Copy,
     {
         let mut sql = String::from("SELECT * FROM bill WHERE owner IN (");
         let placeholders: Vec<String> = addr.iter().map(|item| format!("'{}'", item)).collect();
@@ -183,8 +214,13 @@ impl ApiBillDao {
 
         sql.push_str(" ORDER BY datetime(transaction_time, 'unixepoch') DESC");
 
-        let paginate = Pagination::<ApiBillEntity>::init(page, page_size);
-        Ok(paginate.page(pool, &sql).await?)
+        let res = ApiBillDao::page(pool, &sql, page, page_size).await?;
+        Ok(Pagination{
+            page,
+            page_size,
+            total_count: res.0,
+            data: res.1,
+        })
     }
 
     // 最近转列
@@ -198,7 +234,7 @@ impl ApiBillDao {
         pool: &E,
     ) -> Result<Pagination<ApiRecentBillListVo>, crate::Error>
     where
-            for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
         let min_value_condition = if let Some(value) = min_value {
             format!("AND CAST(value as REAL) >= {}", value)
@@ -479,8 +515,7 @@ impl ApiBillDao {
         // 一个 半小时
         let time = wallet_utils::time::now().timestamp() - (90 * 60);
 
-        let sql =
-            "select * from bill where owner = $1 and status = $2 and chain_code = $3 and created_at > $4";
+        let sql = "select * from bill where owner = $1 and status = $2 and chain_code = $3 and created_at > $4";
 
         let rs = sqlx::query_as::<_, ApiBillEntity>(sql)
             .bind(address)
@@ -530,4 +565,3 @@ impl ApiBillDao {
         Ok(rs)
     }
 }
-

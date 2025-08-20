@@ -1,9 +1,9 @@
 pub mod account;
 pub mod address_book;
 pub mod announcement;
-pub mod api_account;
-pub mod api_assets;
-pub mod api_wallet;
+pub(crate) mod api_account;
+pub(crate) mod api_assets;
+pub(crate) mod api_wallet;
 pub mod assets;
 pub mod bill;
 pub mod chain;
@@ -22,8 +22,8 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
-pub mod api_withdraw;
-mod api_bill;
+pub(crate) mod api_withdraw;
+pub(crate) mod api_bill;
 
 #[async_trait::async_trait]
 pub trait Dao {
