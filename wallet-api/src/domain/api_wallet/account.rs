@@ -1,13 +1,17 @@
-use wallet_crypto::{EncryptedJsonGenerator as _, KeystoreJsonGenerator};
+use wallet_chain_interact::types::ChainPrivateKey;
+use wallet_crypto::{
+    EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
+    KeystoreJsonGenerator,
+};
 use wallet_database::{
-    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType},
+    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
     repositories::{
         ResourcesRepo, api_account::ApiAccountRepo, api_wallet::ApiWalletRepo,
         device::DeviceRepoTrait as _,
     },
 };
 use wallet_transport_backend::request::AddressInitReq;
-use wallet_types::chain::address::r#type::AddressType;
+use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
 use crate::{domain::app::config::ConfigDomain, response_vo::account::CreateAccountRes};
 
@@ -53,6 +57,45 @@ impl ApiAccountDomain {
         // .await?;
 
         Ok((res, derivation_path, address_init_req))
+    }
+
+    pub(crate) async fn get_private_key(
+        address: &str,
+        chain_code: &str,
+        password: &str,
+    ) -> Result<ChainPrivateKey, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
+            .await?
+            .ok_or(crate::BusinessError::Account(
+                crate::AccountError::NotFound(address.to_string()),
+            ))?;
+
+        let key = KeystoreJsonDecryptor.decrypt(password.as_ref(), &account.private_key)?;
+
+        let Some(chain) = ChainEntity::chain_node_info(&*pool, chain_code).await? else {
+            return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
+                crate::ChainError::NotFound(chain_code.to_string()),
+            )));
+        };
+
+        let chain_code: ChainCode = chain_code.try_into()?;
+        let private_key = match chain_code {
+            ChainCode::Solana => {
+                wallet_utils::parse_func::sol_keypair_from_bytes(&key)?.to_base58_string()
+            }
+            ChainCode::Bitcoin => {
+                wallet_chain_interact::btc::wif_private_key(&key, chain.network.as_str().into())?
+            }
+            ChainCode::Dogcoin => {
+                wallet_chain_interact::dog::wif_private_key(&key, chain.network.as_str().into())?
+            }
+            ChainCode::Litecoin => {
+                wallet_chain_interact::ltc::wif_private_key(&key, chain.network.as_str().into())?
+            }
+            _ => hex::encode(key),
+        };
+        Ok(private_key.into())
     }
 
     // pub(crate) async fn decrypt_seed(

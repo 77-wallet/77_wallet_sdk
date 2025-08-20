@@ -1,4 +1,3 @@
-use crate::entities::account::AccountEntity;
 use crate::{
     entities::{
         api_account::{ApiAccountEntity, CreateApiAccountVo},
@@ -192,19 +191,13 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            SELECT * FROM api_account 
-            WHERE address = $1 AND chain_code = $2 AND address_type = $3 AND wallet_type = $4
-        "#;
-
-        sqlx::query_as::<_, ApiAccountEntity>(sql)
-            .bind(address)
-            .bind(chain_code)
-            .bind(address_type)
-            .bind(api_wallet_type)
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_eq("address", address)
+            .and_where_eq("chain_code", chain_code)
+            .and_where_eq("address_type", address_type)
+            .and_where_eq("wallet_type", api_wallet_type)
             .fetch_optional(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn find_one_by_wallet_address_index<'a, E>(

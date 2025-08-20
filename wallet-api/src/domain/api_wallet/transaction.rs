@@ -1,6 +1,6 @@
 use super::adapter::TransactionAdapter;
 use crate::{
-    domain::{coin::CoinDomain},
+    domain::{bill::BillDomain, coin::CoinDomain},
     infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
     request::transaction::{self, Signer},
 };
@@ -90,12 +90,12 @@ impl ApiChainTransDomain {
         };
 
         // 查询余额
-        let asset = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?;
+        let asset = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
         if let Some(asset) = asset {
             // 余额不一致
             if asset.balance != balance {
                 // 更新本地余额后在上报后端
-                ApiAssetsRepo::update_balance(&pool, &assets_id, balance)
+                AssetsEntity::update_balance(&*pool, &assets_id, balance)
                     .await
                     .map_err(crate::ServiceError::Database)?;
 
@@ -131,7 +131,7 @@ impl ApiChainTransDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         if chain_code == chain_code::BTC {
-            let res = ApiBillRepo::on_going_bill(chain_code::BTC, from, &pool).await?;
+            let res = BillDao::on_going_bill(chain_code::BTC, from, pool.as_ref()).await?;
             return Ok(!res.is_empty());
         };
 
@@ -141,7 +141,7 @@ impl ApiChainTransDomain {
     /// transfer
     pub async fn transfer(
         mut params: transaction::TransferReq,
-        bill_kind: ApiBillKind,
+        bill_kind: BillKind,
         adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
         //  check ongoing tx
