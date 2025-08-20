@@ -381,7 +381,7 @@ impl WalletManager {
 
         Context::get_global_unconfirmed_msg_processor()?
             .start()
-            .await?;
+            .await;
         Context::get_global_task_manager()?
             .start_task_check()
             .await?;
