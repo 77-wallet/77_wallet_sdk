@@ -1,13 +1,11 @@
 use crate::entities::api_bill::ApiBillUpdateEntity;
 use crate::{
-    DbPool, any_in_collection,
+    any_in_collection,
     entities::api_bill::{ApiBillEntity, ApiBillStatus, ApiRecentBillListVo},
     pagination::Pagination,
 };
 use chrono::Utc;
-use serde::Serialize;
-use sqlx::sqlite::SqliteRow;
-use sqlx::{Executor, FromRow, Sqlite};
+use sqlx::{Executor, Sqlite};
 use std::collections::HashSet;
 
 pub(crate) struct ApiBillDao;

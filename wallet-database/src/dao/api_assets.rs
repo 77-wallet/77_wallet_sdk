@@ -1,11 +1,11 @@
 use crate::{
-    dao::assets::CreateAssetsVo,
     entities::{api_assets::ApiAssetsEntity, assets::AssetsId},
     error::DatabaseError,
     sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
 
 use sqlx::{Executor, Sqlite};
+use crate::entities::api_assets::ApiCreateAssetsVo;
 
 pub struct ApiAssetsDao;
 
@@ -91,11 +91,11 @@ impl ApiAssetsDao {
         //     .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
-    pub async fn upsert_assets<'a, E>(exec: E, assets: CreateAssetsVo) -> Result<(), crate::Error>
+    pub async fn upsert_assets<'a, E>(exec: E, assets: ApiCreateAssetsVo) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let CreateAssetsVo {
+        let ApiCreateAssetsVo {
             assets_id,
             name,
             decimals,

@@ -12,6 +12,8 @@ use wallet_database::{
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
+use wallet_database::repositories::api_bill::ApiBillRepo;
+use crate::domain::api_wallet::adapter;
 
 pub struct ApiBillDomain;
 
@@ -23,7 +25,7 @@ impl ApiBillDomain {
         T: serde::Serialize,
     {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        Ok(ApiBillDao::create(params, &*pool).await?)
+        Ok(ApiBillRepo::create(params, &pool).await?)
     }
 
     // 对于swap的交易，先判断有没有对应的交易
@@ -52,7 +54,7 @@ impl ApiBillDomain {
         chain_code: &str,
     ) -> Result<String, crate::ServiceError> {
         let adapter =
-            super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+           adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         let res = adapter.query_tx_res(tx_hash).await?;
         match res {
             Some(res) => Ok(res.resource_consume),
@@ -65,7 +67,7 @@ impl ApiBillDomain {
         chain_code: &str,
     ) -> Result<Option<QueryTransactionResult>, crate::ServiceError> {
         let adapter =
-            super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+          adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
@@ -113,7 +115,7 @@ impl ApiBillDomain {
         if new_entity.chain_code == chain_code::TON {
             AcctChange::handle_ton_bill(new_entity, &pool).await?;
         } else {
-            BillDomain::create_check_swap(new_entity, &pool).await?;
+            ApiBillDomain::create_check_swap(new_entity, &pool).await?;
         }
 
         Ok(())
@@ -123,7 +125,7 @@ impl ApiBillDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<(), crate::ServiceError> {
-        let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
+        let start_time = ApiBillDomain::get_last_bill_time(chain_code, address).await?;
         // let start_time = None;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
@@ -132,7 +134,7 @@ impl ApiBillDomain {
             .await?;
 
         for item in resp.list {
-            if let Err(e) = BillDomain::handle_sync_bill(item).await {
+            if let Err(e) = ApiBillDomain::handle_sync_bill(item).await {
                 tracing::warn!("[bill::sync_bills] failed {}", e);
             }
         }

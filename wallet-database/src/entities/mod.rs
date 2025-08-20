@@ -25,6 +25,8 @@ pub mod task_queue;
 pub mod wallet;
 pub mod api_withdraw;
 
+pub mod api_bill;
+
 // 是否过期
 fn has_expiration(timestamp: i64, chain_code: wallet_types::chain::chain::ChainCode) -> bool {
     match chain_code {

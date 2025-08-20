@@ -106,4 +106,9 @@ impl ApiBillRepo {
         ).await?;
         Ok(lists)
     }
+
+    pub async fn create(tx: ApiBillEntity, pool: &DbPool) -> Result<(), crate::Error> {
+        ApiBillDao::create(tx, pool.as_ref()).await
+    }
+
 }

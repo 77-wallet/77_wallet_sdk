@@ -20,7 +20,6 @@ pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
 pub mod api_bill;
-pub mod api_assets;
 
 pub struct ResourcesRepo {
     db_pool: crate::DbPool,
