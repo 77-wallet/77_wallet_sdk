@@ -1,5 +1,7 @@
 use super::chain::adapter::ChainAdapterFactory;
-use crate::{domain::coin::CoinDomain, request::transaction::SwapTokenInfo};
+use crate::{
+    domain::coin::CoinDomain, request::transaction::SwapTokenInfo, response_vo::chain::ChainList,
+};
 use futures::{stream, StreamExt};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
@@ -144,7 +146,7 @@ impl AssetsDomain {
                 tracing::info!("nonono, info: {:?}", info);
                 info.chain_list
                     .entry(assets.chain_code.clone())
-                    .or_insert(assets.token_address().clone());
+                    .or_insert(assets.token_address);
 
                 // info.chain_list.insert(crate::response_vo::coin::ChainInfo {
                 //     chain_code: assets.chain_code,
@@ -163,10 +165,10 @@ impl AssetsDomain {
                     //         protocol: assets.protocol,
                     //     },
                     // ]),
-                    chain_list: HashMap::from([(
+                    chain_list: ChainList(HashMap::from([(
                         assets.chain_code.clone(),
-                        Some(assets.token_address),
-                    )]),
+                        assets.token_address,
+                    )])),
                     // is_multichain: false,
                     is_default: coin.is_default == 1,
                 });

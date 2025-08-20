@@ -84,8 +84,6 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
     async fn get_assets_by_address(
         &mut self,
         address: Vec<String>,
-        chain_code: Option<String>,
-        symbol: Option<&str>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntityWithAddressType>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
@@ -93,8 +91,9 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
             executor,
             AssetsEntity::get_assets_by_address,
             address,
-            chain_code,
-            symbol,
+            None,
+            None,
+            None,
             is_multisig
         )
     }
