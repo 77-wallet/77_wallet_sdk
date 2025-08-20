@@ -1,16 +1,23 @@
+use std::str::FromStr;
+use rust_decimal::Decimal;
 use wallet_database::{
     entities::assets::AssetsId,
     repositories::api_assets::ApiAssetsRepo,
 };
 use wallet_transport_backend::request::api_wallet::strategy::QueryCollectionStrategyReq;
 use wallet_utils::conversion;
-
+use wallet_database::entities::api_bill::ApiBillKind;
+use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
 use crate::{
     domain::{api_wallet::account::ApiAccountDomain, chain::transaction::ChainTransDomain},
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     request::transaction::BaseTransferReq,
     service::transaction::TransactionService,
 };
+use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
+use crate::domain::api_wallet::transaction::ApiChainTransDomain;
+use crate::messaging::notify::api_wallet::WithdrawFront;
+use crate::request::transaction::TransferReq;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -132,7 +139,7 @@ impl TransMsg {
             &self.from,
             &self.to,
             &self.value,
-            &self.token_addr,
+            &self.token_address,
             &self.symbol,
             &self.trade_no,
             self.trade_type,
@@ -153,10 +160,10 @@ impl TransMsg {
                 &self.from,
                 &self.to.to_string(),
                 &self.value.to_string(),
-                &self.chain.to_string(),
-                &self.token_code.to_string(),
+                &self.chain_code.to_string(),
+                &self.symbol.to_string(),
             );
-            params.with_token(Some(self.token_addr.clone()));
+            params.with_token(Some(self.token_address.clone()));
 
             let req = TransferReq {
                 base: params,

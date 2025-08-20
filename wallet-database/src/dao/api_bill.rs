@@ -1,4 +1,3 @@
-use crate::entities;
 use crate::entities::api_bill::ApiBillUpdateEntity;
 use crate::{
     any_in_collection,
