@@ -2,20 +2,9 @@ use crate::{
     DbPool,
     entities::api_wallet::{ApiWalletEntity, ApiWalletType},
 };
+use crate::dao::api_wallet::ApiWalletDao;
 
-use super::ResourcesRepo;
-
-pub struct ApiWalletRepo {
-    repo: ResourcesRepo,
-}
-
-impl ApiWalletRepo {
-    pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            repo: ResourcesRepo::new(db_pool),
-        }
-    }
-}
+pub struct ApiWalletRepo;
 
 impl ApiWalletRepo {
     pub async fn upsert(
@@ -27,7 +16,7 @@ impl ApiWalletRepo {
         seed: &str,
         wallet_type: ApiWalletType,
     ) -> Result<ApiWalletEntity, crate::Error> {
-        Ok(ApiWalletEntity::upsert(
+        Ok(ApiWalletDao::upsert(
             pool.as_ref(),
             address,
             uid,
@@ -46,7 +35,7 @@ impl ApiWalletRepo {
         merchant_id: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::update_merchain_id(
+        Ok(ApiWalletDao::update_merchain_id(
             pool.as_ref(),
             address,
             merchant_id,
@@ -61,7 +50,7 @@ impl ApiWalletRepo {
         app_id: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::update_app_id(pool.as_ref(), address, app_id, api_wallet_type).await?)
+        Ok(ApiWalletDao::update_app_id(pool.as_ref(), address, app_id, api_wallet_type).await?)
     }
 
     pub async fn upbind_uid(
@@ -69,7 +58,7 @@ impl ApiWalletRepo {
         address: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::unbind_uid(pool.as_ref(), address, api_wallet_type).await?)
+        Ok(ApiWalletDao::unbind_uid(pool.as_ref(), address, api_wallet_type).await?)
     }
 
     // pub async fn update(
@@ -103,10 +92,10 @@ impl ApiWalletRepo {
     // }
 
     pub async fn delete(
-        &mut self,
+        pool: &DbPool,
         wallet_addresses: &[&str],
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::delete_by_address(self.repo.pool().as_ref(), wallet_addresses).await?)
+        Ok(ApiWalletDao::delete_by_address(pool.as_ref(), wallet_addresses).await?)
     }
 
     pub async fn list(
@@ -114,7 +103,7 @@ impl ApiWalletRepo {
         address: Option<&str>,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::list(pool.as_ref(), address, api_wallet_type).await?)
+        Ok(ApiWalletDao::list(pool.as_ref(), address, api_wallet_type).await?)
     }
 
     pub async fn find_by_address(
@@ -122,13 +111,13 @@ impl ApiWalletRepo {
         address: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::detail(pool.as_ref(), address, api_wallet_type).await?)
+        Ok(ApiWalletDao::detail(pool.as_ref(), address, api_wallet_type).await?)
     }
     pub async fn find_by_uid(
         pool: &DbPool,
         uid: &str,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletEntity::detail_by_uid(pool.as_ref(), uid, api_wallet_type).await?)
+        Ok(ApiWalletDao::detail_by_uid(pool.as_ref(), uid, api_wallet_type).await?)
     }
 }

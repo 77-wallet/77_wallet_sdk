@@ -20,6 +20,7 @@ use crate::messaging::{
     },
     notify::api_wallet::WithdrawFront,
 };
+use crate::messaging::notify::api_wallet::WithdrawNoPassFront;
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
@@ -67,6 +68,7 @@ pub enum NotifyEvent {
     UnbindUid(UnbindUidMsg),
     AddressUse(AddressUseMsg),
     Withdraw(WithdrawFront),
+    WithdrawNoPass(WithdrawNoPassFront),
 }
 
 impl NotifyEvent {
@@ -114,6 +116,7 @@ impl NotifyEvent {
             NotifyEvent::UnbindUid(_) => "UNBIND_UID".to_string(),
             NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
             NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
+            NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),
         }
     }
 }

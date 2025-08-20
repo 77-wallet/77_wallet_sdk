@@ -1,5 +1,5 @@
 use crate::dao::Dao;
-use crate::entities::api_withdraw::ApiWithdrawEntity;
+use crate::entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
 
@@ -55,10 +55,7 @@ impl Dao for ApiWithdrawDao {
 }
 
 impl ApiWithdrawDao {
-    pub async fn add<'a, E>(
-        api_withdraw: &ApiWithdrawEntity,
-        exec: E,
-    ) -> Result<(), crate::DatabaseError>
+    pub async fn add<'a, E>(exec: E, api_withdraw: ApiWithdrawEntity) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -87,15 +84,13 @@ impl ApiWithdrawDao {
                     .to_rfc3339_opts(SecondsFormat::Secs, true),
             )
             .execute(exec)
-            .await?;
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(())
     }
 
-    pub async fn update<'a, E>(
-        api_withdraw: &ApiWithdrawEntity,
-        exec: E,
-    ) -> Result<(), crate::DatabaseError>
+    pub async fn update<'a, E>(exec: E, api_withdraw: ApiWithdrawEntity) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -114,112 +109,68 @@ impl ApiWithdrawDao {
         tracing::warn!("{:#?}", api_withdraw);
 
         sqlx::query(sql)
-            .bind(&api_withdraw.status)
             .execute(exec)
-            .await?;
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(())
     }
 
-    pub async fn all_permission<'a, E>(
+    pub async fn update_status<'a, E>(
         exec: E,
-        user_addr: &str,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::DatabaseError>
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"SELECT * FROM api_withdraws p WHERE EXISTS
-        (
-            SELECT 1 FROM permission_user u WHERE u.permission_id = p.id AND u.address = ?
-        ) and p.is_del = 0;"#;
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                name = ?,
+                threshold = ?,
+                member = ?,
+                chain_code = ?,
+                operations = ?,
+                is_del = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = ?
+        "#;
 
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn all_api_withdraw<'a, E>(exec: E) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"SELECT * FROM api_withdraws"#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(user_addr)
             .fetch_all(exec)
-            .await?;
-
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
         Ok(result)
     }
 
-    pub async fn permission_by_uses<'a, E>(
+    pub async fn page_api_withdraw<'a, E>(
         exec: E,
-        users: &Vec<String>,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::DatabaseError>
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        // 如果没有用户，直接返回空向量
-        if users.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // 根据用户数量构造占位符,
-        let placeholders = users.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let sql = format!(
-            "SELECT * FROM permission p WHERE EXISTS (
-            SELECT 1 FROM permission_user u
-            WHERE u.permission_id = p.id
-              AND u.address in ({})
-        ) AND p.is_del = 0;",
-            placeholders
-        );
-
-        // 创建查询并依次绑定每个用户地址
-        let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql);
-        for user in users {
-            query = query.bind(user.clone());
-        }
-
-        let result = query.fetch_all(exec).await?;
-        Ok(result)
-    }
-
-    // 1 包含删除 0包含
-    pub async fn find_by_grantor_active<'a, E>(
-        grantor_addr: &str,
-        active_id: i64,
-        include_del: bool,
-        exec: E,
-    ) -> Result<Option<ApiWithdrawEntity>, crate::DatabaseError>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = if include_del {
-            r#"select * from permission where grantor_addr = ? and active_id = ?"#
-        } else {
-            r#"select * from permission where grantor_addr = ? and active_id = ? and is_del = 0"#
-        };
-
-        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(grantor_addr)
-            .bind(active_id)
-            .bind(include_del)
-            .fetch_optional(exec)
-            .await?;
-
-        Ok(result)
-    }
-
-    pub async fn find_by_id<'a, E>(
-        id: &str,
-        include_del: bool,
-        exec: E,
-    ) -> Result<Option<ApiWithdrawEntity>, crate::DatabaseError>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = if include_del {
-            r#"select * from permission where id = ?"#
-        } else {
-            r#"select * from permission where id = ? and is_del = 0"#
-        };
-
-        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(id)
-            .bind(include_del)
-            .fetch_optional(exec)
-            .await?;
-
-        Ok(result)
+        let count_sql = "SELECT count(*) FROM";
+        let sql = "SELECT * FROM api_withdraws ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        // let paginate = Pagination::<Self>::init(page, page_size);
+        // Ok(paginate.page(exec, sql).await?)
+        Ok(vec![])
     }
 }

@@ -7,7 +7,9 @@ use crate::{
 };
 use sqlx::{Executor, Sqlite};
 
-impl ApiAccountEntity {
+pub(crate) struct ApiAccountDao;
+
+impl ApiAccountDao {
     /// 插入多个账户（存在则更新 updated_at）
     pub async fn upsert_multi<'a, E>(
         exec: E,
@@ -64,13 +66,13 @@ impl ApiAccountEntity {
     pub async fn list_by_wallet<'a, E>(
         exec: E,
         wallet_address: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"SELECT * FROM api_account WHERE wallet_address = $1"#;
 
-        sqlx::query_as::<_, Self>(sql)
+        sqlx::query_as::<_, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .fetch_all(exec)
             .await
@@ -83,7 +85,7 @@ impl ApiAccountEntity {
         account_id: i32,
         wallet_address: &str,
         name: &str,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -95,7 +97,7 @@ impl ApiAccountEntity {
             RETURNING *
         "#;
 
-        sqlx::query_as::<_, Self>(sql)
+        sqlx::query_as::<_, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .bind(account_id)
             .bind(name)
@@ -110,7 +112,7 @@ impl ApiAccountEntity {
         wallet_address: &str,
         account_id: u32,
         is_used: bool,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -122,7 +124,7 @@ impl ApiAccountEntity {
             RETURNING *
         "#;
 
-        sqlx::query_as::<_, Self>(sql)
+        sqlx::query_as::<_, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .bind(account_id)
             .bind(is_used)
@@ -135,7 +137,7 @@ impl ApiAccountEntity {
     pub async fn latest_by_wallet<'a, E>(
         exec: E,
         wallet_address: &str,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -146,7 +148,7 @@ impl ApiAccountEntity {
             LIMIT 1
         "#;
 
-        sqlx::query_as::<_, Self>(sql)
+        sqlx::query_as::<_, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .fetch_optional(exec)
             .await
@@ -158,7 +160,7 @@ impl ApiAccountEntity {
         exec: E,
         wallet_address: &str,
         status: i32,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -170,7 +172,7 @@ impl ApiAccountEntity {
             RETURNING *
         "#;
 
-        sqlx::query_as::<_, Self>(sql)
+        sqlx::query_as::<_, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .bind(status)
             .fetch_all(exec)
@@ -185,7 +187,7 @@ impl ApiAccountEntity {
         chain_code: &str,
         address_type: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -194,7 +196,7 @@ impl ApiAccountEntity {
             WHERE address = $1 AND chain_code = $2 AND address_type = $3 AND wallet_type = $4
         "#;
 
-        sqlx::query_as::<_, Self>(sql)
+        sqlx::query_as::<_, ApiAccountEntity>(sql)
             .bind(address)
             .bind(chain_code)
             .bind(address_type)
@@ -209,7 +211,7 @@ impl ApiAccountEntity {
         wallet_address: &str,
         chain_code: &str,
         account_id: u32,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -227,7 +229,7 @@ impl ApiAccountEntity {
         exec: E,
         wallet_address: &str,
         account_id: u32,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -237,7 +239,7 @@ impl ApiAccountEntity {
         RETURNING *
         "#;
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .bind(account_id)
             .fetch_all(exec)
@@ -258,7 +260,7 @@ impl ApiAccountEntity {
             SELECT * FROM api_account WHERE wallet_address = $1 AND account_id = $2 AND wallet_type = $3
             "#;
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .bind(account_id)
             .bind(api_wallet_type)
@@ -272,7 +274,7 @@ impl ApiAccountEntity {
         executor: E,
         wallet_address: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<Option<Self>, crate::Error>
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -281,7 +283,7 @@ impl ApiAccountEntity {
                    ORDER BY account_id DESC
                    LIMIT 1;";
 
-        sqlx::query_as::<sqlx::Sqlite, Self>(sql)
+        sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
             .bind(wallet_address)
             .bind(api_wallet_type)
             .fetch_optional(executor)

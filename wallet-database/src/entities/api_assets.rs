@@ -37,25 +37,66 @@ impl ApiAssetsEntity {
     }
 }
 
-// #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
-// pub struct AssetsEntityWithAddressType {
-//     pub name: String,
-//     pub symbol: String,
-//     pub decimals: u8,
-//     pub address: String,
-//     pub chain_code: String,
-//     pub token_address: String,
-//     pub protocol: Option<String>,
-//     address_type: String,
-//     pub status: u8,
-//     pub is_multisig: i8,
-//     pub balance: String,
-//     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
-//     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
-// }
 
-// impl AssetsEntityWithAddressType {
-//     pub fn address_type(&self) -> Option<String> {
-//         (!self.address_type.is_empty()).then(|| self.address_type.clone())
-//     }
-// }
+
+#[derive(Debug)]
+pub struct ApiCreateAssetsVo {
+    pub assets_id: AssetsId,
+    pub name: String,
+    pub decimals: u8,
+    pub protocol: Option<String>,
+    pub status: u8,
+    pub is_multisig: i32,
+    pub balance: String,
+}
+
+impl ApiCreateAssetsVo {
+    pub fn new(
+        assets_id: AssetsId,
+        decimals: u8,
+        protocol: Option<String>,
+        is_multisig: i32,
+    ) -> Self {
+        Self {
+            assets_id,
+            name: "name".to_string(),
+            decimals,
+            protocol,
+            status: 1,
+            is_multisig,
+            balance: "0.00".to_string(),
+        }
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+
+    pub fn with_status(mut self, status: u8) -> Self {
+        self.status = status;
+        self
+    }
+
+    pub fn with_u256(
+        mut self,
+        balance: alloy::primitives::U256,
+        decimals: u8,
+    ) -> Result<Self, crate::Error> {
+        let balance = wallet_utils::unit::format_to_string(balance, decimals)?;
+        let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
+
+        self.balance = balance.to_string();
+        Ok(self)
+    }
+
+    pub fn with_balance(mut self, balance: &str) -> Self {
+        self.balance = balance.to_string();
+        self
+    }
+
+    pub fn with_protocol(mut self, protocol: Option<String>) -> Self {
+        self.protocol = protocol;
+        self
+    }
+}

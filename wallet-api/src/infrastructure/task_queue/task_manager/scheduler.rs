@@ -63,6 +63,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
                 KnownTaskName::OrderAllConfirmed => 1,
                 KnownTaskName::UnbindUid => 2,
                 KnownTaskName::AddressUse => 2,
+                KnownTaskName::ApiWithdraw => 2,
             }
         }
         wallet_database::entities::task_queue::TaskName::Unknown(_) => 0,

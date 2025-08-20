@@ -1,55 +1,58 @@
-use crate::{
-    DbPool,
-    dao::{Dao, api_withdraw::ApiWithdrawDao},
-    entities::api_withdraw::ApiWithdrawEntity,
-};
+use crate::entities::api_withdraw::ApiWithdrawStatus;
+use crate::{DbPool, dao::api_withdraw::ApiWithdrawDao, entities::api_withdraw::ApiWithdrawEntity};
 
 pub struct ApiWithdrawRepo;
 
 impl ApiWithdrawRepo {
-    pub async fn upsert(
+    pub async fn list_api_withdraw(pool: &DbPool) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::all_api_withdraw(pool.as_ref()).await
+    }
+
+    pub async fn page_api_withdraw(
+        pool: &DbPool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::all_api_withdraw(pool.as_ref()).await
+    }
+
+    pub async fn upsert_api_withdraw(
         pool: &DbPool,
         uid: &str,
         name: &str,
         from_addr: &str,
         to_addr: &str,
         value: &str,
+        token_addr: &str,
+        symbol: &str,
+        trade_no: &str,
+        trade_type: &str,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::upsert(
-            pool.as_ref(),
-            ApiWithdrawEntity {
-                id: 0,
-                name: name.to_string(),
-                uid: uid.to_string(),
-                from_addr: from_addr.to_string(),
-                to_addr: to_addr.to_string(),
-                value: value.to_string(),
-                decimals: 0,
-                token_addr: "".to_string(),
-                symbol: "".to_string(),
-                trade_no: "".to_string(),
-                trade_type: "".to_string(),
-                status: 0,
-                created_at: Default::default(),
-                updated_at: None,
-            },
-        )
-        .await
+        let withdraw_req = ApiWithdrawEntity {
+            id: 0,
+            name: name.to_string(),
+            uid: uid.to_string(),
+            from_addr: from_addr.to_string(),
+            to_addr: to_addr.to_string(),
+            value: value.to_string(),
+            decimals: 0,
+            token_addr: token_addr.to_string(),
+            symbol: symbol.to_string(),
+            trade_no: trade_no.to_string(),
+            trade_type: trade_type.to_string(),
+            status: ApiWithdrawStatus::Init,
+            send_tx_at: None,
+            created_at: Default::default(),
+            updated_at: None,
+        };
+        ApiWithdrawDao::add(pool.as_ref(), withdraw_req).await
     }
 
-    pub async fn update_status(
+    pub async fn update_api_withdraw_status(
         pool: &DbPool,
         trade_no: &str,
-        merchant_id: &str,
-        api_wallet_type: ApiWithdrawEntity,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        // Ok(ApiWithdrawDao::update_merchain_id(
-        //     self.db_pool.as_ref(),
-        //     address,
-        //     merchant_id,
-        //     api_wallet_type,
-        // )
-        // .await?)
-        Ok(vec![])
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_status(pool.as_ref(), trade_no, status).await
     }
 }

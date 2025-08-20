@@ -81,6 +81,8 @@ pub enum BizType {
     UnbindUid,
     // 地址使用
     AddressUse,
+    // 提币
+    ApiWithdraw,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]

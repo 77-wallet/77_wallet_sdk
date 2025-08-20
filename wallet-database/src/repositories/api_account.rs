@@ -5,24 +5,13 @@ use crate::{
         api_wallet::ApiWalletType,
     },
 };
+use crate::dao::api_account::ApiAccountDao;
 
-use super::ResourcesRepo;
-
-pub struct ApiAccountRepo {
-    repo: ResourcesRepo,
-}
-
-impl ApiAccountRepo {
-    pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            repo: ResourcesRepo::new(db_pool),
-        }
-    }
-}
+pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
     pub async fn upsert(pool: &DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {
-        Ok(ApiAccountEntity::upsert_multi(pool.as_ref(), input).await?)
+        Ok(ApiAccountDao::upsert_multi(pool.as_ref(), input).await?)
     }
 
     pub async fn mark_as_used(
@@ -31,7 +20,7 @@ impl ApiAccountRepo {
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         Ok(
-            ApiAccountEntity::update_is_used(pool.as_ref(), wallet_address, account_id, true)
+            ApiAccountDao::update_is_used(pool.as_ref(), wallet_address, account_id, true)
                 .await?,
         )
     }
@@ -78,18 +67,11 @@ impl ApiAccountRepo {
     // }
 
     pub async fn delete(
-        &mut self,
+        pool: &DbPool,
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(
-            ApiAccountEntity::physical_delete(
-                self.repo.pool().as_ref(),
-                wallet_address,
-                account_id,
-            )
-            .await?,
-        )
+        Ok(ApiAccountDao::physical_delete(pool.as_ref(), wallet_address, account_id).await?)
     }
 
     // pub async fn list(&mut self) -> Result<Vec<ApiAccountEntity>, crate::Error> {
@@ -109,7 +91,7 @@ impl ApiAccountRepo {
         address_type: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountEntity::find_one(
+        Ok(ApiAccountDao::find_one(
             pool.as_ref(),
             address,
             chain_code,
@@ -125,7 +107,7 @@ impl ApiAccountRepo {
         chain_code: &str,
         account_id: u32,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountEntity::find_one_by_wallet_address_index(
+        Ok(ApiAccountDao::find_one_by_wallet_address_index(
             pool.as_ref(),
             wallet_address,
             chain_code,
@@ -140,7 +122,7 @@ impl ApiAccountRepo {
         account_id: u32,
         api_wallet_type: ApiWalletType,
     ) -> Result<bool, crate::Error> {
-        Ok(ApiAccountEntity::has_account_id(
+        Ok(ApiAccountDao::has_account_id(
             pool.as_ref(),
             wallet_address,
             account_id,
@@ -155,7 +137,7 @@ impl ApiAccountRepo {
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
         Ok(
-            ApiAccountEntity::account_detail_by_max_id_and_wallet_address(
+            ApiAccountDao::account_detail_by_max_id_and_wallet_address(
                 pool.as_ref(),
                 wallet_address,
                 api_wallet_type,

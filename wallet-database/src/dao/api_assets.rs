@@ -1,11 +1,11 @@
 use crate::{
-    dao::assets::CreateAssetsVo,
     entities::{api_assets::ApiAssetsEntity, assets::AssetsId},
     error::DatabaseError,
     sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
 
 use sqlx::{Executor, Sqlite};
+use crate::entities::api_assets::ApiCreateAssetsVo;
 
 pub struct ApiAssetsDao;
 
@@ -91,11 +91,11 @@ impl ApiAssetsDao {
         //     .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
-    pub async fn upsert_assets<'a, E>(exec: E, assets: CreateAssetsVo) -> Result<(), crate::Error>
+    pub async fn upsert_assets<'a, E>(exec: E, assets: ApiCreateAssetsVo) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let CreateAssetsVo {
+        let ApiCreateAssetsVo {
             assets_id,
             name,
             decimals,
@@ -111,11 +111,9 @@ impl ApiAssetsDao {
         let sql = r#"
         INSERT INTO api_assets
         (
-            name, symbol, decimals, address, chain_code, token_address, 
-            protocol, status, balance, is_multisig, created_at, updated_at
+            name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 
-        strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT (symbol, address, chain_code, token_address)
         DO UPDATE SET
             status = EXCLUDED.status,
@@ -137,10 +135,7 @@ impl ApiAssetsDao {
             .execute(exec)
             .await
             .map(|_| ())
-            .map_err(|e| {
-                tracing::error!("erorr: {e}");
-                crate::Error::Database(DatabaseError::DatabaseCreateFailed)
-            })
+            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
     pub async fn delete_assets<'a, E>(exec: E, assets_id: &AssetsId) -> Result<(), crate::Error>
@@ -222,5 +217,48 @@ impl ApiAssetsDao {
             .await
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn update_status<'a, E>(
+        exec: E,
+        chain_code: &str,
+        symbol: &str,
+        token_address: Option<String>,
+        status: u8,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+        UPDATE api_assets
+        SET status = $4, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE chain_code = $1 AND LOWER(symbol) = LOWER($2) AND token_address = $3
+            AND EXISTS (
+                SELECT 1
+                FROM chain
+                WHERE chain.chain_code = assets.chain_code
+                AND chain.status = 1
+            )
+            AND EXISTS (
+                SELECT 1
+                FROM coin
+                WHERE coin.chain_code = assets.chain_code
+                AND coin.token_address = assets.token_address
+                AND coin.symbol = assets.symbol
+                AND coin.status = 1
+            );
+        "#;
+
+        sqlx::query(sql)
+            .bind(chain_code)
+            .bind(symbol)
+            .bind(token_address.unwrap_or_default())
+            .bind(status)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))?;
+
+        Ok(())
     }
 }
