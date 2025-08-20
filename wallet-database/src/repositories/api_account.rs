@@ -140,4 +140,15 @@ impl ApiAccountRepo {
         )
         .await?)
     }
+
+    pub async fn find_one_by_address_chain_code(
+        address: &str,
+        chain_code: &str,
+        exec: &DbPool,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error> {
+        Ok(
+            ApiAccountDao::find_one_by_address_chain_code(address, chain_code, exec.as_ref())
+                .await?,
+        )
+    }
 }

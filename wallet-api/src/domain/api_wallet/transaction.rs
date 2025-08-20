@@ -12,11 +12,11 @@ use wallet_chain_interact::{
 };
 use wallet_database::entities::api_account::ApiAccountEntity;
 use wallet_database::entities::api_assets::ApiAssetsEntity;
+use wallet_database::repositories::api_account::ApiAccountRepo;
 use wallet_database::repositories::api_assets::ApiAssetsRepo;
 use wallet_database::{
     dao::bill::BillDao,
     entities::{
-        account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
         bill::BillKind,
         coin::CoinEntity,
@@ -52,7 +52,7 @@ impl ApiChainTransDomain {
             symbol: symbol.to_string(),
             token_address,
         };
-        let assets = ApiAssetsRepo::assets_by_id(&pool, &assets_id)
+        let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id)
             .await?
             .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
 
@@ -64,12 +64,11 @@ impl ApiChainTransDomain {
         address: &str,
     ) -> Result<ApiAccountEntity, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let account =
-            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
-                .await?
-                .ok_or(crate::BusinessError::Account(
-                    crate::AccountError::NotFound(address.to_string()),
-                ))?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
+            .await?
+            .ok_or(crate::BusinessError::Account(
+                crate::AccountError::NotFound(address.to_string()),
+            ))?;
         Ok(account)
     }
 
@@ -151,7 +150,7 @@ impl ApiChainTransDomain {
             ))?;
         };
 
-        let private_key = ChainTransDomain::get_key(
+        let private_key = Self::get_key(
             &params.base.from,
             &params.base.chain_code,
             &params.password,

@@ -8,7 +8,7 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
-        api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
+        api_assets::ApiCreateAssetsVo,
         assets::{AssetsEntity, AssetsId},
         coin::{CoinData, CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,

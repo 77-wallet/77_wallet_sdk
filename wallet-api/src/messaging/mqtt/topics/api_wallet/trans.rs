@@ -1,5 +1,6 @@
 use wallet_database::{
-    dao::api_assets::ApiAssetsDao, entities::assets::AssetsId, repositories::chain::ChainRepo,
+    entities::assets::AssetsId,
+    repositories::{api_assets::ApiAssetsRepo, chain::ChainRepo},
 };
 use wallet_transport_backend::request::api_wallet::strategy::QueryCollectionStrategyReq;
 use wallet_utils::conversion;
@@ -53,7 +54,7 @@ impl TransMsg {
 
         let main_symbol = main_coin.symbol;
         let assets_id = AssetsId::new(&self.from, &self.chain, &main_symbol, None);
-        let assets = ApiAssetsDao::assets_by_id(&*pool, &assets_id)
+        let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id)
             .await?
             .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
 
