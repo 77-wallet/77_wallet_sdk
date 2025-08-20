@@ -19,6 +19,9 @@ use wallet_database::factory::RepositoryFactory;
 use wallet_database::repositories::device::DeviceRepoTrait;
 use wallet_database::SqliteContext;
 
+/// Marks whether initialization has already been performed to prevent duplication.
+/// - `OnceCell<()>` stores no real data, only acts as a flag.
+/// - Combined with `Lazy` to ensure the cell itself is created only once.
 pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
@@ -31,10 +34,6 @@ async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
 pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
-    // Tasks::new()
-    //     .push(Task::Initialization(InitializationTask::InitMqtt))
-    //     .send()
-    //     .await?;
     let pool = Context::get_global_sqlite_pool()?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut node_service = NodeService::new(repo);
@@ -93,6 +92,26 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     Ok(())
 }
 
+pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
+
+#[derive(Debug, Clone)]
+pub struct Context {
+    pub(crate) dirs: Dirs,
+    pub(crate) aggregate_api: Arc<String>,
+    pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
+    pub(crate) sqlite_context: wallet_database::SqliteContext,
+    pub(crate) oss_client: wallet_oss::oss_client::OssClient,
+    pub(crate) frontend_notify: Arc<RwLock<FrontendNotifySender>>,
+    pub(crate) task_manager: TaskManager,
+    pub(crate) mqtt_topics: Arc<RwLock<Topics>>,
+    pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
+    pub(crate) device: Arc<DeviceInfo>,
+    pub(crate) cache: Arc<SharedCache>,
+    pub(crate) inner_event_handle: InnerEventHandle,
+    pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
+    pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
+}
+
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
@@ -113,41 +132,6 @@ pub(crate) async fn init_context<'a>(
     Ok(context)
 }
 
-#[derive(Debug, Clone)]
-pub struct Context {
-    pub(crate) dirs: Dirs,
-    // pub(crate) mqtt_url: Arc<RwLock<Option<String>>>,
-    pub(crate) aggregate_api: Arc<String>,
-    pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
-    pub(crate) sqlite_context: wallet_database::SqliteContext,
-    pub(crate) oss_client: wallet_oss::oss_client::OssClient,
-    pub(crate) frontend_notify: Arc<RwLock<FrontendNotifySender>>,
-    pub(crate) task_manager: TaskManager,
-    pub(crate) mqtt_topics: Arc<RwLock<Topics>>,
-    pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
-    pub(crate) device: Arc<DeviceInfo>,
-    pub(crate) cache: Arc<SharedCache>,
-    pub(crate) inner_event_handle: InnerEventHandle,
-    pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
-    pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
-}
-
-#[derive(Debug, Clone)]
-pub struct DeviceInfo {
-    pub(crate) sn: String,
-    pub(crate) client_id: String,
-}
-impl DeviceInfo {
-    pub fn new(sn: &str, client_id: &str) -> Self {
-        Self {
-            sn: sn.to_owned(),
-            client_id: client_id.to_owned(),
-        }
-    }
-}
-
-pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
-
 impl Context {
     async fn new(
         sn: &str,
@@ -159,7 +143,7 @@ impl Context {
         let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
-        let header_opt = Some(HashMap::from([("clientId".to_string(), client_id.clone())]));
+
         #[cfg(feature = "dev")]
         let api_url = config.backend_api.dev_url;
         #[cfg(feature = "test")]
@@ -173,11 +157,12 @@ impl Context {
         #[cfg(feature = "prod")]
         let aggregate_api = config.aggregate_api.prod_url;
 
+        let headers_opt = Some(HashMap::from([("clientId".to_string(), client_id.clone())]));
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = wallet_transport_backend::api::BackendApi::new(
             Some(api_url.to_string()),
-            header_opt,
+            headers_opt,
             aes_cbc_cryptor,
         )?;
 
@@ -187,19 +172,12 @@ impl Context {
             let mut app_state = crate::app_state::APP_STATE.write().await;
             app_state.set_backend_url(Some(backend_api.base_url.clone()));
         }
-        // let mqtt_url = Arc::new(RwLock::new(None));
 
-        let oss_client = wallet_oss::oss_client::OssClient::new(
-            &config.oss.access_key_id,
-            &config.oss.access_key_secret,
-            &config.oss.endpoint,
-            &config.oss.bucket_name,
-        );
+        let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
         let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
         // 创建 TaskManager 实例
         let notify = Arc::new(tokio::sync::Notify::new());
-
         let task_manager = TaskManager::new(notify.clone());
 
         let unconfirmed_msg_processor = UnconfirmedMsgProcessor::new(&client_id, notify);
@@ -254,25 +232,6 @@ impl Context {
     pub(crate) fn get_aggregate_api() -> Result<String, crate::SystemError> {
         Ok((&Context::get_context()?.aggregate_api.clone()).to_string())
     }
-
-    // pub(crate) async fn get_global_mqtt_url() -> Result<Option<String>, crate::SystemError> {
-    //     let rs = &Context::get_context()?.mqtt_url;
-
-    //     let res = rs.read().await.clone();
-    //     Ok(res)
-    // }
-
-    // pub(crate) async fn set_global_mqtt_url(mqtt_url: &str) -> Result<(), crate::ServiceError> {
-    //     let mqtt_url = if !mqtt_url.starts_with("mqtt://") {
-    //         format!("mqtt://{}", mqtt_url)
-    //     } else {
-    //         mqtt_url.to_string()
-    //     };
-    //     let cx = Context::get_context()?;
-    //     let mut lock = cx.mqtt_url.write().await;
-    //     *lock = Some(mqtt_url);
-    //     Ok(())
-    // }
 
     pub(crate) fn get_global_oss_client(
     ) -> Result<&'static wallet_oss::oss_client::OssClient, crate::SystemError> {
@@ -370,6 +329,20 @@ impl Context {
 }
 
 #[derive(Debug, Clone)]
+pub struct DeviceInfo {
+    pub(crate) sn: String,
+    pub(crate) client_id: String,
+}
+impl DeviceInfo {
+    pub fn new(sn: &str, client_id: &str) -> Self {
+        Self {
+            sn: sn.to_owned(),
+            client_id: client_id.to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RpcToken {
     pub token: String,
     pub instance: tokio::time::Instant,
@@ -397,8 +370,6 @@ impl WalletManager {
         config: crate::Config,
         dir: Dirs,
     ) -> Result<WalletManager, crate::ServiceError> {
-        // let dir = Dirs::new(root_dir)?;
-        // let mqtt_url = wallet_transport_backend::consts::MQTT_URL.to_string();
         let base_path = infrastructure::log::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
         // 以前的上报日志
@@ -423,16 +394,9 @@ impl WalletManager {
     }
 
     pub async fn init_data(&self) -> Result<(), crate::ServiceError> {
-        // 启动任务检查循环
-        // let manager = Context::get_global_task_manager()?;
-        // manager.start_task_check();
-        // Context::get_global_task_manager()?.start_task_check();
-
-        // Tasks::new()
-        //     .push(Task::Initialization(InitializationTask::InitMqtt))
-        //     .send()
-        //     .await?;
+        // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
+
         tokio::spawn(async move {
             if let Err(e) = do_some_init().await {
                 tracing::error!("init_data error: {}", e);
@@ -442,16 +406,6 @@ impl WalletManager {
         Ok(())
     }
 
-    // pub(crate) async fn init_mqtt() -> Result<(), crate::ServiceError> {
-    //     let mqtt_init_req =
-    //         BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
-
-    //     Tasks::new()
-    //         .push(Task::BackendApi(BackendApiTask::BackendApi(mqtt_init_req)))
-    //         .send()
-    //         .await?;
-    //     Ok(())
-    // }
     pub async fn init_log(
         level: Option<&str>,
         app_code: &str,
