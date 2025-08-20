@@ -113,7 +113,7 @@ impl TaskTrait for MqttTask {
             MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
             MqttTask::UnbindUid(data) => data.exec(id).await?,
             MqttTask::AddressUse(data) => data.exec(id).await?,
-            MqttTask::ApiWithdraw(data)=>data.exec(id).await?,
+            MqttTask::ApiWithdraw(data) => data.exec(id).await?,
         }
         Ok(())
     }

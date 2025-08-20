@@ -2,18 +2,6 @@ use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
 use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
 use wallet_utils::serde_func;
 
-use crate::{
-    infrastructure::task_queue::{MqttTask, task::Tasks},
-    messaging::{
-        mqtt::topics::{
-            OutgoingPayload,
-            api_wallet::{AddressUseMsg, UnbindUidMsg},
-        },
-        notify::{FrontendNotifyEvent, event::NotifyEvent},
-    },
-    service::{app::AppService, device::DeviceService},
-};
-use crate::messaging::mqtt::topics::api_wallet::WithdrawMsg;
 use super::{
     Message,
     message::BizType,
@@ -24,6 +12,18 @@ use super::{
         OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete,
         PermissionAccept, RpcChange, Topic,
     },
+};
+use crate::messaging::mqtt::topics::api_wallet::WithdrawMsg;
+use crate::{
+    infrastructure::task_queue::{MqttTask, task::Tasks},
+    messaging::{
+        mqtt::topics::{
+            OutgoingPayload,
+            api_wallet::{AddressUseMsg, UnbindUidMsg},
+        },
+        notify::{FrontendNotifyEvent, event::NotifyEvent},
+    },
+    service::{app::AppService, device::DeviceService},
 };
 
 pub(crate) async fn exec_incoming(
@@ -175,8 +175,10 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         BizType::UnbindUid => exec_task::<UnbindUidMsg, _>(&payload, MqttTask::UnbindUid).await?,
         BizType::AddressUse => {
             exec_task::<AddressUseMsg, _>(&payload, MqttTask::AddressUse).await?
-        },
-        BizType::ApiWithdraw => exec_task::<WithdrawMsg, _>(&payload, MqttTask::ApiWithdraw).await?,
+        }
+        BizType::ApiWithdraw => {
+            exec_task::<WithdrawMsg, _>(&payload, MqttTask::ApiWithdraw).await?
+        }
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
             return Err(crate::ServiceError::System(

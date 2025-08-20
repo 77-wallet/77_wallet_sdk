@@ -29,13 +29,7 @@ async fn test_fee() {
     let symbol = "TRX";
     // let symbol = "USDT";
 
-    let mut params = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     params.with_notes("test aa".to_string());
 
     let res = wallet_manager.transaction_fee(params).await;
@@ -60,13 +54,7 @@ async fn test_transfer() {
         address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
         permission_id: 3,
     };
-    let mut base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     base.with_notes(notes);
 
     let params = transaction::TransferReq {
@@ -96,13 +84,7 @@ async fn test_transfer_with_subsidy() {
     let res = wallet_manager.request_energy(from.to_string(), 50000).await;
     tracing::warn!("request_energy: {:?}", res);
 
-    let mut base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     base.request_resource_id = res.result;
 
     let params = transaction::TransferReq {

@@ -1,8 +1,8 @@
+use crate::dao::api_wallet::ApiWalletDao;
 use crate::{
     DbPool,
     entities::api_wallet::{ApiWalletEntity, ApiWalletType},
 };
-use crate::dao::api_wallet::ApiWalletDao;
 
 pub struct ApiWalletRepo;
 
@@ -35,13 +35,10 @@ impl ApiWalletRepo {
         merchant_id: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::update_merchain_id(
-            pool.as_ref(),
-            address,
-            merchant_id,
-            api_wallet_type,
+        Ok(
+            ApiWalletDao::update_merchain_id(pool.as_ref(), address, merchant_id, api_wallet_type)
+                .await?,
         )
-        .await?)
     }
 
     pub async fn update_app_id(

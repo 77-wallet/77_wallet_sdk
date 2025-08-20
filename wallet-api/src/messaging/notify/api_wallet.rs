@@ -3,8 +3,8 @@
 pub struct WithdrawFront {
     pub uid: String,
     pub from_addr: String,
-    pub to_addr : String,
-    pub value : String,
+    pub to_addr: String,
+    pub value: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -12,6 +12,6 @@ pub struct WithdrawFront {
 pub struct WithdrawNoPassFront {
     pub uid: String,
     pub from_addr: String,
-    pub to_addr : String,
-    pub value : String,
+    pub to_addr: String,
+    pub value: String,
 }

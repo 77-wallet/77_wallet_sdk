@@ -636,11 +636,11 @@ impl MultisigAccountService {
                 CoinDomain::get_coin(&payer.chain_code, &payer.symbol, payer.token_address).await?;
             // transfer parameter
             let mut base = transaction::BaseTransferReq::new(
-                payer.from,
-                to.to_string(),
-                value.clone(),
-                payer.chain_code.clone(),
-                payer.symbol,
+                &payer.from,
+                to,
+                &value,
+                &payer.chain_code,
+                &payer.symbol,
             );
             base.with_token(coin.token_address());
             base.with_decimals(coin.decimals);

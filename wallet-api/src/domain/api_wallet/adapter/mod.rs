@@ -14,8 +14,8 @@ pub mod eth_tx;
 pub mod ton_tx;
 pub mod tron_tx;
 
-use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 use crate::domain::chain::rpc_need_header;
+use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 const TIME_OUT: u64 = 30;
 

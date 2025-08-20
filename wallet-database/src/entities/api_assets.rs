@@ -37,8 +37,6 @@ impl ApiAssetsEntity {
     }
 }
 
-
-
 #[derive(Debug)]
 pub struct ApiCreateAssetsVo {
     pub assets_id: AssetsId,

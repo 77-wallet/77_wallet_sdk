@@ -287,7 +287,10 @@ impl ApiWalletDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn reset_status<'a, E>(exec: E, address: &str) -> Result<Vec<ApiWalletEntity>, crate::Error>
+    pub async fn reset_status<'a, E>(
+        exec: E,
+        address: &str,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

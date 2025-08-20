@@ -4,21 +4,22 @@ pub struct ApiWithdrawEntity {
     pub name: String,
     pub uid: String,
     pub from_addr: String,
-    pub to_addr : String,
-    pub value : String,
-    pub decimals : i32,
-    pub token_addr : String,
-    pub symbol : String,
-    pub trade_no : String,
-    pub trade_type : String,
+    pub to_addr: String,
+    pub value: String,
+    pub decimals: i32,
+    pub token_addr: String,
+    pub symbol: String,
+    pub trade_no: String,
+    pub trade_type: String,
     pub status: ApiWithdrawStatus,
     pub send_tx_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
-#[derive(sqlx::Type)]
-#[derive(Debug, Clone, Copy, serde_repr::Deserialize_repr, serde_repr::Serialize_repr)]
+#[derive(
+    sqlx::Type, Debug, Clone, Copy, serde_repr::Deserialize_repr, serde_repr::Serialize_repr,
+)]
 #[repr(u8)]
 pub enum ApiWithdrawStatus {
     Init,

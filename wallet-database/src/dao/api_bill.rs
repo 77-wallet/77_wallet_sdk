@@ -213,7 +213,7 @@ impl ApiBillDao {
         sql.push_str(" ORDER BY datetime(transaction_time, 'unixepoch') DESC");
 
         let res = ApiBillDao::page(pool, &sql, page, page_size).await?;
-        Ok(Pagination{
+        Ok(Pagination {
             page,
             page_size,
             total_count: res.0,
@@ -370,10 +370,10 @@ impl ApiBillDao {
     }
 
     /// Creates a new bill record in the database.
-    pub async fn create<'a, E, T>(tx: ApiBillEntity, exec: E) -> Result<(), crate::Error>
+    pub async fn create<'a, E>(tx: ApiBillEntity, exec: E) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
-        T: serde::Serialize,
+        // T: serde::Serialize,
     {
         let owner = tx.owner;
         let time = Utc::now().timestamp();

@@ -13,6 +13,7 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
+use crate::messaging::notify::api_wallet::WithdrawNoPassFront;
 use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
@@ -20,7 +21,6 @@ use crate::messaging::{
     },
     notify::api_wallet::WithdrawFront,
 };
-use crate::messaging::notify::api_wallet::WithdrawNoPassFront;
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]

@@ -34,19 +34,13 @@ pub struct BaseTransferReq {
 }
 
 impl BaseTransferReq {
-    pub fn new(
-        from: String,
-        to: String,
-        value: String,
-        chain_code: String,
-        symbol: String,
-    ) -> Self {
+    pub fn new(from: &str, to: &str, value: &str, chain_code: &str, symbol: &str) -> Self {
         Self {
-            from,
-            to,
-            value,
-            chain_code,
-            symbol,
+            from: from.to_string(),
+            to: to.to_string(),
+            value: value.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
             decimals: 0,
             request_resource_id: None,
             token_address: None,

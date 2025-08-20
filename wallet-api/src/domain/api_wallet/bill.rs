@@ -1,6 +1,9 @@
+use crate::domain::api_wallet::adapter;
 use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
+use wallet_database::repositories::api_bill::ApiBillRepo;
 use wallet_database::{
+    DbPool,
     dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
     entities::{
         self,
@@ -8,12 +11,9 @@ use wallet_database::{
         bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
         multisig_account::MultiAccountOwner,
     },
-    DbPool,
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
-use wallet_database::repositories::api_bill::ApiBillRepo;
-use crate::domain::api_wallet::adapter;
 
 pub struct ApiBillDomain;
 
@@ -53,8 +53,7 @@ impl ApiBillDomain {
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<String, crate::ServiceError> {
-        let adapter =
-           adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         let res = adapter.query_tx_res(tx_hash).await?;
         match res {
             Some(res) => Ok(res.resource_consume),
@@ -66,8 +65,7 @@ impl ApiBillDomain {
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<Option<QueryTransactionResult>, crate::ServiceError> {
-        let adapter =
-          adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
@@ -99,7 +97,7 @@ impl ApiBillDomain {
                 net_used: item.net_used.unwrap_or_default(),
                 energy_used: item.energy_used.unwrap_or_default(),
             }
-                .to_json_str()?,
+            .to_json_str()?,
             transaction_time: wallet_utils::time::datetime_to_timestamp(&item.transaction_time),
             multisig_tx: item.is_multisig > 0,
             tx_type: item.transfer_type,
@@ -170,7 +168,7 @@ impl ApiBillDomain {
                 let time = bill.transaction_time - std::time::Duration::from_secs(86400 * 5);
                 time.format("%Y-%m-%d %H:%M:%S").to_string()
             })
-                .unwrap_or_else(|| sqlx::types::chrono::NaiveDateTime::default().to_string())
+            .unwrap_or_else(|| sqlx::types::chrono::NaiveDateTime::default().to_string())
         };
 
         // Non-Tron chains

@@ -30,13 +30,7 @@ async fn test_fee() {
     let chain_code = "sol";
     let symbol = "USDT";
 
-    let params = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     let res = wallet_manager.transaction_fee(params).await;
     tracing::info!("fee: {:#?}", res);
 }
@@ -55,13 +49,7 @@ async fn test_transfer() {
     let password = "123456";
     // let notes = "test";
 
-    let base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),

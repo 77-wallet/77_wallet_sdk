@@ -1,4 +1,7 @@
-use crate::{request::api_wallet::strategy::*, response_vo::api_wallet::strategy::StrategyResp};
+use crate::{
+    request::api_wallet::strategy::*,
+    response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
+};
 
 use super::BackendApi;
 
@@ -23,7 +26,7 @@ impl BackendApi {
     pub async fn query_collection_strategy(
         &self,
         req: &QueryCollectionStrategyReq,
-    ) -> Result<StrategyResp, crate::Error> {
+    ) -> Result<CollectionStrategyResp, crate::Error> {
         todo!()
     }
 
@@ -31,7 +34,7 @@ impl BackendApi {
     pub async fn query_withdraw_strategy(
         &self,
         req: &QueryWithdrawStrategyReq,
-    ) -> Result<StrategyResp, crate::Error> {
+    ) -> Result<WithdrawStrategyResp, crate::Error> {
         todo!()
     }
 }

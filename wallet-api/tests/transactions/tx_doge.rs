@@ -28,13 +28,7 @@ async fn test_fee() {
     let chain_code = "btc";
     let symbol = "BTC";
 
-    let mut params = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     params.with_spend_all(true);
 
     let res = wallet_manager.transaction_fee(params).await;
@@ -54,13 +48,7 @@ async fn test_transfer() {
     let password = "123456";
     // let notes = "test";
 
-    let mut base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     base.with_spend_all(false);
     let params = transaction::TransferReq {
         base,

@@ -1,13 +1,12 @@
-use super::{eth_tx, ton_tx, tron_tx, TIME_OUT};
+use super::{TIME_OUT, eth_tx, ton_tx, tron_tx};
 use crate::{
     dispatch,
     domain::{
         self,
         chain::{
-            pare_fee_setting,
+            TransferResp, pare_fee_setting,
             swap::{calc_slippage, evm_swap::SwapParams},
             transaction::{ChainTransDomain, DEFAULT_UNITS},
-            TransferResp,
         },
         coin::TokenCurrencyGetter,
     },
@@ -18,7 +17,7 @@ use crate::{
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    self as chain,
+    self as chain, BillResourceConsume,
     btc::{self},
     dog,
     eth::{self},
@@ -31,7 +30,6 @@ use wallet_chain_interact::{
         operations::{TronConstantOperation as _, TronTxOperation},
     },
     types::ChainPrivateKey,
-    BillResourceConsume,
 };
 use wallet_database::entities::coin::CoinEntity;
 use wallet_transport::client::{HttpClient, RpcClient};
@@ -777,7 +775,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -826,7 +824,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -845,7 +843,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -927,7 +925,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -948,7 +946,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -996,7 +994,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -1016,7 +1014,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -1065,7 +1063,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -1085,7 +1083,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 

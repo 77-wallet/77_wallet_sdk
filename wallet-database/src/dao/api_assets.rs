@@ -4,8 +4,8 @@ use crate::{
     sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
 
-use sqlx::{Executor, Sqlite};
 use crate::entities::api_assets::ApiCreateAssetsVo;
+use sqlx::{Executor, Sqlite};
 
 pub struct ApiAssetsDao;
 
@@ -91,7 +91,10 @@ impl ApiAssetsDao {
         //     .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
-    pub async fn upsert_assets<'a, E>(exec: E, assets: ApiCreateAssetsVo) -> Result<(), crate::Error>
+    pub async fn upsert_assets<'a, E>(
+        exec: E,
+        assets: ApiCreateAssetsVo,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -260,5 +263,45 @@ impl ApiAssetsDao {
             .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))?;
 
         Ok(())
+    }
+
+    pub async fn assets_by_id<'a, E>(
+        exec: E,
+        assets_id: &AssetsId,
+    ) -> Result<Option<ApiAssetsEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT * FROM 
+                api_assets
+            WHERE status = 1 AND address =$1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
+                AND EXISTS (
+                    SELECT 1
+                    FROM chain
+                    WHERE chain.chain_code = api_assets.chain_code
+                    AND chain.status = 1
+                )
+                AND EXISTS (
+                    SELECT 1
+                    FROM coin
+                    WHERE coin.chain_code = api_assets.chain_code
+                    AND coin.token_address = api_assets.token_address
+                    AND coin.symbol = api_assets.symbol
+                    AND coin.status = 1
+                );"#;
+
+        let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
+            .bind(assets_id.address.clone())
+            .bind(assets_id.symbol.clone())
+            .bind(assets_id.chain_code.clone())
+            .bind(assets_id.token_address.clone().unwrap_or_default())
+            .fetch_optional(exec)
+            .await;
+
+        match rs {
+            Ok(rs) => Ok(rs),
+            Err(_e) => Err(crate::Error::Database(DatabaseError::QueryFailed)),
+        }
     }
 }

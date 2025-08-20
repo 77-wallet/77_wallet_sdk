@@ -1,7 +1,7 @@
+use crate::DbPool;
 use crate::dao::api_bill::ApiBillDao;
 use crate::entities::api_bill::{ApiBillEntity, ApiBillUpdateEntity, ApiRecentBillListVo};
 use crate::pagination::Pagination;
-use crate::DbPool;
 
 pub struct ApiBillRepo;
 
@@ -31,12 +31,13 @@ impl ApiBillRepo {
     }
 
     pub async fn find_by_id(id: &str, pool: &DbPool) -> Result<ApiBillEntity, crate::Error> {
-        let bill = ApiBillDao::find_by_id(pool.as_ref(), id)
-            .await?
-            .ok_or(crate::Error::NotFound(format!(
-                "bill not found,id = {}",
-                id,
-            )))?;
+        let bill =
+            ApiBillDao::find_by_id(pool.as_ref(), id)
+                .await?
+                .ok_or(crate::Error::NotFound(format!(
+                    "bill not found,id = {}",
+                    id,
+                )))?;
 
         Ok(bill)
     }
@@ -58,9 +59,16 @@ impl ApiBillRepo {
         pool: DbPool,
     ) -> Result<Pagination<ApiRecentBillListVo>, crate::Error> {
         let min_value = None;
-        let lists =
-            ApiBillDao::recent_bill(symbol, addr, chain_code, min_value, page, page_size, pool.as_ref())
-                .await?;
+        let lists = ApiBillDao::recent_bill(
+            symbol,
+            addr,
+            chain_code,
+            min_value,
+            page,
+            page_size,
+            pool.as_ref(),
+        )
+        .await?;
 
         Ok(lists)
     }
@@ -68,8 +76,7 @@ impl ApiBillRepo {
     pub async fn update<'a, E>(
         transaction: &ApiBillUpdateEntity,
         exec: &DbPool,
-    ) -> Result<Option<ApiBillEntity>, crate::Error>
-    {
+    ) -> Result<Option<ApiBillEntity>, crate::Error> {
         Ok(ApiBillDao::update(transaction, exec.as_ref()).await?)
     }
 
@@ -103,12 +110,12 @@ impl ApiBillRepo {
             transfer_type,
             page,
             page_size,
-        ).await?;
+        )
+        .await?;
         Ok(lists)
     }
 
     pub async fn create(tx: ApiBillEntity, pool: &DbPool) -> Result<(), crate::Error> {
         ApiBillDao::create(tx, pool.as_ref()).await
     }
-
 }

@@ -1,3 +1,4 @@
+use crate::dao::api_account::ApiAccountDao;
 use crate::{
     DbPool,
     entities::{
@@ -5,7 +6,6 @@ use crate::{
         api_wallet::ApiWalletType,
     },
 };
-use crate::dao::api_account::ApiAccountDao;
 
 pub struct ApiAccountRepo;
 
@@ -19,10 +19,7 @@ impl ApiAccountRepo {
         wallet_address: &str,
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(
-            ApiAccountDao::update_is_used(pool.as_ref(), wallet_address, account_id, true)
-                .await?,
-        )
+        Ok(ApiAccountDao::update_is_used(pool.as_ref(), wallet_address, account_id, true).await?)
     }
 
     // pub async fn mark_as_unused(
@@ -136,13 +133,11 @@ impl ApiAccountRepo {
         wallet_address: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(
-            ApiAccountDao::account_detail_by_max_id_and_wallet_address(
-                pool.as_ref(),
-                wallet_address,
-                api_wallet_type,
-            )
-            .await?,
+        Ok(ApiAccountDao::account_detail_by_max_id_and_wallet_address(
+            pool.as_ref(),
+            wallet_address,
+            api_wallet_type,
         )
+        .await?)
     }
 }

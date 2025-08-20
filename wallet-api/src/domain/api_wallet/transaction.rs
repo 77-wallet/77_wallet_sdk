@@ -1,15 +1,18 @@
 use super::adapter::TransactionAdapter;
 use crate::{
     domain::{bill::BillDomain, coin::CoinDomain},
-    infrastructure::task_queue::{self, task::Tasks, BackendApiTaskData},
+    infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
     request::transaction::{self, Signer},
 };
 use wallet_chain_interact::{
     eth,
     sol::{self, SolFeeSetting},
-    tron::{protocol::account::AccountResourceDetail, TronChain},
+    tron::{TronChain, protocol::account::AccountResourceDetail},
     types::ChainPrivateKey,
 };
+use wallet_database::entities::api_account::ApiAccountEntity;
+use wallet_database::entities::api_assets::ApiAssetsEntity;
+use wallet_database::repositories::api_assets::ApiAssetsRepo;
 use wallet_database::{
     dao::bill::BillDao,
     entities::{
@@ -21,16 +24,13 @@ use wallet_database::{
     repositories::permission::PermissionRepo,
 };
 use wallet_transport_backend::{
-    api::{permission::TransPermission, BackendApi},
+    api::{BackendApi, permission::TransPermission},
     consts::endpoint,
     request::PermissionData,
     response_vo::chain::GasOracle,
 };
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
-use wallet_database::entities::api_account::ApiAccountEntity;
-use wallet_database::entities::api_assets::ApiAssetsEntity;
-use wallet_database::repositories::api_assets::ApiAssetsRepo;
 
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
@@ -157,14 +157,14 @@ impl ApiChainTransDomain {
             &params.password,
             &params.signer,
         )
-            .await?;
+        .await?;
 
         let coin = CoinDomain::get_coin(
             &params.base.chain_code,
             &params.base.symbol,
             params.base.token_address.clone(),
         )
-            .await?;
+        .await?;
 
         // params.base.with_token(coin.token_address());
         params.base.with_decimals(coin.decimals);
@@ -186,10 +186,10 @@ impl ApiChainTransDomain {
                 signer.permission_id,
                 false,
             )
-                .await?
-                .ok_or(crate::BusinessError::Permission(
-                    crate::PermissionError::ActivesPermissionNotFound,
-                ))?;
+            .await?
+            .ok_or(crate::BusinessError::Permission(
+                crate::PermissionError::ActivesPermissionNotFound,
+            ))?;
 
             let users = permission.users();
 

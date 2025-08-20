@@ -1,4 +1,18 @@
-use crate::entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode};
+use crate::{
+    DbPool,
+    entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
+};
+
+pub struct ChainRepo;
+
+impl ChainRepo {
+    pub async fn detail(
+        pool: &DbPool,
+        chain_code: &str,
+    ) -> Result<Option<ChainEntity>, crate::Error> {
+        Ok(ChainEntity::detail(pool.as_ref(), chain_code).await?)
+    }
+}
 
 #[async_trait::async_trait]
 pub trait ChainRepoTrait: super::TransactionTrait {

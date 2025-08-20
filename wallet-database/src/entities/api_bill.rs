@@ -77,7 +77,15 @@ impl ApiBillStatus {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, sqlx::Type)]
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+    sqlx::Type,
+)]
 #[repr(u8)]
 pub enum ApiBillKind {
     // 普通交易
