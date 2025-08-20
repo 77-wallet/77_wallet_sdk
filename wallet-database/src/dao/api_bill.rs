@@ -370,10 +370,9 @@ impl ApiBillDao {
     }
 
     /// Creates a new bill record in the database.
-    pub async fn create<'a, E, T>(tx: ApiBillEntity, exec: E) -> Result<(), crate::Error>
+    pub async fn create<'a, E>(tx: ApiBillEntity, exec: E) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
-        T: serde::Serialize,
     {
         let owner = tx.owner;
         let time = Utc::now().timestamp();

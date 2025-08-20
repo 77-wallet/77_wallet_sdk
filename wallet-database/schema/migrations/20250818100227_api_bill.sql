@@ -27,4 +27,4 @@ CREATE TABLE
              UNIQUE (hash, transfer_type, owner)
 );
 
-CREATE INDEX bill_hash_idx ON api_bill (hash);-- Add migration script here
+CREATE INDEX api_bill_hash_idx ON api_bill (hash);-- Add migration script here

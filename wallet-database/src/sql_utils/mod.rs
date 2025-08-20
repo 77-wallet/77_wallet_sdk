@@ -1,6 +1,6 @@
-pub mod delete_builder;
-pub mod query_builder;
-pub mod update_builder;
+pub(crate) mod delete_builder;
+pub(crate) mod query_builder;
+pub(crate) mod update_builder;
 
 use std::sync::Arc;
 

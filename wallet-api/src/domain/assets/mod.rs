@@ -7,7 +7,6 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
-        api_assets::ApiAssetsEntity,
         assets::{AssetsEntity, AssetsId},
         coin::{CoinData, CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
@@ -361,7 +360,7 @@ impl AssetsDomain {
                         &assets.assets_id.token_address.clone().unwrap_or_default(),
                     );
                 }
-                ApiAssetsRepo::upsert(pool.clone(), assets).await?;
+                AssetsEntity::upsert_assets(&*pool, assets).await?;
             }
         }
         Ok(())
