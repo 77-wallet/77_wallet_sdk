@@ -33,8 +33,4 @@ ALTER TABLE assets_v2 RENAME TO assets;
 
 -- 5. 创建唯一索引（代替旧主键）
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_assets_composite
-ON assets(symbol, address, chain_code, token_address);
-
--- 6. 可选查询优化索引
-CREATE INDEX IF NOT EXISTS idx_assets_wallet
-ON assets(address, chain_code);
+ON assets(address, chain_code,token_address,symbol);

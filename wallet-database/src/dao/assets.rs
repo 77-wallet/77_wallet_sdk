@@ -414,7 +414,7 @@ impl AssetsEntity {
             WHERE address = ?
             AND symbol = ?
             AND chain_code = ?
-            AND token_address IS ?
+            AND token_address = ?
         "#,
         );
 
