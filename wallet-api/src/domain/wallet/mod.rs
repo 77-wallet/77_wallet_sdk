@@ -5,11 +5,11 @@ use wallet_database::{
         wallet::WalletEntity,
     },
     repositories::{
-        account::AccountRepoTrait, api_wallet::ApiWalletRepo, wallet::WalletRepoTrait,
-        ResourcesRepo,
+        ResourcesRepo, account::AccountRepoTrait, api_wallet::ApiWalletRepo,
+        wallet::WalletRepoTrait,
     },
 };
-use wallet_tree::{api::KeystoreApi, KdfAlgorithm, WalletTreeStrategy};
+use wallet_tree::{KdfAlgorithm, WalletTreeStrategy, api::KeystoreApi};
 use wallet_types::chain::{
     address::r#type::{
         AddressType, BTC_ADDRESS_TYPES, DOG_ADDRESS_TYPES, LTC_ADDRESS_TYPES, TON_ADDRESS_TYPES,

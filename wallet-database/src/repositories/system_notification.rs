@@ -1,7 +1,7 @@
 use crate::{
+    DbPool,
     entities::system_notification::{CreateSystemNotificationEntity, SystemNotificationEntity},
     pagination::Pagination,
-    DbPool,
 };
 
 #[async_trait::async_trait]

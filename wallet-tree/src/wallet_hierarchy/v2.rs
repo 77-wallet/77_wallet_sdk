@@ -9,8 +9,8 @@ use wallet_crypto::KeystoreBuilder;
 use crate::{
     directory_structure::LayoutStrategy,
     naming::{
-        v2::{DerivedMetadata, KeyMeta, KeystoreData, ModernFileMeta},
         FileMeta,
+        v2::{DerivedMetadata, KeyMeta, KeystoreData, ModernFileMeta},
     },
 };
 

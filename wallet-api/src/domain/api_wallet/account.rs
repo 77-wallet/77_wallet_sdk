@@ -2,8 +2,8 @@ use wallet_crypto::{EncryptedJsonGenerator as _, KeystoreJsonGenerator};
 use wallet_database::{
     entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType},
     repositories::{
-        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, device::DeviceRepoTrait as _,
-        ResourcesRepo,
+        ResourcesRepo, api_account::ApiAccountRepo, api_wallet::ApiWalletRepo,
+        device::DeviceRepoTrait as _,
     },
 };
 use wallet_transport_backend::request::AddressInitReq;

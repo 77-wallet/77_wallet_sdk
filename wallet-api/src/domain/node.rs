@@ -2,12 +2,12 @@ use std::collections::HashSet;
 
 use wallet_database::{
     entities::node::{NodeCreateVo, NodeEntity},
-    repositories::{chain::ChainRepoTrait, node::NodeRepoTrait, ResourcesRepo, TransactionTrait},
+    repositories::{ResourcesRepo, TransactionTrait, chain::ChainRepoTrait, node::NodeRepoTrait},
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
 use crate::infrastructure::task_queue::{
-    task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask,
+    BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks,
 };
 
 pub struct NodeDomain;

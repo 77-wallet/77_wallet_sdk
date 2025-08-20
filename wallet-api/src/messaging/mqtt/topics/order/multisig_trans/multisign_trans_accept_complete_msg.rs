@@ -5,7 +5,7 @@ use wallet_database::{
 
 use crate::{
     domain::multisig::MultisigQueueDomain,
-    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 
 //  多签交易签名同步给其他成员

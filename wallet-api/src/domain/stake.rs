@@ -1,11 +1,11 @@
 use wallet_chain_interact::{
     tron::{
+        TronChain,
         operations::{
-            stake::{self, DelegatedResource},
             TronSimulateOperation, TronTxOperation,
+            stake::{self, DelegatedResource},
         },
         params::ResourceConsumer,
-        TronChain,
     },
     types::MultisigTxResp,
 };
@@ -138,7 +138,7 @@ impl StakeArgs {
             _ => {
                 return Err(crate::BusinessError::Stake(
                     crate::StakeError::MultisigUnSupportBillKind,
-                ))?
+                ))?;
             }
         };
         Ok(res)
@@ -350,7 +350,7 @@ mod cal_tests {
 
         let _voter_votes = 10_000_000.0; // Voter's votes
         let voter_share = 1.0; // Voter share (80%)
-                               // let voter_share = 0.90; // Voter share (80%)
+        // let voter_share = 0.90; // Voter share (80%)
 
         // Calculate voter reward
         let voter_reward =

@@ -1,7 +1,7 @@
 use crate::{
+    DbPool,
     dao::assets::CreateAssetsVo,
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
-    DbPool,
 };
 
 #[async_trait::async_trait]

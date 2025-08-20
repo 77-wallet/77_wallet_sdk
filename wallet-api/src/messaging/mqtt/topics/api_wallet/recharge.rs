@@ -1,6 +1,6 @@
 use crate::{
     domain::api_wallet::account::ApiAccountDomain,
-    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 
 // biz_type = RECHARGE

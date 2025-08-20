@@ -1,6 +1,6 @@
 use crate::{
-    entities::exchange_rate::{ExchangeRateEntity, QueryReq},
     DbPool,
+    entities::exchange_rate::{ExchangeRateEntity, QueryReq},
 };
 
 #[async_trait::async_trait]

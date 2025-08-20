@@ -10,8 +10,8 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain},
     FrontendNotifyEvent,
+    domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain},
 };
 pub struct BackendTaskHandle;
 

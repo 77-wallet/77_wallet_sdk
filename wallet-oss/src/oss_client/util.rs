@@ -1,5 +1,5 @@
-use base64::engine::general_purpose;
 use base64::Engine;
+use base64::engine::general_purpose;
 use std::io::{BufReader, Read};
 
 pub fn read_file<S: AsRef<str>>(file_name: S) -> Result<Vec<u8>, std::io::Error> {

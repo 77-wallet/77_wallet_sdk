@@ -1,16 +1,16 @@
 use wallet_database::{
+    DbPool,
     dao::multisig_account::MultisigAccountDaoV1,
     entities::multisig_account::{
         MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
     },
-    DbPool,
 };
 
 use crate::{
     domain::multisig::MultisigDomain,
     messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront,
-        FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend,
+        other::ErrFront,
     },
 };
 

@@ -1,16 +1,16 @@
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
     domain::api_wallet::account::ApiAccountDomain,
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
     response_vo,
 };
 use wallet_chain_interact::{
-    btc::ParseBtcAddress, dog::ParseDogAddress, eth::FeeSetting, ltc::ParseLtcAddress,
-    ton::address::parse_addr_from_bs64_url, BillResourceConsume,
+    BillResourceConsume, btc::ParseBtcAddress, dog::ParseDogAddress, eth::FeeSetting,
+    ltc::ParseLtcAddress, ton::address::parse_addr_from_bs64_url,
 };
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, coin::CoinEntity},
-    repositories::{account::AccountRepoTrait, chain::ChainRepoTrait, ResourcesRepo},
+    repositories::{ResourcesRepo, account::AccountRepoTrait, chain::ChainRepoTrait},
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{

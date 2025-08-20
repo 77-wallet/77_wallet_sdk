@@ -1,9 +1,9 @@
 pub mod account;
 pub mod address_book;
 pub mod announcement;
-pub(crate) mod api_account;
-pub(crate) mod api_assets;
-pub(crate) mod api_wallet;
+pub mod api_account;
+pub mod api_assets;
+pub mod api_wallet;
 pub mod assets;
 pub mod bill;
 pub mod chain;

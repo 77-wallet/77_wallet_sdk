@@ -1,8 +1,8 @@
 use crate::{
     entities::multisig_queue::{
-        fail_reason::{EXPIRED, PERMISSION_CHANGE},
         MultisigQueueEntity, MultisigQueueSimpleEntity, MultisigQueueStatus,
         NewMultisigQueueEntity,
+        fail_reason::{EXPIRED, PERMISSION_CHANGE},
     },
     pagination::Pagination,
 };

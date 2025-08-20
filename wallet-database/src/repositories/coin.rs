@@ -2,9 +2,9 @@ use alloy::signers::Result;
 use chrono::{DateTime, Utc};
 
 use crate::{
+    DbPool,
     entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
-    DbPool,
 };
 
 #[async_trait::async_trait]

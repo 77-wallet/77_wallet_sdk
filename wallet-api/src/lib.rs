@@ -11,8 +11,8 @@ pub(crate) mod infrastructure;
 pub use infrastructure::log::*;
 mod manager;
 mod messaging;
-pub use messaging::notify::event::NotifyEvent;
 pub use messaging::notify::FrontendNotifyEvent;
+pub use messaging::notify::event::NotifyEvent;
 pub mod request;
 mod response;
 pub mod response_vo;
@@ -20,15 +20,16 @@ pub mod service;
 pub mod test;
 
 pub use error::{
+    Errors, ServiceError,
     business::{
-        account::AccountError, announcement::AnnouncementError, api_wallet::ApiWalletError,
-        assets::AssetsError, bill::BillError, chain::ChainError, chain_node::ChainNodeError,
-        coin::CoinError, config::ConfigError, device::DeviceError, exchange_rate::ExchangeRate,
-        multisig_account::MultisigAccountError, multisig_queue::MultisigQueueError,
-        permission::PermissionError, stake::StakeError, wallet::WalletError, BusinessError,
+        BusinessError, account::AccountError, announcement::AnnouncementError,
+        api_wallet::ApiWalletError, assets::AssetsError, bill::BillError, chain::ChainError,
+        chain_node::ChainNodeError, coin::CoinError, config::ConfigError, device::DeviceError,
+        exchange_rate::ExchangeRate, multisig_account::MultisigAccountError,
+        multisig_queue::MultisigQueueError, permission::PermissionError, stake::StakeError,
+        wallet::WalletError,
     },
     system::SystemError,
-    Errors, ServiceError,
 };
 
 pub use config::*;

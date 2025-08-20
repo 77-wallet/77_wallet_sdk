@@ -3,12 +3,12 @@ use crate::messaging::mqtt::topics::NewPermissionUser;
 use super::{chain::adapter::ChainAdapterFactory, multisig::MultisigQueueDomain};
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
+    DbPool,
     entities::{
         account::{self, AccountEntity},
         permission_user::PermissionUserEntity,
     },
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
-    DbPool,
 };
 use wallet_transport_backend::api::permission::GetPermissionBackReq;
 use wallet_types::constant::chain_code;

@@ -49,8 +49,6 @@ impl ApiAccountService {
         let mut tx = self.repo;
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
-
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address, api_wallet_type)
@@ -73,57 +71,57 @@ impl ApiAccountService {
             .map(|chain| chain.chain_code.clone())
             .collect();
 
-        // 获取该账户的最大索引，并加一
-        let account_index_map = if let Some(index) = index {
-            let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
+        let mut created_count = 0;
+        let mut current_id = if let Some(idx) = index {
+            wallet_utils::address::AccountIndexMap::from_input_index(idx)?.account_id
+        } else {
+            1
+        };
+
+        while created_count < number {
+            // 跳过已存在账户
             if ApiAccountRepo::has_account_id(
                 &pool,
                 &api_wallet.address,
-                index.account_id,
+                current_id,
                 api_wallet_type,
             )
             .await?
             {
-                return Err(crate::ServiceError::Business(
-                    crate::BusinessError::Account(crate::AccountError::AlreadyExist),
-                ));
-            };
-            index
-        } else if let Some(max_account) =
-            ApiAccountRepo::account_detail_by_max_id_and_wallet_address(
-                &pool,
+                current_id += 1;
+                continue;
+            }
+
+            // 构造 index map
+            let account_index_map =
+                wallet_utils::address::AccountIndexMap::from_account_id(current_id)?;
+
+            let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
+            let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
+
+            let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
+
+            ChainDomain::init_chains_api_assets(
+                &mut tx,
+                &default_coins_list,
+                &mut req,
+                &mut address_batch_init_task_data,
+                &mut subkeys,
+                &chains,
+                &seed,
+                &account_index_map,
+                &api_wallet.uid,
                 &api_wallet.address,
+                name,
+                is_default_name,
+                wallet_password,
                 api_wallet_type,
             )
-            .await?
-        {
-            wallet_utils::address::AccountIndexMap::from_account_id(max_account.account_id + 1)?
-        } else {
-            wallet_utils::address::AccountIndexMap::from_account_id(1)?
-        };
+            .await?;
 
-        let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-        let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
-
-        let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
-
-        ChainDomain::init_chains_api_assets(
-            &mut tx,
-            &default_coins_list,
-            &mut req,
-            &mut address_batch_init_task_data,
-            &mut subkeys,
-            &chains,
-            &seed,
-            &account_index_map,
-            &api_wallet.uid,
-            &api_wallet.address,
-            name,
-            is_default_name,
-            wallet_password,
-            api_wallet_type,
-        )
-        .await?;
+            created_count += 1;
+            current_id += 1;
+        }
 
         // let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         // let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -157,10 +155,6 @@ impl ApiAccountService {
         //     &address_batch_init_task_data,
         // )?;
         // Tasks::new()
-        //     .push(task)
-        //     // .push(Task::BackendApi(BackendApiTask::BackendApi(
-        //     //     device_bind_address_task_data,
-        //     // )))
         //     .push(Task::Common(CommonTask::RecoverMultisigAccountData(body)))
         //     .push(Task::BackendApi(BackendApiTask::BackendApi(
         //         address_batch_init_task_data,

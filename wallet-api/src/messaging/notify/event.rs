@@ -15,8 +15,8 @@ use super::{
 };
 use crate::messaging::{
     mqtt::topics::{
-        api_wallet::{AddressUseMsg, UnbindUidMsg, WithdrawMsg},
         BulletinMsg,
+        api_wallet::{AddressUseMsg, UnbindUidMsg, WithdrawMsg},
     },
     notify::api_wallet::WithdrawFront,
 };

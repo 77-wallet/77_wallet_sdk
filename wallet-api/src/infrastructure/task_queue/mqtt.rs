@@ -1,7 +1,7 @@
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use crate::{
-    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
     messaging::mqtt::topics,
 };
 

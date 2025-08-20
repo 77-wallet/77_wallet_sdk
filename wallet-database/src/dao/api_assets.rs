@@ -2,13 +2,12 @@ use crate::{
     dao::assets::CreateAssetsVo,
     entities::{api_assets::ApiAssetsEntity, assets::AssetsId},
     error::DatabaseError,
-    sql_utils::{update_builder::DynamicUpdateBuilder, SqlExecutableNoReturn},
+    sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
 
 use sqlx::{Executor, Sqlite};
-use crate::entities::api_assets::ApiCreateAssetsVo;
 
-pub(crate) struct ApiAssetsDao;
+pub struct ApiAssetsDao;
 
 impl ApiAssetsDao {
     pub async fn list<'a, E>(exec: E) -> Result<Vec<ApiAssetsEntity>, crate::Error>
@@ -92,11 +91,11 @@ impl ApiAssetsDao {
         //     .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
-    pub async fn upsert_assets<'a, E>(exec: E, assets: ApiCreateAssetsVo) -> Result<(), crate::Error>
+    pub async fn upsert_assets<'a, E>(exec: E, assets: CreateAssetsVo) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let ApiCreateAssetsVo {
+        let CreateAssetsVo {
             assets_id,
             name,
             decimals,
@@ -161,7 +160,7 @@ impl ApiAssetsDao {
                 AND coin.symbol = api_assets.symbol
                 AND coin.status = 1
             );
-        "#;
+    "#;
 
         sqlx::query(sql)
             .bind(assets_id.address.to_string())

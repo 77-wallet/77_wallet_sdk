@@ -3,8 +3,7 @@ use crate::service::api_wallet::withdraw::WithdrawService;
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
 impl crate::WalletManager {
-
-    pub async fn get_withdraw_order_list(&self) ->ReturnType<Vec<ApiWithdrawEntity>> {
+    pub async fn get_withdraw_order_list(&self) -> ReturnType<Vec<ApiWithdrawEntity>> {
         WithdrawService::new(self.repo_factory.resource_repo())
             .get_withdraw_order_list()
             .await?

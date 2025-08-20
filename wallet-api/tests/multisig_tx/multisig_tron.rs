@@ -1,6 +1,6 @@
 use crate::get_manager;
 use wallet_api::{
-    request::transaction::Signer, response_vo::transaction::TransferParams, MemberVo,
+    MemberVo, request::transaction::Signer, response_vo::transaction::TransferParams,
 };
 
 #[tokio::test]

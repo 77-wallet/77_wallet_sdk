@@ -1,5 +1,5 @@
 use crate::messaging::notify::{
-    event::NotifyEvent, transaction::ConfirmationFrontend, FrontendNotifyEvent,
+    FrontendNotifyEvent, event::NotifyEvent, transaction::ConfirmationFrontend,
 };
 use wallet_database::{
     entities::{

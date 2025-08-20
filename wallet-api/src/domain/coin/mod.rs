@@ -7,15 +7,15 @@ use crate::{
 use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
+    DbPool,
     entities::coin::{CoinData, CoinEntity},
     repositories::{
+        ResourcesRepo,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
-        ResourcesRepo,
     },
-    DbPool,
 };
-use wallet_transport_backend::{response_vo::coin::TokenCurrency, CoinInfo};
+use wallet_transport_backend::{CoinInfo, response_vo::coin::TokenCurrency};
 use wallet_types::chain::chain::ChainCode;
 
 pub struct CoinDomain {}

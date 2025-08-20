@@ -27,11 +27,7 @@ pub struct CoinInfo {
 }
 impl CoinInfo {
     pub fn get_status(&self) -> Option<i32> {
-        if self.enable {
-            Some(1)
-        } else {
-            Some(0)
-        }
+        if self.enable { Some(1) } else { Some(0) }
     }
 }
 
@@ -168,11 +164,7 @@ pub struct TokenPriceChangeBody {
 
 impl TokenPriceChangeBody {
     pub fn get_status(&self) -> Option<i32> {
-        if self.enable {
-            Some(1)
-        } else {
-            Some(0)
-        }
+        if self.enable { Some(1) } else { Some(0) }
     }
 }
 

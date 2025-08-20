@@ -1,12 +1,12 @@
 use crate::{
+    DbPool,
     entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
-    DbPool,
 };
 use chrono::SecondsFormat;
 use sqlx::{
-    types::chrono::{DateTime, Utc},
     Executor, Pool, Sqlite,
+    types::chrono::{DateTime, Utc},
 };
 use std::{collections::HashSet, sync::Arc};
 

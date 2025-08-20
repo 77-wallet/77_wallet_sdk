@@ -1,7 +1,7 @@
 use crate::get_manager;
 use wallet_api::{
-    response_vo::{transaction::TransferParams, MultisigQueueFeeParams},
     MemberVo,
+    response_vo::{MultisigQueueFeeParams, transaction::TransferParams},
 };
 
 #[tokio::test]

@@ -4,8 +4,8 @@ use serde::Serialize;
 use wallet_crypto::KeystoreBuilder;
 
 use crate::naming::{
-    v2::{DerivedMetadata, KeyMeta, KeyMetas, KeystoreData, ModernNaming},
     FileType, NamingStrategy,
+    v2::{DerivedMetadata, KeyMeta, KeyMetas, KeystoreData, ModernNaming},
 };
 
 use super::{BulkSubkey, IoStrategy};

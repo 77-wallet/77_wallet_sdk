@@ -3,18 +3,19 @@ use wallet_database::{entities::task_queue::TaskQueueEntity, factory::Repository
 use wallet_utils::serde_func;
 
 use crate::{
-    infrastructure::task_queue::{task::Tasks, MqttTask},
+    infrastructure::task_queue::{MqttTask, task::Tasks},
     messaging::{
         mqtt::topics::{
-            api_wallet::{AddressUseMsg, UnbindUidMsg},
             OutgoingPayload,
+            api_wallet::{AddressUseMsg, UnbindUidMsg},
         },
-        notify::{event::NotifyEvent, FrontendNotifyEvent},
+        notify::{FrontendNotifyEvent, event::NotifyEvent},
     },
     service::{app::AppService, device::DeviceService},
 };
 use crate::messaging::mqtt::topics::api_wallet::WithdrawMsg;
 use super::{
+    Message,
     message::BizType,
     topics::{
         AcctChange, BulletinMsg, ChainChange, CleanPermission, MultiSignTransAccept,
@@ -23,7 +24,6 @@ use super::{
         OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete,
         PermissionAccept, RpcChange, Topic,
     },
-    Message,
 };
 
 pub(crate) async fn exec_incoming(

@@ -1,7 +1,7 @@
 use wallet_database::entities::task_queue::KnownTaskName;
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
-use crate::infrastructure::task_queue::task::{task_type::TaskType, TaskTrait};
+use crate::infrastructure::task_queue::task::{TaskTrait, task_type::TaskType};
 
 const HISTORICAL_TASK_OFFSET: u8 = 10;
 

@@ -1,9 +1,10 @@
 use crate::{
     domain::{self, chain::adapter::ChainAdapterFactory},
-    infrastructure::task_queue::{task::Tasks, BackendApiTask},
+    infrastructure::task_queue::{BackendApiTask, task::Tasks},
 };
 use sqlx::{Pool, Sqlite};
 use wallet_database::{
+    DbPool,
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
         multisig_queue::MultisigQueueDaoV1,
@@ -18,8 +19,7 @@ use wallet_database::{
         multisig_queue::MultisigQueueEntity,
         wallet::WalletEntity,
     },
-    repositories::{multisig_account::MultisigAccountRepo, wallet::WalletRepoTrait, ResourcesRepo},
-    DbPool,
+    repositories::{ResourcesRepo, multisig_account::MultisigAccountRepo, wallet::WalletRepoTrait},
 };
 use wallet_transport_backend::request::FindAddressRawDataReq;
 use wallet_types::constant::chain_code;

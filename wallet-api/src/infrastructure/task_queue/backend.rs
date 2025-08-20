@@ -1,6 +1,6 @@
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
-use crate::infrastructure::task_queue::task::{task_type::TaskType, TaskTrait};
+use crate::infrastructure::task_queue::task::{TaskTrait, task_type::TaskType};
 
 use super::task_handle::backend_handle::BackendTaskHandle;
 

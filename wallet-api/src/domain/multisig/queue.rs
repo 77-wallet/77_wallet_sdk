@@ -13,6 +13,7 @@ use serde_json::json;
 use std::{collections::HashSet, time::Duration};
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
+    DbPool,
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
         multisig_queue::MultisigQueueDaoV1,
@@ -29,7 +30,6 @@ use wallet_database::{
         wallet::WalletEntity,
     },
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
-    DbPool,
 };
 use wallet_transport_backend::{
     api::permission::PermissionAcceptReq,
@@ -196,7 +196,8 @@ impl MultisigQueueDomain {
             if !queue.permission_id.is_empty() {
                 tracing::warn!(
                     "recover permission queue faild, perrmision not found and delete queue queue_id = {},permision_id = {}",
-                    queue.id,queue.permission_id
+                    queue.id,
+                    queue.permission_id
                 );
                 MultisigQueueRepo::delete_queue(&pool, &queue.id).await?;
             }

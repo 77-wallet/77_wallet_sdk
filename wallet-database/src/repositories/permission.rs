@@ -1,10 +1,10 @@
 use crate::{
+    DbPool,
     dao::{permission::PermissionDao, permission_user::PermissionUserDao},
     entities::{
         permission::{PermissionEntity, PermissionWithUserEntity},
         permission_user::PermissionUserEntity,
     },
-    DbPool,
 };
 
 pub struct PermissionRepo;

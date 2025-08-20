@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
-    repositories::{account::AccountRepoTrait, device::DeviceRepoTrait, ResourcesRepo},
+    repositories::{ResourcesRepo, account::AccountRepoTrait, device::DeviceRepoTrait},
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{

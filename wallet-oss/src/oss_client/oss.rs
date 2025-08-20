@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use reqwest::header::{HeaderMap, InvalidHeaderValue, AUTHORIZATION, CONTENT_TYPE, DATE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, DATE, HeaderMap, InvalidHeaderValue};
 
 use super::{auth::AuthAPI as _, request::RequestBuilder};
 

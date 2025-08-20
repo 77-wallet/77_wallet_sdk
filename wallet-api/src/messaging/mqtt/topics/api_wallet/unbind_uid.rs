@@ -1,6 +1,6 @@
 use crate::{
     domain::api_wallet::wallet::ApiWalletDomain,
-    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 
 // biz_type = UNBIND_UID
@@ -13,7 +13,7 @@ pub struct UnbindUidMsg {
 
 impl UnbindUidMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        let Self {  uid } = self;
+        let Self { uid } = self;
         ApiWalletDomain::unbind_uid(uid).await?;
         let data = NotifyEvent::UnbindUid(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;

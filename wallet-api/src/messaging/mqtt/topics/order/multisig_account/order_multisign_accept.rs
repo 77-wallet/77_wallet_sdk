@@ -1,18 +1,18 @@
 use wallet_database::{
+    DbPool,
     dao::multisig_account::MultisigAccountDaoV1,
     entities::{
         multisig_account::{MultiAccountOwner, MultisigAccountStatus, NewMultisigAccountEntity},
         multisig_member::MemberVo,
     },
     factory::RepositoryFactory,
-    repositories::{account::AccountRepoTrait, wallet::WalletRepoTrait, ResourcesRepo},
-    DbPool,
+    repositories::{ResourcesRepo, account::AccountRepoTrait, wallet::WalletRepoTrait},
 };
 
 use crate::{
     manager::Context,
     messaging::{
-        notify::{event::NotifyEvent, multisig::OrderMultiSignAcceptFrontend, FrontendNotifyEvent},
+        notify::{FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignAcceptFrontend},
         system_notification::{Notification, NotificationType},
     },
     service::system_notification::SystemNotificationService,

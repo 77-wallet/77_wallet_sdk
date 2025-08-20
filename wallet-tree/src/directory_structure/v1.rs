@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::{
-    naming::{v1::LegacyNaming, FileMeta, FileType, NamingStrategy as _},
-    wallet_hierarchy::{v1::LegacyWalletTree, WalletTreeOps},
+    naming::{FileMeta, FileType, NamingStrategy as _, v1::LegacyNaming},
+    wallet_hierarchy::{WalletTreeOps, v1::LegacyWalletTree},
 };
 
 use super::LayoutStrategy;
@@ -158,9 +158,9 @@ mod tests {
         let path = layout.resolve_path(meta).unwrap();
         assert_eq!(
             path,
-            PathBuf::from(TEST_ADDRESS)
-                .join("subs")
-                .join("eth-0x668fb1D3Df02391064CEe50F6A3ffdbAEOCDb406-m%2F44%27%2F60%27%2F0%27%2F0%2F0-pk")
+            PathBuf::from(TEST_ADDRESS).join("subs").join(
+                "eth-0x668fb1D3Df02391064CEe50F6A3ffdbAEOCDb406-m%2F44%27%2F60%27%2F0%27%2F0%2F0-pk"
+            )
         );
     }
 

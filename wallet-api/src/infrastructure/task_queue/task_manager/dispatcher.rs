@@ -8,7 +8,7 @@ use super::RunningTasks;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex, Semaphore};
+use tokio::sync::{Mutex, Semaphore, mpsc};
 use wallet_database::entities::task_queue::TaskQueueEntity;
 
 type Priority = u8;

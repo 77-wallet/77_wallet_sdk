@@ -1,5 +1,3 @@
 pub struct ApiWithdrawDomain {}
 
-impl ApiWithdrawDomain {
-
-}
+impl ApiWithdrawDomain {}
