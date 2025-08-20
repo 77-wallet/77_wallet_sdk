@@ -1,6 +1,6 @@
 use super::adapter::TransactionAdapter;
 use crate::{
-    domain::{bill::BillDomain, coin::CoinDomain},
+    domain::{coin::CoinDomain},
     infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
     request::transaction::{self, Signer},
 };
@@ -15,10 +15,7 @@ use wallet_database::entities::api_assets::ApiAssetsEntity;
 use wallet_database::repositories::api_account::ApiAccountRepo;
 use wallet_database::repositories::api_assets::ApiAssetsRepo;
 use wallet_database::{
-    dao::bill::BillDao,
     entities::{
-        assets::{AssetsEntity, AssetsId},
-        bill::BillKind,
         coin::CoinEntity,
     },
     repositories::permission::PermissionRepo,
@@ -31,6 +28,10 @@ use wallet_transport_backend::{
 };
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
+use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
+use wallet_database::entities::assets::AssetsId;
+use wallet_database::repositories::api_bill::ApiBillRepo;
+use crate::domain::api_wallet::bill::ApiBillDomain;
 
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
@@ -89,12 +90,12 @@ impl ApiChainTransDomain {
         };
 
         // 查询余额
-        let asset = AssetsEntity::assets_by_id(pool.as_ref(), &assets_id).await?;
+        let asset = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?;
         if let Some(asset) = asset {
             // 余额不一致
             if asset.balance != balance {
                 // 更新本地余额后在上报后端
-                AssetsEntity::update_balance(&*pool, &assets_id, balance)
+                ApiAssetsRepo::update_balance(&pool, &assets_id, balance)
                     .await
                     .map_err(crate::ServiceError::Database)?;
 
@@ -130,7 +131,7 @@ impl ApiChainTransDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         if chain_code == chain_code::BTC {
-            let res = BillDao::on_going_bill(chain_code::BTC, from, pool.as_ref()).await?;
+            let res = ApiBillRepo::on_going_bill(chain_code::BTC, from, &pool).await?;
             return Ok(!res.is_empty());
         };
 
@@ -140,7 +141,7 @@ impl ApiChainTransDomain {
     /// transfer
     pub async fn transfer(
         mut params: transaction::TransferReq,
-        bill_kind: BillKind,
+        bill_kind: ApiBillKind,
         adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
         //  check ongoing tx
@@ -170,7 +171,7 @@ impl ApiChainTransDomain {
 
         let resp = adapter.transfer(&params, private_key).await?;
 
-        let mut new_bill = wallet_database::entities::bill::NewBillEntity::try_from(&params)?;
+        let mut new_bill = ApiBillEntity::try_from(&params)?;
         new_bill.tx_kind = bill_kind;
         new_bill.hash = resp.tx_hash.clone();
         new_bill.resource_consume = resp.resource_consume()?;
@@ -209,10 +210,10 @@ impl ApiChainTransDomain {
             )?);
             let _ = Tasks::new().push(task).send().await;
 
-            new_bill.signer = users;
+            new_bill.signer = users.join(",");
         }
 
-        BillDomain::create_bill(new_bill).await?;
+        ApiBillDomain::create_bill(new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;

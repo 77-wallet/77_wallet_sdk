@@ -345,12 +345,12 @@ impl ApiBillDao {
             sql.push_str(", extra = $9");
         }
 
-        sql.push_str(" WHERE id = $1 RETURNING *");
+        sql.push_str(" WHERE id = $1");
 
         let mut query = sqlx::query(&sql)
             .bind(id)
             .bind(tx.transaction_fee.clone())
-            .bind(tx.transaction_time.to_string())
+            .bind(tx.transaction_time)
             .bind(tx.status)
             .bind(tx.block_height.to_string())
             .bind(time)
@@ -378,11 +378,7 @@ impl ApiBillDao {
         let time = Utc::now().timestamp();
         let signer = tx.signer;
         let (symbol, to) = (tx.symbol, tx.to_addr);
-        let transaction_time = if tx.transaction_time.timestamp() == 0 {
-            time
-        } else {
-            tx.transaction_time.timestamp()
-        };
+        let transaction_time = tx.transaction_time;
         let token = tx.token.clone().unwrap_or_default();
         let multisig_tx = tx.is_multisig;
         let extra = tx.extra;

@@ -10,8 +10,9 @@ CREATE TABLE api_withdraws (
     token_addr VARCHAR(128) DEFAULT "" NOT NULL,
     symbol VARCHAR(128) DEFAULT "" NOT NULL,
     trade_no VARCHAR(32) NOT NULL,
-    trade_type VARCHAR(32) NOT NULL,
+    trade_type INTEGER NOT NULL,
     status INTEGER NOT NULL,
+    tx_hash VARCHAR(32) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );

@@ -23,7 +23,7 @@ pub struct ApiBillEntity {
     #[serde(skip_serializing)]
     pub resource_consume: String,
     pub transaction_fee: String,
-    pub transaction_time: DateTime<Utc>,
+    pub transaction_time: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     // 1-pending 2-成功 3-失败
     pub status: i8,
     // 1-是，0-否
@@ -34,8 +34,10 @@ pub struct ApiBillEntity {
     pub signer: String,
     // 针对每种订单的额外数据类 默认 “”
     pub extra: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing)]
+    pub created_at:sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    #[serde(skip_serializing)]
+    pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 
 impl ApiBillEntity {
@@ -87,6 +89,7 @@ impl ApiBillStatus {
     sqlx::Type,
 )]
 #[repr(u8)]
+#[derive(PartialEq)]
 pub enum ApiBillKind {
     // 普通交易
     #[default]
