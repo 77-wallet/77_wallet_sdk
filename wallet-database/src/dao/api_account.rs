@@ -6,6 +6,7 @@ use crate::{
     sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
 };
 use sqlx::{Executor, Sqlite};
+use crate::entities::account::AccountEntity;
 
 pub(crate) struct ApiAccountDao;
 
@@ -289,5 +290,20 @@ impl ApiAccountDao {
             .fetch_optional(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn find_one_by_address_chain_code<'a, E>(
+        address: &str,
+        chain_code: &str,
+        exec: E,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT * FROM account")
+            .and_where_eq("address", address)
+            .and_where_eq("chain_code", chain_code)
+            .fetch_optional(exec)
+            .await
     }
 }

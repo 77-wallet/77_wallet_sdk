@@ -13,7 +13,6 @@ use wallet_chain_interact::{
 use wallet_database::{
     dao::bill::BillDao,
     entities::{
-        account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
         bill::BillKind,
         coin::CoinEntity,
@@ -30,6 +29,7 @@ use wallet_types::constant::chain_code;
 use wallet_utils::unit;
 use wallet_database::entities::api_account::ApiAccountEntity;
 use wallet_database::entities::api_assets::ApiAssetsEntity;
+use wallet_database::repositories::api_account::ApiAccountRepo;
 use wallet_database::repositories::api_assets::ApiAssetsRepo;
 
 // sol 默认计算单元
@@ -65,7 +65,7 @@ impl ApiChainTransDomain {
     ) -> Result<ApiAccountEntity, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account =
-            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
+            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
                 .await?
                 .ok_or(crate::BusinessError::Account(
                     crate::AccountError::NotFound(address.to_string()),
@@ -151,7 +151,7 @@ impl ApiChainTransDomain {
             ))?;
         };
 
-        let private_key = ChainTransDomain::get_key(
+        let private_key = Self::get_key(
             &params.base.from,
             &params.base.chain_code,
             &params.password,

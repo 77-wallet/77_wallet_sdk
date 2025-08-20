@@ -261,4 +261,69 @@ impl ApiAssetsDao {
 
         Ok(())
     }
+
+    pub async fn get_chain_assets_by_address_chain_code_symbol<'a, E>(
+        exec: E,
+        address: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Option<&str>,
+        is_multisig: Option<bool>,
+    ) -> Result<Vec<ApiAssetsEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let addresses = crate::any_in_collection(address, "','");
+        let mut sql = "SELECT * FROM assets
+        WHERE status = 1
+            AND EXISTS (
+                SELECT 1
+                FROM chain
+                WHERE chain.chain_code = assets.chain_code
+                AND chain.status = 1
+            )
+            AND EXISTS (
+                SELECT 1
+                FROM coin
+                WHERE coin.chain_code = assets.chain_code
+                AND coin.token_address = assets.token_address
+                AND coin.symbol = assets.symbol
+                AND coin.status = 1
+            )"
+            .to_string();
+
+        if !addresses.is_empty() {
+            let str = format!(" AND address in ('{}')", addresses);
+            sql.push_str(&str)
+        }
+
+        if chain_code.is_some() {
+            sql.push_str(" AND chain_code = ?");
+        }
+
+        if symbol.is_some() {
+            sql.push_str(" AND symbol = ?");
+        }
+
+        if let Some(is_multisig) = is_multisig {
+            let is_multisig = if is_multisig { vec![1] } else { vec![0, 2] };
+            let is_multisig = crate::any_in_collection(is_multisig, "','");
+            let str = format!(" AND is_multisig in ('{}')", is_multisig);
+            sql.push_str(&str);
+        }
+
+        let mut query = sqlx::query_as::<_, ApiAssetsEntity>(&sql);
+
+        if let Some(code) = chain_code {
+            query = query.bind(code);
+        }
+
+        if let Some(sym) = symbol {
+            query = query.bind(sym);
+        }
+
+        query
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }
