@@ -1,3 +1,4 @@
+use crate::entities;
 use crate::entities::api_bill::ApiBillUpdateEntity;
 use crate::{
     any_in_collection,
@@ -413,32 +414,32 @@ impl ApiBillDao {
         );
 
         let sql = format!(
-            "insert into bill
-            (
-                hash,chain_code,symbol,transfer_type,tx_kind,owner,from_addr,to_addr,token,value,
-                transaction_fee,resource_consume,transaction_time,status,is_multisig,block_height,queue_id,notes,
-                created_at,updated_at,signer,extra
-            )
-                values {}
-                on conflict (hash,transfer_type,owner)
-                do update set
-                    status = excluded.status,
-                    resource_consume =excluded.resource_consume,
-                    block_height = excluded.block_height,
-                    transaction_time = excluded.transaction_time,
-                    transaction_fee = excluded.transaction_fee,
-                    symbol =
-                        CASE WHEN bill.symbol = '' THEN excluded.symbol ELSE bill.symbol END,
-                    to_addr =
-                        CASE WHEN bill.to_addr = '' THEN excluded.to_addr ELSE bill.to_addr END,
-                    value =
-                        CASE WHEN bill.value = '0' THEN excluded.value ELSE bill.value END,
-                    extra =
-                        CASE WHEN excluded.extra != '' THEN excluded.extra ELSE bill.extra END,
-                    updated_at = EXCLUDED.updated_at;
-            ",
-            values
-        );
+                "insert into bill
+                (
+                    hash,chain_code,symbol,transfer_type,tx_kind,owner,from_addr,to_addr,token,value,
+                    transaction_fee,resource_consume,transaction_time,status,is_multisig,block_height,queue_id,notes,
+                    created_at,updated_at,signer,extra
+                )
+                    values {}
+                    on conflict (hash,transfer_type,owner)
+                    do update set
+                        status = excluded.status,
+                        resource_consume =excluded.resource_consume,
+                        block_height = excluded.block_height,
+                        transaction_time = excluded.transaction_time,
+                        transaction_fee = excluded.transaction_fee,
+                        symbol =
+                            CASE WHEN bill.symbol = '' THEN excluded.symbol ELSE bill.symbol END,
+                        to_addr =
+                            CASE WHEN bill.to_addr = '' THEN excluded.to_addr ELSE bill.to_addr END,
+                        value =
+                            CASE WHEN bill.value = '0' THEN excluded.value ELSE bill.value END,
+                        extra =
+                            CASE WHEN excluded.extra != '' THEN excluded.extra ELSE bill.extra END,
+                        updated_at = EXCLUDED.updated_at;
+                ",
+                values
+            );
 
         sqlx::query(&sql)
             .execute(exec)

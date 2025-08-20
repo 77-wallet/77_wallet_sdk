@@ -1,5 +1,4 @@
 use super::has_expiration;
-use serde::{Serialize, Serializer};
 use sqlx::types::chrono::{DateTime, Utc};
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]

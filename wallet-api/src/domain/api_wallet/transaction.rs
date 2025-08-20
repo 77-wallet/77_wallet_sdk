@@ -1,6 +1,10 @@
 use super::adapter::TransactionAdapter;
 use crate::{
-    domain::{bill::BillDomain, coin::CoinDomain},
+    domain::{
+        api_wallet::{account::ApiAccountDomain, bill::ApiBillDomain},
+        bill::BillDomain,
+        coin::CoinDomain,
+    },
     infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
     request::transaction::{self, Signer},
 };
@@ -150,11 +154,10 @@ impl ApiChainTransDomain {
             ))?;
         };
 
-        let private_key = Self::get_key(
+        let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,
             &params.base.chain_code,
             &params.password,
-            &params.signer,
         )
         .await?;
 
@@ -176,48 +179,13 @@ impl ApiChainTransDomain {
         new_bill.resource_consume = resp.resource_consume()?;
         new_bill.transaction_fee = resp.fee;
 
-        // 如果使用了权限，上报给后端
-        if let Some(signer) = params.signer {
-            let pool = crate::Context::get_global_sqlite_pool()?;
-            let permission = PermissionRepo::permission_with_user(
-                &pool,
-                &params.base.from,
-                signer.permission_id,
-                false,
-            )
-            .await?
-            .ok_or(crate::BusinessError::Permission(
-                crate::PermissionError::ActivesPermissionNotFound,
-            ))?;
+        // TODO：
+        // ApiBillDomain::create_bill(new_bill).await?;
 
-            let users = permission.users();
-
-            let params = TransPermission {
-                address: params.base.from,
-                chain_code: params.base.chain_code,
-                tx_kind: bill_kind.to_i8(),
-                hash: resp.tx_hash.clone(),
-                permission_data: PermissionData {
-                    opt_address: signer.address.to_string(),
-                    users: users.clone(),
-                },
-            };
-
-            let task = task_queue::BackendApiTask::BackendApi(BackendApiTaskData::new(
-                endpoint::UPLOAD_PERMISSION_TRANS,
-                &params,
-            )?);
-            let _ = Tasks::new().push(task).send().await;
-
-            new_bill.signer = users;
-        }
-
-        BillDomain::create_bill(new_bill).await?;
-
-        if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::manager::Context::get_global_backend_api()?;
-            let _ = backend.delegate_complete(&request_id).await;
-        }
+        // if let Some(request_id) = params.base.request_resource_id {
+        //     let backend = crate::manager::Context::get_global_backend_api()?;
+        //     let _ = backend.delegate_complete(&request_id).await;
+        // }
 
         Ok(resp.tx_hash)
     }
@@ -391,25 +359,6 @@ impl ApiChainTransDomain {
             ))?;
         }
         Ok(transfer_amount)
-    }
-
-    // 如果传入了signer 则使用signer的私钥
-    pub async fn get_key(
-        from: &str,
-        chain_code: &str,
-        password: &str,
-        signer: &Option<Signer>,
-    ) -> Result<ChainPrivateKey, crate::ServiceError> {
-        let address = if let Some(signer) = signer {
-            signer.address.clone()
-        } else {
-            from.to_string()
-        };
-
-        let key = crate::domain::account::open_subpk_with_password(chain_code, &address, password)
-            .await?;
-
-        Ok(key)
     }
 
     // 后期加入缓存
