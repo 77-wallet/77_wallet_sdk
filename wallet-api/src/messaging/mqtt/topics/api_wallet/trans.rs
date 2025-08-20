@@ -1,19 +1,23 @@
+use std::str::FromStr;
+use rust_decimal::Decimal;
 use wallet_database::{
     entities::assets::AssetsId,
-    repositories::{api_assets::ApiAssetsRepo, chain::ChainRepo},
+    repositories::api_assets::ApiAssetsRepo,
 };
 use wallet_transport_backend::request::api_wallet::strategy::QueryCollectionStrategyReq;
 use wallet_utils::conversion;
-
+use wallet_database::entities::api_bill::ApiBillKind;
+use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
 use crate::{
-    domain::{
-        api_wallet::{account::ApiAccountDomain, transaction::ApiChainTransDomain},
-        chain::transaction::ChainTransDomain,
-    },
+    domain::{api_wallet::account::ApiAccountDomain, chain::transaction::ChainTransDomain},
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
-    request::transaction::{BaseTransferReq, TransferReq},
+    request::transaction::BaseTransferReq,
     service::transaction::TransactionService,
 };
+use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
+use crate::domain::api_wallet::transaction::ApiChainTransDomain;
+use crate::messaging::notify::api_wallet::WithdrawFront;
+use crate::request::transaction::TransferReq;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -37,20 +41,6 @@ pub struct TransMsg {
 // 归集和提币
 impl TransMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        match self.trade_type {
-            // 提币
-            1 => {}
-            // 归集
-            2 => {
-                self.collect().await?;
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
-
-    async fn collect(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let backend_api = crate::Context::get_global_backend_api()?;
         // 查询策略
@@ -134,6 +124,57 @@ impl TransMsg {
 
         // let data = NotifyEvent::AddressUse(self.to_owned());
         // FrontendNotifyEvent::new(data).send().await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn withdraw(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+        // 验证金额是否需要输入密码
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiWithdrawRepo::upsert_api_withdraw(
+            &pool,
+            &self.uid,
+            "",
+            &self.from,
+            &self.to,
+            &self.value,
+            &self.token_address,
+            &self.symbol,
+            &self.trade_no,
+            self.trade_type,
+        ).await?;
+
+        let data = NotifyEvent::Withdraw(WithdrawFront {
+            uid: self.uid.to_string(),
+            from_addr: self.from.to_string(),
+            to_addr: self.to.to_string(),
+            value: self.value.to_string(),
+        });
+        FrontendNotifyEvent::new(data).send().await?;
+
+        // 可能发交易
+        let value = Decimal::from_str(&self.value).unwrap();
+        if (value < Decimal::from(10)) {
+            let mut params = BaseTransferReq::new(
+                &self.from,
+                &self.to.to_string(),
+                &self.value.to_string(),
+                &self.chain_code.to_string(),
+                &self.symbol.to_string(),
+            );
+            params.with_token(Some(self.token_address.clone()));
+
+            let req = TransferReq {
+                base: params,
+                password: "".to_string(),
+                fee_setting: "".to_string(),
+                signer: None,
+            };
+            // 发交易
+            let adapter = ApiChainAdapterFactory::get_transaction_adapter(self.chain_code.as_str()).await?;
+            let tx_hash = ApiChainTransDomain::transfer(req, ApiBillKind::Transfer, &adapter).await?;
+        }
         Ok(())
     }
 }

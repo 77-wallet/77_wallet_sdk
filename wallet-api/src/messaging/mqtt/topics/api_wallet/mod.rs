@@ -6,7 +6,5 @@ mod address_use;
 pub use address_use::*;
 mod trans;
 pub use trans::*;
-mod withdraw;
-pub use withdraw::*;
 mod address_allock;
 pub use address_allock::*;

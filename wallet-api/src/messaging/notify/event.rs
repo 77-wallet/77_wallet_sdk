@@ -17,7 +17,7 @@ use crate::messaging::notify::api_wallet::WithdrawNoPassFront;
 use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
-        api_wallet::{AddressUseMsg, UnbindUidMsg, WithdrawMsg},
+        api_wallet::{AddressUseMsg, UnbindUidMsg},
     },
     notify::api_wallet::WithdrawFront,
 };

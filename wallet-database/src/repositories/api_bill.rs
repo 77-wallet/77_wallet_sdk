@@ -118,4 +118,35 @@ impl ApiBillRepo {
     pub async fn create(tx: ApiBillEntity, pool: &DbPool) -> Result<(), crate::Error> {
         ApiBillDao::create(tx, pool.as_ref()).await
     }
+
+    pub async fn on_going_bill(
+        chain_code: &str,
+        address: &str,
+        exec: &DbPool,
+    ) -> Result<Vec<ApiBillEntity>, crate::Error> {
+        ApiBillDao::on_going_bill(chain_code, address, exec.as_ref()).await
+    }
+
+    pub async fn get_one_by_hash(
+        hash: &str,
+        exec: &DbPool,
+    ) -> Result<Option<ApiBillEntity>, crate::Error> {
+        ApiBillDao::get_one_by_hash(hash, exec.as_ref()).await
+    }
+
+    pub async fn update_all(
+        executor: &DbPool,
+        tx: ApiBillEntity,
+        id: i32,
+    ) -> Result<(), crate::Error> {
+        ApiBillDao::update_all(executor.as_ref(), tx, id).await
+    }
+
+    pub async fn get_by_hash_and_type(
+        executor: &DbPool,
+        hash: &str,
+        transfer_type: i64,
+    ) -> Result<Option<ApiBillEntity>, crate::Error> {
+        ApiBillDao::get_by_hash_and_type(executor.as_ref(), hash, transfer_type).await
+    }
 }

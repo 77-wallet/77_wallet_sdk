@@ -16,7 +16,12 @@ pub struct ApiWalletEntity {
 }
 
 #[derive(
-    Debug, Clone, Copy, serde_repr::Deserialize_repr, serde_repr::Serialize_repr, sqlx::Type,
+    Debug,
+    Clone,
+    Copy,
+    serde_repr::Deserialize_repr,
+    serde_repr::Serialize_repr,
+    sqlx::Type,
 )]
 #[repr(u8)]
 pub enum ApiWalletType {

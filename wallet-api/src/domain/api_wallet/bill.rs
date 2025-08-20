@@ -1,15 +1,19 @@
+use chrono::Utc;
+use tracing::Instrument;
 use crate::domain::api_wallet::adapter;
-use crate::messaging::mqtt::topics::AcctChange;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
-use wallet_database::repositories::api_bill::ApiBillRepo;
+use wallet_database::repositories::{
+    api_bill::ApiBillRepo,
+    api_account::ApiAccountRepo
+};
 use wallet_database::{
     DbPool,
-    dao::{bill::BillDao, multisig_account::MultisigAccountDaoV1},
     entities::{
-        self,
-        account::AccountEntity,
-        bill::{BillEntity, BillKind, BillStatus, NewBillEntity},
-        multisig_account::MultiAccountOwner,
+        api_bill::{
+            ApiBillEntity,
+            ApiBillKind,
+            ApiBillStatus,
+        }
     },
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
@@ -18,30 +22,26 @@ use wallet_types::constant::chain_code;
 pub struct ApiBillDomain;
 
 impl ApiBillDomain {
-    pub async fn create_bill<T>(
-        params: entities::api_bill::ApiBillEntity,
+    pub async fn create_bill(
+        params: ApiBillEntity,
     ) -> Result<(), crate::ServiceError>
-    where
-        T: serde::Serialize,
     {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         Ok(ApiBillRepo::create(params, &pool).await?)
     }
 
     // 对于swap的交易，先判断有没有对应的交易
-    pub async fn create_check_swap<T>(
-        tx: entities::bill::NewBillEntity<T>,
+    pub async fn create_check_swap(
+        tx: ApiBillEntity,
         pool: &DbPool,
     ) -> Result<(), crate::ServiceError>
-    where
-        T: serde::Serialize,
     {
-        match BillDao::get_one_by_hash(&tx.hash, pool.as_ref()).await? {
-            Some(bill) if bill.tx_kind == BillKind::Swap.to_i8() => {
-                BillDao::update_all(pool.clone(), tx, bill.id).await?;
+        match ApiBillRepo::get_one_by_hash(&tx.hash, &pool).await? {
+            Some(bill) if bill.tx_kind == ApiBillKind::Swap => {
+                ApiBillRepo::update_all(pool, tx, bill.id).await?;
             }
             _ => {
-                BillDao::create(tx, pool.as_ref()).await?;
+                ApiBillRepo::create(tx, pool).await?;
             }
         }
 
@@ -76,44 +76,50 @@ impl ApiBillDomain {
         }
 
         let status = if item.status {
-            BillStatus::Success.to_i8()
+            ApiBillStatus::Success.to_i8()
         } else {
-            BillStatus::Failed.to_i8()
+            ApiBillStatus::Failed.to_i8()
         };
 
         let transaction_fee = item.transaction_fee();
 
-        let new_entity = NewBillEntity {
+        let new_entity = ApiBillEntity {
+            id: 0,
             hash: item.tx_hash,
-            from: item.from_addr,
-            to: item.to_addr,
+            from_addr: item.from_addr,
+            to_addr: item.to_addr,
             token: item.token,
             chain_code: item.chain_code,
             symbol: item.symbol,
             status,
-            value: item.value,
+            value: item.value.to_string(),
             transaction_fee,
             resource_consume: BillResourceConsume {
                 net_used: item.net_used.unwrap_or_default(),
                 energy_used: item.energy_used.unwrap_or_default(),
             }
             .to_json_str()?,
-            transaction_time: wallet_utils::time::datetime_to_timestamp(&item.transaction_time),
-            multisig_tx: item.is_multisig > 0,
-            tx_type: item.transfer_type,
-            tx_kind: BillKind::try_from(item.tx_kind)?,
+            // transaction_time: item.transaction_time,
+            transaction_time: Utc::now().into(),
+            tx_kind: ApiBillKind::try_from(item.tx_kind)?,
+            owner: "".to_string(),
             queue_id: item.queue_id.unwrap_or("".to_string()),
             block_height: item.block_height.to_string(),
             notes: item.notes,
-            signer: item.signer,
-            extra: item.extra,
+            signer: item.signer.join(","),
+            // extra: item.extra.ok_or(""),
+            extra: "".to_string(),
+            created_at: Default::default(),
+            transfer_type: 0,
+            is_multisig: 0,
+            updated_at: None,
         };
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         if new_entity.chain_code == chain_code::TON {
-            AcctChange::handle_ton_bill(new_entity, &pool).await?;
+            Self::handle_ton_bill(new_entity, &pool).await?;
         } else {
-            ApiBillDomain::create_check_swap(new_entity, &pool).await?;
+            Self::create_check_swap(new_entity, &pool).await?;
         }
 
         Ok(())
@@ -159,11 +165,11 @@ impl ApiBillDomain {
     ) -> Result<Option<String>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let bill = BillDao::last_bill(chain_code, address, pool.as_ref())
+        let bill = ApiBillRepo::last_bill(&pool, chain_code, address)
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-        let adjusted_time = |bill: Option<BillEntity>| {
+        let adjusted_time = |bill: Option<ApiBillEntity>| {
             bill.map(|bill| {
                 let time = bill.transaction_time - std::time::Duration::from_secs(86400 * 5);
                 time.format("%Y-%m-%d %H:%M:%S").to_string()
@@ -172,48 +178,43 @@ impl ApiBillDomain {
         };
 
         // Non-Tron chains
-        if chain_code != wallet_types::constant::chain_code::TRON {
+        if chain_code != chain_code::TRON {
             return Ok(Some(adjusted_time(bill)));
         }
 
         // Tron-specific logic
-        let account =
-            AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
-                .await?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool).await?;
+
 
         if account.is_some() {
             return Ok(Some(adjusted_time(bill)));
         }
 
-        // Check multisig account if regular account not found
-        let condition = vec![
-            ("address", address),
-            ("chain_code", chain_code),
-            ("is_del", "0"),
-        ];
-        let account = MultisigAccountDaoV1::find_by_conditions(condition, pool.as_ref())
-            .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-        if let Some(account) = account {
-            if account.owner == MultiAccountOwner::Participant.to_i8() {
-                // If participant, compare bill and account creation time
-                if let Some(bill) = bill {
-                    let crate_time = account.created_at + std::time::Duration::from_secs(86400 * 5);
-                    if bill.transaction_time > crate_time {
-                        return Ok(Some(
-                            bill.transaction_time
-                                .format("%Y-%m-%d %H:%M:%S")
-                                .to_string(),
-                        ));
-                    }
-                }
-                let time = account.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-                return Ok(Some(time));
+        Err(crate::ServiceError::Business(crate::AssetsError::NotFound.into()))
+    }
+
+    pub async fn handle_ton_bill(
+        mut tx: ApiBillEntity,
+        pool: &DbPool,
+    ) -> Result<(), crate::ServiceError> {
+        let origin_hash = tx.hash.clone();
+        let hashs = origin_hash.split(":").collect::<Vec<_>>();
+
+        if hashs.len() == 2 {
+            tx.hash = hashs[0].to_string();
+            let in_hash = hashs[1];
+            if let Some(bill) =
+                ApiBillRepo::get_by_hash_and_type(pool, in_hash, tx.transfer_type as i64).await?
+            {
+                ApiBillRepo::update_all(pool, tx, bill.id).await?;
+            } else {
+                ApiBillRepo::create(tx, pool).await?;
             }
-            return Ok(Some(adjusted_time(bill)));
+        } else {
+            ApiBillRepo::create(tx, pool).await?;
         }
 
-        Err(crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound).into())
+        Ok(())
     }
 }
