@@ -228,6 +228,11 @@ impl ApiWalletService {
         Ok(())
     }
 
+    pub async fn unbind_merchant(self, uid: &str) -> Result<(), crate::ServiceError> {
+        ApiWalletDomain::unbind_uid(uid).await?;
+        Ok(())
+    }
+
     //     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
     //         let mut tx = self.repo;
 
