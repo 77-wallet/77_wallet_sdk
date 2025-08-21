@@ -75,7 +75,7 @@ async fn test_approve_fee() {
         approve_type: "UN_LIMIT".to_string(),
     };
 
-    let resp = wallet_manager.approve_fee(params).await;
+    let resp = wallet_manager.approve_fee(params, false).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 

@@ -45,8 +45,12 @@ impl crate::WalletManager {
         SwapServer::new()?.approve(req, password).await.into()
     }
 
-    pub async fn approve_fee(&self, req: ApproveReq) -> ReturnType<EstimateFeeResp> {
-        SwapServer::new()?.approve_fee(req).await.into()
+    pub async fn approve_fee(
+        &self,
+        req: ApproveReq,
+        is_cancel: bool,
+    ) -> ReturnType<EstimateFeeResp> {
+        SwapServer::new()?.approve_fee(req, is_cancel).await.into()
     }
 
     pub async fn approve_list(&self, uid: String, account_id: u32) -> ReturnType<Vec<ApproveList>> {

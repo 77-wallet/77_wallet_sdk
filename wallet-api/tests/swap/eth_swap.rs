@@ -49,15 +49,17 @@ async fn test_approve_fee() {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
-        from: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
+        from: "0x79276834D1c11039df3eFdE8204aA27CB661a0ff".to_string(),
         spender: "0xb0635793E700E8A5AFbB94e12086E921FB0E3E3E".to_string(),
         contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-        value: "2".to_string(),
+        value: "0".to_string(),
         chain_code: "eth".to_string(),
         approve_type: "UN_LIMIT".to_string(),
     };
 
-    let resp = wallet_manager.approve_fee(params).await;
+    let is_cancel = true;
+
+    let resp = wallet_manager.approve_fee(params, is_cancel).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 

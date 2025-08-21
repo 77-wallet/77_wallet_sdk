@@ -532,10 +532,16 @@ impl SwapServer {
     pub async fn approve_fee(
         &self,
         req: ApproveReq,
+        is_cancel: bool,
     ) -> Result<EstimateFeeResp, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        let value = alloy::primitives::U256::MAX;
+        let value = if is_cancel {
+            alloy::primitives::U256::ZERO
+        } else {
+            alloy::primitives::U256::MAX
+        };
+
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
 
