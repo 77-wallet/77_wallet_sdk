@@ -365,7 +365,7 @@ impl AssetsService {
                 is_multisig,
             )
             .await?;
-
+        tracing::info!("accounts: {accounts:?}");
         let coins = tx
             .coin_list_v2(Some(symbol.to_string()), chain_code.clone())
             .await?;
@@ -378,10 +378,11 @@ impl AssetsService {
         let mut token_balance_refresh_req: TokenBalanceRefreshReq =
             TokenBalanceRefreshReq(Vec::new());
         for account in accounts {
-            if let Some(coin) = coins
-                .iter()
-                .find(|coin| coin.chain_code == account.chain_code)
-            {
+            if let Some(coin) = coins.iter().find(|coin| {
+                coin.chain_code == account.chain_code
+                    && coin.symbol == symbol
+                    && coin.is_default == 1
+            }) {
                 let chain_code = account.chain_code.as_str();
                 // let code: ChainCode = chain_code.try_into()?;
 
@@ -395,7 +396,6 @@ impl AssetsService {
 
                 let assets_id =
                     AssetsId::new(&account.address, chain_code, symbol, coin.token_address());
-
                 let assets = CreateAssetsVo::new(
                     assets_id,
                     coin.decimals,

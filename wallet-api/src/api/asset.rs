@@ -211,11 +211,11 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
-        let account_id = 2147483648;
+        let account_id = 1;
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id,
             // symbol: "BNB".to_string(),
-            symbol: "USDT".to_string(),
+            symbol: "TRX".to_string(),
             wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
             chain_code: None,
             // token_address,
@@ -274,7 +274,7 @@ mod test {
         let account_id = 1;
         // let symbol = "LTC";
         // let symbol = "BEANS";
-        let symbol = "USDT";
+        let symbol = "TRX";
         let res = wallet_manager
             .remove_coin(wallet_address, account_id, symbol)
             .await;
