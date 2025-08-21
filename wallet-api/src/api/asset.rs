@@ -247,11 +247,11 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // wallet_manager.init_wallet_type("api").await?;
-        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let address = "0x82C818D352BAf6cC7dd007B89E5CC82B4DAF2c9c";
         let account_id = Some(1);
-        let chain_code = "bnb";
-        let symbol = "USDT";
-        let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
+        let chain_code = "ton";
+        let symbol = "TON";
+        let token_address = Some("".to_string());
         let res = wallet_manager
             .get_assets(address, account_id, chain_code, symbol, token_address)
             .await;

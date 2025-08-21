@@ -135,3 +135,38 @@ impl crate::WalletManager {
             .into()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{request::transaction::BaseTransferReq, test::env::get_manager};
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_trasaction_fee() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
+        let to = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
+        let value = "0.000001";
+        let chain_code = "eth";
+        let symbol = "USDT";
+        // let symbol = "USDT";
+
+        let mut params = BaseTransferReq::new(
+            from.to_string(),
+            to.to_string(),
+            value.to_string(),
+            chain_code.to_string(),
+            symbol.to_string(),
+        );
+        params.with_token(Some(
+            "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
+        ));
+
+        let res = wallet_manager.transaction_fee(params).await;
+        tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());
+
+        Ok(())
+    }
+}
