@@ -1,7 +1,9 @@
 use super::chain::adapter::ChainAdapterFactory;
-use crate::request::transaction::SwapTokenInfo;
+use crate::{
+    domain::coin::CoinDomain, request::transaction::SwapTokenInfo, response_vo::chain::ChainList,
+};
 use futures::{StreamExt, stream};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
 use wallet_database::{
     DbPool,
@@ -130,35 +132,53 @@ impl AssetsDomain {
             is_multisig
         };
 
-        let coin_list = tx
+        let assets_list = tx
             .lists(addresses, chain_code, keyword, _is_multisig)
             .await
             .map_err(crate::ServiceError::Database)?;
 
         let mut res = crate::response_vo::coin::CoinInfoList::default();
-        for coin in coin_list {
-            if let Some(info) = res.iter_mut().find(|info| info.symbol == coin.symbol) {
-                info.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                    chain_code: coin.chain_code,
-                    token_address: Some(coin.token_address),
-                    protocol: coin.protocol,
-                });
+        for assets in assets_list {
+            let coin =
+                CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
+                    .await?;
+            tracing::info!("coin: {coin:?}");
+            if let Some(info) = res
+                .iter_mut()
+                .find(|info| info.symbol == assets.symbol && coin.is_default == 1)
+            {
+                tracing::info!("nonono, info: {:?}", info);
+                info.chain_list
+                    .entry(assets.chain_code.clone())
+                    .or_insert(assets.token_address);
+
+                // info.chain_list.insert(crate::response_vo::coin::ChainInfo {
+                //     chain_code: assets.chain_code,
+                //     token_address: Some(assets.token_address),
+                //     protocol: assets.protocol,
+                // });
             } else {
+                tracing::info!("hahaha");
                 res.push(crate::response_vo::coin::CoinInfo {
-                    symbol: coin.symbol,
-                    name: Some(coin.name),
-                    chain_list: std::collections::HashSet::from([
-                        crate::response_vo::coin::ChainInfo {
-                            chain_code: coin.chain_code,
-                            token_address: Some(coin.token_address),
-                            protocol: coin.protocol,
-                        },
-                    ]),
-                    is_multichain: false,
+                    symbol: assets.symbol,
+                    name: Some(assets.name),
+                    // chain_list: std::collections::HashSet::from([
+                    //     crate::response_vo::coin::ChainInfo {
+                    //         chain_code: assets.chain_code,
+                    //         token_address: Some(assets.token_address),
+                    //         protocol: assets.protocol,
+                    //     },
+                    // ]),
+                    chain_list: ChainList(HashMap::from([(
+                        assets.chain_code.clone(),
+                        assets.token_address,
+                    )])),
+                    // is_multichain: false,
+                    is_default: coin.is_default == 1,
                 });
             }
         }
-
+        tracing::info!("res: {res:#?}");
         Ok(res)
     }
 

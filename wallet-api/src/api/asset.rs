@@ -47,6 +47,7 @@ impl crate::WalletManager {
         symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
+        let token_address = token_address.filter(|s| !s.is_empty());
         AssetsService::new(self.repo_factory.resource_repo())
             .detail(address, account_id, chain_code, symbol, token_address)
             .await?
@@ -210,11 +211,11 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
-        let account_id = 2147483648;
+        let account_id = 1;
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id,
             // symbol: "BNB".to_string(),
-            symbol: "USDT".to_string(),
+            symbol: "TRX".to_string(),
             wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
             chain_code: None,
             // token_address,
@@ -246,11 +247,11 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // wallet_manager.init_wallet_type("api").await?;
-        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let address = "0x82C818D352BAf6cC7dd007B89E5CC82B4DAF2c9c";
         let account_id = Some(1);
-        let chain_code = "bnb";
-        let symbol = "USDT";
-        let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
+        let chain_code = "ton";
+        let symbol = "TON";
+        let token_address = Some("".to_string());
         let res = wallet_manager
             .get_assets(address, account_id, chain_code, symbol, token_address)
             .await;
@@ -273,7 +274,7 @@ mod test {
         let account_id = 1;
         // let symbol = "LTC";
         // let symbol = "BEANS";
-        let symbol = "USDT";
+        let symbol = "TRX";
         let res = wallet_manager
             .remove_coin(wallet_address, account_id, symbol)
             .await;
@@ -309,7 +310,7 @@ mod test {
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
 
         // let account_id = Some(1);
-        let account_id = Some(2147483648);
+        let account_id = Some(1);
 
         let res = wallet_manager
             .get_coin_list(wallet_address, account_id, chain_code, keyword, is_multisig)

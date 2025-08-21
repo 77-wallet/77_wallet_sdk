@@ -2,6 +2,7 @@
 use serde::Deserialize;
 use serde_yaml;
 use std::{fs, path::Path};
+use wallet_oss::OssConfig;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -11,6 +12,7 @@ pub struct Config {
     pub crypto: CryptoConfig,
     pub app_code: String,
 }
+
 #[derive(Deserialize, Debug)]
 pub struct CryptoConfig {
     pub aes_key: String,
@@ -28,14 +30,6 @@ pub struct BackendApiConfig {
     pub dev_url: String,
     pub test_url: String,
     pub prod_url: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct OssConfig {
-    pub access_key_id: String,
-    pub access_key_secret: String,
-    pub bucket_name: String,
-    pub endpoint: String,
 }
 
 impl Config {

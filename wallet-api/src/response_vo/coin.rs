@@ -1,11 +1,11 @@
-use std::{
-    collections::HashSet,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 use wallet_database::entities::chain::ChainEntity;
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
 
-use crate::domain::{account::AccountDomain, app::config::ConfigDomain};
+use crate::{
+    domain::{account::AccountDomain, app::config::ConfigDomain},
+    response_vo::chain::ChainList,
+};
 
 use super::{
     account::BalanceInfo,
@@ -18,8 +18,10 @@ use super::{
 pub struct CoinInfo {
     pub symbol: String,
     pub name: Option<String>,
-    pub chain_list: HashSet<ChainInfo>,
-    pub is_multichain: bool,
+    // pub chain_list: HashSet<ChainInfo>,
+    pub chain_list: ChainList,
+    // pub is_multichain: bool,
+    pub is_default: bool,
 }
 
 #[derive(Debug, serde::Serialize, Default)]
@@ -39,39 +41,39 @@ impl DerefMut for CoinInfoList {
         &mut self.0
     }
 }
-impl CoinInfoList {
-    // 标记多链资产的 is_multi_chain 属性
-    pub(crate) fn mark_multi_chain_assets(&mut self) {
-        // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
-        let mut symbol_chain_map: std::collections::HashMap<String, HashSet<String>> =
-            std::collections::HashMap::new();
+// impl CoinInfoList {
+// // 标记多链资产的 is_multi_chain 属性
+// pub(crate) fn mark_multi_chain_assets(&mut self) {
+//     // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
+//     let mut symbol_chain_map: std::collections::HashMap<String, HashSet<String>> =
+//         std::collections::HashMap::new();
 
-        // 先填充 symbol_chain_map，每个 symbol 对应的 HashSet 包含不同的 chain_code
-        for asset in self.iter() {
-            for chain_info in asset.chain_list.iter() {
-                symbol_chain_map
-                    .entry(asset.symbol.clone())
-                    .or_default()
-                    .insert(chain_info.chain_code.clone());
-            }
-        }
+//     // 先填充 symbol_chain_map，每个 symbol 对应的 HashSet 包含不同的 chain_code
+//     for asset in self.iter() {
+//         for (chain_code, token_address) in asset.chain_list.iter() {
+//             symbol_chain_map
+//                 .entry(asset.symbol.clone())
+//                 .or_default()
+//                 .insert(chain_code.clone());
+//         }
+//     }
 
-        // 再次遍历 self，设置 is_multi_chain 标记
-        for asset in self.iter_mut() {
-            if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
-                asset.is_multichain = chain_codes.len() > 1;
-            }
-        }
-    }
-}
+//     // 再次遍历 self，设置 is_multi_chain 标记
+//     for asset in self.iter_mut() {
+//         if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
+//             // asset.is_multichain = chain_codes.len() > 1;
+//         }
+//     }
+// }
+// }
 
-#[derive(Debug, serde::Deserialize, PartialEq, Eq, Hash, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChainInfo {
-    pub chain_code: String,
-    pub token_address: Option<String>,
-    pub protocol: Option<String>,
-}
+// #[derive(Debug, serde::Deserialize, PartialEq, Eq, Hash, serde::Serialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct ChainInfo {
+//     pub chain_code: String,
+//     pub token_address: Option<String>,
+//     pub protocol: Option<String>,
+// }
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -165,7 +167,7 @@ impl DerefMut for TokenCurrencies {
 
 impl TokenCurrencies {
     pub async fn calculate_token_price_changes(
-        data: TokenPriceChangeBody,
+        data: &TokenPriceChangeBody,
         exchange_rate: f64,
     ) -> Result<TokenPriceChangeRes, crate::ServiceError> {
         // let market_value = wallet_utils::conversion::decimal_from_f64(data.market_value)?;
@@ -504,32 +506,32 @@ pub struct TokenInfo {
     pub decimals: u8,
 }
 
-impl From<(TokenPriceChangeBody, BalanceInfo, BalanceInfo, BalanceInfo)> for TokenPriceChangeRes {
+impl From<(&TokenPriceChangeBody, BalanceInfo, BalanceInfo, BalanceInfo)> for TokenPriceChangeRes {
     fn from(
         (body, balance, market_value, day_change_amount): (
-            TokenPriceChangeBody,
+            &TokenPriceChangeBody,
             BalanceInfo,
             BalanceInfo,
             BalanceInfo,
         ),
     ) -> Self {
         Self {
-            id: body.id,
-            chain_code: body.chain_code,
-            symbol: body.symbol,
+            id: body.id.clone(),
+            chain_code: body.chain_code.clone(),
+            symbol: body.symbol.clone(),
             default_token: body.default_token,
             enable: body.enable,
             market_value,
             master: body.master,
-            name: body.name,
+            name: body.name.clone(),
             balance,
             price_percentage: body.price_percentage,
             status: body.status,
-            token_address: body.token_address,
+            token_address: body.token_address.clone(),
             unit: body.unit,
             // price: body.price,
             day_change_amount,
-            aname: body.aname,
+            aname: body.aname.clone(),
         }
     }
 }

@@ -7,6 +7,7 @@ use crate::sql_utils::ArgFn;
 
 pub struct DynamicQueryBuilder<'a> {
     base_sql: String,
+    joins: Vec<String>,
     where_clauses: Vec<String>,
     order_by: Option<String>,
     limit: Option<u32>,
@@ -18,12 +19,28 @@ impl<'a> DynamicQueryBuilder<'a> {
     pub fn new(base_sql: &str) -> Self {
         Self {
             base_sql: base_sql.to_string(),
+            joins: vec![],
             where_clauses: vec![],
             order_by: None,
             limit: None,
             offset: None,
             arg_fns: vec![],
         }
+    }
+
+    pub fn left_join(mut self, clause: &str) -> Self {
+        self.joins.push(format!("LEFT JOIN {}", clause));
+        self
+    }
+
+    pub fn right_join(mut self, clause: &str) -> Self {
+        self.joins.push(format!("RIGHT JOIN {}", clause));
+        self
+    }
+
+    pub fn inner_join(mut self, clause: &str) -> Self {
+        self.joins.push(format!("INNER JOIN {}", clause));
+        self
     }
 
     pub fn and_where<T>(mut self, clause: &str, val: T) -> Self
@@ -39,6 +56,7 @@ impl<'a> DynamicQueryBuilder<'a> {
         ));
         self
     }
+
     pub fn and_where_eq<T>(mut self, field: &str, val: T) -> Self
     where
         T: Clone + Send + Sync + 'a + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
@@ -51,6 +69,16 @@ impl<'a> DynamicQueryBuilder<'a> {
                 args.add(val.clone());
             },
         ));
+        self
+    }
+
+    pub fn and_where_eq_opt<T>(mut self, field: &str, val: Option<T>) -> Self
+    where
+        T: Clone + Send + Sync + 'a + sqlx::Encode<'a, Sqlite> + sqlx::Type<Sqlite>,
+    {
+        if let Some(v) = val {
+            self = self.and_where_eq(field, v);
+        }
         self
     }
 
@@ -113,6 +141,11 @@ impl<'a> DynamicQueryBuilder<'a> {
 impl<'q> super::SqlQueryBuilder<'q> for DynamicQueryBuilder<'q> {
     fn build_sql(&self) -> (String, Vec<ArgFn<'q>>) {
         let mut sql = self.base_sql.to_string();
+
+        if !self.joins.is_empty() {
+            sql.push(' ');
+            sql.push_str(&self.joins.join(" "));
+        }
 
         if !self.where_clauses.is_empty() {
             sql.push_str(" WHERE ");

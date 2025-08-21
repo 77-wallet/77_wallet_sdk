@@ -435,4 +435,11 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
         Ok(())
     }
+
+    pub async fn backend_config(
+        self,
+    ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        Ok(backend.all_config().await?.configs)
+    }
 }

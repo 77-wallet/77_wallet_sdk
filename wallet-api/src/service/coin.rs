@@ -9,9 +9,12 @@ use crate::{
         parse_utc_with_error,
         task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
     },
-    response_vo::coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
+    response_vo::{
+        chain::ChainList,
+        coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
+    },
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{assets::AssetsId, coin::CoinId},
@@ -24,7 +27,8 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::{
-    request::TokenQueryPriceReq, response_vo::coin::TokenHistoryPrices,
+    request::TokenQueryPriceReq,
+    response_vo::coin::{CoinMarketValue, TokenHistoryPrices},
 };
 
 pub struct CoinService {
@@ -117,26 +121,34 @@ impl CoinService {
                 .iter_mut()
                 .find(|d: &&mut crate::response_vo::coin::CoinInfo| d.symbol == coin.symbol)
             {
-                d.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                    chain_code: coin.chain_code.clone(),
-                    token_address: coin.token_address().clone(),
-                    protocol: coin.protocol.clone(),
-                });
+                d.chain_list
+                    .entry(coin.chain_code.clone())
+                    .or_insert(coin.token_address.unwrap_or_default());
+                // d.chain_list.insert(crate::response_vo::coin::ChainInfo {
+                //     chain_code: coin.chain_code.clone(),
+                //     token_address: coin.token_address().clone(),
+                //     protocol: coin.protocol.clone(),
+                // });
             } else {
                 data.push(crate::response_vo::coin::CoinInfo {
                     symbol: coin.symbol.clone(),
                     name: Some(coin.name.clone()),
-                    chain_list: HashSet::from([crate::response_vo::coin::ChainInfo {
-                        chain_code: coin.chain_code.clone(),
-                        token_address: coin.token_address(),
-                        protocol: coin.protocol,
-                    }]),
-                    is_multichain: false,
+                    // chain_list: HashSet::from([crate::response_vo::coin::ChainInfo {
+                    //     chain_code: coin.chain_code.clone(),
+                    //     token_address: coin.token_address(),
+                    //     protocol: coin.protocol,
+                    // }]),
+                    chain_list: ChainList(HashMap::from([(
+                        coin.chain_code.clone(),
+                        coin.token_address.unwrap_or_default(),
+                    )])),
+                    // is_multichain: false,
+                    is_default: true,
                 })
             }
         }
 
-        data.mark_multi_chain_assets();
+        // data.mark_multi_chain_assets();
 
         let res = wallet_database::pagination::Pagination {
             page,
@@ -279,7 +291,7 @@ impl CoinService {
                     )
                     .await?;
                     let data =
-                        TokenCurrencies::calculate_token_price_changes(token, exchange_rate.rate)
+                        TokenCurrencies::calculate_token_price_changes(&token, exchange_rate.rate)
                             .await?;
                     res.push(data);
                 }
@@ -412,7 +424,7 @@ impl CoinService {
             None,
             protocol,
             decimals,
-            1,
+            0,
             0,
             1,
             time,
@@ -551,8 +563,8 @@ impl CoinService {
         let mut data = Vec::new();
         if let Some(exchange_rate) = exchange_rate {
             for val in list {
-                let res =
-                    TokenCurrencies::calculate_token_price_changes(val, exchange_rate.rate).await?;
+                let res = TokenCurrencies::calculate_token_price_changes(&val, exchange_rate.rate)
+                    .await?;
                 data.push(res);
             }
         }
@@ -565,66 +577,12 @@ impl CoinService {
         };
         Ok(res)
     }
+
+    pub async fn market_value(
+        self,
+        coin: std::collections::HashMap<String, String>,
+    ) -> Result<CoinMarketValue, crate::ServiceError> {
+        let backend_api = crate::Context::get_global_backend_api()?;
+        Ok(backend_api.coin_market_value(coin).await?)
+    }
 }
-
-// let mut data = Vec::new();
-// let page_size = 1000;
-// let mut page = 0;
-
-// // 拉取远程分页数据，按页获取并追加到 `data` 中
-// loop {
-//     let req = wallet_transport_backend::request::TokenQueryByPageReq::new_default_token(
-//         Vec::new(), // 空的 exclude_name_list
-//         page,
-//         page_size,
-//     );
-//     match backend_api.token_query_by_page(&req).await {
-//         Ok(mut list) => {
-//             data.append(&mut list.list);
-//             page += 1;
-//             if page >= list.total_page {
-//                 break;
-//             }
-//         }
-//         Err(e) => {
-//             tracing::error!("get_token_price error: {e:?}");
-//             break; // 出错时中断循环
-//         }
-//     }
-// }
-
-// // 拉取流行币种数据并追加到 `data`
-// let req =
-//     wallet_transport_backend::request::TokenQueryByPageReq::new_popular_token(0, page_size);
-
-// let default_list: Vec<wallet_transport_backend::CoinInfo> =
-//     crate::default_data::coin::init_default_coins_list()?
-//         .coins
-//         .iter()
-//         .map(|coin| coin.to_owned().into())
-//         .collect();
-
-// if let Ok(mut list) = backend_api.token_query_by_page(&req).await {
-//     data.append(&mut list.list);
-// }
-// tracing::debug!("pull hot coins data: {data:#?}");
-
-// let filtered_data: Vec<_> = data
-//     .into_iter()
-//     .filter(|coin| {
-//         !default_list.iter().any(|default_coin| {
-//             tracing::debug!("coin: {coin:#?}");
-//             tracing::debug!(
-//                 "default_coin symbol: {:?}, chain_code: {:?}, token_address: {:?}",
-//                 default_coin.symbol,
-//                 default_coin.chain_code,
-//                 default_coin.token_address,
-//             );
-//             default_coin.chain_code == coin.chain_code
-//                 && default_coin.symbol == coin.symbol
-//                 && default_coin.token_address == coin.token_address
-//         })
-//     })
-//     .collect();
-
-// let data = filtered_data.into_iter().map(|d| d.into()).collect();

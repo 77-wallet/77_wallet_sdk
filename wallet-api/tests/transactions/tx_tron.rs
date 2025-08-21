@@ -7,7 +7,7 @@ async fn test_balance() {
 
     let addr = "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr";
     let chain_code = "tron";
-    let symbol = "WTRX";
+    let symbol = "TRX";
     // let symbol = "USDT";
     let token_address = None;
     let balance = wallet_manager

@@ -29,7 +29,7 @@ impl BillService {
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
-            let account = AccountEntity::account_list(
+            let account = AccountEntity::account_list_v2(
                 pool.as_ref(),
                 root_addr.as_deref(),
                 None,
@@ -96,7 +96,7 @@ impl BillService {
         // get all
         let executor = crate::Context::get_global_sqlite_pool()?;
 
-        let accounts = AccountEntity::account_list(
+        let accounts = AccountEntity::account_list_v2(
             executor.as_ref(),
             Some(wallet_address.as_str()),
             None,

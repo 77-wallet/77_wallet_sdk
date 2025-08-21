@@ -154,6 +154,7 @@ impl AssetsEntity {
         address: Vec<String>,
         chain_code: Option<String>,
         symbol: Option<&str>,
+        token_address: Option<&str>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntityWithAddressType>, crate::Error>
     where
@@ -196,6 +197,9 @@ impl AssetsEntity {
             if symbol.is_some() {
                 sql.push_str(" AND a.symbol = ?");
             }
+            if token_address.is_some() {
+                sql.push_str(" AND a.token_address = ?");
+            }
             if let Some(is_multisig) = is_multisig {
                 let is_multisig_values = if is_multisig { vec![1] } else { vec![0, 2] };
                 let is_multisig_str = crate::any_in_collection(is_multisig_values, "','");
@@ -232,6 +236,10 @@ impl AssetsEntity {
 
         if let Some(sym) = symbol {
             query = query.bind(sym);
+        }
+
+        if let Some(token_address) = token_address {
+            query = query.bind(token_address);
         }
 
         query
@@ -336,7 +344,7 @@ impl AssetsEntity {
             .bind(assets_id.address.clone())
             .bind(assets_id.symbol.clone())
             .bind(assets_id.chain_code.clone())
-            .bind(assets_id.token_address.clone())
+            .bind(assets_id.token_address.clone().unwrap_or_default())
             .fetch_optional(exec)
             .await;
 
@@ -406,7 +414,7 @@ impl AssetsEntity {
             WHERE address = ?
             AND symbol = ?
             AND chain_code = ?
-            AND token_address IS ?
+            AND token_address = ?
         "#,
         );
 
