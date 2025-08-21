@@ -344,7 +344,7 @@ impl AssetsEntity {
             .bind(assets_id.address.clone())
             .bind(assets_id.symbol.clone())
             .bind(assets_id.chain_code.clone())
-            .bind(assets_id.token_address.clone())
+            .bind(assets_id.token_address.clone().unwrap_or_default())
             .fetch_optional(exec)
             .await;
 
