@@ -83,7 +83,7 @@ async fn test_approve_fee() {
 async fn test_approve_list() {
     let wallet_manager = get_manager().await;
 
-    let uid = "f091ca89e48bc1cd3e4cb84e8d3e3d9e2564e3616efd1feb468793687037d66f".to_string();
+    let uid = "0b859b5fc29eb644d7ec048f10339cb4b38cc67d9ec327d7e6531bed7984303d".to_string();
     let account_id = 1;
 
     let resp = wallet_manager.approve_list(uid, account_id).await;

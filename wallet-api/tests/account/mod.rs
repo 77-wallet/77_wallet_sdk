@@ -134,7 +134,7 @@ async fn test_show_key() {
     let parse = "".to_string();
     let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
-    let chain_code = ChainCode::Ton;
+    let chain_code = ChainCode::Ethereum;
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
     let address_type = AddressType::Ton(TonAddressType::V4R2);

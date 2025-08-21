@@ -20,7 +20,7 @@ use wallet_chain_interact::{
         operations::erc::{Allowance, Approve, Deposit, Withdraw},
         EthChain, FeeSetting,
     },
-    types::ChainPrivateKey,
+    types::{ChainPrivateKey, Transaction},
     ResourceConsume,
 };
 use wallet_types::chain::chain::ChainCode;
@@ -36,9 +36,14 @@ pub(super) async fn approve(
 
     // 使用默认的手续费配置
     let gas_price = chain.provider.gas_price().await?;
-    let fee_setting = FeeSetting::new_with_price(gas_price);
+    let mut fee_setting = FeeSetting::new_with_price(gas_price);
 
+    let tx = approve.build_transaction()?;
+    let gas = chain.provider.estimate_gas(tx).await?;
+
+    // 增加2k 的gas浮动
     let fee = fee_setting.transaction_fee();
+    fee_setting.gas_limit = gas + U256::from(2000);
 
     // exec tx
     let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;

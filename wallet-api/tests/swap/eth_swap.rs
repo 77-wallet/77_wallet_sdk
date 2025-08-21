@@ -49,11 +49,11 @@ async fn test_approve_fee() {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
-        from: "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr".to_string(),
-        spender: "0xA36B5Fec0E93d24908fAA9966535567E9f888994".to_string(),
-        contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+        from: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
+        spender: "0xb0635793E700E8A5AFbB94e12086E921FB0E3E3E".to_string(),
+        contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
         value: "2".to_string(),
-        chain_code: "tron".to_string(),
+        chain_code: "eth".to_string(),
         approve_type: "UN_LIMIT".to_string(),
     };
 
