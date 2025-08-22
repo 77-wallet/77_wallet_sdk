@@ -1,6 +1,12 @@
-use super::adapter::TransactionAdapter;
 use crate::{
-    domain::coin::CoinDomain,
+    domain::{
+        api_wallet::{
+            adapter::Tx,
+            adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
+            bill::ApiBillDomain,
+        },
+        coin::CoinDomain,
+    },
     infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
     request::transaction::{self, Signer},
 };
@@ -10,14 +16,19 @@ use wallet_chain_interact::{
     tron::{TronChain, protocol::account::AccountResourceDetail},
     types::ChainPrivateKey,
 };
-use wallet_database::entities::api_account::ApiAccountEntity;
-use wallet_database::entities::api_assets::ApiAssetsEntity;
-use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
-use wallet_database::entities::assets::AssetsId;
-use wallet_database::repositories::api_account::ApiAccountRepo;
-use wallet_database::repositories::api_assets::ApiAssetsRepo;
-use wallet_database::repositories::api_bill::ApiBillRepo;
-use wallet_database::{entities::coin::CoinEntity, repositories::permission::PermissionRepo};
+use wallet_database::{
+    entities::{
+        api_account::ApiAccountEntity,
+        api_assets::ApiAssetsEntity,
+        api_bill::{ApiBillEntity, ApiBillKind},
+        assets::AssetsId,
+        coin::CoinEntity,
+    },
+    repositories::{
+        api_account::ApiAccountRepo, api_assets::ApiAssetsRepo, api_bill::ApiBillRepo,
+        permission::PermissionRepo,
+    },
+};
 use wallet_transport_backend::{
     api::{BackendApi, permission::TransPermission},
     consts::endpoint,
@@ -26,10 +37,6 @@ use wallet_transport_backend::{
 };
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
-use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
-use wallet_database::entities::assets::AssetsId;
-use wallet_database::repositories::api_bill::ApiBillRepo;
-use crate::domain::api_wallet::bill::ApiBillDomain;
 
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
@@ -140,7 +147,6 @@ impl ApiChainTransDomain {
     pub async fn transfer(
         mut params: transaction::TransferReq,
         bill_kind: ApiBillKind,
-        adapter: &TransactionAdapter,
     ) -> Result<String, crate::ServiceError> {
         //  check ongoing tx
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
@@ -167,6 +173,11 @@ impl ApiChainTransDomain {
         // params.base.with_token(coin.token_address());
         params.base.with_decimals(coin.decimals);
 
+        let adapter = API_ADAPTER_FACTORY
+            .get()
+            .unwrap()
+            .get_transaction_adapter(params.base.chain_code.as_str())
+            .await?;
         let resp = adapter.transfer(&params, private_key).await?;
 
         let mut new_bill = ApiBillEntity::try_from(&params)?;
