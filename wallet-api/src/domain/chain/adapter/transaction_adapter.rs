@@ -893,7 +893,7 @@ impl TransactionAdapter {
                 let resp = eth_tx::estimate_swap(swap_params, chain).await?;
 
                 let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
-                let fee = FeeDetails::try_from((gas_oracle, resp.consumer.gas_limit.to::<i64>()))?
+                let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
                     .to_resp(token_currency, &currency);
 
                 // 消耗的资源

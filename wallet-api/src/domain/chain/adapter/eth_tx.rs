@@ -34,16 +34,20 @@ pub(super) async fn approve(
 ) -> Result<TransferResp, crate::ServiceError> {
     let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
 
-    // 使用默认的手续费配置
-    let gas_price = chain.provider.gas_price().await?;
-    let mut fee_setting = FeeSetting::new_with_price(gas_price);
+    let gas_price = chain.provider.get_default_fee().await?;
+    let gas_limit = chain
+        .provider
+        .estimate_gas(approve.build_transaction()?)
+        .await?;
 
-    let tx = approve.build_transaction()?;
-    let gas = chain.provider.estimate_gas(tx).await?;
+    let fee_setting = FeeSetting {
+        base_fee: gas_price.base_fee,
+        max_priority_fee_per_gas: gas_price.priority_fee_per_gas,
+        max_fee_per_gas: gas_price.base_fee + gas_price.priority_fee_per_gas,
+        gas_limit,
+    };
 
-    // 增加2k 的gas浮动
     let fee = fee_setting.transaction_fee();
-    fee_setting.gas_limit = gas + U256::from(2000);
 
     // exec tx
     let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
@@ -164,16 +168,12 @@ fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, cr
 pub(super) async fn estimate_swap(
     swap_params: SwapParams,
     chain: &EthChain,
-) -> Result<EstimateSwapResult<FeeSetting>, crate::ServiceError> {
+) -> Result<EstimateSwapResult<U256>, crate::ServiceError> {
     let tx = build_base_swap_tx(&swap_params)?;
 
-    // estimate_fee
+    // estimate_gas_limit
     let gas_limit = chain.provider.estimate_gas(tx.clone()).await?;
     let tx = tx.with_gas_limit(gas_limit.to::<u64>());
-
-    let gas_price = chain.provider.gas_price().await?;
-    let mut fee = FeeSetting::new_with_price(gas_price);
-    fee.gas_limit = gas_limit;
 
     let result = chain.provider.eth_call(tx).await?;
     let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
@@ -188,7 +188,7 @@ pub(super) async fn estimate_swap(
     let resp = EstimateSwapResult {
         amount_in,
         amount_out,
-        consumer: fee,
+        consumer: gas_limit,
     };
     Ok(resp)
 }

@@ -9,7 +9,7 @@ use wallet_api::request::transaction::{
 async fn test_default_quote() {
     let wallet_manager = get_manager().await;
 
-    let chain_code = "eth".to_string();
+    let chain_code = "tron".to_string();
     let token_in = "".to_string();
     // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
 
