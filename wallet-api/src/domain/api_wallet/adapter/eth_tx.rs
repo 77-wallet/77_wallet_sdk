@@ -1,211 +1,732 @@
 use crate::{
-    domain::chain::{
-        TransferResp, pare_fee_setting,
-        swap::{
-            EstimateSwapResult,
-            evm_swap::{SwapParams, dexSwap1Call},
+    ServiceError,
+    domain::{
+        api_wallet::adapter::{Multisig, Oracle, TIME_OUT, Tx},
+        chain::{
+            TransferResp, pare_fee_setting,
+            swap::{
+                EstimateSwapResult, calc_slippage,
+                evm_swap::{SwapParams, dexSwap1Call},
+            },
         },
+        coin::TokenCurrencyGetter,
+        multisig::MultisigDomain,
     },
-    request::transaction::{ApproveReq, DepositReq, WithdrawReq},
+    infrastructure::swap_client::AggQuoteResp,
+    request::transaction::{
+        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+    },
+    response_vo::{EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams},
 };
+
 use alloy::{
     network::TransactionBuilder as _,
     primitives::U256,
     rpc::types::TransactionRequest,
     sol_types::{SolCall as _, SolValue},
 };
+use std::collections::HashMap;
 use wallet_chain_interact::{
-    ResourceConsume,
+    Error, QueryTransactionResult,
     eth::{
         self, EthChain, FeeSetting,
         operations::erc::{Allowance, Approve, Deposit, Withdraw},
+        operations::{MultisigAccountOpt, MultisigTransferOpt, TransferOpt},
     },
-    types::ChainPrivateKey,
+    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+};
+use wallet_database::entities::{
+    api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+    multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
+    multisig_member::MultisigMemberEntities,
+};
+use wallet_transport::client::RpcClient;
+use wallet_transport_backend::{
+    api::BackendApi,
+    response_vo::chain::GasOracle,
 };
 use wallet_types::chain::chain::ChainCode;
-use wallet_utils::unit;
+use wallet_utils::{serde_func, unit};
 
-pub(super) async fn approve(
-    chain: &EthChain,
-    req: &ApproveReq,
-    value: alloy::primitives::U256,
-    key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
-    let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
-
-    // 使用默认的手续费配置
-    let gas_price = chain.provider.gas_price().await?;
-    let fee_setting = FeeSetting::new_with_price(gas_price);
-
-    let fee = fee_setting.transaction_fee();
-
-    // exec tx
-    let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
-
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
-    ))
+pub(crate) struct EthTx {
+    chain_code: ChainCode,
+    chain: EthChain,
 }
 
-pub(super) async fn approve_fee(
-    chain: &EthChain,
-    req: &ApproveReq,
-    value: alloy::primitives::U256,
-) -> Result<ResourceConsume, crate::ServiceError> {
-    let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
+impl EthTx {
+    pub(crate) fn new(
+        chain_code: ChainCode,
+        rpc_url: &str,
+        header_opt: Option<HashMap<String, String>>,
+    ) -> Result<Self, wallet_chain_interact::Error> {
+        let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
+        let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
+        let provider = eth::Provider::new(rpc_client)?;
+        let eth_chain = EthChain::new(provider, network, chain_code)?;
+        Ok(Self {
+            chain_code,
+            chain: eth_chain,
+        })
+    }
 
-    let fee = chain.estimate_gas(approve).await?;
+    pub(super) async fn estimate_swap(
+        &self,
+        swap_params: SwapParams,
+    ) -> Result<EstimateSwapResult<FeeSetting>, crate::ServiceError> {
+        let tx = self.build_base_swap_tx(&swap_params)?;
 
-    Ok(fee)
+        // estimate_fee
+        let gas_limit = self.chain.provider.estimate_gas(tx.clone()).await?;
+        let tx = tx.with_gas_limit(gas_limit.to::<u64>());
+
+        let gas_price = self.chain.provider.gas_price().await?;
+        let mut fee = FeeSetting::new_with_price(gas_price);
+        fee.gas_limit = gas_limit;
+
+        let result = self.chain.provider.eth_call(tx).await?;
+        let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
+
+        let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
+            .map_err(|e| crate::ServiceError::AggregatorError {
+                code: -1,
+                agg_code: 0,
+                msg: e.to_string(),
+            })?;
+
+        let resp = EstimateSwapResult {
+            amount_in,
+            amount_out,
+            consumer: fee,
+        };
+        Ok(resp)
+    }
+
+    pub(super) async fn swap_base_transfer(
+        &self,
+        swap_params: &SwapParams,
+        fee: String,
+        key: ChainPrivateKey,
+    ) -> Result<TransferResp, crate::ServiceError> {
+        let fee = pare_fee_setting(fee.as_str())?;
+        let transfer_fee = fee.transaction_fee();
+
+        let tx = self.build_base_swap_tx(&swap_params)?;
+        let tx = self
+            .chain
+            .provider
+            .set_transaction_fee(tx, fee, self.chain.chain_code)
+            .await?;
+
+        let tx_hash = self.chain.provider.send_raw_transaction(tx, &key).await?;
+
+        Ok(TransferResp::new(
+            tx_hash,
+            unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
+        ))
+    }
+
+    fn build_base_swap_tx(
+        &self,
+        swap_params: &SwapParams,
+    ) -> Result<TransactionRequest, crate::ServiceError> {
+        let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
+
+        let tx = TransactionRequest::default()
+            .from(swap_params.recipient)
+            .to(swap_params.aggregator_addr)
+            .with_input(call_value.abi_encode());
+
+        // from token 如果是主币添加默认的币
+        let tx = if swap_params.token_in.is_zero() {
+            tx.with_value(swap_params.amount_in)
+        } else {
+            tx
+        };
+
+        Ok(tx)
+    }
+
+    pub async fn check_eth_balance(
+        &self,
+        from: &str,
+        balance: U256,
+        token: Option<&str>,
+        transfer_amount: U256,
+    ) -> Result<U256, ServiceError> {
+        let cost_main = match token {
+            Some(token) => {
+                let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
+                if token_balance < transfer_amount {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
+                }
+                balance
+            }
+            None => {
+                if balance < transfer_amount {
+                    return Err(crate::BusinessError::Chain(
+                        crate::ChainError::InsufficientBalance,
+                    ))?;
+                }
+                balance - transfer_amount
+            }
+        };
+        Ok(cost_main)
+    }
 }
 
-pub(super) async fn withdraw_fee(
-    chain: &EthChain,
-    req: &WithdrawReq,
-    value: alloy::primitives::U256,
-) -> Result<ResourceConsume, crate::ServiceError> {
-    let withdraw = Withdraw::new(&req.from, &req.token, value)?;
+#[async_trait::async_trait]
+impl Oracle for EthTx {
+    async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        let gas_oracle = backend.gas_oracle(&self.chain_code.to_string()).await;
 
-    Ok(chain.estimate_gas(withdraw).await?)
+        match gas_oracle {
+            Ok(gas_oracle) => Ok(gas_oracle),
+            Err(_) => {
+                // unit is wei need to gwei
+                let eth_fee = self.chain.provider.get_default_fee().await?;
+
+                let propose = eth_fee.base_fee + eth_fee.priority_fee_per_gas;
+                let propose = unit::format_to_string(propose, eth::consts::ETH_GWEI)?;
+                let base = unit::format_to_string(eth_fee.base_fee, eth::consts::ETH_GWEI)?;
+
+                let gas_oracle = GasOracle {
+                    safe_gas_price: None,
+                    propose_gas_price: Some(propose),
+                    fast_gas_price: None,
+                    suggest_base_fee: Some(base),
+                    gas_used_ratio: None,
+                };
+
+                Ok(gas_oracle)
+            }
+        }
+    }
+
+    async fn default_gas_oracle(&self) -> Result<GasOracle, ServiceError> {
+        let eth_fee = self.chain.provider.get_default_fee().await?;
+
+        let propose = eth_fee.base_fee + eth_fee.priority_fee_per_gas;
+        let propose = unit::format_to_string(propose, eth::consts::ETH_GWEI)?;
+        let base = unit::format_to_string(eth_fee.base_fee, eth::consts::ETH_GWEI)?;
+
+        let gas_oracle = GasOracle {
+            safe_gas_price: None,
+            propose_gas_price: Some(propose),
+            fast_gas_price: None,
+            suggest_base_fee: Some(base),
+            gas_used_ratio: None,
+        };
+
+        Ok(gas_oracle)
+    }
 }
 
-pub(super) async fn withdraw(
-    chain: &EthChain,
-    req: &WithdrawReq,
-    value: alloy::primitives::U256,
-    fee: String,
-    key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
-    let withdraw = Withdraw::new(&req.from, &req.token, value)?;
+#[async_trait::async_trait]
+impl Tx for EthTx {
+    async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
+        self.chain.balance(addr, token).await
+    }
 
-    // 使用默认的手续费配置
-    let fee_setting = pare_fee_setting(fee.as_str())?;
-    let transfer_fee = fee_setting.transaction_fee();
+    async fn block_num(&self) -> Result<u64, Error> {
+        self.chain.block_num().await
+    }
 
-    // exec tx
-    let tx_hash = chain.exec_transaction(withdraw, fee_setting, key).await?;
+    async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
+        self.chain.query_tx_res(hash).await
+    }
 
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
-    ))
+    async fn decimals(&self, token: &str) -> Result<u8, Error> {
+        self.chain.decimals(token).await
+    }
+
+    async fn token_symbol(&self, token: &str) -> Result<String, Error> {
+        self.chain.token_symbol(token).await
+    }
+
+    async fn token_name(&self, token: &str) -> Result<String, Error> {
+        self.chain.token_name(token).await
+    }
+
+    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
+        let res = self.chain.black_address(token, owner).await?;
+        Ok(res)
+    }
+
+    async fn transfer(
+        &self,
+        params: &TransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<TransferResp, ServiceError> {
+        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let fee_setting = pare_fee_setting(params.fee_setting.as_str())?;
+
+        let balance = self.chain.balance(&params.base.from, None).await?;
+
+        // check balance
+        let remain_balance = self
+            .check_eth_balance(
+                &params.base.from,
+                balance,
+                params.base.token_address.as_deref(),
+                transfer_amount,
+            )
+            .await?;
+
+        let fee = fee_setting.transaction_fee();
+        // check transaction_fee
+        if remain_balance < fee {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::InsufficientFeeBalance,
+            ))?;
+        }
+
+        let params = TransferOpt::try_from(&params.base)?;
+        let tx_hash = self
+            .chain
+            .exec_transaction(params, fee_setting, private_key)
+            .await?;
+
+        Ok(TransferResp::new(
+            tx_hash,
+            unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+        ))
+    }
+
+    async fn estimate_fee(
+        &self,
+        req: BaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        let backend = crate::manager::Context::get_global_backend_api()?;
+
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
+
+        let token_currency =
+            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
+        let value = unit::convert_to_u256(&req.value, req.decimals)?;
+        let balance = self
+            .chain
+            .balance(&req.from, req.token_address.clone())
+            .await?;
+        if balance < value {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::InsufficientBalance,
+            ))?;
+        }
+
+        let gas_oracle = self.gas_oracle().await?;
+        let params =
+            eth::operations::TransferOpt::new(&req.from, &req.to, value, req.token_address)?;
+        let fee = self.chain.estimate_gas(params).await?;
+        let fee =
+            FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);
+
+        let res = wallet_utils::serde_func::serde_to_string(&fee)?;
+        Ok(res)
+    }
+
+    async fn approve(
+        &self,
+        req: &ApproveReq,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, ServiceError> {
+        let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
+
+        // 使用默认的手续费配置
+        let gas_price = self.chain.provider.gas_price().await?;
+        let fee_setting = FeeSetting::new_with_price(gas_price);
+
+        let fee = fee_setting.transaction_fee();
+
+        // exec tx
+        let tx_hash = self
+            .chain
+            .exec_transaction(approve, fee_setting, key)
+            .await?;
+
+        Ok(TransferResp::new(
+            tx_hash,
+            unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
+        ))
+    }
+
+    async fn approve_fee(
+        &self,
+        req: &ApproveReq,
+        value: U256,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        let currency = {
+            let currency = crate::app_state::APP_STATE.read().await;
+            currency.currency().to_string()
+        };
+
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, main_symbol, None)
+                .await?;
+
+        let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
+
+        let fee = self.chain.estimate_gas(approve).await?;
+
+        let gas_oracle = self.default_gas_oracle().await?;
+        let fee =
+            FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, &currency);
+
+        let res = wallet_utils::serde_func::serde_to_string(&fee)?;
+        Ok(res)
+    }
+
+    async fn allowance(
+        &self,
+        from: &str,
+        token: &str,
+        spender: &str,
+    ) -> Result<U256, ServiceError> {
+        let approve = Allowance::new(from, token, spender)?;
+        let amount = self.chain.eth_call::<_, U256>(approve).await?;
+        Ok(amount)
+    }
+
+    async fn swap_quote(
+        &self,
+        req: &QuoteReq,
+        quote_resp: &AggQuoteResp,
+        symbol: &str,
+    ) -> Result<(U256, String, String), ServiceError> {
+        let amount_out = quote_resp.amount_out_u256()?;
+
+        // 考虑滑点计算最小金额
+        let min_amount_out =
+            calc_slippage(amount_out, req.get_slippage(quote_resp.default_slippage));
+
+        let currency = {
+            let currency = crate::app_state::APP_STATE.read().await;
+            currency.currency().to_string()
+        };
+
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, symbol, None).await?;
+
+        let swap_params = SwapParams {
+            aggregator_addr: req.aggregator_address()?,
+            amount_in: req.amount_in_u256()?,
+            min_amount_out,
+            recipient: wallet_utils::address::parse_eth_address(&req.recipient)?,
+            token_in: SwapParams::eth_parse_or_zero_addr(&req.token_in.token_addr)?,
+            token_out: SwapParams::eth_parse_or_zero_addr(&req.token_out.token_addr)?,
+            dex_router: quote_resp.dex_route_list.clone(),
+            allow_partial_fill: req.allow_partial_fill,
+        };
+
+        let resp = self.estimate_swap(swap_params).await?;
+
+        let gas_oracle = self.default_gas_oracle().await?;
+        let fee = FeeDetails::try_from((gas_oracle, resp.consumer.gas_limit.to::<i64>()))?
+            .to_resp(token_currency, &currency);
+
+        // 消耗的资源
+        let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
+        // 具体的手续费结构
+        let fee = wallet_utils::serde_func::serde_to_string(&fee)?;
+
+        Ok((resp.amount_out, consumer, fee))
+    }
+
+    async fn swap(
+        &self,
+        req: &SwapReq,
+        fee: String,
+        key: ChainPrivateKey,
+    ) -> Result<TransferResp, ServiceError> {
+        let swap_params = SwapParams::try_from(req)?;
+        self.swap_base_transfer(&swap_params, fee, key).await
+    }
+
+    async fn deposit_fee(
+        &self,
+        req: DepositReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), ServiceError> {
+        let currency = {
+            let currency = crate::app_state::APP_STATE.read().await;
+            currency.currency().to_string()
+        };
+
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
+                .await?;
+        let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;
+
+        let approve = Deposit::new(&req.from, &req.token, value)?;
+
+        let resource = self.chain.estimate_gas(approve).await?;
+
+        let gas_oracle = self.default_gas_oracle().await?;
+        let fee = FeeDetails::try_from((gas_oracle, resource.consume))?
+            .to_resp(token_currency, &currency);
+
+        let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
+        let fee = wallet_utils::serde_func::serde_to_string(&fee)?;
+
+        Ok((consumer, fee))
+    }
+
+    async fn deposit(
+        &self,
+        req: &DepositReq,
+        fee: String,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, ServiceError> {
+        let approve = Deposit::new(&req.from, &req.token, value)?;
+
+        // 使用默认的手续费配置
+        let fee_setting = pare_fee_setting(fee.as_str())?;
+        let transfer_fee = fee_setting.transaction_fee();
+
+        // exec tx
+        let tx_hash = self
+            .chain
+            .exec_transaction(approve, fee_setting, key)
+            .await?;
+
+        Ok(TransferResp::new(
+            tx_hash,
+            unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
+        ))
+    }
+
+    async fn withdraw_fee(
+        &self,
+        req: WithdrawReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), ServiceError> {
+        let currency = {
+            let currency = crate::app_state::APP_STATE.read().await;
+            currency.currency().to_string()
+        };
+
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
+                .await?;
+
+        let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;
+
+        let withdraw = Withdraw::new(&req.from, &req.token, value)?;
+
+        let resource = self.chain.estimate_gas(withdraw).await?;
+        let gas_oracle = self.default_gas_oracle().await?;
+        let fee = FeeDetails::try_from((gas_oracle, resource.consume))?
+            .to_resp(token_currency, &currency);
+
+        let consumer = wallet_utils::serde_func::serde_to_string(&fee.data[0].fee_setting)?;
+        let fee = wallet_utils::serde_func::serde_to_string(&fee)?;
+
+        Ok((consumer, fee))
+    }
+
+    async fn withdraw(
+        &self,
+        req: &WithdrawReq,
+        fee: String,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, ServiceError> {
+        let withdraw = Withdraw::new(&req.from, &req.token, value)?;
+
+        // 使用默认的手续费配置
+        let fee_setting = pare_fee_setting(fee.as_str())?;
+        let transfer_fee = fee_setting.transaction_fee();
+
+        // exec tx
+        let tx_hash = self
+            .chain
+            .exec_transaction(withdraw, fee_setting, key)
+            .await?;
+
+        Ok(TransferResp::new(
+            tx_hash,
+            unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
+        ))
+    }
 }
 
-pub(super) async fn deposit_fee(
-    chain: &EthChain,
-    req: &DepositReq,
-    amount: alloy::primitives::U256,
-) -> Result<ResourceConsume, crate::ServiceError> {
-    let approve = Deposit::new(&req.from, &req.token, amount)?;
+#[async_trait::async_trait]
+impl Multisig for EthTx {
+    async fn multisig_address(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+    ) -> Result<FetchMultisigAddressResp, ServiceError> {
+        let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
+            .with_nonce()
+            .with_owners(member.get_owner_str_vec())?;
+        Ok(self.chain.multisig_account(params).await?)
+    }
 
-    Ok(chain.estimate_gas(approve).await?)
-}
+    async fn deploy_multisig_account(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+        fee_setting: Option<String>,
+        key: ChainPrivateKey,
+    ) -> Result<(String, String), ServiceError> {
+        let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
+            .set_nonce(&account.salt)?
+            .with_owners(member.get_owner_str_vec())?;
 
-pub(super) async fn deposit(
-    chain: &EthChain,
-    req: &DepositReq,
-    amount: alloy::primitives::U256,
-    fee: String,
-    key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
-    let approve = Deposit::new(&req.from, &req.token, amount)?;
+        let fee_setting: EthereumFeeDetails = serde_func::serde_from_str(&fee_setting.unwrap())?;
+        let fee_setting = FeeSetting::try_from(fee_setting)?;
 
-    // 使用默认的手续费配置
-    let fee_setting = pare_fee_setting(fee.as_str())?;
-    let transfer_fee = fee_setting.transaction_fee();
+        // check transaction_fee
+        let balance = self.chain.balance(&account.initiator_addr, None).await?;
+        if balance < fee_setting.transaction_fee() {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::InsufficientFeeBalance,
+            ))?;
+        }
 
-    // exec tx
-    let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
+        let tx_hash = self
+            .chain
+            .exec_transaction(params, fee_setting, key)
+            .await?;
+        Ok((tx_hash, "".to_string()))
+    }
 
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
-    ))
-}
+    async fn deploy_multisig_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        member: MultisigMemberEntities,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        let currency_lock = crate::app_state::APP_STATE.read().await;
+        let currency = currency_lock.currency();
 
-pub(super) async fn allowance(
-    chain: &EthChain,
-    from: &str,
-    token: &str,
-    spender: &str,
-) -> Result<U256, crate::ServiceError> {
-    let approve = Allowance::new(from, token, spender)?;
+        let token_currency =
+            TokenCurrencyGetter::get_currency(currency, &account.chain_code, main_symbol, None)
+                .await?;
 
-    let amount = chain.eth_call::<_, U256>(approve).await?;
+        let owner = member.get_owner_str_vec();
+        let params = MultisigAccountOpt::new(&account.initiator_addr, account.threshold)?
+            .with_nonce()
+            .with_owners(owner)?;
 
-    Ok(amount)
-}
+        let gas_limit = self.chain.estimate_gas(params).await?;
 
-fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, crate::ServiceError> {
-    let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
+        let gas_oracle = self.gas_oracle().await?;
 
-    let tx = TransactionRequest::default()
-        .from(swap_params.recipient)
-        .to(swap_params.aggregator_addr)
-        .with_input(call_value.abi_encode());
+        let fee = FeeDetails::try_from((gas_oracle, gas_limit.consume))?
+            .to_resp(token_currency, currency);
+        Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
+    }
 
-    // from token 如果是主币添加默认的币
-    let tx = if swap_params.token_in.is_zero() {
-        tx.with_value(swap_params.amount_in)
-    } else {
-        tx
-    };
+    async fn build_multisig_fee(
+        &self,
+        req: &MultisigQueueFeeParams,
+        account: &MultisigAccountEntity,
+        decimal: u8,
+        token: Option<String>,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        Ok("".to_string())
+    }
 
-    Ok(tx)
-}
-// 有3个网络的io
-pub(super) async fn estimate_swap(
-    swap_params: SwapParams,
-    chain: &EthChain,
-) -> Result<EstimateSwapResult<FeeSetting>, crate::ServiceError> {
-    let tx = build_base_swap_tx(&swap_params)?;
+    async fn build_multisig_with_account(
+        &self,
+        req: &TransferParams,
+        account: &MultisigAccountEntity,
+        assets: &ApiAssetsEntity,
+        key: ChainPrivateKey,
+    ) -> Result<MultisigTxResp, ServiceError> {
+        let decimal = assets.decimals;
+        let token = assets.token_address();
 
-    // estimate_fee
-    let gas_limit = chain.provider.estimate_gas(tx.clone()).await?;
-    let tx = tx.with_gas_limit(gas_limit.to::<u64>());
+        let value = Self::check_min_transfer(&req.value, decimal)?;
+        let balance = self.chain.balance(&req.from, token.clone()).await?;
+        let _ = self
+            .check_eth_balance(&req.from, balance, token.as_deref(), value)
+            .await?;
 
-    let gas_price = chain.provider.gas_price().await?;
-    let mut fee = FeeSetting::new_with_price(gas_price);
-    fee.gas_limit = gas_limit;
+        let params = MultisigTransferOpt::new(&req.from, &req.to, value)?.with_token(token)?;
 
-    let result = chain.provider.eth_call(tx).await?;
-    let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
+        Ok(self.chain.build_multisig_tx(params).await?)
+    }
 
-    let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
-        .map_err(|e| crate::ServiceError::AggregatorError {
-            code: -1,
-            agg_code: 0,
-            msg: e.to_string(),
-        })?;
+    async fn build_multisig_with_permission(
+        &self,
+        req: &TransferParams,
+        p: &PermissionEntity,
+        coin: &CoinEntity,
+    ) -> Result<MultisigTxResp, ServiceError> {
+        Err(
+            crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
+                .into(),
+        )
+    }
 
-    let resp = EstimateSwapResult {
-        amount_in,
-        amount_out,
-        consumer: fee,
-    };
-    Ok(resp)
-}
+    async fn sign_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        raw_data: &str,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        Ok(" ".to_string())
+    }
 
-pub(super) async fn swap(
-    chain: &EthChain,
-    swap_params: &SwapParams,
-    fee: String,
-    key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
-    let fee = pare_fee_setting(fee.as_str())?;
-    let transfer_fee = fee.transaction_fee();
+    async fn sign_multisig_tx(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        key: ChainPrivateKey,
+        raw_data: &str,
+    ) -> Result<MultisigSignResp, ServiceError> {
+        use std::str::FromStr as _;
+        let operate = eth::operations::MultisigPayloadOpt::from_str(raw_data)?;
+        Ok(operate.sign_message(key)?)
+    }
 
-    let tx = build_base_swap_tx(&swap_params)?;
-    let tx = chain
-        .provider
-        .set_transaction_fee(tx, fee, chain.chain_code)
-        .await?;
+    async fn estimate_fee(
+        &self,
+        queue: &MultisigQueueEntity,
+        coin: &CoinEntity,
+        backend: &BackendApi,
+        sign_list: Vec<String>,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
+        let currency = crate::app_state::APP_STATE.read().await;
+        let currency = currency.currency();
 
-    let tx_hash = chain.provider.send_raw_transaction(tx, &key).await?;
+        let token_currency =
+            TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
+                .await?;
 
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
-    ))
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
+        let multisig_account =
+            MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
+
+        let gas_oracle = self.gas_oracle().await?;
+
+        let params = MultisigTransferOpt::new(&queue.from_addr, &queue.to_addr, value)?
+            .with_token(coin.token_address())?
+            .exec_params(
+                &multisig_account.initiator_addr,
+                queue.raw_data.clone(),
+                sign_list.join(""),
+            )?;
+
+        let fee = self.chain.estimate_gas(params).await?;
+        let fee =
+            FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);
+
+        Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
+    }
 }

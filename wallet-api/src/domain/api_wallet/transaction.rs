@@ -1,5 +1,4 @@
 use super::adapter::TransactionAdapter;
-use crate::domain::api_wallet::bill::ApiBillDomain;
 use crate::{
     domain::coin::CoinDomain,
     infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
@@ -27,6 +26,10 @@ use wallet_transport_backend::{
 };
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
+use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
+use wallet_database::entities::assets::AssetsId;
+use wallet_database::repositories::api_bill::ApiBillRepo;
+use crate::domain::api_wallet::bill::ApiBillDomain;
 
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;

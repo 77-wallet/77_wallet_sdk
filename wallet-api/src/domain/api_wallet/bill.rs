@@ -170,16 +170,15 @@ impl ApiBillDomain {
         }
 
         // Tron-specific logic
-        let account =
-            ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool).await?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool).await?;
+
 
         if account.is_some() {
             return Ok(Some(adjusted_time(bill)));
         }
 
-        Err(crate::ServiceError::Business(
-            crate::AssetsError::NotFound.into(),
-        ))
+
+        Err(crate::ServiceError::Business(crate::AssetsError::NotFound.into()))
     }
 
     pub async fn handle_ton_bill(
