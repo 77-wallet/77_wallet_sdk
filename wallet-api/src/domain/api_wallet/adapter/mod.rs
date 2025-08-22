@@ -28,6 +28,7 @@ pub mod sol_tx;
 pub mod sui_tx;
 pub mod ton_tx;
 pub mod tron_tx;
+pub mod tx;
 
 const TIME_OUT: u64 = 30;
 

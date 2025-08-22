@@ -170,10 +170,8 @@ impl TransMsg {
                 signer: None,
             };
             // 发交易
-            let adapter =
-                ApiChainAdapterFactory::get_transaction_adapter(self.chain_code.as_str()).await?;
             let tx_hash =
-                ApiChainTransDomain::transfer(req, ApiBillKind::Transfer, &adapter).await?;
+                ApiChainTransDomain::transfer(req, ApiBillKind::Transfer).await?;
         }
         Ok(())
     }

@@ -1,9 +1,11 @@
-use crate::domain::api_wallet::adapter;
+use crate::domain::api_wallet::{
+    adapter::Tx,
+    adapter_factory::API_ADAPTER_FACTORY,
+};
 use chrono::Utc;
-use tracing::Instrument;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
-use wallet_database::repositories::{api_account::ApiAccountRepo, api_bill::ApiBillRepo};
 use wallet_database::{
+    repositories::{api_account::ApiAccountRepo, api_bill::ApiBillRepo},
     DbPool,
     entities::api_bill::{ApiBillEntity, ApiBillKind, ApiBillStatus},
 };
@@ -40,7 +42,7 @@ impl ApiBillDomain {
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<String, crate::ServiceError> {
-        let adapter = adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
+        let adapter = API_ADAPTER_FACTORY.get().unwrap().get_transaction_adapter(chain_code).await?;
         let res = adapter.query_tx_res(tx_hash).await?;
         match res {
             Some(res) => Ok(res.resource_consume),
@@ -52,8 +54,7 @@ impl ApiBillDomain {
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<Option<QueryTransactionResult>, crate::ServiceError> {
-        let adapter = adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
-
+        let adapter = API_ADAPTER_FACTORY.get().unwrap().get_transaction_adapter(chain_code).await?;
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
 
