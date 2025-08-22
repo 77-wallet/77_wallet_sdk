@@ -119,6 +119,7 @@ mod test {
                 "tron",
                 &TransactionStatus::NotSent,
                 "0x0000000000000000000000000000000000000000",
+                Some("0x0000000000000000000000000000000000000000".to_string()),
                 &NotificationType::TransferFailure,
             );
             tracing::info!("notification: {notification:?}");
@@ -141,6 +142,7 @@ mod test {
                 "tron",
                 &TransactionStatus::Sent,
                 "0x0000000000000000000000000000000000000000",
+                Some("0x0000000000000000000000000000000000000000".to_string()),
                 &NotificationType::TransferSuccess,
             );
 
@@ -163,6 +165,7 @@ mod test {
                 "tron",
                 &TransactionStatus::Received,
                 "0x0000000000000000000000000000000000000000",
+                Some("0x0000000000000000000000000000000000000000".to_string()),
                 &NotificationType::ReceiveSuccess,
             );
             tracing::info!("notification: {notification:?}");
