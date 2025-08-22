@@ -29,7 +29,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         wallet_password: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(CreateAccountRes, String, Option<AddressInitReq>), crate::ServiceError> {
+    ) -> Result<(CreateAccountRes, Option<AddressInitReq>), crate::ServiceError> {
         let (address, derivation_path, address_init_req) = Self::derive_subkey(
             repo,
             uid,
@@ -56,7 +56,7 @@ impl ApiAccountDomain {
         // )
         // .await?;
 
-        Ok((res, derivation_path, address_init_req))
+        Ok((res, address_init_req))
     }
 
     pub(crate) async fn get_private_key(

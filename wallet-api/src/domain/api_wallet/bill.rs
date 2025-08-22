@@ -1,19 +1,11 @@
-use chrono::Utc;
 use crate::domain::api_wallet::adapter;
+use chrono::Utc;
+use tracing::Instrument;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
-use wallet_database::repositories::{
-    api_bill::ApiBillRepo,
-    api_account::ApiAccountRepo
-};
+use wallet_database::repositories::{api_account::ApiAccountRepo, api_bill::ApiBillRepo};
 use wallet_database::{
     DbPool,
-    entities::{
-        api_bill::{
-            ApiBillEntity,
-            ApiBillKind,
-            ApiBillStatus,
-        }
-    },
+    entities::api_bill::{ApiBillEntity, ApiBillKind, ApiBillStatus},
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
@@ -21,10 +13,7 @@ use wallet_types::constant::chain_code;
 pub struct ApiBillDomain;
 
 impl ApiBillDomain {
-    pub async fn create_bill(
-        params: ApiBillEntity,
-    ) -> Result<(), crate::ServiceError>
-    {
+    pub async fn create_bill(params: ApiBillEntity) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         Ok(ApiBillRepo::create(params, &pool).await?)
     }
@@ -33,8 +22,7 @@ impl ApiBillDomain {
     pub async fn create_check_swap(
         tx: ApiBillEntity,
         pool: &DbPool,
-    ) -> Result<(), crate::ServiceError>
-    {
+    ) -> Result<(), crate::ServiceError> {
         match ApiBillRepo::get_one_by_hash(&tx.hash, &pool).await? {
             Some(bill) if bill.tx_kind == ApiBillKind::Swap => {
                 ApiBillRepo::update_all(pool, tx, bill.id).await?;

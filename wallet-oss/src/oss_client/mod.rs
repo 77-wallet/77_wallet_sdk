@@ -1,6 +1,8 @@
 use oss::Oss;
 use request::RequestBuilder;
 
+use crate::OssConfig;
+
 mod async_impl;
 mod auth;
 mod entity;
@@ -19,16 +21,14 @@ pub struct OssClient {
 }
 
 impl OssClient {
-    pub fn new(
-        access_key_id: &str,
-        access_key_secret: &str,
-        endpoint: &str,
-        bucket_name: &str,
-    ) -> Self {
-        let oss = Oss::new(access_key_id, access_key_secret, endpoint, bucket_name);
-        let builder = request::RequestBuilder::new()
-            // .oss_header_put("Transfer-Encoding", "chuncked")
-            .with_expire(60);
+    pub fn new(config: &OssConfig) -> Self {
+        let oss = Oss::new(
+            &config.access_key_id,
+            &config.access_key_secret,
+            &config.endpoint,
+            &config.bucket_name,
+        );
+        let builder = request::RequestBuilder::new().with_expire(60);
         Self { oss, builder }
     }
 
@@ -100,9 +100,18 @@ mod tests {
     pub const BUCKET_NAME: &str = "xxxx";
     pub const ENDPOINT: &str = "xxxx";
 
+    fn get_config() -> OssConfig {
+        OssConfig {
+            access_key_id: ACCESS_KEY_ID.to_string(),
+            access_key_secret: ACCESS_KEY_SECRET.to_string(),
+            endpoint: ENDPOINT.to_string(),
+            bucket_name: BUCKET_NAME.to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn test_oss_client() {
-        let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT, BUCKET_NAME);
+        let oss_client = OssClient::new(&get_config());
         println!("oss_client: {oss_client:#?}");
         // let file_path = "./test.txt";
         let file_path = "./sdk:2025-03-27 09:35:47.txt";
@@ -115,7 +124,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_object() {
-        let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT, BUCKET_NAME);
+        let oss_client = OssClient::new(&get_config());
         let _file_name = "test.txt";
         // let _file_name = "sdk:2024-10-07 10:36:00.txt";
         // let _file_name = "sdk:2025-02-21 07:47:16.txt";
@@ -129,7 +138,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_object_metadata() {
-        let oss_client = OssClient::new(ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT, BUCKET_NAME);
+        let oss_client = OssClient::new(&get_config());
         // let file_name = "test.txt";
         // let file_name = "sdk:2025-02-19 23:17:00.txt";
         let file_name = "sdk:2025-03-27 09:35:47.txt";

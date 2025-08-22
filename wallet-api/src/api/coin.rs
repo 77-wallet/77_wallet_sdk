@@ -1,5 +1,5 @@
 use crate::{api::ReturnType, response_vo::coin::TokenPriceChangeRes, service::coin::CoinService};
-use wallet_transport_backend::response_vo::coin::TokenHistoryPrices;
+use wallet_transport_backend::response_vo::coin::{CoinMarketValue, TokenHistoryPrices};
 
 impl crate::WalletManager {
     pub async fn get_hot_coin_list(
@@ -123,6 +123,16 @@ impl crate::WalletManager {
     ) -> ReturnType<TokenHistoryPrices> {
         CoinService::new(self.repo_factory.resource_repo())
             .query_history_price(req)
+            .await?
+            .into()
+    }
+
+    pub async fn coin_market_value(
+        &self,
+        req: std::collections::HashMap<String, String>,
+    ) -> ReturnType<CoinMarketValue> {
+        CoinService::new(self.repo_factory.resource_repo())
+            .market_value(req)
             .await?
             .into()
     }
@@ -274,7 +284,7 @@ mod test {
         // let chain_code = "bnb";
         // let chain_code = "eth";
         // let chain_code = "sol";
-        let chain_code = "ton";
+        let chain_code = "sol";
         // let symbol = "ATLA";
         // let token_address = Some("0x45e9F834539bC2a0936f184779cED638c9B26459".to_string());
         // let protocol = Some("ERC20".to_string());
@@ -295,7 +305,7 @@ mod test {
         let token_address =
             // "0x506a6fc25f1c7d52ceb06ea44a3114c9380f8e2029b4356019822f248b49e411::memefi::MEMEFI";
             // "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
-            "EQACLXDwit01stiqK9FvYiJo15luVzfD5zU8uwDSq6JXxbP8";
+            "5goWRao6a3yNC4d6UjMdQxonkCMvKBwdpubU3qhfcdf1";
 
         // let token_address = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";

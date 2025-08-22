@@ -1,7 +1,11 @@
-use crate::DbPool;
-use crate::dao::api_assets::ApiAssetsDao;
-use crate::entities::api_assets::{ApiAssetsEntity, ApiCreateAssetsVo};
-use crate::entities::assets::AssetsId;
+use crate::{
+    DbPool,
+    dao::api_assets::ApiAssetsDao,
+    entities::{
+        api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
+        assets::AssetsId,
+    },
+};
 
 pub struct ApiAssetsRepo;
 

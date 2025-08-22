@@ -63,6 +63,12 @@ pub struct FindConfigByKeyRes {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AllConfig {
+    pub configs: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppRpcToken {
     pub token: String,
 }

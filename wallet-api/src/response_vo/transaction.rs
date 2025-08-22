@@ -198,7 +198,7 @@ impl FeeStructure<EthereumFeeDetails> {
     pub fn new(
         gas_limit: i64,
         base_fee: U256,
-        priority_fee: U256,
+        mut priority_fee: U256,
         types: &str,
     ) -> Result<Self, crate::ServiceError> {
         let max_fee_per_gas = base_fee + priority_fee;
@@ -211,6 +211,11 @@ impl FeeStructure<EthereumFeeDetails> {
         // 截断8位()
         let scale = U256::from(10).pow(U256::from(8));
         let max_fee_per_gas = (max_fee_per_gas / scale).max(U256::from(1)) * scale;
+
+        // 避免节点最小费用拦截
+        if priority_fee == U256::ZERO {
+            priority_fee = U256::from(1000);
+        }
 
         let fee_setting = EthereumFeeDetails::new(
             gas_limit,

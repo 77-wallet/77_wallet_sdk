@@ -34,7 +34,7 @@ pub struct ApiBillEntity {
     // 针对每种订单的额外数据类 默认 “”
     pub extra: String,
     #[serde(skip_serializing)]
-    pub created_at:sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }

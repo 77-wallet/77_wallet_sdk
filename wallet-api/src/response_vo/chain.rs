@@ -1,3 +1,8 @@
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
+
 use super::account::BalanceInfo;
 use wallet_database::entities::chain::ChainEntity;
 
@@ -71,4 +76,23 @@ pub struct NodeListRes {
     pub rpc_url: String,
     pub ws_url: String,
     pub status: u8,
+}
+
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
+pub struct ChainList(pub HashMap<String, String>);
+
+impl ChainList {}
+
+impl Deref for ChainList {
+    type Target = HashMap<String, String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ChainList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }

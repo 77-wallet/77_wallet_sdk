@@ -43,8 +43,9 @@ impl TokenPriceChange {
             .await?;
 
         if let Some(exchange_rate) = exchange_rate {
-            let res = TokenCurrencies::calculate_token_price_changes(self.body, exchange_rate.rate)
-                .await?;
+            let res =
+                TokenCurrencies::calculate_token_price_changes(&self.body, exchange_rate.rate)
+                    .await?;
             let data = crate::messaging::notify::event::NotifyEvent::TokenPriceChange(res);
             crate::messaging::notify::FrontendNotifyEvent::new(data)
                 .send()

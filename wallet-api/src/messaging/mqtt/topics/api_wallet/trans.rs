@@ -1,23 +1,20 @@
-use std::str::FromStr;
-use rust_decimal::Decimal;
-use wallet_database::{
-    entities::assets::AssetsId,
-    repositories::api_assets::ApiAssetsRepo,
-};
-use wallet_transport_backend::request::api_wallet::strategy::QueryCollectionStrategyReq;
-use wallet_utils::conversion;
-use wallet_database::entities::api_bill::ApiBillKind;
-use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
-use crate::{
-    domain::{api_wallet::account::ApiAccountDomain, chain::transaction::ChainTransDomain},
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
-    request::transaction::BaseTransferReq,
-    service::transaction::TransactionService,
-};
 use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
 use crate::domain::api_wallet::transaction::ApiChainTransDomain;
 use crate::messaging::notify::api_wallet::WithdrawFront;
 use crate::request::transaction::TransferReq;
+use crate::{
+    domain::chain::transaction::ChainTransDomain,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+    request::transaction::BaseTransferReq,
+    service::transaction::TransactionService,
+};
+use rust_decimal::Decimal;
+use std::str::FromStr;
+use wallet_database::entities::api_bill::ApiBillKind;
+use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
+use wallet_database::{entities::assets::AssetsId, repositories::api_assets::ApiAssetsRepo};
+use wallet_transport_backend::request::api_wallet::strategy::QueryCollectionStrategyReq;
+use wallet_utils::conversion;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -143,7 +140,8 @@ impl TransMsg {
             &self.symbol,
             &self.trade_no,
             self.trade_type,
-        ).await?;
+        )
+        .await?;
 
         let data = NotifyEvent::Withdraw(WithdrawFront {
             uid: self.uid.to_string(),
@@ -172,8 +170,10 @@ impl TransMsg {
                 signer: None,
             };
             // 发交易
-            let adapter = ApiChainAdapterFactory::get_transaction_adapter(self.chain_code.as_str()).await?;
-            let tx_hash = ApiChainTransDomain::transfer(req, ApiBillKind::Transfer, &adapter).await?;
+            let adapter =
+                ApiChainAdapterFactory::get_transaction_adapter(self.chain_code.as_str()).await?;
+            let tx_hash =
+                ApiChainTransDomain::transfer(req, ApiBillKind::Transfer, &adapter).await?;
         }
         Ok(())
     }

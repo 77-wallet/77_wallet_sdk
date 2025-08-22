@@ -9,7 +9,6 @@ impl TaskQueueDomain {
             const BATCH_SIZE: usize = 500;
             for chunk in ids.chunks(BATCH_SIZE) {
                 let api = crate::Context::get_global_backend_api()?;
-                // tracing::info!("send_msg_confirm: {}", chunk.len());
                 api.send_msg_confirm(&wallet_transport_backend::request::SendMsgConfirmReq::new(
                     chunk.to_vec(),
                 ))

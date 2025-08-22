@@ -8,12 +8,14 @@ use crate::messaging::{mqtt::Message, notify::FrontendNotifyEvent};
 pub struct JPushService {}
 
 impl JPushService {
+    // 前端发来的消息
     pub async fn jpush(message: &str) -> Result<(), crate::ServiceError> {
         // Self::jpush_multi(vec![message.to_string()], "JG").await?;
         match serde_func::serde_from_str::<Message>(message) {
             Ok(data) => {
                 let backend_api = crate::manager::Context::get_global_backend_api()?;
 
+                // 重新查询一次,前端给到的数据不全面
                 let data = backend_api
                     .get_unconfirm_by_msg_id(&wallet_transport_backend::request::GetUnconfirmById {
                         msg_id: data.msg_id.to_string(),
@@ -26,15 +28,6 @@ impl JPushService {
                         // MsgConfirmSource::Jg
                     )
                     .await?;
-                    // TODO: 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
-                    // if !ids.is_empty() {
-                    //     let send_msg_confirm_req =
-                    //         BackendApiTask::new(SEND_MSG_CONFIRM, &SendMsgConfirmReq::new(ids))?;
-                    //     Tasks::new()
-                    //         .push(Task::BackendApi(send_msg_confirm_req))
-                    //         .send()
-                    //         .await?;
-                    // }
                 };
             }
             Err(e) => {
@@ -75,20 +68,13 @@ impl JPushService {
                 && task_entity.status == 2
             {
                 unconfirmed_msg_collector.submit(vec![id])?;
-                // tracing::info!("[jpush_multi] unconfirmed_msg_collector submit");
             } else if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
                 if let Err(e) = FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
                 {
                     tracing::error!("send_error error: {}", e);
                 }
                 tracing::error!("[jpush_multi] exec_payload error: {}", e);
-
-                // tracing::info!("[jpush_multi] exec_payload success");
             };
-            // ids.push(wallet_transport_backend::request::SendMsgConfirm::new(
-            //     &id,
-            //     source.clone(),
-            // ));
         }
 
         Ok(())
