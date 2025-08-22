@@ -38,6 +38,7 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, api_bill::ApiBillKind, coin::CoinEntity,
     multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
@@ -71,7 +72,7 @@ impl TronTx {
         &self,
         req: &TransferParams,
         token: Option<String>,
-        value: alloy::primitives::U256,
+        value: U256,
         threshold: i64,
         permission_id: Option<i64>,
     ) -> Result<MultisigTxResp, crate::ServiceError> {
@@ -204,6 +205,11 @@ impl TronTx {
 
 #[async_trait::async_trait]
 impl Tx for TronTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        let resource = self.chain.account_resource(owner_address).await?;
+        Ok(resource)
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }

@@ -31,6 +31,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity,
     coin::CoinEntity,
@@ -63,10 +64,10 @@ impl SolTx {
     pub async fn check_sol_balance(
         &self,
         from: &str,
-        balance: alloy::primitives::U256,
+        balance: U256,
         token: Option<&str>,
-        transfer_amount: alloy::primitives::U256,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
+        transfer_amount: U256,
+    ) -> Result<U256, crate::ServiceError> {
         let cost_main = match token {
             Some(token) => {
                 let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
@@ -103,11 +104,10 @@ impl SolTx {
 
     pub fn check_sol_transaction_fee(
         &self,
-        balance: alloy::primitives::U256,
+        balance: U256,
         fee: u64,
     ) -> Result<(), crate::ServiceError> {
-        let fee = alloy::primitives::U256::from(fee);
-
+        let fee = U256::from(fee);
         if balance < fee {
             return Err(crate::BusinessError::Chain(
                 crate::ChainError::InsufficientFeeBalance,
@@ -119,6 +119,10 @@ impl SolTx {
 
 #[async_trait::async_trait]
 impl Tx for SolTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
@@ -350,9 +354,6 @@ impl Multisig for SolTx {
     ) -> Result<String, ServiceError> {
         let currency_lock = crate::app_state::APP_STATE.read().await;
         let currency = currency_lock.currency();
-
-        let backend = crate::manager::Context::get_global_backend_api()?;
-
         let token_currency =
             TokenCurrencyGetter::get_currency(currency, &account.chain_code, main_symbol, None)
                 .await?;

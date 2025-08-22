@@ -18,6 +18,7 @@ use wallet_chain_interact::{
     Error,
     QueryTransactionResult,
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::{
     entities::{
         api_assets::ApiAssetsEntity, coin::CoinEntity,
@@ -27,8 +28,10 @@ use wallet_database::{
     repositories::api_account::ApiAccountRepo,
 };
 use wallet_transport_backend::api::BackendApi;
-use wallet_types::chain::address::r#type::DogAddressType;
-use wallet_types::chain::chain::ChainCode;
+use wallet_types::chain::{
+    address::r#type::DogAddressType,
+    chain::ChainCode,
+};
 
 pub(crate) struct DogeTx {
     chin: DogChain,
@@ -73,6 +76,10 @@ impl DogeTx {
 
 #[async_trait::async_trait]
 impl Tx for DogeTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chin.balance(addr, token).await
     }

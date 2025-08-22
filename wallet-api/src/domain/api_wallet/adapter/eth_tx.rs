@@ -35,16 +35,14 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-    multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
-    multisig_member::MultisigMemberEntities,
+    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+    permission::PermissionEntity,
 };
 use wallet_transport::client::RpcClient;
-use wallet_transport_backend::{
-    api::BackendApi,
-    response_vo::chain::GasOracle,
-};
+use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{serde_func, unit};
 
@@ -227,6 +225,10 @@ impl Oracle for EthTx {
 
 #[async_trait::async_trait]
 impl Tx for EthTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
@@ -301,11 +303,8 @@ impl Tx for EthTx {
         req: BaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
-
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-
         let token_currency =
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
@@ -320,8 +319,7 @@ impl Tx for EthTx {
         }
 
         let gas_oracle = self.gas_oracle().await?;
-        let params =
-            eth::operations::TransferOpt::new(&req.from, &req.to, value, req.token_address)?;
+        let params = TransferOpt::new(&req.from, &req.to, value, req.token_address)?;
         let fee = self.chain.estimate_gas(params).await?;
         let fee =
             FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);

@@ -7,7 +7,7 @@ use crate::{
 use crate::entities::api_assets::ApiCreateAssetsVo;
 use sqlx::{Executor, Sqlite};
 
-pub struct ApiAssetsDao;
+pub(crate) struct ApiAssetsDao;
 
 impl ApiAssetsDao {
     pub async fn list<'a, E>(exec: E) -> Result<Vec<ApiAssetsEntity>, crate::Error>

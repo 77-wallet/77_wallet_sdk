@@ -23,6 +23,7 @@ use wallet_chain_interact::{
     Error,
     QueryTransactionResult,
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity,
     coin::CoinEntity,
@@ -57,6 +58,10 @@ impl SuiTx {
 
 #[async_trait::async_trait]
 impl Tx for SuiTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
