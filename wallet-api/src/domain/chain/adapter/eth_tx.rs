@@ -35,6 +35,13 @@ pub(super) async fn approve(
     let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
 
     let gas_price = chain.provider.get_default_fee().await?;
+
+    let priority = if gas_price.priority_fee_per_gas.is_zero() {
+        U256::from(10000)
+    } else {
+        gas_price.priority_fee_per_gas
+    };
+
     let gas_limit = chain
         .provider
         .estimate_gas(approve.build_transaction()?)
@@ -42,7 +49,7 @@ pub(super) async fn approve(
 
     let fee_setting = FeeSetting {
         base_fee: gas_price.base_fee,
-        max_priority_fee_per_gas: gas_price.priority_fee_per_gas,
+        max_priority_fee_per_gas: priority,
         max_fee_per_gas: gas_price.base_fee + gas_price.priority_fee_per_gas,
         gas_limit,
     };
