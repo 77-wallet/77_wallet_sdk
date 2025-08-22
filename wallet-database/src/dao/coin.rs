@@ -558,7 +558,10 @@ impl CoinEntity {
         );
 
         if !chain_code.is_empty() {
-            sql.push_str(&format!(" AND coin.chain_code = '{}'", chain_code,));
+            sql.push_str(&format!(" AND coin.chain_code = '{}'", chain_code));
+        } else {
+            // TODO: 优化目前只查询这些链的数据,后续支持了更多的链进行删除
+            sql.push_str(" AND coin.chain_code in ('tron','bnb','eth')");
         }
 
         if !exclude_token.is_empty() {
