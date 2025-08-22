@@ -44,6 +44,15 @@ impl BillRepo {
         Ok(bill)
     }
 
+    pub async fn get_by_hash_opt(
+        hash: &str,
+        pool: &DbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        let bill = BillDao::get_one_by_hash(hash, pool.as_ref()).await?;
+
+        Ok(bill)
+    }
+
     pub async fn find_by_id(id: &str, pool: &DbPool) -> Result<BillEntity, crate::Error> {
         let bill = BillDao::find_by_id(pool.as_ref(), id)
             .await?

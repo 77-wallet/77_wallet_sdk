@@ -24,15 +24,21 @@ use crate::{
 use alloy::primitives::U256;
 use std::time::{self};
 use wallet_database::{
-    entities::{account::AccountEntity, assets::AssetsEntity, bill::NewBillEntity},
+    entities::{
+        account::AccountEntity,
+        assets::AssetsEntity,
+        bill::{BillStatus, NewBillEntity},
+        coin::CoinEntity,
+    },
     pagination::Pagination,
     repositories::{
-        account::AccountRepo, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo,
+        account::AccountRepo, assets::AssetsRepo, bill::BillRepo, coin::CoinRepo,
+        exchange_rate::ExchangeRateRepo,
     },
     DbPool,
 };
 use wallet_transport_backend::{
-    api::swap::{ApproveCancelReq, ApproveSaveParams},
+    api::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams},
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
 };
 use wallet_types::chain::chain::ChainCode;
@@ -651,34 +657,14 @@ impl SwapServer {
             let coin =
                 CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &pool).await?;
             if item.limit_type == ApproveReq::UN_LIMIT {
+                // 无限授权的类型
                 let mut approve_info = ApproveList::from(item);
                 approve_info.symbol = coin.symbol;
                 res.push(approve_info)
             } else {
                 // 获取allowance 情况
-                let adapter =
-                    ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
-                let allowance = adapter
-                    .allowance(&item.owner_address, &item.token_addr, &item.spender)
+                self.push_approve_if_nonzero(item, &coin, &pool, &mut res, &mut used_ids)
                     .await?;
-
-                // 实际授权为0,丢弃
-                if allowance == alloy::primitives::U256::ZERO {
-                    used_ids.push(item.id);
-                } else {
-                    let unit = coin.decimals as u8;
-                    let origin_allowance = wallet_utils::unit::convert_to_u256(&item.value, unit)?;
-                    let mut approve_info = ApproveList::from(item);
-
-                    approve_info.amount =
-                        wallet_utils::unit::format_to_string(origin_allowance, unit)?;
-                    let remain = origin_allowance - (origin_allowance - allowance);
-
-                    approve_info.remaining_allowance =
-                        wallet_utils::unit::format_to_string(remain, unit)?;
-                    approve_info.symbol = coin.symbol;
-                    res.push(approve_info);
-                }
             }
         }
 
@@ -688,6 +674,46 @@ impl SwapServer {
         }
 
         Ok(res)
+    }
+
+    async fn push_approve_if_nonzero(
+        &self,
+        item: ApproveInfo,
+        coin: &CoinEntity,
+        pool: &DbPool,
+        res: &mut Vec<ApproveList>,
+        used_ids: &mut Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
+        // 1) 只有在 bill 不存在，或者存在且状态为 Success 时才继续
+        if let Some(bill) = BillRepo::get_by_hash_opt(&item.hash, pool).await? {
+            if bill.status != BillStatus::Success.to_i8() {
+                return Ok(()); // 非成功直接跳过，不打链上请求
+            }
+        }
+
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
+        let allowance = adapter
+            .allowance(&item.owner_address, &item.token_addr, &item.spender)
+            .await?;
+
+        // 3) allowance 为 0：标记可丢弃
+        if allowance.is_zero() {
+            used_ids.push(item.id);
+            return Ok(());
+        }
+
+        // 4) 组装显示数据
+        let unit = coin.decimals as u8;
+        let origin_allowance = wallet_utils::unit::convert_to_u256(&item.value, unit)?;
+
+        let mut approve_info = ApproveList::from(item);
+        approve_info.amount = wallet_utils::unit::format_to_string(origin_allowance, unit)?;
+
+        approve_info.remaining_allowance = wallet_utils::unit::format_to_string(allowance, unit)?;
+        approve_info.symbol = coin.symbol.clone();
+
+        res.push(approve_info);
+        Ok(())
     }
 
     pub async fn approve_cancel(

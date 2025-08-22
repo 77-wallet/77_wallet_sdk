@@ -63,6 +63,7 @@ pub struct ApproveInfo {
     pub owner_address: String,
     #[serde(rename = "tokenAddr")]
     pub token_addr: String,
+    pub hash: String,
     pub status: String,
     pub value: String,
     #[serde(rename = "limitType")]

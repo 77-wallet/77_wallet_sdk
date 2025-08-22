@@ -33,7 +33,7 @@ async fn test_approve() {
         from: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
         spender: AGGREGATOR.to_string(),
         contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-        value: "5".to_string(),
+        value: "1".to_string(),
         chain_code: "eth".to_string(),
         approve_type: "NORMAL".to_string(),
     };
@@ -67,7 +67,7 @@ async fn test_approve_fee() {
 async fn test_approve_list() {
     let wallet_manager = get_manager().await;
 
-    let uid = "f091ca89e48bc1cd3e4cb84e8d3e3d9e2564e3616efd1feb468793687037d66f".to_string();
+    let uid = "41028d217798181a73225cc57ad401a66da21c5b0853e83a50f377dffc75651d".to_string();
     let account_id = 1;
 
     let resp = wallet_manager.approve_list(uid, account_id).await;
