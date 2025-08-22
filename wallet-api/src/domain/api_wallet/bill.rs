@@ -1,5 +1,4 @@
 use chrono::Utc;
-use tracing::Instrument;
 use crate::domain::api_wallet::adapter;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::repositories::{

@@ -1,132 +1,225 @@
-mod transaction_adapter;
-pub use transaction_adapter::*;
-use wallet_chain_interact::{
-    tron::{self, TronChain},
-    types::ChainPrivateKey,
+use alloy::primitives::U256;
+use wallet_chain_interact::types::{
+    ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp,
 };
-use wallet_transport::client::HttpClient;
-use wallet_types::constant::chain_code;
-mod multisig_adapter;
-use crate::request::transaction::TransferReq;
+use wallet_utils::unit;
 
-pub use multisig_adapter::*;
+use crate::{
+    domain::chain::TransferResp,
+    infrastructure::swap_client::AggQuoteResp,
+    request::transaction::{
+        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+    },
+    response_vo::{MultisigQueueFeeParams, TransferParams},
+};
+
+use wallet_database::entities::{
+    api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+    permission::PermissionEntity,
+};
+use wallet_transport_backend::response_vo::chain::GasOracle;
+
+pub mod btc_tx;
+pub mod doge_tx;
 pub mod eth_tx;
+pub mod ltx_tx;
+pub mod sol_tx;
+pub mod sui_tx;
 pub mod ton_tx;
 pub mod tron_tx;
 
-use crate::domain::chain::rpc_need_header;
-use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
-
 const TIME_OUT: u64 = 30;
 
-#[macro_export]
-macro_rules! dispatch1 {
-    ($self:expr, $method:ident, $($arg:expr),*) => {
-        match $self {
-            Self::BitCoin(chain) => chain.$method($($arg),*).await,
-            Self::Ethereum(chain) => chain.$method($($arg),*).await,
-            Self::Solana(chain) => chain.$method($($arg),*).await,
-            Self::Tron(chain) => chain.$method($($arg),*).await,
-            Self::Ltc(chain) => chain.$method($($arg),*).await,
-            Self::Doge(chain) => chain.$method($($arg),*).await,
-            Self::Ton(chain) => chain.$method($($arg),*).await,
-            Self::Sui(chain) => chain.$method($($arg),*).await,
-        }
-    };
-}
-
-pub struct ChainAdapterFactory;
-impl ChainAdapterFactory {
-    async fn get_chain_node(chain_code: &str) -> Result<ChainWithNode, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-
-        let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code)
-            .await?
-            .ok_or(crate::BusinessError::Chain(crate::ChainError::NotFound(
-                chain_code.to_string(),
-            )))?;
-        Ok(node)
-    }
-
-    pub async fn get_multisig_adapter(
-        chain_code: &str,
-    ) -> Result<MultisigAdapter, crate::ServiceError> {
-        let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
-
-        let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
-
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
-        } else {
-            None
-        };
-
-        MultisigAdapter::new(chain, node, header_opt)
-    }
-
-    pub async fn get_transaction_adapter(
-        chain_code: &str,
-    ) -> Result<TransactionAdapter, crate::ServiceError> {
-        let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
-        let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
-
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
-        } else {
-            None
-        };
-
-        Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt)?)
-    }
-
-    pub async fn get_tron_adapter() -> Result<TronChain, crate::ServiceError> {
-        let node = ChainAdapterFactory::get_chain_node(chain_code::TRON).await?;
-
-        let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
-        } else {
-            None
-        };
-        let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
-
-        let http_client = HttpClient::new(&node.rpc_url, header_opt, timeout)?;
-        let provider = tron::Provider::new(http_client)?;
-
-        Ok(tron::TronChain::new(provider)?)
-    }
-
-    pub async fn get_node_transaction_adapter(
-        chain_code: &str,
-        rpc_url: &str,
-    ) -> Result<TransactionAdapter, crate::ServiceError> {
-        let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
-
-        let header_opt = if rpc_need_header(rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
-        } else {
-            None
-        };
-
-        Ok(TransactionAdapter::new(chain, rpc_url, header_opt)?)
-    }
-}
-
-// transfer estimate fee t
 #[async_trait::async_trait]
-pub trait ChainAction {
-    type Provider;
-    type FeeInfo;
+pub trait Oracle {
+    async fn gas_oracle(&self) -> Result<GasOracle, crate::ServiceError>;
 
-    // 获取 gas 估算
+    async fn default_gas_oracle(&self) -> Result<GasOracle, crate::ServiceError>;
+}
+
+#[async_trait::async_trait]
+pub trait Tx {
+    fn check_min_transfer(
+        value: &str,
+        decimal: u8,
+    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
+        let min = alloy::primitives::U256::from(1);
+        let transfer_amount = unit::convert_to_u256(value, decimal)?;
+
+        if transfer_amount < min {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::AmountLessThanMin,
+            ))?;
+        }
+        Ok(transfer_amount)
+    }
+
+    async fn balance(
+        &self,
+        addr: &str,
+        token: Option<String>,
+    ) -> Result<U256, wallet_chain_interact::Error>;
+    async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error>;
+
+    async fn query_tx_res(
+        &self,
+        hash: &str,
+    ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>;
+
+    async fn decimals(&self, token: &str) -> Result<u8, wallet_chain_interact::Error>;
+
+    async fn token_symbol(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
+
+    async fn token_name(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
+
+    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, crate::ServiceError>;
+
+    async fn transfer(
+        &self,
+        params: &TransferReq,
+        private_key: ChainPrivateKey,
+    ) -> Result<TransferResp, crate::ServiceError>;
+
     async fn estimate_fee(
         &self,
-        provider: Self::FeeInfo,
-    ) -> Result<Self::FeeInfo, crate::ServiceError>;
+        req: BaseTransferReq,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
 
-    // 执行操作（包含签名、广播）
-    async fn execute(
+    async fn approve(
         &self,
+        req: &ApproveReq,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError>;
+
+    async fn approve_fee(
+        &self,
+        req: &ApproveReq,
+        value: U256,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+
+    async fn allowance(
+        &self,
+        from: &str,
+        token: &str,
+        spender: &str,
+    ) -> Result<U256, crate::ServiceError>;
+
+    async fn swap_quote(
+        &self,
+        req: &QuoteReq,
+        quote_resp: &AggQuoteResp,
+        symbol: &str,
+    ) -> Result<(U256, String, String), crate::ServiceError>;
+
+    async fn swap(
+        &self,
+        req: &SwapReq,
         fee: String,
         key: ChainPrivateKey,
-    ) -> Result<TransferReq, crate::ServiceError>;
+    ) -> Result<TransferResp, crate::ServiceError>;
+
+    async fn deposit_fee(
+        &self,
+        req: DepositReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), crate::ServiceError>;
+
+    async fn deposit(
+        &self,
+        req: &DepositReq,
+        fee: String,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError>;
+
+    async fn withdraw_fee(
+        &self,
+        req: WithdrawReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), crate::ServiceError>;
+
+    async fn withdraw(
+        &self,
+        req: &WithdrawReq,
+        fee: String,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError>;
+}
+
+#[async_trait::async_trait]
+pub trait Multisig {
+    async fn multisig_address(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+    ) -> Result<FetchMultisigAddressResp, crate::ServiceError>;
+
+    async fn deploy_multisig_account(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+        fee_setting: Option<String>,
+        key: ChainPrivateKey,
+    ) -> Result<(String, String), crate::ServiceError>;
+
+    async fn deploy_multisig_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        member: MultisigMemberEntities,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+
+    async fn build_multisig_fee(
+        &self,
+        req: &MultisigQueueFeeParams,
+        account: &MultisigAccountEntity,
+        decimal: u8,
+        token: Option<String>,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+
+    async fn build_multisig_with_account(
+        &self,
+        req: &TransferParams,
+        account: &MultisigAccountEntity,
+        assets: &ApiAssetsEntity,
+        key: ChainPrivateKey,
+    ) -> Result<MultisigTxResp, crate::ServiceError>;
+
+    async fn build_multisig_with_permission(
+        &self,
+        req: &TransferParams,
+        p: &PermissionEntity,
+        coin: &CoinEntity,
+    ) -> Result<MultisigTxResp, crate::ServiceError>;
+
+    async fn sign_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        raw_data: &str,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+
+    async fn sign_multisig_tx(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        key: ChainPrivateKey,
+        raw_data: &str,
+    ) -> Result<MultisigSignResp, crate::ServiceError>;
+
+    async fn estimate_fee(
+        &self,
+        queue: &MultisigQueueEntity,
+        coin: &CoinEntity,
+        backend: &wallet_transport_backend::api::BackendApi,
+        sign_list: Vec<String>,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
 }

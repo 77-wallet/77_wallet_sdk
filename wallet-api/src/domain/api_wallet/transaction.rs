@@ -1,4 +1,7 @@
-use super::adapter::TransactionAdapter;
+use super::{
+    adapter::TransactionAdapter,
+    bill::ApiBillDomain,
+};
 use crate::{
     domain::{coin::CoinDomain},
     infrastructure::task_queue::{self, BackendApiTaskData, task::Tasks},
@@ -10,15 +13,20 @@ use wallet_chain_interact::{
     tron::{TronChain, protocol::account::AccountResourceDetail},
     types::ChainPrivateKey,
 };
-use wallet_database::entities::api_account::ApiAccountEntity;
-use wallet_database::entities::api_assets::ApiAssetsEntity;
-use wallet_database::repositories::api_account::ApiAccountRepo;
-use wallet_database::repositories::api_assets::ApiAssetsRepo;
 use wallet_database::{
     entities::{
+        api_account::ApiAccountEntity,
+        api_assets::ApiAssetsEntity,
         coin::CoinEntity,
+        api_bill::{ApiBillEntity, ApiBillKind},
+        assets::AssetsId,
     },
-    repositories::permission::PermissionRepo,
+    repositories:: {
+        api_account::ApiAccountRepo,
+        api_assets::ApiAssetsRepo,
+        permission::PermissionRepo,
+        api_bill::ApiBillRepo,
+    }
 };
 use wallet_transport_backend::{
     api::{BackendApi, permission::TransPermission},
@@ -28,10 +36,6 @@ use wallet_transport_backend::{
 };
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
-use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
-use wallet_database::entities::assets::AssetsId;
-use wallet_database::repositories::api_bill::ApiBillRepo;
-use crate::domain::api_wallet::bill::ApiBillDomain;
 
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
