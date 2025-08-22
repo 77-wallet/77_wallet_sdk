@@ -3,7 +3,7 @@ use crate::domain::api_wallet::transaction::ApiChainTransDomain;
 use crate::messaging::notify::api_wallet::WithdrawFront;
 use crate::request::transaction::TransferReq;
 use crate::{
-    domain::{api_wallet::account::ApiAccountDomain, chain::transaction::ChainTransDomain},
+    domain::chain::transaction::ChainTransDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     request::transaction::BaseTransferReq,
     service::transaction::TransactionService,

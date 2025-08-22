@@ -376,7 +376,7 @@ impl ChainDomain {
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
         address_batch_init_task_data: &mut AddressBatchInitReq,
-        subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
+        // subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
         chain_list: &[String],
         seed: &[u8],
         account_index_map: &wallet_utils::address::AccountIndexMap,
@@ -400,20 +400,19 @@ impl ChainDomain {
                     (&code, &address_type, node.network.as_str().into()).try_into()?;
                 // (&code, &address_type, "mainnet".into()).try_into()?;
 
-                let (account_address, derivation_path, address_init_req) =
-                    ApiAccountDomain::create_api_account(
-                        tx,
-                        seed,
-                        &instance,
-                        account_index_map,
-                        uid,
-                        wallet_address,
-                        account_name,
-                        is_default_name,
-                        wallet_password,
-                        api_wallet_type,
-                    )
-                    .await?;
+                let (account_address, address_init_req) = ApiAccountDomain::create_api_account(
+                    tx,
+                    seed,
+                    &instance,
+                    account_index_map,
+                    uid,
+                    wallet_address,
+                    account_name,
+                    is_default_name,
+                    wallet_password,
+                    api_wallet_type,
+                )
+                .await?;
 
                 if let Some(address_init_req) = address_init_req {
                     address_batch_init_task_data.0.push(address_init_req);
@@ -421,17 +420,17 @@ impl ChainDomain {
                     tracing::info!("不上报： {}", account_address.address);
                 };
 
-                subkeys.push(
-                    AccountDomain::generate_subkey(
-                        &instance,
-                        seed,
-                        &account_address.address,
-                        &code.to_string(),
-                        account_index_map,
-                        derivation_path.as_str(),
-                    )
-                    .await?,
-                );
+                // subkeys.push(
+                //     AccountDomain::generate_subkey(
+                //         &instance,
+                //         seed,
+                //         &account_address.address,
+                //         &code.to_string(),
+                //         account_index_map,
+                //         derivation_path.as_str(),
+                //     )
+                //     .await?,
+                // );
                 AssetsDomain::init_default_api_assets(
                     coins,
                     &account_address.address,

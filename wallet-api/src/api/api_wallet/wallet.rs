@@ -106,7 +106,8 @@ mod test {
         let is_default_name = true;
         let wallet_password = "q1111111";
         let invite_code = None;
-        let api_wallet_type = ApiWalletType::SubAccount;
+        // let api_wallet_type = ApiWalletType::SubAccount;
+        let api_wallet_type = ApiWalletType::Withdrawal;
         let res = wallet_manager
             .create_api_wallet(
                 language_code,
