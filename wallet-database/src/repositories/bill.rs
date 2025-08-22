@@ -73,7 +73,7 @@ impl BillRepo {
     }
 
     pub async fn recent_bill(
-        symbol: &str,
+        token: &str,
         addr: &str,
         chain_code: &str,
         page: i64,
@@ -82,8 +82,7 @@ impl BillRepo {
     ) -> Result<Pagination<RecentBillListVo>, crate::Error> {
         let min_value = None;
         let lists =
-            BillDao::recent_bill(symbol, addr, chain_code, min_value, page, page_size, pool)
-                .await?;
+            BillDao::recent_bill(token, addr, chain_code, min_value, page, page_size, pool).await?;
 
         Ok(lists)
     }

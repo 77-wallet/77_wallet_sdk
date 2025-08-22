@@ -91,13 +91,13 @@ impl crate::WalletManager {
     // 最近交易列表
     pub async fn recent_bill(
         &self,
-        symbol: String,
+        token: String,
         addr: String,
         chain_code: String,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<RecentBillListVo>> {
-        TransactionService::recent_bill(&symbol, &addr, &chain_code, page, page_size)
+        TransactionService::recent_bill(&token, &addr, &chain_code, page, page_size)
             .await
             .into()
     }

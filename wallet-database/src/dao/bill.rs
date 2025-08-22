@@ -187,7 +187,7 @@ impl BillDao {
 
     // 最近转列
     pub async fn recent_bill(
-        symbol: &str,
+        token: &str,
         addr: &str,
         chain_code: &str,
         min_value: Option<f64>,
@@ -210,7 +210,7 @@ impl BillDao {
                 AND chain_code = '{}'
                 AND to_addr <> '{}'
                 AND to_addr <>  ""
-                AND symbol = '{}'
+                AND token = '{}'
                 {}
                 AND transfer_type = 1
                 GROUP BY to_addr
@@ -221,7 +221,7 @@ impl BillDao {
             AND b.transfer_type = 1
             ORDER BY b.transaction_time DESC
             "#,
-            addr, chain_code, addr, symbol, min_value_condition
+            addr, chain_code, addr, token, min_value_condition
         );
 
         let count_sql = format!(r#" SELECT count(*) FROM ({}) AS subquery;"#, sql);

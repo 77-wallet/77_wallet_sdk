@@ -204,7 +204,7 @@ impl TransactionService {
     }
 
     pub async fn recent_bill(
-        symbol: &str,
+        token: &str,
         addr: &str,
         chain_code: &str,
         page: i64,
@@ -212,7 +212,7 @@ impl TransactionService {
     ) -> Result<Pagination<RecentBillListVo>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        Ok(BillRepo::recent_bill(symbol, addr, chain_code, page, page_size, pool).await?)
+        Ok(BillRepo::recent_bill(token, addr, chain_code, page, page_size, pool).await?)
     }
 
     pub async fn query_tx_result(req: Vec<String>) -> Result<Vec<BillEntity>, crate::ServiceError> {
