@@ -6,6 +6,8 @@ pub enum ApiWalletError {
     AlreadyExist,
     #[error("Api Wallet not exist")]
     NotFound,
+    #[error("Api Account not exist")]
+    NotFoundAccount,
 }
 
 impl ApiWalletError {
@@ -14,6 +16,7 @@ impl ApiWalletError {
             ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem => 4400,
             ApiWalletError::AlreadyExist => 4401,
             ApiWalletError::NotFound => 4402,
+            ApiWalletError::NotFoundAccount => 4403,
         }
     }
 }

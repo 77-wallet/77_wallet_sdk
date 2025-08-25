@@ -293,7 +293,7 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        DynamicQueryBuilder::new("SELECT * FROM account")
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("address", address)
             .and_where_eq("chain_code", chain_code)
             .fetch_optional(exec)

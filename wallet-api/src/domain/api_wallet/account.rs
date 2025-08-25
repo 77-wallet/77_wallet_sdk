@@ -256,12 +256,12 @@ impl ApiAccountDomain {
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &db)
             .await?
             .ok_or(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::NotFound,
+                crate::ApiWalletError::NotFoundAccount,
             ))?;
         let wallet =
             ApiWalletRepo::find_by_address(&db, &account.wallet_address, account.wallet_type)
                 .await?
-                .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+                .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
 
         let chain = ChainEntity::chain_node_info(db.as_ref(), chain_code)
             .await?

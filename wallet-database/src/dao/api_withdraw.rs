@@ -61,13 +61,12 @@ impl ApiWithdrawDao {
     {
         let sql = r#"
             INSERT INTO api_withdraws
-                (id,uid,name,from_addr,to_addr,value,decimals,token_addr,symbol,trade_no,trade_type,status,created_at)
+                (uid,name,from_addr,to_addr,value,decimals,token_addr,symbol,trade_no,trade_type,status,tx_hash,send_tx_at,created_at,updated_at)
             VALUES
-                (?,?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         "#;
 
         sqlx::query(sql)
-            .bind(&api_withdraw.id)
             .bind(&api_withdraw.uid)
             .bind(&api_withdraw.name)
             .bind(&api_withdraw.from_addr)
@@ -78,11 +77,15 @@ impl ApiWithdrawDao {
             .bind(&api_withdraw.symbol)
             .bind(&api_withdraw.trade_no)
             .bind(&api_withdraw.trade_type)
+            .bind(0)
+            .bind("")
+            .bind(0)
             .bind(
                 api_withdraw
                     .created_at
                     .to_rfc3339_opts(SecondsFormat::Secs, true),
             )
+            .bind(0)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
