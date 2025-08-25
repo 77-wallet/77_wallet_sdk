@@ -171,8 +171,10 @@ impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
 
         let extra = BillExtraSwap {
             from_token_symbol: value.token_in.symbol.clone(),
+            from_token_address: value.token_in.token_addr.clone(),
             from_token_amount: amount_in,
             to_token_symbol: value.token_out.symbol.clone(),
+            to_token_address: value.token_out.token_addr.clone(),
             to_token_amount: amount_out,
             price: amount_out / amount_in,
         };

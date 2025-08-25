@@ -449,10 +449,12 @@ pub struct BillExtraVotes {
 pub struct BillExtraSwap {
     // 代币符号
     pub from_token_symbol: String,
+    pub from_token_address: String,
     // 金额
     pub from_token_amount: f64,
     // 代币符号
     pub to_token_symbol: String,
+    pub to_token_address: String,
     // 代币金额
     pub to_token_amount: f64,
     // 兑换比例
