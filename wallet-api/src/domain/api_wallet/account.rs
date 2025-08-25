@@ -6,10 +6,7 @@ use wallet_crypto::{
 };
 use wallet_database::{
     entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
-    repositories::{
-        ResourcesRepo, api_account::ApiAccountRepo, api_wallet::ApiWalletRepo,
-        device::DeviceRepoTrait as _,
-    },
+    repositories::{api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
@@ -18,7 +15,6 @@ pub(crate) struct ApiAccountDomain {}
 
 impl ApiAccountDomain {
     pub(crate) async fn create_api_account(
-        repo: &mut ResourcesRepo,
         seed: &[u8],
         instance: &wallet_chain_instance::instance::ChainObject,
         account_index_map: &wallet_utils::address::AccountIndexMap,
@@ -29,8 +25,7 @@ impl ApiAccountDomain {
         wallet_password: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<(CreateAccountRes, Option<AddressInitReq>), crate::ServiceError> {
-        let (address, derivation_path, address_init_req) = Self::derive_subkey(
-            repo,
+        let (address, address_init_req) = Self::derive_subkey(
             uid,
             seed,
             wallet_address,
@@ -117,7 +112,6 @@ impl ApiAccountDomain {
     // }
 
     pub(crate) async fn derive_subkey(
-        repo: &mut ResourcesRepo,
         uid: &str,
         seed: &[u8],
         wallet_address: &str,
@@ -127,8 +121,7 @@ impl ApiAccountDomain {
         is_default_name: bool,
         wallet_password: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(String, String, Option<AddressInitReq>), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<(String, Option<AddressInitReq>), crate::ServiceError> {
         let account_name = if is_default_name {
             format!("{account_name}{}", account_index_map.account_id)
         } else {
@@ -167,10 +160,10 @@ impl ApiAccountDomain {
             api_wallet_type,
         );
 
-        let Some(device) = repo.get_device_info().await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
-
         let account = ApiAccountRepo::find_one(
             &pool,
             &address,
@@ -213,7 +206,7 @@ impl ApiAccountDomain {
 
         ApiAccountRepo::upsert(&pool, vec![req]).await?;
 
-        Ok((address, derivation_path, address_init_req))
+        Ok((address, address_init_req))
     }
 
     pub(crate) async fn address_used(

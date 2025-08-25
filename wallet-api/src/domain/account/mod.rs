@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::{account::AccountEntity, chain::ChainEntity, wallet::WalletEntity},
-    repositories::{ResourcesRepo, account::AccountRepoTrait, device::DeviceRepoTrait},
+    repositories::{ResourcesRepo, account::AccountRepoTrait, device::DeviceRepo},
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{
@@ -282,7 +282,8 @@ impl AccountDomain {
             &account_name,
         );
 
-        let Some(device) = DeviceRepoTrait::get_device_info(repo).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 

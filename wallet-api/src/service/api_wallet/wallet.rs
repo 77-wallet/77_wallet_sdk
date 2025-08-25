@@ -1,21 +1,12 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
-    repositories::{
-        ResourcesRepo, api_wallet::ApiWalletRepo, chain::ChainRepoTrait, coin::CoinRepoTrait,
-        device::DeviceRepoTrait,
-    },
+    repositories::{ResourcesRepo, api_wallet::ApiWalletRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::{AddressBatchInitReq, LanguageInitReq, TokenQueryPriceReq};
+use wallet_transport_backend::request::LanguageInitReq;
 
 use crate::{
-    domain::{
-        api_wallet::wallet::ApiWalletDomain,
-        app::{DeviceDomain, config::ConfigDomain},
-        chain::ChainDomain,
-        wallet::WalletDomain,
-    },
+    domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
-    service::api_wallet::account::ApiAccountService,
 };
 
 pub struct ApiWalletService {
@@ -39,7 +30,6 @@ impl ApiWalletService {
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo;
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -49,7 +39,8 @@ impl ApiWalletService {
             password_validation_start.elapsed()
         );
 
-        let Some(device) = tx.get_device_info().await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -101,7 +92,6 @@ impl ApiWalletService {
             ApiWalletType::SubAccount => {}
             ApiWalletType::Withdrawal => {
                 ApiWalletDomain::create_account(
-                    tx,
                     address,
                     wallet_password,
                     None,
@@ -229,7 +219,6 @@ impl ApiWalletService {
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        let pool = crate::Context::get_global_sqlite_pool()?;
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -239,7 +228,8 @@ impl ApiWalletService {
             password_validation_start.elapsed()
         );
 
-        let Some(device) = tx.get_device_info().await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 

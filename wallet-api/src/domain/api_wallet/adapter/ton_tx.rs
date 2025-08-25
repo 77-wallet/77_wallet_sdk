@@ -1,16 +1,8 @@
-use crate::{
-    ServiceError,
-    domain::{
-        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
-        chain::TransferResp,
-        coin::TokenCurrencyGetter,
-    },
-    infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{
-        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
-    },
-    response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
-};
+use crate::domain::api_wallet::adapter::{Multisig, Tx, TIME_OUT};
+use crate::domain::chain::TransferResp;
+use crate::infrastructure::swap_client::AggQuoteResp;
+use crate::request::transaction::{ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq};
+use crate::{domain, response_vo, ServiceError};
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
@@ -51,8 +43,10 @@ impl TonTx {
         let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(http_client);
 
-        let ton = TonChain::new(provider)?;
-        Ok(Self { chain: ton })
+        let ton =TonChain::new(provider)?;
+        Ok(Self{
+            chain: ton,
+        })
     }
 
     pub async fn build_ext_cell(
@@ -81,7 +75,7 @@ impl Tx for TonTx {
     }
 
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
-        self.chain.balance(addr, token).await
+       self.chain.balance(addr, token).await
     }
 
     async fn block_num(&self) -> Result<u64, Error> {
@@ -97,11 +91,11 @@ impl Tx for TonTx {
     }
 
     async fn token_symbol(&self, token: &str) -> Result<String, Error> {
-        self.chain.token_symbol(token).await
+      self.chain.token_symbol(token).await
     }
 
     async fn token_name(&self, token: &str) -> Result<String, Error> {
-        self.chain.token_name(token).await
+       self.chain.token_name(token).await
     }
 
     async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
@@ -171,11 +165,7 @@ impl Tx for TonTx {
         Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))
     }
 
-    async fn estimate_fee(
-        &self,
-        req: BaseTransferReq,
-        main_symbol: &str,
-    ) -> Result<String, ServiceError> {
+    async fn estimate_fee(&self, req: BaseTransferReq, main_symbol: &str) -> Result<String, ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
 
         let currency = crate::app_state::APP_STATE.read().await;

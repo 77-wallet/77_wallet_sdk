@@ -8,8 +8,11 @@ use crate::{
 use wallet_database::{
     entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     repositories::{
-        ResourcesRepo, TransactionTrait as _, account::AccountRepoTrait, assets::AssetsRepoTrait,
-        chain::ChainRepoTrait, coin::CoinRepoTrait,
+        ResourcesRepo, TransactionTrait as _,
+        account::AccountRepoTrait,
+        assets::AssetsRepoTrait,
+        chain::{ChainRepo, ChainRepoTrait},
+        coin::{CoinRepo, CoinRepoTrait},
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
@@ -35,13 +38,9 @@ impl ChainService {
         protocols: &[String],
         main_symbol: &str,
     ) -> Result<(), crate::error::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let input = ChainCreateVo::new(name, chain_code, protocols, main_symbol);
-        let mut tx = self.repo;
-        tx.begin_transaction().await?;
-
-        let _res = tx.add(input).await?;
-
-        tx.commit_transaction().await?;
+        let _res = ChainRepo::add(&pool, input).await?;
 
         Ok(())
     }
@@ -51,11 +50,8 @@ impl ChainService {
         chain_code: &str,
         node_id: &str,
     ) -> Result<(), crate::error::ServiceError> {
-        let mut tx = self.repo;
-        tx.begin_transaction().await?;
-        tx.set_chain_node(chain_code, node_id).await?;
-
-        tx.commit_transaction().await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        ChainRepo::set_chain_node(&pool, chain_code, node_id).await?;
 
         Ok(())
     }
@@ -75,6 +71,7 @@ impl ChainService {
         self,
         wallet_password: &str,
     ) -> Result<(), crate::error::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
 
@@ -87,7 +84,7 @@ impl ChainService {
 
         let account_wallet_mapping = tx.account_wallet_mapping().await?;
         let mut req = TokenQueryPriceReq(Vec::new());
-        let coins = tx.default_coin_list().await?;
+        let coins = CoinRepo::default_coin_list(&pool).await?;
 
         let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
         for wallet in account_wallet_mapping {
@@ -193,10 +190,9 @@ impl ChainService {
         chain_list: HashMap<String, String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
-
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         let mut account_addresses = Vec::<String>::new();
 
@@ -248,7 +244,7 @@ impl ChainService {
             })
             .collect();
 
-        let chains = tx.get_chain_list().await?;
+        let chains = ChainRepo::get_chain_list(&pool).await?;
         let res = token_currencies
             .calculate_chain_assets_list(datas, chains)
             .await?;

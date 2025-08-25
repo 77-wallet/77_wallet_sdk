@@ -19,25 +19,24 @@ use std::collections::HashMap;
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     sol::{
-        consts::TEMP_SOL_KEYPAIR,
         Provider, SolFeeSetting, SolanaChain,
-        operations::{SolInstructionOperation, transfer::TransferOpt, multisig::{
-            account::MultisigAccountOpt,
-            transfer::{
-                BuildTransactionOpt, ExecMultisigOpt, SignTransactionOpt
-            }
-        }},
+        consts::TEMP_SOL_KEYPAIR,
+        operations::{
+            SolInstructionOperation,
+            multisig::{
+                account::MultisigAccountOpt,
+                transfer::{BuildTransactionOpt, ExecMultisigOpt, SignTransactionOpt},
+            },
+            transfer::TransferOpt,
+        },
     },
     types::ChainPrivateKey,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
-    api_assets::ApiAssetsEntity,
-    coin::CoinEntity,
-    multisig_account::MultisigAccountEntity,
-    multisig_member::MultisigMemberEntities,
-    multisig_queue::MultisigQueueEntity,
+    api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
     permission::PermissionEntity,
 };
 use wallet_transport::client::RpcClient;
@@ -505,10 +504,7 @@ impl Multisig for SolTx {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let params = SignTransactionOpt::new(
-            address,
-            raw_data.to_string(),
-        )?;
+        let params = SignTransactionOpt::new(address, raw_data.to_string())?;
 
         let instructions = params.instructions().await?;
         let fee = self.chain.estimate_fee_v1(&instructions, &params).await?;
@@ -529,10 +525,7 @@ impl Multisig for SolTx {
         raw_data: &str,
     ) -> Result<MultisigSignResp, ServiceError> {
         let balance = self.chain.balance(address, None).await?;
-        let params = SignTransactionOpt::new(
-            address,
-            raw_data.to_string(),
-        )?;
+        let params = SignTransactionOpt::new(address, raw_data.to_string())?;
 
         let instructions = params.instructions().await?;
         let fee = self.chain.estimate_fee_v1(&instructions, &params).await?;
@@ -556,10 +549,7 @@ impl Multisig for SolTx {
             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
                 .await?;
 
-        let params = ExecMultisigOpt::new(
-            &queue.from_addr,
-            queue.raw_data.to_string(),
-        )?;
+        let params = ExecMultisigOpt::new(&queue.from_addr, queue.raw_data.to_string())?;
 
         let instructions = params.instructions().await?;
         let mut fee = self.chain.estimate_fee_v1(&instructions, &params).await?;

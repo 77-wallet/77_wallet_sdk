@@ -32,6 +32,13 @@ impl crate::WalletManager {
             .into()
     }
 
+    // pub async fn get_wallet_address(&self) -> ReturnType<()> {
+    //     ApiWalletService::new(self.repo_factory.resource_repo())
+    //         .get_wallet_address(key, merchain_id, uid)
+    //         .await?
+    //         .into()
+    // }
+
     pub async fn bind_merchant(&self, key: &str, merchain_id: &str, uid: &str) -> ReturnType<()> {
         ApiWalletService::new(self.repo_factory.resource_repo())
             .bind_merchant(key, merchain_id, uid)

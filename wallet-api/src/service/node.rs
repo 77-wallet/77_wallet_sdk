@@ -4,7 +4,11 @@ use crate::{
 };
 use wallet_database::{
     entities::node::NodeCreateVo,
-    repositories::{ResourcesRepo, chain::ChainRepoTrait, node::NodeRepoTrait},
+    repositories::{
+        ResourcesRepo,
+        chain::{ChainRepo, ChainRepoTrait},
+        node::NodeRepoTrait,
+    },
 };
 pub struct NodeService {
     pub repo: ResourcesRepo,
@@ -79,6 +83,7 @@ impl NodeService {
 
     pub async fn init_chain_info(&mut self) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let list = crate::default_data::chain::get_default_chains_list()?;
 
         // tracing::warn!("list {:#?}", list);
@@ -96,7 +101,7 @@ impl NodeService {
             )
             .with_status(status);
 
-            if let Err(e) = ChainRepoTrait::add(tx, req).await {
+            if let Err(e) = ChainRepo::add(&pool, req).await {
                 tracing::error!("Failed to create default chain: {:?}", e);
                 continue;
             }

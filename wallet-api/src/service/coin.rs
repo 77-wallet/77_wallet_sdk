@@ -21,7 +21,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo,
         assets::AssetsRepoTrait,
-        chain::ChainRepoTrait,
+        chain::ChainRepo,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
     },
@@ -58,6 +58,7 @@ impl CoinService {
         crate::ServiceError,
     > {
         let tx = &mut self.repo;
+        let pool = crate::Context::get_global_sqlite_pool()?;
 
         let accounts = self
             .account_domain
@@ -71,7 +72,6 @@ impl CoinService {
         if let Some(is_multisig) = is_multisig
             && is_multisig
         {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let multisig =
                 domain::multisig::MultisigDomain::account_by_address(address, true, &pool).await?;
             chain_code = Some(multisig.chain_code);
@@ -104,7 +104,7 @@ impl CoinService {
         let chain_codes = if let Some(chain_code) = chain_code {
             HashSet::from([chain_code])
         } else {
-            tx.get_chain_list()
+            ChainRepo::get_chain_list(&pool)
                 .await?
                 .into_iter()
                 .map(|chain| chain.chain_code)
@@ -381,7 +381,7 @@ impl CoinService {
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
         let tx = &mut self.repo;
-        let _ = ChainDomain::get_node(tx, chain_code).await?;
+        let _ = ChainDomain::get_node(chain_code).await?;
 
         let chain_instance =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)

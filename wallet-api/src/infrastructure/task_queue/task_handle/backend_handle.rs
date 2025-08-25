@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::collections::HashSet;
-use wallet_database::repositories::{device::DeviceRepoTrait as _, wallet::WalletRepoTrait};
+use wallet_database::repositories::{device::DeviceRepo, wallet::WalletRepoTrait};
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
@@ -95,9 +95,8 @@ impl EndpointHandler for DefaultHandler {
         backend: &BackendApi,
         // _wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let Some(device) = repo.get_device_info().await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -178,7 +177,8 @@ impl EndpointHandler for SpecialHandler {
                 repo.wallet_init(&req.uid).await?;
             }
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
-                let Some(device) = repo.get_device_info().await? else {
+                let pool = crate::Context::get_global_sqlite_pool()?;
+                let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
                     return Err(
                         crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
                     );

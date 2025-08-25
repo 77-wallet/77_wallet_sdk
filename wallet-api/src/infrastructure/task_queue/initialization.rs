@@ -67,9 +67,8 @@ impl TaskTrait for InitializationTask {
                 MultisigQueueDomain::recover_all_uid_queue_data().await?;
             }
             InitializationTask::InitMqtt => {
-                let mut repo = RepositoryFactory::repo(pool.clone());
                 tracing::debug!("init mqtt start");
-                MqttDomain::init(&mut repo).await?;
+                MqttDomain::init().await?;
                 tracing::debug!("init mqtt end");
             }
         }

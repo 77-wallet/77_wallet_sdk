@@ -1,7 +1,4 @@
-use crate::{
-    domain::api_wallet::account::ApiAccountDomain,
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
-};
+use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 // biz_type = ADDRESS_ALLOCK
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -22,6 +19,17 @@ impl AddressAllockMsg {
         // let data = NotifyEvent::AddressUse(self.to_owned());
         // FrontendNotifyEvent::new(data).send().await?;
 
+        // ApiWalletDomain::create_account(
+        //     tx,
+        //     wallet_address,
+        //     wallet_password,
+        //     index,
+        //     name,
+        //     is_default_name,
+        //     number,
+        //     api_wallet_type,
+        // )
+        // .await?;
         Ok(())
     }
 }

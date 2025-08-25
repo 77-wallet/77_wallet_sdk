@@ -1,5 +1,6 @@
 use crate::domain::app::config::ConfigDomain;
 use wallet_database::entities::config::config_key::APP_VERSION;
+use wallet_database::repositories::device::DeviceRepo;
 use wallet_database::{
     entities::device::{CreateDeviceEntity, DeviceEntity},
     repositories::device::DeviceRepoTrait,
@@ -24,9 +25,8 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
     }
 
     pub async fn get_device_info(self) -> Result<Option<DeviceEntity>, crate::ServiceError> {
-        let mut tx = self.repo;
-        let res = tx.get_device_info().await?;
-        Ok(res)
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        Ok(DeviceRepo::get_device_info(&pool).await?)
     }
 
     pub async fn init_device(self, req: InitDeviceReq) -> Result<Option<()>, crate::ServiceError> {
@@ -36,11 +36,12 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         let upsert_req = (&req).into();
         tx.upsert(upsert_req).await?;
 
-        let device = tx.get_device_info().await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
 
-        if let Some(device) = device
-            && device.is_init == 0
-        {
+        if device.is_init == 0 {
             let task_req: DeviceInitReq = (&req).into();
             let task_data = BackendApiTaskData {
                 endpoint: endpoint::DEVICE_INIT.to_string(),

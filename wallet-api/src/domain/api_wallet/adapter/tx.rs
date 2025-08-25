@@ -1,4 +1,3 @@
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use crate::domain::api_wallet::adapter::btc_tx::BtcTx;
 use crate::domain::api_wallet::adapter::doge_tx::DogeTx;
 use crate::domain::api_wallet::adapter::eth_tx::EthTx;
@@ -54,7 +53,6 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.balance(addr, token).await,
             Self::Ton(tx) => tx.balance(addr, token).await,
             Self::Tron(tx) => tx.balance(addr, token).await,
-            Self::Bnb(tx) => tx.balance(addr, token).await,
         }
     }
 
@@ -68,7 +66,6 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.block_num().await,
             Self::Ton(tx) => tx.block_num().await,
             Self::Tron(tx) => tx.block_num().await,
-            Self::Bnb(tx) => tx.block_num().await,
         }
     }
 
@@ -254,7 +251,6 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.swap_quote(req, quote_resp, symbol).await,
             Self::Ton(tx) => tx.swap_quote(req, quote_resp, symbol).await,
             Self::Tron(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Bnb(tx) => tx.swap_quote(req, quote_resp, symbol).await,
         }
     }
 

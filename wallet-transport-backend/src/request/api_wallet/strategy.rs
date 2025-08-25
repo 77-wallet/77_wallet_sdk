@@ -1,37 +1,33 @@
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SaveOrUpdateCollectionStrategyReq {}
-
-impl SaveOrUpdateCollectionStrategyReq {
-    pub fn new() -> Self {
-        Self {}
-    }
+pub struct Strategy {
+    pub uid: String,
+    pub threshold: f64,
+    pub chain_configs: Vec<ChainConfig>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SaveOrUpdateWithdrawStrategyReq {}
-
-impl SaveOrUpdateWithdrawStrategyReq {
-    pub fn new() -> Self {
-        Self {}
-    }
+pub struct ChainConfig {
+    pub chain_code: String,
+    pub normal_address: IndexAndAddress,
+    pub risk_address: IndexAndAddress,
 }
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryCollectionStrategyReq {}
+pub struct IndexAndAddress {
+    pub index: i32,
+    pub address: String,
+}
 
-impl QueryCollectionStrategyReq {
-    pub fn new() -> Self {
-        Self {}
+impl Strategy {
+    pub fn new(uid: &str, threshold: f64, chain_configs: Vec<ChainConfig>) -> Self {
+        Self {
+            uid: uid.to_string(),
+            threshold,
+            chain_configs,
+        }
     }
 }
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryWithdrawStrategyReq {}
 
-impl QueryWithdrawStrategyReq {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
+pub type SaveWithdrawStrategyReq = Strategy;
+pub type SaveCollectStrategyReq = Strategy;

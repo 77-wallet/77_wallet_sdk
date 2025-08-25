@@ -1,15 +1,4 @@
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionStrategyResp {
-    pub min_amount: f64,
-    pub normal_address: String,
-    pub normal_index: i32,
-}
+use crate::request::api_wallet::strategy::Strategy;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WithdrawStrategyResp {
-    pub min_amount: f64,
-    pub normal_address: String,
-    pub normal_index: i32,
-}
+pub type CollectionStrategyResp = Strategy;
+pub type WithdrawStrategyResp = Strategy;

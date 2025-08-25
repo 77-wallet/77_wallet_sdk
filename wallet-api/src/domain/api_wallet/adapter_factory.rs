@@ -1,6 +1,4 @@
-use std::sync::Arc;
 use crate::domain::{
-    api_wallet::adapter::Tx,
     api_wallet::adapter::{
         btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
         sui_tx::SuiTx, ton_tx::TonTx, tron_tx::TronTx,
@@ -26,53 +24,47 @@ impl ApiChainAdapterFactory {
         let adapter = DashMap::new();
         adapter.insert(
             ChainCode::Bitcoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Bitcoin)
+            Arc::new(Self::new_transaction_adapter(ChainCode::Bitcoin)
                 .await
-                .unwrap(),
+                .unwrap()),
         );
         adapter.insert(
             ChainCode::Dogcoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Dogcoin)
+            Arc::new(Self::new_transaction_adapter(ChainCode::Dogcoin)
                 .await
-                .unwrap(),
+                .unwrap()),
         );
         adapter.insert(
             ChainCode::Ethereum.to_string(),
-            Self::new_transaction_adapter(ChainCode::Ethereum)
+            Arc::new(Self::new_transaction_adapter(ChainCode::Ethereum)
                 .await
-                .unwrap(),
-        );
-        adapter.insert(
-            ChainCode::BnbSmartChain.to_string(),
-            Self::new_transaction_adapter(ChainCode::BnbSmartChain)
-                .await
-                .unwrap(),
+                .unwrap()),
         );
         adapter.insert(
             ChainCode::Litecoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Litecoin)
+            Arc::new(Self::new_transaction_adapter(ChainCode::Litecoin)
                 .await
-                .unwrap(),
+                .unwrap()),
         );
         adapter.insert(
             ChainCode::Solana.to_string(),
-            Self::new_transaction_adapter(ChainCode::Solana)
+            Arc::new(Self::new_transaction_adapter(ChainCode::Solana)
                 .await
-                .unwrap(),
+                .unwrap()),
         );
         adapter.insert(
             ChainCode::Sui.to_string(),
-            Self::new_transaction_adapter(ChainCode::Sui).await.unwrap(),
+            Arc::new(Self::new_transaction_adapter(ChainCode::Sui).await.unwrap()),
         );
         adapter.insert(
             ChainCode::Ton.to_string(),
-            Self::new_transaction_adapter(ChainCode::Ton).await.unwrap(),
+            Arc::new(Self::new_transaction_adapter(ChainCode::Ton).await.unwrap()),
         );
         adapter.insert(
             ChainCode::Tron.to_string(),
-            Self::new_transaction_adapter(ChainCode::Tron)
+            Arc::new(Self::new_transaction_adapter(ChainCode::Tron)
                 .await
-                .unwrap(),
+                .unwrap()),
         );
 
         ApiChainAdapterFactory {
