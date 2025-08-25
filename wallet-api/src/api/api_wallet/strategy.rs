@@ -1,17 +1,29 @@
+use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
+
 use crate::api::ReturnType;
 use crate::service::api_wallet::strategy::StrategyService;
 
 impl crate::WalletManager {
-    pub async fn update_collection_strategy(&self) -> ReturnType<()> {
+    pub async fn update_collection_strategy(
+        &self,
+        uid: &str,
+        threshold: f64,
+        chain_config: Vec<ChainConfig>,
+    ) -> ReturnType<()> {
         StrategyService::new(self.repo_factory.resource_repo())
-            .update_collection_strategy()
+            .update_collection_strategy(uid, threshold, chain_config)
             .await?
             .into()
     }
 
-    pub async fn update_withdrawal_strategy(&self) -> ReturnType<()> {
+    pub async fn update_withdrawal_strategy(
+        &self,
+        uid: &str,
+        threshold: f64,
+        chain_config: Vec<ChainConfig>,
+    ) -> ReturnType<()> {
         StrategyService::new(self.repo_factory.resource_repo())
-            .update_withdraw_strategy()
+            .update_withdraw_strategy(uid, threshold, chain_config)
             .await?
             .into()
     }
@@ -19,12 +31,6 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::{request::api_wallet::account::CreateApiAccountReq, test::env::get_manager};
-
-    use anyhow::Result;
-
-    use wallet_database::entities::api_wallet::ApiWalletType;
-
     // #[tokio::test]
     // async fn test_create_api_account() -> Result<()> {
     //     wallet_utils::init_test_log();

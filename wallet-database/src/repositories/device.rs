@@ -1,12 +1,15 @@
-use crate::entities::device::DeviceEntity;
+use crate::{DbPool, entities::device::DeviceEntity};
+
+pub struct DeviceRepo;
+
+impl DeviceRepo {
+    pub async fn get_device_info(pool: &DbPool) -> Result<Option<DeviceEntity>, crate::Error> {
+        Ok(DeviceEntity::get_device_info(pool.as_ref()).await?)
+    }
+}
 
 #[async_trait::async_trait]
 pub trait DeviceRepoTrait: super::TransactionTrait {
-    async fn get_device_info(&mut self) -> Result<Option<DeviceEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, DeviceEntity::get_device_info,)
-    }
-
     async fn upsert(
         &mut self,
         req: crate::entities::device::CreateDeviceEntity,

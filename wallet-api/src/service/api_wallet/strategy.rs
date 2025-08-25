@@ -1,6 +1,6 @@
 use wallet_database::repositories::ResourcesRepo;
 use wallet_transport_backend::request::api_wallet::strategy::{
-    SaveOrUpdateCollectionStrategyReq, SaveOrUpdateWithdrawStrategyReq,
+    ChainConfig, SaveCollectStrategyReq, SaveWithdrawStrategyReq,
 };
 
 pub struct StrategyService {
@@ -12,20 +12,30 @@ impl StrategyService {
         Self { repo }
     }
 
-    pub async fn update_collection_strategy(self) -> Result<(), crate::ServiceError> {
+    pub async fn update_collection_strategy(
+        self,
+        uid: &str,
+        threshold: f64,
+        chain_config: Vec<ChainConfig>,
+    ) -> Result<(), crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
 
-        let req = SaveOrUpdateCollectionStrategyReq::new();
-        backend_api.save_or_update_collection_strategy(&req).await?;
+        let req = SaveCollectStrategyReq::new(uid, threshold, chain_config);
+        backend_api.save_collection_strategy(&req).await?;
 
         Ok(())
     }
 
-    pub async fn update_withdraw_strategy(self) -> Result<(), crate::ServiceError> {
+    pub async fn update_withdraw_strategy(
+        self,
+        uid: &str,
+        threshold: f64,
+        chain_config: Vec<ChainConfig>,
+    ) -> Result<(), crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
 
-        let req = SaveOrUpdateWithdrawStrategyReq::new();
-        backend_api.save_or_update_withdraw_strategy(&req).await?;
+        let req = SaveWithdrawStrategyReq::new(uid, threshold, chain_config);
+        backend_api.save_withdraw_strategy(&req).await?;
 
         Ok(())
     }

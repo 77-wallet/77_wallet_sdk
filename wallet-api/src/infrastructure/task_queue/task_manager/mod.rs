@@ -10,7 +10,7 @@ use rand::Rng as _;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use wallet_database::entities::task_queue::TaskQueueEntity;
-use wallet_database::repositories::device::DeviceRepoTrait;
+use wallet_database::repositories::device::DeviceRepo;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
 use wallet_transport_backend::consts::endpoint::SEND_MSG_CONFIRM;
 use wallet_transport_backend::request::ClientTaskLogUploadReq;
@@ -218,12 +218,9 @@ impl TaskManager {
         task_entity: &TaskQueueEntity,
         error_info: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        let Some(device) = repo.get_device_info().await? else {
-            tracing::error!("device not found");
-            return Ok(());
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;

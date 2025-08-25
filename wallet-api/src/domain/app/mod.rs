@@ -7,8 +7,7 @@ use wallet_database::{
         config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
         device::DeviceEntity,
     },
-    factory::RepositoryFactory,
-    repositories::device::DeviceRepoTrait,
+    repositories::device::DeviceRepo,
 };
 
 use crate::{
@@ -104,12 +103,11 @@ impl DeviceDomain {
 
     pub(crate) async fn check_wallet_password_is_null() -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let mut repo = RepositoryFactory::repo(pool.clone());
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
 
-        let (keystore_kdf_algorithm, wallet_tree_strategy) = if let Some(device) =
-            DeviceRepoTrait::get_device_info(&mut repo).await?
-            && device.password.is_some()
-        {
+        let (keystore_kdf_algorithm, wallet_tree_strategy) = if device.password.is_some() {
             let keystore_kdf_algorithm = wallet_database::entities::config::KeystoreKdfAlgorithm {
                 keystore_kdf_algorithm: KdfAlgorithm::Scrypt,
             };

@@ -10,7 +10,12 @@ use wallet_chain_interact::{
 };
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, coin::CoinEntity},
-    repositories::{ResourcesRepo, account::AccountRepoTrait, chain::ChainRepoTrait},
+    repositories::{
+        ResourcesRepo,
+        account::AccountRepoTrait,
+        chain::{ChainRepo, ChainRepoTrait},
+        node::NodeRepo,
+    },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{
@@ -265,11 +270,9 @@ impl ChainDomain {
     //     }
     // }
 
-    pub(crate) async fn get_node(
-        tx: &mut ResourcesRepo,
-        chain_code: &str,
-    ) -> Result<NodeInfo, crate::error::ServiceError> {
-        let node = match tx.detail_with_node(chain_code).await? {
+    pub(crate) async fn get_node(chain_code: &str) -> Result<NodeInfo, crate::error::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let node = match ChainRepo::detail_with_node(&pool, chain_code).await? {
             Some(node) => NodeInfo::new(
                 &node.chain_code,
                 &node.node_id,
@@ -281,10 +284,12 @@ impl ChainDomain {
                 node.status,
             ),
             None => {
-                use wallet_database::repositories::node::NodeRepoTrait as _;
-                let node = tx.get_local_node_by_chain(chain_code).await?.pop().ok_or(
-                    crate::BusinessError::ChainNode(crate::ChainNodeError::NodeNotFound),
-                )?;
+                let node = NodeRepo::get_local_node_by_chain(&pool, chain_code)
+                    .await?
+                    .pop()
+                    .ok_or(crate::BusinessError::ChainNode(
+                        crate::ChainNodeError::NodeNotFound,
+                    ))?;
                 NodeInfo::new(
                     &node.chain_code,
                     &node.node_id,
@@ -319,7 +324,7 @@ impl ChainDomain {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = Self::get_node(tx, chain).await else {
+            let Ok(node) = Self::get_node(chain).await else {
                 continue;
             };
 
@@ -372,7 +377,6 @@ impl ChainDomain {
     }
 
     pub(crate) async fn init_chains_api_assets(
-        tx: &mut ResourcesRepo,
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
         address_batch_init_task_data: &mut AddressBatchInitReq,
@@ -391,7 +395,7 @@ impl ChainDomain {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = Self::get_node(tx, chain).await else {
+            let Ok(node) = Self::get_node(chain).await else {
                 continue;
             };
 
@@ -401,7 +405,6 @@ impl ChainDomain {
                 // (&code, &address_type, "mainnet".into()).try_into()?;
 
                 let (account_address, address_init_req) = ApiAccountDomain::create_api_account(
-                    tx,
                     seed,
                     &instance,
                     account_index_map,

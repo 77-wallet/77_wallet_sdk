@@ -1,3 +1,4 @@
+use crate::domain::api_wallet::adapter::Tx;
 use crate::domain::api_wallet::adapter::btc_tx::BtcTx;
 use crate::domain::api_wallet::adapter::doge_tx::DogeTx;
 use crate::domain::api_wallet::adapter::eth_tx::EthTx;
@@ -6,7 +7,6 @@ use crate::domain::api_wallet::adapter::sol_tx::SolTx;
 use crate::domain::api_wallet::adapter::sui_tx::SuiTx;
 use crate::domain::api_wallet::adapter::ton_tx::TonTx;
 use crate::domain::api_wallet::adapter::tron_tx::TronTx;
-use crate::domain::api_wallet::adapter::Tx;
 
 // 创建一个枚举来包装所有 Tx 实现
 pub enum ApiTxAdapter {

@@ -1,6 +1,7 @@
 use crate::{
+    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
+        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
@@ -9,20 +10,19 @@ use crate::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
-    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    dog::{operations::transfer::TransferArg, provider::ProviderConfig, DogChain}, types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
-    Error,
-    QueryTransactionResult,
+    Error, QueryTransactionResult,
+    dog::{DogChain, operations::transfer::TransferArg, provider::ProviderConfig},
+    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_database::{
     entities::{
-        api_assets::ApiAssetsEntity, coin::CoinEntity,
-        multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
-        multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
+        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+        permission::PermissionEntity,
     },
     repositories::api_account::ApiAccountRepo,
 };

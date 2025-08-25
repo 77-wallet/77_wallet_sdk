@@ -5,8 +5,12 @@ use wallet_crypto::{
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        ResourcesRepo, api_account::ApiAccountRepo, api_wallet::ApiWalletRepo,
-        chain::ChainRepoTrait as _, coin::CoinRepoTrait as _, wallet::WalletRepo,
+        ResourcesRepo,
+        api_account::ApiAccountRepo,
+        api_wallet::ApiWalletRepo,
+        chain::{ChainRepo, ChainRepoTrait as _},
+        coin::{CoinRepo, CoinRepoTrait as _},
+        wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq};
@@ -83,7 +87,6 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn create_account(
-        mut tx: ResourcesRepo,
         wallet_address: &str,
         wallet_password: &str,
         index: Option<i32>,
@@ -102,8 +105,8 @@ impl ApiWalletDomain {
         let seed = ApiWalletDomain::decrypt_seed(wallet_password, &api_wallet.seed).await?;
 
         // 获取默认链和币
-        let default_chain_list = tx.get_chain_list().await?;
-        let default_coins_list = tx.default_coin_list().await?;
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
 
         // 如果有指定派生路径，就获取该链的所有chain_code
         let chains: Vec<String> = default_chain_list
@@ -135,7 +138,6 @@ impl ApiWalletDomain {
                 wallet_utils::address::AccountIndexMap::from_account_id(current_id)?;
 
             ChainDomain::init_chains_api_assets(
-                &mut tx,
                 &default_coins_list,
                 &mut req,
                 &mut address_batch_init_task_data,

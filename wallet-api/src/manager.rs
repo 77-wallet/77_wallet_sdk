@@ -17,7 +17,7 @@ use tokio::sync::RwLock;
 use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::SqliteContext;
 use wallet_database::factory::RepositoryFactory;
-use wallet_database::repositories::device::DeviceRepoTrait;
+use wallet_database::repositories::device::DeviceRepo;
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
@@ -66,8 +66,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     let sn = Context::get_context()?.device.sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
-    let mut repo = RepositoryFactory::repo(pool.clone());
-    let device = repo.get_device_info().await?;
+    let device = DeviceRepo::get_device_info(&pool).await?;
 
     let mut tasks = Tasks::new().push(InitializationTask::InitMqtt);
     if let Some(device) = device

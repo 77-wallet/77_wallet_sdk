@@ -17,8 +17,12 @@ use wallet_database::{
         coin::SymbolId,
     },
     repositories::{
-        ResourcesRepo, account::AccountRepoTrait, assets::AssetsRepoTrait, chain::ChainRepoTrait,
-        coin::CoinRepoTrait, device::DeviceRepoTrait,
+        ResourcesRepo,
+        account::AccountRepoTrait,
+        assets::AssetsRepoTrait,
+        chain::{ChainRepo, ChainRepoTrait},
+        coin::CoinRepoTrait,
+        device::DeviceRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -77,7 +81,8 @@ impl AssetsService {
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
         let tx = &mut self.repo;
-        let chains = tx.get_chain_list().await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
         } else {
@@ -370,7 +375,8 @@ impl AssetsService {
             .coin_list_v2(Some(symbol.to_string()), chain_code.clone())
             .await?;
 
-        let Some(device) = tx.get_device_info().await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());

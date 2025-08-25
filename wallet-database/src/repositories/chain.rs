@@ -12,24 +12,33 @@ impl ChainRepo {
     ) -> Result<Option<ChainEntity>, crate::Error> {
         Ok(ChainEntity::detail(pool.as_ref(), chain_code).await?)
     }
+
+    pub async fn add(pool: &DbPool, input: ChainCreateVo) -> Result<ChainEntity, crate::Error> {
+        Ok(ChainEntity::upsert(pool.as_ref(), input).await?)
+    }
+
+    pub async fn set_chain_node(
+        pool: &DbPool,
+        chain_code: &str,
+        node_id: &str,
+    ) -> Result<Vec<ChainEntity>, crate::Error> {
+        Ok(ChainEntity::set_chain_node(pool.as_ref(), chain_code, node_id).await?)
+    }
+
+    pub async fn get_chain_list(pool: &DbPool) -> Result<Vec<ChainEntity>, crate::Error> {
+        Ok(ChainEntity::list(pool.as_ref(), Some(1)).await?)
+    }
+
+    pub async fn detail_with_node(
+        pool: &DbPool,
+        chain_code: &str,
+    ) -> Result<Option<ChainWithNode>, crate::Error> {
+        Ok(ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?)
+    }
 }
 
 #[async_trait::async_trait]
 pub trait ChainRepoTrait: super::TransactionTrait {
-    async fn add(&mut self, input: ChainCreateVo) -> Result<ChainEntity, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, ChainEntity::upsert, input)
-    }
-
-    async fn set_chain_node(
-        &mut self,
-        chain_code: &str,
-        node_id: &str,
-    ) -> Result<Vec<ChainEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, ChainEntity::set_chain_node, chain_code, node_id)
-    }
-
     async fn set_chain_node_id_empty(
         &mut self,
         node_id: &str,
@@ -41,11 +50,6 @@ pub trait ChainRepoTrait: super::TransactionTrait {
     async fn get_chain_list_v2(&mut self) -> Result<Vec<ChainEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, ChainEntity::list_v2, Some(1))
-    }
-
-    async fn get_chain_list(&mut self) -> Result<Vec<ChainEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, ChainEntity::list, Some(1))
     }
 
     async fn get_chain_list_all_status(&mut self) -> Result<Vec<ChainEntity>, crate::Error> {
@@ -88,14 +92,6 @@ pub trait ChainRepoTrait: super::TransactionTrait {
     ) -> Result<Option<ChainEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, ChainEntity::detail_with_main_symbol, main_symbol)
-    }
-
-    async fn detail_with_node(
-        &mut self,
-        chain_code: &str,
-    ) -> Result<Option<ChainWithNode>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, ChainEntity::chain_node_info, chain_code)
     }
 
     async fn chain_node_info_left_join(

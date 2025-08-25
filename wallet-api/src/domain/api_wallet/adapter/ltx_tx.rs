@@ -1,6 +1,7 @@
 use crate::{
+    ServiceError,
     domain::{
-        api_wallet::adapter::{Tx, TIME_OUT, Multisig},
+        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
@@ -8,27 +9,23 @@ use crate::{
     request::transaction::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
-    response_vo::{MultisigQueueFeeParams, TransferParams,CommonFeeDetails},
-    ServiceError,
+    response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
+    Error, QueryTransactionResult,
+    ltc::{LtcChain, operations::transfer::TransferArg, provider::ProviderConfig},
+    types::ChainPrivateKey,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
-    ltc::{operations::transfer::TransferArg, provider::ProviderConfig, LtcChain}, types::ChainPrivateKey,
-    Error,
-    QueryTransactionResult,
 };
 use wallet_database::{
     entities::{
-        api_assets::ApiAssetsEntity,
-        multisig_account::MultisigAccountEntity,
-        multisig_member::MultisigMemberEntities,
-        multisig_queue::MultisigQueueEntity,
+        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
         permission::PermissionEntity,
-        coin::CoinEntity,
     },
-    repositories::api_account::ApiAccountRepo
+    repositories::api_account::ApiAccountRepo,
 };
 use wallet_transport_backend::api::BackendApi;
 use wallet_types::chain::address::r#type::LtcAddressType;
@@ -150,13 +147,8 @@ impl Tx for LtcTx {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency = TokenCurrencyGetter::get_currency(
-            currency,
-            &req.chain_code,
-            main_symbol,
-            None,
-        )
-        .await?;
+        let token_currency =
+            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account =
@@ -183,11 +175,7 @@ impl Tx for LtcTx {
             .await
             .map_err(|e| self.handle_ltc_fee_error(e))?;
 
-        let res = CommonFeeDetails::new(
-            fee.transaction_fee_f64(),
-            token_currency,
-            currency,
-        )?;
+        let res = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         Ok(res)
     }
@@ -276,39 +264,91 @@ impl Tx for LtcTx {
 
 #[async_trait::async_trait]
 impl Multisig for LtcTx {
-    async fn multisig_address(&self, account: &MultisigAccountEntity, member: &MultisigMemberEntities) -> Result<FetchMultisigAddressResp, ServiceError> {
+    async fn multisig_address(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+    ) -> Result<FetchMultisigAddressResp, ServiceError> {
         todo!()
     }
 
-    async fn deploy_multisig_account(&self, account: &MultisigAccountEntity, member: &MultisigMemberEntities, fee_setting: Option<String>, key: ChainPrivateKey) -> Result<(String, String), ServiceError> {
+    async fn deploy_multisig_account(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+        fee_setting: Option<String>,
+        key: ChainPrivateKey,
+    ) -> Result<(String, String), ServiceError> {
         todo!()
     }
 
-    async fn deploy_multisig_fee(&self, account: &MultisigAccountEntity, member: MultisigMemberEntities, main_symbol: &str) -> Result<String, ServiceError> {
+    async fn deploy_multisig_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        member: MultisigMemberEntities,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
         todo!()
     }
 
-    async fn build_multisig_fee(&self, req: &MultisigQueueFeeParams, account: &MultisigAccountEntity, decimal: u8, token: Option<String>, main_symbol: &str) -> Result<String, ServiceError> {
+    async fn build_multisig_fee(
+        &self,
+        req: &MultisigQueueFeeParams,
+        account: &MultisigAccountEntity,
+        decimal: u8,
+        token: Option<String>,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
         todo!()
     }
 
-    async fn build_multisig_with_account(&self, req: &TransferParams, account: &MultisigAccountEntity, assets: &ApiAssetsEntity, key: ChainPrivateKey) -> Result<MultisigTxResp, ServiceError> {
+    async fn build_multisig_with_account(
+        &self,
+        req: &TransferParams,
+        account: &MultisigAccountEntity,
+        assets: &ApiAssetsEntity,
+        key: ChainPrivateKey,
+    ) -> Result<MultisigTxResp, ServiceError> {
         todo!()
     }
 
-    async fn build_multisig_with_permission(&self, req: &TransferParams, p: &PermissionEntity, coin: &CoinEntity) -> Result<MultisigTxResp, ServiceError> {
+    async fn build_multisig_with_permission(
+        &self,
+        req: &TransferParams,
+        p: &PermissionEntity,
+        coin: &CoinEntity,
+    ) -> Result<MultisigTxResp, ServiceError> {
         todo!()
     }
 
-    async fn sign_fee(&self, account: &MultisigAccountEntity, address: &str, raw_data: &str, main_symbol: &str) -> Result<String, ServiceError> {
+    async fn sign_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        raw_data: &str,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
         todo!()
     }
 
-    async fn sign_multisig_tx(&self, account: &MultisigAccountEntity, address: &str, key: ChainPrivateKey, raw_data: &str) -> Result<MultisigSignResp, ServiceError> {
+    async fn sign_multisig_tx(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        key: ChainPrivateKey,
+        raw_data: &str,
+    ) -> Result<MultisigSignResp, ServiceError> {
         todo!()
     }
 
-    async fn estimate_fee(&self, queue: &MultisigQueueEntity, coin: &CoinEntity, backend: &BackendApi, sign_list: Vec<String>, main_symbol: &str) -> Result<String, ServiceError> {
+    async fn estimate_fee(
+        &self,
+        queue: &MultisigQueueEntity,
+        coin: &CoinEntity,
+        backend: &BackendApi,
+        sign_list: Vec<String>,
+        main_symbol: &str,
+    ) -> Result<String, ServiceError> {
         todo!()
     }
 }

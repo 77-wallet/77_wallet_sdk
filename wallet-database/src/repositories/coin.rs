@@ -76,11 +76,6 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, CoinEntity::list, symbols, chain_code, None)
     }
 
-    async fn default_coin_list(&mut self) -> Result<Vec<CoinEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, CoinEntity::list_v2, None, None, Some(1))
-    }
-
     async fn get_market_chain_list(&mut self) -> Result<Vec<String>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinEntity::chain_code_list,)
@@ -162,6 +157,10 @@ pub trait CoinRepoTrait: super::TransactionTrait {
 
 pub struct CoinRepo;
 impl CoinRepo {
+    pub async fn default_coin_list(pool: &DbPool) -> Result<Vec<CoinEntity>, crate::Error> {
+        CoinEntity::list_v2(pool.as_ref(), None, None, Some(1)).await
+    }
+
     pub async fn coin_by_symbol_chain(
         chain_code: &str,
         symbol: &str,

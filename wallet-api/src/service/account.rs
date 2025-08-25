@@ -3,9 +3,9 @@ use wallet_database::{
     repositories::{
         ResourcesRepo,
         account::{AccountRepo, AccountRepoTrait},
-        chain::ChainRepoTrait,
-        coin::CoinRepoTrait,
-        device::DeviceRepoTrait,
+        chain::ChainRepo,
+        coin::CoinRepo,
+        device::DeviceRepo,
         multisig_account::MultisigAccountRepo,
         wallet::WalletRepoTrait,
     },
@@ -102,6 +102,7 @@ impl AccountService {
         name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let dirs = crate::manager::Context::get_global_dirs()?;
 
@@ -115,8 +116,8 @@ impl AccountService {
         // 获取种子
         let seed = WalletDomain::get_seed(dirs, &wallet.address, wallet_password).await?;
         // 获取默认链和币
-        let default_chain_list = tx.get_chain_list().await?;
-        let default_coins_list = tx.default_coin_list().await?;
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
 
         // 根据派生路径
         let hd_path = if let Some(derivation_path) = &derivation_path {
@@ -267,6 +268,7 @@ impl AccountService {
         password: &str,
         all: bool,
     ) -> Result<Vec<DerivedAddressesList>, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
 
         WalletDomain::validate_password(password).await?;
@@ -294,7 +296,7 @@ impl AccountService {
                 "sol".to_string(),
             ]
         } else {
-            let default_chain_list = tx.get_chain_list().await?;
+            let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
             // 如果有指定派生路径，就获取该链的所有chain_code
             default_chain_list
                 .iter()
@@ -307,7 +309,7 @@ impl AccountService {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = ChainDomain::get_node(&mut tx, chain).await else {
+            let Ok(node) = ChainDomain::get_node(chain).await else {
                 continue;
             };
             for address_type in address_types {
@@ -400,7 +402,9 @@ impl AccountService {
         password: &str,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        let Some(device) = tx.get_device_info().await? else {
+
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         WalletDomain::validate_password(password).await?;
@@ -479,14 +483,11 @@ impl AccountService {
 
     pub async fn set_sub_password(
         &mut self,
-        // wallet_address: &str,
         address: &str,
         chain_code: &str,
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::ServiceError> {
-        let tx = &mut self.repo;
-
         let dirs = crate::manager::Context::get_global_dirs()?;
         let db = crate::manager::Context::get_global_sqlite_pool()?;
         let req = wallet_database::entities::account::QueryReq {
@@ -507,7 +508,7 @@ impl AccountService {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let node = ChainDomain::get_node(tx, chain_code).await?;
+        let node = ChainDomain::get_node(chain_code).await?;
 
         let instance = wallet_chain_instance::instance::ChainObject::new(
             chain_code,
@@ -536,6 +537,7 @@ impl AccountService {
         account_id: u32,
     ) -> Result<crate::response_vo::account::GetAccountPrivateKeyRes, crate::ServiceError> {
         WalletDomain::validate_password(password).await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let tx = &mut self.repo;
 
         let account_list = tx
@@ -545,7 +547,7 @@ impl AccountService {
                 Vec::new(),
             )
             .await?;
-        let chains = tx.get_chain_list().await?;
+        let chains = ChainRepo::get_chain_list(&pool).await?;
 
         let mut res = Vec::new();
 

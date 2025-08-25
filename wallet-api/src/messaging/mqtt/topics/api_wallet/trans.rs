@@ -13,7 +13,6 @@ use std::str::FromStr;
 use wallet_database::entities::api_bill::ApiBillKind;
 use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
 use wallet_database::{entities::assets::AssetsId, repositories::api_assets::ApiAssetsRepo};
-use wallet_transport_backend::request::api_wallet::strategy::QueryCollectionStrategyReq;
 use wallet_utils::conversion;
 
 // biz_type = RECHARGE
@@ -38,11 +37,31 @@ pub struct TransMsg {
 // 归集和提币
 impl TransMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+        match self.trade_type {
+            1 => self.withdraw().await?,
+            2 => self.collect().await?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn collect(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let backend_api = crate::Context::get_global_backend_api()?;
-        // 查询策略
-        let req = QueryCollectionStrategyReq::new();
-        let strategy = backend_api.query_collection_strategy(&req).await?;
+        // // 查询策略
+        let strategy = backend_api.query_collection_strategy(&self.uid).await?;
+        let threshold = strategy.threshold;
+
+        let Some(chain_config) = strategy
+            .chain_configs
+            .iter()
+            .find(|config| config.chain_code == self.chain_code)
+        else {
+            return Err(crate::BusinessError::ApiWallet(
+                crate::ApiWalletError::ChainConfigNotFound(self.chain_code.to_owned()),
+            )
+            .into());
+        };
 
         // 查询手续费
         let mut params = BaseTransferReq::new(
@@ -71,7 +90,7 @@ impl TransMsg {
         {
             // 查询出款地址余额主币余额
             let assets_id = AssetsId::new(
-                &strategy.normal_address,
+                &chain_config.normal_address.address,
                 &self.chain_code,
                 &main_symbol,
                 None,
@@ -121,11 +140,10 @@ impl TransMsg {
 
         // let data = NotifyEvent::AddressUse(self.to_owned());
         // FrontendNotifyEvent::new(data).send().await?;
-
         Ok(())
     }
 
-    pub(crate) async fn withdraw(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn withdraw(&self) -> Result<(), crate::ServiceError> {
         // 验证金额是否需要输入密码
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -170,8 +188,7 @@ impl TransMsg {
                 signer: None,
             };
             // 发交易
-            let tx_hash =
-                ApiChainTransDomain::transfer(req, ApiBillKind::Transfer).await?;
+            let tx_hash = ApiChainTransDomain::transfer(req, ApiBillKind::Transfer).await?;
         }
         Ok(())
     }

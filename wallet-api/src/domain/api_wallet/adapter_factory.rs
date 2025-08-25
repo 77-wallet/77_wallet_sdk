@@ -1,7 +1,7 @@
 use crate::domain::{
     api_wallet::adapter::{
-        btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx, sui_tx::SuiTx, ton_tx::TonTx,
-        tron_tx::TronTx, tx::ApiTxAdapter,
+        btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx, sui_tx::SuiTx,
+        ton_tx::TonTx, tron_tx::TronTx, tx::ApiTxAdapter,
     },
     chain::rpc_need_header,
 };
@@ -24,33 +24,43 @@ impl ApiChainAdapterFactory {
         let adapter = DashMap::new();
         adapter.insert(
             ChainCode::Bitcoin.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Bitcoin)
-                .await
-                .unwrap()),
+            Arc::new(
+                Self::new_transaction_adapter(ChainCode::Bitcoin)
+                    .await
+                    .unwrap(),
+            ),
         );
         adapter.insert(
             ChainCode::Dogcoin.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Dogcoin)
-                .await
-                .unwrap()),
+            Arc::new(
+                Self::new_transaction_adapter(ChainCode::Dogcoin)
+                    .await
+                    .unwrap(),
+            ),
         );
         adapter.insert(
             ChainCode::Ethereum.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Ethereum)
-                .await
-                .unwrap()),
+            Arc::new(
+                Self::new_transaction_adapter(ChainCode::Ethereum)
+                    .await
+                    .unwrap(),
+            ),
         );
         adapter.insert(
             ChainCode::Litecoin.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Litecoin)
-                .await
-                .unwrap()),
+            Arc::new(
+                Self::new_transaction_adapter(ChainCode::Litecoin)
+                    .await
+                    .unwrap(),
+            ),
         );
         adapter.insert(
             ChainCode::Solana.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Solana)
-                .await
-                .unwrap()),
+            Arc::new(
+                Self::new_transaction_adapter(ChainCode::Solana)
+                    .await
+                    .unwrap(),
+            ),
         );
         adapter.insert(
             ChainCode::Sui.to_string(),
@@ -62,9 +72,11 @@ impl ApiChainAdapterFactory {
         );
         adapter.insert(
             ChainCode::Tron.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Tron)
-                .await
-                .unwrap()),
+            Arc::new(
+                Self::new_transaction_adapter(ChainCode::Tron)
+                    .await
+                    .unwrap(),
+            ),
         );
 
         ApiChainAdapterFactory {
@@ -95,10 +107,16 @@ impl ApiChainAdapterFactory {
             ChainCode::Tron => Ok(ApiTxAdapter::Tron(TronTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Bitcoin => Ok(ApiTxAdapter::Btc(BtcTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Solana => Ok(ApiTxAdapter::Sol(SolTx::new(&node.rpc_url, header_opt)?)),
-            ChainCode::Ethereum => Ok(ApiTxAdapter::Eth(EthTx::new(chain_code, &node.rpc_url, header_opt)?)),
-            ChainCode::BnbSmartChain => {
-                Ok(ApiTxAdapter::Eth(EthTx::new(chain_code, &node.rpc_url, header_opt)?))
-            }
+            ChainCode::Ethereum => Ok(ApiTxAdapter::Eth(EthTx::new(
+                chain_code,
+                &node.rpc_url,
+                header_opt,
+            )?)),
+            ChainCode::BnbSmartChain => Ok(ApiTxAdapter::Eth(EthTx::new(
+                chain_code,
+                &node.rpc_url,
+                header_opt,
+            )?)),
             ChainCode::Litecoin => Ok(ApiTxAdapter::Ltc(LtcTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Dogcoin => Ok(ApiTxAdapter::Doge(DogeTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Sui => Ok(ApiTxAdapter::Sui(SuiTx::new(&node.rpc_url, header_opt)?)),

@@ -6,6 +6,8 @@ pub enum ApiWalletError {
     AlreadyExist,
     #[error("Api Wallet not exist")]
     NotFound,
+    #[error("Chain config not found: `{0}`")]
+    ChainConfigNotFound(String),
 }
 
 impl ApiWalletError {
@@ -14,6 +16,7 @@ impl ApiWalletError {
             ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem => 4400,
             ApiWalletError::AlreadyExist => 4401,
             ApiWalletError::NotFound => 4402,
+            ApiWalletError::ChainConfigNotFound(_) => 4403,
         }
     }
 }

@@ -2,7 +2,11 @@ use std::collections::HashSet;
 
 use wallet_database::{
     entities::node::{NodeCreateVo, NodeEntity},
-    repositories::{ResourcesRepo, TransactionTrait, chain::ChainRepoTrait, node::NodeRepoTrait},
+    repositories::{
+        ResourcesRepo, TransactionTrait,
+        chain::{ChainRepo, ChainRepoTrait},
+        node::NodeRepoTrait,
+    },
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};
 
@@ -155,15 +159,15 @@ impl NodeDomain {
                 Self::set_chain_node(repo, backend_nodes, &node.chain_code).await?;
             }
         }
-        Self::assign_missing_nodes_to_chains(repo, backend_nodes).await?;
+        Self::assign_missing_nodes_to_chains(backend_nodes).await?;
         Ok(())
     }
 
     pub(crate) async fn assign_missing_nodes_to_chains(
-        repo: &mut ResourcesRepo,
         backend_nodes: &[NodeEntity],
     ) -> Result<(), crate::ServiceError> {
-        let chain_list = ChainRepoTrait::get_chain_list(repo).await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let chain_list = ChainRepo::get_chain_list(&pool).await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -187,6 +191,7 @@ impl NodeDomain {
         // default_nodes: &[NodeData],
         chain_code: &str,
     ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let list = NodeRepoTrait::list(repo, Some(1)).await?;
 
         let mut default_nodes = Vec::new();
@@ -205,7 +210,7 @@ impl NodeDomain {
             .find(|node| node.chain_code == chain_code)
         {
             if let Err(e) =
-                ChainRepoTrait::set_chain_node(repo, chain_code, &backend_nodes.node_id).await
+                ChainRepo::set_chain_node(&pool, chain_code, &backend_nodes.node_id).await
             {
                 tracing::error!("set_chain_node error: {:?}", e);
             }
@@ -213,7 +218,7 @@ impl NodeDomain {
             .iter()
             .find(|node| node.chain_code == chain_code)
         {
-            if let Err(e) = ChainRepoTrait::set_chain_node(repo, chain_code, &node.node_id).await {
+            if let Err(e) = ChainRepo::set_chain_node(&pool, chain_code, &node.node_id).await {
                 tracing::error!("set_chain_node error: {:?}", e);
             }
         }

@@ -6,9 +6,12 @@ use wallet_database::{
         multisig_queue::MultisigQueueStatus,
     },
     repositories::{
-        announcement::AnnouncementRepoTrait, device::DeviceRepoTrait,
-        multisig_account::MultisigAccountRepo, multisig_queue::MultisigQueueRepo,
-        system_notification::SystemNotificationRepoTrait, wallet::WalletRepoTrait,
+        announcement::AnnouncementRepoTrait,
+        device::{DeviceRepo, DeviceRepoTrait},
+        multisig_account::MultisigAccountRepo,
+        multisig_queue::MultisigQueueRepo,
+        system_notification::SystemNotificationRepoTrait,
+        wallet::WalletRepoTrait,
     },
 };
 use wallet_transport_backend::{
@@ -62,7 +65,9 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         }
         let mut tx = self.repo;
         let wallet_list = tx.wallet_list().await?;
-        let device_info = tx.get_device_info().await?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let device_info = DeviceRepo::get_device_info(&pool).await?;
+
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
         let unread_system_notification_count =
             SystemNotificationRepoTrait::count_unread_status(&mut tx).await?;
@@ -95,17 +100,17 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     }
 
     pub async fn language_init(self, language: &str) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo;
-
         let val = wallet_database::entities::config::Language::new(language);
         ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
-        let device_info = tx.get_device_info().await?;
-        if let Some(device_info) = device_info {
-            let task = DeviceDomain::language_init(&device_info, language).await?;
-            Tasks::new().push(task).send().await?;
-            let mut config = crate::app_state::APP_STATE.write().await;
-            config.set_language(language);
-        }
+
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+        let task = DeviceDomain::language_init(&device, language).await?;
+        Tasks::new().push(task).send().await?;
+        let mut config = crate::app_state::APP_STATE.write().await;
+        config.set_language(language);
 
         Ok(())
     }
@@ -136,10 +141,10 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn set_app_id(mut self, app_id: &str) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::ServiceError::Business(
-                crate::DeviceError::Uninitialized.into(),
-            ));
+
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         tx.update_app_id(app_id).await?;
 
@@ -410,11 +415,9 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         invite_code: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::ServiceError::Business(
-                crate::DeviceError::Uninitialized.into(),
-            ));
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
         let is_invite = invite_code.is_some();

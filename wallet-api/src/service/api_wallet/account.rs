@@ -1,18 +1,7 @@
-use wallet_database::{
-    entities::api_wallet::ApiWalletType,
-    repositories::{
-        ResourcesRepo, api_account::ApiAccountRepo, api_wallet::ApiWalletRepo,
-        chain::ChainRepoTrait as _, coin::CoinRepoTrait as _,
-    },
-};
-use wallet_transport_backend::request::{
-    AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::UploadAllocatedAddressesReq,
-};
+use wallet_database::{entities::api_wallet::ApiWalletType, repositories::ResourcesRepo};
+use wallet_transport_backend::request::api_wallet::address::UploadAllocatedAddressesReq;
 
-use crate::{
-    domain::{api_wallet::wallet::ApiWalletDomain, chain::ChainDomain, wallet::WalletDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
-};
+use crate::domain::{api_wallet::wallet::ApiWalletDomain, wallet::WalletDomain};
 
 pub struct ApiAccountService {
     pub repo: ResourcesRepo,
@@ -47,13 +36,10 @@ impl ApiAccountService {
         number: u32,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo;
-
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
 
         ApiWalletDomain::create_account(
-            tx,
             wallet_address,
             wallet_password,
             index,

@@ -27,12 +27,6 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::{request::api_wallet::account::CreateApiAccountReq, test::env::get_manager};
-
-    use anyhow::Result;
-
-    use wallet_database::entities::api_wallet::ApiWalletType;
-
     // #[tokio::test]
     // async fn test_create_api_account() -> Result<()> {
     //     wallet_utils::init_test_log();

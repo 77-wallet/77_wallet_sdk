@@ -1,4 +1,3 @@
-use crate::api::ReturnType;
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 use wallet_database::repositories::ResourcesRepo;
 use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;

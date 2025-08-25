@@ -37,14 +37,11 @@ use wallet_chain_interact::{
 };
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-    multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
-    multisig_member::MultisigMemberEntities,
+    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+    permission::PermissionEntity,
 };
 use wallet_transport::client::RpcClient;
-use wallet_transport_backend::{
-    api::BackendApi,
-    response_vo::chain::GasOracle,
-};
+use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{serde_func, unit};
 
