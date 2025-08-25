@@ -1,14 +1,14 @@
+use super::BackendApi;
 use crate::{
     consts::endpoint::TOKEN_CUSTOM_TOKEN_INIT,
     request::{AllTokenQueryByPageReq, SwapTokenQueryReq},
     response_vo::coin::{
-        CoinInfos, CoinMarketValue, TokenPopularByPages, TokenPrice, TokenPriceInfos,
+        CoinInfos, CoinMarketValue, CoinSwappable, CoinSwappableList, TokenPopularByPages,
+        TokenPrice, TokenPriceInfos,
     },
     CoinInfo,
 };
 use serde_json::json;
-
-use super::BackendApi;
 
 impl BackendApi {
     pub async fn custom_token_init(
@@ -36,22 +36,6 @@ impl BackendApi {
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }
-
-    // pub async fn token_query_by_page(
-    //     &self,
-
-    //     req: &TokenQueryByPageReq,
-    // ) -> Result<CoinInfos, crate::Error> {
-    //     let req = serde_json::json!(req);
-
-    //     let res = self
-    //         .client
-    //         .post("token/queryByPage")
-    //         .json(req)
-    //         .send::<crate::response::BackendResponse>()
-    //         .await?;
-    //     res.process(&self.aes_cbc_cryptor)
-    // }
 
     pub async fn query_history_price(
         &self,
@@ -176,127 +160,15 @@ impl BackendApi {
             .await?;
         Ok(market_value)
     }
+
+    // 查询支持swap的代币
+    pub async fn swappable_coin(&self) -> Result<Vec<CoinSwappable>, crate::Error> {
+        let req = json!({});
+        let endpoint = "/token/swappable/list";
+        let res = self
+            .post_request::<_, CoinSwappableList>(endpoint, &req)
+            .await?;
+
+        Ok(res.list)
+    }
 }
-// pub async fn token_subscribe(
-//     &self,
-
-//     req: crate::request::TokenSubscribeReq,
-// ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
-//     let res = self
-//         .client
-//         .post("token/subscribe")
-//         .json(serde_json::json!(req))
-//         .send::<serde_json::Value>()
-//         .await?;
-//     let res: crate::response::BackendResponse =
-//         wallet_utils::serde_func::serde_from_value(res)?;
-//     res.process(&self.aes_cbc_cryptor)
-// }
-
-// pub async fn token_query_by_contract_address(
-//     &self,
-
-//     req: &TokenQueryByContractAddressReq,
-// ) -> Result<TokenQueryByContractAddressRes, crate::Error> {
-//     let req = serde_json::json!(req);
-
-//     let res = self
-//         .client
-//         .post("token/queryByContractAddress")
-//         .json(req)
-//         .send::<crate::response::BackendResponse>()
-//         .await?;
-//     res.process(&self.aes_cbc_cryptor)
-// }
-
-// pub async fn token_cancel_subscribe(
-//     &self,
-
-//     req: crate::request::TokenCancelSubscribeReq,
-// ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
-//     let res = self
-//         .client
-//         .post("token/cancelSubscribe")
-//         .json(serde_json::json!(req))
-//         .send::<crate::response::BackendResponse>()
-//         .await?;
-//     res.process(&self.aes_cbc_cryptor)
-// }
-
-// query token fee_rate
-// pub async fn token_query_by_currency(
-//     &self,
-
-//     chain_code: &str,
-//     currency: &str,
-//     symbol: &str,
-// ) -> Result<crate::response_vo::coin::TokenCurrency, crate::Error> {
-//     let mut params = HashMap::new();
-
-//     let symbol = symbol.to_lowercase();
-//     params.insert("chainCode", chain_code);
-//     params.insert("code", &symbol);
-//     params.insert("currency", currency);
-
-//     let res = self
-//         .client
-//         .post("token/queryByCurrency")
-//         .json(params)
-//         .send::<crate::response::BackendResponse>()
-//         .await?;
-//     res.process(&self.aes_cbc_cryptor)
-// }
-
-// pub async fn token_query_by_contract_address(
-//     &self,
-
-//     req: &TokenQueryByContractAddressReq,
-// ) -> Result<TokenQueryByContractAddressRes, crate::Error> {
-//     let req = serde_json::json!(req);
-
-//     let res = self
-//         .client
-//         .post("token/queryByContractAddress")
-//         .json(req)
-//         .send::<crate::response::BackendResponse>()
-//         .await?;
-//     res.process(&self.aes_cbc_cryptor)
-// }
-
-// pub async fn token_cancel_subscribe(
-//     &self,
-
-//     req: crate::request::TokenCancelSubscribeReq,
-// ) -> Result<HashMap<String, serde_json::Value>, crate::Error> {
-//     let res = self
-//         .client
-//         .post("token/cancelSubscribe")
-//         .json(serde_json::json!(req))
-//         .send::<crate::response::BackendResponse>()
-//         .await?;
-//     res.process(&self.aes_cbc_cryptor)
-// }
-
-// query token fee_rate
-// pub async fn token_query_by_currency(
-//     &self,
-
-//     chain_code: &str,
-//     currency: &str,
-//     symbol: &str,
-// ) -> Result<crate::response_vo::coin::TokenCurrency, crate::Error> {
-//     let mut params = HashMap::new();
-
-//     let symbol = symbol.to_lowercase();
-//     params.insert("chainCode", chain_code);
-//     params.insert("code", &symbol);
-//     params.insert("currency", currency);
-
-//     let res = self
-//         .client
-//         .post("token/queryByCurrency")
-//         .json(params)
-//         .send::<crate::response::BackendResponse>()
-//         .await?;
-//     res.process(&self.aes_cbc_cryptor)
-// }

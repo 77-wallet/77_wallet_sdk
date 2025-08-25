@@ -212,3 +212,16 @@ pub struct CoinMarketValue {
     pub max_supply_quantity: Option<Decimal>,
     pub circulating_supply: Option<Decimal>,
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoinSwappable {
+    pub symbol: String,
+    pub token_address: String,
+    pub chain_code: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct CoinSwappableList {
+    pub list: Vec<CoinSwappable>,
+}

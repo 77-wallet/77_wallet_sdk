@@ -159,38 +159,6 @@ impl CoinDomain {
                 .await?,
         );
 
-        // // 如果本地没有币，则添加默认币种并进行去重(感觉不是一个很好的逻辑)
-        // if create_at.is_none() {
-        //     let default = crate::default_data::coin::init_default_coins_list()?;
-
-        //     let existing_keys: HashSet<_> = coins
-        //         .iter()
-        //         .map(|c| {
-        //             (
-        //                 c.chain_code.clone(),
-        //                 c.symbol.clone(),
-        //                 c.token_address.clone(),
-        //             )
-        //         })
-        //         .collect();
-
-        //     let mut default_list: Vec<wallet_transport_backend::CoinInfo> = default
-        //         .coins
-        //         .iter()
-        //         .map(|coin| coin.to_owned().into())
-        //         .filter(|default_coin: &wallet_transport_backend::CoinInfo| {
-        //             !existing_keys.contains(&(
-        //                 default_coin.chain_code.clone(),
-        //                 default_coin.symbol.clone(),
-        //                 default_coin.token_address.clone(),
-        //             ))
-        //         })
-        //         .collect();
-
-        //     // 添加缺失的默认币
-        //     coins.append(&mut default_list);
-        // }
-
         Ok(coins)
     }
 }

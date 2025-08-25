@@ -1,12 +1,12 @@
 use crate::{
-    entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
     DbPool,
 };
 use chrono::SecondsFormat;
 use sqlx::{
     types::chrono::{DateTime, Utc},
-    Executor, Pool, Sqlite,
+    Executor, Pool, QueryBuilder, Sqlite,
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -330,6 +330,38 @@ impl CoinEntity {
 
         let query = query_builder.build();
         query
+            .execute(tx)
+            .await
+            .map(|_| ())
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    // 批量更新swap开关
+    pub async fn multi_update_swappable<'a, E>(
+        coins: Vec<BatchCoinSwappable>,
+        tx: E,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if coins.is_empty() {
+            return Ok(());
+        }
+
+        let mut qb = QueryBuilder::<Sqlite>::new("UPDATE coin SET swappable = CASE ");
+
+        for p in coins.iter() {
+            qb.push("WHEN chain_code=")
+                .push_bind(p.chain_code.clone())
+                .push(" AND token_address=")
+                .push_bind(p.token_address.clone())
+                .push(" THEN ")
+                .push_bind(1)
+                .push(" ");
+        }
+        qb.push("ELSE 0 END");
+
+        qb.build()
             .execute(tx)
             .await
             .map(|_| ())

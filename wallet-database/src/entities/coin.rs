@@ -157,3 +157,10 @@ pub struct CoinWithAssets {
     pub name: String,
     pub price: String,
 }
+
+#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
+pub struct BatchCoinSwappable {
+    pub symbol: String,
+    pub chain_code: String,
+    pub token_address: String,
+}

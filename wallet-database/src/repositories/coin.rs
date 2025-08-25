@@ -2,7 +2,7 @@ use alloy::signers::Result;
 use chrono::{DateTime, Utc};
 
 use crate::{
-    entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
     DbPool,
 };
@@ -185,6 +185,13 @@ impl CoinRepo {
                 "main coin not found: chain_code: {}",
                 chain_code
             )))
+    }
+
+    pub async fn multi_update_swappable(
+        coins: Vec<BatchCoinSwappable>,
+        pool: &DbPool,
+    ) -> Result<(), crate::Error> {
+        CoinEntity::multi_update_swappable(coins, pool.as_ref()).await
     }
 
     pub async fn coin_by_chain_address(
