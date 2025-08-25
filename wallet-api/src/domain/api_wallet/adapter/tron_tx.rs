@@ -244,7 +244,7 @@ impl Tx for TronTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         if let Some(contract) = &params.base.token_address {
             let mut transfer_params = ContractTransferOpt::new(
                 contract,
@@ -863,7 +863,7 @@ impl Multisig for TronTx {
         let decimal = assets.decimals;
         let token = assets.token_address();
 
-        let value = Self::check_min_transfer(&req.value, decimal)?;
+        let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         if balance < value {
             return Err(crate::BusinessError::Chain(
@@ -884,7 +884,7 @@ impl Multisig for TronTx {
         let decimal = coin.decimals;
         let token = coin.token_address();
 
-        let value = Self::check_min_transfer(&req.value, decimal)?;
+        let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         if balance < value {
             return Err(crate::BusinessError::Chain(

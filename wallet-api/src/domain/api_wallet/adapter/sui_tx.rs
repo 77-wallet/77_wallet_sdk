@@ -95,7 +95,7 @@ impl Tx for SuiTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let balance = self
             .chain
             .balance(&params.base.from, params.base.token_address.clone())

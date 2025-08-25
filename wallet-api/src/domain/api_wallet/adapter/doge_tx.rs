@@ -113,7 +113,7 @@ impl Tx for DogeTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,

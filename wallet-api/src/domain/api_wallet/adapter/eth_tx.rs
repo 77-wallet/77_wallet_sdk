@@ -263,7 +263,7 @@ impl Tx for EthTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let fee_setting = pare_fee_setting(params.fee_setting.as_str())?;
 
         let balance = self.chain.balance(&params.base.from, None).await?;
@@ -646,7 +646,7 @@ impl Multisig for EthTx {
         let decimal = assets.decimals;
         let token = assets.token_address();
 
-        let value = Self::check_min_transfer(&req.value, decimal)?;
+        let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         let _ = self
             .check_eth_balance(&req.from, balance, token.as_deref(), value)

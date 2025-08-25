@@ -46,6 +46,7 @@ pub trait Oracle {
 #[async_trait::async_trait]
 pub trait Tx {
     fn check_min_transfer(
+        &self,
         value: &str,
         decimal: u8,
     ) -> Result<U256, crate::ServiceError> {
