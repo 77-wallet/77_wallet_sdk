@@ -1,4 +1,5 @@
 use alloy::primitives::U256;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::types::{
     ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp,
 };
@@ -18,7 +19,10 @@ use wallet_database::entities::{
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
     permission::PermissionEntity,
 };
-use wallet_transport_backend::response_vo::chain::GasOracle;
+use wallet_transport_backend::{
+    api::BackendApi,
+    response_vo::chain::GasOracle,
+};
 
 pub mod btc_tx;
 pub mod doge_tx;
@@ -42,10 +46,11 @@ pub trait Oracle {
 #[async_trait::async_trait]
 pub trait Tx {
     fn check_min_transfer(
+        &self,
         value: &str,
         decimal: u8,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
-        let min = alloy::primitives::U256::from(1);
+    ) -> Result<U256, crate::ServiceError> {
+        let min = U256::from(1);
         let transfer_amount = unit::convert_to_u256(value, decimal)?;
 
         if transfer_amount < min {
@@ -55,6 +60,11 @@ pub trait Tx {
         }
         Ok(transfer_amount)
     }
+
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, crate::ServiceError>;
 
     async fn balance(
         &self,
@@ -219,7 +229,7 @@ pub trait Multisig {
         &self,
         queue: &MultisigQueueEntity,
         coin: &CoinEntity,
-        backend: &wallet_transport_backend::api::BackendApi,
+        backend: &BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError>;

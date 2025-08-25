@@ -12,6 +12,7 @@ pub struct ApiWithdrawEntity {
     pub trade_no: String,
     pub trade_type: u8,
     pub status: ApiWithdrawStatus,
+    pub tx_hash: String,
     pub send_tx_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,

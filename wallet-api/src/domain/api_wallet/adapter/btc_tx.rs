@@ -26,6 +26,7 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::{
     entities::{
         api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
@@ -35,7 +36,7 @@ use wallet_database::{
     repositories::api_account::ApiAccountRepo,
 };
 use wallet_transport_backend::api::BackendApi;
-use wallet_utils::serde_func;
+use wallet_utils::serde_func::serde_to_string;
 
 pub(crate) struct BtcTx {
     chain: BtcChain,
@@ -79,6 +80,10 @@ impl BtcTx {
 
 #[async_trait::async_trait]
 impl Tx for BtcTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
@@ -177,7 +182,7 @@ impl Tx for BtcTx {
             .map_err(|e| self.handle_btc_fee_error(e))?;
 
         let res = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
-        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        let res = serde_to_string(&res)?;
         Ok(res)
     }
 
@@ -333,7 +338,7 @@ impl Multisig for BtcTx {
             .map_err(|e| self.handle_btc_fee_error(e))?;
 
         let fee = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
-        Ok(serde_func::serde_to_string(&fee)?)
+        Ok(serde_to_string(&fee)?)
     }
 
     async fn build_multisig_with_account(

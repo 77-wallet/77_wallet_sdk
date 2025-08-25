@@ -20,6 +20,7 @@ use wallet_chain_interact::{
     sui::{Provider, SuiChain, transfer::TransferOpt},
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
@@ -51,6 +52,10 @@ impl SuiTx {
 
 #[async_trait::async_trait]
 impl Tx for SuiTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
@@ -84,7 +89,7 @@ impl Tx for SuiTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let balance = self
             .chain
             .balance(&params.base.from, params.base.token_address.clone())

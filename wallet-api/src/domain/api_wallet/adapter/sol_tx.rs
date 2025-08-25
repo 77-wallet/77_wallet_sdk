@@ -33,6 +33,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
@@ -62,10 +63,10 @@ impl SolTx {
     pub async fn check_sol_balance(
         &self,
         from: &str,
-        balance: alloy::primitives::U256,
+        balance: U256,
         token: Option<&str>,
-        transfer_amount: alloy::primitives::U256,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
+        transfer_amount: U256,
+    ) -> Result<U256, crate::ServiceError> {
         let cost_main = match token {
             Some(token) => {
                 let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
@@ -102,11 +103,10 @@ impl SolTx {
 
     pub fn check_sol_transaction_fee(
         &self,
-        balance: alloy::primitives::U256,
+        balance: U256,
         fee: u64,
     ) -> Result<(), crate::ServiceError> {
-        let fee = alloy::primitives::U256::from(fee);
-
+        let fee = U256::from(fee);
         if balance < fee {
             return Err(crate::BusinessError::Chain(
                 crate::ChainError::InsufficientFeeBalance,
@@ -118,6 +118,10 @@ impl SolTx {
 
 #[async_trait::async_trait]
 impl Tx for SolTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
@@ -152,7 +156,7 @@ impl Tx for SolTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // check balance
         let balance = self.chain.balance(&params.base.from, None).await?;
         let remain_balance = self
@@ -349,9 +353,6 @@ impl Multisig for SolTx {
     ) -> Result<String, ServiceError> {
         let currency_lock = crate::app_state::APP_STATE.read().await;
         let currency = currency_lock.currency();
-
-        let backend = crate::manager::Context::get_global_backend_api()?;
-
         let token_currency =
             TokenCurrencyGetter::get_currency(currency, &account.chain_code, main_symbol, None)
                 .await?;
@@ -433,7 +434,7 @@ impl Multisig for SolTx {
     ) -> Result<MultisigTxResp, ServiceError> {
         let decimal = assets.decimals;
         let token = assets.token_address();
-        let value = Self::check_min_transfer(&req.value, decimal)?;
+        let value = self.check_min_transfer(&req.value, decimal)?;
 
         // check multisig account balance
         let multisig_balance = self.chain.balance(&req.from, token.clone()).await?;

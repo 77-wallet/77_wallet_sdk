@@ -19,6 +19,7 @@ use wallet_chain_interact::{
     types::ChainPrivateKey,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::{
     entities::{
         api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
@@ -73,6 +74,10 @@ impl LtcTx {
 
 #[async_trait::async_trait]
 impl Tx for LtcTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chin.balance(addr, token).await
     }

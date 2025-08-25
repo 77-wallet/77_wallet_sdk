@@ -35,6 +35,7 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
@@ -224,6 +225,10 @@ impl Oracle for EthTx {
 
 #[async_trait::async_trait]
 impl Tx for EthTx {
+    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
@@ -258,7 +263,7 @@ impl Tx for EthTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let fee_setting = pare_fee_setting(params.fee_setting.as_str())?;
 
         let balance = self.chain.balance(&params.base.from, None).await?;
@@ -298,11 +303,8 @@ impl Tx for EthTx {
         req: BaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
-
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
-
         let token_currency =
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
@@ -317,8 +319,7 @@ impl Tx for EthTx {
         }
 
         let gas_oracle = self.gas_oracle().await?;
-        let params =
-            eth::operations::TransferOpt::new(&req.from, &req.to, value, req.token_address)?;
+        let params = TransferOpt::new(&req.from, &req.to, value, req.token_address)?;
         let fee = self.chain.estimate_gas(params).await?;
         let fee =
             FeeDetails::try_from((gas_oracle, fee.consume))?.to_resp(token_currency, currency);
@@ -645,7 +646,7 @@ impl Multisig for EthTx {
         let decimal = assets.decimals;
         let token = assets.token_address();
 
-        let value = Self::check_min_transfer(&req.value, decimal)?;
+        let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         let _ = self
             .check_eth_balance(&req.from, balance, token.as_deref(), value)

@@ -1,3 +1,4 @@
+use crate::ServiceError;
 use crate::domain::api_wallet::adapter::Tx;
 use crate::domain::api_wallet::adapter::btc_tx::BtcTx;
 use crate::domain::api_wallet::adapter::doge_tx::DogeTx;
@@ -7,12 +8,14 @@ use crate::domain::api_wallet::adapter::sol_tx::SolTx;
 use crate::domain::api_wallet::adapter::sui_tx::SuiTx;
 use crate::domain::api_wallet::adapter::ton_tx::TonTx;
 use crate::domain::api_wallet::adapter::tron_tx::TronTx;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 
 // 创建一个枚举来包装所有 Tx 实现
 pub enum ApiTxAdapter {
     Btc(BtcTx),
     Doge(DogeTx),
     Eth(EthTx),
+    Bnb(EthTx),
     Ltc(LtcTx),
     Sol(SolTx),
     Sui(SuiTx),
@@ -23,6 +26,23 @@ pub enum ApiTxAdapter {
 // 为枚举实现 Tx trait
 #[async_trait::async_trait]
 impl Tx for ApiTxAdapter {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
+        match self {
+            Self::Btc(tx) => tx.account_resource(owner_address).await,
+            Self::Doge(tx) => tx.account_resource(owner_address).await,
+            Self::Eth(tx) => tx.account_resource(owner_address).await,
+            Self::Ltc(tx) => tx.account_resource(owner_address).await,
+            Self::Sol(tx) => tx.account_resource(owner_address).await,
+            Self::Sui(tx) => tx.account_resource(owner_address).await,
+            Self::Ton(tx) => tx.account_resource(owner_address).await,
+            Self::Tron(tx) => tx.account_resource(owner_address).await,
+            Self::Bnb(tx) => tx.account_resource(owner_address).await,
+        }
+    }
+
     async fn balance(
         &self,
         addr: &str,
@@ -37,6 +57,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.balance(addr, token).await,
             Self::Ton(tx) => tx.balance(addr, token).await,
             Self::Tron(tx) => tx.balance(addr, token).await,
+            Self::Bnb(tx) => tx.balance(addr, token).await,
         }
     }
 
@@ -50,6 +71,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.block_num().await,
             Self::Ton(tx) => tx.block_num().await,
             Self::Tron(tx) => tx.block_num().await,
+            Self::Bnb(tx) => tx.block_num().await,
         }
     }
 
@@ -67,6 +89,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.query_tx_res(hash).await,
             Self::Ton(tx) => tx.query_tx_res(hash).await,
             Self::Tron(tx) => tx.query_tx_res(hash).await,
+            Self::Bnb(tx) => tx.query_tx_res(hash).await,
         }
     }
 
@@ -80,6 +103,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.decimals(token).await,
             Self::Ton(tx) => tx.decimals(token).await,
             Self::Tron(tx) => tx.decimals(token).await,
+            Self::Bnb(tx) => tx.decimals(token).await,
         }
     }
 
@@ -93,6 +117,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.token_symbol(token).await,
             Self::Ton(tx) => tx.token_symbol(token).await,
             Self::Tron(tx) => tx.token_symbol(token).await,
+            Self::Bnb(tx) => tx.token_symbol(token).await,
         }
     }
 
@@ -106,6 +131,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.token_name(token).await,
             Self::Ton(tx) => tx.token_name(token).await,
             Self::Tron(tx) => tx.token_name(token).await,
+            Self::Bnb(tx) => tx.token_name(token).await,
         }
     }
 
@@ -119,6 +145,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.black_address(token, owner).await,
             Self::Ton(tx) => tx.black_address(token, owner).await,
             Self::Tron(tx) => tx.black_address(token, owner).await,
+            Self::Bnb(tx) => tx.black_address(token, owner).await,
         }
     }
 
@@ -136,6 +163,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.transfer(params, private_key).await,
             Self::Ton(tx) => tx.transfer(params, private_key).await,
             Self::Tron(tx) => tx.transfer(params, private_key).await,
+            Self::Bnb(tx) => tx.transfer(params, private_key).await,
         }
     }
 
@@ -153,6 +181,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.estimate_fee(req, main_symbol).await,
             Self::Ton(tx) => tx.estimate_fee(req, main_symbol).await,
             Self::Tron(tx) => tx.estimate_fee(req, main_symbol).await,
+            Self::Bnb(tx) => tx.estimate_fee(req, main_symbol).await,
         }
     }
 
@@ -171,6 +200,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.approve(req, key, value).await,
             Self::Ton(tx) => tx.approve(req, key, value).await,
             Self::Tron(tx) => tx.approve(req, key, value).await,
+            Self::Bnb(tx) => tx.approve(req, key, value).await,
         }
     }
 
@@ -189,6 +219,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.approve_fee(req, value, main_symbol).await,
             Self::Ton(tx) => tx.approve_fee(req, value, main_symbol).await,
             Self::Tron(tx) => tx.approve_fee(req, value, main_symbol).await,
+            Self::Bnb(tx) => tx.approve_fee(req, value, main_symbol).await,
         }
     }
 
@@ -207,6 +238,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.allowance(from, token, spender).await,
             Self::Ton(tx) => tx.allowance(from, token, spender).await,
             Self::Tron(tx) => tx.allowance(from, token, spender).await,
+            Self::Bnb(tx) => tx.allowance(from, token, spender).await,
         }
     }
 
@@ -225,6 +257,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.swap_quote(req, quote_resp, symbol).await,
             Self::Ton(tx) => tx.swap_quote(req, quote_resp, symbol).await,
             Self::Tron(tx) => tx.swap_quote(req, quote_resp, symbol).await,
+            Self::Bnb(tx) => tx.swap_quote(req, quote_resp, symbol).await,
         }
     }
 
@@ -243,6 +276,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.swap(req, fee, key).await,
             Self::Ton(tx) => tx.swap(req, fee, key).await,
             Self::Tron(tx) => tx.swap(req, fee, key).await,
+            Self::Bnb(tx) => tx.swap(req, fee, key).await,
         }
     }
 
@@ -260,6 +294,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.deposit_fee(req, main_coin).await,
             Self::Ton(tx) => tx.deposit_fee(req, main_coin).await,
             Self::Tron(tx) => tx.deposit_fee(req, main_coin).await,
+            Self::Bnb(tx) => tx.deposit_fee(req, main_coin).await,
         }
     }
 
@@ -279,6 +314,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.deposit(req, fee, key, value).await,
             Self::Ton(tx) => tx.deposit(req, fee, key, value).await,
             Self::Tron(tx) => tx.deposit(req, fee, key, value).await,
+            Self::Bnb(tx) => tx.deposit(req, fee, key, value).await,
         }
     }
 
@@ -296,6 +332,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.withdraw_fee(req, main_coin).await,
             Self::Ton(tx) => tx.withdraw_fee(req, main_coin).await,
             Self::Tron(tx) => tx.withdraw_fee(req, main_coin).await,
+            Self::Bnb(tx) => tx.withdraw_fee(req, main_coin).await,
         }
     }
 
@@ -315,6 +352,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.withdraw(req, fee, key, value).await,
             Self::Ton(tx) => tx.withdraw(req, fee, key, value).await,
             Self::Tron(tx) => tx.withdraw(req, fee, key, value).await,
+            Self::Bnb(tx) => tx.withdraw(req, fee, key, value).await,
         }
     }
 }

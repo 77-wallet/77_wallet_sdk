@@ -8,6 +8,8 @@ pub enum ApiWalletError {
     NotFound,
     #[error("Chain config not found: `{0}`")]
     ChainConfigNotFound(String),
+    #[error("Api Account not exist")]
+    NotFoundAccount,
 }
 
 impl ApiWalletError {
@@ -17,6 +19,7 @@ impl ApiWalletError {
             ApiWalletError::AlreadyExist => 4401,
             ApiWalletError::NotFound => 4402,
             ApiWalletError::ChainConfigNotFound(_) => 4403,
+            ApiWalletError::NotFoundAccount => 4403,
         }
     }
 }

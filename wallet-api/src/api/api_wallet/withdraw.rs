@@ -3,21 +3,49 @@ use crate::service::api_wallet::withdraw::WithdrawService;
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
 impl crate::WalletManager {
-    pub async fn get_withdraw_order_list(&self) -> ReturnType<Vec<ApiWithdrawEntity>> {
+    pub async fn get_api_withdraw_order_list(&self) -> ReturnType<Vec<ApiWithdrawEntity>> {
         WithdrawService::new(self.repo_factory.resource_repo())
             .get_withdraw_order_list()
             .await?
             .into()
     }
 
-    pub async fn sign_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
+    pub async fn api_withdrawal_order(
+        &self,
+        from: &str,
+        to: &str,
+        value: &str,
+        chain_code: &str,
+        token_address: &str,
+        symbol: &str,
+        trade_no: &str,
+        trade_type: u8,
+        uid: &str,
+    ) -> ReturnType<()> {
+        WithdrawService::new(self.repo_factory.resource_repo())
+            .withdrawal_order(
+                from,
+                to,
+                value,
+                chain_code,
+                token_address,
+                symbol,
+                trade_no,
+                trade_type,
+                uid,
+            )
+            .await?
+            .into()
+    }
+
+    pub async fn sign_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
         WithdrawService::new(self.repo_factory.resource_repo())
             .sign_withdrawal_order(order_id, 1)
             .await?
             .into()
     }
 
-    pub async fn reject_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
+    pub async fn reject_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
         WithdrawService::new(self.repo_factory.resource_repo())
             .reject_withdrawal_order(order_id, 2)
             .await?
@@ -27,6 +55,7 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
+
     // #[tokio::test]
     // async fn test_create_api_account() -> Result<()> {
     //     wallet_utils::init_test_log();

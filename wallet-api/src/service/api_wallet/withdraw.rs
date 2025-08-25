@@ -1,3 +1,6 @@
+use crate::api::ReturnType;
+use crate::domain::api_wallet::withdraw::ApiWithdrawDomain;
+use crate::request::api_wallet::trans::ApiTransReq;
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 use wallet_database::repositories::ResourcesRepo;
 use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
@@ -19,6 +22,33 @@ impl WithdrawService {
         ApiWithdrawRepo::list_api_withdraw(&pool)
             .await
             .map_err(|e| e.into())
+    }
+
+    pub async fn withdrawal_order(
+        &self,
+        from: &str,
+        to: &str,
+        value: &str,
+        chain_code: &str,
+        token_address: &str,
+        symbol: &str,
+        trade_no: &str,
+        trade_type: u8,
+        uid: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let req = ApiTransReq {
+            from: from.to_string(),
+            to: to.to_string(),
+            value: value.to_string(),
+            chain_code: chain_code.to_string(),
+            token_address: token_address.to_string(),
+            symbol: symbol.to_string(),
+            trade_no: trade_no.to_string(),
+            trade_type,
+            uid: uid.to_string(),
+        };
+        ApiWithdrawDomain::withdraw(&req).await?;
+        Ok(())
     }
 
     pub async fn sign_withdrawal_order(

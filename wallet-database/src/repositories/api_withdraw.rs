@@ -41,6 +41,7 @@ impl ApiWithdrawRepo {
             trade_no: trade_no.to_string(),
             trade_type,
             status: ApiWithdrawStatus::Init,
+            tx_hash: "".to_string(),
             send_tx_at: None,
             created_at: Default::default(),
             updated_at: None,

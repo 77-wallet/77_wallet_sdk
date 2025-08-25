@@ -1,15 +1,18 @@
-use crate::domain::api_wallet::adapter::sui_tx::SuiTx;
-use crate::domain::api_wallet::adapter::{Multisig, TIME_OUT, Tx};
-use crate::domain::chain::TransferResp;
-use crate::infrastructure::swap_client::AggQuoteResp;
-use crate::request::transaction::{
-    ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+use crate::{
+    ServiceError,
+    domain::{
+        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
+        chain::TransferResp,
+        coin::TokenCurrencyGetter,
+    },
+    infrastructure::swap_client::AggQuoteResp,
+    request::transaction::{
+        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+    },
+    response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
 };
-use crate::response_vo::{MultisigQueueFeeParams, TransferParams};
-use crate::{ServiceError, domain, response_vo};
 use alloy::primitives::U256;
 use std::collections::HashMap;
-use wallet_chain_interact::types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp};
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     ton::{
@@ -18,14 +21,17 @@ use wallet_chain_interact::{
         operations::{BuildInternalMsg, token_transfer::TokenTransferOpt, transfer::TransferOpt},
         provider::Provider,
     },
-    types::ChainPrivateKey,
+    tron::protocol::account::AccountResourceDetail,
+    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_database::entities::api_assets::ApiAssetsEntity;
-use wallet_database::entities::multisig_account::MultisigAccountEntity;
-use wallet_database::entities::multisig_member::MultisigMemberEntities;
-use wallet_database::entities::multisig_queue::MultisigQueueEntity;
-use wallet_database::entities::permission::PermissionEntity;
-use wallet_database::{entities::coin::CoinEntity, repositories::api_account::ApiAccountRepo};
+use wallet_database::{
+    entities::{
+        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+        permission::PermissionEntity,
+    },
+    repositories::api_account::ApiAccountRepo,
+};
 use wallet_transport::client::HttpClient;
 use wallet_transport_backend::api::BackendApi;
 use wallet_types::chain::address::r#type::TonAddressType;
@@ -70,6 +76,13 @@ impl TonTx {
 
 #[async_trait::async_trait]
 impl Tx for TonTx {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
+        todo!()
+    }
+
     async fn balance(&self, addr: &str, token: Option<String>) -> Result<U256, Error> {
         self.chain.balance(addr, token).await
     }
@@ -103,7 +116,7 @@ impl Tx for TonTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = Self::check_min_transfer(&params.base.value, params.base.decimals)?;
+        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // 验证余额
         let balance = self
             .chain
@@ -171,13 +184,8 @@ impl Tx for TonTx {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency(
-            currency,
-            &req.chain_code,
-            main_symbol,
-            None,
-        )
-        .await?;
+        let token_currency =
+            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account =
@@ -198,7 +206,7 @@ impl Tx for TonTx {
             .estimate_fee(msg_cell.clone(), &req.from, address_type)
             .await?;
 
-        let res = response_vo::CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency)?;
+        let res = CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency)?;
 
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
 

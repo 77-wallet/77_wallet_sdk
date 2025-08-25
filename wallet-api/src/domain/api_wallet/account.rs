@@ -1,3 +1,4 @@
+use crate::{domain::app::config::ConfigDomain, response_vo::account::CreateAccountRes};
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::{
     EncryptedJsonDecryptor as _, EncryptedJsonGenerator as _, KeystoreJsonDecryptor,
@@ -9,8 +10,6 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
-
-use crate::{domain::app::config::ConfigDomain, response_vo::account::CreateAccountRes};
 
 pub(crate) struct ApiAccountDomain {}
 
@@ -236,5 +235,67 @@ impl ApiAccountDomain {
         }
 
         Ok(())
+    }
+
+    pub(crate) async fn open_subpk_with_password(
+        chain_code: &str,
+        address: &str,
+        password: &str,
+    ) -> Result<ChainPrivateKey, crate::ServiceError> {
+        // super::wallet::WalletDomain::validate_password(password).await?;
+
+        let db = crate::manager::Context::get_global_sqlite_pool()?;
+        let dirs = crate::manager::Context::get_global_dirs()?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &db)
+            .await?
+            .ok_or(crate::BusinessError::ApiWallet(
+                crate::ApiWalletError::NotFoundAccount,
+            ))?;
+        let wallet =
+            ApiWalletRepo::find_by_address(&db, &account.wallet_address, account.wallet_type)
+                .await?
+                .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+
+        let chain = ChainEntity::chain_node_info(db.as_ref(), chain_code)
+            .await?
+            .ok_or(crate::ServiceError::Business(
+                crate::BusinessError::Chain(crate::ChainError::NotFound(chain_code.to_string())),
+            ))?;
+
+        let chain_code: ChainCode = chain_code.try_into()?;
+
+        let subs_path = dirs.get_subs_dir(&wallet.address)?;
+        let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
+        let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
+
+        let account_index_map =
+            wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
+        let key = wallet_tree::api::KeystoreApi::load_sub_pk(
+            &*wallet_tree,
+            Some(&account_index_map),
+            &subs_path,
+            address,
+            &chain_code.to_string(),
+            &account.derivation_path.unwrap(),
+            password,
+        )?;
+
+        // TODO: 优化
+        let private_key = match chain_code {
+            ChainCode::Solana => {
+                wallet_utils::parse_func::sol_keypair_from_bytes(&key)?.to_base58_string()
+            }
+            ChainCode::Bitcoin => {
+                wallet_chain_interact::btc::wif_private_key(&key, chain.network.as_str().into())?
+            }
+            ChainCode::Dogcoin => {
+                wallet_chain_interact::dog::wif_private_key(&key, chain.network.as_str().into())?
+            }
+            ChainCode::Litecoin => {
+                wallet_chain_interact::ltc::wif_private_key(&key, chain.network.as_str().into())?
+            }
+            _ => hex::encode(key),
+        };
+        Ok(private_key.into())
     }
 }

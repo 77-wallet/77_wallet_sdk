@@ -13,6 +13,7 @@ CREATE TABLE api_withdraws (
     trade_type INTEGER NOT NULL,
     status INTEGER NOT NULL,
     tx_hash VARCHAR(32) NOT NULL,
+    send_tx_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
 );
