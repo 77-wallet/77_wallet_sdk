@@ -1,3 +1,5 @@
+use crate::ServiceError;
+use crate::domain::api_wallet::adapter::Tx;
 use crate::domain::api_wallet::adapter::btc_tx::BtcTx;
 use crate::domain::api_wallet::adapter::doge_tx::DogeTx;
 use crate::domain::api_wallet::adapter::eth_tx::EthTx;
@@ -6,8 +8,7 @@ use crate::domain::api_wallet::adapter::sol_tx::SolTx;
 use crate::domain::api_wallet::adapter::sui_tx::SuiTx;
 use crate::domain::api_wallet::adapter::ton_tx::TonTx;
 use crate::domain::api_wallet::adapter::tron_tx::TronTx;
-use crate::domain::api_wallet::adapter::Tx;
-use crate::ServiceError;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 
 // 创建一个枚举来包装所有 Tx 实现
 pub enum ApiTxAdapter {
@@ -25,7 +26,10 @@ pub enum ApiTxAdapter {
 // 为枚举实现 Tx trait
 #[async_trait::async_trait]
 impl Tx for ApiTxAdapter {
-    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
         match self {
             Self::Btc(tx) => tx.account_resource(owner_address).await,
             Self::Doge(tx) => tx.account_resource(owner_address).await,
@@ -53,6 +57,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.balance(addr, token).await,
             Self::Ton(tx) => tx.balance(addr, token).await,
             Self::Tron(tx) => tx.balance(addr, token).await,
+            Self::Bnb(tx) => tx.balance(addr, token).await,
         }
     }
 
@@ -66,6 +71,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.block_num().await,
             Self::Ton(tx) => tx.block_num().await,
             Self::Tron(tx) => tx.block_num().await,
+            Self::Bnb(tx) => tx.block_num().await,
         }
     }
 
@@ -251,6 +257,7 @@ impl Tx for ApiTxAdapter {
             Self::Sui(tx) => tx.swap_quote(req, quote_resp, symbol).await,
             Self::Ton(tx) => tx.swap_quote(req, quote_resp, symbol).await,
             Self::Tron(tx) => tx.swap_quote(req, quote_resp, symbol).await,
+            Self::Bnb(tx) => tx.swap_quote(req, quote_resp, symbol).await,
         }
     }
 

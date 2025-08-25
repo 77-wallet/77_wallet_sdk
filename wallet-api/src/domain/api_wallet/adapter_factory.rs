@@ -1,13 +1,14 @@
+use crate::domain::api_wallet::adapter::Tx;
 use crate::domain::{
     api_wallet::adapter::{
-        btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
-        sui_tx::SuiTx, ton_tx::TonTx, tron_tx::TronTx,
-    }
-    ,
+        btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx, sui_tx::SuiTx,
+        ton_tx::TonTx, tron_tx::TronTx,
+    },
     chain::rpc_need_header,
 };
 use crate::{BusinessError, Context};
 use dashmap::DashMap;
+use std::sync::Arc;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 use wallet_types::chain::chain::ChainCode;
 
@@ -24,47 +25,47 @@ impl ApiChainAdapterFactory {
         let adapter = DashMap::new();
         adapter.insert(
             ChainCode::Bitcoin.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Bitcoin)
+            Self::new_transaction_adapter(ChainCode::Bitcoin)
                 .await
-                .unwrap()),
+                .unwrap(),
         );
         adapter.insert(
             ChainCode::Dogcoin.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Dogcoin)
+            Self::new_transaction_adapter(ChainCode::Dogcoin)
                 .await
-                .unwrap()),
+                .unwrap(),
         );
         adapter.insert(
             ChainCode::Ethereum.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Ethereum)
+            Self::new_transaction_adapter(ChainCode::Ethereum)
                 .await
-                .unwrap()),
+                .unwrap(),
         );
         adapter.insert(
             ChainCode::Litecoin.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Litecoin)
+            Self::new_transaction_adapter(ChainCode::Litecoin)
                 .await
-                .unwrap()),
+                .unwrap(),
         );
         adapter.insert(
             ChainCode::Solana.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Solana)
+            Self::new_transaction_adapter(ChainCode::Solana)
                 .await
-                .unwrap()),
+                .unwrap(),
         );
         adapter.insert(
             ChainCode::Sui.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Sui).await.unwrap()),
+            Self::new_transaction_adapter(ChainCode::Sui).await.unwrap(),
         );
         adapter.insert(
             ChainCode::Ton.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Ton).await.unwrap()),
+            Self::new_transaction_adapter(ChainCode::Ton).await.unwrap(),
         );
         adapter.insert(
             ChainCode::Tron.to_string(),
-            Arc::new(Self::new_transaction_adapter(ChainCode::Tron)
+            Self::new_transaction_adapter(ChainCode::Tron)
                 .await
-                .unwrap()),
+                .unwrap(),
         );
 
         ApiChainAdapterFactory {
@@ -112,9 +113,7 @@ impl ApiChainAdapterFactory {
     ) -> Result<Arc<dyn Tx + Send + Sync>, crate::ServiceError> {
         let res = self.transaction_adapter.get(chain_code);
         match res {
-            Some(kv) => {
-                  Ok( kv.value().clone())
-            },
+            Some(kv) => Ok(kv.value().clone()),
             _ => Err(crate::ServiceError::Business(BusinessError::Chain(
                 crate::ChainError::NotFound(chain_code.to_owned()),
             ))),
