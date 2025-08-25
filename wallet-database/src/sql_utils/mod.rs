@@ -44,7 +44,7 @@ where
         E: Executor<'e, Database = Sqlite> + Send,
     {
         let (sql, arg_fns) = self.build_sql();
-        tracing::info!("query: {}", sql);
+        // tracing::info!("query: {}", sql);
 
         let mut args = SqliteArguments::default();
         for f in arg_fns {
@@ -105,7 +105,7 @@ where
         E: Executor<'e, Database = Sqlite> + Send,
     {
         let (sql, args_fn) = self.build_sql();
-        tracing::info!("execute: {}", sql);
+        // tracing::info!("execute: {}", sql);
 
         let mut args = SqliteArguments::default();
         for f in args_fn {
