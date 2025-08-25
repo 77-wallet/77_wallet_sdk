@@ -183,14 +183,8 @@ impl SwapServer {
         let (bal_in, bal_out) = self.get_bal_in_and_out(&req, amount_out).await?;
 
         let dex_route_list = DexRoute::new(req.amount_in.clone(), &req.token_in, &req.token_out);
-        let mut res = ApiQuoteResp::new_with_default_slippage(
-            req.chain_code.clone(),
-            req.token_in.symbol.clone(),
-            req.token_out.symbol.clone(),
-            vec![dex_route_list],
-            bal_in,
-            bal_out,
-        );
+        let mut res =
+            ApiQuoteResp::new_with_default_slippage(&req, vec![dex_route_list], bal_in, bal_out);
         res.set_amount_out(amount_out, req.token_out.decimals);
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -260,9 +254,7 @@ impl SwapServer {
 
         // 构建响应
         let mut res = ApiQuoteResp::new(
-            quote_resp.chain_code.clone(),
-            req.token_in.symbol.clone(),
-            req.token_out.symbol.clone(),
+            &req,
             slippage,
             default_slippage,
             quote_resp.dex_route_list.clone(),

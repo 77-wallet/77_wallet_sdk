@@ -1,12 +1,12 @@
-use serde_json::json;
-
 use crate::{
+    consts::endpoint::TOKEN_CUSTOM_TOKEN_INIT,
     request::{AllTokenQueryByPageReq, SwapTokenQueryReq},
     response_vo::coin::{
         CoinInfos, CoinMarketValue, TokenPopularByPages, TokenPrice, TokenPriceInfos,
     },
     CoinInfo,
 };
+use serde_json::json;
 
 use super::BackendApi;
 
@@ -17,7 +17,7 @@ impl BackendApi {
     ) -> Result<bool, crate::Error> {
         let res = self
             .client
-            .post("token/custom/token/init")
+            .post(TOKEN_CUSTOM_TOKEN_INIT)
             .json(serde_json::json!(req))
             .send::<crate::response::BackendResponse>()
             .await?;
@@ -55,7 +55,6 @@ impl BackendApi {
 
     pub async fn query_history_price(
         &self,
-
         req: &crate::request::TokenQueryHistoryPrice,
     ) -> Result<crate::response_vo::coin::TokenHistoryPrices, crate::Error> {
         let res = self
@@ -69,7 +68,6 @@ impl BackendApi {
 
     pub async fn query_popular_by_page(
         &self,
-
         req: &crate::request::TokenQueryPopularByPageReq,
     ) -> Result<TokenPopularByPages, crate::Error> {
         let res = self

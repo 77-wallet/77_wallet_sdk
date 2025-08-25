@@ -210,6 +210,7 @@ impl CoinService {
                 &token.price.unwrap_or_default().to_string(),
                 token.decimals,
                 status,
+                Some(token.swappable),
                 time,
             )
             .await?;
@@ -236,8 +237,15 @@ impl CoinService {
             };
             let status = token.get_status();
             let time = None;
-            tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit, status, time)
-                .await?;
+            tx.update_price_unit(
+                &coin_id,
+                &token.price.to_string(),
+                token.unit,
+                status,
+                token.swappable,
+                time,
+            )
+            .await?;
         }
         Ok(())
     }
@@ -287,6 +295,7 @@ impl CoinService {
                         &token.price.to_string(),
                         token.unit,
                         status,
+                        token.swappable,
                         time,
                     )
                     .await?;
@@ -367,6 +376,7 @@ impl CoinService {
         Ok(res)
     }
 
+    // 用户自定义添加币种
     pub async fn customize_coin(
         &mut self,
         address: &str,
@@ -416,6 +426,7 @@ impl CoinService {
         };
 
         let time = wallet_utils::time::now();
+        // TODO 后续优化 用户自定义添加的币种默认不可兑换
         let cus_coin = wallet_database::entities::coin::CoinData::new(
             Some(name.clone()),
             &symbol,
@@ -427,6 +438,7 @@ impl CoinService {
             0,
             0,
             1,
+            false,
             time,
             time,
         )

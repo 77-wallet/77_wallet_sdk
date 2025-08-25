@@ -2,7 +2,10 @@ use super::{
     account::{BalanceInfo, BalanceStr},
     EstimateFeeResp,
 };
-use crate::{domain::chain::swap::calc_slippage, request::transaction::DexRoute};
+use crate::{
+    domain::chain::swap::calc_slippage,
+    request::transaction::{DexRoute, QuoteReq},
+};
 use alloy::primitives::U256;
 use wallet_transport_backend::api::swap::ApproveInfo;
 
@@ -14,9 +17,11 @@ pub struct ApiQuoteResp {
     // 输入
     pub amount_in: BalanceStr,
     pub amount_in_symbol: String,
+    pub amount_in_token_address: String,
     // 输出
     pub amount_out: BalanceStr,
     pub amount_out_symbol: String,
+    pub amount_out_token_address: String,
     // 输入和输出的价值差
     pub price_spread: f64,
     // 预估的手续费
@@ -44,9 +49,7 @@ impl ApiQuoteResp {
     pub const DEFAULT_SLIPPAGE: f64 = 0.005;
 
     pub fn new_with_default_slippage(
-        chain_code: String,
-        token_in_symbol: String,
-        token_out_symbol: String,
+        req: &QuoteReq,
         dex_route_list: Vec<DexRoute>,
         bal_in: BalanceStr,
         bal_out: BalanceStr,
@@ -54,11 +57,13 @@ impl ApiQuoteResp {
         let (rate, price_spread) = Self::calc_price_spread_and_rate(&bal_in, &bal_out);
 
         Self {
-            chain_code,
+            chain_code: req.chain_code.clone(),
             amount_in: bal_in,
-            amount_in_symbol: token_in_symbol,
+            amount_in_symbol: req.token_in.symbol.clone(),
+            amount_in_token_address: req.token_in.token_addr.clone(),
             amount_out: bal_out,
-            amount_out_symbol: token_out_symbol,
+            amount_out_symbol: req.token_out.symbol.clone(),
+            amount_out_token_address: req.token_out.token_addr.clone(),
             price_spread,
             fee: EstimateFeeResp::default(),
             from_token_price: rate,
@@ -73,9 +78,7 @@ impl ApiQuoteResp {
     }
 
     pub fn new(
-        chain_code: String,
-        token_in_symbol: String,
-        token_out_symbol: String,
+        req: &QuoteReq,
         slippage: f64,
         default_slippage: f64,
         dex_route_list: Vec<DexRoute>,
@@ -85,11 +88,13 @@ impl ApiQuoteResp {
         let (rate, price_spread) = Self::calc_price_spread_and_rate(&bal_in, &bal_out);
 
         Self {
-            chain_code,
+            chain_code: req.chain_code.clone(),
             amount_in: bal_in,
-            amount_in_symbol: token_in_symbol,
+            amount_in_symbol: req.token_in.symbol.clone(),
+            amount_in_token_address: req.token_in.token_addr.clone(),
             amount_out: bal_out,
-            amount_out_symbol: token_out_symbol,
+            amount_out_symbol: req.token_out.symbol.clone(),
+            amount_out_token_address: req.token_out.token_addr.clone(),
             price_spread,
             fee: EstimateFeeResp::default(),
             from_token_price: rate,

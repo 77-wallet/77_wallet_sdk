@@ -31,50 +31,6 @@ impl AssetsDomain {
         Self {}
     }
 
-    // pub async fn upsert_assets(
-    //     &mut self,
-    //     repo: &mut ResourcesRepo,
-    //     mut req: TokenQueryPriceReq,
-    //     address: &str,
-    //     chain_code: &str,
-    //     symbol: &str,
-    //     decimals: u8,
-    //     token_address: Option<String>,
-    //     protocol: Option<String>,
-    //     is_multisig: i32,
-    //     name: &str,
-    //     price: &str,
-    // ) -> Result<(), crate::ServiceError> {
-    //     let tx = repo;
-    //     let assets_id = wallet_database::entities::assets::AssetsId::new(
-    //         address,
-    //         chain_code,
-    //         symbol,
-    //         token_address,
-    //     );
-
-    //     let assets = wallet_database::dao::assets::CreateAssetsVo::new(
-    //         assets_id,
-    //         decimals,
-    //         protocol.clone(),
-    //         is_multisig,
-    //     )
-    //     .with_name(name)
-    //     .with_u256(alloy::primitives::U256::default(), decimals)?;
-
-    //     let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
-    //     if price.is_empty() {
-    //         req.insert(
-    //             chain_code,
-    //             &assets.assets_id.token_address.clone().unwrap_or_default(),
-    //         );
-    //         let task = Task::Common(CommonTask::QueryCoinPrice(req));
-    //         Tasks::new().push(task).send().await?;
-    //     }
-    //     tx.upsert_assets(assets, wallet_type).await?;
-    //     Ok(())
-    // }
-
     pub async fn get_account_assets_entity(
         &mut self,
         repo: &mut ResourcesRepo,
@@ -147,24 +103,12 @@ impl AssetsDomain {
                 info.chain_list
                     .entry(assets.chain_code.clone())
                     .or_insert(assets.token_address);
-
-                // info.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                //     chain_code: assets.chain_code,
-                //     token_address: Some(assets.token_address),
-                //     protocol: assets.protocol,
-                // });
             } else {
                 tracing::info!("hahaha");
                 res.push(crate::response_vo::coin::CoinInfo {
                     symbol: assets.symbol,
                     name: Some(assets.name),
-                    // chain_list: std::collections::HashSet::from([
-                    //     crate::response_vo::coin::ChainInfo {
-                    //         chain_code: assets.chain_code,
-                    //         token_address: Some(assets.token_address),
-                    //         protocol: assets.protocol,
-                    //     },
-                    // ]),
+
                     chain_list: ChainList(HashMap::from([(
                         assets.chain_code.clone(),
                         assets.token_address,
@@ -406,6 +350,7 @@ impl AssetsDomain {
             0,
             0,
             1,
+            true,
             time,
             time,
         );

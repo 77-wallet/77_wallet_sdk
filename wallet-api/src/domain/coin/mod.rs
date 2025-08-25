@@ -197,6 +197,7 @@ impl CoinDomain {
 
 impl From<crate::default_data::coin::DefaultCoin> for CoinData {
     fn from(coin: crate::default_data::coin::DefaultCoin) -> Self {
+        // 默认的代币:默认值支持兑换的
         Self {
             name: Some(coin.name),
             chain_code: coin.chain_code,
@@ -209,6 +210,7 @@ impl From<crate::default_data::coin::DefaultCoin> for CoinData {
             is_custom: 0,
             price: Some("0".to_string()),
             status: if coin.active { 1 } else { 0 },
+            swappable: true,
             created_at: DateTime::<Utc>::default(),
             updated_at: DateTime::<Utc>::default(),
         }
@@ -228,6 +230,7 @@ pub fn coin_info_to_coin_data(coin: CoinInfo) -> CoinData {
         is_custom: 0,
         price: Some(coin.price.unwrap_or_default().to_string()),
         status: if coin.enable { 1 } else { 0 },
+        swappable: coin.swappable,
         created_at: parse_utc_datetime(&coin.create_time),
         updated_at: parse_utc_datetime(&coin.update_time),
     }
