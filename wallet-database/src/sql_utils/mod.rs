@@ -64,7 +64,7 @@ where
     {
         {
             let (sql, arg_fns) = self.build_sql();
-            tracing::info!("query: {}", sql);
+            // tracing::info!("query: {}", sql);
 
             let mut args = SqliteArguments::default();
             for f in arg_fns {

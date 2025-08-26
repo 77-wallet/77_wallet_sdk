@@ -55,6 +55,12 @@ pub(super) async fn approve(
     };
 
     let fee = fee_setting.transaction_fee();
+    let balance = chain.balance(&req.from, None).await?;
+    if balance < fee {
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
 
     // exec tx
     let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
@@ -100,6 +106,13 @@ pub(super) async fn withdraw(
     let fee_setting = pare_fee_setting(fee.as_str())?;
     let transfer_fee = fee_setting.transaction_fee();
 
+    let balance = chain.balance(&req.from, None).await?;
+    if balance < transfer_fee {
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
+
     // exec tx
     let tx_hash = chain.exec_transaction(withdraw, fee_setting, key).await?;
 
@@ -131,6 +144,13 @@ pub(super) async fn deposit(
     // 使用默认的手续费配置
     let fee_setting = pare_fee_setting(fee.as_str())?;
     let transfer_fee = fee_setting.transaction_fee();
+
+    let balance = chain.balance(&req.from, None).await?;
+    if balance < transfer_fee {
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::InsufficientFeeBalance,
+        ))?;
+    }
 
     // exec tx
     let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;

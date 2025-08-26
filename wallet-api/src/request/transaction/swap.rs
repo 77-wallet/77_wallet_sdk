@@ -60,12 +60,26 @@ pub struct ApproveReq {
     pub spender: String,
     pub value: String,
     pub chain_code: String,
-    // NORMAL , UN_LIMIT(无限制)
-    pub approve_type: String,
 }
 impl ApproveReq {
-    // pub const NORMAL: &'static str = "NORMAL";
+    pub const NORMAL: &'static str = "NORMAL";
     pub const UN_LIMIT: &'static str = "UN_LIMIT";
+
+    pub fn get_approve_type(&self) -> &'static str {
+        if self.value == "-1" || self.value == "0" {
+            Self::UN_LIMIT
+        } else {
+            Self::NORMAL
+        }
+    }
+
+    pub fn get_value(&self, decimals: u8) -> Result<U256, crate::ServiceError> {
+        if self.value == "-1" || self.value == "0" {
+            Ok(U256::MAX)
+        } else {
+            Ok(wallet_utils::unit::convert_to_u256(&self.value, decimals)?)
+        }
+    }
 }
 
 #[derive(Debug)]

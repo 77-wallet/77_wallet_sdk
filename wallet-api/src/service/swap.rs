@@ -636,11 +636,7 @@ impl SwapServer {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let value = if req.approve_type == ApproveReq::UN_LIMIT {
-            alloy::primitives::U256::MAX
-        } else {
-            wallet_utils::unit::convert_to_u256(&req.value, coin.decimals)?
-        };
+        let value = req.get_value(coin.decimals)?;
         let resp = adapter.approve(&req, private_key, value).await?;
 
         let account = AccountRepo::account_with_wallet(&req.from, &req.chain_code, &pool).await?;
@@ -655,7 +651,7 @@ impl SwapServer {
             &req.contract,
             req.value.clone(),
             &&resp.tx_hash.clone(),
-            &req.approve_type,
+            &req.get_approve_type(),
         );
         TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
 

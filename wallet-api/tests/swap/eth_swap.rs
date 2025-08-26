@@ -33,9 +33,8 @@ async fn test_approve() {
         from: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
         spender: AGGREGATOR.to_string(),
         contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-        value: "1".to_string(),
+        value: "2".to_string(),
         chain_code: "eth".to_string(),
-        approve_type: "NORMAL".to_string(),
     };
 
     let password = "123456".to_string();
@@ -54,10 +53,9 @@ async fn test_approve_fee() {
         contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
         value: "0".to_string(),
         chain_code: "eth".to_string(),
-        approve_type: "UN_LIMIT".to_string(),
     };
 
-    let is_cancel = false;
+    let is_cancel = true;
 
     let resp = wallet_manager.approve_fee(params, is_cancel).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
@@ -79,12 +77,11 @@ async fn test_approve_cancel() {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
-        from: "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ".to_string(),
-        spender: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
-        contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
+        from: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
+        spender: AGGREGATOR.to_string(),
+        contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
         value: "15".to_string(),
-        chain_code: "tron".to_string(),
-        approve_type: "UN_LIMIT".to_string(),
+        chain_code: "eth".to_string(),
     };
 
     let password = "123456".to_string();

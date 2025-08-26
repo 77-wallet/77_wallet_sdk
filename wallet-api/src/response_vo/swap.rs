@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     domain::chain::swap::calc_slippage,
-    request::transaction::{DexRoute, QuoteReq},
+    request::transaction::{ApproveReq, DexRoute, QuoteReq},
 };
 use alloy::primitives::U256;
 use wallet_transport_backend::api::swap::ApproveInfo;
@@ -159,21 +159,25 @@ pub struct ApproveList {
     pub spender: String,
     pub from: String,
     pub amount: String,
-    pub limit_type: String,
     pub remaining_allowance: String,
 }
 
 impl From<ApproveInfo> for ApproveList {
     fn from(value: ApproveInfo) -> Self {
+        let amount = if value.limit_type == ApproveReq::UN_LIMIT {
+            "-1".to_string()
+        } else {
+            value.value.clone()
+        };
+
         Self {
             chain_code: value.chain_code,
             token_address: value.token_addr,
             from: value.owner_address,
             symbol: "".to_string(),
             spender: value.spender,
-            amount: value.value.clone(),
+            amount,
             remaining_allowance: value.value,
-            limit_type: value.limit_type,
         }
     }
 }

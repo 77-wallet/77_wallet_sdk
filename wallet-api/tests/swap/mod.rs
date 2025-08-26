@@ -53,7 +53,6 @@ async fn test_approve() {
         contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         value: "2".to_string(),
         chain_code: "tron".to_string(),
-        approve_type: "NORMAL".to_string(),
     };
 
     let password = "123456".to_string();
@@ -72,7 +71,6 @@ async fn test_approve_fee() {
         contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         value: "2".to_string(),
         chain_code: "tron".to_string(),
-        approve_type: "UN_LIMIT".to_string(),
     };
 
     let resp = wallet_manager.approve_fee(params, false).await;
@@ -100,7 +98,6 @@ async fn test_approve_cancel() {
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
         value: "15".to_string(),
         chain_code: "tron".to_string(),
-        approve_type: "UN_LIMIT".to_string(),
     };
 
     let password = "123456".to_string();
