@@ -234,7 +234,7 @@ mod test {
         // let chain_code = "tron";
         // let chain_code = "btc";
         // let chain_code = "sol";
-        let chain_code = "ton";
+        let chain_code = "sui";
         // let token_address = "0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24";
         // let token_address = "0xB8c77482e45F1F44dE1745F52C74426C631bDD52";
         // let token_address = "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB";
@@ -244,7 +244,8 @@ mod test {
         let token_address =
         // "0x55d398326f99059fF775485246999027B3197955";
         // "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
-        "EQACLXDwit01stiqK9FvYiJo15luVzfD5zU8uwDSq6JXxbP8";
+        // "EQACLXDwit01stiqK9FvYiJo15luVzfD5zU8uwDSq6JXxbP8";
+        "0xdeeb7a4662eec9f2f3def03fb937a663dddaa2e215b8078a284d026b7946c270::deep::DEEP";
 
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
