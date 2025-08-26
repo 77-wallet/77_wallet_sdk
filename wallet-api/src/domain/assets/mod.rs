@@ -10,10 +10,12 @@ use wallet_database::{
     entities::{
         account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
-        coin::{CoinData, CoinEntity, CoinMultisigStatus},
+        coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
-    repositories::{account::AccountRepoTrait, assets::AssetsRepoTrait, ResourcesRepo},
+    repositories::{
+        account::AccountRepoTrait, assets::AssetsRepoTrait, coin::CoinRepo, ResourcesRepo,
+    },
     DbPool,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -338,25 +340,26 @@ impl AssetsDomain {
     ) -> Result<(), crate::ServiceError> {
         // notes 不能更新币价
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let time = wallet_utils::time::now();
-        let coin_data = CoinData::new(
-            Some(token.symbol.clone()),
-            &token.symbol,
-            &chain_code,
-            Some(token.token_addr.clone()),
-            Some("0".to_string()),
-            None,
-            token.decimals as u8,
-            0,
-            0,
-            1,
-            true,
-            time,
-            time,
-        );
-        if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
-            tracing::error!("swap insert coin faild : {}", e);
-        };
+        // let time = wallet_utils::time::now();
+        let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.symbol, &pool).await?;
+        // let coin_data = CoinData::new(
+        //     Some(token.symbol.clone()),
+        //     &token.symbol,
+        //     &chain_code,
+        //     Some(token.token_addr.clone()),
+        //     Some("0".to_string()),
+        //     None,
+        //     token.decimals as u8,
+        //     0,
+        //     0,
+        //     1,
+        //     true,
+        //     time,
+        //     time,
+        // );
+        // if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
+        //     tracing::error!("swap insert coin faild : {}", e);
+        // };
 
         // 资产是否存在不存在新增
         let assets_id = AssetsId::new(
@@ -365,7 +368,8 @@ impl AssetsDomain {
             &token.symbol,
             Some(token.token_addr),
         );
-        let assets = CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0);
+        let assets =
+            CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0).with_name(&coin.name);
 
         if let Err(e) = AssetsEntity::upsert_assets(pool.as_ref(), assets).await {
             tracing::error!("swap insert assets faild : {}", e);
