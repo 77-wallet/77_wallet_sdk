@@ -132,6 +132,14 @@ impl BillRepo {
         .await?;
         Ok(lists)
     }
+
+    pub async fn last_swap_bill(
+        from: &str,
+        chain_code: &str,
+        pool: &DbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        BillDao::last_swap_bill(pool.as_ref(), from, chain_code).await
+    }
 }
 
 #[async_trait::async_trait]

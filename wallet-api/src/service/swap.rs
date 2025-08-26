@@ -27,7 +27,7 @@ use wallet_database::{
     entities::{
         account::AccountEntity,
         assets::AssetsEntity,
-        bill::{BillStatus, NewBillEntity},
+        bill::{BillExtraSwap, BillStatus, NewBillEntity},
         coin::CoinEntity,
     },
     pagination::Pagination,
@@ -235,6 +235,39 @@ impl SwapServer {
         Ok(res)
     }
 
+    async fn check_bal_with_last_swap(
+        &self,
+        bal: &str,
+        req: &QuoteReq,
+        pool: &DbPool,
+    ) -> Result<bool, crate::ServiceError> {
+        // 尝试获取“需要扣减的金额”（如果条件不满足则为 None）
+        let maybe_deduction = BillRepo::last_swap_bill(&req.recipient, &req.chain_code, pool)
+            .await?
+            .and_then(|bill| {
+                wallet_utils::serde_func::serde_from_str::<BillExtraSwap>(&bill.extra)
+                    .ok()
+                    .filter(|extra| {
+                        extra.from_token_address == req.token_in.token_addr
+                            && extra.to_token_address == req.token_out.token_addr
+                    })
+                    .map(|_| bill.value) // 传出需扣减的字符串金额
+            });
+
+        // 生成用于校验的余额字符串引用
+        let adjusted;
+        let bal_ref = if let Some(pre) = maybe_deduction {
+            let pre_amount = conversion::decimal_from_str(&pre)?;
+            let bal_dec = conversion::decimal_from_str(bal)? - pre_amount;
+            adjusted = bal_dec.to_string();
+            &adjusted
+        } else {
+            bal
+        };
+
+        self.check_bal(&req.amount_in, bal_ref)
+    }
+
     async fn swap_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
         use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
@@ -270,7 +303,10 @@ impl SwapServer {
             let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let assets =
                 AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
-            if self.check_bal(&req.amount_in, &assets.balance)? {
+            if self
+                .check_bal_with_last_swap(&assets.balance, &req, &pool)
+                .await?
+            {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
@@ -297,7 +333,10 @@ impl SwapServer {
                     &req.recipient,
                 )
                 .await?;
-            if self.check_bal(&req.amount_in, &assets.balance)? {
+            if self
+                .check_bal_with_last_swap(&assets.balance, &req, &pool)
+                .await?
+            {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 

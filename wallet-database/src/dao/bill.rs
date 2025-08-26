@@ -1,6 +1,8 @@
 use crate::{
     any_in_collection,
-    entities::bill::{BillEntity, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo},
+    entities::bill::{
+        BillEntity, BillKind, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo,
+    },
     pagination::Pagination,
     DbPool,
 };
@@ -183,6 +185,28 @@ impl BillDao {
 
         let paginate = Pagination::<BillEntity>::init(page, page_size);
         Ok(paginate.page(pool, &sql).await?)
+    }
+
+    // 查询5分钟内交易状态确认中的交易(用于swap本地验证余额)
+    pub async fn last_swap_bill<'a, E>(
+        pool: E,
+        from: &str,
+        chain_code: &str,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let time = Utc::now().timestamp() - 300;
+        let sql = "select * from bill where from_addr = ? and chain_code = ? and tx_kind = ? and transaction_time >= ?  and status = ? ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1";
+        sqlx::query_as::<_, BillEntity>(sql)
+            .bind(from)
+            .bind(chain_code)
+            .bind(BillKind::Swap.to_i8())
+            .bind(time)
+            .bind(BillStatus::Pending.to_i8())
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     // 最近转列
