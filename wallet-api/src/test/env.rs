@@ -7,7 +7,7 @@ use crate::{CreateAccountReq, CreateWalletReq, InitDeviceReq};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-pub struct                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   TestParams {
+pub struct TestParams {
     pub device_req: InitDeviceReq,
     pub create_wallet_req: CreateWalletReq,
     pub create_account_req: CreateAccountReq,

@@ -15,12 +15,12 @@ use crate::{
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     sui::{Provider, SuiChain, transfer::TransferOpt},
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
@@ -52,7 +52,10 @@ impl SuiTx {
 
 #[async_trait::async_trait]
 impl Tx for SuiTx {
-    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
 

@@ -14,6 +14,7 @@ use crate::{
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
     Error,
     btc::{

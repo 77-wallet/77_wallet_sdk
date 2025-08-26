@@ -19,10 +19,7 @@ use wallet_database::entities::{
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
     permission::PermissionEntity,
 };
-use wallet_transport_backend::{
-    api::BackendApi,
-    response_vo::chain::GasOracle,
-};
+use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 
 pub mod btc_tx;
 pub mod doge_tx;
@@ -45,11 +42,7 @@ pub trait Oracle {
 
 #[async_trait::async_trait]
 pub trait Tx {
-    fn check_min_transfer(
-        &self,
-        value: &str,
-        decimal: u8,
-    ) -> Result<U256, crate::ServiceError> {
+    fn check_min_transfer(&self, value: &str, decimal: u8) -> Result<U256, crate::ServiceError> {
         let min = U256::from(1);
         let transfer_amount = unit::convert_to_u256(value, decimal)?;
 

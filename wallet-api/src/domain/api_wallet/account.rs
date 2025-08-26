@@ -70,9 +70,9 @@ impl ApiAccountDomain {
         tracing::info!("get_private_key ------------------- 6: {chain_code}");
         let chain = ChainEntity::chain_node_info(pool.as_ref(), chain_code)
             .await?
-            .ok_or(crate::ServiceError::Business(
-                crate::BusinessError::Chain(crate::ChainError::NotFound(chain_code.to_string())),
-            ))?;
+            .ok_or(crate::ServiceError::Business(crate::BusinessError::Chain(
+                crate::ChainError::NotFound(chain_code.to_string()),
+            )))?;
 
         tracing::info!("chain_code ------------------- 7: {chain_code}");
         let chain_code: ChainCode = chain_code.try_into()?;
@@ -140,15 +140,15 @@ impl ApiAccountDomain {
         let address_type = instance.address_type();
         let address = keypair.address();
         let pubkey = keypair.pubkey();
-        let private_key = keypair.private_key()?;
+        // let private_key = keypair.private_key()?;
+        let private_key = keypair.private_key_bytes()?;
 
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
         let rng = rand::thread_rng();
         let mut generator = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
-        let private_key = wallet_utils::serde_func::serde_to_vec(&private_key)?;
+        // let private_key = wallet_utils::serde_func::serde_to_vec(&private_key)?;
         let private_key = generator.generate(wallet_password.as_bytes(), &private_key)?;
         let private_key = wallet_utils::serde_func::serde_to_string(&private_key)?;
-
         let mut req = CreateApiAccountVo::new(
             account_index_map.account_id,
             &address,

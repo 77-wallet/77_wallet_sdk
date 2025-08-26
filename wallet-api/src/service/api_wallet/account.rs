@@ -1,7 +1,11 @@
+use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{entities::api_wallet::ApiWalletType, repositories::ResourcesRepo};
 use wallet_transport_backend::request::api_wallet::address::UploadAllocatedAddressesReq;
 
-use crate::domain::{api_wallet::wallet::ApiWalletDomain, wallet::WalletDomain};
+use crate::domain::{
+    api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+    wallet::WalletDomain,
+};
 
 pub struct ApiAccountService {
     pub repo: ResourcesRepo,
@@ -51,5 +55,14 @@ impl ApiAccountService {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn get_account_private_key(
+        self,
+        address: &str,
+        chain_code: &str,
+        password: &str,
+    ) -> Result<ChainPrivateKey, crate::ServiceError> {
+        Ok(ApiAccountDomain::get_private_key(address, chain_code, password).await?)
     }
 }

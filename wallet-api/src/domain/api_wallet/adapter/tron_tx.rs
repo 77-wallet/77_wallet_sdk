@@ -23,6 +23,7 @@ use alloy::{
     sol_types::{SolCall, SolValue},
 };
 use std::collections::HashMap;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
     BillResourceConsume, Error, QueryTransactionResult, abi_encode_u256, tron,
     tron::{
@@ -38,7 +39,6 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, api_bill::ApiBillKind, coin::CoinEntity,
     multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
@@ -205,7 +205,10 @@ impl TronTx {
 
 #[async_trait::async_trait]
 impl Tx for TronTx {
-    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
         let resource = self.chain.account_resource(owner_address).await?;
         Ok(resource)
     }

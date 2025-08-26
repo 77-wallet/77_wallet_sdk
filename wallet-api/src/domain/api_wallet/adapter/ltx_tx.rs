@@ -13,13 +13,13 @@ use crate::{
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     ltc::{LtcChain, operations::transfer::TransferArg, provider::ProviderConfig},
     types::ChainPrivateKey,
     types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::{
     entities::{
         api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
@@ -74,7 +74,10 @@ impl LtcTx {
 
 #[async_trait::async_trait]
 impl Tx for LtcTx {
-    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
 
