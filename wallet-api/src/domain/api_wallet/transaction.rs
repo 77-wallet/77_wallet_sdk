@@ -1,4 +1,7 @@
 use crate::domain::api_wallet::account::ApiAccountDomain;
+use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
+use crate::domain::chain::ChainDomain;
+use crate::response_vo::{FeeDetails, FeeDetailsVo};
 use crate::{
     domain::{
         api_wallet::{adapter::Tx, adapter_factory::API_ADAPTER_FACTORY, bill::ApiBillDomain},
@@ -11,6 +14,7 @@ use wallet_chain_interact::{
     tron::{TronChain, protocol::account::AccountResourceDetail},
     types::ChainPrivateKey,
 };
+use wallet_database::entities::chain::ChainEntity;
 use wallet_database::{
     entities::{
         api_account::ApiAccountEntity,
@@ -28,9 +32,6 @@ use wallet_transport_backend::{
     api::permission::TransPermission, consts::endpoint, request::PermissionData,
 };
 use wallet_types::constant::chain_code;
-use wallet_database::entities::chain::ChainEntity;
-use crate::domain::chain::ChainDomain;
-use crate::response_vo::{FeeDetails, FeeDetailsVo};
 
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
@@ -159,11 +160,11 @@ impl ApiChainTransDomain {
         tracing::info!("get_coin ------------------- 8:");
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let chain = ChainEntity::detail(pool.as_ref(), &params.base.chain_code).await?.ok_or(
-            crate::BusinessError::Chain(
-                crate::ChainError::NotFound(params.base.chain_code.to_string()),
-            )
-        )?;
+        let chain = ChainEntity::detail(pool.as_ref(), &params.base.chain_code)
+            .await?
+            .ok_or(crate::BusinessError::Chain(crate::ChainError::NotFound(
+                params.base.chain_code.to_string(),
+            )))?;
 
         let coin = CoinDomain::get_coin(
             &params.base.chain_code,
@@ -177,12 +178,10 @@ impl ApiChainTransDomain {
 
         tracing::info!("get_coin ------------------- 9:");
         let adapter = API_ADAPTER_FACTORY
-            .get()
-            .unwrap()
+            .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
+            .await
             .get_transaction_adapter(params.base.chain_code.as_str())
             .await?;
-
-
 
         let resp = adapter.transfer(&params, private_key).await?;
 

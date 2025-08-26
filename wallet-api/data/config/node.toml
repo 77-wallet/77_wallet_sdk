@@ -67,9 +67,9 @@ active = true
 
 [[nodes.bnb.nodes]]
 node_name = "77 Official Nodes"
-rpc_url = "https://apprpc.safew.cc/bnb"
+rpc_url = "https://bsc-testnet-rpc.publicnode.com"
 http_url = ""
-network = "mainnet"
+network = "testnet"
 active = true
 
 [[nodes.sol.nodes]]
