@@ -56,11 +56,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("res --------------------- 3: {res:?}");
 
 
-    let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
-    let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
+    // ltc
+    // let from = "ltc1q943fux4qwp6engz7eds8sp5kk8ru7040rezrq7";
+    // let to = "LS5yMXTDu8VD27JHZertA8yYV6PViyJq7F";
+
+    let from = "ltc1q943fux4qwp6engz7eds8sp5kk8ru7040rezrq7";
+    let to = "LS5yMXTDu8VD27JHZertA8yYV6PViyJq7F";
     let value = "0.000001";
-    let trade_no = "0x0000000035";
-    let res1 =  wallet_manager.api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid).await;
+    let trade_no = "0x0000000040";
+    let res1 =  wallet_manager.api_withdrawal_order(from, to, value, "ltc", None, "LTC", trade_no, 1, uid).await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
     // let topics = vec![

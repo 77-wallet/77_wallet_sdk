@@ -24,9 +24,9 @@ use wallet_chain_interact::{
         },
         provider::ProviderConfig,
     },
+    tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::{
     entities::{
         api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
@@ -80,7 +80,10 @@ impl BtcTx {
 
 #[async_trait::async_trait]
 impl Tx for BtcTx {
-    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
 
@@ -120,6 +123,7 @@ impl Tx for BtcTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
+        tracing::info!("transfer ------------------- 11:");
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
@@ -127,8 +131,8 @@ impl Tx for BtcTx {
             &pool,
         )
         .await?
-        .ok_or(crate::BusinessError::Account(
-            crate::AccountError::NotFound(params.base.from.to_string()),
+        .ok_or(crate::BusinessError::ApiWallet(
+            crate::ApiWalletError::NotFoundAccount,
         ))?;
         let params = TransferArg::new(
             &params.base.from,
@@ -143,7 +147,7 @@ impl Tx for BtcTx {
             .chain
             .transfer(params, private_key)
             .await
-            .map_err(ChainTransDomain::handle_btc_fee_error)?;
+            .map_err(|e| self.handle_btc_fee_error(e))?;
 
         Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
     }

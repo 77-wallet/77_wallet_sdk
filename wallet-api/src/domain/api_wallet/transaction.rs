@@ -150,6 +150,7 @@ impl ApiChainTransDomain {
             ))?;
         };
 
+        tracing::info!("get_coin ------------------- 7:");
         let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,
             &params.base.chain_code,
