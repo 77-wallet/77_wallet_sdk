@@ -534,7 +534,7 @@ impl Multisig for SolTx {
         Ok(self.chain.sign_with_res(instructions, params, key).await?)
     }
 
-    async fn estimate_fee(
+    async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
         coin: &CoinEntity,

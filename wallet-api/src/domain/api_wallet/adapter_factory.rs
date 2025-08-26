@@ -6,7 +6,7 @@ use crate::domain::{
     },
     chain::rpc_need_header,
 };
-use crate::{BusinessError, Context};
+use crate::{BusinessError, Context, ServiceError};
 use dashmap::DashMap;
 use std::sync::Arc;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
@@ -21,56 +21,55 @@ pub struct ApiChainAdapterFactory {
 }
 
 impl ApiChainAdapterFactory {
-    pub async fn new() -> ApiChainAdapterFactory {
+    pub async fn new() -> Result< ApiChainAdapterFactory, ServiceError>  {
         let adapter = DashMap::new();
         adapter.insert(
             ChainCode::Bitcoin.to_string(),
             Self::new_transaction_adapter(ChainCode::Bitcoin)
-                .await
-                .unwrap(),
+                .await?,
         );
         adapter.insert(
             ChainCode::Dogcoin.to_string(),
             Self::new_transaction_adapter(ChainCode::Dogcoin)
-                .await
-                .unwrap(),
+                .await?,
         );
         adapter.insert(
             ChainCode::Ethereum.to_string(),
             Self::new_transaction_adapter(ChainCode::Ethereum)
-                .await
-                .unwrap(),
+                .await?,
         );
         adapter.insert(
             ChainCode::Litecoin.to_string(),
             Self::new_transaction_adapter(ChainCode::Litecoin)
-                .await
-                .unwrap(),
+                .await?,
         );
         adapter.insert(
             ChainCode::Solana.to_string(),
             Self::new_transaction_adapter(ChainCode::Solana)
-                .await
-                .unwrap(),
+                .await?,
         );
         adapter.insert(
             ChainCode::Sui.to_string(),
-            Self::new_transaction_adapter(ChainCode::Sui).await.unwrap(),
+            Self::new_transaction_adapter(ChainCode::Sui).await?,
         );
         adapter.insert(
             ChainCode::Ton.to_string(),
-            Self::new_transaction_adapter(ChainCode::Ton).await.unwrap(),
+            Self::new_transaction_adapter(ChainCode::Ton).await?,
         );
         adapter.insert(
             ChainCode::Tron.to_string(),
             Self::new_transaction_adapter(ChainCode::Tron)
-                .await
-                .unwrap(),
+                .await?,
+        );
+        adapter.insert(
+            ChainCode::BnbSmartChain.to_string(),
+            Self::new_transaction_adapter(ChainCode::BnbSmartChain)
+                .await?,
         );
 
-        ApiChainAdapterFactory {
+       Ok(ApiChainAdapterFactory {
             transaction_adapter: adapter,
-        }
+        })
     }
 
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, crate::ServiceError> {

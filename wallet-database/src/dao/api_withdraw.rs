@@ -17,7 +17,7 @@ impl Dao for ApiWithdrawDao {
     {
         let sql = r#"
             Insert into api_withdraws
-                (id,uid,name,from_addr,to_addr,value,decimals,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
+                (id,uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
             values
                 ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             on conflict (trade_no)
@@ -33,7 +33,7 @@ impl Dao for ApiWithdrawDao {
             .bind(&input.from_addr)
             .bind(&input.to_addr)
             .bind(&input.value)
-            .bind(&input.decimals)
+            .bind(&input.chain_code)
             .bind(&input.token_addr)
             .bind(&input.symbol)
             .bind(&input.trade_no)
@@ -61,7 +61,7 @@ impl ApiWithdrawDao {
     {
         let sql = r#"
             INSERT INTO api_withdraws
-                (uid,name,from_addr,to_addr,value,decimals,token_addr,symbol,trade_no,trade_type,status,tx_hash,send_tx_at,created_at,updated_at)
+                (uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,tx_hash,send_tx_at,created_at,updated_at)
             VALUES
                 (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         "#;
@@ -72,7 +72,7 @@ impl ApiWithdrawDao {
             .bind(&api_withdraw.from_addr)
             .bind(&api_withdraw.to_addr)
             .bind(&api_withdraw.value)
-            .bind(&api_withdraw.decimals)
+            .bind(&api_withdraw.chain_code)
             .bind(&api_withdraw.token_addr)
             .bind(&api_withdraw.symbol)
             .bind(&api_withdraw.trade_no)

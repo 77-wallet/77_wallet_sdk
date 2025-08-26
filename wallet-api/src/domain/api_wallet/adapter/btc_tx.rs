@@ -410,7 +410,7 @@ impl Multisig for BtcTx {
         Ok(self.chain.sign_multisig_tx(params, key).await?)
     }
 
-    async fn estimate_fee(
+    async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
         coin: &CoinEntity,

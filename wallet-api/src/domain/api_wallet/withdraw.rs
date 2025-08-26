@@ -1,5 +1,7 @@
 use std::str::FromStr;
+use alloy::primitives::U256;
 use rust_decimal::Decimal;
+use wallet_chain_interact::eth::FeeSetting;
 use wallet_database::entities::api_bill::ApiBillKind;
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_database::repositories::api_account::ApiAccountRepo;
@@ -38,7 +40,8 @@ impl ApiWithdrawDomain {
             &req.from,
             &req.to,
             &req.value,
-            &req.token_address,
+            &req.chain_code,
+            req.token_address.clone(),
             &req.symbol,
             &req.trade_no,
             req.trade_type,
@@ -63,7 +66,7 @@ impl ApiWithdrawDomain {
                 &req.chain_code.to_string(),
                 &req.symbol.to_string(),
             );
-            params.with_token(Some(req.token_address.clone()));
+            params.with_token(req.token_address.clone());
 
             let req = TransferReq {
                 base: params,
