@@ -425,7 +425,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let chain_code = None;
         let is_multisig = None;
         // let account_id = Some(1);
@@ -436,9 +436,9 @@ mod test {
         let res = wallet_manager
             .get_assets_list_v2(address, account_id, chain_code, is_multisig)
             .await;
-        tracing::info!("get_account_chain_assets: {res:?}");
+        // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
-        tracing::info!("get_account_chain_assets: {res:?}");
+        tracing::info!("get_account_chain_assets: {}", res);
         Ok(())
     }
 

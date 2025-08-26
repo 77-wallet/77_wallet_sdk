@@ -115,19 +115,26 @@ impl BackendApi {
             let req =
                 AllTokenQueryByPageReq::new(create_at.clone(), update_at.clone(), page, page_size);
 
-            match self.query_all_tokens(req).await {
-                Ok(mut resp) => {
-                    result.append(&mut resp.list);
-                    page += 1;
-                    if page >= resp.total_page {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("query_all_tokens error: {e:?}");
-                    break;
-                }
+            let mut resp = self.query_all_tokens(req).await?;
+            result.append(&mut resp.list);
+            page += 1;
+            if page >= resp.total_page {
+                break;
             }
+
+            // match self.query_all_tokens(req).await {
+            //     Ok(mut resp) => {
+            //         result.append(&mut resp.list);
+            //         page += 1;
+            //         if page >= resp.total_page {
+            //             break;
+            //         }
+            //     }
+            //     Err(e) => {
+            //         tracing::error!("query_all_tokens error: {e:?}");
+            //         break;
+            //     }
+            // }
         }
 
         Ok(result)
