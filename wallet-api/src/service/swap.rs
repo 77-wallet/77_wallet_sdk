@@ -610,7 +610,7 @@ impl SwapServer {
         let allowance = adapter
             .allowance(&req.from, &req.contract, &req.spender)
             .await?;
-        if allowance >= alloy::primitives::U256::ZERO {
+        if allowance > alloy::primitives::U256::ZERO {
             return Err(crate::BusinessError::Chain(
                 crate::ChainError::ApproveRepeated,
             ))?;
