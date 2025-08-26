@@ -1,4 +1,7 @@
 use crate::domain::api_wallet::account::ApiAccountDomain;
+use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
+use crate::domain::chain::ChainDomain;
+use crate::response_vo::{FeeDetails, FeeDetailsVo};
 use crate::{
     domain::{
         api_wallet::{adapter::Tx, adapter_factory::API_ADAPTER_FACTORY, bill::ApiBillDomain},
@@ -11,6 +14,7 @@ use wallet_chain_interact::{
     tron::{TronChain, protocol::account::AccountResourceDetail},
     types::ChainPrivateKey,
 };
+use wallet_database::entities::chain::ChainEntity;
 use wallet_database::{
     entities::{
         api_account::ApiAccountEntity,
@@ -146,13 +150,21 @@ impl ApiChainTransDomain {
             ))?;
         };
 
-        let private_key = Self::get_key(
+        let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,
             &params.base.chain_code,
             &params.password,
-            &params.signer,
         )
         .await?;
+
+        tracing::info!("get_coin ------------------- 8:");
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let chain = ChainEntity::detail(pool.as_ref(), &params.base.chain_code)
+            .await?
+            .ok_or(crate::BusinessError::Chain(crate::ChainError::NotFound(
+                params.base.chain_code.to_string(),
+            )))?;
 
         let coin = CoinDomain::get_coin(
             &params.base.chain_code,
@@ -164,13 +176,16 @@ impl ApiChainTransDomain {
         // params.base.with_token(coin.token_address());
         params.base.with_decimals(coin.decimals);
 
+        tracing::info!("get_coin ------------------- 9:");
         let adapter = API_ADAPTER_FACTORY
-            .get()
-            .unwrap()
+            .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
+            .await
             .get_transaction_adapter(params.base.chain_code.as_str())
             .await?;
+
         let resp = adapter.transfer(&params, private_key).await?;
 
+        tracing::info!("get_coin ------------------- 10:");
         let mut new_bill = ApiBillEntity::try_from(&params)?;
         new_bill.tx_kind = bill_kind;
         new_bill.hash = resp.tx_hash.clone();
@@ -221,24 +236,5 @@ impl ApiChainTransDomain {
         }
 
         Ok(resp.tx_hash)
-    }
-
-    // 如果传入了signer 则使用signer的私钥
-    pub async fn get_key(
-        from: &str,
-        chain_code: &str,
-        password: &str,
-        signer: &Option<Signer>,
-    ) -> Result<ChainPrivateKey, crate::ServiceError> {
-        let address = if let Some(signer) = signer {
-            signer.address.clone()
-        } else {
-            from.to_string()
-        };
-
-        let key =
-            ApiAccountDomain::open_subpk_with_password(chain_code, &address, password).await?;
-
-        Ok(key)
     }
 }

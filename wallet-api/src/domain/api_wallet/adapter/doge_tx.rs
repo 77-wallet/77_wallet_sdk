@@ -372,7 +372,7 @@ impl Multisig for DogeTx {
         .into())
     }
 
-    async fn estimate_fee(
+    async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
         coin: &CoinEntity,

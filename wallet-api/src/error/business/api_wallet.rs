@@ -10,6 +10,8 @@ pub enum ApiWalletError {
     ChainConfigNotFound(String),
     #[error("Api Account not exist")]
     NotFoundAccount,
+    #[error("gas oracle not exist")]
+    GasOracle,
 }
 
 impl ApiWalletError {
@@ -20,6 +22,7 @@ impl ApiWalletError {
             ApiWalletError::NotFound => 4402,
             ApiWalletError::ChainConfigNotFound(_) => 4403,
             ApiWalletError::NotFoundAccount => 4403,
+            ApiWalletError::GasOracle => 4404,
         }
     }
 }

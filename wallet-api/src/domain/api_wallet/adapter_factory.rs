@@ -6,11 +6,12 @@ use crate::domain::{
     },
     chain::rpc_need_header,
 };
-use crate::{BusinessError, Context};
+use crate::{BusinessError, Context, ServiceError};
 use dashmap::DashMap;
 use std::sync::Arc;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 use wallet_types::chain::chain::ChainCode;
+use wallet_types::chain::network::NetworkKind;
 
 pub(crate) static API_ADAPTER_FACTORY: once_cell::sync::Lazy<
     tokio::sync::OnceCell<ApiChainAdapterFactory>,
@@ -21,56 +22,48 @@ pub struct ApiChainAdapterFactory {
 }
 
 impl ApiChainAdapterFactory {
-    pub async fn new() -> ApiChainAdapterFactory {
+    pub async fn new() -> Result<ApiChainAdapterFactory, ServiceError> {
         let adapter = DashMap::new();
         adapter.insert(
             ChainCode::Bitcoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Bitcoin)
-                .await
-                .unwrap(),
+            Self::new_transaction_adapter(ChainCode::Bitcoin).await?,
         );
         adapter.insert(
             ChainCode::Dogcoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Dogcoin)
-                .await
-                .unwrap(),
+            Self::new_transaction_adapter(ChainCode::Dogcoin).await?,
         );
         adapter.insert(
             ChainCode::Ethereum.to_string(),
-            Self::new_transaction_adapter(ChainCode::Ethereum)
-                .await
-                .unwrap(),
+            Self::new_transaction_adapter(ChainCode::Ethereum).await?,
         );
         adapter.insert(
             ChainCode::Litecoin.to_string(),
-            Self::new_transaction_adapter(ChainCode::Litecoin)
-                .await
-                .unwrap(),
+            Self::new_transaction_adapter(ChainCode::Litecoin).await?,
         );
         adapter.insert(
             ChainCode::Solana.to_string(),
-            Self::new_transaction_adapter(ChainCode::Solana)
-                .await
-                .unwrap(),
+            Self::new_transaction_adapter(ChainCode::Solana).await?,
         );
         adapter.insert(
             ChainCode::Sui.to_string(),
-            Self::new_transaction_adapter(ChainCode::Sui).await.unwrap(),
+            Self::new_transaction_adapter(ChainCode::Sui).await?,
         );
         adapter.insert(
             ChainCode::Ton.to_string(),
-            Self::new_transaction_adapter(ChainCode::Ton).await.unwrap(),
+            Self::new_transaction_adapter(ChainCode::Ton).await?,
         );
         adapter.insert(
             ChainCode::Tron.to_string(),
-            Self::new_transaction_adapter(ChainCode::Tron)
-                .await
-                .unwrap(),
+            Self::new_transaction_adapter(ChainCode::Tron).await?,
+        );
+        adapter.insert(
+            ChainCode::BnbSmartChain.to_string(),
+            Self::new_transaction_adapter(ChainCode::BnbSmartChain).await?,
         );
 
-        ApiChainAdapterFactory {
+        Ok(ApiChainAdapterFactory {
             transaction_adapter: adapter,
-        }
+        })
     }
 
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, crate::ServiceError> {
@@ -87,6 +80,7 @@ impl ApiChainAdapterFactory {
         chain_code: ChainCode,
     ) -> Result<Arc<dyn Tx + Send + Sync>, crate::ServiceError> {
         let node = Self::get_chain_node(chain_code).await?;
+        tracing::info!(rpc_url=%node.rpc_url, "new_transaction_adapter");
         let header_opt = if rpc_need_header(&node.rpc_url)? {
             Some(crate::Context::get_rpc_header().await?)
         } else {
@@ -96,10 +90,18 @@ impl ApiChainAdapterFactory {
             ChainCode::Tron => Ok(Arc::new(TronTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Bitcoin => Ok(Arc::new(BtcTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Solana => Ok(Arc::new(SolTx::new(&node.rpc_url, header_opt)?)),
-            ChainCode::Ethereum => Ok(Arc::new(EthTx::new(chain_code, &node.rpc_url, header_opt)?)),
-            ChainCode::BnbSmartChain => {
-                Ok(Arc::new(EthTx::new(chain_code, &node.rpc_url, header_opt)?))
-            }
+            ChainCode::Ethereum => Ok(Arc::new(EthTx::new(
+                chain_code,
+                &node.rpc_url,
+                NetworkKind::from(node.network.as_str()),
+                header_opt,
+            )?)),
+            ChainCode::BnbSmartChain => Ok(Arc::new(EthTx::new(
+                chain_code,
+                &node.rpc_url,
+                NetworkKind::from(node.network.as_str()),
+                header_opt,
+            )?)),
             ChainCode::Litecoin => Ok(Arc::new(LtcTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Dogcoin => Ok(Arc::new(DogeTx::new(&node.rpc_url, header_opt)?)),
             ChainCode::Sui => Ok(Arc::new(SuiTx::new(&node.rpc_url, header_opt)?)),

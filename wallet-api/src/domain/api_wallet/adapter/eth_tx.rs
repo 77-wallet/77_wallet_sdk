@@ -16,7 +16,9 @@ use crate::{
     request::transaction::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
-    response_vo::{EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams},
+    response_vo::{
+        EthereumFeeDetails, FeeDetails, FeeDetailsVo, MultisigQueueFeeParams, TransferParams,
+    },
 };
 
 use alloy::{
@@ -26,6 +28,7 @@ use alloy::{
     sol_types::{SolCall as _, SolValue},
 };
 use std::collections::HashMap;
+use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
     Error, QueryTransactionResult,
     eth::{
@@ -35,7 +38,6 @@ use wallet_chain_interact::{
     },
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
@@ -44,6 +46,7 @@ use wallet_database::entities::{
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_types::chain::chain::ChainCode;
+use wallet_types::chain::network::NetworkKind;
 use wallet_utils::{serde_func, unit};
 
 pub(crate) struct EthTx {
@@ -55,9 +58,9 @@ impl EthTx {
     pub(crate) fn new(
         chain_code: ChainCode,
         rpc_url: &str,
+        network: NetworkKind,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
-        let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
         let provider = eth::Provider::new(rpc_client)?;
@@ -225,7 +228,10 @@ impl Oracle for EthTx {
 
 #[async_trait::async_trait]
 impl Tx for EthTx {
-    async fn account_resource(&self, owner_address: &str) -> Result<AccountResourceDetail, ServiceError> {
+    async fn account_resource(
+        &self,
+        owner_address: &str,
+    ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
 
@@ -263,35 +269,55 @@ impl Tx for EthTx {
         params: &TransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
+        tracing::info!("transfer ------------------- 11:");
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        let fee_setting = pare_fee_setting(params.fee_setting.as_str())?;
+        let from = params.base.from.as_str();
+        let to = params.base.to.as_str();
+        tracing::info!(from=%from,to=%to,value=%transfer_amount, "transfer ------------------- 12");
 
-        let balance = self.chain.balance(&params.base.from, None).await?;
-
+        // 获取主币余额
+        let eth_balance = self.chain.balance(&params.base.from, None).await?;
+        tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 13");
         // check balance
         let remain_balance = self
             .check_eth_balance(
                 &params.base.from,
-                balance,
+                eth_balance,
                 params.base.token_address.as_deref(),
                 transfer_amount,
             )
             .await?;
 
-        let fee = fee_setting.transaction_fee();
+
+        // 预估gas
+        tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 14");
+        let transfer_opt = TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
-        if remain_balance < fee {
+        if remain_balance < rc.consume {
             return Err(crate::BusinessError::Chain(
                 crate::ChainError::InsufficientFeeBalance,
             ))?;
         }
 
-        let params = TransferOpt::try_from(&params.base)?;
+        let gas_oracle = self.gas_oracle().await?;
+        let propose_gas_price = gas_oracle.propose_gas_price;
+        if propose_gas_price.is_none() {
+            return Err(crate::BusinessError::ApiWallet(
+                crate::ApiWalletError::GasOracle,
+            ))?;
+        }
+        let price =
+            unit::convert_to_u256(&propose_gas_price.unwrap(), params.base.decimals)?;
+        let fee_setting = FeeSetting::new_with_price(price);
+        let fee = fee_setting.transaction_fee();
+        let transfer_opt = TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
         let tx_hash = self
             .chain
-            .exec_transaction(params, fee_setting, private_key)
+            .exec_transaction(transfer_opt, fee_setting, private_key)
             .await?;
 
+        tracing::info!("transfer ------------------- 16: {tx_hash}");
         Ok(TransferResp::new(
             tx_hash,
             unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
@@ -691,7 +717,7 @@ impl Multisig for EthTx {
         Ok(operate.sign_message(key)?)
     }
 
-    async fn estimate_fee(
+    async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
         coin: &CoinEntity,

@@ -16,7 +16,7 @@ impl crate::WalletManager {
         to: &str,
         value: &str,
         chain_code: &str,
-        token_address: &str,
+        token_address: Option<String>,
         symbol: &str,
         trade_no: &str,
         trade_type: u8,
