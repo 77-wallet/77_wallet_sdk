@@ -341,7 +341,7 @@ impl AssetsDomain {
         // notes 不能更新币价
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // let time = wallet_utils::time::now();
-        let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.symbol, &pool).await?;
+        let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &pool).await?;
         // let coin_data = CoinData::new(
         //     Some(token.symbol.clone()),
         //     &token.symbol,
