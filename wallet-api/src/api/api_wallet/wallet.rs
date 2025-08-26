@@ -107,14 +107,14 @@ mod test {
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
-        let salt = "q1111111";
+        let salt = "";
         let wallet_name = "api_wallet";
         let account_name = "ccccc";
         let is_default_name = true;
         let wallet_password = "q1111111";
         let invite_code = None;
-        // let api_wallet_type = ApiWalletType::SubAccount;
-        let api_wallet_type = ApiWalletType::Withdrawal;
+        let api_wallet_type = ApiWalletType::SubAccount;
+        // let api_wallet_type = ApiWalletType::Withdrawal;
         let res = wallet_manager
             .create_api_wallet(
                 language_code,

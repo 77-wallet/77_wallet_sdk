@@ -288,10 +288,10 @@ impl Tx for EthTx {
             )
             .await?;
 
-
         // 预估gas
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 14");
-        let transfer_opt = TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        let transfer_opt =
+            TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
         let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
         if remain_balance < rc.consume {
@@ -307,11 +307,11 @@ impl Tx for EthTx {
                 crate::ApiWalletError::GasOracle,
             ))?;
         }
-        let price =
-            unit::convert_to_u256(&propose_gas_price.unwrap(), params.base.decimals)?;
+        let price = unit::convert_to_u256(&propose_gas_price.unwrap(), params.base.decimals)?;
         let fee_setting = FeeSetting::new_with_price(price);
         let fee = fee_setting.transaction_fee();
-        let transfer_opt = TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        let transfer_opt =
+            TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
         let tx_hash = self
             .chain
             .exec_transaction(transfer_opt, fee_setting, private_key)

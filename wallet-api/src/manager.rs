@@ -1,3 +1,4 @@
+use crate::domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory};
 use crate::infrastructure::SharedCache;
 use crate::infrastructure::inner_event::InnerEventHandle;
 use crate::infrastructure::process_unconfirm_msg::{
@@ -18,7 +19,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::SqliteContext;
 use wallet_database::factory::RepositoryFactory;
 use wallet_database::repositories::device::DeviceRepo;
-use crate::domain::api_wallet::adapter_factory::{ApiChainAdapterFactory, API_ADAPTER_FACTORY};
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
@@ -401,9 +401,9 @@ impl WalletManager {
             if let Err(e) = do_some_init().await {
                 tracing::error!("init_data error: {}", e);
             };
-            API_ADAPTER_FACTORY.get_or_try_init(|| async {
-                ApiChainAdapterFactory::new().await
-            }).await;
+            API_ADAPTER_FACTORY
+                .get_or_try_init(|| async { ApiChainAdapterFactory::new().await })
+                .await;
         });
 
         Ok(())

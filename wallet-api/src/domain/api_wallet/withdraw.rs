@@ -1,20 +1,20 @@
-use std::str::FromStr;
+use crate::ServiceError::Business;
+use crate::domain::api_wallet::transaction::ApiChainTransDomain;
+use crate::messaging::notify::api_wallet::WithdrawFront;
+use crate::request::{
+    api_wallet::trans::ApiTransReq,
+    transaction::{BaseTransferReq, TransferReq},
+};
+use crate::{ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent};
 use alloy::primitives::U256;
 use rust_decimal::Decimal;
+use std::str::FromStr;
 use wallet_chain_interact::eth::FeeSetting;
 use wallet_database::entities::api_bill::ApiBillKind;
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_database::repositories::api_account::ApiAccountRepo;
 use wallet_database::repositories::api_wallet::ApiWalletRepo;
 use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
-use crate::messaging::notify::api_wallet::WithdrawFront;
-use crate::{ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent};
-use crate::domain::api_wallet::transaction::ApiChainTransDomain;
-use crate::request::{
-    transaction::{BaseTransferReq, TransferReq, },
-    api_wallet::trans::ApiTransReq,
-};
-use crate::ServiceError::Business;
 
 pub struct ApiWithdrawDomain {}
 
@@ -24,14 +24,15 @@ impl ApiWithdrawDomain {
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // 获取钱包
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid, Some(ApiWalletType::Withdrawal)).await?.ok_or(
-            BusinessError::ApiWallet(ApiWalletError::NotFound)
-        )?;
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid, Some(ApiWalletType::Withdrawal))
+            .await?
+            .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
         // 获取账号
-        let from_account = ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool).await?.ok_or(
-            BusinessError::ApiWallet(ApiWalletError::NotFoundAccount)
-        )?;
+        let from_account =
+            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+                .await?
+                .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
 
         ApiWithdrawRepo::upsert_api_withdraw(
             &pool,
@@ -45,7 +46,8 @@ impl ApiWithdrawDomain {
             &req.symbol,
             &req.trade_no,
             req.trade_type,
-        ).await?;
+        )
+        .await?;
         tracing::info!("upsert_api_withdraw ------------------- 5:");
 
         let data = NotifyEvent::Withdraw(WithdrawFront {
@@ -75,8 +77,7 @@ impl ApiWithdrawDomain {
                 signer: None,
             };
             // 发交易
-            let tx_hash =
-                ApiChainTransDomain::transfer(req, ApiBillKind::Transfer).await?;
+            let tx_hash = ApiChainTransDomain::transfer(req, ApiBillKind::Transfer).await?;
         }
         Ok(())
     }
