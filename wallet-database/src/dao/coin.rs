@@ -312,8 +312,8 @@ impl CoinEntity {
                 .push_bind(coin.is_default)
                 .push_bind(coin.is_popular)
                 .push_bind(coin.is_custom)
+                .push_bind(coin.status)
                 .push_bind(swappable)
-                .push_bind(coin.swappable)
                 .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
                 .push_bind(coin.created_at.to_rfc3339_opts(SecondsFormat::Secs, true));
         });
