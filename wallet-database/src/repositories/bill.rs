@@ -140,6 +140,16 @@ impl BillRepo {
     ) -> Result<Option<BillEntity>, crate::Error> {
         BillDao::last_swap_bill(pool.as_ref(), from, chain_code).await
     }
+
+    pub async fn last_approve_bill(
+        from: &str,
+        to: &str,
+        contract: &str,
+        chain_code: &str,
+        pool: &DbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        BillDao::last_approve_bill(pool.as_ref(), from, to, contract, chain_code).await
+    }
 }
 
 #[async_trait::async_trait]

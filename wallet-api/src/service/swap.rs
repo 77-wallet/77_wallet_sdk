@@ -606,6 +606,21 @@ impl SwapServer {
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
+        // 本地数据库中是否有授权的交易
+        let last_bill = BillRepo::last_approve_bill(
+            &req.from,
+            &req.spender,
+            &req.contract,
+            &req.chain_code,
+            &pool,
+        )
+        .await?;
+        if last_bill.is_some() {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::ApproveRepeated,
+            ))?;
+        }
+
         // check already approved
         let allowance = adapter
             .allowance(&req.from, &req.contract, &req.spender)

@@ -121,6 +121,7 @@ impl CoinDomain {
         Ok(())
     }
 
+    // 供兑换使用的的默认稳定币地址
     pub fn get_stable_coin(chain_code: ChainCode) -> Result<String, crate::ServiceError> {
         match chain_code {
             ChainCode::Ethereum => Ok("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),

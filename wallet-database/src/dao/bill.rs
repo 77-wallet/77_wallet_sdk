@@ -209,6 +209,37 @@ impl BillDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    // 最近的一笔授权交易
+    pub(crate) async fn last_approve_bill<'a, E>(
+        pool: E,
+        from: &str,
+        to: &str,
+        contract: &str,
+        chain_code: &str,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let time = Utc::now().timestamp() - 300;
+        let sql = r#"select * 
+                from bill
+                where 
+                    from_addr = ? and chain_code = ? and tx_kind = ? and transaction_time >= ? and status = ? 
+                    and to_addr = ? and token = ?
+                ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1"#;
+        sqlx::query_as::<_, BillEntity>(sql)
+            .bind(from)
+            .bind(chain_code)
+            .bind(BillKind::Approve.to_i8())
+            .bind(time)
+            .bind(BillStatus::Pending.to_i8())
+            .bind(to)
+            .bind(contract)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     // 最近转列
     pub async fn recent_bill(
         token: &str,

@@ -150,7 +150,7 @@ impl TryFrom<&SwapReq> for SwapParams {
             value.token_out.decimals as u8,
         )?;
 
-        if value.chain_code == chain_code::ETHEREUM {
+        if value.chain_code == chain_code::ETHEREUM || value.chain_code == chain_code::BNB {
             Ok(SwapParams {
                 aggregator_addr: wallet_utils::address::parse_eth_address(&value.aggregator_addr)?,
                 amount_in,
