@@ -1,17 +1,17 @@
-use crate::domain::api_wallet::adapter::Tx;
-use crate::domain::{
-    api_wallet::adapter::{
-        btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx, sui_tx::SuiTx,
-        ton_tx::TonTx, tron_tx::TronTx,
-    },
-    chain::rpc_need_header,
+use crate::{
+    domain::{
+        api_wallet::adapter::{
+            btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx, sui_tx::SuiTx,
+            ton_tx::TonTx, tron_tx::TronTx, Tx,
+        },
+        chain::rpc_need_header,
+    }, BusinessError, Context,
+    ServiceError,
 };
-use crate::{BusinessError, Context, ServiceError};
 use dashmap::DashMap;
 use std::sync::Arc;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
-use wallet_types::chain::chain::ChainCode;
-use wallet_types::chain::network::NetworkKind;
+use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
 
 pub(crate) static API_ADAPTER_FACTORY: once_cell::sync::Lazy<
     tokio::sync::OnceCell<ApiChainAdapterFactory>,
@@ -61,9 +61,7 @@ impl ApiChainAdapterFactory {
             Self::new_transaction_adapter(ChainCode::BnbSmartChain).await?,
         );
 
-        Ok(ApiChainAdapterFactory {
-            transaction_adapter: adapter,
-        })
+        Ok(ApiChainAdapterFactory { transaction_adapter: adapter })
     }
 
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, crate::ServiceError> {

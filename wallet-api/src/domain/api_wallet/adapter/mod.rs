@@ -1,19 +1,18 @@
 use alloy::primitives::U256;
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
-use wallet_chain_interact::types::{
-    ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp,
+use wallet_chain_interact::{
+    tron::protocol::account::AccountResourceDetail,
+    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_utils::unit;
 
 use crate::{
     domain::chain::TransferResp,
     infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{
-        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
-    },
+    request::transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     response_vo::{MultisigQueueFeeParams, TransferParams},
 };
 
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
@@ -47,9 +46,7 @@ pub trait Tx {
         let transfer_amount = unit::convert_to_u256(value, decimal)?;
 
         if transfer_amount < min {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::AmountLessThanMin,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::AmountLessThanMin))?;
         }
         Ok(transfer_amount)
     }
@@ -81,13 +78,13 @@ pub trait Tx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, crate::ServiceError>;
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError>;
 

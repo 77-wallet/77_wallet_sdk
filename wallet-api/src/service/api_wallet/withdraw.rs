@@ -1,9 +1,9 @@
 use crate::domain::api_wallet::withdraw::ApiWithdrawDomain;
-use crate::request::api_wallet::trans::ApiTransReq;
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 use wallet_database::repositories::ResourcesRepo;
 use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
+use crate::request::api_wallet::trans::ApiWithdrawReq;
 
 pub struct WithdrawService {
     pub repo: ResourcesRepo,
@@ -35,7 +35,7 @@ impl WithdrawService {
         trade_type: u8,
         uid: &str,
     ) -> Result<(), crate::ServiceError> {
-        let req = ApiTransReq {
+        let req = ApiWithdrawReq {
             from: from.to_string(),
             to: to.to_string(),
             value: value.to_string(),

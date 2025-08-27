@@ -10,6 +10,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
+use wallet_database::entities::api_account::ApiAccountEntity;
 
 pub(crate) struct ApiAccountDomain {}
 
@@ -37,9 +38,7 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let res = CreateAccountRes {
-            address: address.to_string(),
-        };
+        let res = CreateAccountRes { address: address.to_string() };
         // let task_data = Self::address_init(
         //     repo,
         //     uid,
@@ -61,18 +60,18 @@ impl ApiAccountDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
-            .ok_or(crate::BusinessError::Account(
-                crate::AccountError::NotFound(address.to_string()),
-            ))?;
+            .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                address.to_string(),
+            )))?;
 
         let key = KeystoreJsonDecryptor.decrypt(password.as_ref(), &account.private_key)?;
 
         tracing::info!("get_private_key ------------------- 6: {chain_code}");
-        let chain = ChainEntity::chain_node_info(pool.as_ref(), chain_code)
-            .await?
-            .ok_or(crate::ServiceError::Business(crate::BusinessError::Chain(
+        let chain = ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or(
+            crate::ServiceError::Business(crate::BusinessError::Chain(
                 crate::ChainError::NotFound(chain_code.to_string()),
-            )))?;
+            )),
+        )?;
 
         tracing::info!("chain_code ------------------- 7: {chain_code}");
         let chain_code: ChainCode = chain_code.try_into()?;
@@ -93,16 +92,6 @@ impl ApiAccountDomain {
         };
         Ok(private_key.into())
     }
-
-    // pub(crate) async fn decrypt_seed(
-    //     password: &str,
-    //     seed: &str,
-    // ) -> Result<String, crate::ServiceError> {
-    //     let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), seed)?;
-    //     let seed = wallet_utils::conversion::vec_to_string(&data)?;
-
-    //     Ok(seed)
-    // }
 
     // pub(crate) async fn decrypt_phrase(
     //     password: &str,
@@ -220,9 +209,7 @@ impl ApiAccountDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, api_wallet_type)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 
         let account = ApiAccountRepo::find_one_by_wallet_address_index(
@@ -237,5 +224,39 @@ impl ApiAccountDomain {
         }
 
         Ok(())
+    }
+
+    pub async fn account(
+        chain_code: &str,
+        address: &str,
+    ) -> Result<ApiAccountEntity, crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
+            .await?
+            .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                address.to_string(),
+            )))?;
+        Ok(account)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use alloy::signers::local::PrivateKeySigner;
+    use wallet_crypto::{EncryptedJsonDecryptor, KeystoreJsonDecryptor};
+
+    async fn test_keystore_key() -> Result<(), Box<dyn std::error::Error>> {
+        let key = KeystoreJsonDecryptor.decrypt("q1111111".as_bytes(),r#"{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"cafaaf94330ae23b8a8eb64660d42740"},"ciphertext":"19e4fee3686f858bc45946665ee751a9964ef956d06ecee2f7a90021bd946529","kdf":"argon2id","kdfparams":{"dklen":32,"time_cost":5,"memory_cost":131072,"parallelism":8,"salt":[63,15,27,159,163,164,60,107,41,155,135,165,52,165,224,219,52,197,122,0,161,45,75,23,49,198,4,140,1,67,182,207]},"mac":"faf334de5be2b30526a8755980372718aad9b477b52753bde820cb6673bba7a9"},"id":"83577d8c-af30-44e6-9f06-5e616b0ac2be","version":3}"#)?;
+        let h = hex::encode(key);
+        let signer: PrivateKeySigner = h
+            .parse()
+            .map_err(|_| crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_keystore() {
+        let res = test_keystore_key().await;
+        assert!(res.is_ok());
     }
 }

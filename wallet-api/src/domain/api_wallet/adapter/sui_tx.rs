@@ -1,9 +1,6 @@
-use crate::domain::api_wallet::adapter::Multisig;
-use crate::response_vo::{MultisigQueueFeeParams, TransferParams};
 use crate::{
-    ServiceError,
     domain::{
-        api_wallet::adapter::{TIME_OUT, Tx},
+        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
@@ -11,15 +8,16 @@ use crate::{
     request::transaction::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
-    response_vo::CommonFeeDetails,
+    response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
+    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
-    Error, QueryTransactionResult,
-    sui::{Provider, SuiChain, transfer::TransferOpt},
+    sui::{transfer::TransferOpt, Provider, SuiChain}, tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    Error,
+    QueryTransactionResult,
 };
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
@@ -29,6 +27,7 @@ use wallet_database::entities::{
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::api::BackendApi;
 use wallet_utils::unit;
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct SuiTx {
     chain: SuiChain,
@@ -89,18 +88,14 @@ impl Tx for SuiTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
-        let balance = self
-            .chain
-            .balance(&params.base.from, params.base.token_address.clone())
-            .await?;
+        let balance =
+            self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
         if balance < transfer_amount {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
         let req = TransferOpt::new(
@@ -111,9 +106,7 @@ impl Tx for SuiTx {
         )?;
 
         let mut helper = req.select_coin(&self.chain.provider).await?;
-        let pt = req
-            .build_pt(&self.chain.provider, &mut helper, None)
-            .await?;
+        let pt = req.build_pt(&self.chain.provider, &mut helper, None).await?;
 
         let gas = self.chain.estimate_fee(&params.base.from, pt).await?;
 
@@ -143,7 +136,7 @@ impl Tx for SuiTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
@@ -156,9 +149,7 @@ impl Tx for SuiTx {
         let params = TransferOpt::new(&req.from, &req.to, amount, req.token_address.clone())?;
 
         let mut helper = params.select_coin(&self.chain.provider).await?;
-        let pt = params
-            .build_pt(&self.chain.provider, &mut helper, None)
-            .await?;
+        let pt = params.build_pt(&self.chain.provider, &mut helper, None).await?;
 
         let gas = self.chain.estimate_fee(&req.from, pt).await?;
 

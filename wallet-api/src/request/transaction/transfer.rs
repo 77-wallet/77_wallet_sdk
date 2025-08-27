@@ -1,6 +1,4 @@
-use chrono::Utc;
 use wallet_chain_interact::eth;
-use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
 use wallet_utils::unit;
 
 #[derive(Debug, Clone)]
@@ -115,39 +113,7 @@ impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
     }
 }
 
-impl TryFrom<&TransferReq> for ApiBillEntity {
-    type Error = crate::ServiceError;
 
-    fn try_from(req: &TransferReq) -> Result<Self, Self::Error> {
-        let value = wallet_utils::unit::string_to_f64(&req.base.value)?;
-        let res = ApiBillEntity {
-            id: 0,
-            hash: "".to_string(),
-            from_addr: req.base.from.clone(),
-            to_addr: req.base.to.clone(),
-            token: req.base.token_address.clone(),
-            value: req.base.value.clone(),
-            symbol: req.base.symbol.clone(),
-            chain_code: req.base.chain_code.clone(),
-            tx_kind: ApiBillKind::Transfer,
-            owner: "".to_string(),
-            status: 1,
-            queue_id: "".to_owned(),
-            notes: req.base.notes.clone().unwrap_or_default(),
-            transaction_fee: "0".to_string(),
-            resource_consume: "".to_string(),
-            block_height: "0".to_string(),
-            signer: "".to_string(),
-            extra: "".to_string(),
-            created_at: Default::default(),
-            transfer_type: 0,
-            is_multisig: 0,
-            updated_at: None,
-            transaction_time: Utc::now(),
-        };
-        Ok(res)
-    }
-}
 
 #[derive(Debug)]
 pub struct QueryBillResultReq {

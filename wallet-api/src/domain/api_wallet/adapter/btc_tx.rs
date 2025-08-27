@@ -2,7 +2,7 @@ use crate::{
     ServiceError,
     domain::{
         api_wallet::adapter::{Multisig, TIME_OUT, Tx},
-        chain::{TransferResp, transaction::ChainTransDomain},
+        chain::{TransferResp},
         coin::TokenCurrencyGetter,
         multisig::MultisigDomain,
     },
@@ -14,7 +14,6 @@ use crate::{
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
     Error,
     btc::{
@@ -25,6 +24,7 @@ use wallet_chain_interact::{
         },
         provider::ProviderConfig,
     },
+    tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_database::{
@@ -37,6 +37,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::api::BackendApi;
 use wallet_utils::serde_func::serde_to_string;
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct BtcTx {
     chain: BtcChain,
@@ -120,9 +121,10 @@ impl Tx for BtcTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
+        tracing::info!("transfer ------------------- 11:");
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
@@ -130,8 +132,8 @@ impl Tx for BtcTx {
             &pool,
         )
         .await?
-        .ok_or(crate::BusinessError::Account(
-            crate::AccountError::NotFound(params.base.from.to_string()),
+        .ok_or(crate::BusinessError::ApiWallet(
+            crate::ApiWalletError::NotFoundAccount,
         ))?;
         let params = TransferArg::new(
             &params.base.from,
@@ -146,14 +148,14 @@ impl Tx for BtcTx {
             .chain
             .transfer(params, private_key)
             .await
-            .map_err(ChainTransDomain::handle_btc_fee_error)?;
+            .map_err(|e| self.handle_btc_fee_error(e))?;
 
         Ok(TransferResp::new(tx.tx_hash, tx.fee.to_string()))
     }
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;

@@ -1,14 +1,13 @@
-use crate::ServiceError;
-use crate::domain::api_wallet::adapter::Tx;
-use crate::domain::api_wallet::adapter::btc_tx::BtcTx;
-use crate::domain::api_wallet::adapter::doge_tx::DogeTx;
-use crate::domain::api_wallet::adapter::eth_tx::EthTx;
-use crate::domain::api_wallet::adapter::ltx_tx::LtcTx;
-use crate::domain::api_wallet::adapter::sol_tx::SolTx;
-use crate::domain::api_wallet::adapter::sui_tx::SuiTx;
-use crate::domain::api_wallet::adapter::ton_tx::TonTx;
-use crate::domain::api_wallet::adapter::tron_tx::TronTx;
+use crate::{
+    domain::api_wallet::adapter::{
+        btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx, sui_tx::SuiTx,
+        ton_tx::TonTx, tron_tx::TronTx, Tx,
+    },
+    request::api_wallet::trans::ApiTransferReq,
+    ServiceError,
+};
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
+use crate::request::api_wallet::trans::ApiBaseTransferReq;
 
 // 创建一个枚举来包装所有 Tx 实现
 pub enum ApiTxAdapter {
@@ -151,7 +150,7 @@ impl Tx for ApiTxAdapter {
 
     async fn transfer(
         &self,
-        params: &crate::request::transaction::TransferReq,
+        params: &ApiTransferReq,
         private_key: wallet_chain_interact::types::ChainPrivateKey,
     ) -> Result<crate::domain::chain::TransferResp, crate::ServiceError> {
         match self {
@@ -169,7 +168,7 @@ impl Tx for ApiTxAdapter {
 
     async fn estimate_fee(
         &self,
-        req: crate::request::transaction::BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
         match self {

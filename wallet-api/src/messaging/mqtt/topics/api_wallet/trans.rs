@@ -1,19 +1,11 @@
-use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
-use crate::domain::api_wallet::transaction::ApiChainTransDomain;
-use crate::domain::api_wallet::withdraw::ApiWithdrawDomain;
-use crate::messaging::notify::api_wallet::WithdrawFront;
-use crate::request::api_wallet::trans::ApiTransReq;
-use crate::request::transaction::TransferReq;
 use crate::{
-    domain::chain::transaction::ChainTransDomain,
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
-    request::transaction::BaseTransferReq,
+    domain::{api_wallet::withdraw::ApiWithdrawDomain, chain::transaction::ChainTransDomain},
+    request::{
+        api_wallet::trans::ApiWithdrawReq,
+        transaction::{BaseTransferReq, TransferReq},
+    },
     service::transaction::TransactionService,
 };
-use rust_decimal::Decimal;
-use std::str::FromStr;
-use wallet_database::entities::api_bill::ApiBillKind;
-use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
 use wallet_database::{entities::assets::AssetsId, repositories::api_assets::ApiAssetsRepo};
 use wallet_utils::conversion;
 
@@ -54,10 +46,8 @@ impl TransMsg {
         let strategy = backend_api.query_collection_strategy(&self.uid).await?;
         let threshold = strategy.threshold;
 
-        let Some(chain_config) = strategy
-            .chain_configs
-            .iter()
-            .find(|config| config.chain_code == self.chain_code)
+        let Some(chain_config) =
+            strategy.chain_configs.iter().find(|config| config.chain_code == self.chain_code)
         else {
             return Err(crate::BusinessError::ApiWallet(
                 crate::ApiWalletError::ChainConfigNotFound(self.chain_code.to_owned()),
@@ -148,12 +138,9 @@ impl TransMsg {
     pub(crate) async fn withdraw(&self) -> Result<(), crate::ServiceError> {
         // 验证金额是否需要输入密码
 
-        let token_address = if self.token_address.is_empty() {
-            None
-        } else {
-            Some(self.token_address.clone())
-        };
-        let req = ApiTransReq {
+        let token_address =
+            if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
+        let req = ApiWithdrawReq {
             uid: self.uid.to_string(),
             from: self.from.to_string(),
             to: self.to.to_string(),

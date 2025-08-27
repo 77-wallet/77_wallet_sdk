@@ -48,6 +48,7 @@ use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_types::chain::chain::ChainCode;
 use wallet_types::chain::network::NetworkKind;
 use wallet_utils::{serde_func, unit};
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct EthTx {
     chain_code: ChainCode,
@@ -266,7 +267,7 @@ impl Tx for EthTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         tracing::info!("transfer ------------------- 11:");
@@ -292,6 +293,7 @@ impl Tx for EthTx {
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 14");
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 15");
         let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
         if remain_balance < rc.consume {
@@ -312,6 +314,7 @@ impl Tx for EthTx {
         let fee = fee_setting.transaction_fee();
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        tracing::info!(private_key=%private_key.to_string(), "");
         let tx_hash = self
             .chain
             .exec_transaction(transfer_opt, fee_setting, private_key)
@@ -326,7 +329,7 @@ impl Tx for EthTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
