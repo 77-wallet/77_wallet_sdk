@@ -27,7 +27,7 @@ use wallet_database::{
     entities::{
         account::AccountEntity,
         assets::AssetsEntity,
-        bill::{BillExtraSwap, BillStatus, NewBillEntity},
+        bill::{BillExtraSwap, BillKind, BillStatus, NewBillEntity},
         coin::CoinEntity,
     },
     pagination::Pagination,
@@ -612,6 +612,7 @@ impl SwapServer {
             &req.spender,
             &req.contract,
             &req.chain_code,
+            BillKind::Approve,
             &pool,
         )
         .await?;
@@ -776,6 +777,22 @@ impl SwapServer {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
+        // 本地数据库中是否有授权的交易
+        let last_bill = BillRepo::last_approve_bill(
+            &req.from,
+            &req.spender,
+            &req.contract,
+            &req.chain_code,
+            BillKind::UnApprove,
+            &pool,
+        )
+        .await?;
+        if last_bill.is_some() {
+            return Err(crate::BusinessError::Chain(
+                crate::ChainError::ApproveCanceling,
+            ))?;
+        }
+
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             wallet_database::entities::bill::BillKind::Approve,
             Process::Broadcast,
@@ -791,7 +808,6 @@ impl SwapServer {
             tx_hash: resp.tx_hash.clone(),
         };
         TaskQueueDomain::send_or_to_queue(backend, SWAP_APPROVE_CANCEL).await?;
-
         // 写入本地交易
         let mut new_bill = NewBillEntity::from(req);
         new_bill.hash = resp.tx_hash.clone();

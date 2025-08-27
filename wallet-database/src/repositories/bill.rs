@@ -1,7 +1,7 @@
 use super::ResourcesRepo;
 use crate::{
     dao::bill::BillDao,
-    entities::bill::{BillEntity, BillUpdateEntity, RecentBillListVo},
+    entities::bill::{BillEntity, BillKind, BillUpdateEntity, RecentBillListVo},
     pagination::Pagination,
     DbPool,
 };
@@ -146,9 +146,10 @@ impl BillRepo {
         to: &str,
         contract: &str,
         chain_code: &str,
+        tx_kind: BillKind,
         pool: &DbPool,
     ) -> Result<Option<BillEntity>, crate::Error> {
-        BillDao::last_approve_bill(pool.as_ref(), from, to, contract, chain_code).await
+        BillDao::last_approve_bill(pool.as_ref(), from, to, contract, chain_code, tx_kind).await
     }
 }
 

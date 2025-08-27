@@ -216,6 +216,7 @@ impl BillDao {
         to: &str,
         contract: &str,
         chain_code: &str,
+        tx_kind: BillKind,
     ) -> Result<Option<BillEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -230,7 +231,7 @@ impl BillDao {
         sqlx::query_as::<_, BillEntity>(sql)
             .bind(from)
             .bind(chain_code)
-            .bind(BillKind::Approve.to_i8())
+            .bind(tx_kind.to_i8())
             .bind(time)
             .bind(BillStatus::Pending.to_i8())
             .bind(to)

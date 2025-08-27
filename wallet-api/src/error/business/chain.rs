@@ -40,6 +40,8 @@ pub enum ChainError {
     LockPeriodTooShort,
     #[error("ApproveRepeated")]
     ApproveRepeated,
+    #[error("ApproveCanceling")]
+    ApproveCanceling,
 }
 
 impl ChainError {
@@ -64,6 +66,7 @@ impl ChainError {
             ChainError::WitnessAccountDoesNotHaveAnyReward => 3517,
             ChainError::LockPeriodTooShort => 3518,
             ChainError::ApproveRepeated => 3519,
+            ChainError::ApproveCanceling => 3520,
         }
     }
 }
