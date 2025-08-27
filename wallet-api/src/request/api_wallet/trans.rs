@@ -1,3 +1,5 @@
+use crate::request::transaction::{BaseTransferReq, Signer};
+
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiTransReq {
@@ -14,4 +16,12 @@ pub struct ApiTransReq {
     pub trade_no: String,
     // 交易类型： 1 提币 / 2 归集
     pub trade_type: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransferReq {
+    pub base: BaseTransferReq,
+    pub password: String,
+    pub fee_setting: String,
+    pub signer: Option<Signer>,
 }

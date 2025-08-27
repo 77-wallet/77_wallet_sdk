@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
     let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
     let value = "0.000001";
-    let trade_no = "0x0000000043";
+    let trade_no = "0x0000000044";
     let res1 = wallet_manager
         .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid)
         .await;

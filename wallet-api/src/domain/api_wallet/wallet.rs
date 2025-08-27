@@ -5,10 +5,7 @@ use wallet_crypto::{
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        api_account::ApiAccountRepo,
-        api_wallet::ApiWalletRepo,
-        chain::{ChainRepo, ChainRepoTrait as _},
-        coin::{CoinRepo, CoinRepoTrait as _},
+        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, chain::ChainRepo, coin::CoinRepo,
         wallet::WalletRepo,
     },
 };

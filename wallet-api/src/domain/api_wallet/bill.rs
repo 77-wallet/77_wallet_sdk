@@ -1,12 +1,33 @@
-use crate::domain::api_wallet::{adapter::Tx, adapter_factory::API_ADAPTER_FACTORY};
+use crate::{
+    domain::{
+        api_wallet::{
+            account::ApiAccountDomain,
+            adapter_factory::{ApiChainAdapterFactory, API_ADAPTER_FACTORY},
+        },
+        coin::CoinDomain,
+    },
+    infrastructure::{
+        task_queue,
+        task_queue::{task::Tasks, BackendApiTaskData},
+    },
+    request::transaction,
+};
 use chrono::Utc;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
-    entities::api_bill::{ApiBillEntity, ApiBillKind, ApiBillStatus},
-    repositories::{api_account::ApiAccountRepo, api_bill::ApiBillRepo},
+    entities::{
+        api_bill::{ApiBillEntity, ApiBillKind, ApiBillStatus},
+        chain::ChainEntity,
+    },
+    repositories::{
+        api_account::ApiAccountRepo, api_bill::ApiBillRepo, permission::PermissionRepo,
+    },
     DbPool,
 };
-use wallet_transport_backend::response_vo::transaction::SyncBillResp;
+use wallet_transport_backend::{
+    api::permission::TransPermission, consts::endpoint, request::PermissionData,
+    response_vo::transaction::SyncBillResp,
+};
 use wallet_types::constant::chain_code;
 
 pub struct ApiBillDomain;
@@ -200,5 +221,115 @@ impl ApiBillDomain {
         }
 
         Ok(())
+    }
+
+    // btc 验证是否存在未确认的交易
+    async fn check_ongoing_bill(from: &str, chain_code: &str) -> Result<bool, crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        if chain_code == chain_code::BTC {
+            let res = ApiBillRepo::on_going_bill(chain_code::BTC, from, &pool).await?;
+            return Ok(!res.is_empty());
+        };
+
+        Ok(false)
+    }
+
+    /// transfer
+    pub async fn transfer(
+        mut params: transaction::TransferReq,
+        bill_kind: ApiBillKind,
+    ) -> Result<String, crate::ServiceError> {
+        //  check ongoing tx
+        if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
+            return Err(crate::BusinessError::Bill(crate::BillError::ExistsUnConfirmationTx))?;
+        };
+
+        tracing::info!("transfer ------------------- 7:");
+        let private_key = ApiAccountDomain::get_private_key(
+            &params.base.from,
+            &params.base.chain_code,
+            &params.password,
+        )
+        .await?;
+
+        tracing::info!("transfer ------------------- 8:");
+
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let chain = ChainEntity::detail(pool.as_ref(), &params.base.chain_code).await?.ok_or(
+            crate::BusinessError::Chain(crate::ChainError::NotFound(
+                params.base.chain_code.to_string(),
+            )),
+        )?;
+
+        tracing::info!("transfer ------------------- 9:");
+        let coin = CoinDomain::get_coin(
+            &params.base.chain_code,
+            &params.base.symbol,
+            params.base.token_address.clone(),
+        )
+        .await?;
+
+        // params.base.with_token(coin.token_address());
+        params.base.with_decimals(coin.decimals);
+        let adapter = API_ADAPTER_FACTORY
+            .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
+            .await
+            .get_transaction_adapter(params.base.chain_code.as_str())
+            .await?;
+
+        let resp = adapter.transfer(&params, private_key).await?;
+
+        tracing::info!("transfer ------------------- 10:");
+        let mut new_bill = ApiBillEntity::try_from(&params)?;
+        new_bill.tx_kind = bill_kind;
+        new_bill.hash = resp.tx_hash.clone();
+        new_bill.resource_consume = resp.resource_consume()?;
+        new_bill.transaction_fee = resp.fee;
+
+        // 如果使用了权限，上报给后端
+        if let Some(signer) = params.signer {
+            let pool = crate::Context::get_global_sqlite_pool()?;
+            let permission = PermissionRepo::permission_with_user(
+                &pool,
+                &params.base.from,
+                signer.permission_id,
+                false,
+            )
+            .await?
+            .ok_or(crate::BusinessError::Permission(
+                crate::PermissionError::ActivesPermissionNotFound,
+            ))?;
+
+            let users = permission.users();
+
+            let params = TransPermission {
+                address: params.base.from,
+                chain_code: params.base.chain_code,
+                tx_kind: bill_kind.to_i8(),
+                hash: resp.tx_hash.clone(),
+                permission_data: PermissionData {
+                    opt_address: signer.address.to_string(),
+                    users: users.clone(),
+                },
+            };
+
+            let task = task_queue::BackendApiTask::BackendApi(BackendApiTaskData::new(
+                endpoint::UPLOAD_PERMISSION_TRANS,
+                &params,
+            )?);
+            let _ = Tasks::new().push(task).send().await;
+
+            new_bill.signer = users.join(",");
+        }
+
+        ApiBillDomain::create_bill(new_bill).await?;
+
+        if let Some(request_id) = params.base.request_resource_id {
+            let backend = crate::manager::Context::get_global_backend_api()?;
+            let _ = backend.delegate_complete(&request_id).await;
+        }
+
+        Ok(resp.tx_hash)
     }
 }

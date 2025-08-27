@@ -1,12 +1,11 @@
 use crate::{
-    domain::api_wallet::transaction::ApiChainTransDomain, messaging::notify::api_wallet::WithdrawFront, request::{
+    messaging::notify::api_wallet::WithdrawFront, request::{
         api_wallet::trans::ApiTransReq,
         transaction::{BaseTransferReq, TransferReq},
     }, ApiWalletError,
     BusinessError,
     FrontendNotifyEvent,
     NotifyEvent,
-    ServiceError::Business,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -16,6 +15,7 @@ use wallet_database::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
     },
 };
+use crate::domain::api_wallet::bill::ApiBillDomain;
 
 pub struct ApiWithdrawDomain {}
 
@@ -78,7 +78,7 @@ impl ApiWithdrawDomain {
                 signer: None,
             };
             // 发交易
-            let tx_hash = ApiChainTransDomain::transfer(req, ApiBillKind::Transfer).await?;
+            let tx_hash = ApiBillDomain::transfer(req, ApiBillKind::Transfer).await?;
         }
         Ok(())
     }
