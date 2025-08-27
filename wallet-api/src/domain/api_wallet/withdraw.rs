@@ -1,20 +1,21 @@
-use crate::ServiceError::Business;
-use crate::domain::api_wallet::transaction::ApiChainTransDomain;
-use crate::messaging::notify::api_wallet::WithdrawFront;
-use crate::request::{
-    api_wallet::trans::ApiTransReq,
-    transaction::{BaseTransferReq, TransferReq},
+use crate::{
+    domain::api_wallet::transaction::ApiChainTransDomain, messaging::notify::api_wallet::WithdrawFront, request::{
+        api_wallet::trans::ApiTransReq,
+        transaction::{BaseTransferReq, TransferReq},
+    }, ApiWalletError,
+    BusinessError,
+    FrontendNotifyEvent,
+    NotifyEvent,
+    ServiceError::Business,
 };
-use crate::{ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent};
-use alloy::primitives::U256;
 use rust_decimal::Decimal;
 use std::str::FromStr;
-use wallet_chain_interact::eth::FeeSetting;
-use wallet_database::entities::api_bill::ApiBillKind;
-use wallet_database::entities::api_wallet::ApiWalletType;
-use wallet_database::repositories::api_account::ApiAccountRepo;
-use wallet_database::repositories::api_wallet::ApiWalletRepo;
-use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
+use wallet_database::{
+    entities::{api_bill::ApiBillKind, api_wallet::ApiWalletType},
+    repositories::{
+        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
+    },
+};
 
 pub struct ApiWithdrawDomain {}
 

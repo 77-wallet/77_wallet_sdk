@@ -1,7 +1,6 @@
 use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
 use crate::domain::api_wallet::transaction::ApiChainTransDomain;
 use crate::domain::api_wallet::withdraw::ApiWithdrawDomain;
-use crate::messaging::notify::api_wallet::WithdrawFront;
 use crate::request::api_wallet::trans::ApiTransReq;
 use crate::request::transaction::TransferReq;
 use crate::{

@@ -150,7 +150,7 @@ impl ApiChainTransDomain {
             ))?;
         };
 
-        tracing::info!("get_coin ------------------- 7:");
+        tracing::info!("transfer ------------------- 7:");
         let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,
             &params.base.chain_code,
@@ -158,7 +158,7 @@ impl ApiChainTransDomain {
         )
         .await?;
 
-        tracing::info!("get_coin ------------------- 8:");
+        tracing::info!("transfer ------------------- 8:");
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let chain = ChainEntity::detail(pool.as_ref(), &params.base.chain_code)

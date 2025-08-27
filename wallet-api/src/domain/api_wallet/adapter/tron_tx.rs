@@ -1,13 +1,12 @@
 use crate::{
-    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
+        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
         chain::{
-            TransferResp,
             swap::{
-                EstimateSwapResult, calc_slippage,
-                evm_swap::{SwapParams, dexSwap1Call},
+                calc_slippage, evm_swap::{dexSwap1Call, SwapParams},
+                EstimateSwapResult,
             },
+            TransferResp,
         },
         coin::TokenCurrencyGetter,
         multisig::MultisigQueueDomain,
@@ -17,27 +16,28 @@ use crate::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
     response_vo::{MultisigQueueFeeParams, TransferParams, TronFeeDetails},
+    ServiceError,
 };
 use alloy::{
     primitives::U256,
     sol_types::{SolCall, SolValue},
 };
 use std::collections::HashMap;
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
-    BillResourceConsume, Error, QueryTransactionResult, abi_encode_u256, tron,
-    tron::{
-        TronChain,
+    abi_encode_u256, tron, tron::{
         operations::{
-            TronConstantOperation as _, TronTxOperation,
-            contract::{TriggerContractParameter, WarpContract},
-            multisig::TransactionOpt,
+            contract::{TriggerContractParameter, WarpContract}, multisig::TransactionOpt,
             transfer::{ContractTransferOpt, TransferOpt},
             trc::{Allowance, Approve, Deposit},
+            TronConstantOperation as _,
+            TronTxOperation,
         },
         params::ResourceConsumer,
-    },
-    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+        protocol::account::AccountResourceDetail,
+        TronChain,
+    }, types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp}, BillResourceConsume,
+    Error,
+    QueryTransactionResult,
 };
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, api_bill::ApiBillKind, coin::CoinEntity,
@@ -86,23 +86,15 @@ impl TronTx {
 
             let provider = self.chain.get_provider();
             let constant = params.constant_contract(provider).await?;
-            let consumer = provider
-                .contract_fee(constant, threshold as u8, &req.from)
-                .await?;
+            let consumer = provider.contract_fee(constant, threshold as u8, &req.from).await?;
             params.set_fee_limit(consumer);
 
-            Ok(self
-                .chain
-                .build_multisig_transaction(params, expiration as u64)
-                .await?)
+            Ok(self.chain.build_multisig_transaction(params, expiration as u64).await?)
         } else {
             let mut params = TransferOpt::new(&req.from, &req.to, value, req.notes.clone())?;
             params.permission_id = permission_id;
 
-            Ok(self
-                .chain
-                .build_multisig_transaction(params, expiration as u64)
-                .await?)
+            Ok(self.chain.build_multisig_transaction(params, expiration as u64).await?)
         }
     }
 
@@ -121,27 +113,17 @@ impl TronTx {
         let bytes = wallet_utils::hex_func::hex_decode(&constant.constant_result[0])?;
 
         // 模拟的结果k
-        let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
-            .map_err(|e| crate::ServiceError::AggregatorError {
-                code: -1,
-                agg_code: 0,
-                msg: e.to_string(),
+        let (amount_in, amount_out): (U256, U256) =
+            <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
+                crate::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
             })?;
 
         // get fee
-        let mut consumer = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &owner_address)
-            .await?;
+        let mut consumer = self.chain.provider.contract_fee(constant, 1, &owner_address).await?;
         // 手续费增加0.2trx
         consumer.set_extra_fee(200000);
 
-        let resp = EstimateSwapResult {
-            amount_in,
-            amount_out,
-            consumer,
-        };
+        let resp = EstimateSwapResult { amount_in, amount_out, consumer };
 
         Ok(resp)
     }
@@ -262,19 +244,12 @@ impl Tx for TronTx {
             }
 
             let provider = self.chain.get_provider();
-            let balance = self
-                .chain
-                .balance(&params.base.from, Some(contract.clone()))
-                .await?;
+            let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
             if balance < transfer_amount {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::InsufficientBalance,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
             }
 
-            let account = provider
-                .account_info(&transfer_params.owner_address)
-                .await?;
+            let account = provider.account_info(&transfer_params.owner_address).await?;
             // 主币是否有钱(可能账号未被初始化)
             if account.balance <= 0 {
                 return Err(crate::BusinessError::Chain(
@@ -283,12 +258,9 @@ impl Tx for TronTx {
             }
 
             // constant contract to fee
-            let constant = transfer_params
-                .constant_contract(self.chain.get_provider())
-                .await?;
-            let consumer = provider
-                .contract_fee(constant, 1, &transfer_params.owner_address)
-                .await?;
+            let constant = transfer_params.constant_contract(self.chain.get_provider()).await?;
+            let consumer =
+                provider.contract_fee(constant, 1, &transfer_params.owner_address).await?;
 
             if account.balance < consumer.transaction_fee_i64() {
                 return Err(crate::BusinessError::Chain(
@@ -304,10 +276,7 @@ impl Tx for TronTx {
             transfer_params.set_fee_limit(consumer);
 
             let bill_consumer = BillResourceConsume::new_tron(net_used, energy_used);
-            let tx_hash = self
-                .chain
-                .exec_transaction(transfer_params, private_key)
-                .await?;
+            let tx_hash = self.chain.exec_transaction(transfer_params, private_key).await?;
 
             let mut resp = TransferResp::new(tx_hash, fee);
             resp.with_consumer(bill_consumer);
@@ -330,20 +299,15 @@ impl Tx for TronTx {
             let provider = self.chain.get_provider();
             let account = provider.account_info(&param.from).await?;
             if account.balance <= 0 {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::InsufficientBalance,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
             }
 
             let tx = param.build_raw_transaction(provider).await?;
-            let consumer = provider
-                .transfer_fee(&param.from, Some(&param.to), &tx.raw_data_hex, 1)
-                .await?;
+            let consumer =
+                provider.transfer_fee(&param.from, Some(&param.to), &tx.raw_data_hex, 1).await?;
 
             if account.balance < consumer.transaction_fee_i64() + value_i64 {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::InsufficientBalance,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
             }
 
             let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
@@ -370,14 +334,9 @@ impl Tx for TronTx {
 
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
         let consumer = if let Some(contract) = req.token_address {
-            let balance = self
-                .chain
-                .balance(&req.from, Some(contract.clone()))
-                .await?;
+            let balance = self.chain.balance(&req.from, Some(contract.clone())).await?;
             if balance < value {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::InsufficientBalance,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
             }
 
             let params = tron::operations::transfer::ContractTransferOpt::new(
@@ -397,9 +356,7 @@ impl Tx for TronTx {
                 req.notes.clone(),
             )?;
 
-            self.chain
-                .simulate_simple_fee(&req.from, &req.to, 1, params)
-                .await?
+            self.chain.simulate_simple_fee(&req.from, &req.to, 1, params).await?
         };
         let token_currency =
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
@@ -420,19 +377,13 @@ impl Tx for TronTx {
 
         // get fee
         let constant = wrap.trigger_constant_contract(&self.chain.provider).await?;
-        let consumer = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &req.from)
-            .await?;
+        let consumer = self.chain.provider.contract_fee(constant, 1, &req.from).await?;
 
         // check balance
         let balance = self.chain.balance(&req.from, None).await?;
         let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
         if balance < fee {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
 
         // get consumer
@@ -442,9 +393,7 @@ impl Tx for TronTx {
         );
 
         // exec trans
-        let raw_transaction = wrap
-            .trigger_smart_contract(&self.chain.provider, &consumer)
-            .await?;
+        let raw_transaction = wrap.trigger_smart_contract(&self.chain.provider, &consumer).await?;
         let result = self.chain.exec_transaction_v1(raw_transaction, key).await?;
 
         let mut resp = TransferResp::new(result, consumer.transaction_fee());
@@ -473,11 +422,7 @@ impl Tx for TronTx {
 
         // get fee
         let constant = wrap.trigger_constant_contract(&self.chain.provider).await?;
-        let consumer = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &req.from)
-            .await?;
+        let consumer = self.chain.provider.contract_fee(constant, 1, &req.from).await?;
 
         let res = TronFeeDetails::new(consumer, token_currency, &currency)?;
         let fee = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -553,17 +498,10 @@ impl Tx for TronTx {
         let mut wrap = WarpContract { params };
         let constant = wrap.trigger_constant_contract(&self.chain.provider).await?;
         // get fee
-        let mut consumer = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &owner_address)
-            .await?;
+        let mut consumer = self.chain.provider.contract_fee(constant, 1, &owner_address).await?;
 
         // check fee
-        let balance = self
-            .chain
-            .balance(&swap_params.recipient_tron_addr()?, None)
-            .await?;
+        let balance = self.chain.balance(&swap_params.recipient_tron_addr()?, None).await?;
         // 手续费增加0.2trx
         consumer.set_extra_fee(200000);
 
@@ -572,9 +510,7 @@ impl Tx for TronTx {
             fee += swap_params.amount_in;
         }
         if balance < fee {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
 
         let bill_consumer = BillResourceConsume::new_tron(
@@ -612,11 +548,7 @@ impl Tx for TronTx {
 
         // get fee
         let constant = wrap.trigger_constant_contract(&self.chain.provider).await?;
-        let resource = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &req.from)
-            .await?;
+        let resource = self.chain.provider.contract_fee(constant, 1, &req.from).await?;
 
         let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
 
@@ -638,19 +570,13 @@ impl Tx for TronTx {
 
         // get fee
         let constant = wrap.trigger_constant_contract(&self.chain.provider).await?;
-        let consumer = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &req.from)
-            .await?;
+        let consumer = self.chain.provider.contract_fee(constant, 1, &req.from).await?;
 
         // check balance
         let balance = self.chain.balance(&req.from, None).await?;
         let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64()) + value;
         if balance < fee {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
 
         // get consumer
@@ -660,9 +586,7 @@ impl Tx for TronTx {
         );
 
         // exec trans
-        let raw_transaction = wrap
-            .trigger_smart_contract(&self.chain.provider, &consumer)
-            .await?;
+        let raw_transaction = wrap.trigger_smart_contract(&self.chain.provider, &consumer).await?;
         let result = self.chain.exec_transaction_v1(raw_transaction, key).await?;
 
         let mut resp = TransferResp::new(result, consumer.transaction_fee());
@@ -692,11 +616,7 @@ impl Tx for TronTx {
 
         // get fee
         let constant = wrap.trigger_constant_contract(&self.chain.provider).await?;
-        let resource = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &req.from)
-            .await?;
+        let resource = self.chain.provider.contract_fee(constant, 1, &req.from).await?;
 
         let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
 
@@ -718,18 +638,12 @@ impl Tx for TronTx {
 
         // get fee
         let constant = wrap.trigger_constant_contract(&self.chain.provider).await?;
-        let consumer = self
-            .chain
-            .provider
-            .contract_fee(constant, 1, &req.from)
-            .await?;
+        let consumer = self.chain.provider.contract_fee(constant, 1, &req.from).await?;
 
         let balance = self.chain.balance(&req.from, None).await?;
         let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
         if balance < fee {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
 
         // get consumer
@@ -739,9 +653,7 @@ impl Tx for TronTx {
         );
 
         // exec trans
-        let raw_transaction = wrap
-            .trigger_smart_contract(&self.chain.provider, &consumer)
-            .await?;
+        let raw_transaction = wrap.trigger_smart_contract(&self.chain.provider, &consumer).await?;
         let result = self.chain.exec_transaction_v1(raw_transaction, key).await?;
 
         let mut resp = TransferResp::new(result, consumer.transaction_fee());
@@ -781,9 +693,8 @@ impl Multisig for TronTx {
         // check balance
         let provider = self.chain.get_provider();
         let tx = params.build_raw_transaction(provider).await?;
-        let mut consumer = provider
-            .transfer_fee(&account.initiator_addr, None, &tx.raw_data_hex, 1)
-            .await?;
+        let mut consumer =
+            provider.transfer_fee(&account.initiator_addr, None, &tx.raw_data_hex, 1).await?;
 
         let chain_parameter = self.chain.provider.chain_params().await?;
         consumer.set_extra_fee(chain_parameter.update_account_fee());
@@ -791,9 +702,7 @@ impl Multisig for TronTx {
         let fee = consumer.transaction_fee_i64();
         let account = provider.account_info(&account.initiator_addr).await?;
         if account.balance < fee {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
         let consumer = BillResourceConsume::new_tron(consumer.bandwidth.consumer as u64, 0);
@@ -813,15 +722,9 @@ impl Multisig for TronTx {
 
         let backend = crate::manager::Context::get_global_backend_api()?;
 
-        let account_info = self
-            .chain
-            .get_provider()
-            .account_info(&account.initiator_addr)
-            .await?;
+        let account_info = self.chain.get_provider().account_info(&account.initiator_addr).await?;
         if account_info.address.is_empty() {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::AddressNotInit,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::AddressNotInit))?;
         }
 
         let params = tron::operations::multisig::MultisigAccountOpt::new(
@@ -829,10 +732,7 @@ impl Multisig for TronTx {
             account.threshold as u8,
             member.get_owner_str_vec(),
         )?;
-        let mut consumer = self
-            .chain
-            .simple_fee(&account.initiator_addr, 1, params)
-            .await?;
+        let mut consumer = self.chain.simple_fee(&account.initiator_addr, 1, params).await?;
 
         let chain_parameter = self.chain.provider.chain_params().await?;
         consumer.set_extra_fee(chain_parameter.update_account_fee());
@@ -869,13 +769,10 @@ impl Multisig for TronTx {
         let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         if balance < value {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
-        self.build_build_tx(req, token, value, account.threshold as i64, None)
-            .await
+        self.build_build_tx(req, token, value, account.threshold as i64, None).await
     }
 
     async fn build_multisig_with_permission(
@@ -890,14 +787,11 @@ impl Multisig for TronTx {
         let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         if balance < value {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
         let permission_id = Some(p.active_id);
-        self.build_build_tx(req, token, value, p.threshold, permission_id)
-            .await
+        self.build_build_tx(req, token, value, p.threshold, permission_id).await
     }
 
     async fn sign_fee(
@@ -949,9 +843,7 @@ impl Multisig for TronTx {
                 memo,
             )?;
 
-            self.chain
-                .contract_fee(&queue.from_addr, signature_num, params)
-                .await?
+            self.chain.contract_fee(&queue.from_addr, signature_num, params).await?
         } else {
             let params =
                 tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;

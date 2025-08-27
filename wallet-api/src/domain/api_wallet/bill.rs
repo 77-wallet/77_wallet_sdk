@@ -2,9 +2,9 @@ use crate::domain::api_wallet::{adapter::Tx, adapter_factory::API_ADAPTER_FACTOR
 use chrono::Utc;
 use wallet_chain_interact::{BillResourceConsume, QueryTransactionResult};
 use wallet_database::{
-    DbPool,
     entities::api_bill::{ApiBillEntity, ApiBillKind, ApiBillStatus},
     repositories::{api_account::ApiAccountRepo, api_bill::ApiBillRepo},
+    DbPool,
 };
 use wallet_transport_backend::response_vo::transaction::SyncBillResp;
 use wallet_types::constant::chain_code;
@@ -39,11 +39,8 @@ impl ApiBillDomain {
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<String, crate::ServiceError> {
-        let adapter = API_ADAPTER_FACTORY
-            .get()
-            .unwrap()
-            .get_transaction_adapter(chain_code)
-            .await?;
+        let adapter =
+            API_ADAPTER_FACTORY.get().unwrap().get_transaction_adapter(chain_code).await?;
         let res = adapter.query_tx_res(tx_hash).await?;
         match res {
             Some(res) => Ok(res.resource_consume),
@@ -55,11 +52,8 @@ impl ApiBillDomain {
         tx_hash: &str,
         chain_code: &str,
     ) -> Result<Option<QueryTransactionResult>, crate::ServiceError> {
-        let adapter = API_ADAPTER_FACTORY
-            .get()
-            .unwrap()
-            .get_transaction_adapter(chain_code)
-            .await?;
+        let adapter =
+            API_ADAPTER_FACTORY.get().unwrap().get_transaction_adapter(chain_code).await?;
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
 
@@ -126,9 +120,7 @@ impl ApiBillDomain {
         // let start_time = None;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let resp = backend
-            .record_lists(chain_code, address, start_time)
-            .await?;
+        let resp = backend.record_lists(chain_code, address, start_time).await?;
 
         for item in resp.list {
             if let Err(e) = ApiBillDomain::handle_sync_bill(item).await {
@@ -183,9 +175,7 @@ impl ApiBillDomain {
             return Ok(Some(adjusted_time(bill)));
         }
 
-        Err(crate::ServiceError::Business(
-            crate::AssetsError::NotFound.into(),
-        ))
+        Err(crate::ServiceError::Business(crate::AssetsError::NotFound.into()))
     }
 
     pub async fn handle_ton_bill(

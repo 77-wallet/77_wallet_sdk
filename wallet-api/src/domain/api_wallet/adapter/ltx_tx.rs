@@ -1,7 +1,6 @@
 use crate::{
-    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
+        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
@@ -10,15 +9,15 @@ use crate::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
+    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
-    Error, QueryTransactionResult,
-    ltc::{LtcChain, operations::transfer::TransferArg, provider::ProviderConfig},
-    types::ChainPrivateKey,
-    types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    ltc::{operations::transfer::TransferArg, provider::ProviderConfig, LtcChain}, tron::protocol::account::AccountResourceDetail,
+    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    Error,
+    QueryTransactionResult,
 };
 use wallet_database::{
     entities::{
@@ -121,9 +120,9 @@ impl Tx for LtcTx {
             &pool,
         )
         .await?
-        .ok_or(crate::BusinessError::Account(
-            crate::AccountError::NotFound(params.base.from.to_string()),
-        ))?;
+        .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+            params.base.from.to_string(),
+        )))?;
 
         let address_type = LtcAddressType::try_from(Some(account.address_type))?;
 
@@ -162,26 +161,17 @@ impl Tx for LtcTx {
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
-                .ok_or(crate::BusinessError::Account(
-                    crate::AccountError::NotFound(req.from.to_string()),
-                ))?;
+                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                    req.from.to_string(),
+                )))?;
 
         let address_type = LtcAddressType::try_from(Some(account.address_type))?;
 
-        let params = TransferArg::new(
-            &req.from,
-            &req.to,
-            &req.value,
-            address_type,
-            self.chin.network,
-        )?
-        .with_spend_all(req.spend_all);
+        let params =
+            TransferArg::new(&req.from, &req.to, &req.value, address_type, self.chin.network)?
+                .with_spend_all(req.spend_all);
 
-        let fee = self
-            .chin
-            .estimate_fee(params)
-            .await
-            .map_err(|e| self.handle_ltc_fee_error(e))?;
+        let fee = self.chin.estimate_fee(params).await.map_err(|e| self.handle_ltc_fee_error(e))?;
 
         let res = CommonFeeDetails::new(fee.transaction_fee_f64(), token_currency, currency)?;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;

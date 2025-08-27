@@ -312,6 +312,7 @@ impl Tx for EthTx {
         let fee = fee_setting.transaction_fee();
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        tracing::info!(private_key=%private_key.to_string(), "");
         let tx_hash = self
             .chain
             .exec_transaction(transfer_opt, fee_setting, private_key)

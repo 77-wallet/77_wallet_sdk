@@ -36,16 +36,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let api_wallet_type = ApiWalletType::SubAccount;
     let api_wallet_type = ApiWalletType::Withdrawal;
     let wallet = wallet_manager
-        .create_api_wallet(language_code, phrase, salt, wallet_name, account_name, is_default_name, wallet_password, invite_code, api_wallet_type)
+        .create_api_wallet(
+            language_code,
+            phrase,
+            salt,
+            wallet_name,
+            account_name,
+            is_default_name,
+            wallet_password,
+            invite_code,
+            api_wallet_type,
+        )
         .await
         .result;
     tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
 
-
     // 获取订单记录
     let order_list = wallet_manager.get_api_withdraw_order_list().await.result;
     tracing::info!("order_list ------------------- 2: {order_list:#?}");
-
 
     // 绑定钱包
     // let key = "app_id";
@@ -55,12 +63,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let res = wallet_manager.bind_merchant(key, merchain_id, uid).await;
     // tracing::info!("res --------------------- 3: {res:?}");
 
-
     let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
     let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
     let value = "0.000001";
-    let trade_no = "0x0000000035";
-    let res1 =  wallet_manager.api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid).await;
+    let trade_no = "0x0000000043";
+    let res1 = wallet_manager
+        .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid)
+        .await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
     // let topics = vec![

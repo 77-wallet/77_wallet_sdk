@@ -1,7 +1,7 @@
 use alloy::primitives::U256;
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
-use wallet_chain_interact::types::{
-    ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp,
+use wallet_chain_interact::{
+    tron::protocol::account::AccountResourceDetail,
+    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_utils::unit;
 

@@ -37,9 +37,7 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let res = CreateAccountRes {
-            address: address.to_string(),
-        };
+        let res = CreateAccountRes { address: address.to_string() };
         // let task_data = Self::address_init(
         //     repo,
         //     uid,
@@ -61,18 +59,18 @@ impl ApiAccountDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
-            .ok_or(crate::BusinessError::Account(
-                crate::AccountError::NotFound(address.to_string()),
-            ))?;
+            .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                address.to_string(),
+            )))?;
 
         let key = KeystoreJsonDecryptor.decrypt(password.as_ref(), &account.private_key)?;
 
         tracing::info!("get_private_key ------------------- 6: {chain_code}");
-        let chain = ChainEntity::chain_node_info(pool.as_ref(), chain_code)
-            .await?
-            .ok_or(crate::ServiceError::Business(crate::BusinessError::Chain(
+        let chain = ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or(
+            crate::ServiceError::Business(crate::BusinessError::Chain(
                 crate::ChainError::NotFound(chain_code.to_string()),
-            )))?;
+            )),
+        )?;
 
         tracing::info!("chain_code ------------------- 7: {chain_code}");
         let chain_code: ChainCode = chain_code.try_into()?;
@@ -220,9 +218,7 @@ impl ApiAccountDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, api_wallet_type)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 
         let account = ApiAccountRepo::find_one_by_wallet_address_index(

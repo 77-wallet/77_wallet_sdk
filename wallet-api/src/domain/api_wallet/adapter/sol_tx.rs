@@ -1,10 +1,9 @@
 use crate::{
-    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
+        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
         chain::{
-            TransferResp,
             transaction::{ChainTransDomain, DEFAULT_UNITS},
+            TransferResp,
         },
         coin::TokenCurrencyGetter,
     },
@@ -13,26 +12,26 @@ use crate::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
+    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
 use wallet_chain_interact::{
-    Error, QueryTransactionResult,
     sol::{
-        Provider, SolFeeSetting, SolanaChain,
-        consts::TEMP_SOL_KEYPAIR,
-        operations::{
-            SolInstructionOperation,
+        consts::TEMP_SOL_KEYPAIR, operations::{
             multisig::{
                 account::MultisigAccountOpt,
                 transfer::{BuildTransactionOpt, ExecMultisigOpt, SignTransactionOpt},
             },
             transfer::TransferOpt,
-        },
-    },
-    types::ChainPrivateKey,
-    types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+            SolInstructionOperation,
+        }, Provider,
+        SolFeeSetting,
+        SolanaChain,
+    }, tron::protocol::account::AccountResourceDetail,
+    types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    Error,
+    QueryTransactionResult,
 };
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
@@ -108,9 +107,7 @@ impl SolTx {
     ) -> Result<(), crate::ServiceError> {
         let fee = U256::from(fee);
         if balance < fee {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
         Ok(())
     }
@@ -340,10 +337,7 @@ impl Multisig for SolTx {
         let balance = self.chain.balance(&account.initiator_addr, None).await?;
         self.check_sol_transaction_fee(balance, fee.original_fee())?;
 
-        let tx_hash = self
-            .chain
-            .exec_transaction(params, key, None, instructions, 0)
-            .await?;
+        let tx_hash = self.chain.exec_transaction(params, key, None, instructions, 0).await?;
 
         Ok((tx_hash, "".to_string()))
     }
@@ -373,11 +367,7 @@ impl Multisig for SolTx {
 
         let instructions = params.instructions().await?;
         // check transaction_fee
-        let fee = self
-            .chain
-            .estimate_fee_v1(&instructions, &params)
-            .await?
-            .transaction_fee();
+        let fee = self.chain.estimate_fee_v1(&instructions, &params).await?.transaction_fee();
 
         CommonFeeDetails::new(fee, token_currency, currency)?.to_json_str()
     }
@@ -418,9 +408,8 @@ impl Multisig for SolTx {
 
         // create transaction fee
         let base_fee = self.chain.estimate_fee_v1(&instructions, &params).await?;
-        let mut fee_setting = params
-            .create_transaction_fee(&args.transaction_message, base_fee)
-            .await?;
+        let mut fee_setting =
+            params.create_transaction_fee(&args.transaction_message, base_fee).await?;
 
         self.sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
@@ -442,9 +431,7 @@ impl Multisig for SolTx {
         // check multisig account balance
         let multisig_balance = self.chain.balance(&req.from, token.clone()).await?;
         if multisig_balance < value {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
         let base = TransferOpt::new(
             &req.from,
@@ -468,19 +455,14 @@ impl Multisig for SolTx {
 
         // create transaction fee
         let base_fee = self.chain.estimate_fee_v1(&instructions, &params).await?;
-        let fee = params
-            .create_transaction_fee(&args.transaction_message, base_fee)
-            .await?;
+        let fee = params.create_transaction_fee(&args.transaction_message, base_fee).await?;
         // check balance
         let balance = self.chain.balance(&account.initiator_addr, None).await?;
         self.check_sol_transaction_fee(balance, fee.original_fee())?;
 
         // execute build transfer transaction
         let pda = params.multisig_pda;
-        let tx_hash = self
-            .chain
-            .exec_transaction(params, key, None, instructions, 0)
-            .await?;
+        let tx_hash = self.chain.exec_transaction(params, key, None, instructions, 0).await?;
 
         Ok(args.get_raw_data(pda, tx_hash)?)
     }
@@ -491,10 +473,8 @@ impl Multisig for SolTx {
         p: &PermissionEntity,
         coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
-        Err(
-            crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
-                .into(),
-        )
+        Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
+            .into())
     }
 
     async fn sign_fee(

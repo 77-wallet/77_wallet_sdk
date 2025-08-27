@@ -5,7 +5,6 @@ use wallet_crypto::{
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        ResourcesRepo,
         api_account::ApiAccountRepo,
         api_wallet::ApiWalletRepo,
         chain::{ChainRepo, ChainRepoTrait as _},
@@ -17,7 +16,7 @@ use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq}
 
 use crate::{
     domain::{app::config::ConfigDomain, chain::ChainDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
 };
 
 pub struct ApiWalletDomain {}
@@ -78,9 +77,7 @@ impl ApiWalletDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         ApiWalletRepo::upbind_uid(&pool, &api_wallet.address, ApiWalletType::SubAccount).await?;
 
         Ok(())
@@ -98,9 +95,7 @@ impl ApiWalletDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address, api_wallet_type)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         // 获取种子
         let seed = ApiWalletDomain::decrypt_seed(wallet_password, &api_wallet.seed).await?;
 
@@ -109,10 +104,8 @@ impl ApiWalletDomain {
         let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
 
         // 如果有指定派生路径，就获取该链的所有chain_code
-        let chains: Vec<String> = default_chain_list
-            .iter()
-            .map(|chain| chain.chain_code.clone())
-            .collect();
+        let chains: Vec<String> =
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
 
         let mut created_count = 0;
         let mut current_id = if let Some(idx) = index {

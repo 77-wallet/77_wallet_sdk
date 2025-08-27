@@ -1,7 +1,6 @@
 use crate::{
-    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
+        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
@@ -10,19 +9,20 @@ use crate::{
         ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
+    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    Error, QueryTransactionResult,
     ton::{
-        Cell,
         chain::TonChain,
-        operations::{BuildInternalMsg, token_transfer::TokenTransferOpt, transfer::TransferOpt},
+        operations::{token_transfer::TokenTransferOpt, transfer::TransferOpt, BuildInternalMsg},
         provider::Provider,
-    },
-    tron::protocol::account::AccountResourceDetail,
+        Cell,
+    }, tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
+    Error,
+    QueryTransactionResult,
 };
 use wallet_database::{
     entities::{
@@ -118,14 +118,10 @@ impl Tx for TonTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         // 验证余额
-        let balance = self
-            .chain
-            .balance(&params.base.from, params.base.token_address.clone())
-            .await?;
+        let balance =
+            self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
         if balance < transfer_amount {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -135,20 +131,17 @@ impl Tx for TonTx {
             &pool,
         )
         .await?
-        .ok_or(crate::BusinessError::Account(
-            crate::AccountError::NotFound(params.base.from.to_string()),
-        ))?;
+        .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+            params.base.from.to_string(),
+        )))?;
 
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
-        let msg_cell = self
-            .build_ext_cell(&params.base, &self.chain.provider, address_type)
-            .await?;
+        let msg_cell =
+            self.build_ext_cell(&params.base, &self.chain.provider, address_type).await?;
 
-        let fee = self
-            .chain
-            .estimate_fee(msg_cell.clone(), &params.base.from, address_type)
-            .await?;
+        let fee =
+            self.chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
 
         let mut trans_fee = U256::from(fee.get_fee());
         if params.base.token_address.is_none() {
@@ -191,20 +184,15 @@ impl Tx for TonTx {
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
-                .ok_or(crate::BusinessError::Account(
-                    crate::AccountError::NotFound(req.from.to_string()),
-                ))?;
+                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                    req.from.to_string(),
+                )))?;
 
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
-        let msg_cell = self
-            .build_ext_cell(&req, &self.chain.provider, address_type)
-            .await?;
+        let msg_cell = self.build_ext_cell(&req, &self.chain.provider, address_type).await?;
 
-        let fee = self
-            .chain
-            .estimate_fee(msg_cell.clone(), &req.from, address_type)
-            .await?;
+        let fee = self.chain.estimate_fee(msg_cell.clone(), &req.from, address_type).await?;
 
         let res = CommonFeeDetails::new(fee.get_fee_ton(), token_currency, currency)?;
 
