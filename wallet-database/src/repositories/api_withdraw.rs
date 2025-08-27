@@ -50,6 +50,15 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::add(pool.as_ref(), withdraw_req).await
     }
 
+    pub async fn update_api_withdraw_tx_status(
+        pool: &DbPool,
+        trade_no: &str,
+        tx_hash: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_tx_status(pool.as_ref(), trade_no, tx_hash, status).await
+    }
+
     pub async fn update_api_withdraw_status(
         pool: &DbPool,
         trade_no: &str,

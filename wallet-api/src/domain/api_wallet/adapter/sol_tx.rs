@@ -41,6 +41,7 @@ use wallet_database::entities::{
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::api::BackendApi;
 use wallet_utils::serde_func;
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct SolTx {
     chain: SolanaChain,
@@ -153,7 +154,7 @@ impl Tx for SolTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
@@ -195,7 +196,7 @@ impl Tx for SolTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;

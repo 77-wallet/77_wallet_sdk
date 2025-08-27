@@ -29,6 +29,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::api::BackendApi;
 use wallet_types::chain::address::r#type::LtcAddressType;
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct LtcTx {
     chin: LtcChain,
@@ -110,7 +111,7 @@ impl Tx for LtcTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -146,7 +147,7 @@ impl Tx for LtcTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;

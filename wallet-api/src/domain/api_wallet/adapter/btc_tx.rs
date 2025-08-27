@@ -2,7 +2,7 @@ use crate::{
     ServiceError,
     domain::{
         api_wallet::adapter::{Multisig, TIME_OUT, Tx},
-        chain::{TransferResp, transaction::ChainTransDomain},
+        chain::{TransferResp},
         coin::TokenCurrencyGetter,
         multisig::MultisigDomain,
     },
@@ -37,6 +37,7 @@ use wallet_database::{
 };
 use wallet_transport_backend::api::BackendApi;
 use wallet_utils::serde_func::serde_to_string;
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct BtcTx {
     chain: BtcChain,
@@ -120,7 +121,7 @@ impl Tx for BtcTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         tracing::info!("transfer ------------------- 11:");
@@ -154,7 +155,7 @@ impl Tx for BtcTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;

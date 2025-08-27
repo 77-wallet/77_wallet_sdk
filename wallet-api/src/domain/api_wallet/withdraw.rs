@@ -1,6 +1,6 @@
 use crate::{
-    messaging::notify::api_wallet::WithdrawFront, request::{
-        api_wallet::trans::ApiTransReq,
+    domain::{api_wallet::bill::ApiBillDomain, coin::CoinDomain}, messaging::notify::api_wallet::WithdrawFront, request::{
+        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
         transaction::{BaseTransferReq, TransferReq},
     }, ApiWalletError,
     BusinessError,
@@ -10,17 +10,16 @@ use crate::{
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use wallet_database::{
-    entities::{api_bill::ApiBillKind, api_wallet::ApiWalletType},
+    entities::{api_bill::ApiBillKind, api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus},
     repositories::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
     },
 };
-use crate::domain::api_wallet::bill::ApiBillDomain;
 
 pub struct ApiWithdrawDomain {}
 
 impl ApiWithdrawDomain {
-    pub(crate) async fn withdraw(req: &ApiTransReq) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn withdraw(req: &ApiWithdrawReq) -> Result<(), crate::ServiceError> {
         // 验证金额是否需要输入密码
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -62,23 +61,30 @@ impl ApiWithdrawDomain {
         // 可能发交易
         let value = Decimal::from_str(&req.value).unwrap();
         if (value < Decimal::from(10)) {
-            let mut params = BaseTransferReq::new(
+            tracing::info!("transfer ------------------- 9:");
+            let coin =
+                CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone())
+                    .await?;
+
+            let mut params = ApiBaseTransferReq::new(
                 &req.from,
                 &req.to.to_string(),
                 &req.value.to_string(),
                 &req.chain_code.to_string(),
-                &req.symbol.to_string(),
             );
-            params.with_token(req.token_address.clone());
+            params.with_token(coin.token_address.clone(), coin.decimals, &coin.symbol);
 
-            let req = TransferReq {
-                base: params,
-                password: "q1111111".to_string(),
-                fee_setting: "".to_string(),
-                signer: None,
-            };
+            let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
+
             // 发交易
-            let tx_hash = ApiBillDomain::transfer(req, ApiBillKind::Transfer).await?;
+            let tx_hash = ApiBillDomain::transfer(transfer_req, ApiBillKind::Transfer).await?;
+            ApiWithdrawRepo::update_api_withdraw_tx_status(
+                &pool,
+                &req.trade_no,
+                &tx_hash,
+                ApiWithdrawStatus::SendingTx,
+            )
+            .await?;
         }
         Ok(())
     }

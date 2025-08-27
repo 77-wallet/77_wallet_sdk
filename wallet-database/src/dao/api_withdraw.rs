@@ -1,17 +1,38 @@
-use crate::dao::Dao;
 use crate::entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiWithdrawDao;
 
-#[async_trait::async_trait]
-impl Dao for ApiWithdrawDao {
-    type Input = ApiWithdrawEntity;
-    type Output = ();
-    type Error = crate::Error;
+impl ApiWithdrawDao {
+    pub async fn all_api_withdraw<'a, E>(exec: E) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"SELECT * FROM api_withdraws"#;
+        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
 
-    async fn upsert<'c, E>(executor: E, input: Self::Input) -> Result<Self::Output, Self::Error>
+    pub async fn page_api_withdraw<'a, E>(
+        exec: E,
+        page: i64,
+        page_size: i64,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let count_sql = "SELECT count(*) FROM";
+        let sql = "SELECT * FROM api_withdraws ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        // let paginate = Pagination::<Self>::init(page, page_size);
+        // Ok(paginate.page(exec, sql).await?)
+        Ok(vec![])
+    }
+
+    async fn upsert<'c, E>(executor: E, input: ApiWithdrawEntity) -> Result<(), crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
     {
@@ -27,7 +48,7 @@ impl Dao for ApiWithdrawDao {
             returning *
         "#;
 
-        let mut rec = sqlx::query_as::<_, Self::Input>(sql)
+        let mut rec = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(&input.uid)
             .bind(&input.name)
             .bind(&input.from_addr)
@@ -46,15 +67,6 @@ impl Dao for ApiWithdrawDao {
         Ok(())
     }
 
-    async fn list<'c, E>(executor: E) -> Result<Vec<Self::Output>, Self::Error>
-    where
-        E: Executor<'c, Database = Sqlite>,
-    {
-        todo!()
-    }
-}
-
-impl ApiWithdrawDao {
     pub async fn add<'a, E>(exec: E, api_withdraw: ApiWithdrawEntity) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -80,11 +92,7 @@ impl ApiWithdrawDao {
             .bind(0)
             .bind("")
             .bind(0)
-            .bind(
-                api_withdraw
-                    .created_at
-                    .to_rfc3339_opts(SecondsFormat::Secs, true),
-            )
+            .bind(api_withdraw.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
             .bind(0)
             .execute(exec)
             .await
@@ -112,6 +120,7 @@ impl ApiWithdrawDao {
         tracing::warn!("{:#?}", api_withdraw);
 
         sqlx::query(sql)
+            .bind(api_withdraw.trade_no)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -130,14 +139,9 @@ impl ApiWithdrawDao {
         let sql = r#"
             UPDATE api_withdraws
             SET
-                name = ?,
-                threshold = ?,
-                member = ?,
-                chain_code = ?,
-                operations = ?,
-                is_del = ?,
+                status = $2,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = ?
+            WHERE trade_no = $1
         "#;
 
         sqlx::query(sql)
@@ -150,30 +154,33 @@ impl ApiWithdrawDao {
         Ok(())
     }
 
-    pub async fn all_api_withdraw<'a, E>(exec: E) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    pub async fn update_tx_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"SELECT * FROM api_withdraws"#;
-        let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .fetch_all(exec)
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                tx_hash = $2,
+                status = $3,
+                send_tx_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(&status)
+            .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
-        Ok(result)
-    }
 
-    pub async fn page_api_withdraw<'a, E>(
-        exec: E,
-        page: i64,
-        page_size: i64,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let count_sql = "SELECT count(*) FROM";
-        let sql = "SELECT * FROM api_withdraws ORDER BY created_at DESC LIMIT ? OFFSET ?";
-        // let paginate = Pagination::<Self>::init(page, page_size);
-        // Ok(paginate.page(exec, sql).await?)
-        Ok(vec![])
+        Ok(())
     }
 }

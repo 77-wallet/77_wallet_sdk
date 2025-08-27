@@ -26,4 +26,5 @@ pub enum ApiWithdrawStatus {
     Init,
     AuditPass,
     AuditReject,
+    SendingTx,
 }

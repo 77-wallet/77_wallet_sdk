@@ -48,6 +48,7 @@ use wallet_transport::client::HttpClient;
 use wallet_transport_backend::api::BackendApi;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::unit;
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct TronTx {
     chain: TronChain,
@@ -226,7 +227,7 @@ impl Tx for TronTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
@@ -239,9 +240,9 @@ impl Tx for TronTx {
                 params.base.notes.clone(),
             )?;
 
-            if let Some(signer) = &params.signer {
-                transfer_params = transfer_params.with_permission(signer.permission_id);
-            }
+            // if let Some(signer) = &params.signer {
+            //     transfer_params = transfer_params.with_permission(signer.permission_id);
+            // }
 
             let provider = self.chain.get_provider();
             let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
@@ -293,9 +294,9 @@ impl Tx for TronTx {
                 transfer_amount,
                 params.base.notes.clone(),
             )?;
-            if let Some(signer) = &params.signer {
-                param = param.with_permission(signer.permission_id);
-            }
+            // if let Some(signer) = &params.signer {
+            //     param = param.with_permission(signer.permission_id);
+            // }
             let provider = self.chain.get_provider();
             let account = provider.account_info(&param.from).await?;
             if account.balance <= 0 {
@@ -323,7 +324,7 @@ impl Tx for TronTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;

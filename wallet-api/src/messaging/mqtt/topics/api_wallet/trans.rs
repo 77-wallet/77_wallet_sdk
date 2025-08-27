@@ -1,19 +1,12 @@
 use crate::{
-    domain::{
-        api_wallet::withdraw::ApiWithdrawDomain,
-        chain::transaction::ChainTransDomain,
-    }
-    ,
+    domain::{api_wallet::withdraw::ApiWithdrawDomain, chain::transaction::ChainTransDomain},
     request::{
-        api_wallet::trans::ApiTransReq,
+        api_wallet::trans::ApiWithdrawReq,
         transaction::{BaseTransferReq, TransferReq},
     },
     service::transaction::TransactionService,
 };
-use wallet_database::{
-    entities::assets::AssetsId,
-    repositories::api_assets::ApiAssetsRepo,
-};
+use wallet_database::{entities::assets::AssetsId, repositories::api_assets::ApiAssetsRepo};
 use wallet_utils::conversion;
 
 // biz_type = RECHARGE
@@ -147,7 +140,7 @@ impl TransMsg {
 
         let token_address =
             if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
-        let req = ApiTransReq {
+        let req = ApiWithdrawReq {
             uid: self.uid.to_string(),
             from: self.from.to_string(),
             to: self.to.to_string(),

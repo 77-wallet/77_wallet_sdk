@@ -48,6 +48,7 @@ use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_types::chain::chain::ChainCode;
 use wallet_types::chain::network::NetworkKind;
 use wallet_utils::{serde_func, unit};
+use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct EthTx {
     chain_code: ChainCode,
@@ -266,7 +267,7 @@ impl Tx for EthTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         tracing::info!("transfer ------------------- 11:");
@@ -327,7 +328,7 @@ impl Tx for EthTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;

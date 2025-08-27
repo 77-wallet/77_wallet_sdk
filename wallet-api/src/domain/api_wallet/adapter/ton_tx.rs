@@ -5,8 +5,11 @@ use crate::{
         coin::TokenCurrencyGetter,
     },
     infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{
-        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+    request::{
+        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+        transaction::{
+            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
+        },
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
     ServiceError,
@@ -57,7 +60,7 @@ impl TonTx {
 
     pub async fn build_ext_cell(
         &self,
-        req: &BaseTransferReq,
+        req: &ApiBaseTransferReq,
         provider: &Provider,
         address_type: TonAddressType,
     ) -> Result<Cell, crate::ServiceError> {
@@ -113,7 +116,7 @@ impl Tx for TonTx {
 
     async fn transfer(
         &self,
-        params: &TransferReq,
+        params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
@@ -169,7 +172,7 @@ impl Tx for TonTx {
 
     async fn estimate_fee(
         &self,
-        req: BaseTransferReq,
+        req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
