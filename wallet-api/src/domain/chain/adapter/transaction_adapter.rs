@@ -892,7 +892,10 @@ impl TransactionAdapter {
 
                 let resp = eth_tx::estimate_swap(swap_params, chain).await?;
 
-                let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
+                let backend_api = crate::Context::get_global_backend_api()?;
+                let gas_oracle =
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
+                        .await?;
                 let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
                     .to_resp(token_currency, &currency);
 
