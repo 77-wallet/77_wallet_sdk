@@ -169,4 +169,23 @@ mod test {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_chain_balance() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let address = "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB";
+        let chain_code = "tron";
+        let symbol = "USDT";
+        let token_address = Some("".to_string());
+        // let symbol = "USDT";
+
+        let res = wallet_manager
+            .chain_balance(address, chain_code, symbol, token_address)
+            .await;
+        tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());
+
+        Ok(())
+    }
 }
