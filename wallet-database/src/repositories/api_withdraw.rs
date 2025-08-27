@@ -43,7 +43,11 @@ impl ApiWithdrawRepo {
             trade_type,
             status: ApiWithdrawStatus::Init,
             tx_hash: "".to_string(),
-            send_tx_at: None,
+            resource_consume: "".to_string(),
+            transaction_fee: "".to_string(),
+            transaction_time: None,
+            block_height: "".to_string(),
+            notes: "".to_string(),
             created_at: Default::default(),
             updated_at: None,
         };
@@ -54,9 +58,11 @@ impl ApiWithdrawRepo {
         pool: &DbPool,
         trade_no: &str,
         tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_tx_status(pool.as_ref(), trade_no, tx_hash, status).await
+        ApiWithdrawDao::update_tx_status(pool.as_ref(), trade_no, tx_hash, resource_consume, transaction_fee, status).await
     }
 
     pub async fn update_api_withdraw_status(

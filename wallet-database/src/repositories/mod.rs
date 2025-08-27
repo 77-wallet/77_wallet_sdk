@@ -3,7 +3,6 @@ pub mod address_book;
 pub mod announcement;
 pub mod api_account;
 pub mod api_assets;
-pub mod api_bill;
 pub mod api_wallet;
 pub mod api_withdraw;
 pub mod assets;

@@ -73,12 +73,30 @@ impl ApiWithdrawDao {
     {
         let sql = r#"
             INSERT INTO api_withdraws
-                (uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,tx_hash,send_tx_at,created_at,updated_at)
+                (uid,
+                name,
+                from_addr,
+                to_addr,
+                value,
+                chain_code,
+                token_addr,
+                symbol,
+                trade_no,
+                trade_type,
+                status,
+                tx_hash,
+                resource_consume,
+                transaction_fee,
+                transaction_time,
+                block_height,
+                notes,
+                created_at,
+                updated_at)
             VALUES
-                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         "#;
 
-        sqlx::query(sql)
+        let res = sqlx::query(sql)
             .bind(&api_withdraw.uid)
             .bind(&api_withdraw.name)
             .bind(&api_withdraw.from_addr)
@@ -98,6 +116,7 @@ impl ApiWithdrawDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
+        tracing::info!(xx=%res.rows_affected(), "withdraw api");
         Ok(())
     }
 
@@ -158,6 +177,8 @@ impl ApiWithdrawDao {
         exec: E,
         trade_no: &str,
         tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error>
     where
@@ -167,8 +188,9 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 tx_hash = $2,
-                status = $3,
-                send_tx_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                resource_consume = $3,
+                transaction_fee = $4,
+                status = $5,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -176,6 +198,8 @@ impl ApiWithdrawDao {
         sqlx::query(sql)
             .bind(trade_no)
             .bind(tx_hash)
+            .bind(resource_consume)
+            .bind(transaction_fee)
             .bind(&status)
             .execute(exec)
             .await

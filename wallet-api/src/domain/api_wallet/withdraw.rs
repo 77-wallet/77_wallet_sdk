@@ -1,8 +1,12 @@
 use crate::{
-    domain::{api_wallet::bill::ApiBillDomain, coin::CoinDomain}, messaging::notify::api_wallet::WithdrawFront, request::{
-        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
-        transaction::{BaseTransferReq, TransferReq},
-    }, ApiWalletError,
+    domain::{
+        api_wallet::{
+            account::ApiAccountDomain,
+            adapter_factory::{ApiChainAdapterFactory, API_ADAPTER_FACTORY},
+        },
+        chain::TransferResp,
+        coin::CoinDomain,
+    }, messaging::notify::api_wallet::WithdrawFront, request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq}, ApiWalletError,
     BusinessError,
     FrontendNotifyEvent,
     NotifyEvent,
@@ -10,7 +14,7 @@ use crate::{
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use wallet_database::{
-    entities::{api_bill::ApiBillKind, api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus},
+    entities::{api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus},
     repositories::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
     },
@@ -21,7 +25,6 @@ pub struct ApiWithdrawDomain {}
 impl ApiWithdrawDomain {
     pub(crate) async fn withdraw(req: &ApiWithdrawReq) -> Result<(), crate::ServiceError> {
         // 验证金额是否需要输入密码
-
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // 获取钱包
         let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid, Some(ApiWalletType::Withdrawal))
@@ -72,20 +75,64 @@ impl ApiWithdrawDomain {
                 &req.value.to_string(),
                 &req.chain_code.to_string(),
             );
-            params.with_token(coin.token_address.clone(), coin.decimals, &coin.symbol);
+            let token_address = if coin.token_address.is_none() {
+                None
+            } else {
+                let s = coin.token_address.unwrap();
+                if s.is_empty() { None } else { Some(s) }
+            };
+            params.with_token(token_address, coin.decimals, &coin.symbol);
 
             let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
 
             // 发交易
-            let tx_hash = ApiBillDomain::transfer(transfer_req, ApiBillKind::Transfer).await?;
+            let tx_resp = Self::transfer(transfer_req).await?;
+
+            let resource_consume = if tx_resp.consumer.is_none() {
+                "0".to_string()
+            } else {
+                tx_resp.consumer.unwrap().energy_used.to_string()
+            };
             ApiWithdrawRepo::update_api_withdraw_tx_status(
                 &pool,
                 &req.trade_no,
-                &tx_hash,
+                &tx_resp.tx_hash,
+                &resource_consume,
+                &tx_resp.fee,
                 ApiWithdrawStatus::SendingTx,
             )
             .await?;
         }
         Ok(())
+    }
+
+    /// transfer
+    pub async fn transfer(params: ApiTransferReq) -> Result<TransferResp, crate::ServiceError> {
+        tracing::info!("transfer ------------------- 7:");
+        let private_key = ApiAccountDomain::get_private_key(
+            &params.base.from,
+            &params.base.chain_code,
+            &params.password,
+        )
+        .await?;
+
+        tracing::info!("transfer ------------------- 8:");
+
+        let adapter = API_ADAPTER_FACTORY
+            .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
+            .await
+            .get_transaction_adapter(params.base.chain_code.as_str())
+            .await?;
+
+        let resp = adapter.transfer(&params, private_key).await?;
+
+        tracing::info!("transfer ------------------- 10:");
+
+        if let Some(request_id) = params.base.request_resource_id {
+            let backend = crate::manager::Context::get_global_backend_api()?;
+            let _ = backend.delegate_complete(&request_id).await;
+        }
+
+        Ok(resp)
     }
 }

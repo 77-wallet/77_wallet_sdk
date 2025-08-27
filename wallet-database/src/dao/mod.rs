@@ -3,7 +3,6 @@ pub mod address_book;
 pub mod announcement;
 pub(crate) mod api_account;
 pub(crate) mod api_assets;
-pub(crate) mod api_bill;
 pub(crate) mod api_wallet;
 pub(crate) mod api_withdraw;
 pub mod assets;

@@ -40,7 +40,7 @@ use wallet_chain_interact::{
     QueryTransactionResult,
 };
 use wallet_database::entities::{
-    api_assets::ApiAssetsEntity, api_bill::ApiBillKind, coin::CoinEntity,
+    api_assets::ApiAssetsEntity, coin::CoinEntity,
     multisig_account::MultisigAccountEntity, multisig_member::MultisigMemberEntities,
     multisig_queue::MultisigQueueEntity, permission::PermissionEntity,
 };
@@ -861,10 +861,10 @@ impl Multisig for TronTx {
             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
                 .await?;
 
-        if queue.transfer_type == ApiBillKind::UpdatePermission.to_i8() {
-            let chain = self.chain.provider.chain_params().await?;
-            consumer.set_extra_fee(chain.update_account_fee());
-        }
+        // if queue.transfer_type == ApiBillKind::UpdatePermission.to_i8() {
+        //     let chain = self.chain.provider.chain_params().await?;
+        //     consumer.set_extra_fee(chain.update_account_fee());
+        // }
 
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
         Ok(wallet_utils::serde_func::serde_to_string(&res)?)

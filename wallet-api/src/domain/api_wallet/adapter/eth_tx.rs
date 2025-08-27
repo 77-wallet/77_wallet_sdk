@@ -293,6 +293,7 @@ impl Tx for EthTx {
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 14");
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
+        tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 15");
         let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
         if remain_balance < rc.consume {

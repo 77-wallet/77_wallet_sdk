@@ -1,6 +1,4 @@
-use chrono::Utc;
 use wallet_chain_interact::eth;
-use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
 use wallet_utils::unit;
 
 #[derive(Debug, Clone)]

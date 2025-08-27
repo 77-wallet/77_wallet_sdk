@@ -1,6 +1,3 @@
-use chrono::Utc;
-use wallet_database::entities::api_bill::{ApiBillEntity, ApiBillKind};
-
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawReq {
@@ -76,38 +73,4 @@ impl ApiBaseTransferReq {
 pub struct ApiTransferReq {
     pub base: ApiBaseTransferReq,
     pub password: String,
-}
-
-impl TryFrom<&ApiTransferReq> for ApiBillEntity {
-    type Error = crate::ServiceError;
-
-    fn try_from(req: &ApiTransferReq) -> Result<Self, Self::Error> {
-        let value = wallet_utils::unit::string_to_f64(&req.base.value)?;
-        let res = ApiBillEntity {
-            id: 0,
-            hash: "".to_string(),
-            from_addr: req.base.from.clone(),
-            to_addr: req.base.to.clone(),
-            token: req.base.token_address.clone(),
-            value: req.base.value.clone(),
-            symbol: req.base.symbol.clone(),
-            chain_code: req.base.chain_code.clone(),
-            tx_kind: ApiBillKind::Transfer,
-            owner: "".to_string(),
-            status: 1,
-            queue_id: "".to_owned(),
-            notes: req.base.notes.clone().unwrap_or_default(),
-            transaction_fee: "0".to_string(),
-            resource_consume: "".to_string(),
-            block_height: "0".to_string(),
-            signer: "".to_string(),
-            extra: "".to_string(),
-            created_at: Default::default(),
-            transfer_type: 0,
-            is_multisig: 0,
-            updated_at: None,
-            transaction_time: Utc::now(),
-        };
-        Ok(res)
-    }
 }
