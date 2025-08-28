@@ -95,9 +95,9 @@ async fn test_quote() {
     let wallet_manager = get_manager().await;
 
     let token_in = SwapTokenInfo {
-        token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-        symbol: "usdt".to_string(),
-        decimals: 6,
+        token_addr: "".to_string(),
+        symbol: "wtrx".to_string(),
+        decimals: 18,
     };
 
     let token_out = SwapTokenInfo {
@@ -121,7 +121,7 @@ async fn test_quote() {
         aggregator_addr: AGGREGATOR.to_string(),
         recipient: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
         chain_code: "eth".to_string(),
-        amount_in: "5".to_string(),
+        amount_in: "0.001".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],

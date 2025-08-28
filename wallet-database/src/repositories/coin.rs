@@ -187,6 +187,15 @@ impl CoinRepo {
             )))
     }
 
+    pub async fn update_price_unit1(
+        chain_code: &str,
+        token_address: &str,
+        price: &str,
+        pool: &DbPool,
+    ) -> Result<(), crate::Error> {
+        CoinEntity::update_price_unit1(pool.as_ref(), chain_code, token_address, price).await
+    }
+
     pub async fn multi_update_swappable(
         coins: Vec<BatchCoinSwappable>,
         pool: &DbPool,

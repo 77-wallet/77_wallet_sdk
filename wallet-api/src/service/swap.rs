@@ -38,6 +38,7 @@ use wallet_database::{
 use wallet_transport_backend::{
     api::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams, ChainDex},
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
+    request::TokenQueryPriceReq,
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{
@@ -276,7 +277,6 @@ impl SwapServer {
         tracing::warn!("quote time: {}", instance.elapsed().as_secs_f64());
 
         let amount_out = unit::u256_from_str(&quote_resp.amount_out)?;
-
         let (bal_in, bal_out) = self.get_bal_in_and_out(&req, amount_out).await?;
 
         // 获取滑点
@@ -358,7 +358,6 @@ impl SwapServer {
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
-
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         // 模拟报价
         let (amount_out, consumer, content) = adapter
@@ -536,7 +535,12 @@ impl SwapServer {
         };
         let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
 
+        let mut req = TokenQueryPriceReq(Vec::new());
         for coin in coins.data {
+            // 查询币价的请求参数
+            let contract_address = coin.token_address.clone();
+            req.insert(&coin.chain_code, &contract_address);
+
             let balance = if coin.balance != "0" {
                 let unit_price = unit::string_to_f64(&coin.price)? * exchange.rate;
 
@@ -555,6 +559,18 @@ impl SwapServer {
                 balance,
             };
             resp.data.push(token_info);
+        }
+
+        let backend_api = crate::Context::get_global_backend_api()?;
+        let tokens = backend_api.token_query_price(&req).await?.list;
+        for token in tokens {
+            CoinRepo::update_price_unit1(
+                &token.chain_code,
+                &token.token_address.unwrap_or_default(),
+                &token.price.to_string(),
+                &pool,
+            )
+            .await?;
         }
 
         Ok(resp)

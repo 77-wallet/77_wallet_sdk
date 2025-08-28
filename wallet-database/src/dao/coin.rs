@@ -97,6 +97,29 @@ impl CoinEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    // only update price
+    pub async fn update_price_unit1<'a, E>(
+        exec: E,
+        chain_code: &str,
+        token_address: &str,
+        price: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql =
+            "UPDATE coin SET price = ? where token_address = ? and chain_code = ?".to_string();
+
+        let _r = sqlx::query::<_>(&sql)
+            .bind(price)
+            .bind(token_address)
+            .bind(chain_code)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
+
     pub async fn detail<'a, E>(
         executor: E,
         symbol: &str,
