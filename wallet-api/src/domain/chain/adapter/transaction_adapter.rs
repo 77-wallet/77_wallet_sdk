@@ -5,7 +5,7 @@ use crate::{
         self,
         chain::{
             pare_fee_setting,
-            swap::{calc_slippage, evm_swap::SwapParams},
+            swap::evm_swap::SwapParams,
             transaction::{ChainTransDomain, DEFAULT_UNITS},
             TransferResp,
         },
@@ -858,11 +858,10 @@ impl TransactionAdapter {
         quote_resp: &AggQuoteResp,
         symbol: &str,
     ) -> Result<(U256, String, String), crate::ServiceError> {
-        let amount_out = quote_resp.amount_out_u256()?;
+        // let amount_out = quote_resp.amount_out_u256()?;
 
         // 考虑滑点计算最小金额
-        let min_amount_out =
-            calc_slippage(amount_out, req.get_slippage(quote_resp.default_slippage));
+        let min_amount_out = U256::from(1);
 
         let currency = {
             let currency = crate::app_state::APP_STATE.read().await;
