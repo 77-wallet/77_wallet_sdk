@@ -317,7 +317,7 @@ impl SwapServer {
         let allowance = self.check_allowance(&req).await?;
         let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
 
-        if allowance > U256::from(alloy::primitives::U64::MAX) {
+        if allowance > U256::MAX >> 1 {
             res.approve_amount = "-1".to_string();
         } else {
             res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
