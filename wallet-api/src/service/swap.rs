@@ -6,9 +6,7 @@ use crate::{
         coin::{CoinDomain, TokenCurrencyGetter},
         task_queue::TaskQueueDomain,
     },
-    infrastructure::swap_client::{
-        AggQuoteRequest, AggQuoteResp, ChainDex, DefaultQuoteResp, SwapClient,
-    },
+    infrastructure::swap_client::{AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SwapClient},
     messaging::notify::other::{Process, TransactionProcessFrontend},
     request::transaction::{
         ApproveReq, DepositReq, DexRoute, QuoteReq, SwapInnerType, SwapReq, SwapTokenListReq,
@@ -38,7 +36,7 @@ use wallet_database::{
     DbPool,
 };
 use wallet_transport_backend::{
-    api::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams},
+    api::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams, ChainDex},
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
 };
 use wallet_types::chain::chain::ChainCode;
@@ -563,7 +561,10 @@ impl SwapServer {
     }
 
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
-        Ok(self.client.chain_list().await?.chain_dexs)
+        let backend_api = crate::Context::get_global_backend_api()?;
+        let result = backend_api.support_chain_list().await?;
+
+        Ok(result.support_chain)
     }
 
     pub async fn approve_fee(

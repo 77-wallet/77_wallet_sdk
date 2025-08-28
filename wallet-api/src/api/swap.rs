@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType,
-    infrastructure::swap_client::{ChainDex, DefaultQuoteResp},
+    infrastructure::swap_client::DefaultQuoteResp,
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
@@ -9,6 +9,7 @@ use crate::{
     service::swap::SwapServer,
 };
 use wallet_database::pagination::Pagination;
+use wallet_transport_backend::api::swap::ChainDex;
 
 impl crate::WalletManager {
     pub async fn default_quote(
