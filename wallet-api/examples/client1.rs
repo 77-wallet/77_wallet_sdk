@@ -1,5 +1,6 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
+use wallet_database::entities::api_wallet::ApiWalletType;
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
@@ -22,12 +23,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
 
-    let res = wallet_manager
-        .set_invite_code(Some("I1912683353004912640".to_string()))
-        .await;
+    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("res: {res:?}");
 
+    // 创建钱包
+    let language_code = 1;
+    let phrase = &test_params.create_wallet_req.phrase;
+    let salt = "q1111111";
+    let wallet_name = "api_wallet";
+    let account_name = "ccccc";
+    let is_default_name = true;
+    let wallet_password = "q1111111";
+    let invite_code = None;
+    // let api_wallet_type = ApiWalletType::SubAccount;
+    let api_wallet_type = ApiWalletType::Withdrawal;
+    let wallet = wallet_manager
+        .create_api_wallet(
+            language_code,
+            phrase,
+            salt,
+            wallet_name,
+            account_name,
+            is_default_name,
+            wallet_password,
+            invite_code,
+            api_wallet_type,
+        )
+        .await
+        .result;
+    tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
+
+    let order_list = wallet_manager.get_api_withdraw_order_list().await.result;
+    tracing::info!("order_list ------------------- 2: {order_list:#?}");
+    let uid = "04de3a5eff89883fecd1469fbc7621f37122c83d6680b95ad5c67cd9a141cd4e";
+
+    let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
+    let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
+    let value = "0.000001";
+    let trade_no = "0x0000000066";
+    let res1 = wallet_manager
+        .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid)
+        .await;
+    tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)
     //     .await
