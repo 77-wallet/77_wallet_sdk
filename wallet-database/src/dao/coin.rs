@@ -345,6 +345,7 @@ impl CoinEntity {
             " on conflict (symbol, chain_code, token_address) do update set name = EXCLUDED.name, 
             decimals = EXCLUDED.decimals,
             is_custom = EXCLUDED.is_custom,
+            is_default = EXCLUDED.is_default,
             status = EXCLUDED.status, 
             swappable = EXCLUDED.swappable,
             updated_at = EXCLUDED.updated_at, 

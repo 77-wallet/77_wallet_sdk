@@ -94,6 +94,7 @@ impl CoinDomain {
         let mut seen = std::collections::HashSet::new();
         let mut coin_data = Vec::with_capacity(coins.len());
 
+        // filter repeat
         for coin in coins {
             let key = (
                 coin.symbol.clone(),

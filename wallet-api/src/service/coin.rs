@@ -19,7 +19,7 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         assets::AssetsId,
-        coin::{BatchCoinSwappable, CoinId},
+        coin::{BatchCoinSwappable, CoinData, CoinId},
     },
     repositories::{
         assets::AssetsRepoTrait,
@@ -177,7 +177,7 @@ impl CoinService {
         let data = coins
             .into_iter()
             .map(|d| coin_info_to_coin_data(d))
-            .collect();
+            .collect::<Vec<CoinData>>();
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
 
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
