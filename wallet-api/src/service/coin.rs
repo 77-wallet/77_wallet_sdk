@@ -440,29 +440,30 @@ impl CoinService {
             }
             let symbol = chain_instance.token_symbol(&token_address).await?;
             let name = chain_instance.token_name(&token_address).await?;
+
+            let time = wallet_utils::time::now();
+            // TODO 后续优化 用户自定义添加的币种默认不可兑换
+            let cus_coin = wallet_database::entities::coin::CoinData::new(
+                Some(name.clone()),
+                &symbol,
+                chain_code,
+                Some(token_address.to_string()),
+                None,
+                protocol,
+                decimals,
+                0,
+                0,
+                1,
+                false,
+                time,
+                time,
+            )
+            .with_custom(1);
+            let coin = vec![cus_coin];
+            tx.upsert_multi_coin(coin).await?;
+
             (decimals, symbol, name)
         };
-
-        let time = wallet_utils::time::now();
-        // TODO 后续优化 用户自定义添加的币种默认不可兑换
-        let cus_coin = wallet_database::entities::coin::CoinData::new(
-            Some(name.clone()),
-            &symbol,
-            chain_code,
-            Some(token_address.to_string()),
-            None,
-            protocol,
-            decimals,
-            0,
-            0,
-            1,
-            false,
-            time,
-            time,
-        )
-        .with_custom(1);
-        let coin = vec![cus_coin];
-        tx.upsert_multi_coin(coin).await?;
 
         let mut account_addresses = self
             .account_domain

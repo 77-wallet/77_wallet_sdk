@@ -215,9 +215,10 @@ mod test {
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id,
             // symbol: "BNB".to_string(),
-            symbol: "TRX".to_string(),
-            wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
-            chain_code: None,
+            symbol: "DOGE".to_string(),
+            // wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
+            wallet_address: "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1".to_string(),
+            chain_code: Some("bnb".to_string()),
             // token_address,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;
@@ -425,7 +426,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
+        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let chain_code = None;
         let is_multisig = None;
         // let account_id = Some(1);
