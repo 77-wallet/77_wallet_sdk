@@ -155,12 +155,7 @@ pub struct Keys {
 
 impl Keys {
     pub fn new(address: String, weight: i32, is_self: i64) -> Self {
-        Self {
-            name: String::new(),
-            address,
-            weight,
-            is_self,
-        }
+        Self { name: String::new(), address, weight, is_self }
     }
 }
 

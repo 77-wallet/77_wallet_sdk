@@ -1,5 +1,4 @@
-use crate::api::ReturnType;
-use crate::service::api_wallet::withdraw::WithdrawService;
+use crate::{api::ReturnType, service::api_wallet::withdraw::WithdrawService};
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
 impl crate::WalletManager {

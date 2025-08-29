@@ -6,10 +6,7 @@ impl crate::WalletManager {
         &self,
         input: Vec<wallet_database::entities::announcement::CreateAnnouncementVo>,
     ) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resource_repo())
-            .add(input)
-            .await?
-            .into()
+        AnnouncementService::new(self.repo_factory.resource_repo()).add(input).await?.into()
     }
 
     pub async fn pull_announcement(&self) -> ReturnType<()> {
@@ -38,10 +35,7 @@ impl crate::WalletManager {
     }
 
     pub async fn read_announcement(&self, id: Option<&str>) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resource_repo())
-            .read(id)
-            .await?
-            .into()
+        AnnouncementService::new(self.repo_factory.resource_repo()).read(id).await?.into()
     }
 }
 

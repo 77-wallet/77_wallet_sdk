@@ -23,9 +23,7 @@ impl AddressBookService {
         let condition = vec![("address", address), ("chain_code", chain_code)];
         let res = self.repo.find_by_conditions(condition).await?;
         if res.is_some() {
-            return Err(crate::BusinessError::Account(
-                crate::AccountError::AddressRepeat,
-            ))?;
+            return Err(crate::BusinessError::Account(crate::AccountError::AddressRepeat))?;
         }
 
         Ok(self.repo.insert(name, address, chain_code).await?)
@@ -42,9 +40,7 @@ impl AddressBookService {
 
         let res = self.repo.check_not_self(id, address, chain_code).await?;
         if res.is_some() {
-            return Err(crate::BusinessError::Account(
-                crate::AccountError::AddressRepeat,
-            ))?;
+            return Err(crate::BusinessError::Account(crate::AccountError::AddressRepeat))?;
         }
 
         Ok(self.repo.update(id, name, address, chain_code).await?)
@@ -92,10 +88,7 @@ impl AddressBookService {
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
 
-        Ok(AddressBookResp {
-            address_book,
-            first_transfer: bill.is_none(),
-        })
+        Ok(AddressBookResp { address_book, first_transfer: bill.is_none() })
     }
 
     // 查询地址的动态状态 0 正常的状态 1冻结

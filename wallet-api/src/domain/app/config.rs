@@ -67,9 +67,7 @@ impl ConfigDomain {
 
     pub async fn set_official_website(website: Option<String>) -> Result<(), crate::ServiceError> {
         if let Some(official_website) = website {
-            let config = OfficialWebsite {
-                url: official_website.clone(),
-            };
+            let config = OfficialWebsite { url: official_website.clone() };
             ConfigDomain::set_config(OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
             let mut config = crate::app_state::APP_STATE.write().await;
             config.set_official_website(Some(official_website));
@@ -269,20 +267,17 @@ impl ConfigDomain {
     pub(crate) async fn get_app_version() -> Result<AppVersion, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-        let app_version = ConfigDao::find_by_key(APP_VERSION, pool.as_ref())
-            .await?
-            .ok_or(crate::ServiceError::Business(crate::BusinessError::Config(
+        let app_version = ConfigDao::find_by_key(APP_VERSION, pool.as_ref()).await?.ok_or(
+            crate::ServiceError::Business(crate::BusinessError::Config(
                 crate::ConfigError::NotFound(APP_VERSION.to_owned()),
-            )))?;
+            )),
+        )?;
         Ok(AppVersion::try_from(app_version.value)?)
     }
 
     pub(crate) fn compare_versions(v1: &str, v2: &str) -> Ordering {
-        let parse = |v: &str| {
-            v.split('.')
-                .map(|s| s.parse::<u32>().unwrap_or(0))
-                .collect::<Vec<_>>()
-        };
+        let parse =
+            |v: &str| v.split('.').map(|s| s.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
 
         let mut v1_parts = parse(v1);
         let mut v2_parts = parse(v2);
@@ -388,9 +383,7 @@ impl ConfigDomain {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         if let Ok(mqtt_url) = backend_api.mqtt_init().await {
-            let config = MqttUrl {
-                url: mqtt_url.clone(),
-            };
+            let config = MqttUrl { url: mqtt_url.clone() };
             ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
             return Ok(Some(config.url_with_protocol()));
         }
@@ -412,92 +405,44 @@ mod tests {
 
     #[test]
     fn test_equal_versions() {
-        assert_eq!(
-            ConfigDomain::compare_versions("1.2.3", "1.2.3"),
-            Ordering::Equal
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("1.2", "1.2.0"),
-            Ordering::Equal
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("1.0.0.0", "1"),
-            Ordering::Equal
-        );
+        assert_eq!(ConfigDomain::compare_versions("1.2.3", "1.2.3"), Ordering::Equal);
+        assert_eq!(ConfigDomain::compare_versions("1.2", "1.2.0"), Ordering::Equal);
+        assert_eq!(ConfigDomain::compare_versions("1.0.0.0", "1"), Ordering::Equal);
     }
 
     #[test]
     fn test_greater_versions() {
-        assert_eq!(
-            ConfigDomain::compare_versions("1.2.10", "1.2.2"),
-            Ordering::Greater
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("2.0", "1.999.999"),
-            Ordering::Greater
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("1.10.0", "1.2.99"),
-            Ordering::Greater
-        );
+        assert_eq!(ConfigDomain::compare_versions("1.2.10", "1.2.2"), Ordering::Greater);
+        assert_eq!(ConfigDomain::compare_versions("2.0", "1.999.999"), Ordering::Greater);
+        assert_eq!(ConfigDomain::compare_versions("1.10.0", "1.2.99"), Ordering::Greater);
     }
 
     #[test]
     fn test_less_versions() {
-        assert_eq!(
-            ConfigDomain::compare_versions("0.9.9", "1.0.0"),
-            Ordering::Less
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("1.2.3", "1.2.4"),
-            Ordering::Less
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("1.2", "1.2.1"),
-            Ordering::Less
-        );
+        assert_eq!(ConfigDomain::compare_versions("0.9.9", "1.0.0"), Ordering::Less);
+        assert_eq!(ConfigDomain::compare_versions("1.2.3", "1.2.4"), Ordering::Less);
+        assert_eq!(ConfigDomain::compare_versions("1.2", "1.2.1"), Ordering::Less);
     }
 
     #[test]
     fn test_invalid_parts() {
-        assert_eq!(
-            ConfigDomain::compare_versions("1.2.alpha", "1.2.0"),
-            Ordering::Equal
-        ); // "alpha" -> 0
-        assert_eq!(
-            ConfigDomain::compare_versions("1.a.3", "1.0.3"),
-            Ordering::Equal
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("a.b.c", "0.0.0"),
-            Ordering::Equal
-        );
+        assert_eq!(ConfigDomain::compare_versions("1.2.alpha", "1.2.0"), Ordering::Equal); // "alpha" -> 0
+        assert_eq!(ConfigDomain::compare_versions("1.a.3", "1.0.3"), Ordering::Equal);
+        assert_eq!(ConfigDomain::compare_versions("a.b.c", "0.0.0"), Ordering::Equal);
     }
 
     #[test]
     fn test_empty_strings() {
         assert_eq!(ConfigDomain::compare_versions("", ""), Ordering::Equal);
-        assert_eq!(
-            ConfigDomain::compare_versions("1.2.3", ""),
-            Ordering::Greater
-        );
+        assert_eq!(ConfigDomain::compare_versions("1.2.3", ""), Ordering::Greater);
         assert_eq!(ConfigDomain::compare_versions("", "0.0.1"), Ordering::Less);
     }
 
     #[test]
     fn test_trailing_zeros() {
-        assert_eq!(
-            ConfigDomain::compare_versions("1.0.0.0", "1"),
-            Ordering::Equal
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("1.0.0.1", "1"),
-            Ordering::Greater
-        );
-        assert_eq!(
-            ConfigDomain::compare_versions("1", "1.0.0.1"),
-            Ordering::Less
-        );
+        assert_eq!(ConfigDomain::compare_versions("1.0.0.0", "1"), Ordering::Equal);
+        assert_eq!(ConfigDomain::compare_versions("1.0.0.1", "1"), Ordering::Greater);
+        assert_eq!(ConfigDomain::compare_versions("1", "1.0.0.1"), Ordering::Less);
     }
 
     #[test]

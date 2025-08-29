@@ -21,9 +21,9 @@ impl BackendResponse {
             BackendResponse::Success(ok) => {
                 if ok.success {
                     let res = match ok.data {
-                        Some(data) => aes_cbc_cryptor
-                            .decrypt(&data)
-                            .map_err(crate::Error::Utils)?,
+                        Some(data) => {
+                            aes_cbc_cryptor.decrypt(&data).map_err(crate::Error::Utils)?
+                        }
                         None => wallet_utils::serde_func::serde_to_value(None::<T>)?,
                     };
                     tracing::debug!("backend response: {:?}", res);

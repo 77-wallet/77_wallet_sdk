@@ -67,11 +67,8 @@ impl AccountDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let mut account_addresses = Vec::new();
 
-        let chain_codes = if let Some(chain_code) = &chain_code {
-            vec![chain_code.to_string()]
-        } else {
-            vec![]
-        };
+        let chain_codes =
+            if let Some(chain_code) = &chain_code { vec![chain_code.to_string()] } else { vec![] };
 
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
@@ -194,9 +191,7 @@ impl AccountDomain {
             is_default_name,
         )
         .await?;
-        let res = CreateAccountRes {
-            address: address.to_string(),
-        };
+        let res = CreateAccountRes { address: address.to_string() };
         // let task_data = Self::address_init(
         //     repo,
         //     uid,
@@ -477,12 +472,9 @@ pub async fn open_subpk_with_password(
 
     let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-    let account =
-        AccountEntity::detail(db.as_ref(), &req)
-            .await?
-            .ok_or(crate::BusinessError::Account(
-                crate::AccountError::NotFound(address.to_string()),
-            ))?;
+    let account = AccountEntity::detail(db.as_ref(), &req)
+        .await?
+        .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())))?;
 
     let wallet = WalletEntity::detail(db.as_ref(), &account.wallet_address)
         .await?

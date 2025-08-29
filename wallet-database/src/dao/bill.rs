@@ -108,10 +108,8 @@ impl BillDao {
     {
         let hashs_str = any_in_collection(hashs, "','");
 
-        let sql = format!(
-            "select * from bill where owner = '{}' and hash in ('{}')",
-            owner, hashs_str
-        );
+        let sql =
+            format!("select * from bill where owner = '{}' and hash in ('{}')", owner, hashs_str);
 
         let res = sqlx::query_as::<_, BillEntity>(&sql)
             .fetch_all(pool)
@@ -233,11 +231,8 @@ impl BillDao {
         paginate.total_count = paginate.group_count(&count_sql, pool.as_ref()).await?;
         paginate.data = paginate.data(&sql, pool.as_ref()).await?;
 
-        let res = paginate
-            .data
-            .iter()
-            .map(RecentBillListVo::from)
-            .collect::<Vec<RecentBillListVo>>();
+        let res =
+            paginate.data.iter().map(RecentBillListVo::from).collect::<Vec<RecentBillListVo>>();
 
         let mut unique = HashSet::new();
         let mut result = vec![];
@@ -324,10 +319,7 @@ impl BillDao {
             query = query.bind(extra_str);
         }
 
-        query
-            .execute(pool.as_ref())
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        query.execute(pool.as_ref()).await.map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(())
     }
@@ -342,11 +334,7 @@ impl BillDao {
         let time = Utc::now().timestamp();
         let signer = tx.get_singer_str();
         let (symbol, to) = tx.get_symbol_and_to();
-        let transaction_time = if tx.transaction_time == 0 {
-            time
-        } else {
-            tx.transaction_time
-        };
+        let transaction_time = if tx.transaction_time == 0 { time } else { tx.transaction_time };
         let token = tx.token.clone().unwrap_or_default();
         let multisig_tx = tx.get_multisig_i32();
         let extra = tx.get_extra_str()?;

@@ -39,10 +39,8 @@ impl BillService {
             )
             .await?;
 
-            let mut address = account
-                .iter()
-                .map(|item| item.address.clone())
-                .collect::<Vec<String>>();
+            let mut address =
+                account.iter().map(|item| item.address.clone()).collect::<Vec<String>>();
 
             // 兼容权限里面的地址
             let users = PermissionRepo::permission_by_users(&pool, &address).await?;
@@ -74,10 +72,7 @@ impl BillService {
         )
         .await?;
 
-        lists
-            .data
-            .iter_mut()
-            .for_each(|item| item.truncate_to_8_decimals());
+        lists.data.iter_mut().for_each(|item| item.truncate_to_8_decimals());
 
         Ok(lists)
     }
@@ -136,9 +131,6 @@ impl BillService {
         )
         .await?;
 
-        Ok(CoinCurrency {
-            currency: currency.to_string(),
-            unit_price: token.currency_price,
-        })
+        Ok(CoinCurrency { currency: currency.to_string(), unit_price: token.currency_price })
     }
 }

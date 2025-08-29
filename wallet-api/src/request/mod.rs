@@ -32,14 +32,11 @@ pub enum AccountRequest {
 impl TryFrom<(Option<String>, Option<u32>)> for AccountRequest {
     fn try_from(value: (Option<String>, Option<u32>)) -> Result<Self, Self::Error> {
         match value {
-            (Some(address), Some(account_id)) => Ok(AccountRequest::Wallet(WalletReq {
-                address,
-                account_id,
-            })),
+            (Some(address), Some(account_id)) => {
+                Ok(AccountRequest::Wallet(WalletReq { address, account_id }))
+            }
             (Some(address), None) => Ok(AccountRequest::Account(AccountReq { address })),
-            _ => Err(crate::ServiceError::Parameter(
-                "Invalid request: need address".to_string(),
-            )),
+            _ => Err(crate::ServiceError::Parameter("Invalid request: need address".to_string())),
         }
     }
 

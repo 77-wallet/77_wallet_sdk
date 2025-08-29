@@ -25,10 +25,7 @@ pub struct ChainService {
 
 impl ChainService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            coin_domain: CoinDomain::new(),
-        }
+        Self { repo, coin_domain: CoinDomain::new() }
     }
 
     pub async fn add(
@@ -209,10 +206,7 @@ impl ChainService {
                     .get_account_list_by_wallet_address_and_account_id(Some(address), account_id)
                     .await?;
                 for account in accounts {
-                    if !account_addresses
-                        .iter()
-                        .any(|address| address == &account.address)
-                    {
+                    if !account_addresses.iter().any(|address| address == &account.address) {
                         account_addresses.push(account.address);
                     }
                 }
@@ -223,17 +217,12 @@ impl ChainService {
                 .get_account_list_by_wallet_address_and_account_id(Some(address), account_id)
                 .await?;
             for account in accounts {
-                if !account_addresses
-                    .iter()
-                    .any(|address| address == &account.address)
-                {
+                if !account_addresses.iter().any(|address| address == &account.address) {
                     account_addresses.push(account.address);
                 }
             }
         }
-        let datas = tx
-            .get_assets_by_address(account_addresses, is_multisig)
-            .await?;
+        let datas = tx.get_assets_by_address(account_addresses, is_multisig).await?;
 
         let datas = datas
             .into_iter()
@@ -245,9 +234,7 @@ impl ChainService {
             .collect();
 
         let chains = ChainRepo::get_chain_list(&pool).await?;
-        let res = token_currencies
-            .calculate_chain_assets_list(datas, chains)
-            .await?;
+        let res = token_currencies.calculate_chain_assets_list(datas, chains).await?;
 
         Ok(res)
     }

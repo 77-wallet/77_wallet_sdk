@@ -6,9 +6,7 @@ async fn test_add_address_book() {
     let name = "2".to_string();
     let address = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
     let chain_code = "tron".to_string();
-    let detail = wallet_manager
-        .create_address_book(name, address, chain_code)
-        .await;
+    let detail = wallet_manager.create_address_book(name, address, chain_code).await;
 
     tracing::info!("{}", serde_json::to_string(&detail).unwrap());
 }
@@ -21,9 +19,7 @@ async fn test_update_address_book() {
     let name = "f".to_string();
     let address = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string();
     let chain_code = "tron".to_string();
-    let detail = wallet_manager
-        .update_address_book(id, name, address, chain_code)
-        .await;
+    let detail = wallet_manager.update_address_book(id, name, address, chain_code).await;
 
     tracing::info!("{}", serde_json::to_string(&detail).unwrap());
 }

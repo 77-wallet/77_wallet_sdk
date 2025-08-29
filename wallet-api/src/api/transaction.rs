@@ -1,15 +1,17 @@
 use super::ReturnType;
-use crate::request::transaction::{self};
-use crate::response_vo::CoinCurrency;
-use crate::response_vo::{
-    self,
-    account::Balance,
-    transaction::{BillDetailVo, TransactionResult},
+use crate::{
+    request::transaction::{self},
+    response_vo::{
+        self, CoinCurrency,
+        account::Balance,
+        transaction::{BillDetailVo, TransactionResult},
+    },
+    service::{bill::BillService, transaction::TransactionService},
 };
-use crate::service::bill::BillService;
-use crate::service::transaction::TransactionService;
-use wallet_database::entities::bill::{BillEntity, BillKind, RecentBillListVo};
-use wallet_database::pagination::Pagination;
+use wallet_database::{
+    entities::bill::{BillEntity, BillKind, RecentBillListVo},
+    pagination::Pagination,
+};
 
 impl crate::WalletManager {
     // 本币的余额
@@ -21,9 +23,7 @@ impl crate::WalletManager {
         token_address: Option<String>,
     ) -> ReturnType<Balance> {
         let token_address = token_address.filter(|s| !s.is_empty());
-        TransactionService::chain_balance(address, chain_code, symbol, token_address)
-            .await
-            .into()
+        TransactionService::chain_balance(address, chain_code, symbol, token_address).await.into()
     }
 
     /// Estimates the transaction fee for a transfer request.
@@ -36,9 +36,7 @@ impl crate::WalletManager {
 
     /// tokenAddress前端必须传
     pub async fn transfer(&self, req: transaction::TransferReq) -> ReturnType<TransactionResult> {
-        TransactionService::transfer(req, BillKind::Transfer)
-            .await
-            .into()
+        TransactionService::transfer(req, BillKind::Transfer).await.into()
     }
 
     pub async fn bill_detail(&self, tx_hash: &str, owner: &str) -> ReturnType<BillDetailVo> {
@@ -50,9 +48,7 @@ impl crate::WalletManager {
         owner: String,
         hashs: Vec<String>,
     ) -> ReturnType<Vec<BillEntity>> {
-        TransactionService::list_by_hashs(owner, hashs)
-            .await?
-            .into()
+        TransactionService::list_by_hashs(owner, hashs).await?.into()
     }
 
     pub async fn bill_lists(
@@ -97,9 +93,7 @@ impl crate::WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<RecentBillListVo>> {
-        TransactionService::recent_bill(&symbol, &addr, &chain_code, page, page_size)
-            .await
-            .into()
+        TransactionService::recent_bill(&symbol, &addr, &chain_code, page, page_size).await.into()
     }
 
     // 单笔查询交易并处理
@@ -108,9 +102,7 @@ impl crate::WalletManager {
     }
 
     pub async fn sync_bill(&self, chain_code: String, address: String) -> ReturnType<()> {
-        BillService::sync_bill_by_address(&chain_code, &address)
-            .await?
-            .into()
+        BillService::sync_bill_by_address(&chain_code, &address).await?.into()
     }
 
     pub async fn sync_bill_by_wallet_and_account(
@@ -118,9 +110,7 @@ impl crate::WalletManager {
         wallet_address: String,
         account_id: u32,
     ) -> ReturnType<()> {
-        BillService::sync_bill_by_wallet_and_account(wallet_address, account_id)
-            .await?
-            .into()
+        BillService::sync_bill_by_wallet_and_account(wallet_address, account_id).await?.into()
     }
 
     // 币汇率
@@ -130,9 +120,7 @@ impl crate::WalletManager {
         symbol: String,
         token_address: Option<String>,
     ) -> ReturnType<CoinCurrency> {
-        BillService::coin_currency_price(chain_code, symbol, token_address)
-            .await
-            .into()
+        BillService::coin_currency_price(chain_code, symbol, token_address).await.into()
     }
 }
 
@@ -154,9 +142,7 @@ mod test {
         // let symbol = "USDT";
 
         let mut params = BaseTransferReq::new(from, to, value, chain_code, symbol);
-        params.with_token(Some(
-            "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-        ));
+        params.with_token(Some("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()));
 
         let res = wallet_manager.transaction_fee(params).await;
         tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());

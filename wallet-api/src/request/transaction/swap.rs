@@ -235,10 +235,7 @@ impl QuoteReq {
     }
 
     pub fn amount_in_u256(&self) -> Result<U256, crate::ServiceError> {
-        Ok(wallet_utils::unit::convert_to_u256(
-            &self.amount_in,
-            self.token_in.decimals as u8,
-        )?)
+        Ok(wallet_utils::unit::convert_to_u256(&self.amount_in, self.token_in.decimals as u8)?)
     }
 
     pub fn recipient_address(&self) -> Result<alloy::primitives::Address, crate::ServiceError> {
@@ -246,9 +243,7 @@ impl QuoteReq {
     }
 
     pub fn aggregator_address(&self) -> Result<alloy::primitives::Address, crate::ServiceError> {
-        Ok(wallet_utils::address::parse_eth_address(
-            &self.aggregator_addr,
-        )?)
+        Ok(wallet_utils::address::parse_eth_address(&self.aggregator_addr)?)
     }
 
     // 波场的地址 转eth alloy Address type
@@ -297,17 +292,9 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
         let mut rng = rand::thread_rng();
         let n: u32 = rng.gen_range(0..1000);
 
-        let unique = format!(
-            "{}_{}_{}",
-            value.recipient,
-            wallet_utils::time::now().timestamp(),
-            n,
-        );
-        let dex_ids = value
-            .dex_list
-            .iter()
-            .map(|dex_id| DexId { dex_id: *dex_id })
-            .collect();
+        let unique =
+            format!("{}_{}_{}", value.recipient, wallet_utils::time::now().timestamp(), n,);
+        let dex_ids = value.dex_list.iter().map(|dex_id| DexId { dex_id: *dex_id }).collect();
 
         Ok(Self {
             chain_code: chain_code.to_string(),

@@ -10,9 +10,7 @@ async fn test_balance() {
     let symbol = "USDT";
     let token_address = Some("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string());
 
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 
     println!("balance: {:?}", balance);
 }
@@ -58,8 +56,5 @@ async fn test_transfer() {
     };
 
     let token_fee = wallet_manager.transfer(params).await;
-    tracing::info!(
-        "test_transfer: {}",
-        serde_json::to_string(&token_fee).unwrap()
-    );
+    tracing::info!("test_transfer: {}", serde_json::to_string(&token_fee).unwrap());
 }

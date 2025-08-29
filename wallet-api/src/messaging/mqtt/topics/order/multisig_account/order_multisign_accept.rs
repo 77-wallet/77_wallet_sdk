@@ -89,11 +89,7 @@ impl OrderMultiSignAccept {
         tracing::info!("Checking if multisig account {} is cancelled...", id);
         let backend_api = crate::Context::get_global_backend_api()?;
         let is_cancel = backend_api.check_multisig_account_is_cancel(id).await?;
-        tracing::info!(
-            "Multisig account {} cancellation status: {}",
-            id,
-            is_cancel.status
-        );
+        tracing::info!("Multisig account {} cancellation status: {}", id, is_cancel.status);
         Ok(is_cancel.status)
     }
 
@@ -110,12 +106,7 @@ impl OrderMultiSignAccept {
 
         let account = AccountRepoTrait::detail(&mut repo, &self.address).await?;
 
-        let uid_list = repo
-            .uid_list()
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect();
+        let uid_list = repo.uid_list().await?.into_iter().map(|uid| uid.0).collect();
 
         let mut params = NewMultisigAccountEntity::new(
             Some(self.id.clone()),
@@ -230,9 +221,7 @@ impl OrderMultiSignAccept {
         );
         let system_notification_service = SystemNotificationService::new(repo);
 
-        system_notification_service
-            .add_system_notification(msg_id, notification, 0)
-            .await?;
+        system_notification_service.add_system_notification(msg_id, notification, 0).await?;
         Ok(())
     }
 }

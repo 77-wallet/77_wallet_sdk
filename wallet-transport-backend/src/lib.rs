@@ -7,6 +7,8 @@ pub mod response;
 pub mod response_vo;
 pub use error::Error;
 pub use http::send_request;
-pub use response_vo::coin::{CoinInfo, TokenPriceInfos};
-pub use response_vo::multisig::*;
+pub use response_vo::{
+    coin::{CoinInfo, TokenPriceInfos},
+    multisig::*,
+};
 pub mod consts;

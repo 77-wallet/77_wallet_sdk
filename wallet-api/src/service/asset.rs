@@ -65,13 +65,10 @@ impl AssetsService {
         let address = vec![multisig.address];
 
         let mut data = tx.get_coin_assets_in_address(address).await?;
-        let account_total_assets = token_currencies
-            .calculate_account_total_assets(&mut data)
-            .await?;
+        let account_total_assets =
+            token_currencies.calculate_account_total_assets(&mut data).await?;
 
-        Ok(GetAccountAssetsRes {
-            account_total_assets,
-        })
+        Ok(GetAccountAssetsRes { account_total_assets })
     }
 
     pub async fn get_account_assets(
@@ -86,10 +83,7 @@ impl AssetsService {
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
         } else {
-            chains
-                .iter()
-                .map(|chain| chain.chain_code.clone())
-                .collect()
+            chains.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         let mut data = self
@@ -98,13 +92,10 @@ impl AssetsService {
             .await?;
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 
-        let account_total_assets = token_currencies
-            .calculate_account_total_assets(&mut data)
-            .await?;
+        let account_total_assets =
+            token_currencies.calculate_account_total_assets(&mut data).await?;
 
-        Ok(GetAccountAssetsRes {
-            account_total_assets,
-        })
+        Ok(GetAccountAssetsRes { account_total_assets })
     }
 
     pub async fn detail(
@@ -124,9 +115,9 @@ impl AssetsService {
                     address, account_id, chain_code,
                 )
                 .await?
-                .ok_or(crate::BusinessError::Account(
-                    crate::AccountError::NotFound(address.to_string()),
-                ))?;
+                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                    address.to_string(),
+                )))?;
             account.address
         } else {
             address.to_string()
@@ -158,12 +149,9 @@ impl AssetsService {
 
         let mut data = tx.get_coin_assets_in_address(addresses).await?;
 
-        let account_total_assets = token_currencies
-            .calculate_account_total_assets(&mut data)
-            .await?;
-        Ok(GetAccountAssetsRes {
-            account_total_assets,
-        })
+        let account_total_assets =
+            token_currencies.calculate_account_total_assets(&mut data).await?;
+        Ok(GetAccountAssetsRes { account_total_assets })
     }
 
     // 指定账户下的链的资产列表，需要去重
@@ -265,13 +253,7 @@ impl AssetsService {
         let mut tx = self.repo;
         let account_addresses = self
             .account_domain
-            .get_addresses(
-                &mut tx,
-                address,
-                account_id,
-                chain_code.clone(),
-                is_multisig,
-            )
+            .get_addresses(&mut tx, address, account_id, chain_code.clone(), is_multisig)
             .await?;
 
         // tracing::debug!("account_addresses: {:?}", account_addresses);
@@ -295,13 +277,10 @@ impl AssetsService {
                     assets.token_address(),
                 )
                 .await?;
-                if let Some(existing_asset) = res
-                    .iter_mut()
-                    .find(|a| a.symbol == assets.symbol && coin.is_default == 1)
+                if let Some(existing_asset) =
+                    res.iter_mut().find(|a| a.symbol == assets.symbol && coin.is_default == 1)
                 {
-                    token_currencies
-                        .calculate_assets(assets, existing_asset)
-                        .await?;
+                    token_currencies.calculate_assets(assets, existing_asset).await?;
                     existing_asset
                         .chain_list
                         .entry(coin.chain_code.clone())
@@ -362,18 +341,10 @@ impl AssetsService {
         let mut tx = self.repo;
         let accounts = self
             .account_domain
-            .get_addresses(
-                &mut tx,
-                address,
-                account_id,
-                chain_code.clone(),
-                is_multisig,
-            )
+            .get_addresses(&mut tx, address, account_id, chain_code.clone(), is_multisig)
             .await?;
         tracing::info!("accounts: {accounts:?}");
-        let coins = tx
-            .coin_list_v2(Some(symbol.to_string()), chain_code.clone())
-            .await?;
+        let coins = tx.coin_list_v2(Some(symbol.to_string()), chain_code.clone()).await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
@@ -502,18 +473,10 @@ impl AssetsService {
         let mut tx = self.repo;
         let account_addresses = self
             .account_domain
-            .get_addresses(
-                &mut tx,
-                address,
-                account_id,
-                chain_code.clone(),
-                is_multisig,
-            )
+            .get_addresses(&mut tx, address, account_id, chain_code.clone(), is_multisig)
             .await?;
-        let account_addresses = account_addresses
-            .into_iter()
-            .map(|address| address.address)
-            .collect::<Vec<String>>();
+        let account_addresses =
+            account_addresses.into_iter().map(|address| address.address).collect::<Vec<String>>();
         let res = self
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)

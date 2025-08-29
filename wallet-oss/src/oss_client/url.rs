@@ -88,18 +88,14 @@ impl UrlApi for Oss {
         let mut build = build.clone();
         let key = self.format_key(key);
         let expiration = chrono::Local::now() + chrono::Duration::seconds(build.expire);
-        build
-            .headers
-            .insert(DATE.to_string(), expiration.timestamp().to_string());
+        build.headers.insert(DATE.to_string(), expiration.timestamp().to_string());
         let signature = self.sign(key.as_str(), &build);
         debug!("signature: {}", signature);
         let mut query_parameters = HashMap::new();
         query_parameters.insert("Expires".to_string(), expiration.timestamp().to_string());
         query_parameters.insert("OSSAccessKeyId".to_string(), self.key_id().to_string());
-        query_parameters.insert(
-            "Signature".to_string(),
-            urlencoding::encode(&signature).into_owned(),
-        );
+        query_parameters
+            .insert("Signature".to_string(), urlencoding::encode(&signature).into_owned());
         build.parameters.iter().for_each(|(k, v)| {
             query_parameters.insert(k.to_string(), urlencoding::encode(v).into_owned());
         });

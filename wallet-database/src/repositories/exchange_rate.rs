@@ -44,14 +44,9 @@ impl ExchangeRateRepo {
         target: &str,
         pool: &DbPool,
     ) -> Result<ExchangeRateEntity, crate::Error> {
-        let query_req = QueryReq {
-            target_currency: Some(target.to_string()),
-        };
+        let query_req = QueryReq { target_currency: Some(target.to_string()) };
         ExchangeRateEntity::detail(pool.as_ref(), &query_req)
             .await?
-            .ok_or(crate::Error::NotFound(format!(
-                "exchange rate not found currency: {}",
-                target
-            )))
+            .ok_or(crate::Error::NotFound(format!("exchange rate not found currency: {}", target)))
     }
 }

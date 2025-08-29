@@ -51,12 +51,8 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
 }
 
 pub fn get_config() -> Result<String> {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned()
-    });
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().into_owned());
     let dir = PathBuf::from(manifest_dir);
     let config_dir = dir.join("examples").join("config.yaml");
     let config_data = std::fs::read_to_string(config_dir)?;

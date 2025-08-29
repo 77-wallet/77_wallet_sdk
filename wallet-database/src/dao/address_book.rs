@@ -88,9 +88,7 @@ impl AddressBookDao {
         }
 
         query.push_str(" ORDER BY created_at DESC LIMIT 1");
-        let res = sqlx::query_as::<_, AddressBookEntity>(&query)
-            .fetch_optional(exec)
-            .await?;
+        let res = sqlx::query_as::<_, AddressBookEntity>(&query).fetch_optional(exec).await?;
         Ok(res)
     }
 
@@ -144,11 +142,7 @@ impl AddressBookDao {
     {
         let query = "select * from address_book where address = ? and chain_code = ?";
 
-        let res = sqlx::query_as(query)
-            .bind(address)
-            .bind(chain_code)
-            .fetch_optional(exec)
-            .await?;
+        let res = sqlx::query_as(query).bind(address).bind(chain_code).fetch_optional(exec).await?;
         Ok(res)
     }
 }

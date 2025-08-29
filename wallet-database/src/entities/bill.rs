@@ -41,11 +41,7 @@ pub struct BillEntity {
 
 impl BillEntity {
     pub fn get_other_address(&self) -> String {
-        if self.transfer_type == 1 {
-            self.to_addr.clone()
-        } else {
-            self.from_addr.clone()
-        }
+        if self.transfer_type == 1 { self.to_addr.clone() } else { self.from_addr.clone() }
     }
 
     // Different chains determine failure based on time (if the transaction result is not found when it expires, it is considered a failed transaction)
@@ -251,10 +247,7 @@ impl TryFrom<i8> for BillKind {
             23 => Ok(BillKind::Approve),
             24 => Ok(BillKind::UnApprove),
             25 => Ok(BillKind::Swap),
-            _ => Err(crate::Error::Other(format!(
-                "Invalid value for TxKind : {}",
-                value
-            ))),
+            _ => Err(crate::Error::Other(format!("Invalid value for TxKind : {}", value))),
         }
     }
 }
@@ -563,14 +556,7 @@ impl BillUpdateEntity {
         block_height: u128,
         resource_consume: String,
     ) -> Self {
-        Self {
-            hash,
-            format_fee,
-            transaction_time: time,
-            status,
-            block_height,
-            resource_consume,
-        }
+        Self { hash, format_fee, transaction_time: time, status, block_height, resource_consume }
     }
 }
 

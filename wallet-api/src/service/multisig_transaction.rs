@@ -1,31 +1,45 @@
-use crate::domain::chain::TransferResp;
-use crate::domain::chain::adapter::{ChainAdapterFactory, MultisigAdapter};
-use crate::domain::chain::transaction::ChainTransDomain;
-use crate::domain::coin::CoinDomain;
-use crate::domain::multisig::{MultisigDomain, MultisigQueueDomain};
-use crate::domain::task_queue::TaskQueueDomain;
-use crate::infrastructure::task_queue::{CommonTask, task::Tasks};
-use crate::request::transaction::Signer;
-use crate::response_vo::MultisigQueueFeeParams;
-use crate::response_vo::multisig_account::QueueInfo;
-use crate::response_vo::{multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams};
-use crate::{domain, response_vo};
-use wallet_chain_interact::sol::operations::SolInstructionOperation;
-use wallet_chain_interact::tron::operations::TronConstantOperation as _;
-use wallet_chain_interact::{BillResourceConsume, btc, eth, sol, tron};
-use wallet_database::DbPool;
-use wallet_database::dao::multisig_member::MultisigMemberDaoV1;
-use wallet_database::dao::multisig_queue::MultisigQueueDaoV1;
-use wallet_database::entities::bill::{BillKind, NewBillEntity};
-use wallet_database::entities::multisig_queue::{
-    MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity, QueueTaskEntity, fail_reason,
+use crate::{
+    domain,
+    domain::{
+        chain::{
+            TransferResp,
+            adapter::{ChainAdapterFactory, MultisigAdapter},
+            transaction::ChainTransDomain,
+        },
+        coin::CoinDomain,
+        multisig::{MultisigDomain, MultisigQueueDomain},
+        task_queue::TaskQueueDomain,
+    },
+    infrastructure::task_queue::{CommonTask, task::Tasks},
+    request::transaction::Signer,
+    response_vo,
+    response_vo::{
+        MultisigQueueFeeParams, multisig_account::QueueInfo,
+        multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
+    },
 };
-use wallet_database::entities::multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity};
-use wallet_database::pagination::Pagination;
-use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
-use wallet_database::repositories::permission::PermissionRepo;
-use wallet_transport_backend::consts::endpoint;
-use wallet_transport_backend::request::{PermissionData, SignedTranUpdateHashReq};
+use wallet_chain_interact::{
+    BillResourceConsume, btc, eth, sol, sol::operations::SolInstructionOperation, tron,
+    tron::operations::TronConstantOperation as _,
+};
+use wallet_database::{
+    DbPool,
+    dao::{multisig_member::MultisigMemberDaoV1, multisig_queue::MultisigQueueDaoV1},
+    entities::{
+        bill::{BillKind, NewBillEntity},
+        multisig_queue::{
+            MultisigQueueEntity, MultisigQueueStatus, NewMultisigQueueEntity, QueueTaskEntity,
+            fail_reason,
+        },
+        multisig_signatures::{MultisigSignatureStatus, NewSignatureEntity},
+    },
+    pagination::Pagination,
+    repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
+};
+use wallet_transport_backend::{
+    consts::endpoint,
+    request::{PermissionData, SignedTranUpdateHashReq},
+};
 use wallet_types::constant::chain_code;
 use wallet_utils::unit;
 
@@ -104,9 +118,7 @@ impl MultisigTransactionService {
         .await?;
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&account.chain_code).await?;
-        let rs = adapter
-            .build_multisig_with_account(&req, &account, &assets, key)
-            .await?;
+        let rs = adapter.build_multisig_with_account(&req, &account, &assets, key).await?;
 
         let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
@@ -153,9 +165,7 @@ impl MultisigTransactionService {
         };
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&req.chain_code).await?;
-        let rs = adapter
-            .build_multisig_with_permission(&req, &p.permission, &coin)
-            .await?;
+        let rs = adapter.build_multisig_with_permission(&req, &p.permission, &coin).await?;
 
         let mut queue = NewMultisigQueueEntity::from(&req)
             .with_msg_hash(&rs.tx_hash)
@@ -175,10 +185,7 @@ impl MultisigTransactionService {
         // write multisig queue data to local database
         let res = MultisigQueueRepo::create_queue_with_sign(pool.clone(), &mut queue).await?;
 
-        let opt = PermissionData {
-            opt_address: signer.address.clone(),
-            users: p.users(),
-        };
+        let opt = PermissionData { opt_address: signer.address.clone(), users: p.users() };
 
         // 上报后端
         MultisigQueueDomain::upload_queue_backend(res.id, &pool, None, Some(opt)).await?;
@@ -256,9 +263,7 @@ impl MultisigTransactionService {
 
         let queue = MultisigQueueRepo::find_by_id_with_extra(queue_id, &pool)
             .await?
-            .ok_or(crate::BusinessError::MultisigQueue(
-                crate::MultisigQueueError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::MultisigQueue(crate::MultisigQueueError::NotFound))?;
 
         let signature = MultisigQueueRepo::signed_result(
             &queue.id,
@@ -268,19 +273,12 @@ impl MultisigTransactionService {
         )
         .await?;
 
-        let sign_num: i64 = signature
-            .iter()
-            .filter_map(|sig| if sig.singed == 1 { Some(1) } else { None })
-            .sum();
+        let sign_num: i64 =
+            signature.iter().filter_map(|sig| if sig.singed == 1 { Some(1) } else { None }).sum();
 
         let extra = MultisigQueueDomain::handle_queue_extra(&queue, &pool).await?;
 
-        Ok(MultisigQueueInfoVo {
-            queue,
-            signature,
-            sign_num,
-            extra: extra.unwrap_or_default(),
-        })
+        Ok(MultisigQueueInfoVo { queue, signature, sign_num, extra: extra.unwrap_or_default() })
     }
 
     // only solana used
@@ -298,12 +296,7 @@ impl MultisigTransactionService {
         let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
         let res = adapter
-            .sign_fee(
-                &multisig_account,
-                &address,
-                &queue.raw_data,
-                &main_coin.symbol,
-            )
+            .sign_fee(&multisig_account, &address, &queue.raw_data, &main_coin.symbol)
             .await?;
 
         let fee_resp =
@@ -452,9 +445,8 @@ impl MultisigTransactionService {
             let key =
                 ChainTransDomain::get_key(address, &queue.chain_code, password, &None).await?;
 
-            let rs = instance
-                .sign_multisig_tx(&multisig_account, address, key, &queue.raw_data)
-                .await?;
+            let rs =
+                instance.sign_multisig_tx(&multisig_account, address, key, &queue.raw_data).await?;
             let params = NewSignatureEntity::new(&queue.id, address, &rs.signature, status, None);
 
             MultisigQueueRepo::create_or_update_sign(&params, &pool).await?;
@@ -500,11 +492,8 @@ impl MultisigTransactionService {
         .await?;
 
         // 需要签名的阈值
-        let total_weight = sign_list
-            .iter()
-            .filter(|s| !s.signature.is_empty())
-            .map(|s| s.weight)
-            .sum::<i64>();
+        let total_weight =
+            sign_list.iter().filter(|s| !s.signature.is_empty()).map(|s| s.weight).sum::<i64>();
 
         let need_sign = (permission.threshold - total_weight).max(0);
         if need_sign == 0 {
@@ -515,10 +504,7 @@ impl MultisigTransactionService {
         for i in 0..sign_addr.len() {
             let address = sign_addr.get(i).unwrap();
             // filter already signed
-            if sign_list
-                .iter()
-                .any(|item| item.address == *address && !item.signature.is_empty())
-            {
+            if sign_list.iter().any(|item| item.address == *address && !item.signature.is_empty()) {
                 continue;
             }
 
@@ -596,15 +582,11 @@ impl MultisigTransactionService {
                 let fee_setting = if let Some(fee_setting) = fee_setting {
                     crate::domain::chain::pare_fee_setting(&fee_setting)?
                 } else {
-                    return Err(crate::ServiceError::Parameter(
-                        "empty fee setting".to_string(),
-                    ));
+                    return Err(crate::ServiceError::Parameter("empty fee setting".to_string()));
                 };
 
                 // check transaction fee
-                let balance = chain
-                    .balance(&multisig_account.initiator_addr, None)
-                    .await?;
+                let balance = chain.balance(&multisig_account.initiator_addr, None).await?;
 
                 let fee = fee_setting.transaction_fee();
                 if balance < fee {
@@ -614,10 +596,7 @@ impl MultisigTransactionService {
                 }
 
                 let tx_hash = chain.exec_transaction(params, fee_setting, key).await?;
-                TransferResp::new(
-                    tx_hash,
-                    unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
-                )
+                TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?)
             }
             MultisigAdapter::BitCoin(chain) => {
                 let account =
@@ -671,16 +650,13 @@ impl MultisigTransactionService {
                 let mut fee = chain.estimate_fee_v1(&instructions, &params).await?;
                 ChainTransDomain::sol_priority_fee(&mut fee, queue.token_addr.as_ref(), 200_000);
 
-                let balance = chain
-                    .balance(&multisig_account.initiator_addr, None)
-                    .await?;
+                let balance = chain.balance(&multisig_account.initiator_addr, None).await?;
                 ChainTransDomain::check_sol_transaction_fee(balance, fee.original_fee())?;
 
                 let fees = fee.transaction_fee().to_string();
 
-                let tx_hash = chain
-                    .exec_transaction(params, key, Some(fee), instructions, 0)
-                    .await?;
+                let tx_hash =
+                    chain.exec_transaction(params, key, Some(fee), instructions, 0).await?;
 
                 TransferResp::new(tx_hash, fees)
             }
@@ -690,9 +666,8 @@ impl MultisigTransactionService {
                     tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;
                 let provider = chain.get_provider();
 
-                let transfer_balance = chain
-                    .balance(&queue.from_addr, queue.token_address())
-                    .await?;
+                let transfer_balance =
+                    chain.balance(&queue.from_addr, queue.token_address()).await?;
 
                 // 根据交易类型来判断是否需要将amount 进行验证
                 let transfer_amount = if bill_kind.out_transfer_type() {
@@ -802,9 +777,7 @@ impl MultisigTransactionService {
         )
         .await?;
 
-        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
-            .await?
-            .to_string()?;
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
         // 上报后端
         let req = SignedTranUpdateHashReq {
             withdraw_id: queue_id.to_string(),
@@ -868,9 +841,8 @@ impl MultisigTransactionService {
         MultisigQueueRepo::update_fail(&pool, &queue_id, fail_reason::CANCEL).await?;
 
         // report to backend ,if error rollback status
-        let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone())
-            .await?
-            .to_string()?;
+        let raw_data =
+            MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone()).await?.to_string()?;
         let backend = crate::Context::get_global_backend_api()?;
 
         if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {

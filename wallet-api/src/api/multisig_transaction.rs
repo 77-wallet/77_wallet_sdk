@@ -14,9 +14,7 @@ impl crate::WalletManager {
         &self,
         params: MultisigQueueFeeParams,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::create_queue_fee(params)
-            .await
-            .into()
+        MultisigTransactionService::create_queue_fee(params).await.into()
     }
 
     /// Creates a new multisig transaction with the provided parameters.
@@ -25,9 +23,7 @@ impl crate::WalletManager {
         params: TransferParams,
         password: String,
     ) -> ReturnType<String> {
-        MultisigTransactionService::create_multisig_queue(params, password)
-            .await
-            .into()
+        MultisigTransactionService::create_multisig_queue(params, password).await.into()
     }
 
     pub async fn multisig_queue_list(
@@ -50,9 +46,7 @@ impl crate::WalletManager {
     }
 
     pub async fn multisig_queue_info(&self, queue_id: String) -> ReturnType<MultisigQueueInfoVo> {
-        MultisigTransactionService::multisig_queue_info(&queue_id)
-            .await
-            .into()
+        MultisigTransactionService::multisig_queue_info(&queue_id).await.into()
     }
 
     pub async fn sign_fee(
@@ -60,9 +54,7 @@ impl crate::WalletManager {
         queue_id: String,
         address: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::sign_fee(queue_id, address)
-            .await
-            .into()
+        MultisigTransactionService::sign_fee(queue_id, address).await.into()
     }
 
     pub async fn sign_transaction(
@@ -81,9 +73,7 @@ impl crate::WalletManager {
         &self,
         queue_id: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::multisig_transfer_fee(&queue_id)
-            .await
-            .into()
+        MultisigTransactionService::multisig_transfer_fee(&queue_id).await.into()
     }
 
     pub async fn exec_transaction(
@@ -126,14 +116,10 @@ impl crate::WalletManager {
         chain_code: String,
         address: String,
     ) -> ReturnType<Option<QueueInfo>> {
-        MultisigTransactionService::check_ongoing_queue(chain_code, address)
-            .await
-            .into()
+        MultisigTransactionService::check_ongoing_queue(chain_code, address).await.into()
     }
 
     pub async fn cancel_queue(&self, queue_id: String) -> ReturnType<()> {
-        MultisigTransactionService::cancel_queue(queue_id)
-            .await
-            .into()
+        MultisigTransactionService::cancel_queue(queue_id).await.into()
     }
 }

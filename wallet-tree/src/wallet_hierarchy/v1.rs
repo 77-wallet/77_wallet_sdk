@@ -89,18 +89,14 @@ impl LegacyWalletTree {
         &self,
         wallet_address: &str,
     ) -> Result<&LegacyWalletBranch, crate::Error> {
-        self.tree
-            .get(wallet_address)
-            .ok_or(crate::error::Error::LocalNoWallet)
+        self.tree.get(wallet_address).ok_or(crate::error::Error::LocalNoWallet)
     }
 
     pub fn get_mut_wallet_branch(
         &mut self,
         wallet_address: &str,
     ) -> Result<&mut LegacyWalletBranch, crate::Error> {
-        self.tree
-            .get_mut(wallet_address)
-            .ok_or(crate::error::Error::LocalNoWallet)
+        self.tree.get_mut(wallet_address).ok_or(crate::error::Error::LocalNoWallet)
     }
 
     /// 遍历指定目录结构，并将结果映射到数据结构中。
@@ -139,10 +135,7 @@ impl LegacyWalletTree {
                 wallet_utils::file_func::create_dir_all(&root_dir)?;
                 wallet_utils::file_func::create_dir_all(&subs_dir)?;
 
-                tracing::info!(
-                    "[traverse_directory_structure] root_dir: {}",
-                    root_dir.display()
-                );
+                tracing::info!("[traverse_directory_structure] root_dir: {}", root_dir.display());
                 if let Some(root_dir) = wallet_utils::file_func::read_dir(root_dir)?
                     .filter_map(Result::ok)
                     .map(|e| e.file_name())
@@ -150,10 +143,7 @@ impl LegacyWalletTree {
                 {
                     let pk_filename = root_dir.to_string_lossy().to_string();
                     wallet_branch.add_root_from_filename(&pk_filename)?;
-                    tracing::info!(
-                        "[traverse_directory_structure] pk_filename: {}",
-                        pk_filename
-                    );
+                    tracing::info!("[traverse_directory_structure] pk_filename: {}", pk_filename);
                     tracing::info!(
                         "[traverse_directory_structure] root_dir 2: {}",
                         root_dir.to_string_lossy()
@@ -162,15 +152,9 @@ impl LegacyWalletTree {
                     wallet_branch.root_info = RootKeystoreInfo::new(&wallet_address);
                 };
 
-                tracing::info!(
-                    "[traverse_directory_structure] wallet_branch: {:?}",
-                    wallet_branch
-                );
+                tracing::info!("[traverse_directory_structure] wallet_branch: {:?}", wallet_branch);
                 for subs_entry in wallet_utils::file_func::read_dir(subs_dir)? {
-                    tracing::info!(
-                        "[traverse_directory_structure] subs_entry: {:?}",
-                        subs_entry
-                    );
+                    tracing::info!("[traverse_directory_structure] subs_entry: {:?}", subs_entry);
                     let subs_entry = subs_entry.map_err(|e| crate::Error::Utils(e.into()))?;
                     let subs_path = subs_entry.path();
 
@@ -179,11 +163,7 @@ impl LegacyWalletTree {
                         subs_path.display()
                     );
                     if subs_path.is_file()
-                        && subs_path
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .ends_with("-pk")
+                        && subs_path.file_name().unwrap().to_string_lossy().ends_with("-pk")
                     {
                         if let Err(e) = wallet_branch.add_subkey_from_filename(
                             &subs_path.file_name().unwrap().to_string_lossy(),
@@ -195,9 +175,7 @@ impl LegacyWalletTree {
                 }
 
                 // 将钱包分支添加到钱包树中
-                wallet_tree
-                    .tree
-                    .insert(wallet_address.to_string(), wallet_branch);
+                wallet_tree.tree.insert(wallet_address.to_string(), wallet_branch);
             }
         }
 
@@ -216,9 +194,7 @@ pub struct LegacyWalletBranch {
 impl Default for LegacyWalletBranch {
     fn default() -> Self {
         Self {
-            root_info: RootKeystoreInfo {
-                address: Default::default(),
-            },
+            root_info: RootKeystoreInfo { address: Default::default() },
             accounts: Default::default(),
         }
     }
@@ -329,10 +305,8 @@ impl LegacyWalletBranch {
         sub_address: &str,
         subs_path: std::path::PathBuf,
     ) -> Result<(), crate::Error> {
-        if let Some(keystore_info) = self
-            .accounts
-            .iter_mut()
-            .find(|keystore_info| keystore_info.address == sub_address)
+        if let Some(keystore_info) =
+            self.accounts.iter_mut().find(|keystore_info| keystore_info.address == sub_address)
         {
             let old_pk_name = keystore_info.gen_name_with_derivation_path()?;
             let old_path = subs_path.join(old_pk_name);
@@ -398,11 +372,7 @@ impl WalletTreeOps for LegacyWalletTree {
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = (&String, &dyn WalletBranchOps)> + '_> {
-        Box::new(
-            self.tree
-                .iter()
-                .map(|(k, v)| (k, v as &dyn WalletBranchOps)),
-        )
+        Box::new(self.tree.iter().map(|(k, v)| (k, v as &dyn WalletBranchOps)))
     }
 
     fn delete_subkey(
@@ -414,10 +384,7 @@ impl WalletTreeOps for LegacyWalletTree {
         file_path: &dyn AsRef<std::path::Path>,
         _password: &str,
     ) -> Result<(), crate::Error> {
-        let wallet = self
-            .tree
-            .get_mut(wallet_address)
-            .ok_or(crate::Error::LocalNoWallet)?;
+        let wallet = self.tree.get_mut(wallet_address).ok_or(crate::Error::LocalNoWallet)?;
 
         wallet.delete_subkey(
             wallet_address,
@@ -443,10 +410,7 @@ impl WalletBranchOps for LegacyWalletBranch {
     }
 
     fn get_accounts(&self) -> Vec<Box<dyn AccountTrait>> {
-        self.accounts
-            .iter()
-            .map(|info| Box::new(info.clone()) as Box<dyn AccountTrait>)
-            .collect()
+        self.accounts.iter().map(|info| Box::new(info.clone()) as Box<dyn AccountTrait>).collect()
     }
 }
 
@@ -463,9 +427,7 @@ impl RootTrait for RootKeystoreInfo {
 
 impl RootKeystoreInfo {
     pub fn new(address: &str) -> Self {
-        Self {
-            address: address.to_string(),
-        }
+        Self { address: address.to_string() }
     }
 }
 
@@ -496,10 +458,7 @@ impl SubsKeystoreInfo {
         let derivation_path =
             wallet_utils::parse_func::derivation_path_percent_encode(&self.derivation_path);
 
-        let name = format!(
-            "{}-{}-{}-pk",
-            self.chain_code, self.address, derivation_path
-        );
+        let name = format!("{}-{}-{}-pk", self.chain_code, self.address, derivation_path);
         Ok(name)
     }
 }

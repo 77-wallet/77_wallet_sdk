@@ -25,14 +25,7 @@ impl crate::WalletManager {
 
         let service = MultisigAccountService::new(self.repo_factory.multisig_account_repo())?;
         service
-            .crate_account(
-                name,
-                address,
-                chain_code,
-                threshold,
-                member_list,
-                address_type,
-            )
+            .crate_account(name, address, chain_code, threshold, member_list, address_type)
             .await
             .into()
     }

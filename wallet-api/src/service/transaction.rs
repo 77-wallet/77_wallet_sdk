@@ -1,35 +1,38 @@
-use crate::domain;
-use crate::domain::bill::BillDomain;
-use crate::domain::chain::adapter::ChainAdapterFactory;
-use crate::domain::chain::transaction::ChainTransDomain;
-use crate::domain::coin::CoinDomain;
-use crate::request::transaction::{self};
-use crate::response_vo::{
-    self,
-    account::Balance,
-    transaction::{BillDetailVo, TransactionResult},
+use crate::{
+    domain,
+    domain::{
+        bill::BillDomain,
+        chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
+        coin::CoinDomain,
+    },
+    request::transaction::{self},
+    response_vo::{
+        self,
+        account::Balance,
+        transaction::{BillDetailVo, TransactionResult},
+    },
 };
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use wallet_chain_interact::BillResourceConsume;
-use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
-use wallet_database::dao::multisig_queue::MultisigQueueDaoV1;
-use wallet_database::entities;
-use wallet_database::entities::assets::{AssetsEntity, AssetsId};
-use wallet_database::entities::bill::{
-    BillEntity, BillKind, BillStatus, BillUpdateEntity, RecentBillListVo, SyncBillEntity,
+use wallet_database::{
+    dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
+    entities,
+    entities::{
+        assets::{AssetsEntity, AssetsId},
+        bill::{
+            BillEntity, BillKind, BillStatus, BillUpdateEntity, RecentBillListVo, SyncBillEntity,
+        },
+        coin::CoinEntity,
+        multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
+        multisig_queue::{MemberSignedResult, MultisigQueueStatus},
+    },
+    pagination::Pagination,
+    repositories::{
+        account::AccountRepo, address_book::AddressBookRepo, bill::BillRepo, coin::CoinRepo,
+        multisig_queue::MultisigQueueRepo,
+    },
 };
-use wallet_database::entities::coin::CoinEntity;
-use wallet_database::entities::multisig_account::{
-    MultisigAccountPayStatus, MultisigAccountStatus,
-};
-use wallet_database::entities::multisig_queue::{MemberSignedResult, MultisigQueueStatus};
-use wallet_database::pagination::Pagination;
-use wallet_database::repositories::account::AccountRepo;
-use wallet_database::repositories::address_book::AddressBookRepo;
-use wallet_database::repositories::bill::BillRepo;
-use wallet_database::repositories::coin::CoinRepo;
-use wallet_database::repositories::multisig_queue::MultisigQueueRepo;
 use wallet_utils::unit;
 
 pub struct TransactionService;
@@ -73,12 +76,9 @@ impl TransactionService {
     pub async fn transaction_fee(
         mut params: transaction::BaseTransferReq,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let coin = CoinDomain::get_coin(
-            &params.chain_code,
-            &params.symbol,
-            params.token_address.clone(),
-        )
-        .await?;
+        let coin =
+            CoinDomain::get_coin(&params.chain_code, &params.symbol, params.token_address.clone())
+                .await?;
 
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address());
@@ -86,9 +86,7 @@ impl TransactionService {
         let main_coin = ChainTransDomain::main_coin(&params.chain_code).await?;
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
-        let fee = adapter
-            .estimate_fee(params, main_coin.symbol.as_str())
-            .await?;
+        let fee = adapter.estimate_fee(params, main_coin.symbol.as_str()).await?;
 
         let fee_resp =
             response_vo::EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);
@@ -110,11 +108,7 @@ impl TransactionService {
         pool: Arc<Pool<Sqlite>>,
     ) -> Option<Vec<MemberSignedResult>> {
         if !bill.signer.is_empty() {
-            let signer = bill
-                .signer
-                .split(",")
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>();
+            let signer = bill.signer.split(",").map(|s| s.to_string()).collect::<Vec<String>>();
 
             let mut result = vec![];
             for address in signer.iter() {
@@ -122,11 +116,7 @@ impl TransactionService {
                     .await
                     .ok()
                     .flatten();
-                let name = if let Some(book) = book {
-                    book.name
-                } else {
-                    String::new()
-                };
+                let name = if let Some(book) = book { book.name } else { String::new() };
 
                 let member = MemberSignedResult::new(&name, address, 0, 1);
                 result.push(member);
@@ -168,11 +158,12 @@ impl TransactionService {
 
         let sign = Self::handle_queue_member(&bill, pool.clone()).await;
 
-        let main_coin = CoinEntity::main_coin(&bill.chain_code, pool.as_ref())
-            .await?
-            .ok_or(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                format!("chain = {}", bill.chain_code),
-            )))?;
+        let main_coin = CoinEntity::main_coin(&bill.chain_code, pool.as_ref()).await?.ok_or(
+            crate::BusinessError::Coin(crate::CoinError::NotFound(format!(
+                "chain = {}",
+                bill.chain_code
+            ))),
+        )?;
 
         let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
         {
@@ -262,10 +253,7 @@ impl TransactionService {
         }
 
         // query transaction and handle result
-        let tx = pool
-            .begin()
-            .await
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+        let tx = pool.begin().await.map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
         match Self::handle_pending_tx_status(&transaction, &sync_bill, tx).await? {
             Some(tx) => Ok(tx),
@@ -382,10 +370,7 @@ impl TransactionService {
             tx_result.resource_consume,
         );
 
-        let sync_bill = SyncBillEntity {
-            tx_update: tx_bill,
-            balance,
-        };
+        let sync_bill = SyncBillEntity { tx_update: tx_bill, balance };
 
         Ok(Some(sync_bill))
     }

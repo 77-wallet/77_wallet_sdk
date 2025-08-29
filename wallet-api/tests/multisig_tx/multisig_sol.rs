@@ -35,14 +35,7 @@ async fn test_create_multisig_account_sol() {
     let member_list = vec![member1, member2, member3];
 
     let res = wallet_manager
-        .create_multisig_account(
-            "".to_string(),
-            address,
-            chain_code,
-            threshold,
-            member_list,
-            None,
-        )
+        .create_multisig_account("".to_string(), address, chain_code, threshold, member_list, None)
         .await;
 
     tracing::info!("{:?}", serde_json::to_string(&res));
@@ -57,9 +50,7 @@ async fn test_balance() {
     let chain_code = "sol";
     let symbol = "SOL";
     let token_address = None;
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 
     tracing::info!("balance: {:?}", balance);
 }
@@ -141,9 +132,7 @@ async fn test_sign_transaction() {
 
     let address = "8mod4aqksHLqPsxuXADZSrv4kpAbDiw3CPGPYeFgjMQJ".to_string();
 
-    let sign = wallet_manager
-        .sign_transaction(queue_id, status, password, Some(address))
-        .await;
+    let sign = wallet_manager.sign_transaction(queue_id, status, password, Some(address)).await;
 
     tracing::info!("sign res  = {:?}", sign);
 }
@@ -164,9 +153,7 @@ async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
     let queue_id = "173490125987254272".to_owned();
-    let fee = wallet_manager
-        .estimate_multisig_transfer_fee(queue_id)
-        .await;
+    let fee = wallet_manager.estimate_multisig_transfer_fee(queue_id).await;
 
     tracing::info!("transfer fee = {:?}", serde_json::to_string(&fee));
 }
@@ -181,8 +168,6 @@ async fn test_execute() {
     let fee_setting = None;
     let request_resource_id = None;
 
-    let result = wallet_manager
-        .exec_transaction(id, pass, fee_setting, request_resource_id)
-        .await;
+    let result = wallet_manager.exec_transaction(id, pass, fee_setting, request_resource_id).await;
     tracing::info!("execute res = {:?}", serde_json::to_string(&result));
 }

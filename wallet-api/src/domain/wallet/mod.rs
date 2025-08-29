@@ -189,10 +189,7 @@ impl WalletDomain {
                 d,
             );
 
-            subkeys
-                .entry(info.wallet_address.clone())
-                .or_insert_with(Vec::new)
-                .push(subkey);
+            subkeys.entry(info.wallet_address.clone()).or_insert_with(Vec::new).push(subkey);
 
             // subkeys.push(subkey);
             delete_subs.push(SubsKeyInfo {
@@ -218,11 +215,8 @@ impl WalletDomain {
         let wallet_tree_strategy = wallet_database::entities::config::WalletTreeStrategy {
             wallet_tree_strategy: wallet_tree::WalletTreeStrategy::V2,
         };
-        ConfigDomain::set_config(
-            KEYSTORE_KDF_ALGORITHM,
-            &keystore_kdf_algorithm.to_json_str()?,
-        )
-        .await?;
+        ConfigDomain::set_config(KEYSTORE_KDF_ALGORITHM, &keystore_kdf_algorithm.to_json_str()?)
+            .await?;
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
 
@@ -412,9 +406,7 @@ impl WalletDomain {
     pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        Ok(!ApiWalletRepo::list(&pool, Some(address), None)
-            .await?
-            .is_empty())
+        Ok(!ApiWalletRepo::list(&pool, Some(address), None).await?.is_empty())
     }
 }
 

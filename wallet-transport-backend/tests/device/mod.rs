@@ -31,10 +31,7 @@ async fn test_device_init() -> Result<(), wallet_transport_backend::Error> {
 async fn test_min_config() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?; // Initialize the cryptor and API
 
-    let res = backend_api
-        .fetch_min_config("guangxiang".to_string())
-        .await
-        .unwrap();
+    let res = backend_api.fetch_min_config("guangxiang".to_string()).await.unwrap();
 
     println!("[test_min_config] res: {res:?}");
 

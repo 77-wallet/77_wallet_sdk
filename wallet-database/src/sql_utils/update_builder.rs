@@ -26,11 +26,9 @@ impl<'a> DynamicUpdateBuilder<'a> {
     {
         self.set_clauses.push(format!("{} = ?", field));
 
-        self.arg_fns.push(Arc::new(
-            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(val.clone());
-            },
-        ));
+        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+            args.add(val.clone());
+        }));
         self
     }
 
@@ -45,11 +43,9 @@ impl<'a> DynamicUpdateBuilder<'a> {
     {
         self.where_clauses.push(format!("{} = ?", field));
 
-        self.arg_fns.push(Arc::new(
-            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(val.clone());
-            },
-        ));
+        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+            args.add(val.clone());
+        }));
         self
     }
 }
@@ -74,12 +70,7 @@ impl<'q> super::SqlQueryBuilder<'q> for DynamicUpdateBuilder<'q> {
         }
 
         sql.push_str(" RETURNING *");
-        let arg_fns = self
-            .arg_fns
-            .iter()
-            .cloned()
-            .map(|f| f as ArgFn<'q>)
-            .collect();
+        let arg_fns = self.arg_fns.iter().cloned().map(|f| f as ArgFn<'q>).collect();
         (sql, arg_fns)
     }
 }

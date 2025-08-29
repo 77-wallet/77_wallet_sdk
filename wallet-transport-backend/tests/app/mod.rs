@@ -30,10 +30,7 @@ async fn test_app_install_download() -> Result<(), wallet_transport_backend::Err
 async fn test_token() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
 
-    let res = backend_api
-        .rpc_token("6f88a37aca2384cec6029d5983fac0e2")
-        .await
-        .unwrap();
+    let res = backend_api.rpc_token("6f88a37aca2384cec6029d5983fac0e2").await.unwrap();
 
     println!("[test_chain_default_list] res: {res:?}");
     Ok(())

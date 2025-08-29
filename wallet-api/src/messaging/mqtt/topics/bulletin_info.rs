@@ -103,10 +103,8 @@ impl BulletinMsg {
         if let Some(operation) = operation {
             match operation {
                 Operation::Send => {
-                    let send_time = self
-                        .send_time
-                        .clone()
-                        .or(Some(wallet_utils::time::now().to_string()));
+                    let send_time =
+                        self.send_time.clone().or(Some(wallet_utils::time::now().to_string()));
                     let input = CreateAnnouncementVo {
                         id: self.id.clone(),
                         title: self.title.clone(),

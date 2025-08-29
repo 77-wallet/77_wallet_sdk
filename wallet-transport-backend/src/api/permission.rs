@@ -74,9 +74,7 @@ impl BackendApi {
     ) -> Result<PermissionBackupResp, crate::Error> {
         let endpoint = "permission/getBackUpData";
 
-        let result = self
-            .post_request::<_, PermissionBackupResp>(endpoint, &req)
-            .await?;
+        let result = self.post_request::<_, PermissionBackupResp>(endpoint, &req).await?;
 
         Ok(result)
     }
@@ -86,10 +84,7 @@ impl BackendApi {
         owner: &str,
         users: Vec<String>,
     ) -> Result<(), crate::Error> {
-        let req = PermissionCleanReq {
-            owner: owner.to_string(),
-            users,
-        };
+        let req = PermissionCleanReq { owner: owner.to_string(), users };
 
         let endpoint = "permission/activePermission/clean";
 

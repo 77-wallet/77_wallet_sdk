@@ -35,16 +35,14 @@ impl AnnouncementDomain {
         let input = res
             .list
             .into_iter()
-            .map(
-                |info| wallet_database::entities::announcement::CreateAnnouncementVo {
-                    id: info.id.to_string(),
-                    title: info.i18n.title,
-                    content: info.i18n.content,
-                    language: info.language,
-                    status: 0,
-                    send_time: info.send_time,
-                },
-            )
+            .map(|info| wallet_database::entities::announcement::CreateAnnouncementVo {
+                id: info.id.to_string(),
+                title: info.i18n.title,
+                content: info.i18n.content,
+                language: info.language,
+                status: 0,
+                send_time: info.send_time,
+            })
             .collect();
         AnnouncementRepoTrait::update_existing(repo, input).await?;
 

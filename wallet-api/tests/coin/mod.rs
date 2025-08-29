@@ -10,10 +10,7 @@ async fn get_token_price() {
 
     let detail = wallet_manager.get_token_price(symbol).await;
 
-    println!(
-        "{}",
-        wallet_utils::serde_func::serde_to_string(&detail).unwrap(),
-    );
+    println!("{}", wallet_utils::serde_func::serde_to_string(&detail).unwrap(),);
 }
 
 #[tokio::test]
@@ -24,8 +21,5 @@ async fn token_market_value() {
 
     let detail = wallet_manager.coin_market_value(coins).await;
 
-    println!(
-        "{}",
-        wallet_utils::serde_func::serde_to_string(&detail).unwrap(),
-    );
+    println!("{}", wallet_utils::serde_func::serde_to_string(&detail).unwrap(),);
 }

@@ -72,9 +72,7 @@ mod test {
             tracing::info!("notification: {notification:?}");
             // let business_id = Some("123123123".to_string());
             let status = 1;
-            let _res = wallet_manager
-                .add_system_notification("1232", notification, status)
-                .await;
+            let _res = wallet_manager.add_system_notification("1232", notification, status).await;
         }
         {
             let notification = Notification::new_multisig_notification(
@@ -87,9 +85,7 @@ mod test {
             tracing::info!("notification: {notification:?}");
             // let business_id = Some("456456456".to_string());
             let status = 2;
-            let _res = wallet_manager
-                .add_system_notification("1238", notification, status)
-                .await;
+            let _res = wallet_manager.add_system_notification("1238", notification, status).await;
         }
         {
             let notification = Notification::new_multisig_notification(
@@ -102,9 +98,7 @@ mod test {
             tracing::info!("notification: {notification:?}");
             // let business_id = Some("456456456".to_string());
             let status = 2;
-            let _res = wallet_manager
-                .add_system_notification("1237", notification, status)
-                .await;
+            let _res = wallet_manager.add_system_notification("1237", notification, status).await;
         }
 
         {
@@ -124,9 +118,7 @@ mod test {
             tracing::info!("notification: {notification:?}");
             // let business_id = Some("789789789".to_string());
             let status = 3;
-            let _res = wallet_manager
-                .add_system_notification("1235", notification, status)
-                .await;
+            let _res = wallet_manager.add_system_notification("1235", notification, status).await;
         }
 
         {
@@ -147,9 +139,7 @@ mod test {
             tracing::info!("notification: {notification:?}");
             // let business_id = Some("321321321".to_string());
             let status = 4;
-            let _res = wallet_manager
-                .add_system_notification("1236", notification, status)
-                .await;
+            let _res = wallet_manager.add_system_notification("1236", notification, status).await;
         }
         {
             let notification = Notification::new_transaction_notification(
@@ -167,9 +157,7 @@ mod test {
             );
             tracing::info!("notification: {notification:?}");
             let status = 4;
-            let _res = wallet_manager
-                .add_system_notification("1239", notification, status)
-                .await;
+            let _res = wallet_manager.add_system_notification("1239", notification, status).await;
         }
 
         {
@@ -189,9 +177,7 @@ mod test {
 
             tracing::info!("notification: {notification:?}");
             let status = 4;
-            let _res = wallet_manager
-                .add_system_notification("1240", notification, status)
-                .await;
+            let _res = wallet_manager.add_system_notification("1240", notification, status).await;
         }
 
         let res = wallet_manager.get_system_notification_list(0, 10).await;
@@ -222,9 +208,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         let status = 1;
-        let res = wallet_manager
-            .update_system_notification_status(None, status)
-            .await;
+        let res = wallet_manager.update_system_notification_status(None, status).await;
         tracing::info!("res: {res:?}");
 
         Ok(())

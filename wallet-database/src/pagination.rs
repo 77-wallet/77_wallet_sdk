@@ -15,12 +15,7 @@ where
     T: for<'r> FromRow<'r, SqliteRow> + Unpin + Send + 'static + std::fmt::Debug + Serialize,
 {
     pub fn init(page: i64, page_size: i64) -> Self {
-        Self {
-            page,
-            page_size,
-            total_count: 0,
-            data: Vec::new(),
-        }
+        Self { page, page_size, total_count: 0, data: Vec::new() }
     }
 
     pub async fn page<'a, E>(mut self, exec: &E, sql: &str) -> Result<Self, crate::DatabaseError>
@@ -29,12 +24,7 @@ where
     {
         self.total_count = self.total_count(exec, sql).await?;
 
-        let sql = format!(
-            "{} LIMIT {} OFFSET {}",
-            sql,
-            self.page_size,
-            self.page * self.page_size
-        );
+        let sql = format!("{} LIMIT {} OFFSET {}", sql, self.page_size, self.page * self.page_size);
 
         let data = sqlx::query_as::<_, T>(&sql).fetch_all(exec).await?;
         self.data = data;

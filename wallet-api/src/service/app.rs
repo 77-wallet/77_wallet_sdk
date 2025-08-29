@@ -131,9 +131,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     // fiat  = CNY
     pub async fn set_fiat(&mut self, fiat: &str) -> Result<(), crate::ServiceError> {
-        let config = wallet_database::entities::config::Currency {
-            currency: fiat.to_string(),
-        };
+        let config = wallet_database::entities::config::Currency { currency: fiat.to_string() };
         ConfigDomain::set_currency(Some(config)).await?;
 
         Ok(())
@@ -153,10 +151,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
             wallet_transport_backend::consts::endpoint::DEVICE_UPDATE_APP_ID,
             &req,
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(task_data))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
 
         Ok(())
     }
@@ -164,9 +159,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     pub async fn get_fiat(self) -> Result<GetFiatRes, crate::ServiceError> {
         let config = crate::app_state::APP_STATE.read().await;
 
-        Ok(GetFiatRes {
-            fiat: config.currency().to_string(),
-        })
+        Ok(GetFiatRes { fiat: config.currency().to_string() })
     }
 
     pub async fn set_block_browser_url(&mut self) -> Result<(), crate::ServiceError> {
@@ -187,9 +180,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     ) -> Result<(), crate::ServiceError> {
         let oss_client = crate::manager::Context::get_global_oss_client()?;
         for req in req.into_iter() {
-            oss_client
-                .upload_local_file(&req.src_file_path, &req.dst_file_name)
-                .await?;
+            oss_client.upload_local_file(&req.src_file_path, &req.dst_file_name).await?;
         }
 
         Ok(())
@@ -356,9 +347,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     ) -> Result<serde_json::Value, crate::ServiceError> {
         let backend = crate::manager::Context::get_global_backend_api()?;
 
-        let result = backend
-            .post_req_string::<serde_json::Value>(endpoint, body)
-            .await?;
+        let result = backend.post_req_string::<serde_json::Value>(endpoint, body).await?;
         Ok(result)
     }
 
@@ -370,8 +359,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         let queues = MultisigQueueRepo::pending_handle(&pool).await?;
         for queue in queues.iter() {
             if !queue.permission_id.is_empty() {
-                msg.pending_multisig_trans
-                    .push(MultisigAccountBase::from(queue));
+                msg.pending_multisig_trans.push(MultisigAccountBase::from(queue));
 
                 continue;
             }
@@ -382,15 +370,13 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
                     MultisigAccountRepo::found_one_id(&queue.account_id, &pool).await?
                 {
                     if account.owner != MultiAccountOwner::Participant.to_i8() {
-                        msg.pending_multisig_trans
-                            .push(MultisigAccountBase::from(queue));
+                        msg.pending_multisig_trans.push(MultisigAccountBase::from(queue));
                     }
                 }
                 continue;
             }
 
-            msg.pending_multisig_trans
-                .push(MultisigAccountBase::from(queue));
+            msg.pending_multisig_trans.push(MultisigAccountBase::from(queue));
         }
 
         // 多签账号状态
@@ -431,10 +417,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
             wallet_transport_backend::consts::endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS,
             &req,
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(task_data))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
 
         Ok(())
     }

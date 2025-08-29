@@ -19,7 +19,7 @@ node_name = "Nileex"
 rpc_url = "https://api.nileex.io"
 http_url = ""
 network = "testnet"
-active = false
+active = true
 
 
 # [[nodes.tron.nodes]]

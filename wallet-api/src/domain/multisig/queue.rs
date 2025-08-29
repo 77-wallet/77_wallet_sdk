@@ -46,9 +46,7 @@ impl MultisigQueueDomain {
         // check queue is expired
         let time = sqlx::types::chrono::Utc::now().timestamp();
         if queue.expiration < time {
-            return Err(crate::BusinessError::MultisigQueue(
-                crate::MultisigQueueError::Expired,
-            ))?;
+            return Err(crate::BusinessError::MultisigQueue(crate::MultisigQueueError::Expired))?;
         }
 
         // check status
@@ -248,9 +246,7 @@ impl MultisigQueueDomain {
 
     // Report the successful transaction queue back to the backend to update the raw data.
     pub async fn update_raw_data(queue_id: &str, pool: DbPool) -> Result<(), crate::ServiceError> {
-        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
-            .await?
-            .to_string()?;
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
 
         let backend_api = crate::Context::get_global_backend_api()?;
         Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
@@ -315,9 +311,8 @@ impl MultisigQueueDomain {
                 ChainTransDomain::get_key(&member.address, &queue.chain_code, password, &None)
                     .await?;
 
-            let sign_res = adapter
-                .sign_multisig_tx(account, &member.address, key, &queue.raw_data)
-                .await?;
+            let sign_res =
+                adapter.sign_multisig_tx(account, &member.address, key, &queue.raw_data).await?;
 
             let sign = NewSignatureEntity::new_approve(
                 &queue.id,
@@ -352,10 +347,7 @@ impl MultisigQueueDomain {
         for user in signatures.iter_mut() {
             let query_req = QueryReq::new_address_chain(&user.address, &queue.chain_code);
 
-            if AccountEntity::detail(pool.as_ref(), &query_req)
-                .await?
-                .is_some()
-            {
+            if AccountEntity::detail(pool.as_ref(), &query_req).await?.is_some() {
                 let key =
                     ChainTransDomain::get_key(&user.address, &queue.chain_code, password, &None)
                         .await?;
@@ -432,15 +424,11 @@ impl MultisigQueueDomain {
         signed: Vec<NewSignatureEntity>,
         status: MultisigSignatureStatus,
     ) -> Result<(), crate::ServiceError> {
-        let tx_str = signed
-            .iter()
-            .map(|i| i.into())
-            .collect::<Vec<MultiSignTransAcceptCompleteMsgBody>>();
+        let tx_str =
+            signed.iter().map(|i| i.into()).collect::<Vec<MultiSignTransAcceptCompleteMsgBody>>();
         let accept_address = signed.iter().map(|v| v.address.clone()).collect();
 
-        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
-            .await?
-            .to_string()?;
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
         let req = SignedTranAcceptReq {
             withdraw_id: queue_id.to_string(),
             tx_str: json!(tx_str),
@@ -461,11 +449,7 @@ impl MultisigQueueDomain {
 
     // 过期时间 小时转换为秒
     pub fn sub_expiration(expiration: i64) -> i64 {
-        if expiration == 24 {
-            expiration * 3600 - 61
-        } else {
-            expiration * 3600
-        }
+        if expiration == 24 { expiration * 3600 - 61 } else { expiration * 3600 }
     }
 
     pub async fn handle_queue_extra(

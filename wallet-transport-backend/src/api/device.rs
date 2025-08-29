@@ -155,12 +155,8 @@ impl BackendApi {
 
         req: &crate::request::UpdateAppIdReq,
     ) -> Result<(), crate::Error> {
-        let res = self
-            .client
-            .post("device/updateAppId")
-            .json(req)
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post("device/updateAppId").json(req).send::<BackendResponse>().await?;
         res.process(&self.aes_cbc_cryptor)
     }
 }

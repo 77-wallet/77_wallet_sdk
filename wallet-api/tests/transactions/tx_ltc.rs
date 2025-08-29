@@ -10,9 +10,7 @@ async fn test_balance() {
     let symbol = "LTC";
     let token_address = None;
 
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 
     println!("balance: {:?}", balance);
 }
@@ -58,8 +56,5 @@ async fn test_transfer() {
     };
 
     let token_fee = wallet_manager.transfer(params).await;
-    tracing::info!(
-        "test_transfer: {}",
-        serde_json::to_string(&token_fee).unwrap()
-    );
+    tracing::info!("test_transfer: {}", serde_json::to_string(&token_fee).unwrap());
 }

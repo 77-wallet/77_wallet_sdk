@@ -10,15 +10,11 @@ async fn test_create_multisig_account() {
     let chain_code = "tron".to_string();
 
     let threshold = 2;
-    let member1 = MemberVo::new(
-        "发起人".to_string(),
-        "TKfzG9aNQ5vBNwQHGB3w7cCHkGZ6YQBcT9".to_string(),
-    );
+    let member1 =
+        MemberVo::new("发起人".to_string(), "TKfzG9aNQ5vBNwQHGB3w7cCHkGZ6YQBcT9".to_string());
 
-    let member2 = MemberVo::new(
-        "account_0".to_string(),
-        "TKKjkyjSMZ9iy8ATJsLp1X4yNqr39Q5v8Q".to_string(),
-    );
+    let member2 =
+        MemberVo::new("account_0".to_string(), "TKKjkyjSMZ9iy8ATJsLp1X4yNqr39Q5v8Q".to_string());
 
     // let member3 = MemberVo::new(
     //     "account_3".to_string(),
@@ -47,10 +43,8 @@ async fn test_create_transfer() {
 
     let password = "123456".to_string();
 
-    let _signer = Signer {
-        address: "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string(),
-        permission_id: 2,
-    };
+    let _signer =
+        Signer { address: "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string(), permission_id: 2 };
     let signer = None;
 
     let params = TransferParams {
@@ -101,9 +95,7 @@ async fn test_sign_transaction() {
     let queue_id = "254347646645440512".to_owned();
     let status = 1;
     let password = "123456".to_string();
-    let sign = wallet_manager
-        .sign_transaction(queue_id, status, password, None)
-        .await;
+    let sign = wallet_manager.sign_transaction(queue_id, status, password, None).await;
 
     tracing::info!("sign res  = {:?}", sign);
 }
@@ -113,9 +105,7 @@ async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
     let queue_id = "255392028073005056".to_owned();
-    let fee = wallet_manager
-        .estimate_multisig_transfer_fee(queue_id)
-        .await;
+    let fee = wallet_manager.estimate_multisig_transfer_fee(queue_id).await;
 
     tracing::info!("transfer fee = {}", serde_json::to_string(&fee).unwrap());
 }
@@ -129,9 +119,7 @@ async fn test_execute() {
     let password = "123456".to_string();
     let fee = None;
 
-    let result = wallet_manager
-        .exec_transaction(id, password, fee, None)
-        .await;
+    let result = wallet_manager.exec_transaction(id, password, fee, None).await;
     tracing::info!("execute res = {}", serde_json::to_string(&result).unwrap());
 }
 
@@ -141,9 +129,7 @@ async fn test_check_ongoing() {
 
     let chain_code = "btc".to_string();
     let address = "7xFhDzUVuirPCW8buDk9AqFcyuZ6CzMYv1Ah1GzK6Q5a".to_string();
-    let rs = wallet_manager
-        .check_ongoing_queue(chain_code, address)
-        .await;
+    let rs = wallet_manager.check_ongoing_queue(chain_code, address).await;
 
     tracing::info!("res {}", serde_json::to_string(&rs).unwrap());
 }

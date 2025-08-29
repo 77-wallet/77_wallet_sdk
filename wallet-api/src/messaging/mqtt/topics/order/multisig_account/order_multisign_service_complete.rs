@@ -42,11 +42,7 @@ impl OrderMultiSignServiceComplete {
             "Starting to process OrderMultiSignServiceComplete"
         );
 
-        let OrderMultiSignServiceComplete {
-            multisig_account_id,
-            status,
-            r#type,
-        } = self;
+        let OrderMultiSignServiceComplete { multisig_account_id, status, r#type } = self;
 
         let account = Self::get_account_or_recover(multisig_account_id, &pool, &event_name).await?;
 

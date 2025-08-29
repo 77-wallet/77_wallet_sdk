@@ -36,10 +36,7 @@ impl RpcChange {
         let mut chains_set = std::collections::HashSet::new();
         let mut chain_codes = Vec::new();
         for rpc_change_body in body {
-            let RpcChangeBody {
-                chain_code,
-                rpc_address_info_body_list,
-            } = rpc_change_body;
+            let RpcChangeBody { chain_code, rpc_address_info_body_list } = rpc_change_body;
 
             for node in rpc_address_info_body_list.iter() {
                 let Some(id) = &node.id else {
@@ -137,10 +134,7 @@ mod test {
         let balance = wallet_types::Decimal::from_str("1996.733").unwrap();
         let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), 6).unwrap();
         println!("balance: {balance}");
-        println!(
-            "balance: {}",
-            wallet_utils::unit::format_to_string(balance, 6).unwrap()
-        );
+        println!("balance: {}", wallet_utils::unit::format_to_string(balance, 6).unwrap());
         // let balance = wallet_utils::unit::u256_from_str(&balance.to_string()).unwrap();
     }
 }

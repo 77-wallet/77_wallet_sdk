@@ -38,10 +38,7 @@ pub struct CoinService {
 
 impl CoinService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            account_domain: AccountDomain::new(),
-        }
+        Self { repo, account_domain: AccountDomain::new() }
     }
 
     pub async fn get_hot_coin_list(
@@ -65,10 +62,8 @@ impl CoinService {
             .get_addresses(tx, address, account_id, chain_code.clone(), is_multisig)
             .await?;
 
-        let addresses = accounts
-            .into_iter()
-            .map(|address| address.address)
-            .collect::<Vec<String>>();
+        let addresses =
+            accounts.into_iter().map(|address| address.address).collect::<Vec<String>>();
         if let Some(is_multisig) = is_multisig
             && is_multisig
         {
@@ -171,10 +166,7 @@ impl CoinService {
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
 
-        let data = coins
-            .into_iter()
-            .map(|d| coin_info_to_coin_data(d))
-            .collect();
+        let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect();
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
 
         Ok(())
@@ -185,9 +177,7 @@ impl CoinService {
         let backend_api = crate::Context::get_global_backend_api()?;
 
         let update_at = if let Some(last_coin) = CoinRepo::last_coin(&pool, false).await? {
-            last_coin
-                .updated_at
-                .map(|s| s.format("%Y-%m-%d %H:%M:%S").to_string())
+            last_coin.updated_at.map(|s| s.format("%Y-%m-%d %H:%M:%S").to_string())
         } else {
             None
         };
@@ -269,9 +259,8 @@ impl CoinService {
         let mut res = Vec::new();
         if let Some(exchange_rate) = exchange_rate {
             for mut token in tokens {
-                if let Some(symbol) = symbols
-                    .iter()
-                    .find(|s| s.to_lowercase() == token.symbol.to_lowercase())
+                if let Some(symbol) =
+                    symbols.iter().find(|s| s.to_lowercase() == token.symbol.to_lowercase())
                 {
                     token.symbol = symbol.to_string();
                     let coin_id = CoinId {
@@ -327,18 +316,15 @@ impl CoinService {
                 domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
                     .await?;
 
-            let decimals = chain_instance
-                .decimals(&token_address)
-                .await
-                .map_err(|e| match e {
-                    wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
-                    | wallet_chain_interact::Error::RpcError(_) => {
-                        crate::ServiceError::Business(crate::BusinessError::Coin(
-                            crate::CoinError::InvalidContractAddress(token_address.to_string()),
-                        ))
-                    }
-                    _ => crate::ServiceError::ChainInteract(e),
-                })?;
+            let decimals = chain_instance.decimals(&token_address).await.map_err(|e| match e {
+                wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
+                | wallet_chain_interact::Error::RpcError(_) => {
+                    crate::ServiceError::Business(crate::BusinessError::Coin(
+                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                    ))
+                }
+                _ => crate::ServiceError::ChainInteract(e),
+            })?;
             if decimals == 0 {
                 return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
@@ -357,11 +343,7 @@ impl CoinService {
                 )));
             }
 
-            crate::response_vo::coin::TokenInfo {
-                symbol: Some(symbol),
-                name: Some(name),
-                decimals,
-            }
+            crate::response_vo::coin::TokenInfo { symbol: Some(symbol), name: Some(name), decimals }
         };
 
         Ok(res)
@@ -393,18 +375,15 @@ impl CoinService {
         let (decimals, symbol, name) = if let Some(coin) = coin {
             (coin.decimals, coin.symbol, coin.name)
         } else {
-            let decimals = chain_instance
-                .decimals(&token_address)
-                .await
-                .map_err(|e| match e {
-                    wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
-                    | wallet_chain_interact::Error::RpcError(_) => {
-                        crate::ServiceError::Business(crate::BusinessError::Coin(
-                            crate::CoinError::InvalidContractAddress(token_address.to_string()),
-                        ))
-                    }
-                    _ => crate::ServiceError::ChainInteract(e),
-                })?;
+            let decimals = chain_instance.decimals(&token_address).await.map_err(|e| match e {
+                wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
+                | wallet_chain_interact::Error::RpcError(_) => {
+                    crate::ServiceError::Business(crate::BusinessError::Coin(
+                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                    ))
+                }
+                _ => crate::ServiceError::ChainInteract(e),
+            })?;
             if decimals == 0 {
                 return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
                     crate::CoinError::InvalidContractAddress(token_address.to_string()),
@@ -436,29 +415,15 @@ impl CoinService {
 
         let mut account_addresses = self
             .account_domain
-            .get_addresses(
-                tx,
-                address,
-                account_id,
-                Some(chain_code.to_string()),
-                Some(is_multisig),
-            )
+            .get_addresses(tx, address, account_id, Some(chain_code.to_string()), Some(is_multisig))
             .await?;
 
-        tracing::debug!(
-            "[customize_coin] account_addresses: {:?}",
-            account_addresses
-        );
-        let account_addresses = account_addresses
-            .pop()
-            .ok_or(crate::ServiceError::Business(
-                crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())),
-            ))?;
+        tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);
+        let account_addresses = account_addresses.pop().ok_or(crate::ServiceError::Business(
+            crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())),
+        ))?;
 
-        tracing::debug!(
-            "[customize_coin] account_addresses pop: {:?}",
-            account_addresses
-        );
+        tracing::debug!("[customize_coin] account_addresses pop: {:?}", account_addresses);
         let is_multisig = if is_multisig { 1 } else { 0 };
 
         // 查询余额

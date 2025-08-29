@@ -19,11 +19,7 @@ pub struct ResourceResp {
 }
 impl ResourceResp {
     pub fn new(amount: i64, resource_type: ResourceType, resource_value: f64) -> Self {
-        Self {
-            amount,
-            resource_type,
-            resource_value,
-        }
+        Self { amount, resource_type, resource_value }
     }
 }
 
@@ -42,10 +38,7 @@ pub struct FreezeListResp {
 
 impl FreezeListResp {
     pub fn new(resource: ResourceResp) -> Self {
-        Self {
-            resource,
-            opration_time: None,
-        }
+        Self { resource, opration_time: None }
     }
 }
 
@@ -119,11 +112,7 @@ pub struct UnfreezeListResp {
 impl UnfreezeListResp {
     pub fn new(amount: i64, resource_type: ResourceType, available_at: i64) -> Self {
         let time = DateTime::from_timestamp_millis(available_at).unwrap_or_default();
-        Self {
-            amount: amount / consts::TRX_TO_SUN as i64,
-            resource_type,
-            available_at: time,
-        }
+        Self { amount: amount / consts::TRX_TO_SUN as i64, resource_type, available_at: time }
     }
 }
 
@@ -211,11 +200,8 @@ impl DelegateListResp {
         resource: ResourceResp,
         expire_time: i64,
     ) -> Result<DelegateListResp, crate::ServiceError> {
-        let expire_time = if expire_time > 0 {
-            DateTime::from_timestamp_millis(expire_time)
-        } else {
-            None
-        };
+        let expire_time =
+            if expire_time > 0 { DateTime::from_timestamp_millis(expire_time) } else { None };
 
         Ok(DelegateListResp {
             from: delegate.from.to_string(),
@@ -250,13 +236,7 @@ impl BatchDelegateResp {
         resource: ResourceResp,
         bill_kind: BillKind,
     ) -> Self {
-        Self {
-            owner_address,
-            result: res.0,
-            resource,
-            bill_kind,
-            hashs: res.1,
-        }
+        Self { owner_address, result: res.0, resource, bill_kind, hashs: res.1 }
     }
 }
 
@@ -354,10 +334,7 @@ pub struct Vote {
 
 impl From<wallet_chain_interact::tron::protocol::account::Vote> for Vote {
     fn from(vote: wallet_chain_interact::tron::protocol::account::Vote) -> Self {
-        Self {
-            vote_address: vote.vote_address,
-            vote_count: vote.vote_count,
-        }
+        Self { vote_address: vote.vote_address, vote_count: vote.vote_count }
     }
 }
 

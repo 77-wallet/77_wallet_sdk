@@ -71,10 +71,7 @@ impl IoStrategy for LegacyIo {
                 .try_into()?;
         let seed: &[u8] = seed.into_seed().expose_secret();
 
-        Ok(super::RootData::new(
-            phrase_wallet.phrase.expose_secret(),
-            seed,
-        ))
+        Ok(super::RootData::new(phrase_wallet.phrase.expose_secret(), seed))
     }
 
     fn load_subkey(
@@ -213,35 +210,29 @@ impl IoStrategy for LegacyIo {
         address: &str,
         root_dir: &dyn AsRef<std::path::Path>,
     ) -> Result<(), crate::Error> {
-        let path = root_dir
-            .as_ref()
-            .join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
-                FileType::PrivateKey,
-                Some(address.to_string()),
-                None,
-                None,
-                None,
-            )?)?);
+        let path = root_dir.as_ref().join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
+            FileType::PrivateKey,
+            Some(address.to_string()),
+            None,
+            None,
+            None,
+        )?)?);
         wallet_utils::file_func::remove_file(path)?;
-        let path = root_dir
-            .as_ref()
-            .join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
-                FileType::Phrase,
-                Some(address.to_string()),
-                None,
-                None,
-                None,
-            )?)?);
+        let path = root_dir.as_ref().join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
+            FileType::Phrase,
+            Some(address.to_string()),
+            None,
+            None,
+            None,
+        )?)?);
         wallet_utils::file_func::remove_file(path)?;
-        let path = root_dir
-            .as_ref()
-            .join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
-                FileType::Seed,
-                Some(address.to_string()),
-                None,
-                None,
-                None,
-            )?)?);
+        let path = root_dir.as_ref().join(LegacyNaming::encode(LegacyNaming::generate_filemeta(
+            FileType::Seed,
+            Some(address.to_string()),
+            None,
+            None,
+            None,
+        )?)?);
         wallet_utils::file_func::remove_file(path)?;
 
         Ok(())
@@ -272,9 +263,7 @@ impl Drop for PhraseWallet {
 impl PhraseWallet {
     /// Construct a new wallet with an external [`PrehashSigner`].
     pub fn new(phrase: &str) -> Self {
-        PhraseWallet {
-            phrase: phrase.into(),
-        }
+        PhraseWallet { phrase: phrase.into() }
     }
 }
 
@@ -300,9 +289,7 @@ impl Drop for PkWallet {
 impl PkWallet {
     /// Construct a new wallet with an external [`PrehashSigner`].
     pub fn new(pkey: &[u8]) -> Self {
-        PkWallet {
-            pkey: pkey.to_vec().into(),
-        }
+        PkWallet { pkey: pkey.to_vec().into() }
     }
 
     /// Returns this wallet's signer.
@@ -334,9 +321,7 @@ impl Drop for SeedWallet {
 impl SeedWallet {
     /// Construct a new wallet with an external [`PrehashSigner`].
     pub fn new(seed: &[u8]) -> Self {
-        SeedWallet {
-            seed: seed.to_vec().into(),
-        }
+        SeedWallet { seed: seed.to_vec().into() }
     }
 
     /// Consumes this wallet and returns its signer.

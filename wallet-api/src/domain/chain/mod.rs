@@ -35,11 +35,7 @@ pub struct TransferResp {
 }
 impl TransferResp {
     pub fn new(tx_hash: String, fee: String) -> Self {
-        Self {
-            tx_hash,
-            fee,
-            consumer: None,
-        }
+        Self { tx_hash, fee, consumer: None }
     }
     pub fn with_consumer(&mut self, consumer: BillResourceConsume) {
         self.consumer = Some(consumer);
@@ -56,9 +52,7 @@ impl TransferResp {
 
 /// Parses a fee setting string into a `FeeSetting` struct.
 pub fn pare_fee_setting(fee_setting: &str) -> Result<FeeSetting, crate::ServiceError> {
-    fee_setting
-        .try_into()
-        .and_then(|s: response_vo::EthereumFeeDetails| FeeSetting::try_from(s))
+    fee_setting.try_into().and_then(|s: response_vo::EthereumFeeDetails| FeeSetting::try_from(s))
 }
 
 pub fn rpc_need_header(_url: &str) -> Result<bool, crate::ServiceError> {
@@ -81,27 +75,21 @@ pub fn check_address(
         }
         wallet_types::chain::chain::ChainCode::BnbSmartChain
         | wallet_types::chain::chain::ChainCode::Ethereum => {
-            wallet_utils::address::parse_eth_address(address)
-                .map(|_| true)
-                .map_err(|_| {
-                    crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
-                })?
+            wallet_utils::address::parse_eth_address(address).map(|_| true).map_err(|_| {
+                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+            })?
         }
         wallet_types::chain::chain::ChainCode::Tron => {
             if wallet_utils::address::is_tron_address(address) {
                 true
             } else {
-                return Err(crate::BusinessError::Account(
-                    crate::AccountError::AddressNotCorrect,
-                ))?;
+                return Err(crate::BusinessError::Account(crate::AccountError::AddressNotCorrect))?;
             }
         }
         wallet_types::chain::chain::ChainCode::Solana => {
-            wallet_utils::address::parse_sol_address(address)
-                .map(|_| true)
-                .map_err(|_| {
-                    crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
-                })?
+            wallet_utils::address::parse_sol_address(address).map(|_| true).map_err(|_| {
+                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+            })?
         }
         wallet_types::chain::chain::ChainCode::Ton => parse_addr_from_bs64_url(address)
             .map(|_| true)
@@ -147,9 +135,7 @@ impl ChainDomain {
         let mut chain_codes = Vec::new();
         let mut has_new_chain = false;
         let account_list = AccountRepoTrait::list(&mut repo).await?;
-        let app_version = super::app::config::ConfigDomain::get_app_version()
-            .await?
-            .app_version;
+        let app_version = super::app::config::ConfigDomain::get_app_version().await?.app_version;
         for chain in chains.list {
             let Some(master_token_code) = chain.master_token_code else {
                 continue;
@@ -222,10 +208,7 @@ impl ChainDomain {
             wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
             &ChainRpcListReq::new(chain_codes),
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(chain_rpc_list_req))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
 
         Ok(has_new_chain)
     }
@@ -287,9 +270,7 @@ impl ChainDomain {
                 let node = NodeRepo::get_local_node_by_chain(&pool, chain_code)
                     .await?
                     .pop()
-                    .ok_or(crate::BusinessError::ChainNode(
-                        crate::ChainNodeError::NodeNotFound,
-                    ))?;
+                    .ok_or(crate::BusinessError::ChainNode(crate::ChainNodeError::NodeNotFound))?;
                 NodeInfo::new(
                     &node.chain_code,
                     &node.node_id,

@@ -199,9 +199,7 @@ impl MultisigAdapter {
                     fee.original_fee(),
                 )?;
 
-                let tx_hash = chain
-                    .exec_transaction(params, key, None, instructions, 0)
-                    .await?;
+                let tx_hash = chain.exec_transaction(params, key, None, instructions, 0).await?;
 
                 Ok((tx_hash, "".to_string()))
             }
@@ -300,23 +298,16 @@ impl MultisigAdapter {
 
                 let instructions = params.instructions().await?;
                 // check transaction_fee
-                let fee = chain
-                    .estimate_fee_v1(&instructions, &params)
-                    .await?
-                    .transaction_fee();
+                let fee = chain.estimate_fee_v1(&instructions, &params).await?.transaction_fee();
 
                 CommonFeeDetails::new(fee, token_currency, currency)?.to_json_str()
             }
             Self::Tron(chain) => {
                 // check account is init an chain
-                let account_info = chain
-                    .get_provider()
-                    .account_info(&account.initiator_addr)
-                    .await?;
+                let account_info =
+                    chain.get_provider().account_info(&account.initiator_addr).await?;
                 if account_info.address.is_empty() {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::AddressNotInit,
-                    ))?;
+                    return Err(crate::BusinessError::Chain(crate::ChainError::AddressNotInit))?;
                 }
 
                 let params = tron::operations::multisig::MultisigAccountOpt::new(
@@ -388,9 +379,8 @@ impl MultisigAdapter {
 
                 // create transaction fee
                 let base_fee = solana_chain.estimate_fee_v1(&instructions, &params).await?;
-                let mut fee_setting = params
-                    .create_transaction_fee(&args.transaction_message, base_fee)
-                    .await?;
+                let mut fee_setting =
+                    params.create_transaction_fee(&args.transaction_message, base_fee).await?;
 
                 ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
@@ -510,9 +500,8 @@ impl MultisigAdapter {
 
                 // create transaction fee
                 let base_fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                let fee = params
-                    .create_transaction_fee(&args.transaction_message, base_fee)
-                    .await?;
+                let fee =
+                    params.create_transaction_fee(&args.transaction_message, base_fee).await?;
                 // check balance
                 let balance = chain.balance(&account.initiator_addr, None).await?;
                 domain::chain::transaction::ChainTransDomain::check_sol_transaction_fee(
@@ -522,9 +511,7 @@ impl MultisigAdapter {
 
                 // execute build transfer transaction
                 let pda = params.multisig_pda;
-                let tx_hash = chain
-                    .exec_transaction(params, key, None, instructions, 0)
-                    .await?;
+                let tx_hash = chain.exec_transaction(params, key, None, instructions, 0).await?;
 
                 Ok(args.get_raw_data(pda, tx_hash)?)
             }
@@ -767,9 +754,7 @@ impl MultisigAdapter {
                         memo,
                     )?;
 
-                    chain
-                        .contract_fee(&queue.from_addr, signature_num, params)
-                        .await?
+                    chain.contract_fee(&queue.from_addr, signature_num, params).await?
                 } else {
                     let params =
                         tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;

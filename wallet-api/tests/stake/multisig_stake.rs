@@ -9,10 +9,8 @@ use wallet_database::entities::bill::BillKind;
 async fn test_build_freeze() {
     let manager = get_manager().await;
 
-    let _singer = Signer {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        permission_id: 3,
-    };
+    let _singer =
+        Signer { address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(), permission_id: 3 };
     let _signer = None;
 
     let req = FreezeBalanceReq {
@@ -26,9 +24,7 @@ async fn test_build_freeze() {
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager
-        .build_multisig_stake(bill_kind, content, 1, password)
-        .await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
@@ -51,9 +47,7 @@ async fn test_build_delegate() {
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager
-        .build_multisig_stake(bill_kind, content, 1, password)
-        .await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
@@ -74,9 +68,7 @@ async fn test_build_un_delegate() {
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager
-        .build_multisig_stake(bill_kind, content, 1, password)
-        .await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
@@ -88,20 +80,14 @@ async fn test_build_vote() {
     let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
     let req = VoteWitnessReq::new(
         owner_address,
-        vec![VotesReq::new(
-            "TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX",
-            1,
-            "name",
-        )],
+        vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1, "name")],
         None,
     );
     let bill_kind = BillKind::Vote.to_i8() as i64;
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager
-        .build_multisig_stake(bill_kind, content, 1, password)
-        .await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
 
     tracing::info!("vote {}", serde_json::to_string(&res).unwrap());
 }

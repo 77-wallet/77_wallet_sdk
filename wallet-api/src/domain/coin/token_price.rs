@@ -51,11 +51,7 @@ impl TokenCurrencyGetter {
         let token_price =
             TokenCurrencyGetter::get_currency(&currency, chain_code, symbol, token_address).await?;
 
-        Ok(BalanceInfo::new(
-            amount,
-            token_price.get_price(&currency),
-            &currency,
-        ))
+        Ok(BalanceInfo::new(amount, token_price.get_price(&currency), &currency))
     }
 
     // 查询后端的币价，并转换为balance数据结构
@@ -86,11 +82,6 @@ impl TokenCurrencyGetter {
         };
         let amount = wallet_utils::unit::convert_to_u256(amount, decimals)?;
 
-        Ok(BalanceStr::new(
-            amount,
-            Some(unit_price),
-            &currency,
-            decimals,
-        )?)
+        Ok(BalanceStr::new(amount, Some(unit_price), &currency, decimals)?)
     }
 }

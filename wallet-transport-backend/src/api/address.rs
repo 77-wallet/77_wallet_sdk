@@ -73,12 +73,8 @@ impl BackendApi {
             "index":index,
         });
 
-        let res = self
-            .client
-            .post("wallet/assets/list")
-            .json(req)
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post("wallet/assets/list").json(req).send::<BackendResponse>().await?;
 
         res.process(&self.aes_cbc_cryptor)
     }

@@ -56,14 +56,12 @@ impl Topics {
             self.data.keys().cloned().collect();
 
         // 过滤出未订阅的主题
-        let unique_topics: Vec<String> = topics
-            .into_iter()
-            .filter(|topic| !subscribed_topics.contains(topic))
-            .collect();
+        let unique_topics: Vec<String> =
+            topics.into_iter().filter(|topic| !subscribed_topics.contains(topic)).collect();
 
-        let mqtt_processor = MQTT_PROCESSOR.get().ok_or(crate::ServiceError::System(
-            crate::SystemError::MqttClientNotInit,
-        ))?;
+        let mqtt_processor = MQTT_PROCESSOR
+            .get()
+            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
 
         // let filters: Vec<rumqttc::v5::mqttbytes::v5::Filter> = unique_topics
         //     .iter()
@@ -103,18 +101,11 @@ impl Topics {
                     // 插入新的订阅数据到 HashMap
                     self.data.insert(
                         topic.clone(),
-                        TopicData {
-                            qos,
-                            last_updated: now,
-                            is_active: true,
-                        },
+                        TopicData { qos, last_updated: now, is_active: true },
                     );
 
                     // 更新 BTreeSet，进行排序
-                    self.entry.insert(TopicEntry {
-                        topic: topic.clone(),
-                        last_updated: now,
-                    });
+                    self.entry.insert(TopicEntry { topic: topic.clone(), last_updated: now });
                 }
                 Err(e) => {
                     tracing::error!("订阅主题失败: {}, 错误信息：{:?}", topic, e);
@@ -131,18 +122,16 @@ impl Topics {
             self.data.keys().cloned().collect();
 
         // 过滤出需要取消的订阅
-        let unique_topics: Vec<String> = topics
-            .into_iter()
-            .filter(|topic| subscribed_topics.contains(topic))
-            .collect();
+        let unique_topics: Vec<String> =
+            topics.into_iter().filter(|topic| subscribed_topics.contains(topic)).collect();
 
         if unique_topics.is_empty() {
             return Ok(());
         }
 
-        let mqtt_processor = MQTT_PROCESSOR.get().ok_or(crate::ServiceError::System(
-            crate::SystemError::MqttClientNotInit,
-        ))?;
+        let mqtt_processor = MQTT_PROCESSOR
+            .get()
+            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
         tracing::debug!("取消订阅的主题: {}", unique_topics.join(", "));
         for topic in unique_topics.iter() {
             match mqtt_processor.client().try_unsubscribe(topic) {
@@ -167,9 +156,9 @@ impl Topics {
     }
 
     pub async fn resubscribe(&self) -> Result<(), crate::ServiceError> {
-        let mqtt_processor = MQTT_PROCESSOR.get().ok_or(crate::ServiceError::System(
-            crate::SystemError::MqttClientNotInit,
-        ))?;
+        let mqtt_processor = MQTT_PROCESSOR
+            .get()
+            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
 
         // 遍历 HashMap 中的所有主题，重新订阅
         for (topic, topic_data) in self.data.iter() {

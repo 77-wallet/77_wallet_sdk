@@ -211,9 +211,7 @@ impl TransactionAdapter {
                 }
 
                 let params = chain::eth::operations::TransferOpt::try_from(&params.base)?;
-                let tx_hash = chain
-                    .exec_transaction(params, fee_setting, private_key)
-                    .await?;
+                let tx_hash = chain.exec_transaction(params, fee_setting, private_key).await?;
 
                 Ok(TransferResp::new(
                     tx_hash,
@@ -339,18 +337,14 @@ impl TransactionAdapter {
                     }
 
                     let provider = chain.get_provider();
-                    let balance = chain
-                        .balance(&params.base.from, Some(contract.clone()))
-                        .await?;
+                    let balance = chain.balance(&params.base.from, Some(contract.clone())).await?;
                     if balance < transfer_amount {
                         return Err(crate::BusinessError::Chain(
                             crate::ChainError::InsufficientBalance,
                         ))?;
                     }
 
-                    let account = provider
-                        .account_info(&transfer_params.owner_address)
-                        .await?;
+                    let account = provider.account_info(&transfer_params.owner_address).await?;
                     // 主币是否有钱(可能账号未被初始化)
                     if account.balance <= 0 {
                         return Err(crate::BusinessError::Chain(
@@ -359,12 +353,9 @@ impl TransactionAdapter {
                     }
 
                     // constant contract to fee
-                    let constant = transfer_params
-                        .constant_contract(chain.get_provider())
-                        .await?;
-                    let consumer = provider
-                        .contract_fee(constant, 1, &transfer_params.owner_address)
-                        .await?;
+                    let constant = transfer_params.constant_contract(chain.get_provider()).await?;
+                    let consumer =
+                        provider.contract_fee(constant, 1, &transfer_params.owner_address).await?;
 
                     if account.balance < consumer.transaction_fee_i64() {
                         return Err(crate::BusinessError::Chain(
@@ -432,9 +423,8 @@ impl TransactionAdapter {
             }
             Self::Ton(chain) => {
                 // 验证余额
-                let balance = chain
-                    .balance(&params.base.from, params.base.token_address.clone())
-                    .await?;
+                let balance =
+                    chain.balance(&params.base.from, params.base.token_address.clone()).await?;
                 if balance < transfer_amount {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientBalance,
@@ -454,9 +444,8 @@ impl TransactionAdapter {
                 let msg_cell =
                     ton_tx::build_ext_cell(&params.base, &chain.provider, address_type).await?;
 
-                let fee = chain
-                    .estimate_fee(msg_cell.clone(), &params.base.from, address_type)
-                    .await?;
+                let fee =
+                    chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
 
                 let mut trans_fee = U256::from(fee.get_fee());
                 if params.base.token_address.is_none() {
@@ -482,9 +471,8 @@ impl TransactionAdapter {
                 Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))
             }
             Self::Sui(chain) => {
-                let balance = chain
-                    .balance(&params.base.from, params.base.token_address.clone())
-                    .await?;
+                let balance =
+                    chain.balance(&params.base.from, params.base.token_address.clone()).await?;
                 if balance < transfer_amount {
                     return Err(crate::BusinessError::Chain(
                         crate::ChainError::InsufficientBalance,
@@ -698,9 +686,7 @@ impl TransactionAdapter {
                         req.notes.clone(),
                     )?;
 
-                    chain
-                        .simulate_simple_fee(&req.from, &req.to, 1, params)
-                        .await?
+                    chain.simulate_simple_fee(&req.from, &req.to, 1, params).await?
                 };
                 let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency(
                     currency,
@@ -725,9 +711,7 @@ impl TransactionAdapter {
 
                 let msg_cell = ton_tx::build_ext_cell(&req, &chain.provider, address_type).await?;
 
-                let fee = chain
-                    .estimate_fee(msg_cell.clone(), &req.from, address_type)
-                    .await?;
+                let fee = chain.estimate_fee(msg_cell.clone(), &req.from, address_type).await?;
 
                 let res = response_vo::CommonFeeDetails::new(
                     fee.get_fee_ton(),
@@ -773,9 +757,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::approve(chain, req, value, key).await?,
             Self::Tron(chain) => tron_tx::approve(chain, req, value, key).await?,
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -822,9 +804,7 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)?
             }
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -841,9 +821,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::allowance(chain, from, token, spender).await?,
             Self::Tron(chain) => tron_tx::allowance(chain, from, token, spender).await?,
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -923,9 +901,7 @@ impl TransactionAdapter {
                 (resp.amount_out, consumer, fee)
             }
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -944,9 +920,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
             Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -992,9 +966,7 @@ impl TransactionAdapter {
                 (consumer, fee)
             }
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1012,9 +984,7 @@ impl TransactionAdapter {
             Self::Tron(chain) => tron_tx::deposit(chain, &req, value, key).await?,
             Self::Ethereum(chain) => eth_tx::deposit(chain, &req, value, fee, key).await?,
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1061,9 +1031,7 @@ impl TransactionAdapter {
                 (consumer, fee)
             }
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1081,9 +1049,7 @@ impl TransactionAdapter {
             Self::Tron(chain) => tron_tx::withdraw(chain, &req, value, key).await?,
             Self::Ethereum(chain) => eth_tx::withdraw(chain, &req, value, fee, key).await?,
             _ => {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1109,9 +1075,8 @@ mod tests {
         let rpc_url = "http://100.78.188.103:8090";
         // let rpc_url = "https://api.nileex.io";
 
-        let adapter = ChainAdapterFactory::get_node_transaction_adapter(chain_code, rpc_url)
-            .await
-            .unwrap();
+        let adapter =
+            ChainAdapterFactory::get_node_transaction_adapter(chain_code, rpc_url).await.unwrap();
 
         let amount_in = unit::convert_to_u256("0.1", 6).unwrap();
 
@@ -1154,11 +1119,8 @@ mod tests {
             default_slippage: 2,
         };
 
-        let token_in = SwapTokenInfo {
-            token_addr: "".to_string(),
-            symbol: "WTRX".to_string(),
-            decimals: 6,
-        };
+        let token_in =
+            SwapTokenInfo { token_addr: "".to_string(), symbol: "WTRX".to_string(), decimals: 6 };
 
         let token_out = SwapTokenInfo {
             token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),

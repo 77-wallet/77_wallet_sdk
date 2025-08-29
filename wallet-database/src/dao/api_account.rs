@@ -55,28 +55,25 @@ impl ApiAccountDao {
         );
 
         let query = query_builder.build();
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
-    /// 查询某个钱包地址下的所有账户
-    pub async fn list_by_wallet<'a, E>(
+    pub async fn lists_by_wallet_address<'a, E>(
         exec: E,
         wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"SELECT * FROM api_account WHERE wallet_address = $1"#;
-
-        sqlx::query_as::<_, ApiAccountEntity>(sql)
-            .bind(wallet_address)
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("status", 1)
+            .and_where_eq_opt("account_id", account_id)
+            .and_where_eq_opt("chain_code", chain_code)
             .fetch_all(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     /// 编辑账户名

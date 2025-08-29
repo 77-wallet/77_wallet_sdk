@@ -129,11 +129,7 @@ pub struct VoteWitnessReq {
 
 impl VoteWitnessReq {
     pub fn new(owner_address: &str, votes: Vec<VotesReq>, signer: Option<Signer>) -> Self {
-        Self {
-            owner_address: owner_address.to_string(),
-            votes,
-            signer,
-        }
+        Self { owner_address: owner_address.to_string(), votes, signer }
     }
 
     pub fn get_votes(&self) -> i64 {
@@ -151,11 +147,7 @@ pub struct VotesReq {
 
 impl VotesReq {
     pub fn new(vote_address: &str, vote_count: i64, name: &str) -> Self {
-        Self {
-            vote_address: vote_address.to_string(),
-            vote_count,
-            name: name.to_string(),
-        }
+        Self { vote_address: vote_address.to_string(), vote_count, name: name.to_string() }
     }
 }
 
@@ -185,10 +177,7 @@ pub struct WithdrawBalanceReq {
 
 impl WithdrawBalanceReq {
     pub fn new(owner_address: &str, signer: Option<Signer>) -> Self {
-        Self {
-            owner_address: owner_address.to_string(),
-            signer,
-        }
+        Self { owner_address: owner_address.to_string(), signer }
     }
 }
 

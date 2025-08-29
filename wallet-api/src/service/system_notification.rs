@@ -25,9 +25,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let mut tx = self.repo;
         let r#type = notification.type_name();
         let content = notification.serialize()?;
-        tx.upsert(id, &r#type, content, status)
-            .await
-            .map_err(crate::ServiceError::Database)?;
+        tx.upsert(id, &r#type, content, status).await.map_err(crate::ServiceError::Database)?;
 
         Ok(())
     }
@@ -54,9 +52,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         reqs: &[CreateSystemNotificationEntity],
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        tx.upsert_multi_with_key_value(reqs)
-            .await
-            .map_err(crate::ServiceError::Database)?;
+        tx.upsert_multi_with_key_value(reqs).await.map_err(crate::ServiceError::Database)?;
         Ok(())
     }
 
@@ -66,9 +62,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         status: i8,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        tx.update_status(id, status)
-            .await
-            .map_err(crate::ServiceError::Database)?;
+        tx.update_status(id, status).await.map_err(crate::ServiceError::Database)?;
 
         Ok(())
     }
@@ -81,10 +75,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
     {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let list = tx
-            .list(page, page_size)
-            .await
-            .map_err(crate::ServiceError::Database)?;
+        let list = tx.list(page, page_size).await.map_err(crate::ServiceError::Database)?;
 
         let mut res = Vec::new();
         for notify in list.data {

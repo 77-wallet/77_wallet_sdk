@@ -1,5 +1,8 @@
-use crate::entities::api_withdraw::ApiWithdrawStatus;
-use crate::{DbPool, dao::api_withdraw::ApiWithdrawDao, entities::api_withdraw::ApiWithdrawEntity};
+use crate::{
+    DbPool,
+    dao::api_withdraw::ApiWithdrawDao,
+    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+};
 
 pub struct ApiWithdrawRepo;
 
@@ -62,7 +65,15 @@ impl ApiWithdrawRepo {
         transaction_fee: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_tx_status(pool.as_ref(), trade_no, tx_hash, resource_consume, transaction_fee, status).await
+        ApiWithdrawDao::update_tx_status(
+            pool.as_ref(),
+            trade_no,
+            tx_hash,
+            resource_consume,
+            transaction_fee,
+            status,
+        )
+        .await
     }
 
     pub async fn update_api_withdraw_status(

@@ -25,9 +25,7 @@ impl<T> Default for AppDomain<T> {
 }
 impl<T> AppDomain<T> {
     pub fn new() -> Self {
-        Self {
-            phantom: std::marker::PhantomData,
-        }
+        Self { phantom: std::marker::PhantomData }
     }
 }
 
@@ -39,10 +37,7 @@ impl DeviceDomain {
     ) -> Result<String, crate::ServiceError> {
         let identifier = DeviceDomain::device_identifier(&device.sn, &device.device_type);
 
-        Ok(wallet_utils::ecb::Aes128EcbCryptor::new(APP_ID)
-            .unwrap()
-            .encrypt(&identifier)
-            .unwrap())
+        Ok(wallet_utils::ecb::Aes128EcbCryptor::new(APP_ID).unwrap().encrypt(&identifier).unwrap())
     }
 
     pub fn md5_sn(sn: &str) -> String {
@@ -125,11 +120,8 @@ impl DeviceDomain {
             (keystore_kdf_algorithm, wallet_tree_strategy)
         };
 
-        ConfigDomain::set_config(
-            KEYSTORE_KDF_ALGORITHM,
-            &keystore_kdf_algorithm.to_json_str()?,
-        )
-        .await?;
+        ConfigDomain::set_config(KEYSTORE_KDF_ALGORITHM, &keystore_kdf_algorithm.to_json_str()?)
+            .await?;
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
         Ok(())

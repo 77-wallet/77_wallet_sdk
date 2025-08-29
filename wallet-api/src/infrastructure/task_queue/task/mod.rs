@@ -7,12 +7,14 @@ use crate::{
     messaging::mqtt::topics,
 };
 use std::any::Any;
-use wallet_database::entities::{
-    multisig_queue::QueueTaskEntity,
-    node::NodeEntity,
-    task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
+use wallet_database::{
+    entities::{
+        multisig_queue::QueueTaskEntity,
+        node::NodeEntity,
+        task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
+    },
+    repositories::task_queue::TaskQueueRepoTrait as _,
 };
-use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
 use wallet_transport_backend::request::TokenQueryPriceReq;
 #[async_trait::async_trait]
 pub(crate) trait TaskTrait: Send + Sync {
@@ -32,17 +34,11 @@ pub(crate) struct TaskItem {
 
 impl TaskItem {
     pub fn new<T: TaskTrait + 'static>(task: T) -> Self {
-        Self {
-            id: None,
-            task: Box::new(task),
-        }
+        Self { id: None, task: Box::new(task) }
     }
 
     pub fn new_with_id<T: TaskTrait + 'static>(id: &str, task: T) -> Self {
-        Self {
-            id: Some(id.to_string()),
-            task: Box::new(task),
-        }
+        Self { id: Some(id.to_string()), task: Box::new(task) }
     }
 
     // pub fn new(task: Task) -> Self {
@@ -129,16 +125,12 @@ impl Tasks {
         }
 
         for (priority, tasks) in grouped_tasks {
-            if let Err(e) = task_sender
-                .get_task_sender()
-                .send(PriorityTask { priority, tasks })
-            {
+            if let Err(e) = task_sender.get_task_sender().send(PriorityTask { priority, tasks }) {
                 tracing::error!("send task queue error: {}", e);
             }
         }
 
-        repo.delete_oldest_by_status_when_exceeded(200000, 2)
-            .await?;
+        repo.delete_oldest_by_status_when_exceeded(200000, 2).await?;
 
         Ok(())
     }

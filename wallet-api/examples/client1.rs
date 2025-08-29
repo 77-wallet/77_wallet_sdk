@@ -35,37 +35,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account_name = "ccccc";
     let is_default_name = true;
     let wallet_password = "q1111111";
-    let invite_code = None;
+    // let invite_code = None;
     // let api_wallet_type = ApiWalletType::SubAccount;
-    let api_wallet_type = ApiWalletType::Withdrawal;
-    let wallet = wallet_manager
-        .create_api_wallet(
-            language_code,
-            phrase,
-            salt,
-            wallet_name,
-            account_name,
-            is_default_name,
-            wallet_password,
-            invite_code,
-            api_wallet_type,
-        )
-        .await
-        .result;
-    tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
+    // let api_wallet_type = ApiWalletType::SubAccount;
+    // let wallet = wallet_manager
+    //     .create_api_wallet(
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //         wallet_name,
+    //         account_name,
+    //         is_default_name,
+    //         wallet_password,
+    //         invite_code,
+    //         api_wallet_type,
+    //     )
+    //     .await
+    //     .result;
+    // tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
 
-    let order_list = wallet_manager.get_api_withdraw_order_list().await.result;
-    tracing::info!("order_list ------------------- 2: {order_list:#?}");
-    let uid = "04de3a5eff89883fecd1469fbc7621f37122c83d6680b95ad5c67cd9a141cd4e";
+    // let order_list = wallet_manager.get_api_collect_order_list().await.result;
+    // tracing::info!("order_list ------------------- 2: {order_list:#?}");
+    // let uid = "2be2ade547d488732e03024207c5d36e6976535845f058f118a2a004027791b7";
 
-    let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
-    let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
-    let value = "0.000001";
-    let trade_no = "0x0000000066";
-    let res1 = wallet_manager
-        .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid)
-        .await;
-    tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+    // let from = "0xB9E04b6fa2C391e82A076C8802982DedcD78eb06";
+    // let to = "0x1bAA3A8c18444E36d8cb8f6C7dd6004da3242689";
+    // let value = "0.000001";
+    // let trade_no = "0x0000000066";
+    // let res1 = wallet_manager
+    //     .api_collect_order(from, to, value, "btc", None, "BTC", trade_no, 1, uid)
+    //     .await;
+    // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)
     //     .await
@@ -94,8 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     wallet_manager.mqtt_subscribe(topics, None).await;
     // }
 
-    // let sync_res = wallet_manager.sync_assets(vec![], None, vec![]).await;
-    // tracing::info!("sync res: {sync_res:#?}");
+    let sync_res = wallet_manager
+        .sync_api_assets_by_wallet("0x418Ea813dd2d9AA21597912b62a10465FCe48033", None, vec![])
+        .await;
+    tracing::info!("sync res: {sync_res:#?}");
     // let wallet = wallet.unwrap();
     // test_params.create_account_req.wallet_address = wallet.address.clone();
 

@@ -51,19 +51,14 @@ impl SwapClient {
         &self,
         req: AggQuoteRequest,
     ) -> Result<AggQuoteResp, crate::ServiceError> {
-        let res = self
-            .client
-            .post_request::<_, AggregatorResp>("quote", req)
-            .await?;
+        let res = self.client.post_request::<_, AggregatorResp>("quote", req).await?;
 
         self.handle_result::<AggQuoteResp>(res)
     }
 
     pub async fn chain_list(&self) -> Result<SupportChain, crate::ServiceError> {
-        let res = self
-            .client
-            .post_request::<_, AggregatorResp>("get_support_chain_dex", "")
-            .await?;
+        let res =
+            self.client.post_request::<_, AggregatorResp>("get_support_chain_dex", "").await?;
 
         self.handle_result::<SupportChain>(res)
     }

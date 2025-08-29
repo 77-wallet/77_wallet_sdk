@@ -10,7 +10,7 @@ use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
-        api_assets::ApiCreateAssetsVo,
+        api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
         assets::{AssetsEntity, AssetsId},
         coin::{CoinData, CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
@@ -100,10 +100,7 @@ impl AssetsDomain {
         let data = tx.get_coin_assets_in_address(addresses).await?;
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
-                return Ok(data
-                    .into_iter()
-                    .filter(|val| val.is_multisig == 2)
-                    .collect());
+                return Ok(data.into_iter().filter(|val| val.is_multisig == 2).collect());
             } else {
                 return Ok(data
                     .into_iter()
@@ -143,14 +140,11 @@ impl AssetsDomain {
                 CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
                     .await?;
             tracing::info!("coin: {coin:?}");
-            if let Some(info) = res
-                .iter_mut()
-                .find(|info| info.symbol == assets.symbol && coin.is_default == 1)
+            if let Some(info) =
+                res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {
                 tracing::info!("nonono, info: {:?}", info);
-                info.chain_list
-                    .entry(assets.chain_code.clone())
-                    .or_insert(assets.token_address);
+                info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
 
                 // info.chain_list.insert(crate::response_vo::coin::ChainInfo {
                 //     chain_code: assets.chain_code,
@@ -199,10 +193,7 @@ impl AssetsDomain {
         .await?;
 
         // 获取地址
-        let addr = list
-            .iter()
-            .map(|a| a.address.clone())
-            .collect::<Vec<String>>();
+        let addr = list.iter().map(|a| a.address.clone()).collect::<Vec<String>>();
 
         Self::do_async_balance(pool, addr, None, symbol).await
     }
@@ -234,10 +225,7 @@ impl AssetsDomain {
             let account =
                 AccountEntity::list_in_address(pool.as_ref(), &[addr.clone()], None).await?;
 
-            account
-                .iter()
-                .map(|a| a.chain_code.clone())
-                .collect::<Vec<String>>()
+            account.iter().map(|a| a.chain_code.clone()).collect::<Vec<String>>()
         };
 
         for code in codes {
@@ -317,7 +305,7 @@ impl AssetsDomain {
             assets.retain(|asset| symbol.contains(&asset.symbol));
         }
 
-        let results = ChainBalance::sync_address_balance(&assets).await?;
+        let results = ChainBalance::sync_address_balance(assets.as_slice()).await?;
 
         for (assets_id, balance) in &results {
             if let Err(e) = AssetsEntity::update_balance(pool.as_ref(), assets_id, balance).await {
@@ -337,12 +325,8 @@ impl AssetsDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
-                let assets_id = AssetsId::new(
-                    address,
-                    &coin.chain_code,
-                    &coin.symbol,
-                    coin.token_address(),
-                );
+                let assets_id =
+                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
                 let assets =
                     CreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
@@ -368,12 +352,8 @@ impl AssetsDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
-                let assets_id = AssetsId::new(
-                    address,
-                    &coin.chain_code,
-                    &coin.symbol,
-                    coin.token_address(),
-                );
+                let assets_id =
+                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
                 let assets =
                     ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
@@ -449,12 +429,8 @@ impl AssetsDomain {
         };
 
         // 资产是否存在不存在新增
-        let assets_id = AssetsId::new(
-            &recipient,
-            &chain_code,
-            &token.symbol,
-            Some(token.token_addr),
-        );
+        let assets_id =
+            AssetsId::new(&recipient, &chain_code, &token.symbol, Some(token.token_addr));
         let assets = CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0);
 
         if let Err(e) = AssetsEntity::upsert_assets(pool.as_ref(), assets).await {
@@ -472,15 +448,47 @@ struct BalanceTask {
     decimals: u8,
     token_address: Option<String>,
 }
-struct ChainBalance;
-impl ChainBalance {
-    async fn sync_address_balance(
-        assets: &[AssetsEntity],
-    ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
-        // 限制最大并发数为 10
-        let sem = Arc::new(Semaphore::new(10));
-        let mut tasks = vec![];
 
+pub(crate) struct BalanceTasks(Vec<BalanceTask>);
+pub(crate) struct ChainBalance;
+
+impl From<&[AssetsEntity]> for BalanceTasks {
+    fn from(assets: &[AssetsEntity]) -> Self {
+        BalanceTasks(
+            assets
+                .iter()
+                .map(|asset| BalanceTask {
+                    address: asset.address.clone(),
+                    chain_code: asset.chain_code.clone(),
+                    symbol: asset.symbol.clone(),
+                    decimals: asset.decimals,
+                    token_address: asset.token_address(),
+                })
+                .collect(),
+        )
+    }
+}
+
+impl From<&[ApiAssetsEntity]> for BalanceTasks {
+    fn from(assets: &[ApiAssetsEntity]) -> Self {
+        BalanceTasks(
+            assets
+                .iter()
+                .map(|asset| BalanceTask {
+                    address: asset.address.clone(),
+                    chain_code: asset.chain_code.clone(),
+                    symbol: asset.symbol.clone(),
+                    decimals: asset.decimals,
+                    token_address: asset.token_address(),
+                })
+                .collect(),
+        )
+    }
+}
+
+impl ChainBalance {
+    pub(crate) async fn balance_tasks_from_assets(assets: &[AssetsEntity]) -> Vec<BalanceTask> {
+        let mut tasks = vec![];
         for asset in assets.iter() {
             let bal = BalanceTask {
                 address: asset.address.clone(),
@@ -491,9 +499,29 @@ impl ChainBalance {
             };
             tasks.push(bal);
         }
+        tasks
+    }
+
+    pub(crate) async fn sync_address_balance(
+        assets: impl Into<BalanceTasks>,
+    ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
+        // 限制最大并发数为 10
+        let sem = Arc::new(Semaphore::new(10));
+        // let mut tasks = vec![];
+        let tasks: BalanceTasks = assets.into();
+        // for asset in assets.into().0.iter() {
+        //     let bal = BalanceTask {
+        //         address: asset.address.clone(),
+        //         chain_code: asset.chain_code.clone(),
+        //         symbol: asset.symbol.clone(),
+        //         decimals: asset.decimals,
+        //         token_address: asset.token_address(),
+        //     };
+        //     tasks.push(bal);
+        // }
 
         // 并发获取余额并格式化
-        let results = stream::iter(tasks)
+        let results = stream::iter(tasks.0)
             .map(|task| Self::fetch_balance(task, sem.clone()))
             .buffer_unordered(10)
             .filter_map(|x| async move { x })
@@ -502,6 +530,35 @@ impl ChainBalance {
 
         Ok(results)
     }
+
+    // pub(crate) async fn sync_address_balance(
+    //     assets: &[AssetsEntity],
+    // ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
+    //     // 限制最大并发数为 10
+    //     let sem = Arc::new(Semaphore::new(10));
+    //     let mut tasks = vec![];
+
+    //     for asset in assets.iter() {
+    //         let bal = BalanceTask {
+    //             address: asset.address.clone(),
+    //             chain_code: asset.chain_code.clone(),
+    //             symbol: asset.symbol.clone(),
+    //             decimals: asset.decimals,
+    //             token_address: asset.token_address(),
+    //         };
+    //         tasks.push(bal);
+    //     }
+
+    //     // 并发获取余额并格式化
+    //     let results = stream::iter(tasks)
+    //         .map(|task| Self::fetch_balance(task, sem.clone()))
+    //         .buffer_unordered(10)
+    //         .filter_map(|x| async move { x })
+    //         .collect::<Vec<_>>()
+    //         .await;
+
+    //     Ok(results)
+    // }
 
     // 从任务获取余额并返回结果
     async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {

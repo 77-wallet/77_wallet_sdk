@@ -20,21 +20,13 @@ impl BackendApi {
     }
 
     pub async fn app_install_download(&self) -> Result<String, crate::Error> {
-        let res = self
-            .client
-            .post("/app/install/download")
-            .send::<serde_json::Value>()
-            .await?;
+        let res = self.client.post("/app/install/download").send::<serde_json::Value>().await?;
         let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
         res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn mqtt_init(&self) -> Result<String, crate::Error> {
-        let res = self
-            .client
-            .post("mqtt/init")
-            .send::<crate::response::BackendResponse>()
-            .await?;
+        let res = self.client.post("mqtt/init").send::<crate::response::BackendResponse>().await?;
         res.process(&self.aes_cbc_cryptor)
     }
 
@@ -67,22 +59,14 @@ impl BackendApi {
 
         url: &str,
     ) -> Result<crate::response_vo::app::AppVersionRes, crate::Error> {
-        let res = self
-            .client
-            .get(&format!("version/download/{url}"))
-            .send::<serde_json::Value>()
-            .await?;
+        let res =
+            self.client.get(&format!("version/download/{url}")).send::<serde_json::Value>().await?;
         let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
         res.process(&self.aes_cbc_cryptor)
     }
 
     pub async fn language_init(&self, req: LanguageInitReq) -> Result<(), crate::Error> {
-        let res = self
-            .client
-            .post("/language/init")
-            .json(req)
-            .send::<serde_json::Value>()
-            .await?;
+        let res = self.client.post("/language/init").json(req).send::<serde_json::Value>().await?;
         let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
         res.process(&self.aes_cbc_cryptor)
     }
@@ -107,12 +91,8 @@ impl BackendApi {
 
         req: crate::request::ClientTaskLogUploadReq,
     ) -> Result<(), crate::Error> {
-        let res = self
-            .client
-            .post(CLIENT_TASK_LOG_UPLOAD)
-            .json(req)
-            .send::<serde_json::Value>()
-            .await?;
+        let res =
+            self.client.post(CLIENT_TASK_LOG_UPLOAD).json(req).send::<serde_json::Value>().await?;
         let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
         res.process(&self.aes_cbc_cryptor)
     }

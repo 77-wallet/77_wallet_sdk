@@ -1,31 +1,29 @@
 use crate::{
+    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
+        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{
-            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
-        },
+        transaction::{ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
-    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
+    Error, QueryTransactionResult,
     ton::{
-        chain::TonChain,
-        operations::{token_transfer::TokenTransferOpt, transfer::TransferOpt, BuildInternalMsg},
-        provider::Provider,
         Cell,
-    }, tron::protocol::account::AccountResourceDetail,
+        chain::TonChain,
+        operations::{BuildInternalMsg, token_transfer::TokenTransferOpt, transfer::TransferOpt},
+        provider::Provider,
+    },
+    tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
-    Error,
-    QueryTransactionResult,
 };
 use wallet_database::{
     entities::{

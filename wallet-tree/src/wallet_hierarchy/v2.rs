@@ -168,11 +168,7 @@ impl WalletTreeOps for ModernWalletTree {
     }
 
     fn iter(&self) -> Box<dyn Iterator<Item = (&String, &dyn WalletBranchOps)> + '_> {
-        Box::new(
-            self.tree
-                .iter()
-                .map(|(k, v)| (k, v as &dyn WalletBranchOps)),
-        )
+        Box::new(self.tree.iter().map(|(k, v)| (k, v as &dyn WalletBranchOps)))
     }
 }
 
@@ -203,10 +199,7 @@ impl WalletBranchOps for ModernWalletBranch {
     }
 
     fn get_accounts(&self) -> Vec<Box<dyn super::AccountTrait>> {
-        self.subs
-            .iter()
-            .map(|sub| Box::new(sub.clone()) as Box<dyn AccountTrait>)
-            .collect()
+        self.subs.iter().map(|sub| Box::new(sub.clone()) as Box<dyn AccountTrait>).collect()
     }
 }
 

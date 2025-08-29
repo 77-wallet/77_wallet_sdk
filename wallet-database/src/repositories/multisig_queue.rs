@@ -29,9 +29,7 @@ pub struct MultisigQueueRepo {
 }
 impl MultisigQueueRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            repo: ResourcesRepo::new(db_pool),
-        }
+        Self { repo: ResourcesRepo::new(db_pool) }
     }
 }
 
@@ -73,9 +71,7 @@ impl MultisigQueueRepo {
             }
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
         Ok(res)
     }
 
@@ -251,10 +247,7 @@ impl MultisigQueueRepo {
             MultisigQueueRepo::member_signed_result(&queue.account_id, &queue.id, pool.clone())
                 .await?;
 
-        Ok((
-            Self::compute_status(signed, account.threshold as i64),
-            SIGN_FAILED.to_string(),
-        ))
+        Ok((Self::compute_status(signed, account.threshold as i64), SIGN_FAILED.to_string()))
     }
 
     fn compute_status(signed: Vec<MemberSignedResult>, threshold: i64) -> MultisigQueueStatus {
@@ -310,10 +303,7 @@ impl MultisigQueueRepo {
         )
         .await?;
 
-        Ok((
-            Self::compute_status(signed, permission.threshold),
-            SIGN_FAILED.to_string(),
-        ))
+        Ok((Self::compute_status(signed, permission.threshold), SIGN_FAILED.to_string()))
     }
 
     pub async fn self_member_account_id(
@@ -358,10 +348,8 @@ impl MultisigQueueRepo {
         tx_hash: &str,
         pool: &DbPool,
     ) -> Result<(), crate::Error> {
-        Ok(
-            MultisigQueueDaoV1::update_status_and_tx_hash(queue_id, status, tx_hash, pool.as_ref())
-                .await?,
-        )
+        Ok(MultisigQueueDaoV1::update_status_and_tx_hash(queue_id, status, tx_hash, pool.as_ref())
+            .await?)
     }
 
     pub async fn multisig_queue_data(
@@ -374,10 +362,7 @@ impl MultisigQueueRepo {
 
         let signatures = MultisigSignatureDaoV1::find_by_queue_id(queue_id, pool).await?;
 
-        Ok(MultisigQueueData::new(
-            queue,
-            MultisigSignatureEntities(signatures),
-        ))
+        Ok(MultisigQueueData::new(queue, MultisigSignatureEntities(signatures)))
     }
 
     pub async fn permission_update_fail(
@@ -413,9 +398,7 @@ impl MultisigQueueRepo {
         )
         .await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -441,9 +424,7 @@ impl MultisigQueueRepo {
                 .await?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }

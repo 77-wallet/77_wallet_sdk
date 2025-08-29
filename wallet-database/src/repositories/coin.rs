@@ -167,21 +167,18 @@ impl CoinRepo {
         token_address: Option<String>,
         pool: &DbPool,
     ) -> Result<CoinEntity, crate::Error> {
-        CoinEntity::get_coin(chain_code, symbol, token_address, pool.as_ref())
-            .await?
-            .ok_or(crate::Error::NotFound(format!(
+        CoinEntity::get_coin(chain_code, symbol, token_address, pool.as_ref()).await?.ok_or(
+            crate::Error::NotFound(format!(
                 "coin not found: chain_code: {}, symbol: {}",
                 chain_code, symbol
-            )))
+            )),
+        )
     }
 
     pub async fn main_coin(chain_code: &str, pool: &DbPool) -> Result<CoinEntity, crate::Error> {
-        CoinEntity::main_coin(chain_code, pool.as_ref())
-            .await?
-            .ok_or(crate::Error::NotFound(format!(
-                "main coin not found: chain_code: {}",
-                chain_code
-            )))
+        CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(crate::Error::NotFound(
+            format!("main coin not found: chain_code: {}", chain_code),
+        ))
     }
 
     pub async fn coin_by_chain_address(

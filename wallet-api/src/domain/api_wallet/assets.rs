@@ -1,7 +1,10 @@
 use wallet_database::{
+    DbPool,
     entities::{api_assets::ApiAssetsEntity, assets::AssetsId},
-    repositories::api_assets::ApiAssetsRepo,
+    repositories::{api_account::ApiAccountRepo, api_assets::ApiAssetsRepo},
 };
+
+use crate::domain::assets::ChainBalance;
 
 pub(crate) struct ApiAssetsDomain;
 
@@ -59,6 +62,48 @@ impl ApiAssetsDomain {
                 if let Err(e) = rs {
                     tracing::warn!("upload balance refresh error = {}", e);
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
+    pub async fn sync_assets_by_wallet(
+        wallet_address: &str,
+        account_id: Option<u32>,
+        symbol: Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+
+        let list =
+            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
+
+        // 获取地址
+        let addr = list.iter().map(|a| a.address.clone()).collect::<Vec<String>>();
+
+        Self::do_async_balance(pool, addr, None, symbol).await
+    }
+
+    async fn do_async_balance(
+        pool: DbPool,
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
+        let mut assets = ApiAssetsRepo::list(
+            &pool, // , addr, chain_code, None, None
+        )
+        .await?;
+        if !symbol.is_empty() {
+            assets.retain(|asset| symbol.contains(&asset.symbol));
+        }
+
+        let results = ChainBalance::sync_address_balance(assets.as_slice()).await?;
+
+        for (assets_id, balance) in &results {
+            if let Err(e) = ApiAssetsRepo::update_balance(&pool, assets_id, balance).await {
+                tracing::error!("更新余额出错: {}", e);
             }
         }
 

@@ -31,25 +31,21 @@ impl TokenPriceChange {
         let repo = RepositoryFactory::repo(pool.clone());
         let coin_service = CoinService::new(repo);
         let mut tx = coin_service.repo;
-        tx.update_price_unit(&coin_id, &price.to_string(), unit, None, None)
-            .await?;
+        tx.update_price_unit(&coin_id, &price.to_string(), unit, None, None).await?;
 
         let app_state = crate::app_state::APP_STATE.read().await;
         let currency = app_state.currency();
 
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let exchange_rate = ExchangeRateService::new(repo)
-            .detail(Some(currency.to_string()))
-            .await?;
+        let exchange_rate =
+            ExchangeRateService::new(repo).detail(Some(currency.to_string())).await?;
 
         if let Some(exchange_rate) = exchange_rate {
             let res =
                 TokenCurrencies::calculate_token_price_changes(&self.body, exchange_rate.rate)
                     .await?;
             let data = crate::messaging::notify::event::NotifyEvent::TokenPriceChange(res);
-            crate::messaging::notify::FrontendNotifyEvent::new(data)
-                .send()
-                .await?;
+            crate::messaging::notify::FrontendNotifyEvent::new(data).send().await?;
         }
 
         Ok(())

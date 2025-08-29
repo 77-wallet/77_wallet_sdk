@@ -1,24 +1,24 @@
-use crate::domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory};
-use crate::infrastructure::SharedCache;
-use crate::infrastructure::inner_event::InnerEventHandle;
-use crate::infrastructure::process_unconfirm_msg::{
-    UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
+use crate::{
+    domain,
+    domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
+    infrastructure,
+    infrastructure::{
+        SharedCache,
+        inner_event::InnerEventHandle,
+        process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
+        task_queue::{
+            BackendApiTask, BackendApiTaskData, InitializationTask, task::Tasks,
+            task_manager::TaskManager,
+        },
+    },
+    messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
+    service::node::NodeService,
 };
-use crate::infrastructure::task_queue::task::Tasks;
-use crate::infrastructure::task_queue::task_manager::TaskManager;
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, InitializationTask};
-use crate::messaging::mqtt::subscribed::Topics;
-use crate::messaging::notify::FrontendNotifyEvent;
-use crate::service::node::NodeService;
-use crate::{domain, infrastructure};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tokio::sync::mpsc::UnboundedSender;
-use wallet_database::SqliteContext;
-use wallet_database::factory::RepositoryFactory;
-use wallet_database::repositories::device::DeviceRepo;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tokio::sync::{RwLock, mpsc::UnboundedSender};
+use wallet_database::{
+    SqliteContext, factory::RepositoryFactory, repositories::device::DeviceRepo,
+};
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
@@ -27,9 +27,7 @@ pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
 async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
-    INIT_DATA
-        .get_or_try_init(|| async { init_some_data().await })
-        .await
+    INIT_DATA.get_or_try_init(|| async { init_some_data().await }).await
 }
 
 pub async fn init_some_data() -> Result<(), crate::ServiceError> {
@@ -335,10 +333,7 @@ pub struct DeviceInfo {
 }
 impl DeviceInfo {
     pub fn new(sn: &str, client_id: &str) -> Self {
-        Self {
-            sn: sn.to_owned(),
-            client_id: client_id.to_owned(),
-        }
+        Self { sn: sn.to_owned(), client_id: client_id.to_owned() }
     }
 }
 
@@ -350,10 +345,7 @@ pub struct RpcToken {
 
 impl Default for RpcToken {
     fn default() -> Self {
-        Self {
-            token: String::new(),
-            instance: tokio::time::Instant::now(),
-        }
+        Self { token: String::new(), instance: tokio::time::Instant::now() }
     }
 }
 
@@ -379,12 +371,8 @@ impl WalletManager {
         infrastructure::log::start_upload_scheduler(base_path, 5 * 60, context.oss_client.clone())
             .await?;
 
-        Context::get_global_unconfirmed_msg_processor()?
-            .start()
-            .await;
-        Context::get_global_task_manager()?
-            .start_task_check()
-            .await?;
+        Context::get_global_unconfirmed_msg_processor()?.start().await;
+        Context::get_global_task_manager()?.start_task_check().await?;
         let pool = context.sqlite_context.get_pool()?;
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
@@ -472,13 +460,7 @@ impl Dirs {
             wallet_utils::file_func::create_dir_all(dir)?;
         }
 
-        Ok(Dirs {
-            root_dir: PathBuf::from(root_dir),
-            wallet_dir,
-            export_dir,
-            db_dir,
-            log_dir,
-        })
+        Ok(Dirs { root_dir: PathBuf::from(root_dir), wallet_dir, export_dir, db_dir, log_dir })
     }
 
     pub fn get_wallet_dir(&self, address: Option<&str>) -> std::path::PathBuf {
@@ -521,8 +503,10 @@ impl Dirs {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, File};
-    use std::io::Write;
+    use std::{
+        fs::{self, File},
+        io::Write,
+    };
     use tempfile::tempdir;
 
     use crate::Dirs;

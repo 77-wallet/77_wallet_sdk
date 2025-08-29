@@ -51,9 +51,7 @@ impl SwapServer {
         let url = crate::manager::Context::get_aggregate_api()?;
         let swap_client = SwapClient::new(&url);
 
-        Ok(Self {
-            client: swap_client?,
-        })
+        Ok(Self { client: swap_client? })
     }
 }
 
@@ -133,11 +131,8 @@ impl SwapServer {
     pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
         let chain_code = ChainCode::try_from(req.chain_code.as_str())?;
 
-        let swap_inner_type = QuoteReq::swap_type(
-            chain_code,
-            &req.token_in.token_addr,
-            &req.token_out.token_addr,
-        );
+        let swap_inner_type =
+            QuoteReq::swap_type(chain_code, &req.token_in.token_addr, &req.token_out.token_addr);
 
         match swap_inner_type {
             SwapInnerType::Withdraw => self.common_quote(req, SwapInnerType::Withdraw).await,
@@ -157,13 +152,9 @@ impl SwapServer {
         token_addr: &str,
         recipient: &str,
     ) -> Result<AssetsEntity, crate::ServiceError> {
-        Ok(
-            AssetsRepo::get_by_addr_token_opt(&pool, chain_code, token_addr, recipient)
-                .await?
-                .ok_or(crate::BusinessError::Assets(
-                    crate::AssetsError::NotFoundAssets,
-                ))?,
-        )
+        Ok(AssetsRepo::get_by_addr_token_opt(&pool, chain_code, token_addr, recipient)
+            .await?
+            .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFoundAssets))?)
     }
 
     async fn common_quote(
@@ -189,12 +180,7 @@ impl SwapServer {
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let assets = self
-            .token0_assets(
-                &pool,
-                &req.chain_code,
-                &req.token_in.token_addr,
-                &req.recipient,
-            )
+            .token0_assets(&pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
             .await?;
 
         if self.check_bal(&req.amount_in, &assets.balance)? {
@@ -292,12 +278,7 @@ impl SwapServer {
         if allowance >= amount_in {
             let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let assets = self
-                .token0_assets(
-                    &pool,
-                    &req.chain_code,
-                    &req.token_in.token_addr,
-                    &req.recipient,
-                )
+                .token0_assets(&pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
                 .await?;
             if self.check_bal(&req.amount_in, &assets.balance)? {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
@@ -326,9 +307,8 @@ impl SwapServer {
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         // 模拟报价
-        let (amount_out, consumer, content) = adapter
-            .swap_quote(req, quote_resp, &main_coin.symbol)
-            .await?;
+        let (amount_out, consumer, content) =
+            adapter.swap_quote(req, quote_resp, &main_coin.symbol).await?;
 
         let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
         res.consumer = consumer;
@@ -343,13 +323,7 @@ impl SwapServer {
 
     async fn check_allowance(&self, req: &QuoteReq) -> Result<U256, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-        adapter
-            .allowance(
-                &req.recipient,
-                &req.token_in.token_addr,
-                &req.aggregator_addr,
-            )
-            .await
+        adapter.allowance(&req.recipient, &req.token_in.token_addr, &req.aggregator_addr).await
     }
 
     // 执行兑换
@@ -378,9 +352,7 @@ impl SwapServer {
         )
         .await?;
         if !self.check_bal(&req.amount_in, &token_in.balance)? {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
         // 广播事件
@@ -392,11 +364,8 @@ impl SwapServer {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         let chain_code = ChainCode::try_from(req.chain_code.as_str())?;
-        let swap_inner_type = QuoteReq::swap_type(
-            chain_code,
-            &req.token_in.token_addr,
-            &req.token_out.token_addr,
-        );
+        let swap_inner_type =
+            QuoteReq::swap_type(chain_code, &req.token_in.token_addr, &req.token_out.token_addr);
 
         let resp = match swap_inner_type {
             SwapInnerType::Deposit => {
@@ -472,10 +441,7 @@ impl SwapServer {
             pool.as_ref(),
         )
         .await?;
-        let address = list
-            .iter()
-            .map(|x| x.address.clone())
-            .collect::<Vec<String>>();
+        let address = list.iter().map(|x| x.address.clone()).collect::<Vec<String>>();
 
         let coins = CoinRepo::coin_list_with_assets(
             &req.search,
@@ -564,23 +530,15 @@ impl SwapServer {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         // check already approved
-        let allowance = adapter
-            .allowance(&req.from, &req.contract, &req.spender)
-            .await?;
+        let allowance = adapter.allowance(&req.from, &req.contract, &req.spender).await?;
         if allowance >= alloy::primitives::U256::MAX {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::ApproveRepeated,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
         }
 
         // check balance
-        let token_in = self
-            .token0_assets(&pool, &req.chain_code, &req.contract, &req.from)
-            .await?;
+        let token_in = self.token0_assets(&pool, &req.chain_code, &req.contract, &req.from).await?;
         if !self.check_bal(&req.value, &token_in.balance)? {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
         let private_key =
@@ -652,9 +610,8 @@ impl SwapServer {
                 // 获取allowance 情况
                 let adapter =
                     ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
-                let allowance = adapter
-                    .allowance(&item.owner_address, &item.token_addr, &item.spender)
-                    .await?;
+                let allowance =
+                    adapter.allowance(&item.owner_address, &item.token_addr, &item.spender).await?;
 
                 // 实际授权为0,丢弃
                 if allowance == alloy::primitives::U256::ZERO {

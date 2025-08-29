@@ -17,28 +17,22 @@ impl LayoutStrategy for LegacyLayout {
         match meta.file_type() {
             FileType::Phrase | FileType::PrivateKey | FileType::Seed => {
                 // Root 文件存储路径：{base}/{address}/root/{filename}
-                Ok(
-                    PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
-                        .join("root")
-                        .join(self.generate_filename(meta)?),
-                )
+                Ok(PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
+                    .join("root")
+                    .join(self.generate_filename(meta)?))
             }
             FileType::DerivedData => {
                 // Subs 文件存储路径：{base}/{address}/subs/{filename}
-                Ok(
-                    PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
-                        .join("subs")
-                        .join(self.generate_filename(meta)?),
-                )
+                Ok(PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
+                    .join("subs")
+                    .join(self.generate_filename(meta)?))
             }
             _ => Err(crate::Error::UnsupportedFileType),
         }
     }
 
     fn scan(&self, base_path: &Path) -> Result<Box<dyn WalletTreeOps>, crate::Error> {
-        Ok(Box::new(LegacyWalletTree::traverse_directory_structure(
-            &base_path.to_path_buf(),
-        )?))
+        Ok(Box::new(LegacyWalletTree::traverse_directory_structure(&base_path.to_path_buf())?))
     }
 
     // fn scan(&self, base_path: &Path) -> Result<Box<dyn WalletTreeOps>, crate::Error> {
@@ -139,9 +133,7 @@ mod tests {
         println!("path: {path:?}");
         assert_eq!(
             path,
-            PathBuf::from(TEST_ADDRESS)
-                .join("root")
-                .join(format!("{}-pk", TEST_ADDRESS))
+            PathBuf::from(TEST_ADDRESS).join("root").join(format!("{}-pk", TEST_ADDRESS))
         );
     }
 

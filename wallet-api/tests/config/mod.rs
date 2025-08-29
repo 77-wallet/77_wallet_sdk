@@ -18,9 +18,7 @@ async fn test_set_min_value_config() {
     let value = 1.0;
     let switch = true;
 
-    let configs = wallet_manager
-        .set_min_value_config(symbol, value, switch)
-        .await;
+    let configs = wallet_manager.set_min_value_config(symbol, value, switch).await;
     tracing::info!("{}", serde_json::to_string(&configs).unwrap());
 }
 

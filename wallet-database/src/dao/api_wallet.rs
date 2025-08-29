@@ -87,11 +87,7 @@ impl ApiWalletDao {
             builder = builder.and_where_eq("wallet_type", api_wallet_type)
         }
 
-        builder
-            .and_where_eq("uid", uid)
-            .and_where_eq("status", "1")
-            .fetch_optional(exec)
-            .await
+        builder.and_where_eq("uid", uid).and_where_eq("status", "1").fetch_optional(exec).await
     }
 
     pub async fn list<'a, E>(
@@ -126,10 +122,7 @@ impl ApiWalletDao {
             query = query.bind(api_wallet_type);
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn update_merchain_id<'a, E>(

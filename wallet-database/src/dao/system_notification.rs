@@ -100,11 +100,7 @@ impl SystemNotificationEntity {
 
         let query = query_builder.build();
 
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn system_notification_list_page<'a, E>(

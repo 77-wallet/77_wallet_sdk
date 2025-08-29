@@ -54,10 +54,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             tracing::error!(event_name = %event_name, multisig_account_id = %multisig_account_id, "multisig account not found");
             let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
 
-            let data = NotifyEvent::Err(ErrFront {
-                event: event_name,
-                message: err.to_string(),
-            });
+            let data = NotifyEvent::Err(ErrFront { event: event_name, message: err.to_string() });
             FrontendNotifyEvent::new(data).send().await?;
             return Err(err);
         };

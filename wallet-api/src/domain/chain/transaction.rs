@@ -64,9 +64,9 @@ impl ChainTransDomain {
         let account =
             AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
                 .await?
-                .ok_or(crate::BusinessError::Account(
-                    crate::AccountError::NotFound(address.to_string()),
-                ))?;
+                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                    address.to_string(),
+                )))?;
         Ok(account)
     }
 
@@ -98,9 +98,7 @@ impl ChainTransDomain {
 
                 // 上报后端修改余额
                 let backend = crate::manager::Context::get_global_backend_api()?;
-                let rs = backend
-                    .wallet_assets_refresh_bal(address, chain_code, symbol)
-                    .await;
+                let rs = backend.wallet_assets_refresh_bal(address, chain_code, symbol).await;
                 if let Err(e) = rs {
                     tracing::warn!("upload balance refresh error = {}", e);
                 }
@@ -112,14 +110,12 @@ impl ChainTransDomain {
 
     pub async fn main_coin(chain_code: &str) -> Result<CoinEntity, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let coin = CoinEntity::main_coin(chain_code, pool.as_ref())
-            .await?
-            .ok_or(crate::BusinessError::Coin(
-                crate::error::business::coin::CoinError::NotFound(format!(
-                    "chian = {}",
-                    chain_code
-                )),
-            ))?;
+        let coin = CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(
+            crate::BusinessError::Coin(crate::error::business::coin::CoinError::NotFound(format!(
+                "chian = {}",
+                chain_code
+            ))),
+        )?;
         Ok(coin)
     }
 
@@ -143,9 +139,7 @@ impl ChainTransDomain {
     ) -> Result<String, crate::ServiceError> {
         //  check ongoing tx
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
-            return Err(crate::BusinessError::Bill(
-                crate::BillError::ExistsUnConfirmationTx,
-            ))?;
+            return Err(crate::BusinessError::Bill(crate::BillError::ExistsUnConfirmationTx))?;
         };
 
         let private_key = ChainTransDomain::get_key(
@@ -347,9 +341,7 @@ impl ChainTransDomain {
         let fee = alloy::primitives::U256::from(fee);
 
         if balance < fee {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
         Ok(())
     }
@@ -384,9 +376,7 @@ impl ChainTransDomain {
         let transfer_amount = unit::convert_to_u256(value, decimal)?;
 
         if transfer_amount < min {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::AmountLessThanMin,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::AmountLessThanMin))?;
         }
         Ok(transfer_amount)
     }
@@ -398,11 +388,8 @@ impl ChainTransDomain {
         password: &str,
         signer: &Option<Signer>,
     ) -> Result<ChainPrivateKey, crate::ServiceError> {
-        let address = if let Some(signer) = signer {
-            signer.address.clone()
-        } else {
-            from.to_string()
-        };
+        let address =
+            if let Some(signer) = signer { signer.address.clone() } else { from.to_string() };
 
         let key = crate::domain::account::open_subpk_with_password(chain_code, &address, password)
             .await?;

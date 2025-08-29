@@ -112,10 +112,6 @@ pub struct ChainWithNode {
 }
 impl ChainWithNode {
     pub fn get_network(&self) -> &str {
-        if self.network.is_empty() {
-            "mainnet"
-        } else {
-            &self.network
-        }
+        if self.network.is_empty() { "mainnet" } else { &self.network }
     }
 }

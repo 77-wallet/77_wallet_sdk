@@ -52,12 +52,7 @@ impl BackendApi {
         T: serde::Serialize + std::fmt::Debug,
         R: serde::de::DeserializeOwned + serde::Serialize,
     {
-        let res = self
-            .client
-            .post(endpoint)
-            .json(req)
-            .send::<BackendResponse>()
-            .await?;
+        let res = self.client.post(endpoint).json(req).send::<BackendResponse>().await?;
         res.process::<R>(&self.aes_cbc_cryptor)
     }
 
@@ -66,12 +61,7 @@ impl BackendApi {
     where
         T: serde::de::DeserializeOwned + serde::Serialize,
     {
-        let res = self
-            .client
-            .post(endpoint)
-            .body(body)
-            .send::<BackendResponse>()
-            .await?;
+        let res = self.client.post(endpoint).body(body).send::<BackendResponse>().await?;
         res.process::<T>(&self.aes_cbc_cryptor)
     }
 
@@ -84,12 +74,8 @@ impl BackendApi {
     where
         T: serde::de::DeserializeOwned + serde::Serialize,
     {
-        let res = self
-            .client
-            .post(endpoint)
-            .body(body.to_string())
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post(endpoint).body(body.to_string()).send::<BackendResponse>().await?;
         res.process::<T>(&self.aes_cbc_cryptor)
     }
 }

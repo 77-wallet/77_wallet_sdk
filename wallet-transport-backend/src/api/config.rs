@@ -21,11 +21,7 @@ impl BackendApi {
     }
 
     pub async fn all_config(&self) -> Result<AllConfig, crate::Error> {
-        let res = self
-            .client
-            .post("/sys/config/findConfigs")
-            .send::<serde_json::Value>()
-            .await?;
+        let res = self.client.post("/sys/config/findConfigs").send::<serde_json::Value>().await?;
         let res: BackendResponse = wallet_utils::serde_func::serde_from_value(res)?;
         res.process(&self.aes_cbc_cryptor)
     }

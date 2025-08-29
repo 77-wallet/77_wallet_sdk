@@ -3,6 +3,7 @@ pub mod address_book;
 pub mod announcement;
 pub mod api_account;
 pub mod api_assets;
+pub mod api_collect;
 pub mod api_wallet;
 pub mod api_withdraw;
 pub mod assets;
@@ -27,10 +28,7 @@ pub struct ResourcesRepo {
 
 impl ResourcesRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            db_pool,
-            transaction: None,
-        }
+        Self { db_pool, transaction: None }
     }
     pub fn pool(&self) -> crate::DbPool {
         self.db_pool.clone()
@@ -61,10 +59,7 @@ impl TransactionTrait for ResourcesRepo {
         Self: Sized,
     {
         let conn = self.get_db_pool();
-        let tx = conn
-            .begin()
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        let tx = conn.begin().await.map_err(|e| crate::Error::Database(e.into()))?;
         self.insert_transaction(tx);
         Ok(())
     }
@@ -74,10 +69,7 @@ impl TransactionTrait for ResourcesRepo {
         Self: Sized,
     {
         if let Some(transaction) = self.transaction.take() {
-            transaction
-                .commit()
-                .await
-                .map_err(|e| crate::Error::Database(e.into()))?;
+            transaction.commit().await.map_err(|e| crate::Error::Database(e.into()))?;
         }
 
         Ok(())
@@ -86,15 +78,13 @@ impl TransactionTrait for ResourcesRepo {
     fn get_mut_transaction(
         &mut self,
     ) -> Result<&mut sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
-        self.transaction.as_mut().ok_or(crate::Error::Database(
-            crate::DatabaseError::TransactionNotBegin,
-        ))
+        self.transaction
+            .as_mut()
+            .ok_or(crate::Error::Database(crate::DatabaseError::TransactionNotBegin))
     }
 
     fn get_transaction(self) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>, crate::Error> {
-        self.transaction.ok_or(crate::Error::Database(
-            crate::DatabaseError::TransactionNotBegin,
-        ))
+        self.transaction.ok_or(crate::Error::Database(crate::DatabaseError::TransactionNotBegin))
     }
 
     fn get_db_pool(&self) -> &crate::DbPool {
@@ -128,10 +118,8 @@ impl ExecutorWrapper<'_> {
         match self {
             ExecutorWrapper::Transaction(executor) => query(executor.as_mut()).await,
             ExecutorWrapper::Pool(executor) => {
-                let mut conn = executor
-                    .acquire()
-                    .await
-                    .map_err(|e| crate::Error::Database(e.into()))?;
+                let mut conn =
+                    executor.acquire().await.map_err(|e| crate::Error::Database(e.into()))?;
                 query(&mut conn).await
             }
         }

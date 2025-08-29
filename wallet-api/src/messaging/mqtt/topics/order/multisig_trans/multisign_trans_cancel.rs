@@ -32,9 +32,7 @@ impl MultiSignTransCancel {
             tracing::error!(
                 event_name = %event_name,
                 "Cancel multisig queue faild affetd :0");
-            return Err(crate::ServiceError::Business(
-                crate::MultisigQueueError::NotFound.into(),
-            ));
+            return Err(crate::ServiceError::Business(crate::MultisigQueueError::NotFound.into()));
         }
 
         MultisigQueueRepo::update_fail(&pool, &self.withdraw_id, fail_reason::CANCEL).await?;

@@ -1,7 +1,6 @@
 use wallet_database::entities::api_wallet::ApiWalletType;
 
-use crate::api::ReturnType;
-use crate::service::api_wallet::wallet::ApiWalletService;
+use crate::{api::ReturnType, service::api_wallet::wallet::ApiWalletService};
 
 impl crate::WalletManager {
     pub async fn create_api_wallet(
@@ -47,10 +46,7 @@ impl crate::WalletManager {
     }
 
     pub async fn unbind_merchant(&self, uid: &str) -> ReturnType<()> {
-        ApiWalletService::new(self.repo_factory.resource_repo())
-            .unbind_merchant(uid)
-            .await?
-            .into()
+        ApiWalletService::new(self.repo_factory.resource_repo()).unbind_merchant(uid).await?.into()
     }
 
     // pub async fn edit_api_wallet_name(

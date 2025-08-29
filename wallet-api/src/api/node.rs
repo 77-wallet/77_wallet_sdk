@@ -19,10 +19,7 @@ impl crate::WalletManager {
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::chain::NodeListRes>> {
-        NodeService::new(self.repo_factory.resource_repo())
-            .get_node_list(chain_code)
-            .await
-            .into()
+        NodeService::new(self.repo_factory.resource_repo()).get_node_list(chain_code).await.into()
     }
 
     // 区块链网络速率/快慢接口
@@ -54,9 +51,7 @@ mod tests {
         let rpc_url = "https://api.nileex.io/";
         let ws_url = "https://api.nileex.io/";
 
-        let add_node = wallet_manager
-            .add_node(name, chain_code, rpc_url, ws_url, None)
-            .await;
+        let add_node = wallet_manager.add_node(name, chain_code, rpc_url, ws_url, None).await;
         tracing::info!("add_node: {add_node:?}");
         Ok(())
     }

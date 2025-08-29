@@ -178,11 +178,8 @@ impl AcctChange {
     }
 
     async fn handle_queue(change: &AcctChange, pool: &DbPool) -> Result<(), crate::ServiceError> {
-        let status = if change.status {
-            MultisigQueueStatus::Success
-        } else {
-            MultisigQueueStatus::Fail
-        };
+        let status =
+            if change.status { MultisigQueueStatus::Success } else { MultisigQueueStatus::Fail };
 
         MultisigQueueRepo::update_status_hash(&change.queue_id, status, &change.tx_hash, pool)
             .await?;
@@ -210,10 +207,7 @@ impl AcctChange {
 
         let inner_event_handle = crate::manager::Context::get_global_inner_event_handle()?;
         inner_event_handle.send(InnerEvent::SyncAssets {
-            addr_list: vec![
-                acct_change.from_addr.to_string(),
-                acct_change.to_addr.to_string(),
-            ],
+            addr_list: vec![acct_change.from_addr.to_string(), acct_change.to_addr.to_string()],
             chain_code: acct_change.chain_code.to_string(),
             symbol: acct_change.get_sync_assets_symbol(),
         })?;
@@ -284,10 +278,7 @@ impl AcctChange {
         };
 
         // check system notification exists
-        if SystemNotificationRepo::find_by_id(msg_id, pool)
-            .await?
-            .is_some()
-        {
+        if SystemNotificationRepo::find_by_id(msg_id, pool).await?.is_some() {
             tracing::warn!("system_noti already exists");
             return Ok(());
         }
@@ -295,11 +286,8 @@ impl AcctChange {
         let (transaction_status, notification_type) =
             Self::get_notify_status(acct_change.transfer_type, acct_change.status)?;
 
-        let account_type = if acct_change.is_multisig == 1 {
-            AccountType::Multisig
-        } else {
-            AccountType::Regular
-        };
+        let account_type =
+            if acct_change.is_multisig == 1 { AccountType::Multisig } else { AccountType::Regular };
 
         // build notify
         let notify = Notification::new_transaction_notification(
@@ -325,9 +313,7 @@ impl AcctChange {
         let repo = RepositoryFactory::repo(pool.clone());
         let system_notification_service = SystemNotificationService::new(repo);
 
-        system_notification_service
-            .add_multi_system_notification_with_key_value(&[req])
-            .await?;
+        system_notification_service.add_multi_system_notification_with_key_value(&[req]).await?;
         Ok(())
     }
 
@@ -336,15 +322,9 @@ impl AcctChange {
         status: bool,
     ) -> Result<(TransactionStatus, NotificationType), crate::ServiceError> {
         let (transaction_status, notification_type) = match (transfer_type, status) {
-            (0, true) => (
-                TransactionStatus::Received,
-                NotificationType::ReceiveSuccess,
-            ),
+            (0, true) => (TransactionStatus::Received, NotificationType::ReceiveSuccess),
             (1, true) => (TransactionStatus::Sent, NotificationType::TransferSuccess),
-            (1, false) => (
-                TransactionStatus::NotSent,
-                NotificationType::TransferFailure,
-            ),
+            (1, false) => (TransactionStatus::NotSent, NotificationType::TransferFailure),
             (_, _) => return Err(crate::ServiceError::Parameter("invaild status".to_string())),
         };
 

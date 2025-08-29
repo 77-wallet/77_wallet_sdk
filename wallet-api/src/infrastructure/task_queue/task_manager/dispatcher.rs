@@ -1,13 +1,11 @@
-use crate::infrastructure::task_queue::task::TaskTrait;
-use crate::infrastructure::task_queue::task_manager::TaskManager;
 use crate::infrastructure::task_queue::{
-    task::task_type::TaskType, task_manager::scheduler::TASK_CATEGORY_LIMIT,
+    task::{TaskTrait, task_type::TaskType},
+    task_manager::{TaskManager, scheduler::TASK_CATEGORY_LIMIT},
 };
 
 use super::RunningTasks;
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore, mpsc};
 use wallet_database::entities::task_queue::TaskQueueEntity;
 
@@ -163,10 +161,7 @@ impl Dispatcher {
         tokio::spawn(async move {
             let mut priority_senders: HashMap<Priority, mpsc::UnboundedSender<TaskQueueEntity>> =
                 HashMap::new();
-            let category_limit = TASK_CATEGORY_LIMIT
-                .iter()
-                .cloned()
-                .collect::<HashMap<_, _>>();
+            let category_limit = TASK_CATEGORY_LIMIT.iter().cloned().collect::<HashMap<_, _>>();
 
             while let Some(PriorityTask { priority, tasks }) = external_rx.recv().await {
                 // tracing::info!("收到 {} 个任务，优先级 = {}", tasks.len(), priority,);

@@ -66,15 +66,11 @@ pub struct DeviceBindAddressReq {
 
 impl DeviceBindAddressReq {
     pub fn new(sn: &str) -> Self {
-        Self {
-            sn: sn.to_string(),
-            address: Default::default(),
-        }
+        Self { sn: sn.to_string(), address: Default::default() }
     }
 
     pub fn push(&mut self, chain_code: &str, address: &str) {
-        self.address
-            .push(DeviceUnbindAddress::new(chain_code, address));
+        self.address.push(DeviceUnbindAddress::new(chain_code, address));
     }
 }
 
@@ -87,19 +83,13 @@ pub struct DeviceUnbindAddress {
 
 impl DeviceUnbindAddress {
     pub fn new(chain_code: &str, address: &str) -> Self {
-        Self {
-            chain_code: chain_code.to_string(),
-            address: address.to_string(),
-        }
+        Self { chain_code: chain_code.to_string(), address: address.to_string() }
     }
 }
 
 impl DeviceDeleteReq {
     pub fn new(sn: &str, uid_list: &[String]) -> Self {
-        Self {
-            sn: sn.to_string(),
-            uid_list: uid_list.to_vec(),
-        }
+        Self { sn: sn.to_string(), uid_list: uid_list.to_vec() }
     }
 }
 
@@ -115,9 +105,7 @@ pub struct FindConfigByKey {
 
 impl FindConfigByKey {
     pub fn new(key: &str) -> Self {
-        Self {
-            key: key.to_string(),
-        }
+        Self { key: key.to_string() }
     }
 }
 
@@ -163,11 +151,7 @@ pub struct KeysUpdateWalletNameReq {
 
 impl KeysUpdateWalletNameReq {
     pub fn new(uid: &str, sn: &str, name: &str) -> Self {
-        Self {
-            uid: uid.to_string(),
-            sn: sn.to_string(),
-            name: name.to_string(),
-        }
+        Self { uid: uid.to_string(), sn: sn.to_string(), name: name.to_string() }
     }
 }
 
@@ -180,13 +164,8 @@ impl TokenQueryPriceReq {
         // 尝试查找已存在的请求
         if let Some(existing_req) = self.0.iter_mut().find(|r| r.chain_code == chain_code) {
             // 如果找到相同 chain_code 的请求，合并 contract_address
-            if !existing_req
-                .contract_address_list
-                .contains(&contract_address.to_string())
-            {
-                existing_req
-                    .contract_address_list
-                    .push(contract_address.to_string());
+            if !existing_req.contract_address_list.contains(&contract_address.to_string()) {
+                existing_req.contract_address_list.push(contract_address.to_string());
             }
         } else {
             // 如果没有找到，则创建一个新的请求
@@ -317,12 +296,7 @@ impl AllTokenQueryByPageReq {
         page_num: i32,
         page_size: i32,
     ) -> Self {
-        Self {
-            create_time,
-            update_time,
-            page_num,
-            page_size,
-        }
+        Self { create_time, update_time, page_num, page_size }
     }
 }
 
@@ -362,9 +336,7 @@ pub struct VersionViewReq {
 
 impl VersionViewReq {
     pub fn new(r#type: &str) -> Self {
-        Self {
-            r#type: r#type.to_string(),
-        }
+        Self { r#type: r#type.to_string() }
     }
 }
 
@@ -377,10 +349,7 @@ pub struct LanguageInitReq {
 
 impl LanguageInitReq {
     pub fn new(client_id: &str, lan: &str) -> Self {
-        Self {
-            client_id: client_id.to_string(),
-            lan: lan.to_string(),
-        }
+        Self { client_id: client_id.to_string(), lan: lan.to_string() }
     }
 }
 
@@ -395,12 +364,7 @@ pub struct AnnouncementListReq {
 
 impl AnnouncementListReq {
     pub fn new(client_id: String, page_num: u32, page_size: u32) -> Self {
-        Self {
-            client_id,
-            order_column: "create_time".to_string(),
-            page_num,
-            page_size,
-        }
+        Self { client_id, order_column: "create_time".to_string(), page_num, page_size }
     }
 }
 
@@ -463,11 +427,7 @@ pub struct AddressUpdateAccountNameReq {
 
 impl AddressUpdateAccountNameReq {
     pub fn new(uid: &str, index: i32, name: &str) -> Self {
-        Self {
-            uid: uid.to_string(),
-            index,
-            name: name.to_string(),
-        }
+        Self { uid: uid.to_string(), index, name: name.to_string() }
     }
 }
 
@@ -505,12 +465,7 @@ impl FindAddressRawDataReq {
     }
 
     pub fn new_multisig(uid: Option<String>, business_id: Option<String>) -> Self {
-        Self {
-            uid,
-            r#type: Some("multisig".to_string()),
-            raw_time: None,
-            business_id,
-        }
+        Self { uid, r#type: Some("multisig".to_string()), raw_time: None, business_id }
     }
 
     pub fn new_trans(
@@ -518,12 +473,7 @@ impl FindAddressRawDataReq {
         raw_time: Option<String>,
         business_id: Option<String>,
     ) -> Self {
-        Self {
-            uid,
-            r#type: Some("trans".to_string()),
-            raw_time,
-            business_id,
-        }
+        Self { uid, r#type: Some("trans".to_string()), raw_time, business_id }
     }
 }
 
@@ -536,10 +486,7 @@ pub struct AddressDetailsReq {
 
 impl AddressDetailsReq {
     pub fn new(address: &str, chain_code: &str) -> Self {
-        Self {
-            address: address.to_string(),
-            chain_code: chain_code.to_string(),
-        }
+        Self { address: address.to_string(), chain_code: chain_code.to_string() }
     }
 }
 
@@ -572,11 +519,7 @@ pub struct SignedFindAddressReq {
 }
 impl SignedFindAddressReq {
     pub fn new(chain_code: &str) -> Self {
-        Self {
-            name: None,
-            code: None,
-            chain_code: chain_code.to_string(),
-        }
+        Self { name: None, code: None, chain_code: chain_code.to_string() }
     }
 }
 
@@ -591,11 +534,7 @@ pub struct SignedFeeListReq {
 
 impl SignedFeeListReq {
     pub fn new(chain_code: &str, address: &str, uid: String) -> Self {
-        Self {
-            chain_code: chain_code.to_string(),
-            address: address.to_string(),
-            uid,
-        }
+        Self { chain_code: chain_code.to_string(), address: address.to_string(), uid }
     }
 }
 
@@ -681,14 +620,7 @@ impl TokenQueryPopularByPageReq {
         page_num: i64,
         page_size: i64,
     ) -> Self {
-        Self {
-            code,
-            chain_code,
-            order_column,
-            order_type,
-            page_num,
-            page_size,
-        }
+        Self { code, chain_code, order_column, order_type, page_num, page_size }
     }
 }
 
@@ -725,10 +657,7 @@ pub enum MsgConfirmSource {
 
 impl SendMsgConfirm {
     pub fn new(id: &str, source: MsgConfirmSource) -> Self {
-        Self {
-            id: id.to_string(),
-            source,
-        }
+        Self { id: id.to_string(), source }
     }
 }
 
@@ -765,10 +694,7 @@ pub struct UpdateAppIdReq {
 
 impl UpdateAppIdReq {
     pub fn new(sn: &str, app_id: &str) -> Self {
-        Self {
-            sn: sn.to_string(),
-            app_id: app_id.to_string(),
-        }
+        Self { sn: sn.to_string(), app_id: app_id.to_string() }
     }
 }
 

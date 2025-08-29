@@ -9,9 +9,7 @@ async fn test_asset_detail() {
     let chain_code = "sui";
     let symbol = "USDT";
     let token_address = None;
-    let assets = wallet
-        .get_assets(address, account_id, chain_code, symbol, token_address)
-        .await;
+    let assets = wallet.get_assets(address, account_id, chain_code, symbol, token_address).await;
 
     tracing::warn!("assets: {:?}", serde_json::to_string(&assets).unwrap());
 }
@@ -34,9 +32,7 @@ async fn sync_assets_from_chain() {
     let chain_code = None;
     let symbol = vec![];
 
-    let _c = wallet_manager
-        .sync_balance_from_chain(addr, chain_code, symbol)
-        .await;
+    let _c = wallet_manager.sync_balance_from_chain(addr, chain_code, symbol).await;
     tracing::info!("response");
 }
 
@@ -47,7 +43,5 @@ async fn sync_assets_by_wallet() {
     let account_id = Some(1);
     let symbol = vec![];
 
-    let _c = wallet_manager
-        .sync_assets_by_wallet(wallet_address, account_id, symbol)
-        .await;
+    let _c = wallet_manager.sync_assets_by_wallet(wallet_address, account_id, symbol).await;
 }

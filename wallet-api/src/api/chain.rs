@@ -20,17 +20,11 @@ impl crate::WalletManager {
     }
 
     pub async fn get_market_chain_list(&self) -> ReturnType<Vec<String>> {
-        ChainService::new(self.repo_factory.resource_repo())
-            .get_market_chain_list()
-            .await?
-            .into()
+        ChainService::new(self.repo_factory.resource_repo()).get_market_chain_list().await?.into()
     }
 
     pub async fn sync_chains(&self) -> ReturnType<bool> {
-        ChainService::new(self.repo_factory.resource_repo())
-            .sync_chains()
-            .await?
-            .into()
+        ChainService::new(self.repo_factory.resource_repo()).sync_chains().await?.into()
     }
 
     pub async fn sync_wallet_chain_data(&self, wallet_password: &str) -> ReturnType<()> {
@@ -41,10 +35,7 @@ impl crate::WalletManager {
     }
 
     pub async fn get_hot_chain_list(&self) -> ReturnType<Vec<ChainEntity>> {
-        ChainService::new(self.repo_factory.resource_repo())
-            .get_hot_chain_list()
-            .await?
-            .into()
+        ChainService::new(self.repo_factory.resource_repo()).get_hot_chain_list().await?.into()
     }
 
     pub async fn get_setting_chain_list(&self) -> ReturnType<Vec<ChainWithNode>> {
@@ -102,10 +93,7 @@ mod tests {
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         // let symbol = "LTC";
         let chain_list = HashMap::from([
-            (
-                "bnb".to_string(),
-                "0x55d398326f99059fF775485246999027B3197955".to_string(),
-            ),
+            ("bnb".to_string(), "0x55d398326f99059fF775485246999027B3197955".to_string()),
             (
                 "sui".to_string(),
                 "0xc060006111016b8a020ad5b33834984a437aaa7d3c74c18e09a95d48aceab08c::coin::COIN"
@@ -142,9 +130,7 @@ mod tests {
             "bnb".to_string(),
             "0x55d398326f99059fF775485246999027B3197955".to_string(),
         )]);
-        let res = wallet_manager
-            .get_multisig_chain_list(address, chain_list)
-            .await;
+        let res = wallet_manager.get_multisig_chain_list(address, chain_list).await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");
         Ok(())

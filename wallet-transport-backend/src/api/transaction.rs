@@ -53,12 +53,8 @@ impl BackendApi {
         let mut params = HashMap::new();
         params.insert("chainCode", chain_code);
 
-        let res = self
-            .client
-            .post("token/findGasTracker")
-            .json(params)
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post("token/findGasTracker").json(params).send::<BackendResponse>().await?;
 
         res.process(&self.aes_cbc_cryptor)
     }
@@ -72,12 +68,8 @@ impl BackendApi {
     ) -> Result<RecordResp, crate::Error> {
         let req = SyncBillReq::new(chain_code, address, start_time);
 
-        let res = self
-            .client
-            .post("account/record/list")
-            .json(req)
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post("account/record/list").json(req).send::<BackendResponse>().await?;
 
         res.process(&self.aes_cbc_cryptor)
     }

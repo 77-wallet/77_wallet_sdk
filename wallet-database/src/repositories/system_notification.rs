@@ -74,11 +74,7 @@ pub trait SystemNotificationRepoTrait: super::TransactionTrait {
         value: Option<String>,
     ) -> Result<Option<SystemNotificationEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
-        let req = crate::entities::system_notification::QueryReq {
-            key,
-            value,
-            id: None,
-        };
+        let req = crate::entities::system_notification::QueryReq { key, value, id: None };
         crate::execute_with_executor!(executor, SystemNotificationEntity::detail, &req)
     }
 

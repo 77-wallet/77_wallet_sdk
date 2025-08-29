@@ -83,9 +83,9 @@ impl ApiAssetsRepo {
     //     )
     // }
 
-    // pub async fn list(&mut self) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-    //     Ok(ApiAccountEntity::list(self.repo.pool().as_ref()).await?)
-    // }
+    pub async fn list(pool: &DbPool) -> Result<Vec<ApiAssetsEntity>, crate::Error> {
+        Ok(ApiAssetsDao::list(pool.as_ref()).await?)
+    }
 
     // pub async fn find_by_address(
     //     &mut self,

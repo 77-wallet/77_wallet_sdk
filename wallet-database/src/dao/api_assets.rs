@@ -54,14 +54,11 @@ impl ApiAssetsDao {
     {
         let builder = DynamicUpdateBuilder::new("api_assets")
             .set("balance", balance)
-            .set("updated_at", "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
             .and_where_eq("address", &assets_id.address)
             .and_where_eq("symbol", &assets_id.symbol)
             .and_where_eq("chain_code", &assets_id.chain_code)
-            .and_where_eq(
-                "token_address",
-                assets_id.token_address.clone().unwrap_or_default(),
-            );
+            .and_where_eq("token_address", assets_id.token_address.clone().unwrap_or_default());
         SqlExecutableNoReturn::execute(&builder, exec).await
 
         // let sql = String::from(
@@ -98,15 +95,8 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let ApiCreateAssetsVo {
-            assets_id,
-            name,
-            decimals,
-            protocol,
-            status,
-            is_multisig,
-            balance,
-        } = assets;
+        let ApiCreateAssetsVo { assets_id, name, decimals, protocol, status, is_multisig, balance } =
+            assets;
 
         let token_address = assets_id.token_address.unwrap_or_default();
         let protocol = protocol.unwrap_or_default();
@@ -187,11 +177,7 @@ impl ApiAssetsDao {
         if assets_ids.is_empty() {
             return Ok(());
         }
-        let placeholders = assets_ids
-            .iter()
-            .map(|_| "(?, ?, ?, ?)")
-            .collect::<Vec<_>>()
-            .join(", ");
+        let placeholders = assets_ids.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
 
         // 构建 SQL 查询
         let sql = format!(
@@ -215,11 +201,7 @@ impl ApiAssetsDao {
         }
 
         // 执行查询
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn update_status<'a, E>(
@@ -364,9 +346,6 @@ impl ApiAssetsDao {
             query = query.bind(sym);
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 }

@@ -49,9 +49,9 @@ impl TaskTrait for CommonTask {
                 Some(wallet_utils::serde_func::serde_to_string(recover_data)?)
             }
             // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
-            CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => Some(
-                wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?,
-            ),
+            CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => {
+                Some(wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?)
+            }
         };
         Ok(res)
     }
@@ -112,9 +112,6 @@ pub struct RecoverDataBody {
 }
 impl RecoverDataBody {
     pub fn new(uid: &str) -> Self {
-        Self {
-            uid: uid.to_string(),
-            tron_address: None,
-        }
+        Self { uid: uid.to_string(), tron_address: None }
     }
 }
