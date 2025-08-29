@@ -4,7 +4,7 @@ use wallet_api::request::transaction::{
 };
 
 // Ethereum aggregator address
-const AGGREGATOR: &str = "0xb0635793E700E8A5AFbB94e12086E921FB0E3E3E";
+const AGGREGATOR: &str = "0xD084CbC32648346DC98BF667B2535d61E4243a95";
 
 #[tokio::test]
 async fn test_default_quote() {
@@ -96,32 +96,21 @@ async fn test_quote() {
 
     let token_in = SwapTokenInfo {
         token_addr: "".to_string(),
-        symbol: "wtrx".to_string(),
+        symbol: "bnb".to_string(),
         decimals: 18,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string(),
-        symbol: "usdc".to_string(),
+        token_addr: "0x55d398326f99059fF775485246999027B3197955".to_string(),
+        symbol: "usdt".to_string(),
         decimals: 6,
     };
 
-    // let token_in = SwapTokenInfo {
-    //     token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
-    //     symbol: "weth".to_string(),
-    //     decimals: 18,
-    // };
-    // let token_out = SwapTokenInfo {
-    //     token_addr: "".to_string(),
-    //     symbol: "WETH".to_string(),
-    //     decimals: 18,
-    // };
-
     let req = QuoteReq {
-        aggregator_addr: AGGREGATOR.to_string(),
+        aggregator_addr: "0xD084CbC32648346DC98BF667B2535d61E4243a95".to_string(),
         recipient: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
-        chain_code: "eth".to_string(),
-        amount_in: "0.001".to_string(),
+        chain_code: "bnb".to_string(),
+        amount_in: "0.003".to_string(),
         token_in,
         token_out,
         dex_list: vec![2, 3],
@@ -149,22 +138,22 @@ async fn test_swap() {
         route_in_dex: vec![
             RouteInDex {
                 dex_id: 3,
-                pool_id: "0xc7bbec68d12a0d1830360f8ec58fa599ba1b0e9b".to_string(),
+                pool_id: "0x5289a8dbf7029ee0b0498a84777ed3941d9acfec".to_string(),
                 in_token_symbol: "USDT".to_string(),
-                in_token_addr: "0xdac17f958d2ee523a2206206994597c13d831ec7".to_string(),
-                out_token_addr: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".to_string(),
+                in_token_addr: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c".to_string(),
+                out_token_addr: "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d".to_string(),
                 out_token_symbol: "WETH".to_string(),
                 zero_for_one: false,
-                fee: "100".to_string(),
+                fee: "500".to_string(),
                 amount_in: 0.to_string(),
                 min_amount_out: 0.to_string(),
             },
             RouteInDex {
                 dex_id: 3,
-                pool_id: "0xe0554a476a092703abdb3ef35c80e0d76d32939f".to_string(),
+                pool_id: "0x2c3c320d49019d4f9a92352e947c7e5acfe47d68".to_string(),
                 in_token_symbol: "USDT".to_string(),
-                in_token_addr: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2".to_string(),
-                out_token_addr: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".to_string(),
+                in_token_addr: "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d".to_string(),
+                out_token_addr: "0x55d398326f99059ff775485246999027b3197955".to_string(),
                 out_token_symbol: "WETH".to_string(),
                 zero_for_one: false,
                 fee: "100".to_string(),
@@ -175,21 +164,20 @@ async fn test_swap() {
     };
 
     let token_in = SwapTokenInfo {
-        token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-        symbol: "USDT".to_string(),
-        decimals: 6,
+        token_addr: "".to_string(),
+        symbol: "BNB".to_string(),
+        decimals: 18,
     };
 
     let token_out = SwapTokenInfo {
-        token_addr: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string(),
-        symbol: "usdc".to_string(),
+        token_addr: "0x55d398326f99059fF775485246999027B3197955".to_string(),
+        symbol: "usdt".to_string(),
         decimals: 6,
     };
-
     let req = SwapReq {
         aggregator_addr: AGGREGATOR.to_string(),
         amount_in: o_value.to_string(),
-        amount_out: "0.01".to_string(),
+        amount_out: "0.003".to_string(),
         min_amount_out: "0.01".to_string(),
         chain_code: "eth".to_string(),
         recipient: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
@@ -200,7 +188,7 @@ async fn test_swap() {
     };
 
     let fee =
-                r#"{"gasLimit":328431,"baseFee":"1032084119","priorityFee":"214990929","maxFeePerGas":"1600000000"}"#
+                r#"{"gasLimit":314848,"baseFee":"0","priorityFee":"1000000000","maxFeePerGas":"1200000000"}"#
                     .to_string();
     let password = "123456".to_string();
 

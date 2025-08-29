@@ -226,17 +226,18 @@ pub(super) async fn swap(
     fee: String,
     key: ChainPrivateKey,
 ) -> Result<TransferResp, crate::ServiceError> {
-    let fee = pare_fee_setting(fee.as_str())?;
-    let mut transfer_fee = fee.transaction_fee();
+    let fee_setting = pare_fee_setting(fee.as_str())?;
+    let transfer_fee = fee_setting.transaction_fee();
+    let mut check_bal = transfer_fee;
 
     let balance = chain
         .balance(&swap_params.recipient.to_string(), None)
         .await?;
 
     if swap_params.main_coin_swap() {
-        transfer_fee += swap_params.amount_in;
+        check_bal += swap_params.amount_in;
     }
-    if balance < transfer_fee {
+    if balance < check_bal {
         return Err(crate::BusinessError::Chain(
             crate::ChainError::InsufficientFeeBalance,
         ))?;
@@ -245,7 +246,7 @@ pub(super) async fn swap(
     let tx = build_base_swap_tx(&swap_params)?;
     let tx = chain
         .provider
-        .set_transaction_fee(tx, fee, chain.chain_code)
+        .set_transaction_fee(tx, fee_setting, chain.chain_code)
         .await?;
 
     let tx_hash = chain.provider.send_raw_transaction(tx, &key).await?;
