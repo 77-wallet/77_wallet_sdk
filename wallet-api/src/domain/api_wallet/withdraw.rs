@@ -65,43 +65,7 @@ impl ApiWithdrawDomain {
         let value = Decimal::from_str(&req.value).unwrap();
         if (value < Decimal::from(10)) {
             tracing::info!("transfer ------------------- 9:");
-            let coin =
-                CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone())
-                    .await?;
-
-            let mut params = ApiBaseTransferReq::new(
-                &req.from,
-                &req.to.to_string(),
-                &req.value.to_string(),
-                &req.chain_code.to_string(),
-            );
-            let token_address = if coin.token_address.is_none() {
-                None
-            } else {
-                let s = coin.token_address.unwrap();
-                if s.is_empty() { None } else { Some(s) }
-            };
-            params.with_token(token_address, coin.decimals, &coin.symbol);
-
-            let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
-
-            // 发交易
-            let tx_resp = Self::transfer(transfer_req).await?;
-
-            let resource_consume = if tx_resp.consumer.is_none() {
-                "0".to_string()
-            } else {
-                tx_resp.consumer.unwrap().energy_used.to_string()
-            };
-            ApiWithdrawRepo::update_api_withdraw_tx_status(
-                &pool,
-                &req.trade_no,
-                &tx_resp.tx_hash,
-                &resource_consume,
-                &tx_resp.fee,
-                ApiWithdrawStatus::SendingTx,
-            )
-            .await?;
+            ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, ApiWithdrawStatus::AuditPass).await?;
         }
         Ok(())
     }

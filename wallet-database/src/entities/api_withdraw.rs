@@ -1,3 +1,4 @@
+use std::fmt::Display;
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ApiWithdrawEntity {
     pub id: i64,
@@ -24,7 +25,12 @@ pub struct ApiWithdrawEntity {
 }
 
 #[derive(
-    sqlx::Type, Debug, Clone, Copy, serde_repr::Deserialize_repr, serde_repr::Serialize_repr,
+    sqlx::Type,
+    Debug,
+    Clone,
+    Copy,
+    serde_repr::Deserialize_repr,
+    serde_repr::Serialize_repr,
 )]
 #[repr(u8)]
 pub enum ApiWithdrawStatus {
@@ -32,4 +38,12 @@ pub enum ApiWithdrawStatus {
     AuditPass,
     AuditReject,
     SendingTx,
+    Success,
+    Failure,
+}
+
+impl Display for ApiWithdrawStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", *self as u8)
+    }
 }

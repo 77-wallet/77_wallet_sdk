@@ -100,6 +100,8 @@ impl Tx for SuiTx {
             return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
 
+        tracing::info!("transfer ------------------- 9:");
+
         let req = TransferOpt::new(
             &params.base.from,
             &params.base.to,
@@ -108,8 +110,10 @@ impl Tx for SuiTx {
         )?;
 
         let mut helper = req.select_coin(&self.chain.provider).await?;
+        tracing::info!("transfer ------------------- 10:");
         let pt = req.build_pt(&self.chain.provider, &mut helper, None).await?;
 
+        tracing::info!("transfer ------------------- 11:");
         let gas = self.chain.estimate_fee(&params.base.from, pt).await?;
 
         let mut trans_fee = U256::from(gas.get_fee());

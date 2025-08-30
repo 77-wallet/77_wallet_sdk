@@ -19,6 +19,7 @@ use tokio::sync::{RwLock, mpsc::UnboundedSender};
 use wallet_database::{
     SqliteContext, factory::RepositoryFactory, repositories::device::DeviceRepo,
 };
+use crate::infrastructure::process_withdraw_tx::ProcessWithdrawTxHandle;
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
@@ -27,7 +28,9 @@ pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
 async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
-    INIT_DATA.get_or_try_init(|| async { init_some_data().await }).await
+    INIT_DATA
+        .get_or_try_init(|| async { init_some_data().await })
+        .await
 }
 
 pub async fn init_some_data() -> Result<(), crate::ServiceError> {
@@ -108,6 +111,7 @@ pub struct Context {
     pub(crate) inner_event_handle: InnerEventHandle,
     pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
     pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
+    pub(crate) process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
 }
 
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
@@ -182,6 +186,8 @@ impl Context {
 
         let inner_event_handle = InnerEventHandle::new();
 
+        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
+
         Ok(Context {
             dirs,
             backend_api,
@@ -197,6 +203,7 @@ impl Context {
             inner_event_handle,
             unconfirmed_msg_collector,
             unconfirmed_msg_processor,
+            process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
         })
     }
 
@@ -333,7 +340,10 @@ pub struct DeviceInfo {
 }
 impl DeviceInfo {
     pub fn new(sn: &str, client_id: &str) -> Self {
-        Self { sn: sn.to_owned(), client_id: client_id.to_owned() }
+        Self {
+            sn: sn.to_owned(),
+            client_id: client_id.to_owned(),
+        }
     }
 }
 
@@ -345,7 +355,10 @@ pub struct RpcToken {
 
 impl Default for RpcToken {
     fn default() -> Self {
-        Self { token: String::new(), instance: tokio::time::Instant::now() }
+        Self {
+            token: String::new(),
+            instance: tokio::time::Instant::now(),
+        }
     }
 }
 
@@ -371,8 +384,12 @@ impl WalletManager {
         infrastructure::log::start_upload_scheduler(base_path, 5 * 60, context.oss_client.clone())
             .await?;
 
-        Context::get_global_unconfirmed_msg_processor()?.start().await;
-        Context::get_global_task_manager()?.start_task_check().await?;
+        Context::get_global_unconfirmed_msg_processor()?
+            .start()
+            .await;
+        Context::get_global_task_manager()?
+            .start_task_check()
+            .await?;
         let pool = context.sqlite_context.get_pool()?;
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
@@ -460,7 +477,13 @@ impl Dirs {
             wallet_utils::file_func::create_dir_all(dir)?;
         }
 
-        Ok(Dirs { root_dir: PathBuf::from(root_dir), wallet_dir, export_dir, db_dir, log_dir })
+        Ok(Dirs {
+            root_dir: PathBuf::from(root_dir),
+            wallet_dir,
+            export_dir,
+            db_dir,
+            log_dir,
+        })
     }
 
     pub fn get_wallet_dir(&self, address: Option<&str>) -> std::path::PathBuf {
@@ -503,10 +526,8 @@ impl Dirs {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::{self, File},
-        io::Write,
-    };
+    use std::fs::{self, File};
+    use std::io::Write;
     use tempfile::tempdir;
 
     use crate::Dirs;

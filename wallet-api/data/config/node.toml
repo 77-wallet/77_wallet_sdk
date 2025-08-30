@@ -81,9 +81,9 @@ active = true
 
 [[nodes.sol.nodes]]
 node_name = "Solana Official Node"
-rpc_url = "https://api.mainnet-beta.solana.com"
+rpc_url = "https://api.devnet.solana.com"
 http_url = ""
-network = "mainnet"
+network = "testnet"
 active = true
 
 [[nodes.btc.nodes]]
@@ -110,9 +110,9 @@ active = true
 
 [[nodes.ton.nodes]]
 node_name = "77 Official Nodes"
-rpc_url = "https://apprpc.safew.cc/ton"
+rpc_url = "https://testnet.toncenter.com/api/v2"
 http_url = ""
-network = "mainnet"
+network = "testnet"
 active = false
 
 [[nodes.sui.nodes]]
@@ -124,7 +124,7 @@ active = true
 
 [[nodes.sui.nodes]]
 node_name = "Sui Official Node"
-rpc_url = "https://rpc-mainnet.suiscan.xyz"
+rpc_url = "https://sui-testnet-endpoint.blockvision.org"
 http_url = ""
-network = "mainnet"
+network = "testnet"
 active = true

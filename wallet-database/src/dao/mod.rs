@@ -24,6 +24,8 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
+pub(crate) mod api_nonce;
+pub(crate) mod api_window;
 
 #[async_trait::async_trait]
 pub trait Dao {
