@@ -19,6 +19,7 @@ use tokio::sync::{RwLock, mpsc::UnboundedSender};
 use wallet_database::{
     SqliteContext, factory::RepositoryFactory, repositories::device::DeviceRepo,
 };
+use crate::infrastructure::process_withdraw_tx::ProcessWithdrawTxHandle;
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
