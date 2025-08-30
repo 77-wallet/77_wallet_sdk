@@ -12,4 +12,4 @@ CREATE TABLE api_nonce
     updated_at       TIMESTAMP
 );
 
-CREATE UNIQUE INDEX api_nonce_from ON api_withdraws (uid, from_addr, chain_code);
+CREATE UNIQUE INDEX api_nonce_from ON api_nonce (uid, from_addr, chain_code);

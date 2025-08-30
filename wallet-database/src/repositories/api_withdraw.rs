@@ -12,7 +12,7 @@ impl ApiWithdrawRepo {
         pool: &DbPool,
         page: i64,
         page_size: i64,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+    ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error> {
         ApiWithdrawDao::page_api_withdraw(pool.as_ref(), page, page_size).await
     }
 

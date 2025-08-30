@@ -46,16 +46,16 @@ impl ProcessWithdrawTxHandle {
     }
 }
 
-pub(crate) struct ProcessWithdrawTx {
+struct ProcessWithdrawTx {
     rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
 }
 
 impl ProcessWithdrawTx {
-    pub(crate) fn new(rx: mpsc::Receiver<ProcessWithdrawTxCommand>) -> Self {
+    fn new(rx: mpsc::Receiver<ProcessWithdrawTxCommand>) -> Self {
         Self { rx }
     }
 
-    pub(crate) async fn run(&mut self) -> Result<(), anyhow::Error> {
+    async fn run(&mut self) -> Result<(), anyhow::Error> {
         tracing::info!("starting process withdraw -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
@@ -106,10 +106,12 @@ impl ProcessWithdrawTx {
             ApiWithdrawStatus::AuditPass,
         )
         .await?;
+        let withdraws_len = withdraws.len();
         tracing::info!(withdraws=%withdraws.len(), "starting process withdraw -------------------------------3");
         for req in withdraws {
             self.process_withdraw_single_tx(req).await?;
         }
+        ApiWindowRepo::upsert_api_offset(&pool, 1, offset + withdraws_len as i64).await?;
         Ok(())
     }
 
