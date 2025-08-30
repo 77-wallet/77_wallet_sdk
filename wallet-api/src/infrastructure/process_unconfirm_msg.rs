@@ -16,9 +16,7 @@ impl UnconfirmedMsgCollector {
     }
 
     pub fn submit(&self, ids: Vec<String>) -> Result<(), crate::ServiceError> {
-        self.tx
-            .send(ids)
-            .map_err(|e| crate::SystemError::ChannelSendFailed(e.to_string()))?;
+        self.tx.send(ids).map_err(|e| crate::SystemError::ChannelSendFailed(e.to_string()))?;
         Ok(())
     }
 
@@ -90,10 +88,7 @@ pub struct UnconfirmedMsgProcessor {
 
 impl UnconfirmedMsgProcessor {
     pub fn new(client_id: &str, notify: Arc<tokio::sync::Notify>) -> Self {
-        Self {
-            client_id: client_id.into(),
-            notify,
-        }
+        Self { client_id: client_id.into(), notify }
     }
 
     async fn handle_once(client_id: &str) -> Result<(), crate::ServiceError> {

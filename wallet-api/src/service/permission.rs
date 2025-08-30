@@ -81,19 +81,14 @@ impl PermissionService {
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
         // 验证余额
         let balance = self.chain.balance(from, None).await?;
-        let mut consumer = self
-            .chain
-            .get_provider()
-            .transfer_fee(from, None, &resp.raw_data_hex, 1)
-            .await?;
+        let mut consumer =
+            self.chain.get_provider().transfer_fee(from, None, &resp.raw_data_hex, 1).await?;
 
         // upgrade fee
         consumer.set_extra_fee(100 * consts::TRX_VALUE);
 
         if balance.to::<i64>() < consumer.transaction_fee_i64() {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
 
         // 广播交易交易事件
@@ -143,11 +138,7 @@ impl PermissionService {
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
         let content = wallet_utils::serde_func::serde_to_string(&res)?;
 
-        Ok(EstimateFeeResp::new(
-            "TRX".to_string(),
-            chain_code::TRON.to_string(),
-            content,
-        ))
+        Ok(EstimateFeeResp::new("TRX".to_string(), chain_code::TRON.to_string(), content))
     }
 
     // 上报后端
@@ -187,8 +178,7 @@ impl PermissionService {
 
         let pool = crate::Context::get_global_sqlite_pool()?;
 
-        self.mark_address_book_name(&pool, &mut result.owner.keys)
-            .await?;
+        self.mark_address_book_name(&pool, &mut result.owner.keys).await?;
 
         for item in result.actives.iter_mut() {
             self.mark_address_book_name(&pool, &mut item.keys).await?;
@@ -215,11 +205,7 @@ impl PermissionService {
 
             self.mark_address_book_name(&pool, &mut p.keys).await?;
 
-            result.push(ManagerPermissionResp {
-                grantor_addr,
-                name,
-                permission: p,
-            });
+            result.push(ManagerPermissionResp { grantor_addr, name, permission: p });
         }
 
         Ok(result)
@@ -263,10 +249,8 @@ impl PermissionService {
                 let id = req.active_id.unwrap_or_default();
                 let new_permission = Permission::try_from(req)?;
 
-                if let Some(permission) = args
-                    .actives
-                    .iter_mut()
-                    .find(|p| p.id.unwrap_or_default() == id)
+                if let Some(permission) =
+                    args.actives.iter_mut().find(|p| p.id.unwrap_or_default() == id)
                 {
                     // 拼接上报后端的参数
                     if let Some(params) = backup_params {
@@ -282,11 +266,8 @@ impl PermissionService {
 
                         users.extend(req.users());
 
-                        params.sender_user = users
-                            .into_iter()
-                            .collect::<HashSet<String>>()
-                            .into_iter()
-                            .collect();
+                        params.sender_user =
+                            users.into_iter().collect::<HashSet<String>>().into_iter().collect();
                     }
 
                     *permission = new_permission;
@@ -301,11 +282,8 @@ impl PermissionService {
             PermissionReq::DELETE => {
                 let active_id = req.active_id.unwrap_or_default();
                 // check exists
-                let permission = args
-                    .actives
-                    .iter()
-                    .find(|a| a.id.unwrap_or_default() == active_id)
-                    .cloned();
+                let permission =
+                    args.actives.iter().find(|a| a.id.unwrap_or_default() == active_id).cloned();
 
                 if let Some(permission) = permission {
                     // 拼接上报后端的参数
@@ -319,8 +297,7 @@ impl PermissionService {
                     }
 
                     // 删除权限
-                    args.actives
-                        .retain(|item| item.id.unwrap_or_default() != active_id);
+                    args.actives.retain(|item| item.id.unwrap_or_default() != active_id);
 
                     if args.actives.is_empty() {
                         return Err(crate::BusinessError::Permission(
@@ -335,9 +312,9 @@ impl PermissionService {
                     ))?
                 }
             }
-            _ => Err(crate::BusinessError::Permission(
-                crate::PermissionError::UnSupportOpType(types.to_string()),
-            ))?,
+            _ => Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportOpType(
+                types.to_string(),
+            )))?,
         }
     }
 
@@ -381,9 +358,7 @@ impl PermissionService {
             }
         }
 
-        let tx_hash = self
-            .update_permission(&req.grantor_addr, args, &password)
-            .await?;
+        let tx_hash = self.update_permission(&req.grantor_addr, args, &password).await?;
 
         backend_params.hash = tx_hash.clone();
         backend_params.grantor_addr = req.grantor_addr.clone();
@@ -427,10 +402,7 @@ impl PermissionService {
 
         // 构建多签交易
         let expiration = MultisigQueueDomain::sub_expiration(expiration);
-        let resp = self
-            .chain
-            .build_multisig_transaction(args, expiration as u64)
-            .await?;
+        let resp = self.chain.build_multisig_transaction(args, expiration as u64).await?;
 
         let mut queue = NewMultisigQueueEntity::new(
             account.id.to_string(),

@@ -31,9 +31,7 @@ impl NodeService {
         let tx = &mut self.repo;
         let id = NodeDomain::gen_node_id(name, chain_code);
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
-        let res = NodeRepoTrait::add(tx, req)
-            .await
-            .map_err(crate::ServiceError::Database)?;
+        let res = NodeRepoTrait::add(tx, req).await.map_err(crate::ServiceError::Database)?;
         Ok(res.node_id)
     }
 
@@ -116,10 +114,7 @@ impl NodeService {
             wallet_transport_backend::consts::endpoint::CHAIN_LIST,
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(chain_list_req))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send().await?;
         Ok(())
     }
 
@@ -160,11 +155,7 @@ impl NodeService {
         let res = node_list
             .into_iter()
             .map(|node| {
-                let status = if chain.node_id == Some(node.node_id.clone()) {
-                    1
-                } else {
-                    0
-                };
+                let status = if chain.node_id == Some(node.node_id.clone()) { 1 } else { 0 };
                 crate::response_vo::chain::NodeListRes {
                     node_id: node.node_id,
                     name: node.name,
@@ -208,12 +199,8 @@ impl NodeService {
                 .await?;
 
             let start = std::time::Instant::now();
-            let block_height = chain_instance
-                .block_num()
-                .await
-                .ok()
-                .map(|h| h as i64)
-                .unwrap_or(-1);
+            let block_height =
+                chain_instance.block_num().await.ok().map(|h| h as i64).unwrap_or(-1);
             let delay = (start.elapsed().as_millis() / 2) as u64;
             res.push(crate::response_vo::chain::NodeDynData {
                 chain_code: chain_code.to_string(),

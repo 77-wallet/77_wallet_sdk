@@ -1,23 +1,26 @@
 use crate::{
+    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
+        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
     infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{
-        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+    request::{
+        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+        transaction::{
+            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+        },
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
-    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    sui::{transfer::TransferOpt, Provider, SuiChain}, tron::protocol::account::AccountResourceDetail,
+    Error, QueryTransactionResult,
+    sui::{Provider, SuiChain, transfer::TransferOpt},
+    tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
-    Error,
-    QueryTransactionResult,
 };
 use wallet_database::entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
@@ -27,7 +30,6 @@ use wallet_database::entities::{
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::api::BackendApi;
 use wallet_utils::unit;
-use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct SuiTx {
     chain: SuiChain,

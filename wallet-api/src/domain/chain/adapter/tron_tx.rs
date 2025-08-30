@@ -12,8 +12,10 @@ use crate::{
     request::transaction::{ApproveReq, DepositReq, WithdrawReq},
     response_vo::TransferParams,
 };
-use alloy::sol_types::SolValue;
-use alloy::{primitives::U256, sol_types::SolCall};
+use alloy::{
+    primitives::U256,
+    sol_types::{SolCall, SolValue},
+};
 use wallet_chain_interact::{
     BillResourceConsume, abi_encode_u256,
     tron::{
@@ -49,21 +51,15 @@ pub(super) async fn build_build_tx(
 
         let provider = chain.get_provider();
         let constant = params.constant_contract(provider).await?;
-        let consumer = provider
-            .contract_fee(constant, threshold as u8, &req.from)
-            .await?;
+        let consumer = provider.contract_fee(constant, threshold as u8, &req.from).await?;
         params.set_fee_limit(consumer);
 
-        Ok(chain
-            .build_multisig_transaction(params, expiration as u64)
-            .await?)
+        Ok(chain.build_multisig_transaction(params, expiration as u64).await?)
     } else {
         let mut params = TransferOpt::new(&req.from, &req.to, value, req.notes.clone())?;
         params.permission_id = permission_id;
 
-        Ok(chain
-            .build_multisig_transaction(params, expiration as u64)
-            .await?)
+        Ok(chain.build_multisig_transaction(params, expiration as u64).await?)
     }
 }
 
@@ -84,9 +80,7 @@ pub(super) async fn approve(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if balance < fee {
-        return Err(crate::BusinessError::Chain(
-            crate::ChainError::InsufficientFeeBalance,
-        ))?;
+        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
     }
 
     // get consumer
@@ -96,9 +90,7 @@ pub(super) async fn approve(
     );
 
     // exec trans
-    let raw_transaction = wrap
-        .trigger_smart_contract(&chain.provider, &consumer)
-        .await?;
+    let raw_transaction = wrap.trigger_smart_contract(&chain.provider, &consumer).await?;
     let result = chain.exec_transaction_v1(raw_transaction, key).await?;
 
     let mut resp = TransferResp::new(result, consumer.transaction_fee());
@@ -154,9 +146,7 @@ pub(super) async fn deposit(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64()) + value;
     if balance < fee {
-        return Err(crate::BusinessError::Chain(
-            crate::ChainError::InsufficientFeeBalance,
-        ))?;
+        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
     }
 
     // get consumer
@@ -166,9 +156,7 @@ pub(super) async fn deposit(
     );
 
     // exec trans
-    let raw_transaction = wrap
-        .trigger_smart_contract(&chain.provider, &consumer)
-        .await?;
+    let raw_transaction = wrap.trigger_smart_contract(&chain.provider, &consumer).await?;
     let result = chain.exec_transaction_v1(raw_transaction, key).await?;
 
     let mut resp = TransferResp::new(result, consumer.transaction_fee());
@@ -229,9 +217,7 @@ pub(super) async fn withdraw(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if balance < fee {
-        return Err(crate::BusinessError::Chain(
-            crate::ChainError::InsufficientFeeBalance,
-        ))?;
+        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
     }
 
     // get consumer
@@ -241,9 +227,7 @@ pub(super) async fn withdraw(
     );
 
     // exec trans
-    let raw_transaction = wrap
-        .trigger_smart_contract(&chain.provider, &consumer)
-        .await?;
+    let raw_transaction = wrap.trigger_smart_contract(&chain.provider, &consumer).await?;
     let result = chain.exec_transaction_v1(raw_transaction, key).await?;
 
     let mut resp = TransferResp::new(result, consumer.transaction_fee());
@@ -315,26 +299,17 @@ pub(super) async fn estimate_swap(
     let bytes = wallet_utils::hex_func::hex_decode(&constant.constant_result[0])?;
 
     // 模拟的结果k
-    let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
-        .map_err(|e| crate::ServiceError::AggregatorError {
-            code: -1,
-            agg_code: 0,
-            msg: e.to_string(),
+    let (amount_in, amount_out): (U256, U256) =
+        <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
+            crate::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
         })?;
 
     // get fee
-    let mut consumer = chain
-        .provider
-        .contract_fee(constant, 1, &owner_address)
-        .await?;
+    let mut consumer = chain.provider.contract_fee(constant, 1, &owner_address).await?;
     // 手续费增加0.2trx
     consumer.set_extra_fee(200000);
 
-    let resp = EstimateSwapResult {
-        amount_in,
-        amount_out,
-        consumer,
-    };
+    let resp = EstimateSwapResult { amount_in, amount_out, consumer };
 
     Ok(resp)
 }
@@ -350,15 +325,10 @@ pub(super) async fn swap(
     let mut wrap = WarpContract { params };
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;
     // get fee
-    let mut consumer = chain
-        .provider
-        .contract_fee(constant, 1, &owner_address)
-        .await?;
+    let mut consumer = chain.provider.contract_fee(constant, 1, &owner_address).await?;
 
     // check fee
-    let balance = chain
-        .balance(&swap_params.recipient_tron_addr()?, None)
-        .await?;
+    let balance = chain.balance(&swap_params.recipient_tron_addr()?, None).await?;
     // 手续费增加0.2trx
     consumer.set_extra_fee(200000);
 
@@ -367,9 +337,7 @@ pub(super) async fn swap(
         fee += swap_params.amount_in;
     }
     if balance < fee {
-        return Err(crate::BusinessError::Chain(
-            crate::ChainError::InsufficientFeeBalance,
-        ))?;
+        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
     }
 
     let bill_consumer = BillResourceConsume::new_tron(

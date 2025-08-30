@@ -69,9 +69,8 @@ impl CreateTaskQueueEntity {
         request_body: Option<&T>,
         // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
-        let request_body = request_body
-            .map(wallet_utils::serde_func::serde_to_string)
-            .transpose()?;
+        let request_body =
+            request_body.map(wallet_utils::serde_func::serde_to_string).transpose()?;
         Self::new(None, task_name, request_body, 1, 0)
     }
 }

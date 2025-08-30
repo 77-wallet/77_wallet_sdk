@@ -16,10 +16,8 @@ async fn test_create_multisig_account() {
         "bc1qgzfqayxf0gw4vnu440uugyawlmvqyzw5c73k79".to_string(),
     );
 
-    let member2 = MemberVo::new(
-        "bob".to_string(),
-        "3HoUeYmrHPQuXr4fJ1zQsF31rntE3JLkg4".to_string(),
-    );
+    let member2 =
+        MemberVo::new("bob".to_string(), "3HoUeYmrHPQuXr4fJ1zQsF31rntE3JLkg4".to_string());
 
     // let member3 = MemberVo::new(
     //     "charlie".to_string(),
@@ -54,9 +52,7 @@ async fn test_balance() {
     let chain_code = "btc";
     let symbol = "BTC";
     let token_address = None;
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 
     tracing::info!("balance: {:?}", balance);
 }
@@ -134,9 +130,7 @@ async fn test_sign_transaction() {
     let queue_id = "218846320662810624".to_owned();
     let status = 1;
     let password = "123456".to_string();
-    let sign = wallet_manager
-        .sign_transaction(queue_id, status, password, None)
-        .await;
+    let sign = wallet_manager.sign_transaction(queue_id, status, password, None).await;
 
     tracing::info!("sign res  = {:?}", sign);
 }
@@ -146,9 +140,7 @@ async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
     let queue_id = "218846320662810624".to_owned();
-    let fee = wallet_manager
-        .estimate_multisig_transfer_fee(queue_id)
-        .await;
+    let fee = wallet_manager.estimate_multisig_transfer_fee(queue_id).await;
 
     tracing::info!("transfer fee = {}", serde_json::to_string(&fee).unwrap());
 }
@@ -163,8 +155,6 @@ async fn test_execute() {
     let fee_setting = None;
     let request_resource_id = None;
 
-    let result = wallet_manager
-        .exec_transaction(id, pass, fee_setting, request_resource_id)
-        .await;
+    let result = wallet_manager.exec_transaction(id, pass, fee_setting, request_resource_id).await;
     tracing::info!("execute res = {:?}", serde_json::to_string(&result));
 }

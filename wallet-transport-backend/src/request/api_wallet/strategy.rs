@@ -21,11 +21,7 @@ pub struct IndexAndAddress {
 
 impl Strategy {
     pub fn new(uid: &str, threshold: f64, chain_configs: Vec<ChainConfig>) -> Self {
-        Self {
-            uid: uid.to_string(),
-            threshold,
-            chain_configs,
-        }
+        Self { uid: uid.to_string(), threshold, chain_configs }
     }
 }
 

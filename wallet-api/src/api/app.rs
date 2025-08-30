@@ -18,59 +18,35 @@ impl crate::WalletManager {
 
     // app版本检测接口
     pub async fn check_version(&self, r#type: &str) -> ReturnType<AppVersionRes> {
-        AppService::new(self.repo_factory.resource_repo())
-            .check_version(r#type)
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).check_version(r#type).await?.into()
     }
 
     pub async fn set_currency(&self, fiat: &str) -> ReturnType<()> {
-        AppService::new(self.repo_factory.resource_repo())
-            .set_fiat(fiat)
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).set_fiat(fiat).await?.into()
     }
 
     pub async fn set_language(&self, language: &str) -> ReturnType<()> {
-        AppService::new(self.repo_factory.resource_repo())
-            .language_init(language)
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).language_init(language).await?.into()
     }
 
     pub async fn set_app_id(&self, app_id: &str) -> ReturnType<()> {
-        AppService::new(self.repo_factory.resource_repo())
-            .set_app_id(app_id)
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).set_app_id(app_id).await?.into()
     }
 
     pub async fn get_fiat(&self) -> ReturnType<GetFiatRes> {
-        AppService::new(self.repo_factory.resource_repo())
-            .get_fiat()
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).get_fiat().await?.into()
     }
 
     pub async fn get_official_website(&self) -> ReturnType<GetOfficialWebsiteRes> {
-        AppService::new(self.repo_factory.resource_repo())
-            .get_official_website()
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).get_official_website().await?.into()
     }
 
     pub async fn get_config(&self) -> ReturnType<GetConfigRes> {
-        AppService::new(self.repo_factory.resource_repo())
-            .get_config()
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).get_config().await?.into()
     }
 
     pub async fn get_unread_status(&self) -> ReturnType<crate::response_vo::app::UnreadCount> {
-        AppService::new(self.repo_factory.resource_repo())
-            .get_unread_status()
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).get_unread_status().await?.into()
     }
 
     /// Platform Energy Subsidy Switch Configuration
@@ -95,10 +71,7 @@ impl crate::WalletManager {
     }
 
     pub async fn mqtt_subscribe(&self, topics: Vec<String>, qos: Option<u8>) -> ReturnType<()> {
-        AppService::new(self.repo_factory.resource_repo())
-            .mqtt_subscribe(topics, qos)
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).mqtt_subscribe(topics, qos).await?.into()
     }
 
     pub async fn mqtt_unsubscribe(&self, topics: Vec<String>) -> ReturnType<()> {
@@ -109,17 +82,11 @@ impl crate::WalletManager {
     }
 
     pub async fn get_configs(&self) -> ReturnType<Vec<ConfigEntity>> {
-        AppService::new(self.repo_factory.resource_repo())
-            .get_configs()
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).get_configs().await?.into()
     }
 
     pub async fn set_config(&self, key: String, value: String) -> ReturnType<ConfigEntity> {
-        AppService::new(self.repo_factory.resource_repo())
-            .set_config(key, value)
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).set_config(key, value).await?.into()
     }
 
     pub async fn set_min_value_config(
@@ -154,10 +121,7 @@ impl crate::WalletManager {
 
     // 全局的msg
     pub async fn global_msg(&self) -> ReturnType<GlobalMsg> {
-        AppService::new(self.repo_factory.resource_repo())
-            .global_msg()
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).global_msg().await?.into()
     }
 
     /// 设置邀请码
@@ -169,10 +133,7 @@ impl crate::WalletManager {
     }
 
     pub async fn backend_config(&self) -> ReturnType<std::collections::HashMap<String, String>> {
-        AppService::new(self.repo_factory.resource_repo())
-            .backend_config()
-            .await?
-            .into()
+        AppService::new(self.repo_factory.resource_repo()).backend_config().await?.into()
     }
 }
 
@@ -293,9 +254,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
-        let res = wallet_manager
-            .set_invite_code(Some("43434".to_string()))
-            .await;
+        let res = wallet_manager.set_invite_code(Some("43434".to_string())).await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())

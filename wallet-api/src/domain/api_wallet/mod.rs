@@ -1,4 +1,5 @@
 pub(crate) mod account;
+pub(crate) mod collect;
 pub(crate) mod wallet;
 pub(crate) mod withdraw;
 

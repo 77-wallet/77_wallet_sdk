@@ -83,10 +83,7 @@ impl NodeDomain {
             .collect::<Vec<String>>();
         let mut backend_nodes = Vec::new();
 
-        match backend
-            .chain_rpc_list(ChainRpcListReq::new(local_chains.clone()))
-            .await
-        {
+        match backend.chain_rpc_list(ChainRpcListReq::new(local_chains.clone())).await {
             Ok(nodes) => {
                 Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
 
@@ -101,10 +98,7 @@ impl NodeDomain {
                     wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
                     &ChainRpcListReq::new(local_chains),
                 )?;
-                Tasks::new()
-                    .push(BackendApiTask::BackendApi(chain_rpc_list_req))
-                    .send()
-                    .await?;
+                Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
             }
         };
 
@@ -205,19 +199,14 @@ impl NodeDomain {
         }
 
         repo.begin_transaction().await?;
-        if let Some(backend_nodes) = backend_nodes
-            .iter()
-            .find(|node| node.chain_code == chain_code)
+        if let Some(backend_nodes) = backend_nodes.iter().find(|node| node.chain_code == chain_code)
         {
             if let Err(e) =
                 ChainRepo::set_chain_node(&pool, chain_code, &backend_nodes.node_id).await
             {
                 tracing::error!("set_chain_node error: {:?}", e);
             }
-        } else if let Some(node) = default_nodes
-            .iter()
-            .find(|node| node.chain_code == chain_code)
-        {
+        } else if let Some(node) = default_nodes.iter().find(|node| node.chain_code == chain_code) {
             if let Err(e) = ChainRepo::set_chain_node(&pool, chain_code, &node.node_id).await {
                 tracing::error!("set_chain_node error: {:?}", e);
             }
@@ -239,11 +228,7 @@ mod test {
         match reqwest::get(url).await {
             Ok(response) => {
                 let duration = start.elapsed();
-                println!(
-                    "Ping successful! Status: {}, Time: {:?}",
-                    response.status(),
-                    duration
-                );
+                println!("Ping successful! Status: {}, Time: {:?}", response.status(), duration);
             }
             Err(err) => {
                 println!("Ping failed: {:?}", err);

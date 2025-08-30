@@ -107,10 +107,7 @@ impl WalletService {
                 wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
                 &language_req,
             )?;
-            Tasks::new()
-                .push(BackendApiTask::BackendApi(language_init_task_data))
-                .send()
-                .await?;
+            Tasks::new().push(BackendApiTask::BackendApi(language_init_task_data)).send().await?;
         }
 
         Ok(())
@@ -140,10 +137,7 @@ impl WalletService {
                 wallet_transport_backend::consts::endpoint::KEYS_UPDATE_WALLET_NAME,
                 &keys_update_wallet_name,
             )?;
-            Tasks::new()
-                .push(BackendApiTask::BackendApi(keys_update_wallet_name))
-                .send()
-                .await?;
+            Tasks::new().push(BackendApiTask::BackendApi(keys_update_wallet_name)).send().await?;
         }
 
         Ok(())
@@ -240,10 +234,7 @@ impl WalletService {
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
             &address_batch_init_task_data,
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(address_init_task_data))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(address_init_task_data)).send().await?;
         Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
     }
 
@@ -293,10 +284,7 @@ impl WalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
-        tracing::debug!(
-            "Password validation took: {:?}",
-            password_validation_start.elapsed()
-        );
+        tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::Context::get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
@@ -306,16 +294,9 @@ impl WalletService {
         let dirs = crate::manager::Context::get_global_dirs()?;
 
         let master_key_start = std::time::Instant::now();
-        let wallet_tree::api::RootInfo {
-            private_key: _,
-            seed,
-            address,
-            phrase,
-        } = wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
-        tracing::debug!(
-            "Master key generation took: {:?}",
-            master_key_start.elapsed()
-        );
+        let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
+            wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
+        tracing::debug!("Master key generation took: {:?}", master_key_start.elapsed());
 
         let address = &address.to_string();
 
@@ -333,20 +314,14 @@ impl WalletService {
         let seed = seed.clone();
 
         // 检查钱包状态
-        let account_ids = self
-            .wallet_domain
-            .restart_existing_wallet(tx, address)
-            .await?;
+        let account_ids = self.wallet_domain.restart_existing_wallet(tx, address).await?;
         let storage_path = dirs.get_root_dir(address)?;
         wallet_utils::file_func::recreate_dir_all(&storage_path)?;
 
         let wallet_tree_start = std::time::Instant::now();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        tracing::debug!(
-            "Wallet tree strategy retrieval took: {:?}",
-            wallet_tree_start.elapsed()
-        );
+        tracing::debug!("Wallet tree strategy retrieval took: {:?}", wallet_tree_start.elapsed());
 
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -366,10 +341,8 @@ impl WalletService {
         tx.upsert_wallet(address, &uid, wallet_name).await?;
         let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
         let coins = CoinRepo::default_coin_list(&pool).await?;
-        let default_chain_list = default_chain_list
-            .into_iter()
-            .map(|chain| chain.chain_code)
-            .collect::<Vec<String>>();
+        let default_chain_list =
+            default_chain_list.into_iter().map(|chain| chain.chain_code).collect::<Vec<String>>();
         // tracing::info!("coins: {:?}", coins);
         let account_creation_start = std::time::Instant::now();
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -408,10 +381,8 @@ impl WalletService {
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
 
         // 波场的地址
-        let tron_address = subkeys
-            .iter()
-            .find(|s| s.chain_code == chain_code::TRON)
-            .map(|s| s.address.clone());
+        let tron_address =
+            subkeys.iter().find(|s| s.chain_code == chain_code::TRON).map(|s| s.address.clone());
 
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
@@ -420,15 +391,9 @@ impl WalletService {
             wallet_password,
             algorithm,
         )?;
-        tracing::debug!(
-            "Child keystore initialization took: {:?}",
-            child_keystore_start.elapsed()
-        );
+        tracing::debug!("Child keystore initialization took: {:?}", child_keystore_start.elapsed());
 
-        Tasks::new()
-            .push(CommonTask::QueryCoinPrice(req))
-            .send()
-            .await?;
+        Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
         tx.update_uid(Some(&uid)).await?;
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
@@ -488,9 +453,7 @@ impl WalletService {
             .await?;
 
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
-        Ok(CreateWalletRes {
-            address: address.to_string(),
-        })
+        Ok(CreateWalletRes { address: address.to_string() })
     }
 
     pub async fn get_phrase(
@@ -521,9 +484,8 @@ impl WalletService {
         let lang = wallet_core::language::Language::from_u8(language_code)
             .map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
-        let phrases = lang
-            .gen_phrase(count)
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+        let phrases =
+            lang.gen_phrase(count).map_err(|e| crate::SystemError::Service(e.to_string()))?;
 
         Ok(GeneratePhraseRes { phrases })
     }
@@ -553,11 +515,7 @@ impl WalletService {
             .map_err(|e| crate::SystemError::Service(e.to_string()))?;
         let res = phrases
             .iter()
-            .map(|phrase| {
-                wordlist_wrapper
-                    .exact_query_phrase(phrase)
-                    .unwrap_or_default()
-            })
+            .map(|phrase| wordlist_wrapper.exact_query_phrase(phrase).unwrap_or_default())
             .collect();
 
         Ok(res)
@@ -575,10 +533,7 @@ impl WalletService {
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
         } else {
-            chains
-                .iter()
-                .map(|chain| chain.chain_code.clone())
-                .collect()
+            chains.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         let chains: ChainCodeAndName = chains.into();
@@ -603,9 +558,7 @@ impl WalletService {
                     account_id,
                 )
                 .await?;
-            let mut account_list = token_currencies
-                .calculate_account_infos(list, &chains)
-                .await?;
+            let mut account_list = token_currencies.calculate_account_infos(list, &chains).await?;
             // let mut account_cal_list = std::collections::HashMap::new();
             let mut wallet_assets = BalanceInfo::new_without_amount().await?;
             for account in account_list.iter_mut() {
@@ -653,18 +606,10 @@ impl WalletService {
         AccountRepoTrait::reset(&mut tx, address).await?;
         let latest_wallet = tx.wallet_latest().await?;
 
-        let rest_uids = tx
-            .uid_list()
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect::<Vec<String>>();
+        let rest_uids = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect::<Vec<String>>();
 
-        let uid = if let Some(latest_wallet) = latest_wallet {
-            Some(latest_wallet.uid)
-        } else {
-            None
-        };
+        let uid =
+            if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
         tx.update_uid(uid.as_deref()).await?;
         let pool = crate::Context::get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
@@ -715,12 +660,7 @@ impl WalletService {
 
         let latest_wallet = tx.wallet_latest().await?;
 
-        let rest_uids = tx
-            .uid_list()
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect::<Vec<String>>();
+        let rest_uids = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect::<Vec<String>>();
 
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
@@ -771,10 +711,7 @@ impl WalletService {
         for uid in rest_uids {
             let body = RecoverDataBody::new(&uid);
 
-            Tasks::new()
-                .push(CommonTask::RecoverMultisigAccountData(body))
-                .send()
-                .await?;
+            Tasks::new().push(CommonTask::RecoverMultisigAccountData(body)).send().await?;
         }
         Ok(())
     }

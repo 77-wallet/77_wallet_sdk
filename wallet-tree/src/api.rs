@@ -34,9 +34,7 @@ impl KeystoreApi {
         password: &str,
         algorithm: KdfAlgorithm,
     ) -> Result<(), crate::Error> {
-        wallet_tree
-            .io()
-            .store_subkeys_bulk(subkeys, &subs_path, password, algorithm)?;
+        wallet_tree.io().store_subkeys_bulk(subkeys, &subs_path, password, algorithm)?;
 
         Ok(())
     }
@@ -52,11 +50,9 @@ impl KeystoreApi {
         let signingkey: &coins_bip32::ecdsa::SigningKey = master_key.as_ref();
         let pkey = signingkey.to_bytes();
 
-        let data = Box::new(
-            wallet_chain_instance::instance::eth::address::EthGenAddress::new(
-                wallet_types::chain::chain::ChainCode::Ethereum,
-            ),
-        );
+        let data = Box::new(wallet_chain_instance::instance::eth::address::EthGenAddress::new(
+            wallet_types::chain::chain::ChainCode::Ethereum,
+        ));
         let generated_address = data.generate(&pkey)?;
 
         if generated_address.ne(&address) {
@@ -81,9 +77,7 @@ impl KeystoreApi {
         password: &str,
     ) -> Result<(), crate::Error> {
         let file_name = "verify";
-        wallet_tree
-            .io()
-            .load_custom(&root_dir, file_name, password)?;
+        wallet_tree.io().load_custom(&root_dir, file_name, password)?;
         Ok(())
     }
 
@@ -129,9 +123,7 @@ impl KeystoreApi {
         subs_dir: &std::path::Path,
         password: &str,
     ) -> Result<crate::file_ops::AccountData, crate::Error> {
-        let account_data = wallet_tree
-            .io()
-            .load_account(account_index_map, &subs_dir, password)?;
+        let account_data = wallet_tree.io().load_account(account_index_map, &subs_dir, password)?;
         Ok(account_data)
     }
 
@@ -141,9 +133,7 @@ impl KeystoreApi {
         wallet_address: &str,
         password: &str,
     ) -> Result<Vec<u8>, crate::Error> {
-        let root = wallet_tree
-            .io()
-            .load_root(wallet_address, &root_dir, password)?;
+        let root = wallet_tree.io().load_root(wallet_address, &root_dir, password)?;
         Ok(root.seed().to_vec())
     }
 
@@ -153,9 +143,7 @@ impl KeystoreApi {
         wallet_address: &str,
         password: &str,
     ) -> Result<RootData, crate::Error> {
-        let root = wallet_tree
-            .io()
-            .load_root(wallet_address, &root_dir, password)?;
+        let root = wallet_tree.io().load_root(wallet_address, &root_dir, password)?;
         Ok(root)
     }
 
@@ -165,9 +153,7 @@ impl KeystoreApi {
         wallet_address: &str,
         password: &str,
     ) -> Result<String, crate::Error> {
-        let root = wallet_tree
-            .io()
-            .load_root(wallet_address, &root_dir.to_path_buf(), password)?;
+        let root = wallet_tree.io().load_root(wallet_address, &root_dir.to_path_buf(), password)?;
         Ok(root.phrase().to_string())
     }
 
@@ -212,9 +198,7 @@ impl KeystoreApi {
             );
             subkeys.push(subkey);
         }
-        wallet_tree
-            .io()
-            .delete_account(account_index_map, subs_dir)?;
+        wallet_tree.io().delete_account(account_index_map, subs_dir)?;
 
         Self::initialize_child_keystores(wallet_tree, subkeys, subs_dir, new_password, algorithm)?;
 

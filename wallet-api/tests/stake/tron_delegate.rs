@@ -27,9 +27,7 @@ async fn test_query_available_max() {
     let resource_type = "energy".to_string();
     let is_multisig = Some(false);
 
-    let res = manager
-        .get_can_delegated_max(account, resource_type, is_multisig)
-        .await;
+    let res = manager.get_can_delegated_max(account, resource_type, is_multisig).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
@@ -59,10 +57,8 @@ async fn test_delegate_fee() {
 async fn test_delegate() {
     let manager = get_manager().await;
 
-    let _sign = Signer {
-        address: "TCZYpvSt36MXdnPhhFMyqwfpoqSHrjUg2b".to_string(),
-        permission_id: 3,
-    };
+    let _sign =
+        Signer { address: "TCZYpvSt36MXdnPhhFMyqwfpoqSHrjUg2b".to_string(), permission_id: 3 };
     let sign = None;
 
     let req = DelegateReq {
@@ -82,15 +78,11 @@ async fn test_delegate() {
 
 #[tokio::test]
 async fn test_batch_delegate_fee() {
-    let rerevice1 = BatchList {
-        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        value: 100,
-    };
+    let rerevice1 =
+        BatchList { receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(), value: 100 };
 
-    let rerevice2 = BatchList {
-        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        value: 100,
-    };
+    let rerevice2 =
+        BatchList { receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(), value: 100 };
 
     let req = BatchDelegate {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
@@ -112,15 +104,11 @@ async fn test_batch_delegate_fee() {
 
 #[tokio::test]
 async fn test_batch_delegate() {
-    let rerevice1 = BatchList {
-        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        value: 50,
-    };
+    let rerevice1 =
+        BatchList { receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(), value: 50 };
 
-    let rerevice2 = BatchList {
-        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        value: 50,
-    };
+    let rerevice2 =
+        BatchList { receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(), value: 50 };
 
     let req = BatchDelegate {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
@@ -140,15 +128,11 @@ async fn test_batch_delegate() {
 
 #[tokio::test]
 async fn test_batch_un_delegate_fee() {
-    let rerevice1 = BatchList {
-        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        value: 100,
-    };
+    let rerevice1 =
+        BatchList { receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(), value: 100 };
 
-    let rerevice2 = BatchList {
-        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        value: 100,
-    };
+    let rerevice2 =
+        BatchList { receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(), value: 100 };
 
     let req = BatchUnDelegate {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
@@ -168,15 +152,11 @@ async fn test_batch_un_delegate_fee() {
 
 #[tokio::test]
 async fn test_batch_un_delegate() {
-    let rerevice1 = BatchList {
-        receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        value: 50,
-    };
+    let rerevice1 =
+        BatchList { receive_address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(), value: 50 };
 
-    let rerevice2 = BatchList {
-        receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
-        value: 50,
-    };
+    let rerevice2 =
+        BatchList { receive_address: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(), value: 50 };
 
     let req = BatchUnDelegate {
         owner_address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
@@ -211,9 +191,7 @@ async fn test_delegate_from_other() {
     let owner_address = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
 
     let typs = Some("bandwitdh".to_string());
-    let res = manager
-        .delegate_from_other(owner_address, typs, 0, 10)
-        .await;
+    let res = manager.delegate_from_other(owner_address, typs, 0, 10).await;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
 }
@@ -267,14 +245,10 @@ async fn test_min_remaining_time() {
     let resource_type = "energy".to_string();
 
     tracing::warn!("fisrt get");
-    let _res = manager
-        .min_remaining_time(from.clone(), to.clone(), resource_type.clone())
-        .await;
+    let _res = manager.min_remaining_time(from.clone(), to.clone(), resource_type.clone()).await;
 
     tracing::warn!("second get");
-    let _res = manager
-        .min_remaining_time(from.clone(), to.clone(), resource_type.clone())
-        .await;
+    let _res = manager.min_remaining_time(from.clone(), to.clone(), resource_type.clone()).await;
 
     tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
     tracing::warn!("3 get");

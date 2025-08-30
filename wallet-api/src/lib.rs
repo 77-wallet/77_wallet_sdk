@@ -11,8 +11,7 @@ pub(crate) mod infrastructure;
 pub use infrastructure::log::*;
 mod manager;
 mod messaging;
-pub use messaging::notify::FrontendNotifyEvent;
-pub use messaging::notify::event::NotifyEvent;
+pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 pub mod request;
 mod response;
 pub mod response_vo;
@@ -34,9 +33,8 @@ pub use error::{
 
 pub use config::*;
 pub use manager::{Context, Dirs, WalletManager};
-pub use request::assets::GetChain;
 pub use request::{
-    account::CreateAccountReq, app::UploadLogFileReq, devices::InitDeviceReq,
+    account::CreateAccountReq, app::UploadLogFileReq, assets::GetChain, devices::InitDeviceReq,
     wallet::CreateWalletReq,
 };
 pub use wallet_database::entities::multisig_member::MemberVo;

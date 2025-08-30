@@ -13,11 +13,7 @@ pub struct DynamicDeleteBuilder<'a> {
 
 impl<'a> DynamicDeleteBuilder<'a> {
     pub fn new(table: &str) -> Self {
-        Self {
-            table: table.to_string(),
-            where_clauses: Vec::new(),
-            arg_fns: vec![],
-        }
+        Self { table: table.to_string(), where_clauses: Vec::new(), arg_fns: vec![] }
     }
 
     pub fn and_where_eq<T>(mut self, field: &str, val: T) -> Self
@@ -25,22 +21,18 @@ impl<'a> DynamicDeleteBuilder<'a> {
         T: Clone + Send + Sync + 'a + sqlx::Encode<'a, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
     {
         self.where_clauses.push(format!("{} = ?", field));
-        self.arg_fns.push(Arc::new(
-            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(val.clone());
-            },
-        ));
+        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+            args.add(val.clone());
+        }));
         self
     }
 
     pub fn and_where_like(mut self, field: &str, keyword: &str) -> Self {
         self.where_clauses.push(format!("{} LIKE ?", field));
         let pattern = format!("%{}%", keyword);
-        self.arg_fns.push(Arc::new(
-            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(pattern.clone());
-            },
-        ));
+        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+            args.add(pattern.clone());
+        }));
         self
     }
 
@@ -51,19 +43,13 @@ impl<'a> DynamicDeleteBuilder<'a> {
         if values.is_empty() {
             return self;
         }
-        let placeholders = std::iter::repeat("?")
-            .take(values.len())
-            .collect::<Vec<_>>()
-            .join(", ");
-        self.where_clauses
-            .push(format!("{} IN ({})", field, placeholders));
+        let placeholders = std::iter::repeat("?").take(values.len()).collect::<Vec<_>>().join(", ");
+        self.where_clauses.push(format!("{} IN ({})", field, placeholders));
         for v in values {
             let s = v.to_string();
-            self.arg_fns.push(Arc::new(
-                move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                    args.add(s.clone());
-                },
-            ));
+            self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+                args.add(s.clone());
+            }));
         }
         self
     }
@@ -85,12 +71,7 @@ impl<'q> super::SqlQueryBuilder<'q> for DynamicDeleteBuilder<'q> {
             sql.push_str(" WHERE ");
             sql.push_str(&self.where_clauses.join(" AND "));
         }
-        let arg_fns = self
-            .arg_fns
-            .iter()
-            .cloned()
-            .map(|f| f as ArgFn<'q>)
-            .collect();
+        let arg_fns = self.arg_fns.iter().cloned().map(|f| f as ArgFn<'q>).collect();
         (sql, arg_fns)
     }
 }

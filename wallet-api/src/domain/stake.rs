@@ -51,21 +51,16 @@ impl StakeArgs {
             }
             Self::Withdraw(params) => chain.simple_fee(account, signature_num, params).await?,
             Self::Delegate(params) => {
-                chain
-                    .simulate_simple_fee(account, "", signature_num, params)
-                    .await?
+                chain.simulate_simple_fee(account, "", signature_num, params).await?
             }
             Self::UnDelegate(params) => {
-                chain
-                    .simulate_simple_fee(account, "", signature_num, params)
-                    .await?
+                chain.simulate_simple_fee(account, "", signature_num, params).await?
             }
             Self::BatchDelegate(mut params) => {
                 let item = params.remove(0);
 
-                let mut consumer = chain
-                    .simulate_simple_fee(account, "", signature_num, item)
-                    .await?;
+                let mut consumer =
+                    chain.simulate_simple_fee(account, "", signature_num, item).await?;
 
                 for item in params {
                     let raw_data_hex = item.simulate_raw_transaction()?;
@@ -78,9 +73,8 @@ impl StakeArgs {
             Self::BatchUnDelegate(mut params) => {
                 let item = params.remove(0);
 
-                let mut consumer = chain
-                    .simulate_simple_fee(account, "", signature_num, item)
-                    .await?;
+                let mut consumer =
+                    chain.simulate_simple_fee(account, "", signature_num, item).await?;
 
                 for item in params {
                     let raw_data_hex = item.simulate_raw_transaction()?;
@@ -214,17 +208,12 @@ impl StakeDomain {
         }
 
         // 使用迭代器计算加权总和和总投票数
-        let (weighted_sum, total_votes): (f64, f64) =
-            representatives.iter().fold((0.0, 0.0), |acc, rep| {
-                (acc.0 + rep.votes * rep.apr, acc.1 + rep.votes)
-            });
+        let (weighted_sum, total_votes): (f64, f64) = representatives
+            .iter()
+            .fold((0.0, 0.0), |acc, rep| (acc.0 + rep.votes * rep.apr, acc.1 + rep.votes));
 
         // 防止除以 0 的情况
-        if total_votes == 0.0 {
-            0.0
-        } else {
-            weighted_sum / total_votes
-        }
+        if total_votes == 0.0 { 0.0 } else { weighted_sum / total_votes }
     }
 
     // 从后端获取代表列表
@@ -246,11 +235,7 @@ impl StakeDomain {
         let res = VoteListResp {
             total: list.total_node,
             total_votes: list.total_vote_count,
-            data: list
-                .node_resp_list
-                .into_iter()
-                .map(|node| node.into())
-                .collect(),
+            data: list.node_resp_list.into_iter().map(|node| node.into()).collect(),
         };
 
         Ok(res)
@@ -301,11 +286,7 @@ impl StakeDomain {
                 apr,
             ));
         }
-        let res = VoteListResp {
-            total,
-            total_votes: total_sr_votes,
-            data,
-        };
+        let res = VoteListResp { total, total_votes: total_sr_votes, data };
         Ok(res)
     }
 }
@@ -383,10 +364,7 @@ impl EstimateTxConsumer {
         // let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
         // let value = unit::convert_to_u256("1", 6)?;
 
-        Ok(Self {
-            bandwidth: 268,
-            energy: 64285,
-        })
+        Ok(Self { bandwidth: 268, energy: 64285 })
 
         // let params =
         //     operations::transfer::ContractTransferOpt::new(&contract, from, to, value, None)?;

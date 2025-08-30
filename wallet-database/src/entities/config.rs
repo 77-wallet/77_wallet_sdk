@@ -72,9 +72,7 @@ pub struct Language {
 
 impl Language {
     pub fn new(language: &str) -> Self {
-        Self {
-            language: language.to_string(),
-        }
+        Self { language: language.to_string() }
     }
 
     pub fn to_json_str(&self) -> Result<String, crate::Error> {
@@ -140,9 +138,7 @@ pub struct VersionDownloadUrl {
 
 impl VersionDownloadUrl {
     pub fn new(url: &str) -> Self {
-        Self {
-            url: url.to_string(),
-        }
+        Self { url: url.to_string() }
     }
 
     pub fn to_json_str(&self) -> Result<String, crate::Error> {
@@ -192,9 +188,7 @@ pub struct Currency {
 
 impl Default for Currency {
     fn default() -> Self {
-        Self {
-            currency: USD.to_string(),
-        }
+        Self { currency: USD.to_string() }
     }
 }
 

@@ -40,18 +40,9 @@ async fn test_add_permission_fee() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![
-        KeysReq {
-            address: "TJkMavCTA2qd7TLzWehtMnKnxkSeaWAdcq".to_string(),
-            weight: 1,
-        },
-        KeysReq {
-            address: "TE4xhjv6dvEbYxXGjP4ntnN3viSN9Nf8Qv".to_string(),
-            weight: 116,
-        },
-        KeysReq {
-            address: "TQsWaoYYwZ4EVj9wgDG4bfdjwYYRejQsTC".to_string(),
-            weight: 14,
-        },
+        KeysReq { address: "TJkMavCTA2qd7TLzWehtMnKnxkSeaWAdcq".to_string(), weight: 1 },
+        KeysReq { address: "TE4xhjv6dvEbYxXGjP4ntnN3viSN9Nf8Qv".to_string(), weight: 116 },
+        KeysReq { address: "TQsWaoYYwZ4EVj9wgDG4bfdjwYYRejQsTC".to_string(), weight: 14 },
     ];
 
     let req = PermissionReq {
@@ -63,9 +54,7 @@ async fn test_add_permission_fee() {
         keys,
     };
 
-    let res = wallet_manager
-        .modify_permission_fee(req, "update".to_string())
-        .await;
+    let res = wallet_manager.modify_permission_fee(req, "update".to_string()).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
@@ -75,10 +64,8 @@ async fn test_add_permission_fee() {
 async fn test_add_permission() {
     let wallet_manager = get_manager().await;
 
-    let keys = vec![KeysReq {
-        address: "TLK9t3ht5GE1oYPx8pdoG1PScQdJgS7Pwb".to_string(),
-        weight: 1,
-    }];
+    let keys =
+        vec![KeysReq { address: "TLK9t3ht5GE1oYPx8pdoG1PScQdJgS7Pwb".to_string(), weight: 1 }];
 
     let req = PermissionReq {
         grantor_addr: "TQnSwWGaFkT2zjumDJkbaFi4uRAvEq4An1".to_string(),
@@ -90,9 +77,7 @@ async fn test_add_permission() {
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager
-        .modify_permission(req, "new".to_string(), password)
-        .await;
+    let res = wallet_manager.modify_permission(req, "new".to_string(), password).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
@@ -103,18 +88,9 @@ async fn test_up_permission() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![
-        KeysReq {
-            address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-            weight: 1,
-        },
-        KeysReq {
-            address: "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string(),
-            weight: 1,
-        },
-        KeysReq {
-            address: "TNcRALWJNRtM5zfLQFvbiuycue9ZcxFFjQ".to_string(),
-            weight: 1,
-        },
+        KeysReq { address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(), weight: 1 },
+        KeysReq { address: "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string(), weight: 1 },
+        KeysReq { address: "TNcRALWJNRtM5zfLQFvbiuycue9ZcxFFjQ".to_string(), weight: 1 },
     ];
 
     let req = PermissionReq {
@@ -127,9 +103,7 @@ async fn test_up_permission() {
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager
-        .modify_permission(req, "update".to_string(), password)
-        .await;
+    let res = wallet_manager.modify_permission(req, "update".to_string(), password).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
@@ -139,10 +113,8 @@ async fn test_up_permission() {
 async fn test_del_permission() {
     let wallet_manager = get_manager().await;
 
-    let keys = vec![KeysReq {
-        address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(),
-        weight: 1,
-    }];
+    let keys =
+        vec![KeysReq { address: "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string(), weight: 1 }];
 
     let req = PermissionReq {
         grantor_addr: "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string(),
@@ -154,9 +126,7 @@ async fn test_del_permission() {
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager
-        .modify_permission(req, "delete".to_string(), password)
-        .await;
+    let res = wallet_manager.modify_permission(req, "delete".to_string(), password).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap())
 }
@@ -166,14 +136,8 @@ async fn test_build_multisig_queue() {
     let wallet_manager = get_manager().await;
 
     let keys = vec![
-        KeysReq {
-            address: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(),
-            weight: 1,
-        },
-        KeysReq {
-            address: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(),
-            weight: 1,
-        },
+        KeysReq { address: "TWtoyV1B5z33PNU5BGzAMgcu2NQzctbgSv".to_string(), weight: 1 },
+        KeysReq { address: "TNAAhuax96f8j1Azy2kVayYVcBCW8y6aYo".to_string(), weight: 1 },
     ];
 
     let req = PermissionReq {
@@ -187,9 +151,8 @@ async fn test_build_multisig_queue() {
     let password = "123456".to_string();
     let expiration = 5;
 
-    let res = wallet_manager
-        .build_multisig_queue(req, "new".to_string(), password, expiration)
-        .await;
+    let res =
+        wallet_manager.build_multisig_queue(req, "new".to_string(), password, expiration).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
 }
@@ -199,9 +162,7 @@ async fn test_recover_data() {
     let _wallet_manager = get_manager().await;
 
     let uids = vec!["TL55jNbXWeM6se5fpKBQTTmH45HZ7stvW3".to_string()];
-    domain::permission::PermissionDomain::recover_permission(uids)
-        .await
-        .unwrap();
+    domain::permission::PermissionDomain::recover_permission(uids).await.unwrap();
 }
 
 #[tokio::test]

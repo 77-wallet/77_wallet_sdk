@@ -23,10 +23,7 @@ pub async fn test_signed_tran_update_hash() -> Result<(), wallet_transport_backe
         raw_data: "".to_string(),
     };
 
-    let res = backend_api
-        .signed_tran_update_trans_hash(&req)
-        .await
-        .unwrap();
+    let res = backend_api.signed_tran_update_trans_hash(&req).await.unwrap();
     tracing::info!("res  {:?}", res);
 
     Ok(())

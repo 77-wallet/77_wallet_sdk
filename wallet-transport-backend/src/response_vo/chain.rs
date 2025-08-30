@@ -37,9 +37,7 @@ pub struct ChainList {
 
 impl From<&Vec<ChainUrlInfo>> for ChainList {
     fn from(value: &Vec<ChainUrlInfo>) -> Self {
-        Self {
-            list: value.to_owned(),
-        }
+        Self { list: value.to_owned() }
     }
 }
 

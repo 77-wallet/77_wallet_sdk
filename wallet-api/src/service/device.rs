@@ -1,9 +1,10 @@
 use crate::domain::app::config::ConfigDomain;
-use wallet_database::entities::config::config_key::APP_VERSION;
-use wallet_database::repositories::device::DeviceRepo;
 use wallet_database::{
-    entities::device::{CreateDeviceEntity, DeviceEntity},
-    repositories::device::DeviceRepoTrait,
+    entities::{
+        config::config_key::APP_VERSION,
+        device::{CreateDeviceEntity, DeviceEntity},
+    },
+    repositories::device::{DeviceRepo, DeviceRepoTrait},
 };
 use wallet_transport_backend::{consts::endpoint, request::DeviceInitReq};
 // pub const APP_ID: &str = "bc7f694ee0a9488cada7d9308190fe45";
@@ -48,15 +49,11 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
                 body: wallet_utils::serde_func::serde_to_value(&task_req)?,
             };
 
-            Tasks::new()
-                .push(BackendApiTask::BackendApi(task_data))
-                .send()
-                .await?;
+            Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
         }
 
-        let app_version = wallet_database::entities::config::AppVersion {
-            app_version: req.app_version,
-        };
+        let app_version =
+            wallet_database::entities::config::AppVersion { app_version: req.app_version };
         ConfigDomain::set_config(APP_VERSION, &app_version.to_json_str()?).await?;
 
         Ok(None)
@@ -77,10 +74,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
             }),
         };
 
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(task_data))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(task_data)).send().await?;
         Ok(())
     }
 }

@@ -99,10 +99,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
             //     .await?;
 
             // 是否有相同的队列
-            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
-                .await?
-                .is_none()
-            {
+            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?.is_none() {
                 let event = serde_func::serde_to_string(&payload.biz_type)?;
                 if let Err(e) = exec_payload(payload).await {
                     tracing::error!("exec_payload error: {}", e);
@@ -177,9 +174,10 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         }
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
-            return Err(crate::ServiceError::System(
-                crate::SystemError::MessageWrong(biztype, payload.body),
-            ));
+            return Err(crate::ServiceError::System(crate::SystemError::MessageWrong(
+                biztype,
+                payload.body,
+            )));
         }
     }
 
@@ -231,12 +229,7 @@ async fn exec_incoming_connack(
             client_id,
         };
         client
-            .publish(
-                Topic::Switch,
-                rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
-                false,
-                body.to_vec()?,
-            )
+            .publish(Topic::Switch, rumqttc::v5::mqttbytes::QoS::AtLeastOnce, false, body.to_vec()?)
             .await?;
     }
 
@@ -302,11 +295,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -364,11 +353,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -426,11 +411,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -489,11 +470,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -551,11 +528,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -613,11 +586,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -673,11 +642,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -733,11 +698,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -792,11 +753,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -854,11 +811,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -916,11 +869,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -978,11 +927,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -1037,11 +982,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -1084,11 +1025,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }

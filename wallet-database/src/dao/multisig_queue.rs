@@ -63,10 +63,8 @@ impl MultisigQueueDaoV1 {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"select * from multisig_queue where id = ?"#;
-        let res = sqlx::query_as::<_, MultisigQueueEntity>(sql)
-            .bind(id)
-            .fetch_optional(pool)
-            .await?;
+        let res =
+            sqlx::query_as::<_, MultisigQueueEntity>(sql).bind(id).fetch_optional(pool).await?;
         Ok(res)
     }
 
@@ -298,12 +296,8 @@ impl MultisigQueueDaoV1 {
     {
         let sql = r#"update multisig_queue set status = ?,tx_hash = ? where id = ?"#;
 
-        let _res = sqlx::query(sql)
-            .bind(status.to_i8())
-            .bind(tx_hash)
-            .bind(id)
-            .execute(exec)
-            .await?;
+        let _res =
+            sqlx::query(sql).bind(status.to_i8()).bind(tx_hash).bind(id).execute(exec).await?;
 
         Ok(())
     }
@@ -316,9 +310,7 @@ impl MultisigQueueDaoV1 {
     {
         let sql = r#"select * from multisig_queue order by created_at desc limit 1"#;
 
-        let row = sqlx::query_as::<_, MultisigQueueEntity>(sql)
-            .fetch_optional(exec)
-            .await?;
+        let row = sqlx::query_as::<_, MultisigQueueEntity>(sql).fetch_optional(exec).await?;
 
         Ok(row)
     }
@@ -331,10 +323,7 @@ impl MultisigQueueDaoV1 {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "UPDATE multisig_queue SET is_del = 1 WHERE account_id = $1 RETURNING *";
-        let rows = sqlx::query_as::<_, MultisigQueueEntity>(sql)
-            .bind(id)
-            .fetch_all(exec)
-            .await?;
+        let rows = sqlx::query_as::<_, MultisigQueueEntity>(sql).bind(id).fetch_all(exec).await?;
 
         Ok(rows)
     }
@@ -347,10 +336,7 @@ impl MultisigQueueDaoV1 {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "DELETE FROM multisig_queue WHERE account_id = $1 RETURNING *";
-        let rows = sqlx::query_as::<_, MultisigQueueEntity>(sql)
-            .bind(id)
-            .fetch_all(exec)
-            .await?;
+        let rows = sqlx::query_as::<_, MultisigQueueEntity>(sql).bind(id).fetch_all(exec).await?;
         Ok(rows)
     }
 
@@ -390,15 +376,10 @@ impl MultisigQueueDaoV1 {
             "DELETE FROM multisig_queue RETURNING *".to_string()
         } else {
             let ids = crate::any_in_collection(ids, "','");
-            format!(
-                "DELETE FROM multisig_queue WHERE account_id IN ('{}') RETURNING *",
-                ids
-            )
+            format!("DELETE FROM multisig_queue WHERE account_id IN ('{}') RETURNING *", ids)
         };
 
-        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigQueueEntity>(&sql)
-            .fetch_all(exec)
-            .await?)
+        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigQueueEntity>(&sql).fetch_all(exec).await?)
     }
 
     pub async fn ongoing_queue<'a, E>(

@@ -25,9 +25,7 @@ impl PermissionRepo {
 
         PermissionUserDao::batch_add(users, tx.as_mut()).await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -56,9 +54,7 @@ impl PermissionRepo {
         //  新增成员
         PermissionUserDao::batch_add(users, tx.as_mut()).await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -83,9 +79,7 @@ impl PermissionRepo {
         // 批量新增
         PermissionUserDao::batch_add(users, tx.as_mut()).await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -140,10 +134,7 @@ impl PermissionRepo {
             let users =
                 PermissionUserDao::find_by_permission(&permission.id, pool.as_ref()).await?;
 
-            result.push(PermissionWithUserEntity {
-                permission,
-                user: users,
-            });
+            result.push(PermissionWithUserEntity { permission, user: users });
         }
         Ok(result)
     }
@@ -177,9 +168,7 @@ impl PermissionRepo {
         // delete all users
         PermissionUserDao::delete_by_grantor_addr(grantor_addr, tx.as_mut()).await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -196,9 +185,7 @@ impl PermissionRepo {
         // delete all users
         PermissionUserDao::delete_by_permission(id, tx.as_mut()).await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -215,9 +202,7 @@ impl PermissionRepo {
         // 删除成员
         PermissionUserDao::delete_by_permission(id, tx.as_mut()).await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }

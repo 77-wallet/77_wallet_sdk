@@ -1,19 +1,21 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
-use crate::domain::app::config::ConfigDomain;
-use crate::infrastructure::task_queue::task::TaskTrait;
-use crate::infrastructure::task_queue::task::task_type::TaskType;
+use crate::{
+    domain::app::config::ConfigDomain,
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
+};
 
 use dashmap::DashSet;
 use dispatcher::{Dispatcher, PriorityTask, TaskSender};
 use rand::Rng as _;
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use wallet_database::entities::task_queue::TaskQueueEntity;
-use wallet_database::repositories::device::DeviceRepo;
-use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
-use wallet_transport_backend::consts::endpoint::SEND_MSG_CONFIRM;
-use wallet_transport_backend::request::ClientTaskLogUploadReq;
+use std::{collections::BTreeMap, sync::Arc};
+use wallet_database::{
+    entities::task_queue::TaskQueueEntity,
+    repositories::{device::DeviceRepo, task_queue::TaskQueueRepoTrait},
+};
+use wallet_transport_backend::{
+    consts::endpoint::SEND_MSG_CONFIRM, request::ClientTaskLogUploadReq,
+};
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
@@ -46,8 +48,7 @@ impl TaskManager {
 
         let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        repo.delete_tasks_with_request_body_like(SEND_MSG_CONFIRM)
-            .await?;
+        repo.delete_tasks_with_request_body_like(SEND_MSG_CONFIRM).await?;
 
         tokio::spawn(async move {
             Self::task_check(running_tasks).await;
@@ -93,10 +94,7 @@ impl TaskManager {
         for task_entity in failed_queue.into_iter() {
             if !running_tasks.contains(&task_entity.id) {
                 let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {
-                    tracing::error!(
-                        "task queue entity convert to task error: {}",
-                        task_entity.id
-                    );
+                    tracing::error!("task queue entity convert to task error: {}", task_entity.id);
                     repo.delete_task(&task_entity.id).await?;
                     continue;
                 };
@@ -107,10 +105,7 @@ impl TaskManager {
         }
 
         for (priority, tasks) in grouped_tasks {
-            if let Err(e) = manager
-                .get_task_sender()
-                .send(PriorityTask { priority, tasks })
-            {
+            if let Err(e) = manager.get_task_sender().send(PriorityTask { priority, tasks }) {
                 tracing::error!("send task queue error: {}", e);
             }
         }

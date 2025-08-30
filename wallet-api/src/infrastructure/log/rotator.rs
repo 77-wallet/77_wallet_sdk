@@ -19,20 +19,12 @@ impl SizeRotatingWriter {
 
     pub fn new(base_path: PathBuf) -> Result<Self, crate::SystemError> {
         let file = Self::create_file(base_path.clone())?;
-        Ok(Self {
-            inner: Arc::new(Mutex::new(InnerWriter {
-                base_path,
-                current_file: file,
-            })),
-        })
+        Ok(Self { inner: Arc::new(Mutex::new(InnerWriter { base_path, current_file: file })) })
     }
 
     pub fn create_file(base_path: PathBuf) -> io::Result<File> {
         let file_existed = base_path.exists();
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&base_path)?;
+        let mut file = OpenOptions::new().create(true).append(true).open(&base_path)?;
 
         // 如果是新文件或者空文件，写入时间戳
         if !file_existed {

@@ -31,15 +31,11 @@ impl OrderMultiSignCancel {
             ?self,
             "Starting to process OrderMultiSignCancel"
         );
-        let OrderMultiSignCancel {
-            multisig_account_id,
-        } = self;
+        let OrderMultiSignCancel { multisig_account_id } = self;
 
         let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool)
             .await?
-            .ok_or(crate::ServiceError::Business(
-                crate::MultisigAccountError::NotFound.into(),
-            ))?;
+            .ok_or(crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into()))?;
 
         // check
         MultisigAccountDaoV1::delete_in_status(multisig_account_id, &*pool)

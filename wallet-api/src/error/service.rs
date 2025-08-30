@@ -30,11 +30,7 @@ pub enum ServiceError {
     #[error("parameter error: {0}")]
     Parameter(String),
     #[error("aggregator code: {agg_code} error: {msg}")]
-    AggregatorError {
-        code: i32,
-        agg_code: i32,
-        msg: String,
-    },
+    AggregatorError { code: i32, agg_code: i32, msg: String },
 }
 
 impl ServiceError {

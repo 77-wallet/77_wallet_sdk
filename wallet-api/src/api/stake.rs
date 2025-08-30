@@ -30,11 +30,7 @@ impl crate::WalletManager {
         bill_kind: i64,
         content: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        StackService::new()
-            .await?
-            .estimate_stake_fee(bill_kind, content)
-            .await?
-            .into()
+        StackService::new().await?.estimate_stake_fee(bill_kind, content).await?.into()
     }
 
     // freeze balance
@@ -43,11 +39,7 @@ impl crate::WalletManager {
         req: FreezeBalanceReq,
         password: String,
     ) -> ReturnType<FreezeResp> {
-        StackService::new()
-            .await?
-            .freeze_balance(req, &password)
-            .await?
-            .into()
+        StackService::new().await?.freeze_balance(req, &password).await?.into()
     }
 
     // un freeze balance
@@ -56,28 +48,16 @@ impl crate::WalletManager {
         req: UnFreezeBalanceReq,
         password: String,
     ) -> ReturnType<FreezeResp> {
-        StackService::new()
-            .await?
-            .un_freeze_balance(req, &password)
-            .await?
-            .into()
+        StackService::new().await?.un_freeze_balance(req, &password).await?.into()
     }
 
     // freeze list
     pub async fn freeze_list(&self, owner_address: String) -> ReturnType<Vec<FreezeListResp>> {
-        StackService::new()
-            .await?
-            .freeze_list(&owner_address)
-            .await?
-            .into()
+        StackService::new().await?.freeze_list(&owner_address).await?.into()
     }
 
     pub async fn un_freeze_list(&self, owner_address: String) -> ReturnType<Vec<UnfreezeListResp>> {
-        StackService::new()
-            .await?
-            .un_freeze_list(&owner_address)
-            .await?
-            .into()
+        StackService::new().await?.un_freeze_list(&owner_address).await?.into()
     }
 
     pub async fn cancel_all_unfreeze(
@@ -85,11 +65,7 @@ impl crate::WalletManager {
         req: CancelAllUnFreezeReq,
         password: String,
     ) -> ReturnType<CancelAllUnFreezeResp> {
-        StackService::new()
-            .await?
-            .cancel_all_unfreeze(req, password)
-            .await
-            .into()
+        StackService::new().await?.cancel_all_unfreeze(req, password).await.into()
     }
 
     /// Withdraws any unfrozen balances for the given owner address.
@@ -98,11 +74,7 @@ impl crate::WalletManager {
         req: WithdrawBalanceReq,
         password: String,
     ) -> ReturnType<WithdrawUnfreezeResp> {
-        StackService::new()
-            .await?
-            .withdraw_unfreeze(req, password)
-            .await?
-            .into()
+        StackService::new().await?.withdraw_unfreeze(req, password).await?.into()
     }
 
     pub async fn request_resource(
@@ -118,27 +90,15 @@ impl crate::WalletManager {
     }
 
     pub async fn address_exists(&self, accounts: Vec<String>) -> ReturnType<Vec<AddressExists>> {
-        StackService::new()
-            .await?
-            .account_exists(accounts)
-            .await?
-            .into()
+        StackService::new().await?.account_exists(accounts).await?.into()
     }
 
     pub async fn system_resource(&self, account: String) -> ReturnType<SystemEnergyResp> {
-        StackService::new()
-            .await?
-            .system_resource(account)
-            .await?
-            .into()
+        StackService::new().await?.system_resource(account).await?.into()
     }
 
     pub async fn request_energy(&self, account: String, energy: i64) -> ReturnType<String> {
-        StackService::new()
-            .await?
-            .request_energy(account, energy)
-            .await?
-            .into()
+        StackService::new().await?.request_energy(account, energy).await?.into()
     }
 
     // ************************************************ delegate *********************************************************
@@ -161,11 +121,7 @@ impl crate::WalletManager {
         to: Vec<String>,
         resource_type: String,
     ) -> ReturnType<DelegateRemaingTime> {
-        StackService::new()
-            .await?
-            .min_remiaing_time(from, to, resource_type)
-            .await?
-            .into()
+        StackService::new().await?.min_remiaing_time(from, to, resource_type).await?.into()
     }
 
     pub async fn delegate_resource(
@@ -173,11 +129,7 @@ impl crate::WalletManager {
         req: DelegateReq,
         password: String,
     ) -> ReturnType<DelegateResp> {
-        StackService::new()
-            .await?
-            .delegate_resource(req, &password)
-            .await?
-            .into()
+        StackService::new().await?.delegate_resource(req, &password).await?.into()
     }
 
     pub async fn batch_delegate(
@@ -185,11 +137,7 @@ impl crate::WalletManager {
         req: BatchDelegate,
         password: String,
     ) -> ReturnType<BatchDelegateResp> {
-        StackService::new()
-            .await?
-            .batch_delegate(req, password)
-            .await?
-            .into()
+        StackService::new().await?.batch_delegate(req, password).await?.into()
     }
 
     // 回收资源
@@ -198,11 +146,7 @@ impl crate::WalletManager {
         req: UnDelegateReq,
         password: String,
     ) -> ReturnType<DelegateResp> {
-        StackService::new()
-            .await?
-            .un_delegate_resource(req, password)
-            .await?
-            .into()
+        StackService::new().await?.un_delegate_resource(req, password).await?.into()
     }
 
     pub async fn batch_un_deleate(
@@ -210,11 +154,7 @@ impl crate::WalletManager {
         req: BatchUnDelegate,
         password: String,
     ) -> ReturnType<BatchDelegateResp> {
-        StackService::new()
-            .await?
-            .batch_un_delegate(req, password)
-            .await?
-            .into()
+        StackService::new().await?.batch_un_delegate(req, password).await?.into()
     }
 
     pub async fn delegate_to_other(
@@ -247,11 +187,7 @@ impl crate::WalletManager {
 
     // ************************************************ vote *********************************************************
     pub async fn votes(&self, req: VoteWitnessReq, password: &str) -> ReturnType<String> {
-        StackService::new()
-            .await?
-            .votes(req, password)
-            .await?
-            .into()
+        StackService::new().await?.votes(req, password).await?.into()
     }
 
     pub async fn voter_info(&self, owner: &str) -> ReturnType<response_vo::stake::VoterInfoResp> {
@@ -262,11 +198,7 @@ impl crate::WalletManager {
         &self,
         owner_address: Option<&str>,
     ) -> ReturnType<response_vo::stake::VoteListResp> {
-        StackService::new()
-            .await?
-            .vote_list(owner_address)
-            .await?
-            .into()
+        StackService::new().await?.vote_list(owner_address).await?.into()
     }
 
     pub async fn top_witness(&self) -> ReturnType<Option<response_vo::stake::Witness>> {
@@ -278,11 +210,7 @@ impl crate::WalletManager {
         req: WithdrawBalanceReq,
         password: &str,
     ) -> ReturnType<String> {
-        StackService::new()
-            .await?
-            .votes_claim_rewards(req, password)
-            .await?
-            .into()
+        StackService::new().await?.votes_claim_rewards(req, password).await?.into()
     }
 
     // ************************************************ multisig  *********************************************************
@@ -317,18 +245,11 @@ mod tests {
         let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
         let vote_witness_req = VoteWitnessReq::new(
             owner_address,
-            vec![VotesReq::new(
-                "TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX",
-                1,
-                "helo",
-            )],
+            vec![VotesReq::new("TA4pHhHgobzSGH3CWPsZ5URNk3QkzUEggX", 1, "helo")],
             None,
         ); // You may need to import this struct
         let password = "123456"; // Replace with the actual password
-        tracing::warn!(
-            "{:#?}",
-            wallet_utils::serde_func::serde_to_string(&vote_witness_req)
-        );
+        tracing::warn!("{:#?}", wallet_utils::serde_func::serde_to_string(&vote_witness_req));
         let res = wallet_manager.votes(vote_witness_req, password).await;
         println!("{:#?}", res);
         let res = wallet_utils::serde_func::serde_to_string(&res);

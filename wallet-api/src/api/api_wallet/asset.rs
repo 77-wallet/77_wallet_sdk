@@ -1,0 +1,42 @@
+use crate::{api::ReturnType, service::api_wallet::asset::ApiAssetsService};
+
+impl crate::WalletManager {
+    // 根据钱包去同步资产
+    pub async fn sync_api_assets_by_wallet(
+        &self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        symbol: Vec<String>,
+    ) -> ReturnType<()> {
+        let res = ApiAssetsService::new(self.repo_factory.resource_repo())
+            .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
+            .await;
+
+        if let Err(e) = res {
+            tracing::error!("sync_assets error: {}", e);
+        }
+
+        ().into()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::test::env::get_manager;
+
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_sync_api_assets_by_wallet() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let wallet_address = "0x418Ea813dd2d9AA21597912b62a10465FCe48033";
+        let index = None;
+
+        let res = wallet_manager.sync_api_assets_by_wallet(wallet_address, index, vec![]).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+}

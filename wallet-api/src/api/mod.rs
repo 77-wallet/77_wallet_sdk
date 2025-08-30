@@ -66,15 +66,11 @@ impl super::WalletManager {
     // }
 
     pub async fn process_jpush_message(&self, message: &str) -> ReturnType<()> {
-        crate::service::jpush::JPushService::jpush(message)
-            .await
-            .into()
+        crate::service::jpush::JPushService::jpush(message).await.into()
     }
 
     pub async fn init(&self, req: crate::InitDeviceReq) -> ReturnType<()> {
-        DeviceService::new(self.repo_factory.resource_repo())
-            .init_device(req)
-            .await?;
+        DeviceService::new(self.repo_factory.resource_repo()).init_device(req).await?;
         self.init_data().await.into()
     }
 

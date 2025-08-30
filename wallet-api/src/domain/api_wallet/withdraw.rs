@@ -1,15 +1,15 @@
 use crate::{
+    ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent,
     domain::{
         api_wallet::{
             account::ApiAccountDomain,
-            adapter_factory::{ApiChainAdapterFactory, API_ADAPTER_FACTORY},
+            adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
         },
         chain::TransferResp,
         coin::CoinDomain,
-    }, messaging::notify::api_wallet::WithdrawFront, request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq}, ApiWalletError,
-    BusinessError,
-    FrontendNotifyEvent,
-    NotifyEvent,
+    },
+    messaging::notify::api_wallet::WithdrawFront,
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;

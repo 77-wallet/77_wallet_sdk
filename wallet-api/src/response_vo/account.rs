@@ -109,10 +109,7 @@ pub struct TrxResource {
 
 impl TrxResource {
     pub fn new(amount: i64, price: f64) -> Self {
-        Self {
-            amount,
-            value: (amount as f64 * price * 100.0).round() / 100.0,
-        }
+        Self { amount, value: (amount as f64 * price * 100.0).round() / 100.0 }
     }
 }
 
@@ -192,12 +189,7 @@ where
 impl BalanceInfo {
     pub fn new(amount: f64, unit_price: Option<f64>, currency: &str) -> Self {
         let fiat_value = unit_price.map(|price| amount * price);
-        Self {
-            amount,
-            currency: currency.to_string(),
-            unit_price,
-            fiat_value,
-        }
+        Self { amount, currency: currency.to_string(), unit_price, fiat_value }
     }
 
     pub async fn new_without_amount() -> Result<BalanceInfo, crate::ServiceError> {
@@ -262,13 +254,11 @@ impl BalanceNotTruncate {
     ) -> Result<Self, crate::ServiceError> {
         let fiat_decimal = unit_price.map(|p| amount * p);
 
-        let unit_price_f64 = unit_price
-            .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
-            .transpose()?;
+        let unit_price_f64 =
+            unit_price.map(|p| wallet_utils::conversion::decimal_to_f64(&p)).transpose()?;
 
-        let fiat_value_f64 = fiat_decimal
-            .map(|v| wallet_utils::conversion::decimal_to_f64(&v))
-            .transpose()?;
+        let fiat_value_f64 =
+            fiat_decimal.map(|v| wallet_utils::conversion::decimal_to_f64(&v)).transpose()?;
 
         Ok(Self {
             amount,
@@ -361,10 +351,7 @@ impl DerivedAddressesList {
     }
 
     pub fn with_mapping_account(&mut self, account_id: u32, account_name: String) -> &mut Self {
-        self.mapping_account = Some(MappingAccount {
-            account_id,
-            account_name,
-        });
+        self.mapping_account = Some(MappingAccount { account_id, account_name });
         self
     }
 
@@ -434,11 +421,7 @@ mod tests {
         let json = serde_json::to_string(&balance).unwrap();
         println!("json: {}", json);
 
-        assert!(
-            json.contains("\"amount\":\"19.9\""),
-            "序列化结果不包含正确的金额: {}",
-            json
-        );
+        assert!(json.contains("\"amount\":\"19.9\""), "序列化结果不包含正确的金额: {}", json);
     }
 
     #[test]
@@ -448,11 +431,7 @@ mod tests {
         let json = serde_json::to_string(&balance).unwrap();
         println!("json: {}", json);
 
-        assert!(
-            json.contains("\"amount\":\"1\""),
-            "序列化结果不包含正确的金额: {}",
-            json
-        );
+        assert!(json.contains("\"amount\":\"1\""), "序列化结果不包含正确的金额: {}", json);
     }
 }
 

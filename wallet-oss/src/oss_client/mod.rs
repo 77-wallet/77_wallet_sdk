@@ -42,14 +42,9 @@ impl OssClient {
         // let oss_path = format!("/logs/{}", file_name);
         let oss_path = format!("logs/{}", dst_file_name);
         // let oss_path = format!("./");
-        tracing::warn!(
-            "[upload_local_file] oss_path: {}, file_path: {}",
-            oss_path,
-            src_file_path
-        );
+        tracing::warn!("[upload_local_file] oss_path: {}, file_path: {}", oss_path, src_file_path);
 
-        oss.put_object_from_file(oss_path, src_file_path.to_string(), builder)
-            .await?;
+        oss.put_object_from_file(oss_path, src_file_path.to_string(), builder).await?;
         tracing::warn!("upload_local_file success");
         Ok(())
     }
@@ -130,10 +125,7 @@ mod tests {
         // let _file_name = "sdk:2025-02-21 07:47:16.txt";
         let _file_name = "sdk:2025-03-27 09:35:47.txt";
         let result = oss_client.get_object(_file_name).await.unwrap();
-        println!(
-            "file content: {}",
-            String::from_utf8_lossy(result.as_slice())
-        );
+        println!("file content: {}", String::from_utf8_lossy(result.as_slice()));
     }
 
     #[tokio::test]

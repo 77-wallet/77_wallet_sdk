@@ -44,10 +44,7 @@ impl Oss {
             let status = response.status();
             let result = response.text().await?;
             debug!("oss log: get object status: {} error: {}", status, result);
-            Err(OssError::Err(format!(
-                "get object status: {} error: {}",
-                status, result
-            )))
+            Err(OssError::Err(format!("get object status: {} error: {}", status, result)))
         }
     }
 
@@ -140,10 +137,7 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        println!(
-            "oss log: put object from file: {} headers: {:?}",
-            url, headers
-        );
+        println!("oss log: put object from file: {} headers: {:?}", url, headers);
         let client = reqwest::Client::new();
         let response = client.put(url).headers(headers).body(buffer).send().await?;
         if response.status().is_success() {
@@ -152,10 +146,7 @@ impl Oss {
             let status = response.status();
             let result = response.text().await?;
             debug!("oss log: get object status: {} error: {}", status, result);
-            Err(OssError::Err(format!(
-                "get object status: {} error: {}",
-                status, result
-            )))
+            Err(OssError::Err(format!("get object status: {} error: {}", status, result)))
         }
     }
 
@@ -183,27 +174,16 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        debug!(
-            "oss log: put object from file: {} headers: {:?}",
-            url, headers
-        );
+        debug!("oss log: put object from file: {} headers: {:?}", url, headers);
         let client = reqwest::Client::new();
-        let response = client
-            .put(url)
-            .headers(headers)
-            .body(buffer.to_owned())
-            .send()
-            .await?;
+        let response = client.put(url).headers(headers).body(buffer.to_owned()).send().await?;
         if response.status().is_success() {
             Ok(())
         } else {
             let status = response.status();
             let result = response.text().await?;
             debug!("oss log: get object status: {} error: {}", status, result);
-            Err(OssError::Err(format!(
-                "get object status: {} error: {}",
-                status, result
-            )))
+            Err(OssError::Err(format!("get object status: {} error: {}", status, result)))
         }
     }
 
@@ -229,10 +209,7 @@ impl Oss {
         let (url, headers) = self
             .build_request(key.as_str(), build)
             .map_err(|e| OssError::Err(format!("build request error: {}", e)))?;
-        debug!(
-            "oss log: put object from file: {} headers: {:?}",
-            url, headers
-        );
+        debug!("oss log: put object from file: {} headers: {:?}", url, headers);
         let client = reqwest::Client::new();
         let response = client.delete(url).headers(headers).send().await?;
         if response.status().is_success() {
@@ -241,10 +218,7 @@ impl Oss {
             let status = response.status();
             let result = response.text().await?;
             debug!("oss log: get object status: {} error: {}", status, result);
-            Err(OssError::Err(format!(
-                "get object status: {} error: {}",
-                status, result
-            )))
+            Err(OssError::Err(format!("get object status: {} error: {}", status, result)))
         }
     }
 
@@ -280,10 +254,7 @@ impl Oss {
             let status = response.status();
             let result = response.text().await?;
             debug!("get object status: {} error: {}", status, result);
-            Err(OssError::Err(format!(
-                "get object status: {} error: {}",
-                status, result
-            )))
+            Err(OssError::Err(format!("get object status: {} error: {}", status, result)))
         }
     }
 }

@@ -21,10 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 创建钱包
     if false {
-        let _wallet = wallet_manager
-            .create_wallet(test_params.create_wallet_req)
-            .await
-            .result;
+        let _wallet = wallet_manager.create_wallet(test_params.create_wallet_req).await.result;
     }
 
     while let Some(_data) = rx.next().await {
@@ -40,7 +37,5 @@ async fn _log_report() {
         std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(client_id);
 
     let dirs = Dirs::new(&storage_dir.to_string_lossy()).unwrap();
-    WalletManager::init_log(None, "66a7577a2b2f3b0130375e6f", &dirs, "9528")
-        .await
-        .unwrap();
+    WalletManager::init_log(None, "66a7577a2b2f3b0130375e6f", &dirs, "9528").await.unwrap();
 }

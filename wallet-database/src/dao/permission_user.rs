@@ -110,11 +110,7 @@ impl PermissionUserDao {
         let sql =
             r#"update permission_user set is_self = 0 where grantor_addr = ? and address = ?"#;
 
-        sqlx::query(sql)
-            .bind(grantor_addr)
-            .bind(address)
-            .execute(exec)
-            .await?;
+        sqlx::query(sql).bind(grantor_addr).bind(address).execute(exec).await?;
 
         Ok(())
     }

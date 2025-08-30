@@ -43,10 +43,7 @@ impl MultisigMemberEntities {
         let mut owners: Vec<AddressPubkey> = self
             .0
             .iter()
-            .map(|e| AddressPubkey {
-                address: e.address.clone(),
-                pubkey: e.pubkey.clone(),
-            })
+            .map(|e| AddressPubkey { address: e.address.clone(), pubkey: e.pubkey.clone() })
             .collect();
         owners.sort_by(|a, b| a.address.cmp(&b.address));
         owners
@@ -134,12 +131,6 @@ pub struct MemberVo {
 
 impl MemberVo {
     pub fn new(name: String, address: String) -> Self {
-        Self {
-            name,
-            address,
-            pubkey: "".to_string(),
-            uid: "".to_string(),
-            confirmed: 0,
-        }
+        Self { name, address, pubkey: "".to_string(), uid: "".to_string(), confirmed: 0 }
     }
 }

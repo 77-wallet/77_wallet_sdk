@@ -1,14 +1,10 @@
 use crate::request::transaction::Signer;
 
-use super::account::BalanceInfo;
-use super::account::BalanceNotTruncate;
-use super::account::default_unit_price_as_zero;
+use super::account::{BalanceInfo, BalanceNotTruncate, default_unit_price_as_zero};
 use alloy::primitives::U256;
-use wallet_chain_interact::eth::FeeSetting;
-use wallet_chain_interact::{eth, tron};
-use wallet_database::entities::bill::BillKind;
+use wallet_chain_interact::{eth, eth::FeeSetting, tron};
 use wallet_database::entities::{
-    bill::BillEntity,
+    bill::{BillEntity, BillKind},
     multisig_queue::{MemberSignedResult, MultisigQueueStatus, NewMultisigQueueEntity},
 };
 use wallet_transport_backend::response_vo::{chain::GasOracle, coin::TokenCurrency};
@@ -97,11 +93,7 @@ pub struct EstimateFeeResp {
 }
 impl EstimateFeeResp {
     pub fn new(symbol: String, chain_code: String, content: String) -> Self {
-        Self {
-            symbol,
-            chain_code,
-            content,
-        }
+        Self { symbol, chain_code, content }
     }
 }
 
@@ -133,10 +125,7 @@ impl FeeDetails<EthereumFeeDetails> {
             };
             res.push(fee_structure);
         }
-        FeeDetailsVo {
-            default: "propose".to_string(),
-            data: res,
-        }
+        FeeDetailsVo { default: "propose".to_string(), data: res }
     }
 }
 
@@ -274,12 +263,7 @@ impl EthereumFeeDetails {
         priority_fee: String,
         max_fee_per_gas: String,
     ) -> Self {
-        Self {
-            gas_limit,
-            base_fee,
-            priority_fee,
-            max_fee_per_gas,
-        }
+        Self { gas_limit, base_fee, priority_fee, max_fee_per_gas }
     }
 }
 impl From<FeeSetting> for EthereumFeeDetails {
@@ -316,11 +300,7 @@ impl TronFeeDetails {
         let fee = BalanceInfo::new(amount, token_currency.get_price(currency), currency);
 
         let (energy, energy_limit, energy_price) = if let Some(energy) = consumer.energy {
-            (
-                energy.consumer,
-                energy.limit,
-                energy.price as f64 / tron::consts::TRX_TO_SUN as f64,
-            )
+            (energy.consumer, energy.limit, energy.price as f64 / tron::consts::TRX_TO_SUN as f64)
         } else {
             (0, 0, 0.0)
         };
@@ -362,13 +342,10 @@ impl CommonFeeDetails {
 
         let unit_pice = token_currency.get_price(currency);
 
-        let unit_price = unit_pice
-            .map(|p| wallet_utils::conversion::decimal_from_f64(p))
-            .transpose()?;
+        let unit_price =
+            unit_pice.map(|p| wallet_utils::conversion::decimal_from_f64(p)).transpose()?;
 
-        Ok(Self {
-            estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)?,
-        })
+        Ok(Self { estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)? })
     }
 
     pub fn to_json_str(&self) -> Result<String, crate::ServiceError> {

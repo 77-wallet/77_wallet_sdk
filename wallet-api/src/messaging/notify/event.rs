@@ -13,13 +13,12 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
-use crate::messaging::notify::api_wallet::WithdrawNoPassFront;
 use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
         api_wallet::{AddressUseMsg, UnbindUidMsg},
     },
-    notify::api_wallet::WithdrawFront,
+    notify::api_wallet::{CollectFeeNotEnoughFront, WithdrawFront, WithdrawNoPassFront},
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -69,6 +68,7 @@ pub enum NotifyEvent {
     AddressUse(AddressUseMsg),
     Withdraw(WithdrawFront),
     WithdrawNoPass(WithdrawNoPassFront),
+    CollectFeeNotEnough(CollectFeeNotEnoughFront),
 }
 
 impl NotifyEvent {
@@ -117,6 +117,7 @@ impl NotifyEvent {
             NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
             NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
             NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),
+            NotifyEvent::CollectFeeNotEnough(_) => "COLLECT_FEE_NOT_ENOUGH".to_string(),
         }
     }
 }

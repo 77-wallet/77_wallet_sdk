@@ -157,9 +157,7 @@ impl BackendApi {
     ) -> Result<TokenPopularByPages, crate::Error> {
         let endpoint = "token/swapTokenList";
 
-        let token = self
-            .post_request::<_, TokenPopularByPages>(endpoint, &req)
-            .await?;
+        let token = self.post_request::<_, TokenPopularByPages>(endpoint, &req).await?;
 
         Ok(token)
     }
@@ -173,9 +171,7 @@ impl BackendApi {
         let req = json!({
             "chainTokenAddrMap":coin
         });
-        let market_value = self
-            .post_request::<_, CoinMarketValue>(endpoint, &req)
-            .await?;
+        let market_value = self.post_request::<_, CoinMarketValue>(endpoint, &req).await?;
         Ok(market_value)
     }
 }

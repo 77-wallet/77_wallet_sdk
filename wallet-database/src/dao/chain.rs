@@ -120,10 +120,7 @@ impl ChainEntity {
                   updated_at = excluded.updated_at",
         );
         let query = query_builder.build();
-        query
-            .execute(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        query.execute(executor).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(())
     }
 
@@ -237,10 +234,7 @@ impl ChainEntity {
         if let Some(status) = status {
             query = query.bind(status);
         }
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn list_with_node_info<'a, E>(exec: E) -> Result<Vec<ChainWithNode>, crate::Error>

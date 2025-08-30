@@ -34,10 +34,7 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
-        tracing::debug!(
-            "Password validation took: {:?}",
-            password_validation_start.elapsed()
-        );
+        tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::Context::get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
@@ -45,12 +42,8 @@ impl ApiWalletService {
         };
 
         let master_key_start = std::time::Instant::now();
-        let wallet_tree::api::RootInfo {
-            private_key: _,
-            seed,
-            address,
-            phrase,
-        } = wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
+        let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
+            wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
         let address = &address.to_string();
 
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
@@ -60,10 +53,7 @@ impl ApiWalletService {
             .into());
         }
 
-        tracing::debug!(
-            "Master key generation took: {:?}",
-            master_key_start.elapsed()
-        );
+        tracing::debug!("Master key generation took: {:?}", master_key_start.elapsed());
 
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
@@ -223,10 +213,7 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
-        tracing::debug!(
-            "Password validation took: {:?}",
-            password_validation_start.elapsed()
-        );
+        tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::Context::get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
@@ -236,12 +223,8 @@ impl ApiWalletService {
         let dirs = crate::manager::Context::get_global_dirs()?;
 
         let master_key_start = std::time::Instant::now();
-        let wallet_tree::api::RootInfo {
-            private_key: _,
-            seed,
-            address,
-            phrase,
-        } = wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
+        let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
+            wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
         let address = &address.to_string();
 
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
@@ -251,10 +234,7 @@ impl ApiWalletService {
             .into());
         }
 
-        tracing::debug!(
-            "Master key generation took: {:?}",
-            master_key_start.elapsed()
-        );
+        tracing::debug!("Master key generation took: {:?}", master_key_start.elapsed());
 
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
@@ -291,9 +271,7 @@ impl ApiWalletService {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         ApiWalletRepo::update_merchant_id(
             &pool,
             &api_wallet.address,

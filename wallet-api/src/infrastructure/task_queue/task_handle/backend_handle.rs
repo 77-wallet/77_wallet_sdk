@@ -110,9 +110,7 @@ impl EndpointHandler for DefaultHandler {
         //     );
         // }
         // 实现具体的处理逻辑
-        let _res = backend
-            .post_req_str::<serde_json::Value>(endpoint, &body)
-            .await?;
+        let _res = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
         Ok(())
     }
 }
@@ -154,7 +152,7 @@ impl EndpointHandler for SpecialHandler {
                     && let Some(false) = status.status
                 {
                     return Err(
-                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into(),
+                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into()
                     );
                 }
 
@@ -180,13 +178,13 @@ impl EndpointHandler for SpecialHandler {
                 let pool = crate::Context::get_global_sqlite_pool()?;
                 let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
                     return Err(
-                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
+                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into()
                     );
                 };
 
                 if device.is_init != 1 {
                     return Err(
-                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into(),
+                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into()
                     );
                 }
 
@@ -213,7 +211,7 @@ impl EndpointHandler for SpecialHandler {
                     && let Some(false) = status.status
                 {
                     return Err(
-                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into(),
+                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into()
                     );
                 }
 
@@ -227,8 +225,7 @@ impl EndpointHandler for SpecialHandler {
                         Some(wallet) => {
                             if wallet.is_init == 1 {
                                 use wallet_database::repositories::account::AccountRepoTrait as _;
-                                repo.account_init(&address.address, &address.chain_code)
-                                    .await?;
+                                repo.account_init(&address.address, &address.chain_code).await?;
                                 continue;
                             } else {
                                 return Err(crate::BusinessError::Wallet(
@@ -270,9 +267,8 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value(body.clone())?;
                 match req.key.as_str() {
                     "OFFICIAL:WEBSITE" => {
-                        let res = backend
-                            .post_req_str::<FindConfigByKeyRes>(endpoint, &body)
-                            .await?;
+                        let res =
+                            backend.post_req_str::<FindConfigByKeyRes>(endpoint, &body).await?;
                         ConfigDomain::set_official_website(res.value).await?;
                     }
                     _ => {
@@ -340,9 +336,7 @@ impl EndpointHandler for SpecialHandler {
             _ => {
                 // 未知的 endpoint
                 tracing::warn!("unknown endpoint: {}", endpoint);
-                Err(crate::ServiceError::System(
-                    crate::SystemError::BackendEndpointNotFound,
-                ))?;
+                Err(crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound))?;
             }
         }
 

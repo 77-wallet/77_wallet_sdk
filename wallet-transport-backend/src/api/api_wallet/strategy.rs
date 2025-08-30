@@ -16,12 +16,8 @@ impl BackendApi {
         &self,
         req: &Strategy,
     ) -> Result<Option<()>, crate::Error> {
-        let res = self
-            .client
-            .post(TRANS_SERVICE_FEE_TRANS)
-            .json(req)
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post(TRANS_SERVICE_FEE_TRANS).json(req).send::<BackendResponse>().await?;
 
         res.process(&self.aes_cbc_cryptor)
     }

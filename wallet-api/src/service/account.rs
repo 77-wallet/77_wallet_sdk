@@ -36,10 +36,7 @@ pub struct AccountService {
 
 impl AccountService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            wallet_domain: WalletDomain::new(),
-        }
+        Self { repo, wallet_domain: WalletDomain::new() }
     }
 
     pub(crate) async fn switch_account(
@@ -131,35 +128,26 @@ impl AccountService {
 
         // 如果有指定派生路径，就获取该链的所有chain_code
         let chains: Vec<String> = if let Some(hd_path) = &hd_path {
-            hd_path
-                .get_chain_codes()?
-                .0
-                .into_iter()
-                .map(|path| path.to_string())
-                .collect()
+            hd_path.get_chain_codes()?.0.into_iter().map(|path| path.to_string()).collect()
         }
         // 或者使用默认链的链码
         else {
-            default_chain_list
-                .iter()
-                .map(|chain| chain.chain_code.clone())
-                .collect()
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         // 获取该账户的最大索引，并加一
         let account_index_map = if let Some(index) = index {
             let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
             if tx.has_account_id(&wallet.address, index.account_id).await? {
-                return Err(crate::ServiceError::Business(
-                    crate::BusinessError::Account(crate::AccountError::AlreadyExist),
-                ));
+                return Err(crate::ServiceError::Business(crate::BusinessError::Account(
+                    crate::AccountError::AlreadyExist,
+                )));
             };
             index
         } else if let Some(hd_path) = hd_path {
             wallet_utils::address::AccountIndexMap::from_index(hd_path.get_account_id()?)?
-        } else if let Some(max_account) = tx
-            .account_detail_by_max_id_and_wallet_address(&wallet.address)
-            .await?
+        } else if let Some(max_account) =
+            tx.account_detail_by_max_id_and_wallet_address(&wallet.address).await?
         {
             wallet_utils::address::AccountIndexMap::from_account_id(max_account.account_id + 1)?
         } else {
@@ -192,10 +180,8 @@ impl AccountService {
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
 
-        let tron_address = subkeys
-            .iter()
-            .find(|s| s.chain_code == chain_code::TRON)
-            .map(|s| s.address.clone());
+        let tron_address =
+            subkeys.iter().find(|s| s.chain_code == chain_code::TRON).map(|s| s.address.clone());
 
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
@@ -289,19 +275,11 @@ impl AccountService {
 
         // 获取默认链和币
         let chains = if !all {
-            vec![
-                "btc".to_string(),
-                "eth".to_string(),
-                "tron".to_string(),
-                "sol".to_string(),
-            ]
+            vec!["btc".to_string(), "eth".to_string(), "tron".to_string(), "sol".to_string()]
         } else {
             let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
             // 如果有指定派生路径，就获取该链的所有chain_code
-            default_chain_list
-                .iter()
-                .map(|chain| chain.chain_code.clone())
-                .collect()
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         let mut res = Vec::new();
@@ -332,9 +310,8 @@ impl AccountService {
 
                 match code {
                     ChainCode::Solana | ChainCode::Sui | ChainCode::Ton => {
-                        let account = tx
-                            .detail_by_address_and_chain_code(&address, &node.chain_code)
-                            .await?;
+                        let account =
+                            tx.detail_by_address_and_chain_code(&address, &node.chain_code).await?;
                         if let Some(account) = account {
                             derived_address.with_mapping_account(account.account_id, account.name);
                         };
@@ -371,8 +348,7 @@ impl AccountService {
     ) -> Result<(), crate::ServiceError> {
         // let mut tx = self.repo.begin_transaction().await?;
         let mut tx = self.repo;
-        tx.edit_account_name(account_id, wallet_address, name)
-            .await?;
+        tx.edit_account_name(account_id, wallet_address, name).await?;
 
         // tx.commit_transaction().await?;
         let Some(wallet) = tx.wallet_detail_by_address(wallet_address).await? else {
@@ -387,10 +363,7 @@ impl AccountService {
             wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
             &req,
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(req))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
 
         Ok(())
     }
@@ -436,10 +409,7 @@ impl AccountService {
             }
         }
 
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(device_unbind_address_task))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
         let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -569,9 +539,8 @@ impl AccountService {
                     &account.chain_code,
                     account.address_type(),
                 )?;
-                if let Some(chain) = chains
-                    .iter()
-                    .find(|chain| chain.chain_code == account.chain_code)
+                if let Some(chain) =
+                    chains.iter().find(|chain| chain.chain_code == account.chain_code)
                 {
                     let data = crate::response_vo::account::GetAccountPrivateKey {
                         chain_code: account.chain_code,

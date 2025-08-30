@@ -16,19 +16,12 @@ impl MqttDomain {
 
         let app_version = super::config::ConfigDomain::get_app_version().await?;
 
-        let property = UserProperty::new(
-            content,
-            client_id,
-            &device.sn,
-            password,
-            &app_version.app_version,
-        );
+        let property =
+            UserProperty::new(content, client_id, &device.sn, password, &app_version.app_version);
 
         let url = ConfigDomain::get_mqtt_uri()
             .await?
-            .ok_or(crate::ServiceError::System(
-                crate::SystemError::MqttClientNotInit,
-            ))?;
+            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
         init_mqtt_processor(property, url).await?;
 
         Ok(())

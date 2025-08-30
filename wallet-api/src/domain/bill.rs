@@ -75,11 +75,8 @@ impl BillDomain {
             return Ok(());
         }
 
-        let status = if item.status {
-            BillStatus::Success.to_i8()
-        } else {
-            BillStatus::Failed.to_i8()
-        };
+        let status =
+            if item.status { BillStatus::Success.to_i8() } else { BillStatus::Failed.to_i8() };
 
         let transaction_fee = item.transaction_fee();
 
@@ -127,9 +124,7 @@ impl BillDomain {
         // let start_time = None;
 
         let backend = crate::manager::Context::get_global_backend_api()?;
-        let resp = backend
-            .record_lists(chain_code, address, start_time)
-            .await?;
+        let resp = backend.record_lists(chain_code, address, start_time).await?;
 
         for item in resp.list {
             if let Err(e) = BillDomain::handle_sync_bill(item).await {
@@ -186,11 +181,7 @@ impl BillDomain {
         }
 
         // Check multisig account if regular account not found
-        let condition = vec![
-            ("address", address),
-            ("chain_code", chain_code),
-            ("is_del", "0"),
-        ];
+        let condition = vec![("address", address), ("chain_code", chain_code), ("is_del", "0")];
         let account = MultisigAccountDaoV1::find_by_conditions(condition, pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;
@@ -202,9 +193,7 @@ impl BillDomain {
                     let crate_time = account.created_at + std::time::Duration::from_secs(86400 * 5);
                     if bill.transaction_time > crate_time {
                         return Ok(Some(
-                            bill.transaction_time
-                                .format("%Y-%m-%d %H:%M:%S")
-                                .to_string(),
+                            bill.transaction_time.format("%Y-%m-%d %H:%M:%S").to_string(),
                         ));
                     }
                 }

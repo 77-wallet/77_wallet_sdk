@@ -42,11 +42,7 @@ pub struct MultisigAccountBase {
 
 impl From<MultisigAccountEntity> for MultisigAccountBase {
     fn from(entity: MultisigAccountEntity) -> Self {
-        MultisigAccountBase {
-            id: entity.id,
-            address: entity.address,
-            status: None,
-        }
+        MultisigAccountBase { id: entity.id, address: entity.address, status: None }
     }
 }
 

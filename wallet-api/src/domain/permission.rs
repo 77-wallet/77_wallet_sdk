@@ -37,10 +37,7 @@ impl PermissionDomain {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
         for address in addresses {
-            let req = GetPermissionBackReq {
-                address: Some(address),
-                uid: None,
-            };
+            let req = GetPermissionBackReq { address: Some(address), uid: None };
             let result = backend.get_permission_backup(req).await?;
 
             for item in result.list {
@@ -101,9 +98,7 @@ impl PermissionDomain {
             }
         }
 
-        Err(crate::BusinessError::Permission(
-            crate::PermissionError::ActivesPermissionNotFound,
-        ))?
+        Err(crate::BusinessError::Permission(crate::PermissionError::ActivesPermissionNotFound))?
     }
 
     pub async fn del_add_update(
@@ -152,11 +147,7 @@ impl PermissionDomain {
 
         // 有当前地址的标记为is_self == 0
         permissions.iter_mut().for_each(|permission| {
-            permission
-                .user
-                .iter_mut()
-                .filter(|u| u.address == address)
-                .for_each(|u| u.is_self = 0)
+            permission.user.iter_mut().filter(|u| u.address == address).for_each(|u| u.is_self = 0)
         });
 
         // 2. handel permission

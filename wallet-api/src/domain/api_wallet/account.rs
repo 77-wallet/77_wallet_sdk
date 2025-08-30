@@ -5,12 +5,15 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::{api_account::CreateApiAccountVo, api_wallet::ApiWalletType, chain::ChainEntity},
+    entities::{
+        api_account::{ApiAccountEntity, CreateApiAccountVo},
+        api_wallet::ApiWalletType,
+        chain::ChainEntity,
+    },
     repositories::{api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::request::AddressInitReq;
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
-use wallet_database::entities::api_account::ApiAccountEntity;
 
 pub(crate) struct ApiAccountDomain {}
 

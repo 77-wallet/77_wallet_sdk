@@ -36,34 +36,20 @@ impl crate::WalletManager {
     ) -> ReturnType<wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>>
     {
         CoinService::new(self.repo_factory.resource_repo())
-            .get_hot_coin_list(
-                address,
-                None,
-                chain_code,
-                keyword,
-                Some(true),
-                page,
-                page_size,
-            )
+            .get_hot_coin_list(address, None, chain_code, keyword, Some(true), page, page_size)
             .await?
             .into()
     }
 
     pub async fn pull_hot_coins(&self) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resource_repo())
-            .pull_hot_coins()
-            .await?
-            .into()
+        CoinService::new(self.repo_factory.resource_repo()).pull_hot_coins().await?.into()
     }
 
     pub async fn get_token_price(
         &self,
         symbols: Vec<String>,
     ) -> ReturnType<Vec<TokenPriceChangeRes>> {
-        CoinService::new(self.repo_factory.resource_repo())
-            .get_token_price(symbols)
-            .await?
-            .into()
+        CoinService::new(self.repo_factory.resource_repo()).get_token_price(symbols).await?.into()
     }
 
     pub async fn query_token_info(
@@ -105,14 +91,7 @@ impl crate::WalletManager {
         protocol: Option<String>,
     ) -> ReturnType<()> {
         CoinService::new(self.repo_factory.resource_repo())
-            .customize_coin(
-                address,
-                None,
-                chain_code,
-                token_address.to_string(),
-                protocol,
-                true,
-            )
+            .customize_coin(address, None, chain_code, token_address.to_string(), protocol, true)
             .await?
             .into()
     }
@@ -121,20 +100,14 @@ impl crate::WalletManager {
         &self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> ReturnType<TokenHistoryPrices> {
-        CoinService::new(self.repo_factory.resource_repo())
-            .query_history_price(req)
-            .await?
-            .into()
+        CoinService::new(self.repo_factory.resource_repo()).query_history_price(req).await?.into()
     }
 
     pub async fn coin_market_value(
         &self,
         req: std::collections::HashMap<String, String>,
     ) -> ReturnType<CoinMarketValue> {
-        CoinService::new(self.repo_factory.resource_repo())
-            .market_value(req)
-            .await?
-            .into()
+        CoinService::new(self.repo_factory.resource_repo()).market_value(req).await?.into()
     }
 
     pub async fn query_popular_by_page(
@@ -158,10 +131,7 @@ impl crate::WalletManager {
             page_size,
         };
 
-        CoinService::new(self.repo_factory.resource_repo())
-            .query_popular_by_page(req)
-            .await?
-            .into()
+        CoinService::new(self.repo_factory.resource_repo()).query_popular_by_page(req).await?.into()
     }
 }
 
@@ -183,9 +153,8 @@ mod test {
         // let chain_code = Some("btc");
         let chain_code = None;
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-        let res = wallet_manager
-            .get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000)
-            .await;
+        let res =
+            wallet_manager.get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000).await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
@@ -260,9 +229,7 @@ mod test {
         // let chain_code = "tron";
         // let token_address = "TTFreuJ4pYDaCeEMEtiR1GQDwPPrS4jKFk";
 
-        let res = wallet_manager
-            .query_token_info(chain_code, token_address)
-            .await;
+        let res = wallet_manager.query_token_info(chain_code, token_address).await;
         tracing::info!("res: {res:?}");
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

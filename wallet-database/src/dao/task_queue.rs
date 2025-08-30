@@ -36,10 +36,7 @@ impl TaskQueueEntity {
 
         let query = query_builder.build_query_as::<TaskQueueEntity>();
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn upsert<'a, E>(exec: E, req: CreateTaskQueueEntity) -> Result<(), crate::Error>
@@ -182,11 +179,7 @@ impl TaskQueueEntity {
             query = query.bind(typ);
         }
 
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_task_queue<'a, E>(exec: E, id: &str) -> Result<Option<Self>, crate::Error>
@@ -210,10 +203,7 @@ impl TaskQueueEntity {
         E: Executor<'a, Database = Sqlite> + 'a,
     {
         let builder = DynamicQueryBuilder::new("SELECT * FROM task_queue");
-        builder
-            .and_where_like("request_body", keyword)
-            .fetch_all(exec)
-            .await
+        builder.and_where_like("request_body", keyword).fetch_all(exec).await
     }
 
     pub async fn delete_tasks_with_request_body_like<'a, E>(

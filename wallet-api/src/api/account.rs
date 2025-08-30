@@ -1,8 +1,8 @@
-use crate::api::ReturnType;
-use crate::response_vo::account::{
-    CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath,
+use crate::{
+    api::ReturnType,
+    response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
+    service::account::AccountService,
 };
-use crate::service::account::AccountService;
 use wallet_database::entities::account::AccountEntity;
 
 impl crate::WalletManager {
@@ -36,20 +36,14 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        AccountService::new(repo)
-            .edit_account_name(account_id, wallet_address, name)
-            .await?
-            .into()
+        AccountService::new(repo).edit_account_name(account_id, wallet_address, name).await?.into()
     }
 
     #[allow(dead_code)]
     pub(crate) async fn account_detail(&self, address: &str) -> ReturnType<Option<AccountEntity>> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        AccountService::new(repo)
-            .account_details(address)
-            .await?
-            .into()
+        AccountService::new(repo).account_details(address).await?.into()
     }
 
     pub async fn get_account_list(
@@ -60,10 +54,7 @@ impl crate::WalletManager {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AccountService::new(repo)
-            .get_account_list(wallet_address, account_id)
-            .await?
-            .into()
+        AccountService::new(repo).get_account_list(wallet_address, account_id).await?.into()
     }
 
     pub async fn get_account_derivation_path(
@@ -74,10 +65,7 @@ impl crate::WalletManager {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AccountService::new(repo)
-            .get_account_derivation_path(wallet_address, index)
-            .await?
-            .into()
+        AccountService::new(repo).get_account_derivation_path(wallet_address, index).await?.into()
     }
 
     pub async fn list_derived_addresses(
@@ -102,9 +90,7 @@ impl crate::WalletManager {
         account_id: u32,
         chain_code: String,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
-        AccountService::current_chain_address(uid, account_id, &chain_code)
-            .await?
-            .into()
+        AccountService::current_chain_address(uid, account_id, &chain_code).await?.into()
     }
 
     pub async fn current_account(
@@ -115,10 +101,7 @@ impl crate::WalletManager {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AccountService::new(repo)
-            .current_accounts(&wallet_address, account_id)
-            .await?
-            .into()
+        AccountService::new(repo).current_accounts(&wallet_address, account_id).await?.into()
     }
 
     // /// Recovers a subkey associated with a given wallet name and address.
@@ -164,10 +147,7 @@ impl crate::WalletManager {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AccountService::new(repo)
-            .set_all_password(old_password, new_password)
-            .await?
-            .into()
+        AccountService::new(repo).set_all_password(old_password, new_password).await?.into()
     }
 
     pub async fn physical_delete_account(
@@ -196,9 +176,8 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
-        let account = wallet_manager
-            .switch_account("0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F", 2)
-            .await;
+        let account =
+            wallet_manager.switch_account("0x8E5424c1347d27B6816eba3AEE7FbCeDFa229C1F", 2).await;
         tracing::info!("[test_switch_account] account: {account:?}");
         let res = serde_json::to_string(&account).unwrap();
         tracing::info!("[test_switch_account] account: {res:?}");
@@ -211,9 +190,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
-        let account = wallet_manager
-            .account_detail("TLzteCJi4jSGor5EDRYZcdQ4hsZRQQZ4XR")
-            .await;
+        let account = wallet_manager.account_detail("TLzteCJi4jSGor5EDRYZcdQ4hsZRQQZ4XR").await;
         tracing::info!("[test_account_detail] account: {account:?}");
 
         let res = serde_json::to_string(&account).unwrap();
@@ -237,9 +214,7 @@ mod test {
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let password = &test_params.create_wallet_req.wallet_password;
         // let password = "new_passwd";
-        let account = wallet_manager
-            .get_account_private_key(password, wallet_address, 1)
-            .await;
+        let account = wallet_manager.get_account_private_key(password, wallet_address, 1).await;
         tracing::info!("[get_account_private_key] account: {account:?}");
 
         let res = serde_json::to_string(&account).unwrap();
@@ -255,15 +230,9 @@ mod test {
         let (wallet_manager, test_params) = get_manager().await?;
 
         let address = test_params.create_account_req.wallet_address.clone();
-        let account = wallet_manager
-            .create_account(test_params.create_account_req)
-            .await
-            .message;
+        let account = wallet_manager.create_account(test_params.create_account_req).await.message;
         tracing::info!("[test_] account: {account:?}");
-        let list = wallet_manager
-            .get_account_list(Some(&address), None)
-            .await
-            .result;
+        let list = wallet_manager.get_account_list(Some(&address), None).await.result;
         tracing::info!("[test_create_account] list: {list:?}");
 
         Ok(())
@@ -276,9 +245,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-        let account = wallet_manager
-            .get_account_derivation_path(wallet_address, 2147483648)
-            .await;
+        let account = wallet_manager.get_account_derivation_path(wallet_address, 2147483648).await;
         tracing::info!("[get_account_derivation_path] get_account_derivation_path: {account:?}");
         let res = serde_json::to_string(&account).unwrap();
         tracing::info!("[get_account_derivation_path] get_account_derivation_path: {res:?}");
@@ -315,9 +282,8 @@ mod test {
         let account_id = 1;
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let password = &_test_params.create_wallet_req.wallet_password;
-        let account = wallet_manager
-            .physical_delete_account(wallet_address, account_id, password)
-            .await;
+        let account =
+            wallet_manager.physical_delete_account(wallet_address, account_id, password).await;
         tracing::info!("[test_] test_physical_delete_account: {account:?}");
 
         Ok(())
@@ -330,9 +296,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-        let account = wallet_manager
-            .edit_account_name(1, wallet_address, "new_account")
-            .await;
+        let account = wallet_manager.edit_account_name(1, wallet_address, "new_account").await;
         tracing::info!("[test_] account: {account:?}");
         let res = serde_json::to_string(&account).unwrap();
         tracing::info!("[test_edit_account_name] account: {res:?}");
@@ -348,9 +312,7 @@ mod test {
 
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account_id = 1;
-        let account = wallet_manager
-            .get_account_list(Some(wallet_address), Some(account_id))
-            .await;
+        let account = wallet_manager.get_account_list(Some(wallet_address), Some(account_id)).await;
         let res = serde_json::to_string(&account).unwrap();
         tracing::info!("[test_] account: {res:?}");
 

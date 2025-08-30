@@ -213,10 +213,7 @@ impl TokenCurrencies {
         }
 
         for assets in data {
-            if let Some(chain) = chains
-                .iter()
-                .find(|chain| chain.chain_code == assets.chain_code)
-            {
+            if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
                 let balance = self
                     .calculate_to_balance(
                         &assets.balance,
@@ -281,9 +278,7 @@ impl TokenCurrencies {
         Ok(BalanceInfo {
             amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
             currency: currency.to_string(),
-            unit_price: price
-                .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
-                .transpose()?,
+            unit_price: price.map(|p| wallet_utils::conversion::decimal_to_f64(&p)).transpose()?,
             fiat_value: fiat_balance
                 .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
                 .transpose()?,
@@ -371,12 +366,8 @@ impl TokenCurrencies {
         //     .chain_list
         //     .insert(data.chain_code, data.token_address);
 
-        let BalanceInfo {
-            amount,
-            currency: _,
-            unit_price: _,
-            fiat_value,
-        } = &mut existing_asset.balance;
+        let BalanceInfo { amount, currency: _, unit_price: _, fiat_value } =
+            &mut existing_asset.balance;
 
         let after_balance = *amount + balance_f;
         *amount = after_balance;
@@ -416,9 +407,8 @@ impl TokenCurrencies {
             let address_type =
                 AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
 
-            if let Some(info) = account_list
-                .iter_mut()
-                .find(|info| info.account_id == account.account_id)
+            if let Some(info) =
+                account_list.iter_mut().find(|info| info.account_id == account.account_id)
             {
                 let name = chains.get(&account.chain_code);
                 info.chain.push(crate::response_vo::wallet::ChainInfo {
@@ -465,10 +455,7 @@ pub struct TokenPriceChangeRes {
     // 链码
     pub chain_code: String,
     // 代币编码
-    #[serde(
-        rename = "code",
-        deserialize_with = "wallet_utils::serde_func::deserialize_uppercase"
-    )]
+    #[serde(rename = "code", deserialize_with = "wallet_utils::serde_func::deserialize_uppercase")]
     pub symbol: String,
     // 默认代币
     pub default_token: Option<bool>,

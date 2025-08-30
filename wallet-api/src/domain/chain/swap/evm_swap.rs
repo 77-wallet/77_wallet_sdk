@@ -130,9 +130,7 @@ impl TryFrom<(&SwapParams, ChainCode)> for dexSwap1Call {
                 sub_routes.push(sub_route);
             }
 
-            router_param.push(DexRouterParam1 {
-                subDexRouters: sub_routes,
-            });
+            router_param.push(DexRouterParam1 { subDexRouters: sub_routes });
         }
 
         Ok(dexSwap1Call {

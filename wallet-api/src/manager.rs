@@ -1,25 +1,24 @@
-use crate::domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory};
-use crate::infrastructure::SharedCache;
-use crate::infrastructure::inner_event::InnerEventHandle;
-use crate::infrastructure::process_unconfirm_msg::{
-    UnconfirmedMsgCollector, UnconfirmedMsgProcessor,
+use crate::{
+    domain,
+    domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
+    infrastructure,
+    infrastructure::{
+        SharedCache,
+        inner_event::InnerEventHandle,
+        process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
+        task_queue::{
+            BackendApiTask, BackendApiTaskData, InitializationTask, task::Tasks,
+            task_manager::TaskManager,
+        },
+    },
+    messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
+    service::node::NodeService,
 };
-use crate::infrastructure::task_queue::task::Tasks;
-use crate::infrastructure::task_queue::task_manager::TaskManager;
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, InitializationTask};
-use crate::messaging::mqtt::subscribed::Topics;
-use crate::messaging::notify::FrontendNotifyEvent;
-use crate::service::node::NodeService;
-use crate::{domain, infrastructure};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tokio::sync::mpsc::UnboundedSender;
-use wallet_database::SqliteContext;
-use wallet_database::factory::RepositoryFactory;
-use wallet_database::repositories::device::DeviceRepo;
-use crate::infrastructure::process_withdraw_tx::{ProcessWithdrawTxHandle};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tokio::sync::{RwLock, mpsc::UnboundedSender};
+use wallet_database::{
+    SqliteContext, factory::RepositoryFactory, repositories::device::DeviceRepo,
+};
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
@@ -330,10 +329,6 @@ impl Context {
     pub(crate) fn get_global_unconfirmed_msg_processor()
     -> Result<&'static UnconfirmedMsgProcessor, crate::SystemError> {
         Ok(&Context::get_context()?.unconfirmed_msg_processor)
-    }
-
-    pub(crate) fn get_global_process_withdraw_tx() ->Result<Arc<ProcessWithdrawTxHandle>, crate::ServiceError> {
-        Ok(Context::get_context()?.process_withdraw_tx_handle.clone())
     }
 }
 

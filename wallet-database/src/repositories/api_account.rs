@@ -1,6 +1,6 @@
-use crate::dao::api_account::ApiAccountDao;
 use crate::{
     DbPool,
+    dao::api_account::ApiAccountDao,
     entities::{
         api_account::{ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
@@ -146,9 +146,22 @@ impl ApiAccountRepo {
         chain_code: &str,
         exec: &DbPool,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(
-            ApiAccountDao::find_one_by_address_chain_code(address, chain_code, exec.as_ref())
-                .await?,
+        Ok(ApiAccountDao::find_one_by_address_chain_code(address, chain_code, exec.as_ref())
+            .await?)
+    }
+
+    pub async fn list_by_wallet_address(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::lists_by_wallet_address(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
         )
+        .await?)
     }
 }

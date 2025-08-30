@@ -1,6 +1,4 @@
 use crate::manager::Context;
-use std::time::Duration;
-use tokio::time;
 
 // pub async fn periodic_log_report(interval: Duration) {
 //     tokio::spawn(async move {
@@ -27,9 +25,7 @@ pub async fn upload_log_file() -> Result<(), crate::ServiceError> {
 
     let timestamp = sqlx::types::chrono::Utc::now();
     let dst_file_name = format!("sdk:{}.txt", timestamp.format("%Y-%m-%d %H:%M:%S"));
-    oss_client
-        .upload_local_file(&src_file_path, &dst_file_name)
-        .await?;
+    oss_client.upload_local_file(&src_file_path, &dst_file_name).await?;
 
     let backup_file_path = format!("{log_dir}/{dst_file_name}");
     wallet_utils::file_func::copy_file(&src_file_path, &backup_file_path)?;

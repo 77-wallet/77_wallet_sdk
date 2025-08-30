@@ -2,8 +2,7 @@ use crate::{
     debug,
     oss_client::oss::{Api as _, OSSInfo as _},
 };
-use base64::Engine;
-use base64::engine::general_purpose;
+use base64::{Engine, engine::general_purpose};
 use hmac::{Hmac, Mac};
 use reqwest::header::DATE;
 
@@ -17,23 +16,14 @@ pub trait AuthAPI {
 
 impl AuthAPI for Oss {
     fn sign<S: AsRef<str>>(&self, key: S, build: &RequestBuilder) -> String {
-        let date = build
-            .headers
-            .get(&DATE.to_string())
-            .expect("Date header is required");
-        let mut oss_headers = build
-            .oss_headers
-            .iter()
-            .map(|(k, v)| (k.to_lowercase(), v))
-            .collect::<Vec<_>>();
+        let date = build.headers.get(&DATE.to_string()).expect("Date header is required");
+        let mut oss_headers =
+            build.oss_headers.iter().map(|(k, v)| (k.to_lowercase(), v)).collect::<Vec<_>>();
 
         oss_headers.sort_by(|a, b| a.0.cmp(&b.0));
 
-        let mut canonicalized_oss_headers = oss_headers
-            .iter()
-            .map(|(k, v)| format!("{}:{}", k, v))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let mut canonicalized_oss_headers =
+            oss_headers.iter().map(|(k, v)| format!("{}:{}", k, v)).collect::<Vec<_>>().join("\n");
 
         if oss_headers.len() == 1 {
             canonicalized_oss_headers = format!("{}\n", canonicalized_oss_headers);

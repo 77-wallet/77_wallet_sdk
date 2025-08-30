@@ -6,11 +6,7 @@ use sqlx::{Executor, Sqlite};
 
 impl AssetsEntity {
     pub fn token_address(&self) -> Option<String> {
-        if self.token_address.is_empty() {
-            None
-        } else {
-            Some(self.token_address.clone())
-        }
+        if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) }
     }
 }
 
@@ -143,10 +139,7 @@ impl AssetsEntity {
         }
 
         // 执行查询并返回结果
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub(crate) async fn get_assets_by_address<'a, E>(
@@ -242,10 +235,7 @@ impl AssetsEntity {
             query = query.bind(token_address);
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_chain_assets_by_address_chain_code_symbol<'a, E>(
@@ -307,10 +297,7 @@ impl AssetsEntity {
             query = query.bind(sym);
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     // 获取资产
@@ -465,15 +452,8 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let CreateAssetsVo {
-            assets_id,
-            name,
-            decimals,
-            protocol,
-            status,
-            is_multisig,
-            balance,
-        } = assets;
+        let CreateAssetsVo { assets_id, name, decimals, protocol, status, is_multisig, balance } =
+            assets;
 
         let token_address = assets_id.token_address.unwrap_or_default();
         let protocol = protocol.unwrap_or_default();
@@ -666,11 +646,7 @@ impl AssetsEntity {
         if assets_ids.is_empty() {
             return Ok(());
         }
-        let placeholders = assets_ids
-            .iter()
-            .map(|_| "(?, ?, ?, ?)")
-            .collect::<Vec<_>>()
-            .join(", ");
+        let placeholders = assets_ids.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
 
         // 构建 SQL 查询
         let sql = format!(
@@ -694,11 +670,7 @@ impl AssetsEntity {
         }
 
         // 执行查询
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn update_tron_multisig_assets<'a, E>(

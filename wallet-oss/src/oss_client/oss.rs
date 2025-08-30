@@ -25,20 +25,12 @@ pub trait OSSInfo {
 
 pub trait Api {
     fn key_urlencode<S: AsRef<str>>(&self, key: S) -> String {
-        key.as_ref()
-            .split("/")
-            .map(|x| urlencoding::encode(x))
-            .collect::<Vec<_>>()
-            .join("/")
+        key.as_ref().split("/").map(|x| urlencoding::encode(x)).collect::<Vec<_>>().join("/")
     }
 
     fn format_key<S: AsRef<str>>(&self, key: S) -> String {
         let key = key.as_ref();
-        if key.starts_with("/") {
-            key.to_string()
-        } else {
-            format!("/{}", key)
-        }
+        if key.starts_with("/") { key.to_string() } else { format!("/{}", key) }
     }
 
     fn format_oss_resource_str<S: AsRef<str>>(&self, bucket: S, key: S) -> String;

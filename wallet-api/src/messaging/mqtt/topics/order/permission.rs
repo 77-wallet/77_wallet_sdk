@@ -95,10 +95,7 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
             users.push(user);
         }
 
-        Ok(NewPermissionUser {
-            permission: p,
-            users,
-        })
+        Ok(NewPermissionUser { permission: p, users })
     }
 }
 
@@ -111,8 +108,7 @@ impl PermissionAccept {
 
         // 判断当前的事件是否是删除(删除需要同步所有的权限数据)
         if self.current.types == PermissionReq::DELETE {
-            self.recover_all_old_permission(pool.clone(), &account)
-                .await?;
+            self.recover_all_old_permission(pool.clone(), &account).await?;
 
             PermissionDomain::queue_fail_and_upload(&pool, &self.grantor_addr).await?;
         } else {

@@ -33,10 +33,7 @@ async fn test_address_details() -> Result<(), wallet_transport_backend::Error> {
         chain_code: "tron".to_string(),
     };
 
-    let res = backend_api
-        .address_find_multisiged_details(req)
-        .await
-        .unwrap();
+    let res = backend_api.address_find_multisiged_details(req).await.unwrap();
 
     println!("[test_chain_default_list] res: {res:?}");
     Ok(())

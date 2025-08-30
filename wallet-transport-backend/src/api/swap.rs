@@ -88,8 +88,7 @@ impl BackendApi {
 
         let req = std::collections::HashMap::from([("uid", uid), ("index", index.to_string())]);
 
-        self.post_request::<_, BackApproveList>(endpoint, &req)
-            .await
+        self.post_request::<_, BackApproveList>(endpoint, &req).await
     }
 
     pub async fn update_used_approve(&self, ids: Vec<String>) -> Result<bool, crate::Error> {

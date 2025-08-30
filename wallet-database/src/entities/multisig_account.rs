@@ -69,10 +69,7 @@ impl MultisigAccountEntity {
             wallet_types::chain::chain::ChainCode::try_from(self.chain_code.as_str()).unwrap()
         };
 
-        let timestamp = self
-            .updated_at
-            .unwrap_or(wallet_utils::time::now())
-            .timestamp();
+        let timestamp = self.updated_at.unwrap_or(wallet_utils::time::now()).timestamp();
 
         has_expiration(timestamp, chain_code)
     }
@@ -112,10 +109,7 @@ impl TryFrom<i8> for MultisigAccountStatus {
             3 => Ok(MultisigAccountStatus::OnChain),
             4 => Ok(MultisigAccountStatus::OnChainFail),
             5 => Ok(MultisigAccountStatus::OnChianPending),
-            _ => Err(crate::Error::Other(format!(
-                "account status {} not support",
-                value
-            ))),
+            _ => Err(crate::Error::Other(format!("account status {} not support", value))),
         }
     }
 }
@@ -150,10 +144,9 @@ impl TryFrom<i8> for MultisigAccountPayStatus {
             1 => Ok(MultisigAccountPayStatus::Paid),
             2 => Ok(MultisigAccountPayStatus::PaidFail),
             3 => Ok(MultisigAccountPayStatus::PaidPending),
-            _ => Err(crate::Error::Other(format!(
-                "account pay status status {} not support",
-                value
-            ))),
+            _ => {
+                Err(crate::Error::Other(format!("account pay status status {} not support", value)))
+            }
         }
     }
 }
@@ -295,11 +288,8 @@ impl NewMultisigAccountEntity {
     }
 
     pub fn owner_list(&self) -> Vec<String> {
-        let mut owners = self
-            .member_list
-            .iter()
-            .map(|x| x.address.to_string())
-            .collect::<Vec<String>>();
+        let mut owners =
+            self.member_list.iter().map(|x| x.address.to_string()).collect::<Vec<String>>();
         owners.sort();
         owners
     }
@@ -343,10 +333,7 @@ impl NewMultisigAccountEntity {
             member.push(m);
         }
 
-        MultisigAccountData {
-            account,
-            members: MultisigMemberEntities(member),
-        }
+        MultisigAccountData { account, members: MultisigMemberEntities(member) }
     }
 }
 

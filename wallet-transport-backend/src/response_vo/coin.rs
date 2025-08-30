@@ -16,10 +16,7 @@ pub struct CoinInfo {
     pub protocol: Option<String>,
     #[serde(rename = "unit")]
     pub decimals: Option<u8>,
-    #[serde(
-        default,
-        deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
-    )]
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub enable: bool,
     pub price: Option<f64>,
     pub default_token: bool,
@@ -89,11 +86,7 @@ pub struct TokenCurrency {
 }
 impl TokenCurrency {
     pub fn get_price(&self, symbol: &str) -> Option<f64> {
-        if symbol.eq_ignore_ascii_case("usdt") {
-            self.price
-        } else {
-            self.currency_price
-        }
+        if symbol.eq_ignore_ascii_case("usdt") { self.price } else { self.currency_price }
     }
 }
 

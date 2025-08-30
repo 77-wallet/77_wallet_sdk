@@ -29,11 +29,7 @@ impl PermissionDao {
             .bind(&permission.chain_code)
             .bind(&permission.operations)
             .bind(permission.is_del)
-            .bind(
-                permission
-                    .created_at
-                    .to_rfc3339_opts(SecondsFormat::Secs, true),
-            )
+            .bind(permission.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
             .execute(exec)
             .await?;
 
@@ -88,10 +84,8 @@ impl PermissionDao {
             SELECT 1 FROM permission_user u WHERE u.permission_id = p.id AND u.address = ? 
         ) and p.is_del = 0;"#;
 
-        let result = sqlx::query_as::<_, PermissionEntity>(sql)
-            .bind(user_addr)
-            .fetch_all(exec)
-            .await?;
+        let result =
+            sqlx::query_as::<_, PermissionEntity>(sql).bind(user_addr).fetch_all(exec).await?;
 
         Ok(result)
     }

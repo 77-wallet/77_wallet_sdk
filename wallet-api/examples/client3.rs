@@ -1,8 +1,9 @@
 use sqlx::encode::IsNull::No;
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
-use wallet_database::entities::api_wallet::ApiWalletType;
-use wallet_database::entities::task_queue::KnownTaskName::ApiWithdraw;
+use wallet_database::entities::{
+    api_wallet::ApiWalletType, task_queue::KnownTaskName::ApiWithdraw,
+};
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 #[tokio::main(flavor = "multi_thread")]
@@ -18,9 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
 
-    let res = wallet_manager
-        .set_invite_code(Some("I1912683353004912640".to_string()))
-        .await;
+    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("set_invite_code ------------------------0: {res:?}");
 

@@ -25,9 +25,7 @@ impl TaskQueueDomain {
     ) -> Result<Option<BackendApiTask>, crate::ServiceError> {
         let backend = crate::Context::get_global_backend_api()?;
 
-        let res = backend
-            .post_request::<_, serde_json::Value>(endpoint, &req)
-            .await;
+        let res = backend.post_request::<_, serde_json::Value>(endpoint, &req).await;
 
         if let Err(e) = res {
             tracing::error!("request backend:{},req:{:?} error:{}", endpoint, req, e);

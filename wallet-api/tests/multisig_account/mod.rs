@@ -21,9 +21,7 @@ async fn test_get_service_fee() {
     let chain_code = "tron".to_string();
     let pay_chain = "tron".to_string();
     let pay_address = "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string();
-    let info = wallet_manager
-        .get_multisig_service_fee(pay_chain, chain_code, pay_address)
-        .await;
+    let info = wallet_manager.get_multisig_service_fee(pay_chain, chain_code, pay_address).await;
 
     tracing::info!("{}", serde_json::to_string(&info).unwrap());
 }
@@ -58,9 +56,8 @@ async fn test_deploy_multisig_account() {
     let deploy_fee = fee_setting;
     let password = "123456".to_string();
 
-    let res = wallet_manager
-        .deploy_multisig_account(account_id, deploy_fee, Some(payer), password)
-        .await;
+    let res =
+        wallet_manager.deploy_multisig_account(account_id, deploy_fee, Some(payer), password).await;
     tracing::info!("部署多签合约{:?}", res);
 }
 
@@ -69,9 +66,7 @@ async fn test_multisig_account_list() {
     let wallet_manager = get_manager().await;
 
     let chain_code = Some("sol".to_string());
-    let list = wallet_manager
-        .multisig_account_lists(true, chain_code, 0, 1)
-        .await;
+    let list = wallet_manager.multisig_account_lists(true, chain_code, 0, 1).await;
 
     tracing::info!("account list{}", serde_json::to_string(&list).unwrap());
 }
@@ -143,9 +138,7 @@ async fn test_whether_multisig_address() {
     let address = "TQJSAZj4T5q9BHbQ1HgwPHMrd8PHh81vQe".to_string();
     let chain_code = "tron".to_string();
 
-    let info = wallet_manager
-        .whether_multisig_address(address, chain_code)
-        .await;
+    let info = wallet_manager.whether_multisig_address(address, chain_code).await;
 
     tracing::info!("{}", serde_json::to_string(&info).unwrap());
 }

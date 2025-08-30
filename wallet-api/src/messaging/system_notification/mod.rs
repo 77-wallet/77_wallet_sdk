@@ -221,10 +221,8 @@ impl Notification {
     > {
         let content = self.serialize()?;
         let r#type = self.type_name();
-        Ok(
-            wallet_database::entities::system_notification::CreateSystemNotificationEntity::new(
-                id, &r#type, &content, status, key, value,
-            ),
-        )
+        Ok(wallet_database::entities::system_notification::CreateSystemNotificationEntity::new(
+            id, &r#type, &content, status, key, value,
+        ))
     }
 }

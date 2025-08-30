@@ -82,11 +82,7 @@ pub struct CoinId {
 
 impl CoinId {
     pub fn new(chain_code: &str, symbol: &str, token_address: Option<String>) -> Self {
-        Self {
-            chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
-            token_address,
-        }
+        Self { chain_code: chain_code.to_string(), symbol: symbol.to_string(), token_address }
     }
 }
 
@@ -98,10 +94,7 @@ pub struct SymbolId {
 
 impl SymbolId {
     pub fn new(chain_code: &str, symbol: &str) -> Self {
-        Self {
-            chain_code: chain_code.to_string(),
-            symbol: symbol.to_string(),
-        }
+        Self { chain_code: chain_code.to_string(), symbol: symbol.to_string() }
     }
 }
 

@@ -26,11 +26,7 @@ pub trait SqlExecutableNoReturn<'a>: SqlQueryBuilder<'a> {
         }
         let query = sqlx::query_with(&sql, args);
 
-        query
-            .execute(executor)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(executor).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 }
 
@@ -52,10 +48,7 @@ where
         }
         let query = sqlx::query_as_with::<_, T, _>(&sql, args);
 
-        query
-            .fetch_all(executor)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(executor).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     async fn fetch_optional<'e, E>(&self, executor: E) -> Result<Option<T>, crate::Error>
@@ -72,10 +65,7 @@ where
             }
             let query = sqlx::query_as_with::<_, T, _>(&sql, args);
 
-            query
-                .fetch_optional(executor)
-                .await
-                .map_err(|e| crate::Error::Database(e.into()))
+            query.fetch_optional(executor).await.map_err(|e| crate::Error::Database(e.into()))
         }
     }
 
@@ -93,10 +83,7 @@ where
             }
             let query = sqlx::query_as_with::<_, T, _>(&sql, args);
 
-            query
-                .fetch_one(executor)
-                .await
-                .map_err(|e| crate::Error::Database(e.into()))
+            query.fetch_one(executor).await.map_err(|e| crate::Error::Database(e.into()))
         }
     }
 
@@ -113,10 +100,6 @@ where
         }
         let query = sqlx::query_with(&sql, args);
 
-        query
-            .execute(executor)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(executor).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 }

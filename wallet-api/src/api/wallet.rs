@@ -1,6 +1,6 @@
-use crate::api::ReturnType;
-use crate::response_vo::wallet::CreateWalletRes;
-use crate::service::wallet::WalletService;
+use crate::{
+    api::ReturnType, response_vo::wallet::CreateWalletRes, service::wallet::WalletService,
+};
 
 impl crate::WalletManager {
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
@@ -36,17 +36,11 @@ impl crate::WalletManager {
     }
 
     pub async fn logic_reset(&self) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
-            .logic_reset()
-            .await?
-            .into()
+        WalletService::new(self.repo_factory.resource_repo()).logic_reset().await?.into()
     }
 
     pub async fn physical_reset(&self) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
-            .physical_reset()
-            .await?
-            .into()
+        WalletService::new(self.repo_factory.resource_repo()).physical_reset().await?.into()
     }
 
     pub async fn create_wallet(&self, req: crate::CreateWalletReq) -> ReturnType<CreateWalletRes> {
@@ -103,10 +97,7 @@ impl crate::WalletManager {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        WalletService::new(repo)
-            .export_derivation_path(wallet_address)
-            .await?
-            .into()
+        WalletService::new(repo).export_derivation_path(wallet_address).await?.into()
     }
 
     pub async fn get_wallet_list(
@@ -122,17 +113,11 @@ impl crate::WalletManager {
     }
 
     pub async fn logic_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
-            .logic_delete(address)
-            .await?
-            .into()
+        WalletService::new(self.repo_factory.resource_repo()).logic_delete(address).await?.into()
     }
 
     pub async fn physical_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
-            .physical_delete(address)
-            .await?
-            .into()
+        WalletService::new(self.repo_factory.resource_repo()).physical_delete(address).await?.into()
     }
 
     pub async fn recover_multisig_data(&self, wallet_address: &str) -> ReturnType<()> {
@@ -155,17 +140,14 @@ mod test {
     use crate::test::env::get_manager;
 
     use anyhow::Result;
-    use std::env;
-    use std::path::PathBuf;
+    use std::{env, path::PathBuf};
 
     #[tokio::test]
     async fn test_create_wallet() -> Result<()> {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
-        let res = wallet_manager
-            .create_wallet(test_params.create_wallet_req)
-            .await;
+        let res = wallet_manager.create_wallet(test_params.create_wallet_req).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -180,9 +162,7 @@ mod test {
 
         test_params.create_wallet_req.wallet_name = "oh".to_string();
 
-        let res = wallet_manager
-            .create_wallet(test_params.create_wallet_req)
-            .await;
+        let res = wallet_manager.create_wallet(test_params.create_wallet_req).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -244,10 +224,7 @@ mod test {
         let res =
             crate::domain::multisig::MultisigDomain::recover_uid_multisig_data(uid, address).await;
         let elapsed_time = start_time.elapsed();
-        tracing::info!(
-            "test_recover_multisig_data elapsed time: {:?}",
-            elapsed_time
-        );
+        tracing::info!("test_recover_multisig_data elapsed time: {:?}", elapsed_time);
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -272,9 +249,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x48914c12BbB44a4c32e6CA7A99831c46267533B0";
-        let res = wallet_manager
-            .edit_wallet_name("new wallet", wallet_address)
-            .await;
+        let res = wallet_manager.edit_wallet_name("new wallet", wallet_address).await;
         tracing::info!("res: {res:?}");
 
         Ok(())
@@ -376,10 +351,7 @@ mod test {
         let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
 
         let res = wallet_manager
-            .get_phrase(
-                wallet_address,
-                &test_params.create_wallet_req.wallet_password,
-            )
+            .get_phrase(wallet_address, &test_params.create_wallet_req.wallet_password)
             .await;
         tracing::info!("res: {res:?}");
         Ok(())

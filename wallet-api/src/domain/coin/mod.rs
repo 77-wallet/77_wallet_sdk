@@ -55,9 +55,8 @@ impl CoinDomain {
         let mut map = std::collections::HashMap::new();
         for coin in coins {
             let price = coin.price.parse::<f64>().unwrap_or_default();
-            let (currency_price, rate) = if let Some(rate) = exchange_rate_list
-                .iter()
-                .find(|rate| rate.target_currency == currency)
+            let (currency_price, rate) = if let Some(rate) =
+                exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
             {
                 (price * rate.rate, rate.rate)
             } else {
@@ -128,9 +127,9 @@ impl CoinDomain {
                 Ok("0x55d398326f99059fF775485246999027B3197955".to_string())
             }
             ChainCode::Tron => Ok("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string()),
-            _ => Err(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                chain_code.to_string(),
-            )))?,
+            _ => {
+                Err(crate::BusinessError::Coin(crate::CoinError::NotFound(chain_code.to_string())))?
+            }
         }
     }
 
@@ -153,11 +152,7 @@ impl CoinDomain {
             None
         };
 
-        coins.append(
-            &mut backend_api
-                .fetch_all_tokens(create_at.clone(), None)
-                .await?,
-        );
+        coins.append(&mut backend_api.fetch_all_tokens(create_at.clone(), None).await?);
 
         // // 如果本地没有币，则添加默认币种并进行去重(感觉不是一个很好的逻辑)
         // if create_at.is_none() {

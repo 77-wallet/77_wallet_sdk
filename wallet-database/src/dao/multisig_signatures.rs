@@ -156,10 +156,8 @@ impl MultisigSignatureDaoV1 {
     {
         let ids = crate::any_in_collection(ids, "','");
 
-        let sql = format!(
-            "UPDATE multisig_signatures SET is_del = 1 WHERE queue_id IN ('{}')",
-            ids
-        );
+        let sql =
+            format!("UPDATE multisig_signatures SET is_del = 1 WHERE queue_id IN ('{}')", ids);
 
         let query = sqlx::query(&sql);
 

@@ -1,6 +1,7 @@
-use crate::api::ReturnType;
-use crate::request::api_wallet::account::CreateApiAccountReq;
-use crate::service::api_wallet::account::ApiAccountService;
+use crate::{
+    api::ReturnType, request::api_wallet::account::CreateApiAccountReq,
+    service::api_wallet::account::ApiAccountService,
+};
 
 impl crate::WalletManager {
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
@@ -60,7 +61,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
+        let wallet_address = "0x418Ea813dd2d9AA21597912b62a10465FCe48033";
         let wallet_password = "q1111111";
         let index = None;
         let name = "666";
@@ -90,9 +91,7 @@ mod test {
         let chain_code = "btc";
         let password = "q1111111";
 
-        let res = wallet_manager
-            .get_api_account_private_key(address, chain_code, password)
-            .await;
+        let res = wallet_manager.get_api_account_private_key(address, chain_code, password).await;
         tracing::info!("res: {res:?}");
 
         Ok(())

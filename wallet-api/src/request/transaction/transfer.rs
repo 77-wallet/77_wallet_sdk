@@ -113,8 +113,6 @@ impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
     }
 }
 
-
-
 #[derive(Debug)]
 pub struct QueryBillResultReq {
     pub tx_hash: String,

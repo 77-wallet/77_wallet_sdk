@@ -28,11 +28,8 @@ pub async fn send_request(
             .map(|(key, value)| format!("{}={}", key, value))
             .collect::<Vec<String>>()
             .join("&");
-        let url_with_params = if !args.is_empty() {
-            format!("{}?{}", url, args)
-        } else {
-            url.to_string()
-        };
+        let url_with_params =
+            if !args.is_empty() { format!("{}?{}", url, args) } else { url.to_string() };
         client.request(method, url_with_params)
     } else {
         // 如果不是 GET 方法，则将参数作为请求体发送
@@ -44,21 +41,15 @@ pub async fn send_request(
         request = request.header(key, value);
     }
 
-    let response = request
-        .send()
-        .await
-        .map_err(|e| wallet_utils::Error::Http(e.into()))?;
+    let response = request.send().await.map_err(|e| wallet_utils::Error::Http(e.into()))?;
 
     if !response.status().is_success() {
-        return Err(
-            wallet_utils::Error::Http(wallet_utils::HttpError::NonSuccessStatus(response.status()))
-                .into(),
-        );
+        return Err(wallet_utils::Error::Http(wallet_utils::HttpError::NonSuccessStatus(
+            response.status(),
+        ))
+        .into());
     }
-    let res = response
-        .json::<String>()
-        .await
-        .map_err(|e| wallet_utils::Error::Http(e.into()))?;
+    let res = response.json::<String>().await.map_err(|e| wallet_utils::Error::Http(e.into()))?;
     let res: BackendResponse = wallet_utils::serde_func::serde_from_str(&res)?;
 
     res.process(&cryptor)

@@ -43,10 +43,7 @@ impl PermissionWithUserEntity {
         }
 
         for old_user in self.user.iter() {
-            if !user
-                .iter()
-                .any(|u| u.address == old_user.address && u.weight == old_user.weight)
-            {
+            if !user.iter().any(|u| u.address == old_user.address && u.weight == old_user.weight) {
                 return true;
             }
         }

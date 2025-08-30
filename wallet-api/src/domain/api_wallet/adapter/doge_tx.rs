@@ -1,23 +1,26 @@
 use crate::{
+    ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, Tx, TIME_OUT},
+        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
     infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{
-        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+    request::{
+        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+        transaction::{
+            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+        },
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
-    ServiceError,
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    dog::{operations::transfer::TransferArg, provider::ProviderConfig, DogChain}, tron::protocol::account::AccountResourceDetail,
+    Error, QueryTransactionResult,
+    dog::{DogChain, operations::transfer::TransferArg, provider::ProviderConfig},
+    tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
-    Error,
-    QueryTransactionResult,
 };
 use wallet_database::{
     entities::{
@@ -29,7 +32,6 @@ use wallet_database::{
 };
 use wallet_transport_backend::api::BackendApi;
 use wallet_types::chain::{address::r#type::DogAddressType, chain::ChainCode};
-use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};
 
 pub(crate) struct DogeTx {
     chin: DogChain,

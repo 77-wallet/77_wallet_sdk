@@ -11,11 +11,7 @@ pub struct OffsetTracker {
 impl OffsetTracker {
     pub async fn new(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
-        let mut tracker = OffsetTracker {
-            offset: 0,
-            path,
-            uid: String::new(),
-        };
+        let mut tracker = OffsetTracker { offset: 0, path, uid: String::new() };
         tracker.load().await;
         tracker
     }

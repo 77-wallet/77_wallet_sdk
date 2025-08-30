@@ -9,11 +9,7 @@ use tokio_stream::StreamExt as _;
 pub type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
 pub enum InnerEvent {
-    SyncAssets {
-        addr_list: Vec<String>,
-        chain_code: String,
-        symbol: Vec<String>,
-    },
+    SyncAssets { addr_list: Vec<String>, chain_code: String, symbol: Vec<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,10 +36,7 @@ struct EventBuffer {
 
 impl EventBuffer {
     fn new() -> Self {
-        Self {
-            buffer: Arc::new(Mutex::new(HashSet::new())),
-            notifier: Arc::new(Notify::new()),
-        }
+        Self { buffer: Arc::new(Mutex::new(HashSet::new())), notifier: Arc::new(Notify::new()) }
     }
 
     fn push_assets(&self, addrs: Vec<String>, chain: String, symbol: Vec<String>) {
@@ -130,9 +123,7 @@ impl InnerEventHandle {
 
         Self::sync_assets(buffer);
 
-        Self {
-            inner_event_sender: tx,
-        }
+        Self { inner_event_sender: tx }
     }
 
     pub(crate) fn send(&self, event: InnerEvent) -> Result<(), crate::ServiceError> {
@@ -144,11 +135,7 @@ impl InnerEventHandle {
 
     async fn handle_event(event: InnerEvent, buffer: Arc<EventBuffer>) {
         match event {
-            InnerEvent::SyncAssets {
-                addr_list,
-                chain_code,
-                symbol,
-            } => {
+            InnerEvent::SyncAssets { addr_list, chain_code, symbol } => {
                 // tracing::info!("收到资产变更通知，开始同步资产");
                 buffer.push_assets(addr_list, chain_code, symbol)
             }

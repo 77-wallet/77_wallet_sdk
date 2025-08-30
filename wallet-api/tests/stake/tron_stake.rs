@@ -36,10 +36,8 @@ async fn test_freeze_fee() {
 async fn test_freeze() {
     let manager = get_manager().await;
 
-    let _signer = Signer {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        permission_id: 3,
-    };
+    let _signer =
+        Signer { address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(), permission_id: 3 };
     let _signer = None;
 
     let req = FreezeBalanceReq {

@@ -13,7 +13,7 @@ use wallet_transport_backend::request::{AddressBatchInitReq, TokenQueryPriceReq}
 
 use crate::{
     domain::{app::config::ConfigDomain, chain::ChainDomain},
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
 };
 
 pub struct ApiWalletDomain {}

@@ -19,11 +19,7 @@ impl crate::WalletManager {
         &self,
         address: String,
     ) -> ReturnType<Option<AccountPermission>> {
-        PermissionService::new()
-            .await?
-            .account_permission(address)
-            .await?
-            .into()
+        PermissionService::new().await?.account_permission(address).await?.into()
     }
 
     // 管理其账号的权限
@@ -31,11 +27,7 @@ impl crate::WalletManager {
         &self,
         grantor_addr: String,
     ) -> ReturnType<Vec<ManagerPermissionResp>> {
-        PermissionService::new()
-            .await?
-            .manager_permission(grantor_addr)
-            .await?
-            .into()
+        PermissionService::new().await?.manager_permission(grantor_addr).await?.into()
     }
 
     pub async fn modify_permission_fee(
@@ -43,11 +35,7 @@ impl crate::WalletManager {
         req: PermissionReq,
         types: String,
     ) -> ReturnType<EstimateFeeResp> {
-        PermissionService::new()
-            .await?
-            .modify_permission_fee(req, types)
-            .await?
-            .into()
+        PermissionService::new().await?.modify_permission_fee(req, types).await?.into()
     }
 
     pub async fn modify_permission(
@@ -56,11 +44,7 @@ impl crate::WalletManager {
         types: String,
         password: String,
     ) -> ReturnType<String> {
-        PermissionService::new()
-            .await?
-            .modify_permission(req, types, password)
-            .await?
-            .into()
+        PermissionService::new().await?.modify_permission(req, types, password).await?.into()
     }
 
     pub async fn build_multisig_queue(

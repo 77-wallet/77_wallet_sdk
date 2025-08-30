@@ -10,9 +10,10 @@ use crate::{
 };
 use alloy::{
     network::TransactionBuilder as _,
+    primitives::U256,
+    rpc::types::TransactionRequest,
     sol_types::{SolCall as _, SolValue},
 };
-use alloy::{primitives::U256, rpc::types::TransactionRequest};
 use wallet_chain_interact::{
     ResourceConsume,
     eth::{
@@ -41,10 +42,7 @@ pub(super) async fn approve(
     // exec tx
     let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
 
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?,
-    ))
+    Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
 }
 
 pub(super) async fn approve_fee(
@@ -85,10 +83,7 @@ pub(super) async fn withdraw(
     // exec tx
     let tx_hash = chain.exec_transaction(withdraw, fee_setting, key).await?;
 
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
-    ))
+    Ok(TransferResp::new(tx_hash, unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?))
 }
 
 pub(super) async fn deposit_fee(
@@ -117,10 +112,7 @@ pub(super) async fn deposit(
     // exec tx
     let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
 
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
-    ))
+    Ok(TransferResp::new(tx_hash, unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?))
 }
 
 pub(super) async fn allowance(
@@ -145,11 +137,7 @@ fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, cr
         .with_input(call_value.abi_encode());
 
     // from token 如果是主币添加默认的币
-    let tx = if swap_params.token_in.is_zero() {
-        tx.with_value(swap_params.amount_in)
-    } else {
-        tx
-    };
+    let tx = if swap_params.token_in.is_zero() { tx.with_value(swap_params.amount_in) } else { tx };
 
     Ok(tx)
 }
@@ -171,18 +159,12 @@ pub(super) async fn estimate_swap(
     let result = chain.provider.eth_call(tx).await?;
     let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
 
-    let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
-        .map_err(|e| crate::ServiceError::AggregatorError {
-            code: -1,
-            agg_code: 0,
-            msg: e.to_string(),
+    let (amount_in, amount_out): (U256, U256) =
+        <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
+            crate::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
         })?;
 
-    let resp = EstimateSwapResult {
-        amount_in,
-        amount_out,
-        consumer: fee,
-    };
+    let resp = EstimateSwapResult { amount_in, amount_out, consumer: fee };
     Ok(resp)
 }
 
@@ -196,15 +178,9 @@ pub(super) async fn swap(
     let transfer_fee = fee.transaction_fee();
 
     let tx = build_base_swap_tx(&swap_params)?;
-    let tx = chain
-        .provider
-        .set_transaction_fee(tx, fee, chain.chain_code)
-        .await?;
+    let tx = chain.provider.set_transaction_fee(tx, fee, chain.chain_code).await?;
 
     let tx_hash = chain.provider.send_raw_transaction(tx, &key).await?;
 
-    Ok(TransferResp::new(
-        tx_hash,
-        unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?,
-    ))
+    Ok(TransferResp::new(tx_hash, unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?))
 }

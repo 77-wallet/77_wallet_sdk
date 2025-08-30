@@ -346,16 +346,12 @@ impl MultisigDomain {
         let initial_addr = params.initiator_addr.clone();
 
         // 判断是否是创建者
-        let is_owner = params
-            .member_list
-            .iter()
-            .any(|m| m.address == initial_addr && m.is_self == 1);
+        let is_owner =
+            params.member_list.iter().any(|m| m.address == initial_addr && m.is_self == 1);
 
         // 判断是否还有其他参与者是自己
-        let has_other_self = params
-            .member_list
-            .iter()
-            .any(|m| m.address != initial_addr && m.is_self == 1);
+        let has_other_self =
+            params.member_list.iter().any(|m| m.address != initial_addr && m.is_self == 1);
 
         // 根据判断结果设置 owner
         let owner = match (is_owner, has_other_self) {
@@ -411,9 +407,7 @@ impl MultisigDomain {
         let account = MultisigAccountDaoV1::find_by_conditions(vec![("id", id)], pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?
-            .ok_or(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound))?;
         Ok(account)
     }
     pub async fn account_by_address(
@@ -429,9 +423,7 @@ impl MultisigDomain {
         let account = MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?
-            .ok_or(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound))?;
         Ok(account)
     }
 
@@ -461,9 +453,7 @@ impl MultisigDomain {
         let res = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?
-            .ok_or(crate::BusinessError::MultisigQueue(
-                crate::MultisigQueueError::NotFound,
-            ))?;
+            .ok_or(crate::BusinessError::MultisigQueue(crate::MultisigQueueError::NotFound))?;
 
         Ok(res)
     }
@@ -515,9 +505,8 @@ impl MultisigDomain {
         account_id: &str,
         pool: DbPool,
     ) -> Result<(), crate::ServiceError> {
-        let raw_data = MultisigAccountRepo::multisig_raw_data(account_id, pool)
-            .await?
-            .to_string()?;
+        let raw_data =
+            MultisigAccountRepo::multisig_raw_data(account_id, pool).await?.to_string()?;
 
         let backend_api = crate::Context::get_global_backend_api()?;
         Ok(backend_api.update_raw_data(account_id, raw_data).await?)
@@ -611,10 +600,7 @@ impl MultisigDomain {
         sn: &str,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let addresses = deleted
-            .iter()
-            .map(|d| d.address.clone())
-            .collect::<Vec<_>>();
+        let addresses = deleted.iter().map(|d| d.address.clone()).collect::<Vec<_>>();
         // 这个被删除的账户所关联的多签账户的成员
         let members =
             wallet_database::dao::multisig_member::MultisigMemberDaoV1::list_by_addresses(
@@ -623,11 +609,7 @@ impl MultisigDomain {
             .await
             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
-        let account_ids = members
-            .0
-            .iter()
-            .map(|m| m.account_id.clone())
-            .collect::<Vec<_>>();
+        let account_ids = members.0.iter().map(|m| m.account_id.clone()).collect::<Vec<_>>();
 
         let other_members = wallet_database::dao::multisig_member::MultisigMemberDaoV1::list_by_account_ids_not_addresses(
             &account_ids, &addresses, &*pool,
@@ -635,10 +617,7 @@ impl MultisigDomain {
         .await
         .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
-        let other_addresses = other_members
-            .iter()
-            .map(|m| m.address.clone())
-            .collect::<Vec<_>>();
+        let other_addresses = other_members.iter().map(|m| m.address.clone()).collect::<Vec<_>>();
         let other_accounts = wallet_database::entities::account::AccountEntity::list_in_address(
             &*pool,
             &other_addresses,

@@ -11,9 +11,7 @@ pub struct AddressBookRepo {
 
 impl AddressBookRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            repo: ResourcesRepo::new(db_pool),
-        }
+        Self { repo: ResourcesRepo::new(db_pool) }
     }
 }
 
@@ -51,10 +49,8 @@ impl AddressBookRepo {
         address: &str,
         chain_code: &str,
     ) -> Result<Option<AddressBookEntity>, crate::Error> {
-        Ok(
-            AddressBookDao::check_not_self(self.repo.pool().as_ref(), id, address, chain_code)
-                .await?,
-        )
+        Ok(AddressBookDao::check_not_self(self.repo.pool().as_ref(), id, address, chain_code)
+            .await?)
     }
 
     pub async fn delete(&mut self, id: i32) -> Result<(), crate::Error> {

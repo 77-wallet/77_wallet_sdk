@@ -7,10 +7,7 @@ pub struct UploadAllocatedAddressesReq {
 
 impl UploadAllocatedAddressesReq {
     pub fn new(wallet_address: &str, addresses: Vec<String>) -> Self {
-        Self {
-            wallet_address: wallet_address.to_string(),
-            addresses,
-        }
+        Self { wallet_address: wallet_address.to_string(), addresses }
     }
 }
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

@@ -22,16 +22,9 @@ mod transactions;
 pub async fn get_manager() -> WalletManager {
     init_test_log();
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned()
-    });
-    let path = PathBuf::from(manifest_dir)
-        .join("test_data")
-        .to_string_lossy()
-        .to_string();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().into_owned());
+    let path = PathBuf::from(manifest_dir).join("test_data").to_string_lossy().to_string();
 
     // let sender = Some();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
@@ -45,9 +38,8 @@ pub async fn get_manager() -> WalletManager {
     let dirs = Dirs::new(&path).unwrap();
 
     let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
-    let manager = WalletManager::new("guangxiang", "ANDROID", Some(tx), config, dirs)
-        .await
-        .unwrap();
+    let manager =
+        WalletManager::new("guangxiang", "ANDROID", Some(tx), config, dirs).await.unwrap();
 
     manager
 }

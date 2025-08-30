@@ -1,17 +1,13 @@
-use crate::api::ReturnType;
-use crate::response_vo::assets::{AccountChainAssetList, GetAccountAssetsRes};
-use crate::service::asset::AssetsService;
+use crate::{
+    api::ReturnType,
+    response_vo::assets::{AccountChainAssetList, GetAccountAssetsRes},
+    service::asset::AssetsService,
+};
 
 impl crate::WalletManager {
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .add_coin(
-                &req.wallet_address,
-                Some(req.account_id),
-                &req.symbol,
-                req.chain_code,
-                None,
-            )
+            .add_coin(&req.wallet_address, Some(req.account_id), &req.symbol, req.chain_code, None)
             .await?
             .into()
     }
@@ -252,9 +248,8 @@ mod test {
         let chain_code = "ton";
         let symbol = "TON";
         let token_address = Some("".to_string());
-        let res = wallet_manager
-            .get_assets(address, account_id, chain_code, symbol, token_address)
-            .await;
+        let res =
+            wallet_manager.get_assets(address, account_id, chain_code, symbol, token_address).await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -275,9 +270,7 @@ mod test {
         // let symbol = "LTC";
         // let symbol = "BEANS";
         let symbol = "TRX";
-        let res = wallet_manager
-            .remove_coin(wallet_address, account_id, symbol)
-            .await;
+        let res = wallet_manager.remove_coin(wallet_address, account_id, symbol).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -335,9 +328,8 @@ mod test {
         let is_multisig = Some(true);
 
         let address = "TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N";
-        let res = wallet_manager
-            .get_coin_list(address, None, chain_code, keyword, is_multisig)
-            .await;
+        let res =
+            wallet_manager.get_coin_list(address, None, chain_code, keyword, is_multisig).await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -375,9 +367,7 @@ mod test {
         let account_id = 2147483648;
         // let account_id = 1;
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
-        let account_asset = wallet_manager
-            .get_all_account_assets(account_id, Some(address))
-            .await;
+        let account_asset = wallet_manager.get_all_account_assets(account_id, Some(address)).await;
         tracing::info!("account_asset: {account_asset:?}");
 
         Ok(())
@@ -397,9 +387,8 @@ mod test {
         // wallet_manager.init_wallet_type("api").await?;
         // let account_id = 2147483648;
         let account_id = 1;
-        let account_asset = wallet_manager
-            .get_account_assets(account_id, address, chain_code)
-            .await;
+        let account_asset =
+            wallet_manager.get_account_assets(account_id, address, chain_code).await;
         tracing::info!("account_asset: {account_asset:?}");
         let res = wallet_utils::serde_func::serde_to_string(&account_asset).unwrap();
         tracing::info!("res: {res}");
@@ -433,9 +422,8 @@ mod test {
         let account_id = Some(1);
 
         wallet_manager.set_currency("USD").await;
-        let res = wallet_manager
-            .get_assets_list_v2(address, account_id, chain_code, is_multisig)
-            .await;
+        let res =
+            wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await;
         tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("get_account_chain_assets: {res:?}");
@@ -453,9 +441,8 @@ mod test {
         let is_multisig = Some(true);
         let account_id = None;
 
-        let res = wallet_manager
-            .get_assets_list_v2(address, account_id, chain_code, is_multisig)
-            .await;
+        let res =
+            wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");
@@ -473,9 +460,7 @@ mod test {
         let chain_code = None;
         let symbol = vec![];
 
-        let res = wallet_manager
-            .sync_assets(address, chain_code, symbol)
-            .await;
+        let res = wallet_manager.sync_assets(address, chain_code, symbol).await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");
@@ -493,9 +478,7 @@ mod test {
         let account_id = Some(2147483648);
         let symbol = vec![];
 
-        let res = wallet_manager
-            .sync_assets_by_wallet(wallet_address, account_id, symbol)
-            .await;
+        let res = wallet_manager.sync_assets_by_wallet(wallet_address, account_id, symbol).await;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");

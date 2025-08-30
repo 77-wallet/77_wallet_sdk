@@ -1,5 +1,6 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
+use wallet_database::entities::api_wallet::ApiWalletType;
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
@@ -22,11 +23,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
 
-    let res = wallet_manager
-        .set_invite_code(Some("I1912683353004912640".to_string()))
-        .await;
+    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("res: {res:?}");
+
+    // 创建钱包
+    let language_code = 1;
+    let phrase = &test_params.create_wallet_req.phrase;
+    let salt = "q1111111";
+    let wallet_name = "api_wallet";
+    let account_name = "ccccc";
+    let is_default_name = true;
+    let wallet_password = "q1111111";
+    // let invite_code = None;
+    // let api_wallet_type = ApiWalletType::SubAccount;
+    // let api_wallet_type = ApiWalletType::SubAccount;
+    // let wallet = wallet_manager
+    //     .create_api_wallet(
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //         wallet_name,
+    //         account_name,
+    //         is_default_name,
+    //         wallet_password,
+    //         invite_code,
+    //         api_wallet_type,
+    //     )
+    //     .await
+    //     .result;
+    // tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
+
+    // let order_list = wallet_manager.get_api_collect_order_list().await.result;
+    // tracing::info!("order_list ------------------- 2: {order_list:#?}");
+    // let uid = "2be2ade547d488732e03024207c5d36e6976535845f058f118a2a004027791b7";
+
+    // let from = "0xB9E04b6fa2C391e82A076C8802982DedcD78eb06";
+    // let to = "0x1bAA3A8c18444E36d8cb8f6C7dd6004da3242689";
+    // let value = "0.000001";
+    // let trade_no = "0x0000000066";
+    // let res1 = wallet_manager
+    //     .api_collect_order(from, to, value, "btc", None, "BTC", trade_no, 1, uid)
+    //     .await;
+    // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)
@@ -56,8 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     wallet_manager.mqtt_subscribe(topics, None).await;
     // }
 
-    // let sync_res = wallet_manager.sync_assets(vec![], None, vec![]).await;
-    // tracing::info!("sync res: {sync_res:#?}");
+    let sync_res = wallet_manager
+        .sync_api_assets_by_wallet("0x418Ea813dd2d9AA21597912b62a10465FCe48033", None, vec![])
+        .await;
+    tracing::info!("sync res: {sync_res:#?}");
     // let wallet = wallet.unwrap();
     // test_params.create_account_req.wallet_address = wallet.address.clone();
 

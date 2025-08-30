@@ -92,9 +92,7 @@ async fn test_sync_bill_by_address() {
 
     let wallet_address = "0x3d669d78532F763118561b55daa431956ede4155".to_string();
     let account_id = 1;
-    let _c = wallet_manager
-        .sync_bill_by_wallet_and_account(wallet_address, account_id)
-        .await;
+    let _c = wallet_manager.sync_bill_by_wallet_and_account(wallet_address, account_id).await;
     tracing::warn!("同步结果{:?}", _c);
 }
 
@@ -108,9 +106,7 @@ async fn recent_bill() {
     let page = 0;
     let page_size = 10;
 
-    let detail = wallet_manager
-        .recent_bill(symbol, addr, chain_code, page, page_size)
-        .await;
+    let detail = wallet_manager.recent_bill(symbol, addr, chain_code, page, page_size).await;
 
     tracing::warn!("{:#?}", detail);
 }
@@ -121,9 +117,7 @@ async fn coin_currency_price() {
     let symbol = "TRX".to_string();
     let chain_code = "tron".to_string();
 
-    let res = wallet_manager
-        .coin_currency_price(chain_code, symbol, None)
-        .await;
+    let res = wallet_manager.coin_currency_price(chain_code, symbol, None).await;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
 }
@@ -147,9 +141,7 @@ async fn test_create_bill() {
     )
     .with_transaction_fee("0.003");
 
-    wallet_api::domain::bill::BillDomain::create_bill(params)
-        .await
-        .unwrap();
+    wallet_api::domain::bill::BillDomain::create_bill(params).await.unwrap();
 }
 
 #[tokio::test]

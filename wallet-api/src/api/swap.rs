@@ -16,10 +16,7 @@ impl crate::WalletManager {
         chain_code: String,
         token_in: String,
     ) -> ReturnType<DefaultQuoteResp> {
-        SwapServer::new()?
-            .default_quote(chain_code, token_in)
-            .await
-            .into()
+        SwapServer::new()?.default_quote(chain_code, token_in).await.into()
     }
 
     // 获取报价
@@ -50,16 +47,10 @@ impl crate::WalletManager {
     }
 
     pub async fn approve_list(&self, uid: String, account_id: u32) -> ReturnType<Vec<ApproveList>> {
-        SwapServer::new()?
-            .approve_list(uid, account_id)
-            .await
-            .into()
+        SwapServer::new()?.approve_list(uid, account_id).await.into()
     }
 
     pub async fn approve_cancel(&self, req: ApproveReq, password: String) -> ReturnType<String> {
-        SwapServer::new()?
-            .approve_cancel(req, password)
-            .await
-            .into()
+        SwapServer::new()?.approve_cancel(req, password).await.into()
     }
 }

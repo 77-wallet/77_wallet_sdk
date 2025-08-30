@@ -116,12 +116,8 @@ impl BackendApi {
             "chainCode": chain_code
         });
 
-        let res = self
-            .client
-            .post("/keys/queryUidByAddress")
-            .json(req)
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post("/keys/queryUidByAddress").json(req).send::<BackendResponse>().await?;
         res.process(&self.aes_cbc_cryptor)
     }
 
@@ -199,8 +195,7 @@ impl BackendApi {
             "rawData":raw_data
         });
 
-        self.post_request::<_, ()>("/signed/order/saveRawData", req)
-            .await
+        self.post_request::<_, ()>("/signed/order/saveRawData", req).await
     }
 
     pub async fn check_multisig_account_is_cancel(

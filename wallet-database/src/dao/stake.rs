@@ -109,9 +109,6 @@ where
     E: Executor<'a, Database = Sqlite>,
 {
     let sql = "select * from delegate where id = ?";
-    let res = sqlx::query_as::<_, DelegateEntity>(sql)
-        .bind(id)
-        .fetch_one(exec)
-        .await?;
+    let res = sqlx::query_as::<_, DelegateEntity>(sql).bind(id).fetch_one(exec).await?;
     Ok(res)
 }

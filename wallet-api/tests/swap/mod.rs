@@ -119,11 +119,8 @@ async fn test_quote() {
 
     // testnet wtrx TYsbWxNnyTgsZaTFaue9hqpxkU3Fkco94a
 
-    let token_in = SwapTokenInfo {
-        token_addr: "".to_string(),
-        symbol: "trx".to_string(),
-        decimals: 6,
-    };
+    let token_in =
+        SwapTokenInfo { token_addr: "".to_string(), symbol: "trx".to_string(), decimals: 6 };
 
     let token_out = SwapTokenInfo {
         token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
@@ -180,11 +177,8 @@ async fn test_swap() {
         decimals: 6,
     };
 
-    let token_out = SwapTokenInfo {
-        token_addr: "".to_string(),
-        symbol: "TRX".to_string(),
-        decimals: 6,
-    };
+    let token_out =
+        SwapTokenInfo { token_addr: "".to_string(), symbol: "TRX".to_string(), decimals: 6 };
 
     let req = SwapReq {
         aggregator_addr: "TTXoDkNZWeTCFqeRs8G5QPjewZduUstPcT".to_string(),

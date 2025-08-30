@@ -127,10 +127,7 @@ impl IoStrategy for ModernIo {
         password: &str,
         algorithm: wallet_crypto::KdfAlgorithm,
     ) -> Result<(), crate::Error> {
-        let data = super::RootData {
-            phrase: phrase.to_string(),
-            seed: seed.to_vec(),
-        };
+        let data = super::RootData { phrase: phrase.to_string(), seed: seed.to_vec() };
 
         let file_name = "root.keystore";
         let data = wallet_utils::serde_func::serde_to_vec(&data)?;
@@ -179,15 +176,11 @@ impl IoStrategy for ModernIo {
         // let key_filename = format!("key{}.keystore", account_idx);
 
         // 添加新条目
-        metadata
-            .accounts
-            .entry(account_idx)
-            .or_insert(KeyMetas::default())
-            .push(KeyMeta {
-                chain_code: chain_code.to_string(),
-                address: address.to_string(),
-                derivation_path: derivation_path.to_string(),
-            });
+        metadata.accounts.entry(account_idx).or_insert(KeyMetas::default()).push(KeyMeta {
+            chain_code: chain_code.to_string(),
+            address: address.to_string(),
+            derivation_path: derivation_path.to_string(),
+        });
 
         // 写入元数据
         let contents = wallet_utils::serde_func::serde_to_string(&metadata)?;
@@ -239,10 +232,7 @@ impl IoStrategy for ModernIo {
         // 1. 分组处理：按账户索引分组
         let mut grouped = BTreeMap::<u32, Vec<&BulkSubkey>>::new();
         for subkey in &subkeys {
-            grouped
-                .entry(subkey.account_index_map.account_id)
-                .or_default()
-                .push(subkey);
+            grouped.entry(subkey.account_index_map.account_id).or_default().push(subkey);
         }
 
         // 2. 准备元数据更新
@@ -275,11 +265,7 @@ impl IoStrategy for ModernIo {
                 // 插入密钥数据
                 keystore_data.insert(key.encode(), subkey.data.to_vec());
 
-                metadata
-                    .accounts
-                    .entry(account_idx)
-                    .or_insert(KeyMetas::default())
-                    .push(key);
+                metadata.accounts.entry(account_idx).or_insert(KeyMetas::default()).push(key);
             }
 
             // 4. 保存密钥文件
@@ -387,11 +373,7 @@ impl IoStrategy for ModernIo {
         });
 
         // 4. 清理空目录
-        if subs_dir.exists()
-            && wallet_utils::file_func::read_dir(subs_dir)?
-                .next()
-                .is_none()
-        {
+        if subs_dir.exists() && wallet_utils::file_func::read_dir(subs_dir)?.next().is_none() {
             wallet_utils::file_func::remove_dir_all(subs_dir)?;
         }
 

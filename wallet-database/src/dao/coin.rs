@@ -23,10 +23,7 @@ pub struct CoinDao {
 
 impl CoinEntity {
     pub fn token_address(&self) -> Option<String> {
-        self.token_address
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .cloned()
+        self.token_address.as_ref().filter(|s| !s.is_empty()).cloned()
     }
 
     pub async fn update_price_unit<'a, E>(
@@ -75,10 +72,7 @@ impl CoinEntity {
         let token_address = coin_id.token_address.clone().unwrap_or_default();
 
         // 绑定 WHERE 子句的参数
-        query = query
-            .bind(token_address)
-            .bind(&coin_id.symbol)
-            .bind(&coin_id.chain_code);
+        query = query.bind(token_address).bind(&coin_id.symbol).bind(&coin_id.chain_code);
 
         // 执行查询
         query
@@ -345,11 +339,7 @@ impl CoinEntity {
         );
 
         let query = query_builder.build();
-        query
-            .execute(tx)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(tx).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn main_coin<'a, E>(
@@ -478,11 +468,7 @@ impl CoinEntity {
 
         // 构建并执行查询
         let query = query_builder.build();
-        query
-            .execute(tx)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(tx).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn clean_table<'a, E>(exec: E) -> Result<(), crate::Error>
@@ -504,16 +490,9 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let time = if is_create {
-            "created_at"
-        } else {
-            "updated_at"
-        };
+        let time = if is_create { "created_at" } else { "updated_at" };
 
-        let sql = format!(
-            "select * from coin where is_custom = 0 order by {} desc limit 1",
-            time
-        );
+        let sql = format!("select * from coin where is_custom = 0 order by {} desc limit 1", time);
 
         let res = sqlx::query_as::<_, CoinEntity>(&sql)
             .fetch_optional(exec)
@@ -562,10 +541,8 @@ impl CoinEntity {
         }
 
         if !exclude_token.is_empty() {
-            let excludes: Vec<String> = exclude_token
-                .into_iter()
-                .map(|t| format!("'{}'", t.replace("'", "''")))
-                .collect();
+            let excludes: Vec<String> =
+                exclude_token.into_iter().map(|t| format!("'{}'", t.replace("'", "''"))).collect();
             let clause = excludes.join(", ");
             sql.push_str(&format!(" AND coin.token_address NOT IN ({})", clause));
         }

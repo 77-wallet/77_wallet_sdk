@@ -1,13 +1,12 @@
 use crate::{
-    domain::api_wallet::adapter::{
-        btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx, sui_tx::SuiTx,
-        ton_tx::TonTx, tron_tx::TronTx, Tx,
-    },
-    request::api_wallet::trans::ApiTransferReq,
     ServiceError,
+    domain::api_wallet::adapter::{
+        Tx, btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
+        sui_tx::SuiTx, ton_tx::TonTx, tron_tx::TronTx,
+    },
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
-use crate::request::api_wallet::trans::ApiBaseTransferReq;
 
 // 创建一个枚举来包装所有 Tx 实现
 pub enum ApiTxAdapter {

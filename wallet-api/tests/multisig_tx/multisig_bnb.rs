@@ -13,10 +13,8 @@ async fn test_create_multisig_account() {
         "0xdc4778f200c36a1C9dEeb3164cEE8366aD1F9455".to_string(),
     );
 
-    let member2 = MemberVo::new(
-        "bob".to_string(),
-        "0xB0E488276b0467aa98ba3c74e098F3C845B78974".to_string(),
-    );
+    let member2 =
+        MemberVo::new("bob".to_string(), "0xB0E488276b0467aa98ba3c74e098F3C845B78974".to_string());
 
     // let member3 = Member::new(
     //     "charlie".to_string(),
@@ -47,9 +45,7 @@ async fn test_balance() {
     // let symbol = "bnb";
     let symbol = "ETH";
     let token_address = None;
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 
     tracing::info!("balance: {:?}", balance);
 }
@@ -106,9 +102,7 @@ async fn test_sign_transaction() {
     let queue_id = "169234572050042880".to_owned();
     let status = 1;
     let password = "123456".to_string();
-    let sign = wallet_manager
-        .sign_transaction(queue_id, status, password, None)
-        .await;
+    let sign = wallet_manager.sign_transaction(queue_id, status, password, None).await;
 
     tracing::info!("sign res  = {:?}", sign);
 }
@@ -118,9 +112,7 @@ async fn test_multisig_transfer_fee() {
     let wallet_manager = get_manager().await;
 
     let queue_id = "203256774709612544".to_owned();
-    let fee = wallet_manager
-        .estimate_multisig_transfer_fee(queue_id)
-        .await;
+    let fee = wallet_manager.estimate_multisig_transfer_fee(queue_id).await;
 
     tracing::info!("transfer fee = {:?}", serde_json::to_string(&fee).unwrap());
 }
@@ -136,11 +128,6 @@ async fn test_execute() {
     let fee = Some(fee);
 
     let password = "123456".to_string();
-    let result = wallet_manager
-        .exec_transaction(id, password, fee, None)
-        .await;
-    tracing::info!(
-        "execute res = {:?}",
-        serde_json::to_string(&result).unwrap()
-    );
+    let result = wallet_manager.exec_transaction(id, password, fee, None).await;
+    tracing::info!("execute res = {:?}", serde_json::to_string(&result).unwrap());
 }

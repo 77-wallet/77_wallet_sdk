@@ -12,10 +12,7 @@ pub struct ExchangeRateService {
 
 impl ExchangeRateService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            coin_domain: CoinDomain::new(),
-        }
+        Self { repo, coin_domain: CoinDomain::new() }
     }
 
     pub async fn upsert(
@@ -46,8 +43,7 @@ impl ExchangeRateService {
         tx.begin_transaction().await?;
 
         for rate in rates.list.into_iter() {
-            tx.upsert(&rate.target_currency, &rate.name, rate.rate)
-                .await?;
+            tx.upsert(&rate.target_currency, &rate.name, rate.rate).await?;
         }
         tx.commit_transaction().await?;
         Ok(())

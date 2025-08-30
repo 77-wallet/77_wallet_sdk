@@ -7,9 +7,7 @@ pub struct SharedCache {
 }
 impl SharedCache {
     pub fn new() -> Self {
-        Self {
-            inner: RwLock::new(CacheMap::new()),
-        }
+        Self { inner: RwLock::new(CacheMap::new()) }
     }
 
     // expiration unit is secs
@@ -103,8 +101,7 @@ impl CacheEntry {
     }
 
     pub fn is_expired(&self) -> bool {
-        self.instant
-            .is_some_and(|instant| instant <= std::time::Instant::now())
+        self.instant.is_some_and(|instant| instant <= std::time::Instant::now())
     }
 }
 
@@ -136,20 +133,12 @@ mod test {
         sleep(std::time::Duration::from_secs(5)).await;
 
         let rs = cache.get("hello").await;
-        println!(
-            "再次获取 {:?},是否过期 {}",
-            rs.clone(),
-            rs.unwrap().is_expired()
-        );
+        println!("再次获取 {:?},是否过期 {}", rs.clone(), rs.unwrap().is_expired());
 
         println!("睡眠6秒");
         sleep(std::time::Duration::from_secs(5)).await;
 
         let rs = cache.get("hello").await;
-        println!(
-            "再次获取 {:?},是否过期 {}",
-            rs.clone(),
-            rs.unwrap().is_expired()
-        );
+        println!("再次获取 {:?},是否过期 {}", rs.clone(), rs.unwrap().is_expired());
     }
 }
