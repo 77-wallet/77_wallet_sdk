@@ -1,8 +1,21 @@
+use crate::{
+    domain::{api_wallet::withdraw::ApiWithdrawDomain, coin::CoinDomain},
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+};
 use tokio::{sync::mpsc, task::JoinHandle};
+use wallet_database::{
+    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    repositories::{api_window::ApiWindowRepo, api_withdraw::ApiWithdrawRepo},
+};
+
+pub(crate) enum ProcessWithdrawTxCommand {
+    Tx,
+    Close,
+}
 
 #[derive(Debug)]
 pub(crate) struct ProcessWithdrawTxHandle {
-    tx: mpsc::Sender<String>,
+    tx: mpsc::Sender<ProcessWithdrawTxCommand>,
     handle: Option<JoinHandle<Result<(), anyhow::Error>>>,
 }
 
@@ -16,13 +29,16 @@ impl ProcessWithdrawTxHandle {
         n
     }
 
-    pub(crate) async fn submit_tx(&mut self, tx: String) -> Result<(), anyhow::Error> {
-        let _ = self.tx.send("tx".to_string());
+    pub(crate) async fn submit_tx(
+        &mut self,
+        tx: ProcessWithdrawTxCommand,
+    ) -> Result<(), anyhow::Error> {
+        let _ = self.tx.send(tx).await;
         Ok(())
     }
 
     pub async fn close(&mut self) -> Result<(), anyhow::Error> {
-        let _ = self.tx.send("close".to_string());
+        let _ = self.tx.send(ProcessWithdrawTxCommand::Close).await;
         if let Some(handle) = self.handle.take() {
             handle.await?; // JoinHandle::await 返回 Result<T, JoinError>
         }
@@ -31,35 +47,109 @@ impl ProcessWithdrawTxHandle {
 }
 
 pub(crate) struct ProcessWithdrawTx {
-    rx: mpsc::Receiver<String>,
+    rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
 }
 
 impl ProcessWithdrawTx {
-    pub(crate) fn new(rx: mpsc::Receiver<String>) -> Self {
+    pub(crate) fn new(rx: mpsc::Receiver<ProcessWithdrawTxCommand>) -> Self {
         Self { rx }
     }
 
     pub(crate) async fn run(&mut self) -> Result<(), anyhow::Error> {
+        tracing::info!("starting process withdraw -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             tokio::select! {
                 msg = self.rx.recv() => {
-                    if msg == Some("close".to_string()) {
-                        break;
-                    } else {
-                        Self::process_withdraw_tx().await?;
-                        iv.reset();
+                    match msg {
+                        Some(cmd) => {
+                            match cmd {
+                                ProcessWithdrawTxCommand::Tx => {
+                                     match self.process_withdraw_tx().await {
+                                        Ok(_) => {}
+                                        Err(_) => {
+                                            tracing::error!("failed to process withdraw tx");
+                                        }
+                                    }
+                                    iv.reset();
+                                }
+                                ProcessWithdrawTxCommand::Close => {
+                                    break;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 _ = iv.tick() => {
-                    Self::process_withdraw_tx().await?;
+                    match self.process_withdraw_tx().await {
+                        Ok(_) => {}
+                        Err(_) => {
+                            tracing::error!("failed to process withdraw tx");
+                        }
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    async fn process_withdraw_tx() -> Result<(), anyhow::Error> {
+    async fn process_withdraw_tx(&self) -> Result<(), anyhow::Error> {
+        tracing::info!("starting process withdraw -------------------------------1");
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 1).await?;
+        tracing::info!("starting process withdraw -------------------------------2");
+        let withdraws = ApiWithdrawRepo::page_api_withdraw(&pool.clone(), offset, 1000).await?;
+        tracing::info!(withdraws=%withdraws.len(), "starting process withdraw -------------------------------3");
+        for req in withdraws {
+            self.process_withdraw_single_tx(req).await?;
+        }
+        Ok(())
+    }
+
+    async fn process_withdraw_single_tx(
+        &self,
+        req: ApiWithdrawEntity,
+    ) -> Result<(), anyhow::Error> {
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
+
+        let coin =
+            CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
+
+        let mut params = ApiBaseTransferReq::new(
+            &req.from_addr,
+            &req.to_addr.to_string(),
+            &req.value.to_string(),
+            &req.chain_code.to_string(),
+        );
+        let token_address = if coin.token_address.is_none() {
+            None
+        } else {
+            let s = coin.token_address.unwrap();
+            if s.is_empty() { None } else { Some(s) }
+        };
+        params.with_token(token_address, coin.decimals, &coin.symbol);
+
+        let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
+
+        // 发交易
+        let tx_resp = ApiWithdrawDomain::transfer(transfer_req).await?;
+
+        let resource_consume = if tx_resp.consumer.is_none() {
+            "0".to_string()
+        } else {
+            tx_resp.consumer.unwrap().energy_used.to_string()
+        };
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiWithdrawRepo::update_api_withdraw_tx_status(
+            &pool,
+            &req.trade_no,
+            &tx_resp.tx_hash,
+            &resource_consume,
+            &tx_resp.fee,
+            ApiWithdrawStatus::SendingTx,
+        )
+        .await?;
         Ok(())
     }
 }

@@ -13,7 +13,15 @@ impl ApiWithdrawRepo {
         page: i64,
         page_size: i64,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::all_api_withdraw(pool.as_ref()).await
+        ApiWithdrawDao::page_api_withdraw(pool.as_ref(), page, page_size).await
+    }
+
+    pub async fn page_api_pass_withdraw(
+        pool: &DbPool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error> {
+        ApiWithdrawDao::page_api_pass_withdraw(pool.as_ref(), page, page_size).await
     }
 
     pub async fn upsert_api_withdraw(

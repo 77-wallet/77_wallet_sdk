@@ -1,11 +1,8 @@
-use crate::dao::api_nonce::ApiNonceDao;
-use crate::DbPool;
+use crate::{dao::api_nonce::ApiNonceDao, DbPool};
 
 pub struct ApiNonceRepo;
 
-impl ApiNonceRepo{
-
-
+impl ApiNonceRepo {
     pub async fn upsert_and_get_api_nonce(
         pool: &DbPool,
         uid: &str,

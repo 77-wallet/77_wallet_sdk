@@ -1,6 +1,6 @@
 -- Add migration script here
 
-CREATE TABLE api_withdraw_window
+CREATE TABLE api_window
 (
     id               INTEGER PRIMARY KEY,
     offset  INTEGER,
