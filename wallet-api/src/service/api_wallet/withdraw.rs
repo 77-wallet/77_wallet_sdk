@@ -46,8 +46,16 @@ impl WithdrawService {
             trade_type,
             uid: uid.to_string(),
         };
-        ApiWithdrawDomain::withdraw(&req).await?;
-        Ok(())
+        let res = ApiWithdrawDomain::withdraw(&req).await;
+        match res {
+            Ok(res) => {
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!("withdrawal_order failed with {:?}", e);
+                Err(e.into())
+            }
+        }
     }
 
     pub async fn sign_withdrawal_order(

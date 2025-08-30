@@ -70,6 +70,7 @@ impl TonTx {
 
             Ok(arg.build_trans(address_type, provider).await?)
         } else {
+            tracing::info!("transfer ------------------- 16:");
             let arg = TransferOpt::new(&req.from, &req.to, &req.value, req.spend_all)?;
 
             Ok(arg.build_trans(address_type, provider).await?)
@@ -120,12 +121,14 @@ impl Tx for TonTx {
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
+        tracing::info!("transfer ------------------- 11:");
         // 验证余额
         let balance =
             self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
         if balance < transfer_amount {
             return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
         }
+        tracing::info!("transfer ------------------- 12:");
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
@@ -138,13 +141,17 @@ impl Tx for TonTx {
             params.base.from.to_string(),
         )))?;
 
+
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
+        tracing::info!("transfer ------------------- 13:");
         let msg_cell =
             self.build_ext_cell(&params.base, &self.chain.provider, address_type).await?;
 
+        tracing::info!("transfer ------------------- 14:");
         let fee =
             self.chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
+
 
         let mut trans_fee = U256::from(fee.get_fee());
         if params.base.token_address.is_none() {
@@ -165,6 +172,7 @@ impl Tx for TonTx {
                 ))?;
             }
         }
+        tracing::info!("transfer ------------------- 15:");
         let tx_hash = self.chain.exec(msg_cell, private_key, address_type).await?;
 
         Ok(TransferResp::new(tx_hash, fee.get_fee_ton().to_string()))

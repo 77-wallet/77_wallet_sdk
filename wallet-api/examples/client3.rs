@@ -63,12 +63,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let res = wallet_manager.bind_merchant(key, merchain_id, uid).await;
     // tracing::info!("res --------------------- 3: {res:?}");
 
-    let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
-    let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
+    // bnb
+    // let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
+    // let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
+
+    // tron
+    // let from = "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n";
+    // let to = "TNRUkgGzhwuRL2rGeFPErThYWr4MranYLA";
+
+    // sol
+    // let from = "DF3Nong1byLe4Nb1Qu4R8T4G7TFDpLe7T58moGbUotpe";
+    // let to = "J8ByH2pUySpXL4fXdgPpwnaL7R381xunqXT2cqaZ1tm";
+
+    // ton
+    let from = "UQBTmOIHin7OrxheQ979Y3_xJjHxMUJocknrv3_J_dCocuqy";
+    let to = "0QDex-zBG6cbJCwaxA7999xIB_ZhNAwOr37lsw5HxB7Ldrpq";
+
+    // sui
+    // let from = "0xb69713b670ba3bfcfa7ea577005de40bf026e277b574773bc4c6f0adb7e1ced8";
+    // let to = "0xd830497ecd7321d4e0e501d3f71689380e8e8883ee5e1597cf06b3b72a95d226";
+
     let value = "0.000001";
-    let trade_no = "0x0000000066";
+    let trade_no = "0x0000000098";
     let res1 = wallet_manager
-        .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid)
+        .api_withdrawal_order(from, to, value, "ton", None, "TON", trade_no, 1, uid)
         .await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 

@@ -19,6 +19,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::SqliteContext;
 use wallet_database::factory::RepositoryFactory;
 use wallet_database::repositories::device::DeviceRepo;
+use crate::infrastructure::process_withdraw_tx::{ProcessWithdrawTxHandle};
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
@@ -110,6 +111,7 @@ pub struct Context {
     pub(crate) inner_event_handle: InnerEventHandle,
     pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
     pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
+    pub(crate) process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
 }
 
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
@@ -184,6 +186,8 @@ impl Context {
 
         let inner_event_handle = InnerEventHandle::new();
 
+        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
+
         Ok(Context {
             dirs,
             backend_api,
@@ -199,6 +203,7 @@ impl Context {
             inner_event_handle,
             unconfirmed_msg_collector,
             unconfirmed_msg_processor,
+            process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
         })
     }
 
@@ -325,6 +330,10 @@ impl Context {
     pub(crate) fn get_global_unconfirmed_msg_processor()
     -> Result<&'static UnconfirmedMsgProcessor, crate::SystemError> {
         Ok(&Context::get_context()?.unconfirmed_msg_processor)
+    }
+
+    pub(crate) fn get_global_process_withdraw_tx() ->Result<Arc<ProcessWithdrawTxHandle>, crate::ServiceError> {
+        Ok(Context::get_context()?.process_withdraw_tx_handle.clone())
     }
 }
 

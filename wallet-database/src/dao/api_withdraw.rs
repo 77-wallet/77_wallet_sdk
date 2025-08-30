@@ -119,34 +119,7 @@ impl ApiWithdrawDao {
         tracing::info!(xx=%res.rows_affected(), "withdraw api");
         Ok(())
     }
-
-    pub async fn update<'a, E>(exec: E, api_withdraw: ApiWithdrawEntity) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-            UPDATE api_withdraws
-            SET
-                name = ?,
-                threshold = ?,
-                member = ?,
-                chain_code = ?,
-                operations = ?,
-                is_del = ?,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE trade_no = ?
-        "#;
-        tracing::warn!("{:#?}", api_withdraw);
-
-        sqlx::query(sql)
-            .bind(api_withdraw.trade_no)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-
-        Ok(())
-    }
-
+    
     pub async fn update_status<'a, E>(
         exec: E,
         trade_no: &str,
