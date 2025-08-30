@@ -38,6 +38,8 @@ pub enum ApiWithdrawStatus {
     AuditPass,
     AuditReject,
     SendingTx,
+    Success,
+    Failure,
 }
 
 impl Display for ApiWithdrawStatus {

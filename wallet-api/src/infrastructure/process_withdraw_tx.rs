@@ -99,7 +99,13 @@ impl ProcessWithdrawTx {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 1).await?;
         tracing::info!("starting process withdraw -------------------------------2");
-        let withdraws = ApiWithdrawRepo::page_api_withdraw(&pool.clone(), offset, 1000).await?;
+        let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
+            &pool.clone(),
+            offset,
+            1000,
+            ApiWithdrawStatus::AuditPass,
+        )
+        .await?;
         tracing::info!(withdraws=%withdraws.len(), "starting process withdraw -------------------------------3");
         for req in withdraws {
             self.process_withdraw_single_tx(req).await?;
@@ -133,23 +139,35 @@ impl ProcessWithdrawTx {
         let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
 
         // 发交易
-        let tx_resp = ApiWithdrawDomain::transfer(transfer_req).await?;
-
-        let resource_consume = if tx_resp.consumer.is_none() {
-            "0".to_string()
-        } else {
-            tx_resp.consumer.unwrap().energy_used.to_string()
-        };
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_tx_status(
-            &pool,
-            &req.trade_no,
-            &tx_resp.tx_hash,
-            &resource_consume,
-            &tx_resp.fee,
-            ApiWithdrawStatus::SendingTx,
-        )
-        .await?;
+        let tx_resp = ApiWithdrawDomain::transfer(transfer_req).await;
+        match tx_resp {
+            Ok(tx) => {
+                let resource_consume = if tx.consumer.is_none() {
+                    "0".to_string()
+                } else {
+                    tx.consumer.unwrap().energy_used.to_string()
+                };
+                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                ApiWithdrawRepo::update_api_withdraw_tx_status(
+                    &pool,
+                    &req.trade_no,
+                    &tx.tx_hash,
+                    &resource_consume,
+                    &tx.fee,
+                    ApiWithdrawStatus::SendingTx,
+                ).await?;
+            }
+            Err(_) => {
+                // 上报
+                tracing::error!("failed to process withdraw tx ---");
+                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                ApiWithdrawRepo::update_api_withdraw_status(
+                    &pool,
+                    &req.trade_no,
+                    ApiWithdrawStatus::Failure,
+                ).await?;
+            }
+        }
         Ok(())
     }
 }
