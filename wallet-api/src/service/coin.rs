@@ -305,7 +305,6 @@ impl CoinService {
                         symbol: symbol.to_string(),
                         token_address: token.token_address.clone(),
                     };
-                    let time = parse_utc_with_error(&token.update_time).ok();
                     let status = if token.enable { Some(1) } else { Some(0) };
 
                     tx.update_price_unit(
@@ -314,7 +313,7 @@ impl CoinService {
                         token.unit,
                         status,
                         token.swappable,
-                        time,
+                        None,
                     )
                     .await?;
                     let data =

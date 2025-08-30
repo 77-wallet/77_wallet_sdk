@@ -108,7 +108,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             chain_codes,
             keyword,
             symbol_list,
-            Some(1),
+            None,
             None,
             page,
             page_size,

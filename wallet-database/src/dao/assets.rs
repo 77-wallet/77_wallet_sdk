@@ -31,18 +31,6 @@ impl AssetsEntity {
             .to_string(),
         );
 
-        conditions.push(
-            " EXISTS (
-                    SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = assets.chain_code
-                    AND coin.token_address = assets.token_address
-                    AND coin.symbol = assets.symbol
-                    AND coin.status = 1
-                )"
-            .to_string(),
-        );
-
         sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
             .fetch_all(exec)
             .await
@@ -63,17 +51,6 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )"
-            .to_string(),
-        );
-        conditions.push(
-            " EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
             )"
             .to_string(),
         );
@@ -115,18 +92,6 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )"
-            .to_string(),
-        );
-
-        conditions.push(
-            " EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
             )"
             .to_string(),
         );
@@ -175,14 +140,6 @@ impl AssetsEntity {
                         FROM chain
                         WHERE chain.chain_code = a.chain_code
                         AND chain.status = 1
-                    )
-                    AND EXISTS (
-                        SELECT 1
-                        FROM coin
-                        WHERE coin.chain_code = a.chain_code
-                        AND coin.token_address = a.token_address
-                        AND coin.symbol = a.symbol
-                        AND coin.status = 1
                     )"
             )
         };
@@ -266,14 +223,6 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
             )"
         .to_string();
 
@@ -330,14 +279,6 @@ impl AssetsEntity {
                     FROM chain
                     WHERE chain.chain_code = assets.chain_code
                     AND chain.status = 1
-                )
-                AND EXISTS (
-                    SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = assets.chain_code
-                    AND coin.token_address = assets.token_address
-                    AND coin.symbol = assets.symbol
-                    AND coin.status = 1
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
@@ -374,14 +315,6 @@ impl AssetsEntity {
                     FROM chain
                     WHERE chain.chain_code = assets.chain_code
                     AND chain.status = 1
-                )
-                AND EXISTS (
-                    SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = assets.chain_code
-                    AND coin.token_address = assets.token_address
-                    AND coin.symbol = assets.symbol
-                    AND coin.status = 1
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
@@ -533,18 +466,6 @@ impl AssetsEntity {
             .to_string(),
         );
 
-        conditions.push(
-            " EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
-            )"
-            .to_string(),
-        );
-
         if let Some(chain_code) = chain_code {
             conditions.push(format!("chain_code = '{chain_code}'"));
         }
@@ -589,14 +510,6 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
             );
     "#;
 
@@ -631,16 +544,7 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
-            );
-        "#;
+            );"#;
 
         sqlx::query(sql)
             .bind(chain_code)
