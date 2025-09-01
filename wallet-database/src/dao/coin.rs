@@ -129,8 +129,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM coin where symbol = $1
-        AND chain_code = $2 AND token_address = $3 AND is_del = 0 AND status = 1;";
+        let sql = "SELECT * FROM coin where symbol = $1 AND chain_code = $2 AND token_address = $3 AND is_del = 0;";
         let token_address = token_address.unwrap_or_default();
         sqlx::query_as::<sqlx::Sqlite, Self>(sql)
             .bind(symbol)
@@ -145,7 +144,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT DISTINCT chain_code FROM coin WHERE is_del = 0 AND status = 1 ";
+        let sql = "SELECT DISTINCT chain_code FROM coin WHERE is_del = 0";
 
         sqlx::query_scalar::<_, String>(sql)
             .fetch_all(exec)
@@ -162,7 +161,7 @@ impl CoinEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1".to_string();
+        let mut sql = "SELECT * FROM coin WHERE is_del = 0".to_string();
 
         let mut conditions = Vec::new();
 
@@ -199,7 +198,7 @@ impl CoinEntity {
         E: Executor<'a, Database = Sqlite>,
     {
         let symbol_list = crate::any_in_collection(symbol_list, "','");
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1".to_string();
+        let mut sql = "SELECT * FROM coin WHERE is_del = 0".to_string();
 
         let mut conditions = Vec::new();
 
@@ -226,6 +225,7 @@ impl CoinEntity {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    // 币种管理列表(不查询status = 1)
     pub async fn coin_list_symbol_not_in<'a, E>(
         exec: &E,
         chain_codes: &HashSet<String>,
@@ -592,7 +592,7 @@ impl CoinEntity {
             ON coin.chain_code = assets.chain_code 
             AND coin.token_address = assets.token_address 
             and assets.address  IN ('{}')
-        WHERE coin.status = 1 and swappable = 1
+        WHERE  swappable = 1
         "#,
             address,
         );
