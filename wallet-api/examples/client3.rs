@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let value = "0.000001";
     let trade_no = "0x0000000104";
     let res1 = wallet_manager
-        .api_transfer_fee_order(from, to, value, "ton", None, "TON", trade_no, 1, uid)
+        .api_transfer_fee_order(from, to, value, "ton", None, "TON", trade_no, 3, uid)
         .await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 

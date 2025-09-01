@@ -6,6 +6,7 @@ use crate::{
         inner_event::InnerEventHandle,
         process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
         process_withdraw_tx::ProcessWithdrawTxHandle,
+        process_fee_tx::ProcessFeeTxHandle,
         task_queue::{
             task::Tasks, task_manager::TaskManager, BackendApiTask, BackendApiTaskData,
             InitializationTask,
@@ -110,6 +111,7 @@ pub struct Context {
     pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
     pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
     pub(crate) process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
+    pub(crate) process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
 }
 
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
@@ -186,6 +188,8 @@ impl Context {
 
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
 
+        let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
+
         Ok(Context {
             dirs,
             backend_api,
@@ -202,6 +206,7 @@ impl Context {
             unconfirmed_msg_collector,
             unconfirmed_msg_processor,
             process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
+            process_fee_tx_handle: Arc::new(process_fee_tx_handle),
         })
     }
 
@@ -334,6 +339,11 @@ impl Context {
     -> Result<Arc<ProcessWithdrawTxHandle>, crate::SystemError> {
         Ok(Context::get_context()?.process_withdraw_tx_handle.clone())
     }
+
+    pub(crate) fn get_global_processed_fee_tx_handle()
+    -> Result<Arc<ProcessFeeTxHandle>, crate::SystemError> {
+        Ok(Context::get_context()?.process_fee_tx_handle.clone())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -445,13 +455,15 @@ impl WalletManager {
     }
 
     pub async fn close(&self) -> Result<(), crate::ServiceError> {
-        let handle = Context::get_global_processed_withdraw_tx_handle()?;
+        let withdraw_handle = Context::get_global_processed_withdraw_tx_handle()?;
         // Since Arc does not allow mutable access, and assuming close() does not require &mut self,
         // we can call close() as is. If close() requires &mut self, this will not compile.
         // If that's the case, you need to redesign ProcessWithdrawTxHandle to allow safe concurrent closing,
         // or provide a different mechanism.
         
-        handle.close().await?;
+        withdraw_handle.close().await?;
+        let fee_handle = Context::get_global_processed_fee_tx_handle()?;
+        fee_handle.close().await?;
         Ok(())
     }
 }

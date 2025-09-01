@@ -13,10 +13,8 @@ use crate::{
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use wallet_database::{
-    entities::{api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus},
-    repositories::{
-        api_account::ApiAccountRepo, api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo
-    },
+    entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
+    repositories::{api_account::ApiAccountRepo, api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
 };
 
 pub struct ApiFeeDomain {}
@@ -50,7 +48,7 @@ impl ApiFeeDomain {
             req.trade_type,
         )
         .await?;
-        tracing::info!("upsert_api_withdraw ------------------- 5:");
+        tracing::info!("upsert_api_fee ------------------- 5:");
 
         let data = NotifyEvent::Withdraw(WithdrawFront {
             uid: req.uid.to_string(),
@@ -62,14 +60,9 @@ impl ApiFeeDomain {
 
         // 可能发交易
         let value = Decimal::from_str(&req.value).unwrap();
-        if (value < Decimal::from(10)) {
+        if value < Decimal::from(10) {
             tracing::info!("transfer ------------------- 9:");
-            ApiWithdrawRepo::update_api_withdraw_status(
-                &pool,
-                &req.trade_no,
-                ApiWithdrawStatus::AuditPass,
-            )
-            .await?;
+            ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Init).await?;
         }
         Ok(())
     }
