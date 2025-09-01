@@ -110,8 +110,8 @@ impl ApiCollectDao {
             .bind(0)
             .bind("")
             .bind(0)
-            .bind(api_withdraw.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
             .bind(0)
+            .bind(api_withdraw.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

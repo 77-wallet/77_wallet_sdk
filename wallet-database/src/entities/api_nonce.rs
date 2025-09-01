@@ -1,4 +1,3 @@
-
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ApiNonceEntity {
     pub id: i64,

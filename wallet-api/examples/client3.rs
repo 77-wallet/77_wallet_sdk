@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("ctrl_c");
-                wallet_manager.close().await;
+                let _ = wallet_manager.close().await;
                 break;
             }
         }

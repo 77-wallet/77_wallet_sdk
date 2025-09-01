@@ -61,12 +61,12 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x418Ea813dd2d9AA21597912b62a10465FCe48033";
+        let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
         let wallet_password = "q1111111";
         let index = None;
         let name = "666";
         let is_default_name = true;
-        let number = 1;
+        let number = 3;
         let api_wallet_type = ApiWalletType::SubAccount;
 
         let req = CreateApiAccountReq::new(

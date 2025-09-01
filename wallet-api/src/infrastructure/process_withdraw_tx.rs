@@ -2,8 +2,10 @@ use crate::{
     domain::{api_wallet::withdraw::ApiWithdrawDomain, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
-use tokio::sync::{broadcast, Mutex};
-use tokio::task::JoinHandle;
+use tokio::{
+    sync::{Mutex, broadcast},
+    task::JoinHandle,
+};
 use wallet_database::{
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     repositories::{api_window::ApiWindowRepo, api_withdraw::ApiWithdrawRepo},
@@ -31,7 +33,11 @@ impl ProcessWithdrawTxHandle {
         let handle = tokio::spawn(async move { tx.run().await });
         let mut tx_report = ProcessWithdrawTxReport::new(rx_report);
         let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
-        Self { tx: shutdown_tx, tx_handle: Mutex::new(Some(handle)), tx_report_handle: Mutex::new(Some(tx_report_handle)) }
+        Self {
+            tx: shutdown_tx,
+            tx_handle: Mutex::new(Some(handle)),
+            tx_report_handle: Mutex::new(Some(tx_report_handle)),
+        }
     }
 
     pub(crate) async fn submit_tx(
@@ -45,10 +51,14 @@ impl ProcessWithdrawTxHandle {
     pub(crate) async fn close(&self) -> Result<(), crate::ServiceError> {
         let _ = self.tx.send(ProcessWithdrawTxCommand::Close);
         if let Some(handle) = self.tx_handle.lock().await.take() {
-            handle.await.map_err(|_| crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound))??;
+            handle.await.map_err(|_| {
+                crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound)
+            })??;
         }
         if let Some(handle) = self.tx_report_handle.lock().await.take() {
-            handle.await.map_err(|_| crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound))??;
+            handle.await.map_err(|_| {
+                crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound)
+            })??;
         }
         Ok(())
     }
@@ -115,7 +125,7 @@ impl ProcessWithdrawTx {
             1000,
             ApiWithdrawStatus::AuditPass,
         )
-            .await?;
+        .await?;
         let withdraws_len = withdraws.len();
         tracing::info!(withdraws=%withdraws.len(), "starting process withdraw -------------------------------3");
         for req in withdraws {
@@ -167,7 +177,8 @@ impl ProcessWithdrawTx {
                     &resource_consume,
                     &tx.fee,
                     ApiWithdrawStatus::SendingTx,
-                ).await?; 
+                )
+                .await?;
             }
             Err(_) => {
                 // 上报
@@ -177,7 +188,8 @@ impl ProcessWithdrawTx {
                     &pool,
                     &req.trade_no,
                     ApiWithdrawStatus::Failure,
-                ).await?;
+                )
+                .await?;
             }
         }
         Ok(())
@@ -228,7 +240,7 @@ impl ProcessWithdrawTxReport {
                 }
                 _ = iv.tick() => {
                     match self.process_withdraw_tx_report().await {
-                        Ok(_) => {} 
+                        Ok(_) => {}
                         Err(_) => {
                             tracing::error!("failed to process withdraw tx report");
                         }
@@ -242,11 +254,14 @@ impl ProcessWithdrawTxReport {
 
     async fn process_withdraw_tx_report(&self) -> Result<(), anyhow::Error> {
         tracing::info!("starting process withdraw tx report -------------------------------");
-        
+
         Ok(())
     }
-    
-    async fn process_withdraw_single_tx_report(&self, req: ApiWithdrawEntity) -> Result<(), anyhow::Error> {
+
+    async fn process_withdraw_single_tx_report(
+        &self,
+        req: ApiWithdrawEntity,
+    ) -> Result<(), anyhow::Error> {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
         Ok(())
     }

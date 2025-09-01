@@ -3,9 +3,15 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct ApiNonceDao;
 
 impl ApiNonceDao {
-    pub async fn upsert_and_get_api_nonce<'c, E>(executor: E,   uid: &str, name: &str, from_addr: &str, chain_code: &str,) -> Result<i32, crate::Error>
+    pub async fn upsert_and_get_api_nonce<'c, E>(
+        executor: E,
+        uid: &str,
+        name: &str,
+        from_addr: &str,
+        chain_code: &str,
+    ) -> Result<i32, crate::Error>
     where
-        E: Executor<'c, Database=Sqlite>,
+        E: Executor<'c, Database = Sqlite>,
     {
         let sql = r#"
             Insert into api_nonce
@@ -19,7 +25,7 @@ impl ApiNonceDao {
             returning nonce
         "#;
 
-        let  nonce = sqlx::query_scalar::<_, i32>(sql)
+        let nonce = sqlx::query_scalar::<_, i32>(sql)
             .bind(uid)
             .bind(name)
             .bind(from_addr)

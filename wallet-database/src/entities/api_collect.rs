@@ -30,8 +30,6 @@ pub struct ApiCollectEntity {
 pub enum ApiCollectStatus {
     /// 初始化
     Init,
-    /// 归集地址手续费不足
-    CollectFeeNotEnough,
     /// 出款地址余额不足
     WithdrawInsufficientBalance,
     /// 发送交易

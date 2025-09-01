@@ -48,9 +48,7 @@ impl WithdrawService {
         };
         let res = ApiWithdrawDomain::withdraw(&req).await;
         match res {
-            Ok(res) => {
-                Ok(())
-            }
+            Ok(res) => Ok(()),
             Err(e) => {
                 tracing::error!("withdrawal_order failed with {:?}", e);
                 Err(e.into())

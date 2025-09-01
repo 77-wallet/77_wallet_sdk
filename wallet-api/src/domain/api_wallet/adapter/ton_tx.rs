@@ -139,7 +139,6 @@ impl Tx for TonTx {
             params.base.from.to_string(),
         )))?;
 
-
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
         tracing::info!("transfer ------------------- 13:");
@@ -149,7 +148,6 @@ impl Tx for TonTx {
         tracing::info!("transfer ------------------- 14:");
         let fee =
             self.chain.estimate_fee(msg_cell.clone(), &params.base.from, address_type).await?;
-
 
         let mut trans_fee = U256::from(fee.get_fee());
         if params.base.token_address.is_none() {

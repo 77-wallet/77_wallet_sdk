@@ -1,10 +1,11 @@
 use crate::{
     domain::{
-        api_wallet::{collect::ApiCollectDomain, withdraw::ApiWithdrawDomain},
+        api_wallet::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
         chain::transaction::ChainTransDomain,
+        coin::CoinDomain,
     },
     request::{
-        api_wallet::trans::ApiWithdrawReq,
+        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
         transaction::{BaseTransferReq, TransferReq},
     },
     service::transaction::TransactionService,
@@ -31,7 +32,7 @@ pub struct TransMsg {
     #[serde(rename = "token_code")]
     symbol: String,
     trade_no: String,
-    // 交易类型： 1 提币 / 2 归集
+    // 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
     trade_type: u8,
     uid: String,
 }
@@ -42,8 +43,42 @@ impl TransMsg {
         match self.trade_type {
             1 => self.withdraw().await?,
             2 => self.collect().await?,
+            3 => self.transfer_fee().await?,
             _ => {}
         }
+        Ok(())
+    }
+
+    pub(crate) async fn transfer_fee(&self) -> Result<(), crate::ServiceError> {
+        // 获取密码缓存
+        let password = "[REDACTED:password]";
+        // 从出款地址转手续费到from_addr
+
+        tracing::info!("打手续费 fee: {}", self.value);
+        todo!();
+        let coin =
+            CoinDomain::get_coin(&self.chain_code, &self.symbol, Some(self.token_address.clone()))
+                .await?;
+        let mut params =
+            ApiBaseTransferReq::new(&self.from, &self.to, &self.value, &self.chain_code);
+        params.with_token(None, coin.decimals, &coin.symbol);
+
+        let transfer_req = ApiTransferReq { base: params, password: password.to_string() };
+        // 上链
+        // 发交易
+        let tx_resp = ApiFeeDomain::transfer(transfer_req).await?;
+        // ApiChainTransDomain::transfer(params, bill_kind, adapter)
+        let _resource_consume = if tx_resp.consumer.is_none() {
+            "0".to_string()
+        } else {
+            tx_resp.consumer.unwrap().energy_used.to_string()
+        };
+        tracing::info!(
+            "withdraw wallet transfer fee {} to {} value {}",
+            self.from,
+            self.to,
+            self.value
+        );
         Ok(())
     }
 
