@@ -158,7 +158,7 @@ impl ProcessWithdrawTx {
                     &resource_consume,
                     &tx.fee,
                     ApiWithdrawStatus::SendingTx,
-                ).await?;
+                ).await?; 
             }
             Err(_) => {
                 // 上报

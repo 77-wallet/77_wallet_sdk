@@ -20,6 +20,7 @@ pub struct ApiFeeEntity {
     pub transaction_time: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
     pub block_height: String,
     pub notes: String,
+    pub post_tx_count: u32,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }

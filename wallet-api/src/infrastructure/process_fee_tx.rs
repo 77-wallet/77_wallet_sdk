@@ -1,4 +1,5 @@
 use crate::{
+    Context,
     domain::{api_wallet::fee::ApiFeeDomain, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -9,6 +10,9 @@ use tokio::{
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::{api_fee::ApiFeeRepo, api_window::ApiWindowRepo},
+};
+use wallet_transport_backend::request::api_wallet::transaction::{
+    TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
 pub(crate) enum ProcessFeeTxCommand {
@@ -154,12 +158,32 @@ impl ProcessWithdrawTx {
                     ApiFeeStatus::SendingTx,
                 )
                 .await?;
+                let backend_api = Context::get_global_backend_api()?;
+                backend_api
+                    .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
+                        &req.trade_no,
+                        TransType::Fee,
+                        &tx.tx_hash,
+                        TransStatus::Success,
+                        "",
+                    ))
+                    .await?;
             }
             Err(_) => {
                 // 上报
                 tracing::error!("failed to process fee tx ---");
                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
                 ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Failure)
+                    .await?;
+                let backend_api = Context::get_global_backend_api()?;
+                backend_api
+                    .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
+                        &req.trade_no,
+                        TransType::Fee,
+                        "",
+                        TransStatus::Fail,
+                        "",
+                    ))
                     .await?;
             }
         }

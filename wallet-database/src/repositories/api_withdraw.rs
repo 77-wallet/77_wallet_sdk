@@ -60,6 +60,7 @@ impl ApiWithdrawRepo {
             transaction_time: None,
             block_height: "".to_string(),
             notes: "".to_string(),
+            post_tx_count: 0,
             created_at: Default::default(),
             updated_at: None,
         };
