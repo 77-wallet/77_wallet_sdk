@@ -2,6 +2,7 @@ use crate::{
     domain::{api_wallet::withdraw::ApiWithdrawDomain, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
+use tokio::sync::Mutex;
 use tokio::{sync::mpsc, task::JoinHandle};
 use wallet_database::{
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
@@ -16,31 +17,29 @@ pub(crate) enum ProcessWithdrawTxCommand {
 #[derive(Debug)]
 pub(crate) struct ProcessWithdrawTxHandle {
     tx: mpsc::Sender<ProcessWithdrawTxCommand>,
-    handle: Option<JoinHandle<Result<(), anyhow::Error>>>,
+    handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
 }
 
 impl ProcessWithdrawTxHandle {
     pub(crate) async fn new() -> Self {
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-        let mut n = Self { tx: shutdown_tx, handle: None };
         let mut tx = ProcessWithdrawTx::new(shutdown_rx);
         let handle = tokio::spawn(async move { tx.run().await });
-        n.handle = Some(handle);
-        n
+        Self { tx: shutdown_tx, handle: Mutex::new(Some(handle)) }
     }
 
     pub(crate) async fn submit_tx(
-        &mut self,
+        &self,
         tx: ProcessWithdrawTxCommand,
     ) -> Result<(), anyhow::Error> {
         let _ = self.tx.send(tx).await;
         Ok(())
     }
 
-    pub async fn close(&mut self) -> Result<(), anyhow::Error> {
+    pub(crate) async fn close(&self) -> Result<(), crate::ServiceError> {
         let _ = self.tx.send(ProcessWithdrawTxCommand::Close).await;
-        if let Some(handle) = self.handle.take() {
-            handle.await?; // JoinHandle::await 返回 Result<T, JoinError>
+        if let Some(handle) = self.handle.lock().await.take() {
+            handle.await.map_err(|_| crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound))??;
         }
         Ok(())
     }
@@ -55,7 +54,7 @@ impl ProcessWithdrawTx {
         Self { rx }
     }
 
-    async fn run(&mut self) -> Result<(), anyhow::Error> {
+    async fn run(&mut self) -> Result<(), crate::ServiceError> {
         tracing::info!("starting process withdraw -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
@@ -74,6 +73,7 @@ impl ProcessWithdrawTx {
                                     iv.reset();
                                 }
                                 ProcessWithdrawTxCommand::Close => {
+                                    tracing::info!("closing process withdraw tx -------------------------------");
                                     break;
                                 }
                             }
@@ -91,6 +91,7 @@ impl ProcessWithdrawTx {
                 }
             }
         }
+        tracing::info!("closing process withdraw tx ------------------------------- end");
         Ok(())
     }
 
@@ -105,7 +106,7 @@ impl ProcessWithdrawTx {
             1000,
             ApiWithdrawStatus::AuditPass,
         )
-        .await?;
+            .await?;
         let withdraws_len = withdraws.len();
         tracing::info!(withdraws=%withdraws.len(), "starting process withdraw -------------------------------3");
         for req in withdraws {

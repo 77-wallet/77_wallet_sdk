@@ -1,4 +1,3 @@
-use sqlx::encode::IsNull::No;
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
 use wallet_database::entities::{
@@ -83,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let to = "0xd830497ecd7321d4e0e501d3f71689380e8e8883ee5e1597cf06b3b72a95d226";
 
     let value = "0.000001";
-    let trade_no = "0x0000000101";
+    let trade_no = "0x0000000103";
     let res1 = wallet_manager
         .api_withdrawal_order(from, to, value, "ton", None, "TON", trade_no, 1, uid)
         .await;
@@ -120,8 +119,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {config:#?}");
     // let res = wallet_utils::serde_func::serde_to_string(&config)?;
     // tracing::info!("config result: {res}");
-    while let Some(_data) = rx.next().await {
-        // tracing::info!("data: {_data:?}");
+    loop {
+        tokio::select! {
+            msg = rx.next() => {
+                tracing::info!("data: {msg:?}");
+            }
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("ctrl_c");
+                wallet_manager.close().await;
+                break;
+            }
+        }
     }
     Ok(())
 }

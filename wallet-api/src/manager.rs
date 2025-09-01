@@ -1,25 +1,25 @@
 use crate::{
     domain,
-    domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
+    domain::api_wallet::adapter_factory::{ApiChainAdapterFactory, API_ADAPTER_FACTORY},
     infrastructure,
     infrastructure::{
-        SharedCache,
         inner_event::InnerEventHandle,
         process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
+        process_withdraw_tx::ProcessWithdrawTxHandle,
         task_queue::{
-            BackendApiTask, BackendApiTaskData, InitializationTask, task::Tasks,
-            task_manager::TaskManager,
+            task::Tasks, task_manager::TaskManager, BackendApiTask, BackendApiTaskData,
+            InitializationTask,
         },
+        SharedCache,
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
     service::node::NodeService,
 };
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use tokio::sync::{RwLock, mpsc::UnboundedSender};
+use tokio::sync::{mpsc::UnboundedSender, RwLock};
 use wallet_database::{
-    SqliteContext, factory::RepositoryFactory, repositories::device::DeviceRepo,
+    factory::RepositoryFactory, repositories::device::DeviceRepo, SqliteContext,
 };
-use crate::infrastructure::process_withdraw_tx::ProcessWithdrawTxHandle;
 
 /// Marks whether initialization has already been performed to prevent duplication.
 /// - `OnceCell<()>` stores no real data, only acts as a flag.
@@ -28,9 +28,7 @@ pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
 async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
-    INIT_DATA
-        .get_or_try_init(|| async { init_some_data().await })
-        .await
+    INIT_DATA.get_or_try_init(|| async { init_some_data().await }).await
 }
 
 pub async fn init_some_data() -> Result<(), crate::ServiceError> {
@@ -220,7 +218,7 @@ impl Context {
         CONTEXT.get().ok_or(crate::SystemError::ContextNotInit)
     }
 
-    pub fn get_global_sqlite_pool() -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError>
+    pub(crate) fn get_global_sqlite_pool() -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError>
     {
         Ok(Context::get_context()?.sqlite_context.get_pool()?.clone())
     }
@@ -331,6 +329,11 @@ impl Context {
     -> Result<&'static UnconfirmedMsgProcessor, crate::SystemError> {
         Ok(&Context::get_context()?.unconfirmed_msg_processor)
     }
+
+    pub(crate) fn get_global_processed_withdraw_tx_handle()
+    -> Result<Arc<ProcessWithdrawTxHandle>, crate::SystemError> {
+        Ok(Context::get_context()?.process_withdraw_tx_handle.clone())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -340,10 +343,7 @@ pub struct DeviceInfo {
 }
 impl DeviceInfo {
     pub fn new(sn: &str, client_id: &str) -> Self {
-        Self {
-            sn: sn.to_owned(),
-            client_id: client_id.to_owned(),
-        }
+        Self { sn: sn.to_owned(), client_id: client_id.to_owned() }
     }
 }
 
@@ -355,10 +355,7 @@ pub struct RpcToken {
 
 impl Default for RpcToken {
     fn default() -> Self {
-        Self {
-            token: String::new(),
-            instance: tokio::time::Instant::now(),
-        }
+        Self { token: String::new(), instance: tokio::time::Instant::now() }
     }
 }
 
@@ -384,12 +381,8 @@ impl WalletManager {
         infrastructure::log::start_upload_scheduler(base_path, 5 * 60, context.oss_client.clone())
             .await?;
 
-        Context::get_global_unconfirmed_msg_processor()?
-            .start()
-            .await;
-        Context::get_global_task_manager()?
-            .start_task_check()
-            .await?;
+        Context::get_global_unconfirmed_msg_processor()?.start().await;
+        Context::get_global_task_manager()?.start_task_check().await?;
         let pool = context.sqlite_context.get_pool()?;
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
@@ -450,6 +443,17 @@ impl WalletManager {
     ) -> Result<(), crate::ServiceError> {
         Context::set_frontend_notify_sender(Some(sender)).await
     }
+
+    pub async fn close(&self) -> Result<(), crate::ServiceError> {
+        let handle = Context::get_global_processed_withdraw_tx_handle()?;
+        // Since Arc does not allow mutable access, and assuming close() does not require &mut self,
+        // we can call close() as is. If close() requires &mut self, this will not compile.
+        // If that's the case, you need to redesign ProcessWithdrawTxHandle to allow safe concurrent closing,
+        // or provide a different mechanism.
+        
+        handle.close().await?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -477,13 +481,7 @@ impl Dirs {
             wallet_utils::file_func::create_dir_all(dir)?;
         }
 
-        Ok(Dirs {
-            root_dir: PathBuf::from(root_dir),
-            wallet_dir,
-            export_dir,
-            db_dir,
-            log_dir,
-        })
+        Ok(Dirs { root_dir: PathBuf::from(root_dir), wallet_dir, export_dir, db_dir, log_dir })
     }
 
     pub fn get_wallet_dir(&self, address: Option<&str>) -> std::path::PathBuf {
@@ -526,8 +524,10 @@ impl Dirs {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, File};
-    use std::io::Write;
+    use std::{
+        fs::{self, File},
+        io::Write,
+    };
     use tempfile::tempdir;
 
     use crate::Dirs;
