@@ -17,7 +17,7 @@ impl ApiFeeDao {
         Ok(result)
     }
 
-    pub async fn page_api_withdraw<'a, E>(
+    pub async fn page_api_fee<'a, E>(
         exec: E,
         page: i64,
         page_size: i64,
@@ -40,7 +40,7 @@ impl ApiFeeDao {
         Ok((count, res))
     }
 
-    pub async fn page_api_withdraw_with_status<'a, E>(
+    pub async fn page_api_fee_with_status<'a, E>(
         exec: E,
         page: i64,
         page_size: i64,
@@ -175,6 +175,34 @@ impl ApiFeeDao {
         sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_next_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiFeeStatus,
+        next_status: ApiFeeStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                status = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(&next_status)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

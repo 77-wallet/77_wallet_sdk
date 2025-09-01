@@ -19,6 +19,7 @@ CREATE TABLE api_withdraws
     transaction_time TIMESTAMP NULL,                   --交易时间
     block_height     VARCHAR(32) NULL,                 --块高
     notes            TEXT NULL,                        --备注
+    post_tx_count    INTEGER                 NOT NULL, -- 已发送交易次数
     created_at       TIMESTAMP               NOT NULL,
     updated_at       TIMESTAMP
 );
