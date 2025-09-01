@@ -1,8 +1,6 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
-use wallet_database::entities::{
-    api_wallet::ApiWalletType, task_queue::KnownTaskName::ApiWithdraw,
-};
+use wallet_database::entities::api_wallet::ApiWalletType;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 #[tokio::main(flavor = "multi_thread")]
@@ -84,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let value = "0.000001";
     let trade_no = "0x0000000104";
     let res1 = wallet_manager
-        .api_withdrawal_order(from, to, value, "ton", None, "TON", trade_no, 1, uid)
+        .api_transfer_fee_order(from, to, value, "ton", None, "TON", trade_no, 1, uid)
         .await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
