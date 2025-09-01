@@ -8,21 +8,21 @@ use crate::{
         chain::TransferResp,
     },
     messaging::notify::api_wallet::WithdrawFront,
-    request::api_wallet::trans::{ApiTransferReq, ApiWithdrawReq},
+    request::api_wallet::trans::{ApiTransferFeeReq, ApiTransferReq},
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus},
     repositories::{
-        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
+        api_account::ApiAccountRepo, api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo
     },
 };
 
-pub struct ApiWithdrawDomain {}
+pub struct ApiFeeDomain {}
 
-impl ApiWithdrawDomain {
-    pub(crate) async fn withdraw(req: &ApiWithdrawReq) -> Result<(), crate::ServiceError> {
+impl ApiFeeDomain {
+    pub(crate) async fn transfer_fee(req: &ApiTransferFeeReq) -> Result<(), crate::ServiceError> {
         // 验证金额是否需要输入密码
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // 获取钱包
@@ -36,7 +36,7 @@ impl ApiWithdrawDomain {
                 .await?
                 .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
 
-        ApiWithdrawRepo::upsert_api_withdraw(
+        ApiFeeRepo::upsert_api_fee(
             &pool,
             &req.uid,
             &wallet.name,
@@ -64,7 +64,12 @@ impl ApiWithdrawDomain {
         let value = Decimal::from_str(&req.value).unwrap();
         if (value < Decimal::from(10)) {
             tracing::info!("transfer ------------------- 9:");
-            ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, ApiWithdrawStatus::AuditPass).await?;
+            ApiWithdrawRepo::update_api_withdraw_status(
+                &pool,
+                &req.trade_no,
+                ApiWithdrawStatus::AuditPass,
+            )
+            .await?;
         }
         Ok(())
     }

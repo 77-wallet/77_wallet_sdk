@@ -1,35 +1,34 @@
 use crate::{
     dao::api_fee::ApiFeeDao, entities::{
         api_fee::{ApiFeeEntity, ApiFeeStatus},
-        api_withdraw::{ApiWithdrawStatus},
     }, DbPool
 };
 
 pub struct ApiFeeRepo;
 
 impl ApiFeeRepo {
-    pub async fn list_api_withdraw(pool: &DbPool) -> Result<Vec<ApiFeeEntity>, crate::Error> {
+    pub async fn list_api_fee(pool: &DbPool) -> Result<Vec<ApiFeeEntity>, crate::Error> {
         ApiFeeDao::all_api_fee(pool.as_ref()).await
     }
 
-    pub async fn page_api_withdraw(
+    pub async fn page_api_fee(
         pool: &DbPool,
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
-        ApiFeeDao::page_api_withdraw(pool.as_ref(), page, page_size).await
+        ApiFeeDao::page_api_fee(pool.as_ref(), page, page_size).await
     }
 
-    pub async fn page_api_withdraw_with_status(
+    pub async fn page_api_fee_with_status(
         pool: &DbPool,
         page: i64,
         page_size: i64,
         status: ApiFeeStatus,
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
-        ApiFeeDao::page_api_withdraw_with_status(pool.as_ref(), page, page_size, status).await
+        ApiFeeDao::page_api_fee_with_status(pool.as_ref(), page, page_size, status).await
     }
 
-    pub async fn upsert_api_withdraw(
+    pub async fn upsert_api_fee(
         pool: &DbPool,
         uid: &str,
         name: &str,
@@ -67,7 +66,7 @@ impl ApiFeeRepo {
         ApiFeeDao::add(pool.as_ref(), withdraw_req).await
     }
 
-    pub async fn update_api_withdraw_tx_status(
+    pub async fn update_api_fee_tx_status(
         pool: &DbPool,
         trade_no: &str,
         tx_hash: &str,
@@ -86,7 +85,7 @@ impl ApiFeeRepo {
         .await
     }
 
-    pub async fn update_api_withdraw_status(
+    pub async fn update_api_fee_status(
         pool: &DbPool,
         trade_no: &str,
         status: ApiFeeStatus,

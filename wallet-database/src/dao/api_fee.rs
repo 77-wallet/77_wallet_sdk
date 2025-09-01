@@ -17,7 +17,7 @@ impl ApiFeeDao {
         Ok(result)
     }
 
-    pub async fn page_api_withdraw<'a, E>(
+    pub async fn page_api_fee<'a, E>(
         exec: E,
         page: i64,
         page_size: i64,
@@ -40,7 +40,7 @@ impl ApiFeeDao {
         Ok((count, res))
     }
 
-    pub async fn page_api_withdraw_with_status<'a, E>(
+    pub async fn page_api_fee_with_status<'a, E>(
         exec: E,
         page: i64,
         page_size: i64,
