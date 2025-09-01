@@ -2,13 +2,14 @@ use crate::{
     domain::{api_wallet::withdraw::ApiWithdrawDomain, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
-use tokio::sync::Mutex;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::sync::{broadcast, Mutex};
+use tokio::task::JoinHandle;
 use wallet_database::{
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     repositories::{api_window::ApiWindowRepo, api_withdraw::ApiWithdrawRepo},
 };
 
+#[derive(Clone)]
 pub(crate) enum ProcessWithdrawTxCommand {
     Tx,
     Close,
@@ -16,29 +17,37 @@ pub(crate) enum ProcessWithdrawTxCommand {
 
 #[derive(Debug)]
 pub(crate) struct ProcessWithdrawTxHandle {
-    tx: mpsc::Sender<ProcessWithdrawTxCommand>,
-    handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
+    tx: broadcast::Sender<ProcessWithdrawTxCommand>,
+    tx_handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
+    tx_report_handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
 }
 
 impl ProcessWithdrawTxHandle {
     pub(crate) async fn new() -> Self {
-        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-        let mut tx = ProcessWithdrawTx::new(shutdown_rx);
+        let (shutdown_tx, _) = broadcast::channel(1);
+        let rx = shutdown_tx.subscribe();
+        let rx_report = shutdown_tx.subscribe();
+        let mut tx = ProcessWithdrawTx::new(rx);
         let handle = tokio::spawn(async move { tx.run().await });
-        Self { tx: shutdown_tx, handle: Mutex::new(Some(handle)) }
+        let mut tx_report = ProcessWithdrawTxReport::new(rx_report);
+        let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
+        Self { tx: shutdown_tx, tx_handle: Mutex::new(Some(handle)), tx_report_handle: Mutex::new(Some(tx_report_handle)) }
     }
 
     pub(crate) async fn submit_tx(
         &self,
         tx: ProcessWithdrawTxCommand,
     ) -> Result<(), anyhow::Error> {
-        let _ = self.tx.send(tx).await;
+        let _ = self.tx.send(tx);
         Ok(())
     }
 
     pub(crate) async fn close(&self) -> Result<(), crate::ServiceError> {
-        let _ = self.tx.send(ProcessWithdrawTxCommand::Close).await;
-        if let Some(handle) = self.handle.lock().await.take() {
+        let _ = self.tx.send(ProcessWithdrawTxCommand::Close);
+        if let Some(handle) = self.tx_handle.lock().await.take() {
+            handle.await.map_err(|_| crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound))??;
+        }
+        if let Some(handle) = self.tx_report_handle.lock().await.take() {
             handle.await.map_err(|_| crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound))??;
         }
         Ok(())
@@ -46,11 +55,11 @@ impl ProcessWithdrawTxHandle {
 }
 
 struct ProcessWithdrawTx {
-    rx: mpsc::Receiver<ProcessWithdrawTxCommand>,
+    rx: broadcast::Receiver<ProcessWithdrawTxCommand>,
 }
 
 impl ProcessWithdrawTx {
-    fn new(rx: mpsc::Receiver<ProcessWithdrawTxCommand>) -> Self {
+    fn new(rx: broadcast::Receiver<ProcessWithdrawTxCommand>) -> Self {
         Self { rx }
     }
 
@@ -61,7 +70,7 @@ impl ProcessWithdrawTx {
             tokio::select! {
                 msg = self.rx.recv() => {
                     match msg {
-                        Some(cmd) => {
+                        Ok(cmd) => {
                             match cmd {
                                 ProcessWithdrawTxCommand::Tx => {
                                      match self.process_withdraw_tx().await {
@@ -171,6 +180,74 @@ impl ProcessWithdrawTx {
                 ).await?;
             }
         }
+        Ok(())
+    }
+}
+
+struct ProcessWithdrawTxReport {
+    rx: broadcast::Receiver<ProcessWithdrawTxCommand>,
+}
+
+impl ProcessWithdrawTxReport {
+    fn new(rx: broadcast::Receiver<ProcessWithdrawTxCommand>) -> Self {
+        Self { rx }
+    }
+
+    async fn run(&mut self) -> Result<(), crate::ServiceError> {
+        tracing::info!("starting process withdraw tx report -------------------------------");
+        let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
+        loop {
+            tokio::select! {
+                msg = self.rx.recv() => {
+                    match msg {
+                        Ok(cmd) => {
+                            match cmd {
+                                ProcessWithdrawTxCommand::Tx => {
+                                    match self.process_withdraw_tx_report().await {
+                                        Ok(_) => {},
+                                        Err(_) => {
+                                            tracing::error!("failed to process withdraw tx report");
+                                        }
+                                    }
+                                    iv.reset();
+                                }
+                                ProcessWithdrawTxCommand::Close => {
+                                    tracing::info!("closing process withdraw tx report -------------------------------");
+                                    break;
+                                }
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            tracing::info!("channel closed, exiting process withdraw tx report loop");
+                            break;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            tracing::warn!("lagged behind on withdraw tx report commands");
+                        }
+                    }
+                }
+                _ = iv.tick() => {
+                    match self.process_withdraw_tx_report().await {
+                        Ok(_) => {} 
+                        Err(_) => {
+                            tracing::error!("failed to process withdraw tx report");
+                        }
+                    }
+                }
+            }
+        }
+        tracing::info!("closing process withdraw tx report ------------------------------- end");
+        Ok(())
+    }
+
+    async fn process_withdraw_tx_report(&self) -> Result<(), anyhow::Error> {
+        tracing::info!("starting process withdraw tx report -------------------------------");
+        
+        Ok(())
+    }
+    
+    async fn process_withdraw_single_tx_report(&self, req: ApiWithdrawEntity) -> Result<(), anyhow::Error> {
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
         Ok(())
     }
 }
