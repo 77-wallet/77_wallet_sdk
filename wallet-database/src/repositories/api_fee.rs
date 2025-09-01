@@ -93,4 +93,13 @@ impl ApiFeeRepo {
     ) -> Result<(), crate::Error> {
         ApiFeeDao::update_status(pool.as_ref(), trade_no, status).await
     }
+
+    pub async fn update_api_fee_next_status(
+        pool: &DbPool,
+        trade_no: &str,
+        status : ApiFeeStatus,
+        next_status: ApiFeeStatus,
+    ) -> Result<(), crate::Error> {
+        ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+    }
 }

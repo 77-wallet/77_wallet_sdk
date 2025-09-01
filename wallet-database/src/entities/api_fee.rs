@@ -37,6 +37,7 @@ pub struct ApiFeeEntity {
 pub enum ApiFeeStatus {
     Init,
     SendingTx,
+    SendingTxReport,
     Success,
     Failure,
 }
