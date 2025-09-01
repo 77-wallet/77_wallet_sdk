@@ -26,6 +26,7 @@ pub mod task_queue;
 pub mod wallet;
 pub(crate) mod api_nonce;
 pub(crate) mod api_window;
+pub(crate) mod api_fee;
 
 #[async_trait::async_trait]
 pub trait Dao {

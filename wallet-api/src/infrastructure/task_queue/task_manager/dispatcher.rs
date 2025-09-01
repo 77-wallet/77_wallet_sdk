@@ -132,8 +132,6 @@ pub(crate) struct PriorityTask {
 #[derive(Debug, Clone)]
 pub(crate) struct Dispatcher {
     pub(crate) external_tx: TaskSender,
-    // task_queues: PriorityTaskQueue,
-    // semaphore: Arc<Semaphore>,
 }
 
 impl Dispatcher {
@@ -319,6 +317,18 @@ impl Dispatcher {
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         } else {
             tracing::debug!("任务 {} 已在运行中，跳过重复执行", task_id);
+        }
+    }
+}
+
+struct CoreThread {
+
+}
+
+impl CoreThread {
+    
+    fn new() -> Self {
+        Self {
         }
     }
 }
