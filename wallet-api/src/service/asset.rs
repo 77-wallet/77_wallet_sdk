@@ -273,6 +273,7 @@ impl AssetsService {
 
         let mut res = AccountChainAssetList::default();
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
+
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
             let assets_list: Vec<AssetsEntity> = tx

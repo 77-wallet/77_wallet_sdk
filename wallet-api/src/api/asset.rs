@@ -248,7 +248,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // wallet_manager.init_wallet_type("api").await?;
-        let address = "0x82C818D352BAf6cC7dd007B89E5CC82B4DAF2c9c";
+        let address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let account_id = Some(1);
         let chain_code = "ton";
         let symbol = "TON";
@@ -426,7 +426,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
+        let address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let chain_code = None;
         let is_multisig = None;
         // let account_id = Some(1);
