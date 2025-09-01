@@ -22,6 +22,7 @@ pub mod task_queue;
 pub mod wallet;
 pub mod api_nonce;
 pub mod api_window;
+pub mod api_fee;
 
 pub struct ResourcesRepo {
     db_pool: crate::DbPool,
