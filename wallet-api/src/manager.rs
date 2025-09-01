@@ -456,11 +456,6 @@ impl WalletManager {
 
     pub async fn close(&self) -> Result<(), crate::ServiceError> {
         let withdraw_handle = Context::get_global_processed_withdraw_tx_handle()?;
-        // Since Arc does not allow mutable access, and assuming close() does not require &mut self,
-        // we can call close() as is. If close() requires &mut self, this will not compile.
-        // If that's the case, you need to redesign ProcessWithdrawTxHandle to allow safe concurrent closing,
-        // or provide a different mechanism.
-        
         withdraw_handle.close().await?;
         let fee_handle = Context::get_global_processed_fee_tx_handle()?;
         fee_handle.close().await?;
