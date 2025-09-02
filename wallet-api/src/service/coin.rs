@@ -159,7 +159,6 @@ impl CoinService {
 
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
-        tracing::warn!("coins = {:?}", coins.len());
 
         let data = coins
             .into_iter()
@@ -201,10 +200,6 @@ impl CoinService {
 
         let tx = &mut self.repo;
         for token in coins {
-            if token.symbol == Some("USDT".to_string()) {
-                tracing::warn!("token = {:#?}", token);
-            }
-
             let status = token.get_status();
             let time = parse_utc_with_error(&token.update_time).ok();
 
