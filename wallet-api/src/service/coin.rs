@@ -120,7 +120,7 @@ impl CoinService {
         for coin in list.data {
             if let Some(d) = data
                 .iter_mut()
-                .find(|d: &&mut crate::response_vo::coin::CoinInfo| d.symbol == coin.symbol)
+                .find(|info| info.symbol == coin.symbol && coin.is_default == 1)
             {
                 d.chain_list
                     .entry(coin.chain_code.clone())
@@ -133,7 +133,7 @@ impl CoinService {
                         coin.chain_code.clone(),
                         coin.token_address.unwrap_or_default(),
                     )])),
-                    is_default: true,
+                    is_default: coin.is_default == 1,
                     hot_coin: true,
                     show_contract: false,
                 })
