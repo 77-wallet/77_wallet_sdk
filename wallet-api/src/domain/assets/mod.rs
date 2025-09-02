@@ -1,6 +1,8 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
-    domain::coin::CoinDomain, request::transaction::SwapTokenInfo, response_vo::chain::ChainList,
+    domain::coin::CoinDomain,
+    request::transaction::SwapTokenInfo,
+    response_vo::{chain::ChainList, coin::CoinInfoList},
 };
 use futures::{stream, StreamExt};
 use std::{collections::HashMap, sync::Arc};
@@ -96,12 +98,10 @@ impl AssetsDomain {
             let coin =
                 CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
                     .await?;
-            tracing::info!("coin: {coin:?}");
             if let Some(info) = res
                 .iter_mut()
                 .find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {
-                tracing::info!("nonono, info: {:?}", info);
                 info.chain_list
                     .entry(assets.chain_code.clone())
                     .or_insert(assets.token_address);
@@ -116,11 +116,54 @@ impl AssetsDomain {
                     )])),
                     is_default: coin.is_default == 1,
                     hot_coin: coin.status == 1,
+                    show_contract: false,
                 });
             }
         }
-        tracing::info!("res: {res:#?}");
+
         Ok(res)
+    }
+
+    // keyword 存在都要展示合约地址
+    // 链相同，symbol相同 大于2 显示地址
+    pub async fn show_contract(
+        pool: &DbPool,
+        keyword: Option<&str>,
+        res: &mut CoinInfoList,
+    ) -> Result<(), crate::ServiceError> {
+        let has_keyword = keyword.is_some();
+
+        for coin in res.iter_mut() {
+            let chain_len = coin.chain_list.len();
+
+            if has_keyword {
+                // 有 keyword：只有恰好 1 条链才显示
+                coin.show_contract = chain_len == 1;
+                continue;
+            }
+
+            // 无 keyword 的逻辑
+            match chain_len {
+                1 => {
+                    let chain_code = coin
+                        .chain_list
+                        .keys()
+                        .next()
+                        .expect("len()==1 已保证存在 key");
+
+                    let same_coin_num =
+                        CoinRepo::same_coin_num(pool, &coin.symbol, chain_code).await?;
+
+                    coin.show_contract = same_coin_num > 1;
+                }
+                _ => {
+                    // 0 或 >1 条链都不显示
+                    coin.show_contract = false;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )

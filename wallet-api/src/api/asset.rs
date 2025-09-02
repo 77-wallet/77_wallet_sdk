@@ -308,7 +308,7 @@ mod test {
         let chain_code = None;
         // let is_multisig = None;
         let is_multisig = Some(false);
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let wallet_address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
 
         // let account_id = Some(1);
         let account_id = Some(1);
@@ -316,9 +316,8 @@ mod test {
         let res = wallet_manager
             .get_coin_list(wallet_address, account_id, chain_code, keyword, is_multisig)
             .await;
-        tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
+        tracing::info!("res: {}", res);
         Ok(())
     }
 

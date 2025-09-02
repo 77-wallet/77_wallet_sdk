@@ -2,6 +2,7 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
+        assets::AssetsDomain,
         chain::ChainDomain,
         coin::{coin_info_to_coin_data, CoinDomain},
     },
@@ -101,7 +102,6 @@ impl CoinService {
         let symbol_list: std::collections::HashSet<String> =
             symbol_list.into_iter().map(|coin| coin.symbol).collect();
 
-        tracing::warn!("symbol_list: {:#?}", symbol_list);
         let chain_codes = if let Some(chain_code) = chain_code {
             HashSet::from([chain_code])
         } else {
@@ -135,9 +135,13 @@ impl CoinService {
                     )])),
                     is_default: true,
                     hot_coin: true,
+                    show_contract: false,
                 })
             }
         }
+
+        let pool = tx.pool();
+        AssetsDomain::show_contract(&pool, keyword, &mut data).await?;
 
         let res = wallet_database::pagination::Pagination {
             page,

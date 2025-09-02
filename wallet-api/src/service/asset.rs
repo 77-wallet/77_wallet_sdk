@@ -508,11 +508,14 @@ impl AssetsService {
             .into_iter()
             .map(|address| address.address)
             .collect::<Vec<String>>();
-        let res = self
+        let mut res = self
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)
             .await?;
-        // res.mark_multi_chain_assets();
+
+        let pool = tx.pool();
+        AssetsDomain::show_contract(&pool, keyword, &mut res).await?;
+
         Ok(res)
     }
 

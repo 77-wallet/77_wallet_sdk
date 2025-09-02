@@ -627,4 +627,22 @@ impl CoinEntity {
         let paginate = Pagination::<CoinWithAssets>::init(page, page_size);
         Ok(paginate.page(&pool, &sql).await?)
     }
+
+    // 相同币符号的数量
+    pub async fn same_coin_num<'a, E>(
+        exec: E,
+        symbol: &str,
+        chain_code: &str,
+    ) -> Result<i64, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT COUNT(*) FROM coin where symbol = ? and chain_code = ?";
+        sqlx::query_scalar::<_, i64>(sql)
+            .bind(symbol)
+            .bind(chain_code)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }

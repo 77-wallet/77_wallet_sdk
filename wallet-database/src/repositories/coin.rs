@@ -227,6 +227,14 @@ impl CoinRepo {
         CoinEntity::coin_count(pool.as_ref()).await
     }
 
+    pub async fn same_coin_num(
+        pool: &DbPool,
+        symbol: &str,
+        chain_code: &str,
+    ) -> Result<i64, crate::Error> {
+        CoinEntity::same_coin_num(pool.as_ref(), symbol, chain_code).await
+    }
+
     pub async fn coin_list_with_assets(
         search: &str,
         exclude_token: Vec<String>,
