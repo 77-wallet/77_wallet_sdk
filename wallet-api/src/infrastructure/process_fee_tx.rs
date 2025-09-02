@@ -86,8 +86,8 @@ impl ProcessWithdrawTx {
                                 ProcessFeeTxCommand::Tx => {
                                      match self.process_fee_tx().await {
                                         Ok(_) => {}
-                                        Err(_) => {
-                                            tracing::error!("failed to process fee tx");
+                                        Err(err) => {
+                                            tracing::error!("failed to process fee tx: {}", err);
                                         }
                                     }
                                     iv.reset();
@@ -104,8 +104,8 @@ impl ProcessWithdrawTx {
                 _ = iv.tick() => {
                     match self.process_fee_tx().await {
                         Ok(_) => {}
-                        Err(_) => {
-                            tracing::error!("failed to process fee tx");
+                        Err(err) => {
+                            tracing::error!("failed to process fee tx: {}", err);
                         }
                     }
                 }
@@ -119,10 +119,9 @@ impl ProcessWithdrawTx {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 2).await?;
         let (_, transfer_fees) =
-            ApiFeeRepo::page_api_fee_with_status(&pool.clone(), offset, 1000, ApiFeeStatus::Init)
+            ApiFeeRepo::page_api_fee_with_status(&pool.clone(), offset, 1000, &[ApiFeeStatus::Init])
                 .await?;
         let transfer_fees_len = transfer_fees.len();
-        tracing::info!(transfer_fees=%transfer_fees.len(), "starting process fee -------------------------------3");
         for req in transfer_fees {
             self.process_fee_single_tx(req).await?;
         }
@@ -202,12 +201,7 @@ impl ProcessWithdrawTx {
 
     async fn handle_fee_tx_failed(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(
-            &pool,
-            trade_no,
-            ApiFeeStatus::SendingTxFailed,
-        )
-        .await?;
+        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
         let backend_api = Context::get_global_backend_api()?;
         let _ = backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
@@ -250,8 +244,8 @@ impl ProcessWithdrawTxReport {
                                 ProcessFeeTxCommand::Tx => {
                                      match self.process_fee_tx_report().await {
                                         Ok(_) => {}
-                                        Err(_) => {
-                                            tracing::error!("failed to process fee tx report");
+                                        Err(err) => {
+                                            tracing::error!("failed to process fee tx report: {}", err);
                                         }
                                     }
                                     iv.reset();
@@ -268,8 +262,8 @@ impl ProcessWithdrawTxReport {
                 _ = iv.tick() => {
                     match self.process_fee_tx_report().await {
                         Ok(_) => {}
-                        Err(_) => {
-                            tracing::error!("failed to process fee tx report");
+                        Err(err) => {
+                            tracing::error!("failed to process fee tx report: {}", err);
                         }
                     }
                 }
@@ -279,26 +273,32 @@ impl ProcessWithdrawTxReport {
         Ok(())
     }
 
-    async fn process_fee_tx_report(&self) -> Result<(), anyhow::Error> {
-        tracing::info!("starting process fee tx report -------------------------------");
+    async fn process_fee_tx_report(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 20).await?;
         let (_, transfer_fees) =
-            ApiFeeRepo::page_api_fee_with_status(&pool, 0, 1000, ApiFeeStatus::SendingTx).await?;
+            ApiFeeRepo::page_api_fee_with_status(&pool, offset, 1000, &[ApiFeeStatus::SendingTx, ApiFeeStatus::SendingTxFailed])
+                .await?;
+        let transfer_fees_len = transfer_fees.len();
         for req in transfer_fees {
             self.process_fee_single_tx_report(req).await?;
         }
+        ApiWindowRepo::upsert_api_offset(&pool, 20, offset + transfer_fees_len as i64).await?;
         Ok(())
     }
 
-    async fn process_fee_single_tx_report(&self, req: ApiFeeEntity) -> Result<(), anyhow::Error> {
-        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
+    async fn process_fee_single_tx_report(
+        &self,
+        req: ApiFeeEntity,
+    ) -> Result<(), crate::ServiceError> {
+        let status = if req.status == ApiFeeStatus::SendingTxFailed { TransStatus::Fail } else { TransStatus::Success };
         let backend_api = Context::get_global_backend_api()?;
-        let res = backend_api
+        let _ = backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,
                 TransType::Fee,
                 &req.tx_hash,
-                TransStatus::Success,
+                status,
                 &req.notes,
             ))
             .await?;

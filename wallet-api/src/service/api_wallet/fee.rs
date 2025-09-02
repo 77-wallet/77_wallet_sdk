@@ -46,7 +46,7 @@ impl TransferFeeService {
         };
         let res = ApiFeeDomain::transfer_fee(&req).await;
         match res {
-            Ok(res) => Ok(()),
+            Ok(_) => Ok(()),
             Err(e) => {
                 tracing::error!("withdrawal_order failed with {:?}", e);
                 Err(e.into())

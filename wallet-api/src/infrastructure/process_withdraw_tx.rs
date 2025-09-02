@@ -119,10 +119,8 @@ impl ProcessWithdrawTx {
     }
 
     async fn process_withdraw_tx(&self) -> Result<(), crate::ServiceError> {
-        tracing::info!("starting process withdraw -------------------------------1");
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 1).await?;
-        tracing::info!("starting process withdraw -------------------------------2");
         let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool.clone(),
             offset,
@@ -131,7 +129,6 @@ impl ProcessWithdrawTx {
         )
         .await?;
         let withdraws_len = withdraws.len();
-        tracing::info!(withdraws=%withdraws.len(), "starting process withdraw -------------------------------3");
         for req in withdraws {
             self.process_withdraw_single_tx(req).await?;
         }
@@ -143,8 +140,6 @@ impl ProcessWithdrawTx {
         &self,
         req: ApiWithdrawEntity,
     ) -> Result<(), crate::ServiceError> {
-        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
-
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
 
@@ -296,28 +291,27 @@ impl ProcessWithdrawTxReport {
         Ok(())
     }
 
-    async fn process_withdraw_tx_report(&self) -> Result<(), anyhow::Error> {
-        tracing::info!("starting process withdraw tx report -------------------------------");
+    async fn process_withdraw_tx_report(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 10).await?;
         let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool.clone(),
-            0,
+            offset,
             1000,
             &[ApiWithdrawStatus::SendingTx],
         ).await?;
-        // let withdraws_len = withdraws.len();
-        tracing::info!(withdraws=%withdraws.len(), "starting process withdraw tx report -------------------------------3");
+        let withdraws_len = withdraws.len();
         for req in withdraws {
             self.process_withdraw_single_tx_report(req).await?;
         }
+        ApiWindowRepo::upsert_api_offset(&pool, 10, offset + withdraws_len as i64).await?;
         Ok(())
     }
 
     async fn process_withdraw_single_tx_report(
         &self,
         req: ApiWithdrawEntity,
-    ) -> Result<(), anyhow::Error> {
-        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
+    ) -> Result<(), crate::ServiceError> {
         let status = if req.status == ApiWithdrawStatus::SendingTxFailed { TransStatus::Fail } else { TransStatus::Success };
         let backend_api = Context::get_global_backend_api()?;
         let _ = backend_api

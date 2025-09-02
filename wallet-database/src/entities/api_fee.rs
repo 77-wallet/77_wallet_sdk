@@ -32,6 +32,7 @@ pub struct ApiFeeEntity {
     Copy,
     serde_repr::Deserialize_repr,
     serde_repr::Serialize_repr,
+    PartialEq,
 )]
 #[repr(u8)]
 pub enum ApiFeeStatus {
