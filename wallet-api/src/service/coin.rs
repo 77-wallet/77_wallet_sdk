@@ -134,6 +134,7 @@ impl CoinService {
                         coin.token_address.unwrap_or_default(),
                     )])),
                     is_default: true,
+                    hot_coin: true,
                 })
             }
         }

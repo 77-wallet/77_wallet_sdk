@@ -22,6 +22,7 @@ pub struct CoinInfo {
     pub chain_list: ChainList,
     // pub is_multichain: bool,
     pub is_default: bool,
+    pub hot_coin: bool,
 }
 
 #[derive(Debug, serde::Serialize, Default)]

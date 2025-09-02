@@ -106,7 +106,6 @@ impl AssetsDomain {
                     .entry(assets.chain_code.clone())
                     .or_insert(assets.token_address);
             } else {
-                tracing::info!("hahaha");
                 res.push(crate::response_vo::coin::CoinInfo {
                     symbol: assets.symbol,
                     name: Some(assets.name),
@@ -115,8 +114,8 @@ impl AssetsDomain {
                         assets.chain_code.clone(),
                         assets.token_address,
                     )])),
-                    // is_multichain: false,
                     is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
                 });
             }
         }
