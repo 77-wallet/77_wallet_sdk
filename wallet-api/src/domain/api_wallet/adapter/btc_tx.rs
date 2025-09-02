@@ -10,7 +10,7 @@ use crate::{
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         transaction::{
-            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+            ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
         },
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
@@ -85,7 +85,7 @@ impl BtcTx {
 impl Tx for BtcTx {
     async fn account_resource(
         &self,
-        owner_address: &str,
+        _: &str,
     ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
@@ -117,7 +117,7 @@ impl Tx for BtcTx {
         self.chain.token_name(token).await
     }
 
-    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
+    async fn black_address(&self, _: &str, _: &str) -> Result<bool, ServiceError> {
         Ok(false)
     }
 
@@ -193,81 +193,81 @@ impl Tx for BtcTx {
 
     async fn approve(
         &self,
-        req: &ApproveReq,
-        key: ChainPrivateKey,
-        value: U256,
+        _: &ApproveReq,
+        _: ChainPrivateKey,
+        _: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(
         &self,
-        req: &ApproveReq,
-        value: U256,
-        main_symbol: &str,
+        _: &ApproveReq,
+        _: U256,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(
         &self,
-        from: &str,
-        token: &str,
-        spender: &str,
+        _: &str,
+        _: &str,
+        _: &str,
     ) -> Result<U256, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
         &self,
-        req: &QuoteReq,
-        quote_resp: &AggQuoteResp,
-        symbol: &str,
+        _: &QuoteReq,
+        _: &AggQuoteResp,
+        _: &str,
     ) -> Result<(U256, String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
         &self,
-        req: &SwapReq,
-        fee: String,
-        key: ChainPrivateKey,
+        _: &SwapReq,
+        _: String,
+        _: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
         &self,
-        req: DepositReq,
-        main_coin: &CoinEntity,
+        _: DepositReq,
+        _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
         &self,
-        req: &DepositReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
+        _: &DepositReq,
+        _: String,
+        _: ChainPrivateKey,
+        _: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw_fee(
         &self,
-        req: WithdrawReq,
-        main_coin: &CoinEntity,
+        _: WithdrawReq,
+        _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
         &self,
-        req: &WithdrawReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
+        _: &WithdrawReq,
+        _: String,
+        _: ChainPrivateKey,
+        _: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
@@ -290,19 +290,19 @@ impl Multisig for BtcTx {
 
     async fn deploy_multisig_account(
         &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
-        fee_setting: Option<String>,
-        key: ChainPrivateKey,
+        _: &MultisigAccountEntity,
+        _: &MultisigMemberEntities,
+        _: Option<String>,
+        _: ChainPrivateKey,
     ) -> Result<(String, String), ServiceError> {
         Ok(("".to_string(), "".to_string()))
     }
 
     async fn deploy_multisig_fee(
         &self,
-        account: &MultisigAccountEntity,
-        member: MultisigMemberEntities,
-        main_symbol: &str,
+        _: &MultisigAccountEntity,
+        _: MultisigMemberEntities,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Ok("0".to_string())
     }
@@ -311,8 +311,8 @@ impl Multisig for BtcTx {
         &self,
         req: &MultisigQueueFeeParams,
         account: &MultisigAccountEntity,
-        decimal: u8,
-        token: Option<String>,
+        _: u8,
+        _: Option<String>,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
@@ -350,8 +350,8 @@ impl Multisig for BtcTx {
         &self,
         req: &TransferParams,
         account: &MultisigAccountEntity,
-        assets: &ApiAssetsEntity,
-        key: ChainPrivateKey,
+        _: &ApiAssetsEntity,
+        _: ChainPrivateKey,
     ) -> Result<MultisigTxResp, ServiceError> {
         let params = TransferArg::new(
             &req.from,
@@ -378,9 +378,9 @@ impl Multisig for BtcTx {
 
     async fn build_multisig_with_permission(
         &self,
-        req: &TransferParams,
-        p: &PermissionEntity,
-        coin: &CoinEntity,
+        _: &TransferParams,
+        _: &PermissionEntity,
+        _: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
             .into())
@@ -388,10 +388,10 @@ impl Multisig for BtcTx {
 
     async fn sign_fee(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
-        raw_data: &str,
-        main_symbol: &str,
+        _: &MultisigAccountEntity,
+        _: &str,
+        _: &str,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Ok(" ".to_string())
     }
@@ -399,7 +399,7 @@ impl Multisig for BtcTx {
     async fn sign_multisig_tx(
         &self,
         account: &MultisigAccountEntity,
-        address: &str,
+        _: &str,
         key: ChainPrivateKey,
         raw_data: &str,
     ) -> Result<MultisigSignResp, ServiceError> {
@@ -416,9 +416,9 @@ impl Multisig for BtcTx {
     async fn estimate_multisig_fee(
         &self,
         queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
-        backend: &BackendApi,
-        sign_list: Vec<String>,
+        _: &CoinEntity,
+        _: &BackendApi,
+        _: Vec<String>,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
@@ -456,9 +456,9 @@ mod tests {
     async fn test_estimate_swap() {
         init_test_log();
 
-        let chain_code = "tron";
+        // let chain_code = "tron";
         // let rpc_url = "http://127.0.0.1:8545";
-        let rpc_url = "http://100.78.188.103:8090";
+        // let rpc_url = "http://100.78.188.103:8090";
         // let rpc_url = "https://api.nileex.io";
 
         // let adapter = BtcTx::new(chain_code, rpc_url)

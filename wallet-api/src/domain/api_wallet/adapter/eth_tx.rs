@@ -14,10 +14,10 @@ use crate::{
     },
     infrastructure::swap_client::AggQuoteResp,
     request::transaction::{
-        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+        ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
     },
     response_vo::{
-        EthereumFeeDetails, FeeDetails, FeeDetailsVo, MultisigQueueFeeParams, TransferParams,
+        EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams,
     },
 };
 

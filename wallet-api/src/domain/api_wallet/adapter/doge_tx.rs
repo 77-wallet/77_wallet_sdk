@@ -9,7 +9,7 @@ use crate::{
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         transaction::{
-            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+            ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
         },
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
@@ -78,7 +78,7 @@ impl DogeTx {
 impl Tx for DogeTx {
     async fn account_resource(
         &self,
-        owner_address: &str,
+        _: &str,
     ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
@@ -107,7 +107,7 @@ impl Tx for DogeTx {
         self.chin.token_name(token).await
     }
 
-    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, ServiceError> {
+    async fn black_address(&self, _: &str, _: &str) -> Result<bool, ServiceError> {
         Ok(false)
     }
 
@@ -116,7 +116,7 @@ impl Tx for DogeTx {
         params: &ApiTransferReq,
         private_key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
+        let _ = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(
             &params.base.from,
@@ -152,8 +152,6 @@ impl Tx for DogeTx {
         req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
-
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
@@ -184,81 +182,81 @@ impl Tx for DogeTx {
 
     async fn approve(
         &self,
-        req: &ApproveReq,
-        key: ChainPrivateKey,
-        value: U256,
+        _: &ApproveReq,
+        _: ChainPrivateKey,
+        _: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(
         &self,
-        req: &ApproveReq,
-        value: U256,
-        main_symbol: &str,
+        _: &ApproveReq,
+        _: U256,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(
         &self,
-        from: &str,
-        token: &str,
-        spender: &str,
+        _: &str,
+        _: &str,
+        _: &str,
     ) -> Result<U256, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
         &self,
-        req: &QuoteReq,
-        quote_resp: &AggQuoteResp,
-        symbol: &str,
+        _: &QuoteReq,
+        _: &AggQuoteResp,
+        _: &str,
     ) -> Result<(U256, String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
         &self,
-        req: &SwapReq,
-        fee: String,
-        key: ChainPrivateKey,
+        _: &SwapReq,
+        _: String,
+        _: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
         &self,
-        req: DepositReq,
-        main_coin: &CoinEntity,
+        _: DepositReq,
+        _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
         &self,
-        req: &DepositReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
+        _: &DepositReq,
+        _: String,
+        _: ChainPrivateKey,
+        _: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw_fee(
         &self,
-        req: WithdrawReq,
-        main_coin: &CoinEntity,
+        _: WithdrawReq,
+        _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
         &self,
-        req: &WithdrawReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
+        _: &WithdrawReq,
+        _: String,
+        _: ChainPrivateKey,
+        _: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
@@ -268,8 +266,8 @@ impl Tx for DogeTx {
 impl Multisig for DogeTx {
     async fn multisig_address(
         &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
+        _: &MultisigAccountEntity,
+        _: &MultisigMemberEntities,
     ) -> Result<FetchMultisigAddressResp, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -279,10 +277,10 @@ impl Multisig for DogeTx {
 
     async fn deploy_multisig_account(
         &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
-        fee_setting: Option<String>,
-        key: ChainPrivateKey,
+        _: &MultisigAccountEntity,
+        _: &MultisigMemberEntities,
+        _: Option<String>,
+        _: ChainPrivateKey,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -292,9 +290,9 @@ impl Multisig for DogeTx {
 
     async fn deploy_multisig_fee(
         &self,
-        account: &MultisigAccountEntity,
-        member: MultisigMemberEntities,
-        main_symbol: &str,
+        _: &MultisigAccountEntity,
+        _: MultisigMemberEntities,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -304,11 +302,11 @@ impl Multisig for DogeTx {
 
     async fn build_multisig_fee(
         &self,
-        req: &MultisigQueueFeeParams,
-        account: &MultisigAccountEntity,
-        decimal: u8,
-        token: Option<String>,
-        main_symbol: &str,
+        _: &MultisigQueueFeeParams,
+        _: &MultisigAccountEntity,
+        _: u8,
+        _: Option<String>,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -318,10 +316,10 @@ impl Multisig for DogeTx {
 
     async fn build_multisig_with_account(
         &self,
-        req: &TransferParams,
-        account: &MultisigAccountEntity,
-        assets: &ApiAssetsEntity,
-        key: ChainPrivateKey,
+        _: &TransferParams,
+        _: &MultisigAccountEntity,
+        _: &ApiAssetsEntity,
+        _: ChainPrivateKey,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -331,9 +329,9 @@ impl Multisig for DogeTx {
 
     async fn build_multisig_with_permission(
         &self,
-        req: &TransferParams,
-        p: &PermissionEntity,
-        coin: &CoinEntity,
+        _: &TransferParams,
+        _: &PermissionEntity,
+        _: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -343,10 +341,10 @@ impl Multisig for DogeTx {
 
     async fn sign_fee(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
-        raw_data: &str,
-        main_symbol: &str,
+        _: &MultisigAccountEntity,
+        _: &str,
+        _: &str,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -356,10 +354,10 @@ impl Multisig for DogeTx {
 
     async fn sign_multisig_tx(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
-        key: ChainPrivateKey,
-        raw_data: &str,
+        _: &MultisigAccountEntity,
+        _: &str,
+        _: ChainPrivateKey,
+        _: &str,
     ) -> Result<MultisigSignResp, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
@@ -369,11 +367,11 @@ impl Multisig for DogeTx {
 
     async fn estimate_multisig_fee(
         &self,
-        queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
-        backend: &BackendApi,
-        sign_list: Vec<String>,
-        main_symbol: &str,
+        _: &MultisigQueueEntity,
+        _: &CoinEntity,
+        _: &BackendApi,
+        _: Vec<String>,
+        _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::MultisigAccount(
             crate::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
