@@ -1,22 +1,10 @@
 use crate::{
     domain::{
         api_wallet::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
-        chain::transaction::ChainTransDomain,
         coin::CoinDomain,
     },
-    request::{
-        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
-        transaction::{BaseTransferReq, TransferReq},
-    },
-    service::transaction::TransactionService,
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
 };
-use wallet_database::{
-    entities::{api_wallet::ApiWalletType, assets::AssetsId},
-    repositories::{
-        api_assets::ApiAssetsRepo, api_collect::ApiCollectRepo, api_wallet::ApiWalletRepo,
-    },
-};
-use wallet_utils::conversion;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
