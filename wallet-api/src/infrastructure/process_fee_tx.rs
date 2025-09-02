@@ -174,7 +174,7 @@ impl ProcessWithdrawTx {
                 )
                 .await?;
                 let backend_api = Context::get_global_backend_api()?;
-                let res = backend_api
+                let _ = backend_api
                     .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                         &req.trade_no,
                         TransType::Fee,
@@ -187,7 +187,7 @@ impl ProcessWithdrawTx {
                     &pool,
                     &req.trade_no,
                     ApiFeeStatus::SendingTx,
-                    ApiFeeStatus::SendingTxReport,
+                    ApiFeeStatus::ReceivedTxReport,
                 )
                 .await?;
                 tracing::info!("upload tx exec receipt success ---");
@@ -292,7 +292,7 @@ impl ProcessWithdrawTxReport {
             &pool,
             &req.trade_no,
             ApiFeeStatus::SendingTx,
-            ApiFeeStatus::SendingTxReport,
+            ApiFeeStatus::ReceivedTxReport,
         )
         .await?;
         tracing::info!("upload tx exec receipt success ---");

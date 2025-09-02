@@ -39,6 +39,8 @@ pub enum ApiWithdrawStatus {
     AuditPass,
     AuditReject,
     SendingTx,
+    SendingTxFailed,
+    ReceivedTxReport,
     Success,
     Failure,
 }

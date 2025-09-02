@@ -62,7 +62,7 @@ impl ApiWithdrawDomain {
 
         // 可能发交易
         let value = Decimal::from_str(&req.value).unwrap();
-        if (value < Decimal::from(10)) {
+        if value < Decimal::from(10) {
             tracing::info!("transfer ------------------- 9:");
             ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, ApiWithdrawStatus::AuditPass).await?;
         }
@@ -89,13 +89,18 @@ impl ApiWithdrawDomain {
 
         let resp = adapter.transfer(&params, private_key).await?;
 
-        tracing::info!("transfer ------------------- 10:");
-
-        if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::manager::Context::get_global_backend_api()?;
-            let _ = backend.delegate_complete(&request_id).await;
-        }
-
         Ok(resp)
+    }
+
+    pub async fn confirm_withdraw_tx_report(trade_no: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::ReceivedTxReport).await?;
+        Ok(())
+    }
+
+    pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::Success).await?;
+        Ok(())
     }
 }
