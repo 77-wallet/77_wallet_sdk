@@ -305,7 +305,7 @@ impl ProcessWithdrawTxReport {
             1000,
             &[ApiWithdrawStatus::SendingTx],
         ).await?;
-        let withdraws_len = withdraws.len();
+        // let withdraws_len = withdraws.len();
         tracing::info!(withdraws=%withdraws.len(), "starting process withdraw tx report -------------------------------3");
         for req in withdraws {
             self.process_withdraw_single_tx_report(req).await?;
