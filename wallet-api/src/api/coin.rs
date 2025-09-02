@@ -179,7 +179,8 @@ mod test {
 
         // let keyword = Some("StR");
         // let keyword = None;
-        let keyword = Some("USDT");
+        // let keyword = Some("USDT");
+        let keyword = None;
         // let chain_code = Some("btc");
         let chain_code = None;
         let wallet_address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
@@ -187,7 +188,7 @@ mod test {
             .get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000)
             .await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
+        tracing::info!("res: {}", res);
         Ok(())
     }
 

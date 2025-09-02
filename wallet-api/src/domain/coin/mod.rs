@@ -112,6 +112,13 @@ impl CoinDomain {
     }
 
     pub async fn init_coins(repo: &mut ResourcesRepo) -> Result<(), crate::ServiceError> {
+        let pool = repo.pool();
+        // check 本地表是否有数据,有则不进行新增
+        let count = CoinRepo::coin_count(&pool).await?;
+        if count > 0 {
+            return Ok(());
+        }
+
         let list: Vec<CoinData> = crate::default_data::coin::init_default_coins_list()?
             .coins
             .iter()

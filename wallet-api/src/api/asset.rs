@@ -271,11 +271,11 @@ mod test {
         // wallet_manager.init_wallet_type("api").await?;
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         // let wallet_address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let wallet_address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let account_id = 1;
         // let symbol = "LTC";
         // let symbol = "BEANS";
-        let symbol = "TRX";
+        let symbol = "USDT";
         let res = wallet_manager
             .remove_coin(wallet_address, account_id, symbol)
             .await;

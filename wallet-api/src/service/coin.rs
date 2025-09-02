@@ -98,12 +98,10 @@ impl CoinService {
             .await
             .map_err(crate::ServiceError::Database)?;
 
-        // tracing::info!("[get_hot_coin_list] symbol_list: {symbol_list:#?}");
         let symbol_list: std::collections::HashSet<String> =
             symbol_list.into_iter().map(|coin| coin.symbol).collect();
 
-        // tracing::error!("local_coin_list: {symbol_list:?}");
-
+        tracing::warn!("symbol_list: {:#?}", symbol_list);
         let chain_codes = if let Some(chain_code) = chain_code {
             HashSet::from([chain_code])
         } else {
@@ -127,31 +125,18 @@ impl CoinService {
                 d.chain_list
                     .entry(coin.chain_code.clone())
                     .or_insert(coin.token_address.unwrap_or_default());
-                // d.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                //     chain_code: coin.chain_code.clone(),
-                //     token_address: coin.token_address().clone(),
-                //     protocol: coin.protocol.clone(),
-                // });
             } else {
                 data.push(crate::response_vo::coin::CoinInfo {
                     symbol: coin.symbol.clone(),
                     name: Some(coin.name.clone()),
-                    // chain_list: HashSet::from([crate::response_vo::coin::ChainInfo {
-                    //     chain_code: coin.chain_code.clone(),
-                    //     token_address: coin.token_address(),
-                    //     protocol: coin.protocol,
-                    // }]),
                     chain_list: ChainList(HashMap::from([(
                         coin.chain_code.clone(),
                         coin.token_address.unwrap_or_default(),
                     )])),
-                    // is_multichain: false,
                     is_default: true,
                 })
             }
         }
-
-        // data.mark_multi_chain_assets();
 
         let res = wallet_database::pagination::Pagination {
             page,
@@ -173,6 +158,7 @@ impl CoinService {
 
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
+        tracing::warn!("coins = {:?}", coins.len());
 
         let data = coins
             .into_iter()
@@ -214,6 +200,10 @@ impl CoinService {
 
         let tx = &mut self.repo;
         for token in coins {
+            if token.symbol == Some("USDT".to_string()) {
+                tracing::warn!("token = {:#?}", token);
+            }
+
             let status = token.get_status();
             let time = parse_utc_with_error(&token.update_time).ok();
 
