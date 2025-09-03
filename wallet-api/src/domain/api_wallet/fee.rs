@@ -63,7 +63,7 @@ impl ApiFeeDomain {
 
     /// transfer
     pub async fn transfer(params: ApiTransferReq) -> Result<TransferResp, crate::ServiceError> {
-        tracing::info!("transfer ------------------- 7:");
+        tracing::info!("transfer fee ------------------- 7:");
         let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,
             &params.base.chain_code,
@@ -71,7 +71,7 @@ impl ApiFeeDomain {
         )
         .await?;
 
-        tracing::info!("transfer ------------------- 8:");
+        tracing::info!("transfer fee ------------------- 8:");
 
         let adapter = API_ADAPTER_FACTORY
             .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
@@ -81,7 +81,7 @@ impl ApiFeeDomain {
 
         let resp = adapter.transfer(&params, private_key).await?;
 
-        tracing::info!("transfer ------------------- 10:");
+        tracing::info!("transfer fee ------------------- 10:");
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;

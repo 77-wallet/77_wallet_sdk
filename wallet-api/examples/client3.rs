@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let to = "0xd830497ecd7321d4e0e501d3f71689380e8e8883ee5e1597cf06b3b72a95d226";
 
     let value = "0.000001";
-    let trade_no = "0x0000000106";
+    let trade_no = "0x0000000110";
     let res1 = wallet_manager
         .api_transfer_fee_order(from, to, value, "bnb", None, "BNB", trade_no, 3, uid)
         .await;
@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("ctrl_c");
-                wallet_manager.close().await;
+                let _ = wallet_manager.close().await;
                 break;
             }
         }
