@@ -2,7 +2,6 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        assets::AssetsDomain,
         chain::{adapter::ChainAdapterFactory, ChainDomain},
         coin::{coin_info_to_coin_data, CoinDomain},
     },
@@ -134,8 +133,8 @@ impl CoinService {
             }
         }
 
-        let pool = tx.pool();
-        AssetsDomain::show_contract(&pool, keyword, &mut data).await?;
+        // let pool = tx.pool();
+        // AssetsDomain::show_contract(&pool, keyword, &mut data).await?;
 
         let res = wallet_database::pagination::Pagination {
             page,

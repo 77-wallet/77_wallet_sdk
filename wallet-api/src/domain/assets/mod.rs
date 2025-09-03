@@ -136,7 +136,7 @@ impl AssetsDomain {
         for coin in res.iter_mut() {
             let chain_len = coin.chain_list.len();
 
-            if has_keyword {
+            if has_keyword || coin.is_default {
                 // 有 keyword：只有恰好 1 条链才显示
                 coin.show_contract = chain_len == 1;
                 continue;
