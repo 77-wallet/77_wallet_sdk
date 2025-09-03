@@ -15,7 +15,7 @@ use crate::{
         coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
     },
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
@@ -24,7 +24,6 @@ use wallet_database::{
     },
     repositories::{
         assets::AssetsRepoTrait,
-        chain::ChainRepoTrait,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
         ResourcesRepo,
@@ -90,32 +89,26 @@ impl CoinService {
         } else {
             is_multisig
         };
-        let symbol_list = tx
+        let assets = tx
             .get_chain_assets_by_address_chain_code_symbol(
                 addresses,
                 chain_code.clone(),
                 None,
                 _is_multisig,
             )
-            .await
-            .map_err(crate::ServiceError::Database)?;
-
-        let symbol_list: std::collections::HashSet<String> =
-            symbol_list.into_iter().map(|coin| coin.symbol).collect();
-
-        let chain_codes = if let Some(chain_code) = chain_code {
-            HashSet::from([chain_code])
-        } else {
-            tx.get_chain_list()
-                .await?
-                .into_iter()
-                .map(|chain| chain.chain_code)
-                .collect()
-        };
+            .await?;
+        let exclude = assets
+            .iter()
+            .map(|asset| CoinId {
+                symbol: asset.symbol.clone(),
+                chain_code: asset.chain_code.clone(),
+                token_address: asset.token_address(),
+            })
+            .collect::<Vec<CoinId>>();
 
         tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
         let list = tx
-            .hot_coin_list_symbol_not_in(&chain_codes, keyword, &symbol_list, page, page_size)
+            .hot_coin_list_symbol_not_in(&exclude, keyword, page, page_size)
             .await?;
         let mut data = CoinInfoList::default();
         for coin in list.data {

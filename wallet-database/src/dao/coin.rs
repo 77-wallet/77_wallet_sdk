@@ -10,6 +10,10 @@ use sqlx::{
 };
 use std::{collections::HashSet, sync::Arc};
 
+// 最简单的转义：把单引号 ' 变成 ''（SQLite 字面量安全写法）
+fn sql_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 pub struct CoinDao {
     pub name: String,
@@ -262,49 +266,44 @@ impl CoinEntity {
     // 币种管理列表(不查询status = 1)
     pub async fn coin_list_symbol_not_in<'a, E>(
         exec: &E,
-        chain_codes: &HashSet<String>,
+        exclude: &[CoinId], // 要排除的 (symbol, chain_code, token_address)，
         keyword: Option<&str>,
-        symbol_list: &HashSet<String>,
-        is_default: Option<u8>,
-        is_popular: Option<u8>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<Self>, crate::Error>
     where
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let symbol_list = crate::any_in_collection(symbol_list, "','");
-        let chain_codes = crate::any_in_collection(chain_codes, "','");
-        let mut sql = "SELECT * FROM coin WHERE is_del = 0 AND status = 1".to_string();
+        let mut sql = String::from("SELECT * FROM coin WHERE is_del = 0 AND status = 1");
 
-        let mut conditions = Vec::new();
-
-        if let Some(is_default) = is_default {
-            conditions.push(format!("is_default = '{is_default}'"));
+        // 关键词（LIKE）
+        if let Some(kw) = keyword {
+            sql.push_str(&format!(" AND symbol LIKE '%{}%'", sql_quote(kw)));
         }
 
-        if let Some(is_popular) = is_popular {
-            conditions.push(format!("is_popular = '{is_popular}'"));
+        // 排除三元组（严格匹配你的主键顺序）
+        if !exclude.is_empty() {
+            // 生成 ('SYM','CHAIN','TOKEN'),(...)
+            let tuples = exclude
+                .iter()
+                .map(|id| {
+                    format!(
+                        "('{}','{}','{}')",
+                        sql_quote(&id.symbol),
+                        sql_quote(&id.chain_code),
+                        sql_quote(&id.token_address.clone().unwrap_or_default())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            sql.push_str(" AND (symbol, chain_code, token_address) NOT IN (");
+            sql.push_str(&tuples);
+            sql.push(')');
         }
 
-        if !chain_codes.is_empty() {
-            let str = format!(" AND chain_code in ('{}')", chain_codes);
-            sql.push_str(&str)
-        }
-
-        if !symbol_list.is_empty() {
-            let str = format!(" AND symbol not in ('{}')", symbol_list);
-            sql.push_str(&str)
-        }
-
-        if let Some(keyword) = keyword {
-            conditions.push(format!("symbol LIKE '%{keyword}%'"));
-        }
-
-        if !conditions.is_empty() {
-            sql.push_str(" AND ");
-            sql.push_str(&conditions.join(" AND "));
-        }
+        // 排序 + 分页（你原来就有的 paginate）
+        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
 
         let paginate = Pagination::<Self>::init(page, page_size);
         Ok(paginate.page(exec, &sql).await?)
