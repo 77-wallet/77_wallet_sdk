@@ -225,18 +225,11 @@ mod test {
             account_id,
             // symbol: "BNB".to_string(),
             // wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
-            wallet_address: "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1".to_string(),
-            chain_list: ChainList(HashMap::from([
-                (
-                    "tron".to_string(),
-                    "TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8".to_string(),
-                ),
-                (
-                    "sui".to_string(),
-                    "0x294de7579d55c110a00a7c4946e09a1b5cbeca2592fbb83fd7bfacba3cfeaf0e::drf::DRF"
-                        .to_string(),
-                ),
-            ])), // token_address,
+            wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
+            chain_list: ChainList(HashMap::from([(
+                "eth".to_string(),
+                "0x111111111117dC0aa78b770fA6A738034120C302".to_string(),
+            )])), // token_address,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;
         tracing::info!("res: {res:?}");

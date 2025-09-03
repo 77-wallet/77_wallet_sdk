@@ -266,7 +266,8 @@ impl CoinEntity {
     // 币种管理列表(不查询status = 1)
     pub async fn coin_list_symbol_not_in<'a, E>(
         exec: &E,
-        exclude: &[CoinId], // 要排除的 (symbol, chain_code, token_address)，
+        exclude: &[CoinId],
+        chain_code: Option<String>,
         keyword: Option<&str>,
         page: i64,
         page_size: i64,
@@ -276,6 +277,9 @@ impl CoinEntity {
     {
         let mut sql = String::from("SELECT * FROM coin WHERE is_del = 0 AND status = 1");
 
+        if let Some(chain_code) = chain_code {
+            sql.push_str(&format!(" AND chain_code = '{}'", chain_code));
+        }
         // 关键词（LIKE）
         if let Some(kw) = keyword {
             sql.push_str(&format!(" AND symbol LIKE '%{}%'", sql_quote(kw)));

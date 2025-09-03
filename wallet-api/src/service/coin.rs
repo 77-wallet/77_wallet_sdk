@@ -107,7 +107,7 @@ impl CoinService {
 
         tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
         let list = tx
-            .hot_coin_list_symbol_not_in(&exclude, keyword, page, page_size)
+            .hot_coin_list_symbol_not_in(&exclude, chain_code, keyword, page, page_size)
             .await?;
 
         let show_contract = keyword.is_some();

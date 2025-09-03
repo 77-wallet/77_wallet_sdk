@@ -162,6 +162,8 @@ impl CoinDomain {
             None
         };
 
+        let create_at = None;
+
         coins.append(
             &mut backend_api
                 .fetch_all_tokens(create_at.clone(), None)

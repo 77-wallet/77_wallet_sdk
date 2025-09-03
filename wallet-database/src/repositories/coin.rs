@@ -105,12 +105,16 @@ pub trait CoinRepoTrait: super::TransactionTrait {
     async fn hot_coin_list_symbol_not_in(
         &mut self,
         exclude: &[CoinId],
+        chain_code: Option<String>,
         keyword: Option<&str>,
         page: i64,
         page_size: i64,
     ) -> Result<crate::pagination::Pagination<CoinEntity>, crate::Error> {
         let executor = self.get_db_pool();
-        CoinEntity::coin_list_symbol_not_in(&executor, exclude, keyword, page, page_size).await
+        CoinEntity::coin_list_symbol_not_in(
+            &executor, exclude, chain_code, keyword, page, page_size,
+        )
+        .await
     }
 
     async fn update_price_unit(
