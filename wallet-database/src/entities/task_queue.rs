@@ -176,7 +176,8 @@ pub enum KnownTaskName {
     SyncNodesAndLinkToChains,
     // RecoverPermission,
     OrderAllConfirmed,
+    /// api wallet
     UnbindUid,
     AddressUse,
-    ApiWithdraw,
+    Trans,
 }

@@ -18,7 +18,7 @@ use crate::{
     messaging::{
         mqtt::topics::{
             OutgoingPayload,
-            api_wallet::{AddressUseMsg, UnbindUidMsg},
+            api_wallet::{AddressUseMsg, TransMsg, UnbindUidMsg},
         },
         notify::{FrontendNotifyEvent, event::NotifyEvent},
     },
@@ -79,25 +79,18 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
             let payload: ChainChange = serde_json::from_slice(&publish.payload)?;
             payload.exec().await?;
         }
-        Topic::Order | Topic::Common | Topic::BulletinInfo => {
+        Topic::Order
+        | Topic::Common
+        | Topic::BulletinInfo
+        | Topic::MerchantTrans
+        | Topic::MerchantAddressBind
+        | Topic::MerchantAddressAllock => {
             let payload: Message = serde_json::from_slice(&publish.payload)?;
             if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await {
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
 
-            // TODO: 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
-            // let send_msg_confirm_req = BackendApiTask::new(
-            //     SEND_MSG_CONFIRM,
-            //     &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(
-            //         &payload.msg_id,
-            //         MsgConfirmSource::Mqtt,
-            //     )]),
-            // )?;
-            // Tasks::new()
-            //     .push(Task::BackendApi(send_msg_confirm_req))
-            //     .send()
-            //     .await?;
-
+            // 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
             // 是否有相同的队列
             if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?.is_none() {
                 let event = serde_func::serde_to_string(&payload.biz_type)?;
@@ -168,10 +161,12 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
         BizType::CleanPermission => {
             exec_task::<CleanPermission, _>(&payload, MqttTask::CleanPermission).await?
         }
+        // api wallet
         BizType::UnbindUid => exec_task::<UnbindUidMsg, _>(&payload, MqttTask::UnbindUid).await?,
         BizType::AddressUse => {
             exec_task::<AddressUseMsg, _>(&payload, MqttTask::AddressUse).await?
         }
+        BizType::Trans => exec_task::<TransMsg, _>(&payload, MqttTask::Trans).await?,
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
             return Err(crate::ServiceError::System(crate::SystemError::MessageWrong(
