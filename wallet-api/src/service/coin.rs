@@ -63,9 +63,10 @@ impl CoinService {
     > {
         let tx = &mut self.repo;
 
+        let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let accounts = self
             .account_domain
-            .get_addresses(tx, address, account_id, chain_code.clone(), is_multisig)
+            .get_addresses(tx, address, account_id, chain_codes, is_multisig)
             .await?;
 
         let addresses = accounts
@@ -460,7 +461,7 @@ impl CoinService {
                 tx,
                 address,
                 account_id,
-                Some(chain_code.to_string()),
+                vec![chain_code.to_string()],
                 Some(is_multisig),
             )
             .await?;

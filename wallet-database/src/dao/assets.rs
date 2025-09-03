@@ -295,6 +295,40 @@ impl AssetsEntity {
         }
     }
 
+    pub async fn list_by_chain_token_map_batch<'a, E>(
+        exec: E,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if chain_list.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut where_parts: Vec<String> = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+
+        for (chain_code, token_address) in chain_list {
+            where_parts.push("(chain_code = ? AND token_address = ?)".to_string());
+            params.push(chain_code.clone());
+            params.push(token_address.clone());
+        }
+
+        let where_clause = where_parts.join(" OR ");
+        let sql = format!("SELECT * FROM assets WHERE ({})", where_clause);
+
+        let mut query = sqlx::query_as::<_, AssetsEntity>(&sql);
+        for param in params {
+            query = query.bind(param);
+        }
+
+        query
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn get_by_addr_token<'a, E>(
         exec: E,
         chain_code: &str,
