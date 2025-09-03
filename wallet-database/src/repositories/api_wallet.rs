@@ -20,6 +20,14 @@ impl ApiWalletRepo {
             .await?)
     }
 
+    pub async fn edit_name(
+        pool: &DbPool,
+        address: &str,
+        name: &str,
+    ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletDao::edit_name(pool.as_ref(), address, name).await?)
+    }
+
     pub async fn update_merchant_id(
         pool: &DbPool,
         address: &str,

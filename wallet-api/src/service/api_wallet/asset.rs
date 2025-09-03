@@ -1,34 +1,8 @@
-use std::collections::HashMap;
-
-use crate::{
-    domain::{
-        account::AccountDomain, api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain,
-        coin::CoinDomain, multisig::MultisigDomain,
-    },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
-    response_vo::{
-        assets::{AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes},
-        chain::ChainList,
-    },
+use crate::domain::{
+    account::AccountDomain, api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain,
+    coin::CoinDomain,
 };
-use wallet_database::{
-    dao::assets::CreateAssetsVo,
-    entities::{
-        assets::{AssetsEntity, AssetsId},
-        coin::SymbolId,
-    },
-    repositories::{
-        ResourcesRepo,
-        account::AccountRepoTrait,
-        assets::AssetsRepoTrait,
-        chain::{ChainRepo, ChainRepoTrait},
-        coin::CoinRepoTrait,
-        device::DeviceRepo,
-    },
-};
-use wallet_transport_backend::request::{
-    TokenBalanceRefresh, TokenBalanceRefreshReq, TokenQueryPriceReq,
-};
+use wallet_database::repositories::ResourcesRepo;
 
 #[derive(Debug, Clone)]
 pub struct AddressChainCode {
@@ -36,22 +10,11 @@ pub struct AddressChainCode {
     pub chain_code: String,
 }
 
-pub struct ApiAssetsService {
-    pub repo: ResourcesRepo,
-    account_domain: AccountDomain,
-    assets_domain: AssetsDomain,
-    coin_domain: CoinDomain, // keystore: wallet_crypto::Keystore
-                             // keystore: wallet_crypto::Keystore
-}
+pub struct ApiAssetsService {}
 
 impl ApiAssetsService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            account_domain: AccountDomain::new(),
-            assets_domain: AssetsDomain::new(),
-            coin_domain: CoinDomain::new(),
-        }
+    pub fn new() -> Self {
+        Self {}
     }
 
     // 根据地址来同步余额(链)

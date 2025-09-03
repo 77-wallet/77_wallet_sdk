@@ -74,17 +74,17 @@ impl ApiBaseTransferReq {
         self.symbol = symbol.to_string();
     }
 
-    pub fn with_request_resource_id(&mut self, request_resource_id: Option<String>) {
-        self.request_resource_id = request_resource_id
-    }
+    // pub fn with_request_resource_id(&mut self, request_resource_id: Option<String>) {
+    //     self.request_resource_id = request_resource_id
+    // }
 
-    pub fn with_spend_all(&mut self, spend_all: bool) {
-        self.spend_all = spend_all;
-    }
+    // pub fn with_spend_all(&mut self, spend_all: bool) {
+    //     self.spend_all = spend_all;
+    // }
 
-    pub fn with_notes(&mut self, notes: String) {
-        self.notes = Some(notes);
-    }
+    // pub fn with_notes(&mut self, notes: String) {
+    //     self.notes = Some(notes);
+    // }
 }
 
 #[derive(Debug, Clone)]

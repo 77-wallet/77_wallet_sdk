@@ -1,6 +1,8 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
-    domain::coin::CoinDomain, request::transaction::SwapTokenInfo, response_vo::chain::ChainList,
+    domain::coin::CoinDomain,
+    request::transaction::SwapTokenInfo,
+    response_vo::{chain::ChainList, coin::CoinInfoList},
 };
 use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
@@ -12,12 +14,12 @@ use wallet_database::{
         account::AccountEntity,
         api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
         assets::{AssetsEntity, AssetsId},
-        coin::{CoinData, CoinEntity, CoinMultisigStatus},
+        coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
     repositories::{
         ResourcesRepo, account::AccountRepoTrait, api_assets::ApiAssetsRepo,
-        assets::AssetsRepoTrait,
+        assets::AssetsRepoTrait, coin::CoinRepo,
     },
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -34,50 +36,6 @@ impl AssetsDomain {
     pub fn new() -> Self {
         Self {}
     }
-
-    // pub async fn upsert_assets(
-    //     &mut self,
-    //     repo: &mut ResourcesRepo,
-    //     mut req: TokenQueryPriceReq,
-    //     address: &str,
-    //     chain_code: &str,
-    //     symbol: &str,
-    //     decimals: u8,
-    //     token_address: Option<String>,
-    //     protocol: Option<String>,
-    //     is_multisig: i32,
-    //     name: &str,
-    //     price: &str,
-    // ) -> Result<(), crate::ServiceError> {
-    //     let tx = repo;
-    //     let assets_id = wallet_database::entities::assets::AssetsId::new(
-    //         address,
-    //         chain_code,
-    //         symbol,
-    //         token_address,
-    //     );
-
-    //     let assets = wallet_database::dao::assets::CreateAssetsVo::new(
-    //         assets_id,
-    //         decimals,
-    //         protocol.clone(),
-    //         is_multisig,
-    //     )
-    //     .with_name(name)
-    //     .with_u256(alloy::primitives::U256::default(), decimals)?;
-
-    //     let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
-    //     if price.is_empty() {
-    //         req.insert(
-    //             chain_code,
-    //             &assets.assets_id.token_address.clone().unwrap_or_default(),
-    //         );
-    //         let task = CommonTask::QueryCoinPrice(req);
-    //         Tasks::new().push(task).send().await?;
-    //     }
-    //     tx.upsert_assets(assets, wallet_type).await?;
-    //     Ok(())
-    // }
 
     pub async fn get_account_assets_entity(
         &mut self,
@@ -139,41 +97,66 @@ impl AssetsDomain {
             let coin =
                 CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
                     .await?;
-            tracing::info!("coin: {coin:?}");
             if let Some(info) =
                 res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {
-                tracing::info!("nonono, info: {:?}", info);
                 info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
-
-                // info.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                //     chain_code: assets.chain_code,
-                //     token_address: Some(assets.token_address),
-                //     protocol: assets.protocol,
-                // });
             } else {
-                tracing::info!("hahaha");
                 res.push(crate::response_vo::coin::CoinInfo {
                     symbol: assets.symbol,
                     name: Some(assets.name),
-                    // chain_list: std::collections::HashSet::from([
-                    //     crate::response_vo::coin::ChainInfo {
-                    //         chain_code: assets.chain_code,
-                    //         token_address: Some(assets.token_address),
-                    //         protocol: assets.protocol,
-                    //     },
-                    // ]),
+
                     chain_list: ChainList(HashMap::from([(
                         assets.chain_code.clone(),
                         assets.token_address,
                     )])),
-                    // is_multichain: false,
                     is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
+                    show_contract: false,
                 });
             }
         }
-        tracing::info!("res: {res:#?}");
+
         Ok(res)
+    }
+
+    // keyword 存在都要展示合约地址
+    // 链相同，symbol相同 大于2 显示地址
+    pub async fn show_contract(
+        pool: &DbPool,
+        keyword: Option<&str>,
+        res: &mut CoinInfoList,
+    ) -> Result<(), crate::ServiceError> {
+        let has_keyword = keyword.is_some();
+
+        for coin in res.iter_mut() {
+            let chain_len = coin.chain_list.len();
+
+            if has_keyword {
+                // 有 keyword：只有恰好 1 条链才显示
+                coin.show_contract = chain_len == 1;
+                continue;
+            }
+
+            // 无 keyword 的逻辑
+            match chain_len {
+                1 => {
+                    let chain_code =
+                        coin.chain_list.keys().next().expect("len()==1 已保证存在 key");
+
+                    let same_coin_num =
+                        CoinRepo::same_coin_num(pool, &coin.symbol, chain_code).await?;
+
+                    coin.show_contract = same_coin_num > 1;
+                }
+                _ => {
+                    // 0 或 >1 条链都不显示
+                    coin.show_contract = false;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
@@ -409,29 +392,32 @@ impl AssetsDomain {
     ) -> Result<(), crate::ServiceError> {
         // notes 不能更新币价
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let time = wallet_utils::time::now();
-        let coin_data = CoinData::new(
-            Some(token.symbol.clone()),
-            &token.symbol,
-            &chain_code,
-            Some(token.token_addr.clone()),
-            Some("0".to_string()),
-            None,
-            token.decimals as u8,
-            0,
-            0,
-            1,
-            time,
-            time,
-        );
-        if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
-            tracing::error!("swap insert coin faild : {}", e);
-        };
+        // let time = wallet_utils::time::now();
+        let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &pool).await?;
+        // let coin_data = CoinData::new(
+        //     Some(token.symbol.clone()),
+        //     &token.symbol,
+        //     &chain_code,
+        //     Some(token.token_addr.clone()),
+        //     Some("0".to_string()),
+        //     None,
+        //     token.decimals as u8,
+        //     0,
+        //     0,
+        //     1,
+        //     true,
+        //     time,
+        //     time,
+        // );
+        // if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
+        //     tracing::error!("swap insert coin faild : {}", e);
+        // };
 
         // 资产是否存在不存在新增
         let assets_id =
             AssetsId::new(&recipient, &chain_code, &token.symbol, Some(token.token_addr));
-        let assets = CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0);
+        let assets =
+            CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0).with_name(&coin.name);
 
         if let Err(e) = AssetsEntity::upsert_assets(pool.as_ref(), assets).await {
             tracing::error!("swap insert assets faild : {}", e);
@@ -487,38 +473,12 @@ impl From<&[ApiAssetsEntity]> for BalanceTasks {
 }
 
 impl ChainBalance {
-    pub(crate) async fn balance_tasks_from_assets(assets: &[AssetsEntity]) -> Vec<BalanceTask> {
-        let mut tasks = vec![];
-        for asset in assets.iter() {
-            let bal = BalanceTask {
-                address: asset.address.clone(),
-                chain_code: asset.chain_code.clone(),
-                symbol: asset.symbol.clone(),
-                decimals: asset.decimals,
-                token_address: asset.token_address(),
-            };
-            tasks.push(bal);
-        }
-        tasks
-    }
-
     pub(crate) async fn sync_address_balance(
         assets: impl Into<BalanceTasks>,
     ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
         // 限制最大并发数为 10
         let sem = Arc::new(Semaphore::new(10));
-        // let mut tasks = vec![];
         let tasks: BalanceTasks = assets.into();
-        // for asset in assets.into().0.iter() {
-        //     let bal = BalanceTask {
-        //         address: asset.address.clone(),
-        //         chain_code: asset.chain_code.clone(),
-        //         symbol: asset.symbol.clone(),
-        //         decimals: asset.decimals,
-        //         token_address: asset.token_address(),
-        //     };
-        //     tasks.push(bal);
-        // }
 
         // 并发获取余额并格式化
         let results = stream::iter(tasks.0)
@@ -530,35 +490,6 @@ impl ChainBalance {
 
         Ok(results)
     }
-
-    // pub(crate) async fn sync_address_balance(
-    //     assets: &[AssetsEntity],
-    // ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
-    //     // 限制最大并发数为 10
-    //     let sem = Arc::new(Semaphore::new(10));
-    //     let mut tasks = vec![];
-
-    //     for asset in assets.iter() {
-    //         let bal = BalanceTask {
-    //             address: asset.address.clone(),
-    //             chain_code: asset.chain_code.clone(),
-    //             symbol: asset.symbol.clone(),
-    //             decimals: asset.decimals,
-    //             token_address: asset.token_address(),
-    //         };
-    //         tasks.push(bal);
-    //     }
-
-    //     // 并发获取余额并格式化
-    //     let results = stream::iter(tasks)
-    //         .map(|task| Self::fetch_balance(task, sem.clone()))
-    //         .buffer_unordered(10)
-    //         .filter_map(|x| async move { x })
-    //         .collect::<Vec<_>>()
-    //         .await;
-
-    //     Ok(results)
-    // }
 
     // 从任务获取余额并返回结果
     async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {

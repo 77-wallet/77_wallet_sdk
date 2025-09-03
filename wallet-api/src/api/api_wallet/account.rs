@@ -5,7 +5,7 @@ use crate::{
 
 impl crate::WalletManager {
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
-        ApiAccountService::new(self.repo_factory.resource_repo())
+        ApiAccountService::new()
             .create_account(
                 &req.wallet_address,
                 &req.wallet_password,
@@ -19,15 +19,13 @@ impl crate::WalletManager {
             .into()
     }
 
+    #[allow(unused)]
     pub(crate) async fn upload_allocated_addresses(
         &self,
         wallet_address: &str,
         addresses: Vec<String>,
     ) -> ReturnType<()> {
-        ApiAccountService::new(self.repo_factory.resource_repo())
-            .upload_allocated_addresses(wallet_address, addresses)
-            .await?
-            .into()
+        ApiAccountService::new().upload_allocated_addresses(wallet_address, addresses).await?.into()
     }
 
     pub async fn get_api_account_private_key(
@@ -36,10 +34,7 @@ impl crate::WalletManager {
         chain_code: &str,
         password: &str,
     ) -> ReturnType<String> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        ApiAccountService::new(repo)
+        ApiAccountService::new()
             .get_account_private_key(address, chain_code, password)
             .await?
             .to_string()
@@ -61,12 +56,12 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x418Ea813dd2d9AA21597912b62a10465FCe48033";
+        let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
         let wallet_password = "q1111111";
         let index = None;
         let name = "666";
         let is_default_name = true;
-        let number = 1;
+        let number = 3;
         let api_wallet_type = ApiWalletType::SubAccount;
 
         let req = CreateApiAccountReq::new(

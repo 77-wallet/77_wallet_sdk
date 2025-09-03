@@ -1,6 +1,5 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
-use wallet_database::entities::api_wallet::ApiWalletType;
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
@@ -28,15 +27,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("res: {res:?}");
 
     // 创建钱包
-    let language_code = 1;
-    let phrase = &test_params.create_wallet_req.phrase;
-    let salt = "q1111111";
-    let wallet_name = "api_wallet";
-    let account_name = "ccccc";
-    let is_default_name = true;
-    let wallet_password = "q1111111";
+    // let language_code = 1;
+    // let phrase = &test_params.create_wallet_req.phrase;
+    // let salt = "q1111111";
+    // let wallet_name = "api_wallet";
+    // let account_name = "ccccc";
+    // let is_default_name = true;
+    // let wallet_password = "q1111111";
     // let invite_code = None;
-    // let api_wallet_type = ApiWalletType::SubAccount;
     // let api_wallet_type = ApiWalletType::SubAccount;
     // let wallet = wallet_manager
     //     .create_api_wallet(
@@ -56,16 +54,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // let order_list = wallet_manager.get_api_collect_order_list().await.result;
     // tracing::info!("order_list ------------------- 2: {order_list:#?}");
-    // let uid = "2be2ade547d488732e03024207c5d36e6976535845f058f118a2a004027791b7";
+    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
-    // let from = "0xB9E04b6fa2C391e82A076C8802982DedcD78eb06";
-    // let to = "0x1bAA3A8c18444E36d8cb8f6C7dd6004da3242689";
-    // let value = "0.000001";
-    // let trade_no = "0x0000000066";
-    // let res1 = wallet_manager
-    //     .api_collect_order(from, to, value, "btc", None, "BTC", trade_no, 1, uid)
-    //     .await;
-    // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+    // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+    let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
+    // let to = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
+    let to = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
+    // let to = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+    let value = "23";
+    let trade_no = "0x000000001";
+    let res1 = wallet_manager
+        .api_collect_order(from, to, value, "tron", None, "TRX", trade_no, 1, uid)
+        .await;
+    tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)
@@ -106,8 +107,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {config:#?}");
     // let res = wallet_utils::serde_func::serde_to_string(&config)?;
     // tracing::info!("config result: {res}");
-    while let Some(_data) = rx.next().await {
-        tracing::info!("data: {_data:?}");
+
+    loop {
+        tokio::select! {
+            msg = rx.next() => {
+                tracing::info!("data: {msg:?}");
+            }
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("ctrl_c");
+                let _ = wallet_manager.close().await;
+                break;
+            }
+        }
     }
     Ok(())
 }

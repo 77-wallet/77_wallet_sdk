@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     DbPool,
-    entities::coin::{CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
+    entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
 };
 
@@ -51,6 +51,14 @@ pub trait CoinRepoTrait: super::TransactionTrait {
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, CoinEntity::list_v2, symbol, chain_code, None)
+    }
+
+    async fn coin_list_by_chain_token_map_batch(
+        &mut self,
+        pool: &DbPool,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<CoinEntity>, crate::Error> {
+        CoinEntity::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
     }
 
     async fn get_coin_by_chain_code_token_address(
@@ -103,7 +111,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             chain_codes,
             keyword,
             symbol_list,
-            Some(1),
+            None,
             None,
             page,
             page_size,
@@ -117,6 +125,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         price: &str,
         unit: Option<u8>,
         status: Option<i32>,
+        swappable: Option<bool>,
         time: Option<DateTime<Utc>>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
@@ -127,6 +136,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             price,
             unit,
             status,
+            swappable,
             time
         )
     }
@@ -181,6 +191,22 @@ impl CoinRepo {
         ))
     }
 
+    pub async fn update_price_unit1(
+        chain_code: &str,
+        token_address: &str,
+        price: &str,
+        pool: &DbPool,
+    ) -> Result<(), crate::Error> {
+        CoinEntity::update_price_unit1(pool.as_ref(), chain_code, token_address, price).await
+    }
+
+    pub async fn multi_update_swappable(
+        coins: Vec<BatchCoinSwappable>,
+        pool: &DbPool,
+    ) -> Result<(), crate::Error> {
+        CoinEntity::multi_update_swappable(coins, pool.as_ref()).await
+    }
+
     pub async fn coin_by_chain_address(
         chain_code: &str,
         token_address: &str,
@@ -203,6 +229,14 @@ impl CoinRepo {
 
     pub async fn coin_count(pool: &DbPool) -> Result<i64, crate::Error> {
         CoinEntity::coin_count(pool.as_ref()).await
+    }
+
+    pub async fn same_coin_num(
+        pool: &DbPool,
+        symbol: &str,
+        chain_code: &str,
+    ) -> Result<i64, crate::Error> {
+        CoinEntity::same_coin_num(pool.as_ref(), symbol, chain_code).await
     }
 
     pub async fn coin_list_with_assets(

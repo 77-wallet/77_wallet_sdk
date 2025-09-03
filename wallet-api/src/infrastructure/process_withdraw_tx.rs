@@ -131,7 +131,9 @@ impl ProcessWithdrawTx {
     async fn process_withdraw_single_tx(
         &self,
         req: ApiWithdrawEntity,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), anyhow::Error> {
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
+
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
 
@@ -283,46 +285,14 @@ impl ProcessWithdrawTxReport {
         Ok(())
     }
 
-    async fn process_withdraw_tx_report(&self) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 10).await?;
-        let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
-            &pool.clone(),
-            offset,
-            1000,
-            &[ApiWithdrawStatus::SendingTx],
-        ).await?;
-        let withdraws_len = withdraws.len();
-        for req in withdraws {
-            self.process_withdraw_single_tx_report(req).await?;
-        }
-        ApiWindowRepo::upsert_api_offset(&pool, 10, offset + withdraws_len as i64).await?;
+    async fn process_withdraw_tx_report(&self) -> Result<(), anyhow::Error> {
+        tracing::info!("starting process withdraw tx report -------------------------------");
+        
         Ok(())
     }
-
-    async fn process_withdraw_single_tx_report(
-        &self,
-        req: ApiWithdrawEntity,
-    ) -> Result<(), crate::ServiceError> {
-        let status = if req.status == ApiWithdrawStatus::SendingTxFailed { TransStatus::Fail } else { TransStatus::Success };
-        let backend_api = Context::get_global_backend_api()?;
-        let _ = backend_api
-            .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
-                &req.trade_no,
-                TransType::Wd,
-                &req.tx_hash,
-                status,
-                "",
-            ))
-            .await?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_next_status(
-            &pool,
-            &req.trade_no,
-            req.status,
-            ApiWithdrawStatus::ReceivedTxReport,
-        )
-        .await?;
+    
+    async fn process_withdraw_single_tx_report(&self, req: ApiWithdrawEntity) -> Result<(), anyhow::Error> {
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
         Ok(())
     }
 }

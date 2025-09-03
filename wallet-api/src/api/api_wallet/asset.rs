@@ -8,7 +8,7 @@ impl crate::WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        let res = ApiAssetsService::new(self.repo_factory.resource_repo())
+        let res = ApiAssetsService::new()
             .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
             .await;
 
@@ -32,7 +32,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x418Ea813dd2d9AA21597912b62a10465FCe48033";
+        let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
         let index = None;
 
         let res = wallet_manager.sync_api_assets_by_wallet(wallet_address, index, vec![]).await;

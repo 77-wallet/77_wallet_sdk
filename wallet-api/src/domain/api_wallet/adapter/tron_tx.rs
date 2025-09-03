@@ -234,6 +234,8 @@ impl Tx for TronTx {
     ) -> Result<TransferResp, ServiceError> {
         let transfer_amount = self.check_min_transfer(&params.base.value, params.base.decimals)?;
         if let Some(contract) = &params.base.token_address {
+            tracing::info!("contract: {contract}");
+            tracing::info!("from: {}", params.base.from);
             let mut transfer_params = ContractTransferOpt::new(
                 contract,
                 &params.base.from,
@@ -241,7 +243,7 @@ impl Tx for TronTx {
                 transfer_amount,
                 params.base.notes.clone(),
             )?;
-
+            tracing::info!("transfer ---------------- 11");
             // if let Some(signer) = &params.signer {
             //     transfer_params = transfer_params.with_permission(signer.permission_id);
             // }
@@ -251,6 +253,7 @@ impl Tx for TronTx {
             if balance < transfer_amount {
                 return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
             }
+            tracing::info!("transfer ---------------- 12");
 
             let account = provider.account_info(&transfer_params.owner_address).await?;
             // 主币是否有钱(可能账号未被初始化)
@@ -259,6 +262,7 @@ impl Tx for TronTx {
                     crate::ChainError::InsufficientFeeBalance,
                 ))?;
             }
+            tracing::info!("transfer ---------------- 13");
 
             // constant contract to fee
             let constant = transfer_params.constant_contract(self.chain.get_provider()).await?;
@@ -365,8 +369,10 @@ impl Tx for TronTx {
             TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
-        let fee = wallet_utils::serde_func::serde_to_string(&res)?;
-        Ok(fee)
+
+        // let fee = wallet_utils::serde_func::serde_to_string(&res)?;
+
+        Ok(res.estimate_fee.amount.to_string())
     }
 
     async fn approve(

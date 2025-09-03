@@ -80,7 +80,7 @@ async fn delete_wallet() {
 async fn create_account() {
     let wallet_manager = get_manager().await;
     // let wallet_name = "0x3d669d78532F763118561b55daa431956ede4155";
-    let wallet_name = "0x93F63A0804d6b76ffa93675A26706d67Ade81fA8";
+    let wallet_name = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
     let account_name = "账户";
     let root_password = "123456";
     let req = wallet_api::CreateAccountReq::new(
@@ -131,7 +131,7 @@ async fn test_show_key() {
     let parse = "".to_string();
     let (_key, seed) = wallet_core::xpriv::generate_master_key(1, &parse, "").unwrap();
 
-    let chain_code = ChainCode::Ton;
+    let chain_code = ChainCode::BnbSmartChain;
     let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
     let address_type = AddressType::Ton(TonAddressType::V4R2);

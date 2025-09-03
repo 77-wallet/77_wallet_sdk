@@ -93,6 +93,7 @@ impl CoinDomain {
         let mut seen = std::collections::HashSet::new();
         let mut coin_data = Vec::with_capacity(coins.len());
 
+        // filter repeat
         for coin in coins {
             let key = (
                 coin.symbol.clone(),
@@ -110,6 +111,13 @@ impl CoinDomain {
     }
 
     pub async fn init_coins(repo: &mut ResourcesRepo) -> Result<(), crate::ServiceError> {
+        let pool = repo.pool();
+        // check 本地表是否有数据,有则不进行新增
+        let count = CoinRepo::coin_count(&pool).await?;
+        if count > 0 {
+            return Ok(());
+        }
+
         let list: Vec<CoinData> = crate::default_data::coin::init_default_coins_list()?
             .coins
             .iter()
@@ -120,6 +128,7 @@ impl CoinDomain {
         Ok(())
     }
 
+    // 供兑换使用的的默认稳定币地址
     pub fn get_stable_coin(chain_code: ChainCode) -> Result<String, crate::ServiceError> {
         match chain_code {
             ChainCode::Ethereum => Ok("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
@@ -154,44 +163,13 @@ impl CoinDomain {
 
         coins.append(&mut backend_api.fetch_all_tokens(create_at.clone(), None).await?);
 
-        // // 如果本地没有币，则添加默认币种并进行去重(感觉不是一个很好的逻辑)
-        // if create_at.is_none() {
-        //     let default = crate::default_data::coin::init_default_coins_list()?;
-
-        //     let existing_keys: HashSet<_> = coins
-        //         .iter()
-        //         .map(|c| {
-        //             (
-        //                 c.chain_code.clone(),
-        //                 c.symbol.clone(),
-        //                 c.token_address.clone(),
-        //             )
-        //         })
-        //         .collect();
-
-        //     let mut default_list: Vec<wallet_transport_backend::CoinInfo> = default
-        //         .coins
-        //         .iter()
-        //         .map(|coin| coin.to_owned().into())
-        //         .filter(|default_coin: &wallet_transport_backend::CoinInfo| {
-        //             !existing_keys.contains(&(
-        //                 default_coin.chain_code.clone(),
-        //                 default_coin.symbol.clone(),
-        //                 default_coin.token_address.clone(),
-        //             ))
-        //         })
-        //         .collect();
-
-        //     // 添加缺失的默认币
-        //     coins.append(&mut default_list);
-        // }
-
         Ok(coins)
     }
 }
 
 impl From<crate::default_data::coin::DefaultCoin> for CoinData {
     fn from(coin: crate::default_data::coin::DefaultCoin) -> Self {
+        // 默认的代币:默认值支持兑换的
         Self {
             name: Some(coin.name),
             chain_code: coin.chain_code,
@@ -204,6 +182,7 @@ impl From<crate::default_data::coin::DefaultCoin> for CoinData {
             is_custom: 0,
             price: Some("0".to_string()),
             status: if coin.active { 1 } else { 0 },
+            swappable: true,
             created_at: DateTime::<Utc>::default(),
             updated_at: DateTime::<Utc>::default(),
         }
@@ -223,6 +202,7 @@ pub fn coin_info_to_coin_data(coin: CoinInfo) -> CoinData {
         is_custom: 0,
         price: Some(coin.price.unwrap_or_default().to_string()),
         status: if coin.enable { 1 } else { 0 },
+        swappable: coin.swappable,
         created_at: parse_utc_datetime(&coin.create_time),
         updated_at: parse_utc_datetime(&coin.update_time),
     }

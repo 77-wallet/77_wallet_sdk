@@ -64,7 +64,12 @@ impl ApiWithdrawDomain {
         let value = Decimal::from_str(&req.value).unwrap();
         if value < Decimal::from(10) {
             tracing::info!("transfer ------------------- 9:");
-            ApiWithdrawRepo::update_api_withdraw_status(&pool, &req.trade_no, ApiWithdrawStatus::AuditPass).await?;
+            ApiWithdrawRepo::update_api_withdraw_status(
+                &pool,
+                &req.trade_no,
+                ApiWithdrawStatus::AuditPass,
+            )
+            .await?;
         }
         Ok(())
     }

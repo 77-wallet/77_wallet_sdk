@@ -9,7 +9,6 @@ use wallet_chain_interact::{
     },
     types::MultisigTxResp,
 };
-use wallet_utils::serde_func::serde_from_value;
 
 use crate::response_vo::stake::VoteListResp;
 
@@ -167,15 +166,15 @@ impl StakeDomain {
 
         // 现从缓存中获取数据、没有在从链上获取
         let cache = crate::Context::get_global_cache()?;
-        let res = cache.get_not_expriation(&key).await;
+        let res: Option<DelegatedResource> = cache.get(&key).await;
         match res {
             Some(res) => {
-                let res = serde_from_value::<DelegatedResource>(res.data)?;
+                // let res = serde_from_value::<DelegatedResource>(res.data)?;
                 Ok(res)
             }
             None => {
                 let res = chain.provider.delegated_resource(from, to).await?;
-                cache.set_ex(&key, &res, 30).await?;
+                cache.set_with_expiration(&key, &res, 30).await?;
                 Ok(res)
             }
         }

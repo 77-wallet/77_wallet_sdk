@@ -69,17 +69,31 @@ impl TxExecReceiptUploadReq {
 #[serde(rename_all = "camelCase")]
 pub struct FeeCollectionUploadReq {
     trade_no: String,
-    hash: String,
     from: String,
     to: String,
     amount: f64,
+    chain_code: String,
+    #[serde(rename = "token_code")]
+    symbol: String,
+    #[serde(rename = "contractAddress")]
+    token_address: String,
 }
 
 impl FeeCollectionUploadReq {
-    pub fn new(trade_no: &str, hash: &str, from: &str, to: &str, amount: f64) -> Self {
+    pub fn new(
+        trade_no: &str,
+        chain_code: &str,
+        symbol: &str,
+        token_address: &str,
+        from: &str,
+        to: &str,
+        amount: f64,
+    ) -> Self {
         Self {
             trade_no: trade_no.to_string(),
-            hash: hash.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
+            token_address: token_address.to_string(),
             from: from.to_string(),
             to: to.to_string(),
             amount,

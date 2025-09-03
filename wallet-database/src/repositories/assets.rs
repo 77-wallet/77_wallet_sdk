@@ -49,6 +49,14 @@ pub trait AssetsRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, AssetsEntity::assets_by_id, id)
     }
 
+    async fn list_by_chain_token_map_batch(
+        &mut self,
+        pool: &DbPool,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<AssetsEntity>, crate::Error> {
+        AssetsEntity::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
+    }
+
     async fn get_chain_assets_by_address_chain_code_symbol(
         &mut self,
         address: Vec<String>,

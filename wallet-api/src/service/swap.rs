@@ -7,9 +7,7 @@ use crate::{
         coin::{CoinDomain, TokenCurrencyGetter},
         task_queue::TaskQueueDomain,
     },
-    infrastructure::swap_client::{
-        AggQuoteRequest, AggQuoteResp, ChainDex, DefaultQuoteResp, SwapClient,
-    },
+    infrastructure::swap_client::{AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SwapClient},
     messaging::notify::other::{Process, TransactionProcessFrontend},
     request::transaction::{
         ApproveReq, DepositReq, DexRoute, QuoteReq, SwapInnerType, SwapReq, SwapTokenListReq,
@@ -25,15 +23,22 @@ use alloy::primitives::U256;
 use std::time::{self};
 use wallet_database::{
     DbPool,
-    entities::{account::AccountEntity, assets::AssetsEntity, bill::NewBillEntity},
+    entities::{
+        account::AccountEntity,
+        assets::AssetsEntity,
+        bill::{BillExtraSwap, BillKind, BillStatus, NewBillEntity},
+        coin::CoinEntity,
+    },
     pagination::Pagination,
     repositories::{
-        account::AccountRepo, assets::AssetsRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo,
+        account::AccountRepo, assets::AssetsRepo, bill::BillRepo, coin::CoinRepo,
+        exchange_rate::ExchangeRateRepo,
     },
 };
 use wallet_transport_backend::{
-    api::swap::{ApproveCancelReq, ApproveSaveParams},
+    api::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams, ChainDex},
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
+    request::TokenQueryPriceReq,
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{
@@ -168,14 +173,8 @@ impl SwapServer {
         let (bal_in, bal_out) = self.get_bal_in_and_out(&req, amount_out).await?;
 
         let dex_route_list = DexRoute::new(req.amount_in.clone(), &req.token_in, &req.token_out);
-        let mut res = ApiQuoteResp::new_with_default_slippage(
-            req.chain_code.clone(),
-            req.token_in.symbol.clone(),
-            req.token_out.symbol.clone(),
-            vec![dex_route_list],
-            bal_in,
-            bal_out,
-        );
+        let mut res =
+            ApiQuoteResp::new_with_default_slippage(&req, vec![dex_route_list], bal_in, bal_out);
         res.set_amount_out(amount_out, req.token_out.decimals);
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
@@ -221,6 +220,39 @@ impl SwapServer {
         Ok(res)
     }
 
+    async fn check_bal_with_last_swap(
+        &self,
+        bal: &str,
+        req: &QuoteReq,
+        pool: &DbPool,
+    ) -> Result<bool, crate::ServiceError> {
+        // 尝试获取“需要扣减的金额”（如果条件不满足则为 None）
+        let maybe_deduction = BillRepo::last_swap_bill(&req.recipient, &req.chain_code, pool)
+            .await?
+            .and_then(|bill| {
+                wallet_utils::serde_func::serde_from_str::<BillExtraSwap>(&bill.extra)
+                    .ok()
+                    .filter(|extra| {
+                        extra.from_token_address == req.token_in.token_addr
+                            && extra.to_token_address == req.token_out.token_addr
+                    })
+                    .map(|_| bill.value) // 传出需扣减的字符串金额
+            });
+
+        // 生成用于校验的余额字符串引用
+        let adjusted;
+        let bal_ref = if let Some(pre) = maybe_deduction {
+            let pre_amount = conversion::decimal_from_str(&pre)?;
+            let bal_dec = conversion::decimal_from_str(bal)? - pre_amount;
+            adjusted = bal_dec.to_string();
+            &adjusted
+        } else {
+            bal
+        };
+
+        self.check_bal(&req.amount_in, bal_ref)
+    }
+
     async fn swap_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
         use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
@@ -231,7 +263,6 @@ impl SwapServer {
         tracing::warn!("quote time: {}", instance.elapsed().as_secs_f64());
 
         let amount_out = unit::u256_from_str(&quote_resp.amount_out)?;
-
         let (bal_in, bal_out) = self.get_bal_in_and_out(&req, amount_out).await?;
 
         // 获取滑点
@@ -240,9 +271,7 @@ impl SwapServer {
 
         // 构建响应
         let mut res = ApiQuoteResp::new(
-            quote_resp.chain_code.clone(),
-            req.token_in.symbol.clone(),
-            req.token_out.symbol.clone(),
+            &req,
             slippage,
             default_slippage,
             quote_resp.dex_route_list.clone(),
@@ -258,7 +287,7 @@ impl SwapServer {
             let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let assets =
                 AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
-            if self.check_bal(&req.amount_in, &assets.balance)? {
+            if self.check_bal_with_last_swap(&assets.balance, &req, &pool).await? {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
@@ -269,7 +298,7 @@ impl SwapServer {
         let allowance = self.check_allowance(&req).await?;
         let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
 
-        if allowance > U256::from(alloy::primitives::U64::MAX) {
+        if allowance > U256::MAX >> 1 {
             res.approve_amount = "-1".to_string();
         } else {
             res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
@@ -280,7 +309,7 @@ impl SwapServer {
             let assets = self
                 .token0_assets(&pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
                 .await?;
-            if self.check_bal(&req.amount_in, &assets.balance)? {
+            if self.check_bal_with_last_swap(&assets.balance, &req, &pool).await? {
                 self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
@@ -304,7 +333,6 @@ impl SwapServer {
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
-
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         // 模拟报价
         let (amount_out, consumer, content) =
@@ -467,7 +495,12 @@ impl SwapServer {
         };
         let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
 
+        let mut req = TokenQueryPriceReq(Vec::new());
         for coin in coins.data {
+            // 查询币价的请求参数
+            let contract_address = coin.token_address.clone();
+            req.insert(&coin.chain_code, &contract_address);
+
             let balance = if coin.balance != "0" {
                 let unit_price = unit::string_to_f64(&coin.price)? * exchange.rate;
 
@@ -488,20 +521,38 @@ impl SwapServer {
             resp.data.push(token_info);
         }
 
+        let backend_api = crate::Context::get_global_backend_api()?;
+        let tokens = backend_api.token_query_price(&req).await?.list;
+        for token in tokens {
+            CoinRepo::update_price_unit1(
+                &token.chain_code,
+                &token.token_address.unwrap_or_default(),
+                &token.price.to_string(),
+                &pool,
+            )
+            .await?;
+        }
+
         Ok(resp)
     }
 
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
-        Ok(self.client.chain_list().await?.chain_dexs)
+        let backend_api = crate::Context::get_global_backend_api()?;
+        let result = backend_api.support_chain_list().await?;
+
+        Ok(result.support_chain)
     }
 
     pub async fn approve_fee(
         &self,
         req: ApproveReq,
+        is_cancel: bool,
     ) -> Result<EstimateFeeResp, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        let value = alloy::primitives::U256::MAX;
+        let value =
+            if is_cancel { alloy::primitives::U256::ZERO } else { alloy::primitives::U256::MAX };
+
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
 
@@ -529,9 +580,23 @@ impl SwapServer {
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
+        // 本地数据库中是否有授权的交易
+        let last_bill = BillRepo::last_approve_bill(
+            &req.from,
+            &req.spender,
+            &req.contract,
+            &req.chain_code,
+            BillKind::Approve,
+            &pool,
+        )
+        .await?;
+        if last_bill.is_some() {
+            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
+        }
+
         // check already approved
         let allowance = adapter.allowance(&req.from, &req.contract, &req.spender).await?;
-        if allowance >= alloy::primitives::U256::MAX {
+        if allowance > alloy::primitives::U256::ZERO {
             return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
         }
 
@@ -551,11 +616,7 @@ impl SwapServer {
         ));
         FrontendNotifyEvent::new(data).send().await?;
 
-        let value = if req.approve_type == ApproveReq::UN_LIMIT {
-            alloy::primitives::U256::MAX
-        } else {
-            wallet_utils::unit::convert_to_u256(&req.value, coin.decimals)?
-        };
+        let value = req.get_value(coin.decimals)?;
         let resp = adapter.approve(&req, private_key, value).await?;
 
         let account = AccountRepo::account_with_wallet(&req.from, &req.chain_code, &pool).await?;
@@ -570,7 +631,7 @@ impl SwapServer {
             &req.contract,
             req.value.clone(),
             &&resp.tx_hash.clone(),
-            &req.approve_type,
+            &req.get_approve_type(),
         );
         TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
 
@@ -603,33 +664,13 @@ impl SwapServer {
             let coin =
                 CoinRepo::coin_by_chain_address(&item.chain_code, &item.token_addr, &pool).await?;
             if item.limit_type == ApproveReq::UN_LIMIT {
+                // 无限授权的类型
                 let mut approve_info = ApproveList::from(item);
                 approve_info.symbol = coin.symbol;
                 res.push(approve_info)
             } else {
                 // 获取allowance 情况
-                let adapter =
-                    ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
-                let allowance =
-                    adapter.allowance(&item.owner_address, &item.token_addr, &item.spender).await?;
-
-                // 实际授权为0,丢弃
-                if allowance == alloy::primitives::U256::ZERO {
-                    used_ids.push(item.id);
-                } else {
-                    let unit = coin.decimals as u8;
-                    let origin_allowance = wallet_utils::unit::convert_to_u256(&item.value, unit)?;
-                    let mut approve_info = ApproveList::from(item);
-
-                    approve_info.amount =
-                        wallet_utils::unit::format_to_string(origin_allowance, unit)?;
-                    let remain = origin_allowance - (origin_allowance - allowance);
-
-                    approve_info.remaining_allowance =
-                        wallet_utils::unit::format_to_string(remain, unit)?;
-                    approve_info.symbol = coin.symbol;
-                    res.push(approve_info);
-                }
+                self.push_approve_if_nonzero(item, &coin, &pool, &mut res, &mut used_ids).await?;
             }
         }
 
@@ -639,6 +680,45 @@ impl SwapServer {
         }
 
         Ok(res)
+    }
+
+    async fn push_approve_if_nonzero(
+        &self,
+        item: ApproveInfo,
+        coin: &CoinEntity,
+        pool: &DbPool,
+        res: &mut Vec<ApproveList>,
+        used_ids: &mut Vec<String>,
+    ) -> Result<(), crate::ServiceError> {
+        // 1) 只有在 bill 不存在，或者存在且状态为 Success 时才继续
+        if let Some(bill) = BillRepo::get_by_hash_opt(&item.hash, pool).await? {
+            if bill.status != BillStatus::Success.to_i8() {
+                return Ok(()); // 非成功直接跳过，不打链上请求
+            }
+        }
+
+        let adapter = ChainAdapterFactory::get_transaction_adapter(&item.chain_code).await?;
+        let allowance =
+            adapter.allowance(&item.owner_address, &item.token_addr, &item.spender).await?;
+
+        // 3) allowance 为 0：标记可丢弃
+        if allowance.is_zero() {
+            used_ids.push(item.id);
+            return Ok(());
+        }
+
+        // 4) 组装显示数据
+        let unit = coin.decimals as u8;
+        let origin_allowance = wallet_utils::unit::convert_to_u256(&item.value, unit)?;
+
+        let mut approve_info = ApproveList::from(item);
+        approve_info.amount = wallet_utils::unit::format_to_string(origin_allowance, unit)?;
+
+        approve_info.remaining_allowance = wallet_utils::unit::format_to_string(allowance, unit)?;
+        approve_info.symbol = coin.symbol.clone();
+
+        res.push(approve_info);
+        Ok(())
     }
 
     pub async fn approve_cancel(
@@ -659,6 +739,20 @@ impl SwapServer {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
+        // 本地数据库中是否有授权的交易
+        let last_bill = BillRepo::last_approve_bill(
+            &req.from,
+            &req.spender,
+            &req.contract,
+            &req.chain_code,
+            BillKind::UnApprove,
+            &pool,
+        )
+        .await?;
+        if last_bill.is_some() {
+            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveCanceling))?;
+        }
+
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             wallet_database::entities::bill::BillKind::Approve,
             Process::Broadcast,
@@ -674,7 +768,6 @@ impl SwapServer {
             tx_hash: resp.tx_hash.clone(),
         };
         TaskQueueDomain::send_or_to_queue(backend, SWAP_APPROVE_CANCEL).await?;
-
         // 写入本地交易
         let mut new_bill = NewBillEntity::from(req);
         new_bill.hash = resp.tx_hash.clone();

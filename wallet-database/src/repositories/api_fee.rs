@@ -1,7 +1,7 @@
 use crate::{
-    dao::api_fee::ApiFeeDao, entities::{
-        api_fee::{ApiFeeEntity, ApiFeeStatus},
-    }, DbPool
+    DbPool,
+    dao::api_fee::ApiFeeDao,
+    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
 };
 
 pub struct ApiFeeRepo;
@@ -97,7 +97,7 @@ impl ApiFeeRepo {
     pub async fn update_api_fee_next_status(
         pool: &DbPool,
         trade_no: &str,
-        status : ApiFeeStatus,
+        status: ApiFeeStatus,
         next_status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
         ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await

@@ -17,6 +17,8 @@ pub struct ChainUrlInfo {
     pub address_url: Option<String>,
     /// 查看链上hash URL
     pub hash_url: Option<String>,
+    /// contract
+    pub token_url: Option<String>,
     /// 链编码
     #[serde(rename = "code")]
     pub chain_code: String,

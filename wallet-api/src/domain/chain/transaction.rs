@@ -112,7 +112,7 @@ impl ChainTransDomain {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let coin = CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(
             crate::BusinessError::Coin(crate::error::business::coin::CoinError::NotFound(format!(
-                "chian = {}",
+                "chain = {}",
                 chain_code
             ))),
         )?;

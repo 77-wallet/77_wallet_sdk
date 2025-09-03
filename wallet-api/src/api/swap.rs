@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType,
-    infrastructure::swap_client::{ChainDex, DefaultQuoteResp},
+    infrastructure::swap_client::DefaultQuoteResp,
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         EstimateFeeResp,
@@ -9,6 +9,7 @@ use crate::{
     service::swap::SwapServer,
 };
 use wallet_database::pagination::Pagination;
+use wallet_transport_backend::api::swap::ChainDex;
 
 impl crate::WalletManager {
     pub async fn default_quote(
@@ -42,8 +43,12 @@ impl crate::WalletManager {
         SwapServer::new()?.approve(req, password).await.into()
     }
 
-    pub async fn approve_fee(&self, req: ApproveReq) -> ReturnType<EstimateFeeResp> {
-        SwapServer::new()?.approve_fee(req).await.into()
+    pub async fn approve_fee(
+        &self,
+        req: ApproveReq,
+        is_cancel: bool,
+    ) -> ReturnType<EstimateFeeResp> {
+        SwapServer::new()?.approve_fee(req, is_cancel).await.into()
     }
 
     pub async fn approve_list(&self, uid: String, account_id: u32) -> ReturnType<Vec<ApproveList>> {
@@ -52,5 +57,26 @@ impl crate::WalletManager {
 
     pub async fn approve_cancel(&self, req: ApproveReq, password: String) -> ReturnType<String> {
         SwapServer::new()?.approve_cancel(req, password).await.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test::env::get_manager;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_default_quote() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let chain_code = "doge".to_string();
+        let token_in = "".to_string();
+        // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
+
+        let resp = wallet_manager.default_quote(chain_code, token_in).await;
+        println!("{}", serde_json::to_string(&resp).unwrap());
+        Ok(())
     }
 }

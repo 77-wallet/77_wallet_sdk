@@ -2,17 +2,14 @@ use crate::{
     domain::api_wallet::collect::ApiCollectDomain, request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_collect::ApiCollectEntity,
-    repositories::{ResourcesRepo, api_collect::ApiCollectRepo},
+    entities::api_collect::ApiCollectEntity, repositories::api_collect::ApiCollectRepo,
 };
 
-pub struct CollectService {
-    pub repo: ResourcesRepo,
-}
+pub struct CollectService {}
 
 impl CollectService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub async fn get_collect_order_list(

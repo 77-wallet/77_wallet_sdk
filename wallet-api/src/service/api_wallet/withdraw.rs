@@ -2,18 +2,15 @@ use crate::{
     domain::api_wallet::withdraw::ApiWithdrawDomain, request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_withdraw::ApiWithdrawEntity,
-    repositories::{ResourcesRepo, api_withdraw::ApiWithdrawRepo},
+    entities::api_withdraw::ApiWithdrawEntity, repositories::api_withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 
-pub struct WithdrawService {
-    pub repo: ResourcesRepo,
-}
+pub struct WithdrawService {}
 
 impl WithdrawService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub async fn get_withdraw_order_list(
@@ -48,9 +45,7 @@ impl WithdrawService {
         };
         let res = ApiWithdrawDomain::withdraw(&req).await;
         match res {
-            Ok(res) => {
-                Ok(())
-            }
+            Ok(()) => Ok(()),
             Err(e) => {
                 tracing::error!("withdrawal_order failed with {:?}", e);
                 Err(e.into())

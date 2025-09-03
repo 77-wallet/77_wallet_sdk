@@ -1,4 +1,4 @@
-use crate::{dao::api_nonce::ApiNonceDao, DbPool};
+use crate::{DbPool, dao::api_nonce::ApiNonceDao};
 
 pub struct ApiNonceRepo;
 

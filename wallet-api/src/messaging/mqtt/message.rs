@@ -3,7 +3,7 @@ use crate::messaging::mqtt::topics::{
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange,
-    api_wallet::{AddressUseMsg, UnbindUidMsg},
+    api_wallet::{AddressUseMsg, TransMsg, UnbindUidMsg},
 };
 
 use super::topics::{CleanPermission, multisign_trans_execute::MultiSignTransExecute};
@@ -77,12 +77,14 @@ pub enum BizType {
     MultiSignTransExecute,
     // 多签账号部署需要清空原来账号的权限
     CleanPermission,
+
+    // api wallet
     // 解绑uid
     UnbindUid,
     // 地址使用
     AddressUse,
-    // 提币
-    ApiWithdraw,
+    // 转账
+    Trans,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -112,6 +114,8 @@ pub enum Body {
     OrderMultiSignAllMemberAccepted,
     OrderMultiTransExecute(MultiSignTransExecute),
     CleanPermission(CleanPermission),
+    /// api wallet
     UnbindUid(UnbindUidMsg),
     AddressUse(AddressUseMsg),
+    Trans(TransMsg),
 }

@@ -4,10 +4,7 @@ use crate::{api::ReturnType, service::api_wallet::collect::CollectService};
 
 impl crate::WalletManager {
     pub async fn get_api_collect_order_list(&self) -> ReturnType<Vec<ApiCollectEntity>> {
-        CollectService::new(self.repo_factory.resource_repo())
-            .get_collect_order_list()
-            .await?
-            .into()
+        CollectService::new().get_collect_order_list().await?.into()
     }
 
     pub async fn api_collect_order(
@@ -22,7 +19,7 @@ impl crate::WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
-        CollectService::new(self.repo_factory.resource_repo())
+        CollectService::new()
             .collect_order(
                 from,
                 to,

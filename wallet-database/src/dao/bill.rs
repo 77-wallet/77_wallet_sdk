@@ -1,6 +1,8 @@
 use crate::{
     DbPool, any_in_collection,
-    entities::bill::{BillEntity, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo},
+    entities::bill::{
+        BillEntity, BillKind, BillStatus, BillUpdateEntity, NewBillEntity, RecentBillListVo,
+    },
     pagination::Pagination,
 };
 use chrono::Utc;
@@ -185,9 +187,63 @@ impl BillDao {
         Ok(paginate.page(pool, &sql).await?)
     }
 
+    // 查询5分钟内交易状态确认中的交易(用于swap本地验证余额)
+    pub async fn last_swap_bill<'a, E>(
+        pool: E,
+        from: &str,
+        chain_code: &str,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let time = Utc::now().timestamp() - 300;
+        let sql = "select * from bill where from_addr = ? and chain_code = ? and tx_kind = ? and transaction_time >= ?  and status = ? ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1";
+        sqlx::query_as::<_, BillEntity>(sql)
+            .bind(from)
+            .bind(chain_code)
+            .bind(BillKind::Swap.to_i8())
+            .bind(time)
+            .bind(BillStatus::Pending.to_i8())
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    // 最近的一笔授权交易
+    pub(crate) async fn last_approve_bill<'a, E>(
+        pool: E,
+        from: &str,
+        to: &str,
+        contract: &str,
+        chain_code: &str,
+        tx_kind: BillKind,
+    ) -> Result<Option<BillEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let time = Utc::now().timestamp() - 300;
+        let sql = r#"select * 
+                from bill
+                where 
+                    from_addr = ? and chain_code = ? and tx_kind = ? and transaction_time >= ? and status = ? 
+                    and to_addr = ? and token = ?
+                ORDER BY datetime(transaction_time, 'unixepoch') DESC limit 1"#;
+        sqlx::query_as::<_, BillEntity>(sql)
+            .bind(from)
+            .bind(chain_code)
+            .bind(tx_kind.to_i8())
+            .bind(time)
+            .bind(BillStatus::Pending.to_i8())
+            .bind(to)
+            .bind(contract)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     // 最近转列
     pub async fn recent_bill(
-        symbol: &str,
+        token: &str,
         addr: &str,
         chain_code: &str,
         min_value: Option<f64>,
@@ -210,7 +266,7 @@ impl BillDao {
                 AND chain_code = '{}'
                 AND to_addr <> '{}'
                 AND to_addr <>  ""
-                AND symbol = '{}'
+                AND token = '{}'
                 {}
                 AND transfer_type = 1
                 GROUP BY to_addr
@@ -221,7 +277,7 @@ impl BillDao {
             AND b.transfer_type = 1
             ORDER BY b.transaction_time DESC
             "#,
-            addr, chain_code, addr, symbol, min_value_condition
+            addr, chain_code, addr, token, min_value_condition
         );
 
         let count_sql = format!(r#" SELECT count(*) FROM ({}) AS subquery;"#, sql);

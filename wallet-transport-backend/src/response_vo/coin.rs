@@ -19,6 +19,8 @@ pub struct CoinInfo {
     #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub enable: bool,
     pub price: Option<f64>,
+    // 币是否支持兑换
+    pub swappable: bool,
     pub default_token: bool,
     pub popular_token: bool,
     pub create_time: String,
@@ -151,6 +153,8 @@ pub struct TokenPriceChangeBody {
     pub unit: Option<u8>,
     // 代币别名
     pub aname: Option<String>,
+    // 能否支持兑换
+    pub swappable: Option<bool>,
     // 创建时间
     pub create_time: String,
     // 更新时间
@@ -192,4 +196,17 @@ pub struct CoinMarketValue {
     pub market_value: Decimal,
     pub max_supply_quantity: Option<Decimal>,
     pub circulating_supply: Option<Decimal>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoinSwappable {
+    pub symbol: String,
+    pub token_address: String,
+    pub chain_code: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct CoinSwappableList {
+    pub list: Vec<CoinSwappable>,
 }

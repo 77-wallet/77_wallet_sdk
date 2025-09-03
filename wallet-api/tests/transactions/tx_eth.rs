@@ -7,8 +7,9 @@ async fn test_balance() {
 
     let addr = "0x998522f928A37837Fa8d6743713170243b95f98a";
     let chain_code = "eth";
-    let symbol = "USDT";
-    let token_address = Some("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string());
+    let symbol = "ETH";
+    // let token_address = Some("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string());
+    let token_address = None;
 
     let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 

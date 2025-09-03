@@ -2,6 +2,7 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
+        assets::AssetsDomain,
         chain::ChainDomain,
         coin::{CoinDomain, coin_info_to_coin_data},
     },
@@ -17,7 +18,10 @@ use crate::{
 use std::collections::{HashMap, HashSet};
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{assets::AssetsId, coin::CoinId},
+    entities::{
+        assets::AssetsId,
+        coin::{BatchCoinSwappable, CoinData, CoinId},
+    },
     repositories::{
         ResourcesRepo,
         assets::AssetsRepoTrait,
@@ -57,9 +61,10 @@ impl CoinService {
         let tx = &mut self.repo;
         let pool = crate::Context::get_global_sqlite_pool()?;
 
+        let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let accounts = self
             .account_domain
-            .get_addresses(tx, address, account_id, chain_code.clone(), is_multisig)
+            .get_addresses(tx, address, account_id, chain_codes, is_multisig)
             .await?;
 
         let addresses =
@@ -90,11 +95,8 @@ impl CoinService {
             .await
             .map_err(crate::ServiceError::Database)?;
 
-        // tracing::info!("[get_hot_coin_list] symbol_list: {symbol_list:#?}");
         let symbol_list: std::collections::HashSet<String> =
             symbol_list.into_iter().map(|coin| coin.symbol).collect();
-
-        // tracing::error!("local_coin_list: {symbol_list:?}");
 
         let chain_codes = if let Some(chain_code) = chain_code {
             HashSet::from([chain_code])
@@ -112,38 +114,29 @@ impl CoinService {
             .await?;
         let mut data = CoinInfoList::default();
         for coin in list.data {
-            if let Some(d) = data
-                .iter_mut()
-                .find(|d: &&mut crate::response_vo::coin::CoinInfo| d.symbol == coin.symbol)
+            if let Some(d) =
+                data.iter_mut().find(|info| info.symbol == coin.symbol && coin.is_default == 1)
             {
                 d.chain_list
                     .entry(coin.chain_code.clone())
                     .or_insert(coin.token_address.unwrap_or_default());
-                // d.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                //     chain_code: coin.chain_code.clone(),
-                //     token_address: coin.token_address().clone(),
-                //     protocol: coin.protocol.clone(),
-                // });
             } else {
                 data.push(crate::response_vo::coin::CoinInfo {
                     symbol: coin.symbol.clone(),
                     name: Some(coin.name.clone()),
-                    // chain_list: HashSet::from([crate::response_vo::coin::ChainInfo {
-                    //     chain_code: coin.chain_code.clone(),
-                    //     token_address: coin.token_address(),
-                    //     protocol: coin.protocol,
-                    // }]),
                     chain_list: ChainList(HashMap::from([(
                         coin.chain_code.clone(),
                         coin.token_address.unwrap_or_default(),
                     )])),
-                    // is_multichain: false,
-                    is_default: true,
+                    is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
+                    show_contract: false,
                 })
             }
         }
 
-        // data.mark_multi_chain_assets();
+        let pool = tx.pool();
+        AssetsDomain::show_contract(&pool, keyword, &mut data).await?;
 
         let res = wallet_database::pagination::Pagination {
             page,
@@ -166,8 +159,23 @@ impl CoinService {
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
 
-        let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect();
+        let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
+
+        // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
+        let api = crate::Context::get_global_backend_api()?;
+        let coin = api.swappable_coin().await?;
+
+        let swap_coins = coin
+            .into_iter()
+            .map(|c| BatchCoinSwappable {
+                symbol: c.symbol,
+                chain_code: c.chain_code,
+                token_address: c.token_address,
+            })
+            .collect::<Vec<_>>();
+        CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
+        // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
 
         Ok(())
     }
@@ -200,6 +208,7 @@ impl CoinService {
                 &token.price.unwrap_or_default().to_string(),
                 token.decimals,
                 status,
+                Some(token.swappable),
                 time,
             )
             .await?;
@@ -226,8 +235,15 @@ impl CoinService {
             };
             let status = token.get_status();
             let time = None;
-            tx.update_price_unit(&coin_id, &token.price.to_string(), token.unit, status, time)
-                .await?;
+            tx.update_price_unit(
+                &coin_id,
+                &token.price.to_string(),
+                token.unit,
+                status,
+                token.swappable,
+                time,
+            )
+            .await?;
         }
         Ok(())
     }
@@ -268,7 +284,6 @@ impl CoinService {
                         symbol: symbol.to_string(),
                         token_address: token.token_address.clone(),
                     };
-                    let time = parse_utc_with_error(&token.update_time).ok();
                     let status = if token.enable { Some(1) } else { Some(0) };
 
                     tx.update_price_unit(
@@ -276,7 +291,8 @@ impl CoinService {
                         &token.price.to_string(),
                         token.unit,
                         status,
-                        time,
+                        token.swappable,
+                        None,
                     )
                     .await?;
                     let data =
@@ -349,6 +365,7 @@ impl CoinService {
         Ok(res)
     }
 
+    // 用户自定义添加币种
     pub async fn customize_coin(
         &mut self,
         address: &str,
@@ -391,31 +408,34 @@ impl CoinService {
             }
             let symbol = chain_instance.token_symbol(&token_address).await?;
             let name = chain_instance.token_name(&token_address).await?;
+
+            let time = wallet_utils::time::now();
+            // TODO 后续优化 用户自定义添加的币种默认不可兑换
+            let cus_coin = wallet_database::entities::coin::CoinData::new(
+                Some(name.clone()),
+                &symbol,
+                chain_code,
+                Some(token_address.to_string()),
+                None,
+                protocol,
+                decimals,
+                0,
+                0,
+                0,
+                false,
+                time,
+                time,
+            )
+            .with_custom(1);
+            let coin = vec![cus_coin];
+            tx.upsert_multi_coin(coin).await?;
+
             (decimals, symbol, name)
         };
 
-        let time = wallet_utils::time::now();
-        let cus_coin = wallet_database::entities::coin::CoinData::new(
-            Some(name.clone()),
-            &symbol,
-            chain_code,
-            Some(token_address.to_string()),
-            None,
-            protocol,
-            decimals,
-            0,
-            0,
-            1,
-            time,
-            time,
-        )
-        .with_custom(1);
-        let coin = vec![cus_coin];
-        tx.upsert_multi_coin(coin).await?;
-
         let mut account_addresses = self
             .account_domain
-            .get_addresses(tx, address, account_id, Some(chain_code.to_string()), Some(is_multisig))
+            .get_addresses(tx, address, account_id, vec![chain_code.to_string()], Some(is_multisig))
             .await?;
 
         tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);
