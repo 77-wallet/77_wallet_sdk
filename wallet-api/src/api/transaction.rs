@@ -87,13 +87,13 @@ impl crate::WalletManager {
     // 最近交易列表
     pub async fn recent_bill(
         &self,
-        symbol: String,
+        token: String,
         addr: String,
         chain_code: String,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<RecentBillListVo>> {
-        TransactionService::recent_bill(&symbol, &addr, &chain_code, page, page_size).await.into()
+        TransactionService::recent_bill(&token, &addr, &chain_code, page, page_size).await.into()
     }
 
     // 单笔查询交易并处理
@@ -145,6 +145,23 @@ mod test {
         params.with_token(Some("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()));
 
         let res = wallet_manager.transaction_fee(params).await;
+        tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_chain_balance() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let address = "THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB";
+        let chain_code = "tron";
+        let symbol = "USDT";
+        let token_address = Some("".to_string());
+        // let symbol = "USDT";
+
+        let res = wallet_manager.chain_balance(address, chain_code, symbol, token_address).await;
         tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());
 
         Ok(())

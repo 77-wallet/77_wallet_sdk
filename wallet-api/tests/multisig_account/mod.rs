@@ -20,7 +20,7 @@ async fn test_get_service_fee() {
 
     let chain_code = "tron".to_string();
     let pay_chain = "tron".to_string();
-    let pay_address = "TFkcfwVQpB6HySzHqNiXSWcsp2g2c9qduX".to_string();
+    let pay_address = "TCDFBkjsZFpyeQcpGUHFJzK2cfFHn6rP5S".to_string();
     let info = wallet_manager.get_multisig_service_fee(pay_chain, chain_code, pay_address).await;
 
     tracing::info!("{}", serde_json::to_string(&info).unwrap());

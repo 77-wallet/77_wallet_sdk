@@ -5,7 +5,7 @@ use crate::{
         self,
         chain::{
             TransferResp, pare_fee_setting,
-            swap::{calc_slippage, evm_swap::SwapParams},
+            swap::evm_swap::SwapParams,
             transaction::{ChainTransDomain, DEFAULT_UNITS},
         },
         coin::TokenCurrencyGetter,
@@ -834,11 +834,10 @@ impl TransactionAdapter {
         quote_resp: &AggQuoteResp,
         symbol: &str,
     ) -> Result<(U256, String, String), crate::ServiceError> {
-        let amount_out = quote_resp.amount_out_u256()?;
+        // let amount_out = quote_resp.amount_out_u256()?;
 
         // 考虑滑点计算最小金额
-        let min_amount_out =
-            calc_slippage(amount_out, req.get_slippage(quote_resp.default_slippage));
+        let min_amount_out = U256::from(1);
 
         let currency = {
             let currency = crate::app_state::APP_STATE.read().await;
@@ -868,8 +867,14 @@ impl TransactionAdapter {
 
                 let resp = eth_tx::estimate_swap(swap_params, chain).await?;
 
+                // let instance = std::time::Instant::now();
+                // let backend_api = crate::Context::get_global_backend_api()?;
+                // let gas_oracle =
+                //     ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
+                //         .await?;
                 let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
-                let fee = FeeDetails::try_from((gas_oracle, resp.consumer.gas_limit.to::<i64>()))?
+                // tracing::warn!("gas oracle time: {}", instance.elapsed().as_secs_f64());
+                let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
                     .to_resp(token_currency, &currency);
 
                 // 消耗的资源

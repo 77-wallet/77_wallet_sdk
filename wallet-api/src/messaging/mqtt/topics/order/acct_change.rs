@@ -301,6 +301,7 @@ impl AcctChange {
             &acct_change.chain_code,
             &transaction_status,
             &transaction_hash,
+            acct_change.token.clone(),
             &notification_type,
         );
         let req = notify.gen_create_system_notification_entity(

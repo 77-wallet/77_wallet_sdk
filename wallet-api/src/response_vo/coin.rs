@@ -22,6 +22,10 @@ pub struct CoinInfo {
     pub chain_list: ChainList,
     // pub is_multichain: bool,
     pub is_default: bool,
+    // 热门代币
+    pub hot_coin: bool,
+    // 展示合约地址
+    pub show_contract: bool,
 }
 
 #[derive(Debug, serde::Serialize, Default)]

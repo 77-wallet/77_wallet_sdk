@@ -61,14 +61,17 @@ impl AccountDomain {
         repo: &mut ResourcesRepo,
         address: &str,
         account_id: Option<u32>,
-        chain_code: Option<String>,
+        chain_codes: Vec<String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AddressChainCode>, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let mut account_addresses = Vec::new();
 
-        let chain_codes =
-            if let Some(chain_code) = &chain_code { vec![chain_code.to_string()] } else { vec![] };
+        // let chain_codes = if let Some(chain_code) = &chain_code {
+        //     vec![chain_code.to_string()]
+        // } else {
+        //     vec![]
+        // };
 
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
