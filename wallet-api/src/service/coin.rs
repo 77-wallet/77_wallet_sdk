@@ -3,7 +3,7 @@ use crate::{
         self,
         account::AccountDomain,
         assets::AssetsDomain,
-        chain::ChainDomain,
+        chain::{adapter::ChainAdapterFactory, ChainDomain},
         coin::{coin_info_to_coin_data, CoinDomain},
     },
     infrastructure::{
@@ -389,14 +389,12 @@ impl CoinService {
     ) -> Result<(), crate::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
-        domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
+        ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
         let tx = &mut self.repo;
         let _ = ChainDomain::get_node(tx, chain_code).await?;
 
-        let chain_instance =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
-                .await?;
+        let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let coin =
             CoinRepoTrait::get_coin_by_chain_code_token_address(tx, chain_code, &token_address)
@@ -443,6 +441,7 @@ impl CoinService {
             )
             .with_custom(1);
             let coin = vec![cus_coin];
+            tracing::warn!("[customize_coin] coin: {:?} ", coin);
             tx.upsert_multi_coin(coin).await?;
 
             (decimals, symbol, name)
