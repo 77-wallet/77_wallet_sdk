@@ -162,94 +162,6 @@ impl AssetsService {
     }
 
     // 指定账户下的链的资产列表，需要去重
-    // pub async fn get_account_chain_assets(
-    //     &self,
-    //     address: &str,
-    //     account_id: Option<u32>,
-    //     chain_code: Option<String>, // mut get_chain: wallet_entity::resources::assets::GetChain,
-    //     is_multisig: Option<bool>,
-    // ) -> Result<Vec<AccountChainAsset>, crate::ServiceError> {
-    //     let service = Service::default();
-    //     let account_addresses = self
-    //         .account_domain
-    //         .get_addresses(address, account_id, chain_code.clone(), is_multisig)
-    //         .await?;
-    //     let mut account_addresses = account_addresses
-    //         .into_iter()
-    //         .map(|address| address.address)
-    //         .collect::<Vec<String>>();
-    //     let mut res = Vec::<AccountChainAsset>::new();
-
-    //     // 根据账户地址、网络查询币资产
-    //     for address in account_addresses {
-    //         let assets: Vec<AssetsEntity> = service
-    //             .asset_service
-    //             .get_chain_assets_by_account_address_chain_code_symbol(
-    //                 vec![address],
-    //                 chain_code.clone(),
-    //                 None,
-    //             )
-    //             .await?;
-
-    //         for asset in assets {
-    //             let token_currency =
-    //                 super::get_current_coin_unit_price(&asset.symbol, &asset.chain_code).await?;
-
-    //             if let Some(existing_asset) = res.iter_mut().find(|a| a.symbol == asset.symbol) {
-    //                 // 如果资产已存在，合并
-    //                 let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
-    //                 let balacne_f = wallet_utils::parse_func::f64_from_str(&asset.balance)?;
-    //                 let config = crate::config::CONFIG.read().unwrap();
-    //                 let currency = config.currency();
-
-    //                 let price = token_currency.get_price(currency);
-
-    //                 let BalanceInfo {
-    //                     amount,
-    //                     currency,
-    //                     unit_price,
-    //                     fiat_value,
-    //                 } = &mut existing_asset.balance;
-
-    //                 let after_balance = *amount + balacne_f;
-    //                 *amount = after_balance;
-    //                 let fiat_balance = price * after_balance;
-    //                 *fiat_value = Some(fiat_balance);
-
-    //                 // existing_asset.usdt_balance = (after_balance * unit_price).to_string();
-    //                 // FIXME: btc 的资产是 非multisig 的，需要特殊处理
-    //                 existing_asset.is_multichain = true;
-    //             } else {
-    //                 let balance = (token_currency, &asset).try_into()?;
-    //                 res.push(AccountChainAsset {
-    //                     chain_code: asset.chain_code,
-    //                     symbol: asset.symbol,
-    //                     balance,
-    //                     is_multichain: false,
-    //                     is_multisig: asset.is_multisig, // chains: vec![chain_assets],
-    //                 });
-    //             }
-    //         }
-    //     }
-
-    //     // 过滤掉multisig的资产
-    //     if let Some(is_multisig) = is_multisig {
-    //         res = res
-    //             .into_iter()
-    //             .filter(|asset| {
-    //                 if is_multisig {
-    //                     asset.is_multisig == 1
-    //                 } else {
-    //                     asset.is_multisig == 0 || asset.is_multisig == 2
-    //                 }
-    //             })
-    //             .collect();
-    //     }
-
-    //     Ok(res)
-    // }
-
-    // 指定账户下的链的资产列表，需要去重
     pub async fn get_account_chain_assets_v2(
         mut self,
         address: &str,
@@ -264,8 +176,6 @@ impl AssetsService {
             .account_domain
             .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
             .await?;
-
-        // tracing::debug!("account_addresses: {:?}", account_addresses);
 
         let mut res = AccountChainAssetList::default();
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
@@ -301,9 +211,6 @@ impl AssetsService {
                 } else {
                     let balance = token_currencies.calculate_assets_entity(&assets).await?;
 
-                    // if balance.unit_price == Some(0.0) {
-                    //     continue;
-                    // }
                     let chain_code = if chain_code.is_none()
                         && let Some(chain) = tx.detail_with_main_symbol(&assets.symbol).await?
                     {
@@ -318,7 +225,6 @@ impl AssetsService {
                         name: assets.name,
                         chain_list: ChainList(HashMap::from([(chain_code, assets.token_address)])),
                         balance,
-                        // is_multichain: false,
                         is_multisig: assets.is_multisig, // chains: vec![chain_assets],
                         is_default: coin.is_default == 1,
                     })
