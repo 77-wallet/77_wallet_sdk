@@ -409,7 +409,7 @@ impl WalletManager {
             if let Err(e) = do_some_init().await {
                 tracing::error!("init_data error: {}", e);
             };
-            API_ADAPTER_FACTORY
+            let _ = API_ADAPTER_FACTORY
                 .get_or_try_init(|| async { ApiChainAdapterFactory::new().await })
                 .await;
         });

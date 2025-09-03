@@ -27,13 +27,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("res: {res:?}");
 
     // 创建钱包
-    let language_code = 1;
-    let phrase = &test_params.create_wallet_req.phrase;
-    let salt = "q1111111";
-    let wallet_name = "api_wallet";
-    let account_name = "ccccc";
-    let is_default_name = true;
-    let wallet_password = "q1111111";
+    // let language_code = 1;
+    // let phrase = &test_params.create_wallet_req.phrase;
+    // let salt = "q1111111";
+    // let wallet_name = "api_wallet";
+    // let account_name = "ccccc";
+    // let is_default_name = true;
+    // let wallet_password = "q1111111";
     // let invite_code = None;
     // let api_wallet_type = ApiWalletType::SubAccount;
     // let wallet = wallet_manager

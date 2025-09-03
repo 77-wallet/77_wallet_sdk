@@ -5,7 +5,7 @@ use crate::{
 
 impl crate::WalletManager {
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
-        ApiAccountService::new(self.repo_factory.resource_repo())
+        ApiAccountService::new()
             .create_account(
                 &req.wallet_address,
                 &req.wallet_password,
@@ -19,15 +19,13 @@ impl crate::WalletManager {
             .into()
     }
 
+    #[allow(unused)]
     pub(crate) async fn upload_allocated_addresses(
         &self,
         wallet_address: &str,
         addresses: Vec<String>,
     ) -> ReturnType<()> {
-        ApiAccountService::new(self.repo_factory.resource_repo())
-            .upload_allocated_addresses(wallet_address, addresses)
-            .await?
-            .into()
+        ApiAccountService::new().upload_allocated_addresses(wallet_address, addresses).await?.into()
     }
 
     pub async fn get_api_account_private_key(
@@ -36,10 +34,7 @@ impl crate::WalletManager {
         chain_code: &str,
         password: &str,
     ) -> ReturnType<String> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        ApiAccountService::new(repo)
+        ApiAccountService::new()
             .get_account_private_key(address, chain_code, password)
             .await?
             .to_string()

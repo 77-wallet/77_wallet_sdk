@@ -3,10 +3,7 @@ use wallet_database::entities::api_fee::ApiFeeEntity;
 
 impl crate::WalletManager {
     pub async fn get_api_transfer_fee_order_list(&self) -> ReturnType<Vec<ApiFeeEntity>> {
-        TransferFeeService::new(self.repo_factory.resource_repo())
-            .get_transfer_fee_order_list()
-            .await?
-            .into()
+        TransferFeeService::new().get_transfer_fee_order_list().await?.into()
     }
 
     pub async fn api_transfer_fee_order(
@@ -21,7 +18,7 @@ impl crate::WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
-        TransferFeeService::new(self.repo_factory.resource_repo())
+        TransferFeeService::new()
             .transfer_fee_order(
                 from,
                 to,

@@ -9,7 +9,6 @@ use wallet_chain_interact::{
     },
     types::MultisigTxResp,
 };
-use wallet_utils::serde_func::serde_from_value;
 
 use crate::response_vo::stake::VoteListResp;
 

@@ -3,10 +3,7 @@ use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
 impl crate::WalletManager {
     pub async fn get_api_withdraw_order_list(&self) -> ReturnType<Vec<ApiWithdrawEntity>> {
-        WithdrawService::new(self.repo_factory.resource_repo())
-            .get_withdraw_order_list()
-            .await?
-            .into()
+        WithdrawService::new().get_withdraw_order_list().await?.into()
     }
 
     pub async fn api_withdrawal_order(
@@ -21,7 +18,7 @@ impl crate::WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
-        WithdrawService::new(self.repo_factory.resource_repo())
+        WithdrawService::new()
             .withdrawal_order(
                 from,
                 to,
@@ -38,17 +35,11 @@ impl crate::WalletManager {
     }
 
     pub async fn sign_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new(self.repo_factory.resource_repo())
-            .sign_withdrawal_order(order_id, 1)
-            .await?
-            .into()
+        WithdrawService::new().sign_withdrawal_order(order_id, 1).await?.into()
     }
 
     pub async fn reject_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new(self.repo_factory.resource_repo())
-            .reject_withdrawal_order(order_id, 2)
-            .await?
-            .into()
+        WithdrawService::new().reject_withdrawal_order(order_id, 2).await?.into()
     }
 }
 

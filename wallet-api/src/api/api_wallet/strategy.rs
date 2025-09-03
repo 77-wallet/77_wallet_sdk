@@ -9,7 +9,7 @@ impl crate::WalletManager {
         threshold: f64,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
-        StrategyService::new(self.repo_factory.resource_repo())
+        StrategyService::new()
             .update_collection_strategy(uid, threshold, chain_config)
             .await?
             .into()
@@ -21,10 +21,7 @@ impl crate::WalletManager {
         threshold: f64,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
-        StrategyService::new(self.repo_factory.resource_repo())
-            .update_withdraw_strategy(uid, threshold, chain_config)
-            .await?
-            .into()
+        StrategyService::new().update_withdraw_strategy(uid, threshold, chain_config).await?.into()
     }
 }
 

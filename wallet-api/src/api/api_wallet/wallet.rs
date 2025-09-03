@@ -15,7 +15,7 @@ impl crate::WalletManager {
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
     ) -> ReturnType<()> {
-        ApiWalletService::new(self.repo_factory.resource_repo())
+        ApiWalletService::new()
             .create_wallet(
                 language_code,
                 phrase,
@@ -39,26 +39,20 @@ impl crate::WalletManager {
     // }
 
     pub async fn bind_merchant(&self, key: &str, merchain_id: &str, uid: &str) -> ReturnType<()> {
-        ApiWalletService::new(self.repo_factory.resource_repo())
-            .bind_merchant(key, merchain_id, uid)
-            .await?
-            .into()
+        ApiWalletService::new().bind_merchant(key, merchain_id, uid).await?.into()
     }
 
     pub async fn unbind_merchant(&self, uid: &str) -> ReturnType<()> {
-        ApiWalletService::new(self.repo_factory.resource_repo()).unbind_merchant(uid).await?.into()
+        ApiWalletService::new().unbind_merchant(uid).await?.into()
     }
 
-    // pub async fn edit_api_wallet_name(
-    //     &self,
-    //     wallet_name: &str,
-    //     wallet_address: &str,
-    // ) -> ReturnType<()> {
-    //     WalletService::new(self.repo_factory.resource_repo())
-    //         .edit_wallet_name(wallet_name, wallet_address)
-    //         .await?
-    //         .into()
-    // }
+    pub async fn edit_api_wallet_name(
+        &self,
+        wallet_name: &str,
+        wallet_address: &str,
+    ) -> ReturnType<()> {
+        ApiWalletService::new().edit_wallet_name(wallet_address, wallet_name).await?.into()
+    }
 
     // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
     //     WalletService::new(self.repo_factory.resource_repo())

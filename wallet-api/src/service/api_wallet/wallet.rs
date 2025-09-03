@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
-    repositories::{ResourcesRepo, api_wallet::ApiWalletRepo, device::DeviceRepo},
+    repositories::{api_wallet::ApiWalletRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::request::LanguageInitReq;
 
@@ -9,13 +9,11 @@ use crate::{
     infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
 };
 
-pub struct ApiWalletService {
-    pub repo: ResourcesRepo,
-}
+pub struct ApiWalletService {}
 
 impl ApiWalletService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub async fn create_wallet(
@@ -208,7 +206,6 @@ impl ApiWalletService {
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
-        let mut tx = self.repo;
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -287,6 +284,16 @@ impl ApiWalletService {
 
     pub async fn unbind_merchant(self, uid: &str) -> Result<(), crate::ServiceError> {
         ApiWalletDomain::unbind_uid(uid).await?;
+        Ok(())
+    }
+
+    pub async fn edit_wallet_name(
+        self,
+        address: &str,
+        name: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }
 

@@ -1,5 +1,5 @@
 use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_database::{entities::api_wallet::ApiWalletType, repositories::ResourcesRepo};
+use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::address::UploadAllocatedAddressesReq;
 
 use crate::domain::{
@@ -7,13 +7,11 @@ use crate::domain::{
     wallet::WalletDomain,
 };
 
-pub struct ApiAccountService {
-    pub repo: ResourcesRepo,
-}
+pub struct ApiAccountService {}
 
 impl ApiAccountService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub async fn upload_allocated_addresses(

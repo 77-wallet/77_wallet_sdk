@@ -1,15 +1,12 @@
-use wallet_database::repositories::ResourcesRepo;
 use wallet_transport_backend::request::api_wallet::strategy::{
     ChainConfig, SaveCollectStrategyReq, SaveWithdrawStrategyReq,
 };
 
-pub struct StrategyService {
-    pub repo: ResourcesRepo,
-}
+pub struct StrategyService {}
 
 impl StrategyService {
-    pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub async fn update_collection_strategy(
