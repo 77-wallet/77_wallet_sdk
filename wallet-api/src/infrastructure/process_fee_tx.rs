@@ -3,6 +3,7 @@ use crate::{
     domain::{api_wallet::fee::ApiFeeDomain, chain::TransferResp, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
+use chrono::TimeDelta;
 use tokio::{
     sync::{Mutex, broadcast},
     task::JoinHandle,
@@ -113,6 +114,7 @@ impl ProcessWithdrawTx {
     async fn process_fee_tx(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 2).await?;
+        // 获取交易这里有问题
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool.clone(),
             offset,
@@ -154,7 +156,7 @@ impl ProcessWithdrawTx {
             Err(err) => {
                 tracing::error!("failed to process fee tx: {}", err);
                 self.handle_fee_tx_failed(&req.trade_no).await
-            },
+            }
         }
     }
 
@@ -179,23 +181,8 @@ impl ProcessWithdrawTx {
             ApiFeeStatus::SendingTx,
         )
         .await?;
-        let backend_api = Context::get_global_backend_api()?;
-        let _ = backend_api
-            .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
-                trade_no,
-                TransType::Fee,
-                &tx.tx_hash,
-                TransStatus::Success,
-                "",
-            ))
-            .await?;
-        ApiFeeRepo::update_api_fee_next_status(
-            &pool,
-            &trade_no,
-            ApiFeeStatus::SendingTx,
-            ApiFeeStatus::ReceivedTxReport,
-        )
-        .await?;
+        // 上报交易不影响交易偏移量计算
+        let _ = self.handle_fee_tx_report(trade_no, &tx.tx_hash, TransStatus::Success, "", ApiFeeStatus::SendingTx).await;
         tracing::info!("upload tx exec receipt success ---");
         Ok(())
     }
@@ -203,20 +190,41 @@ impl ProcessWithdrawTx {
     async fn handle_fee_tx_failed(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
+        // 上报交易不影响交易偏移量计算
+        let _ = self.handle_fee_tx_report(
+            trade_no,
+            "",
+            TransStatus::Fail,
+            "",
+            ApiFeeStatus::SendingTxFailed,
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn handle_fee_tx_report(
+        &self,
+        trade_no: &str,
+        hash: &str,
+        status: TransStatus,
+        remark: &str,
+        tx_status: ApiFeeStatus,
+    ) -> Result<(), crate::ServiceError> {
         let backend_api = Context::get_global_backend_api()?;
         let _ = backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 trade_no,
                 TransType::Fee,
-                "",
-                TransStatus::Fail,
-                "",
+                hash,
+                status,
+                remark,
             ))
             .await?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_next_status(
             &pool,
             &trade_no,
-            ApiFeeStatus::SendingTxFailed,
+            tx_status,
             ApiFeeStatus::ReceivedTxReport,
         )
         .await?;
@@ -285,24 +293,33 @@ impl ProcessWithdrawTxReport {
         )
         .await?;
         let transfer_fees_len = transfer_fees.len();
+        let mut success_count = 0;
         for req in transfer_fees {
-            self.process_fee_single_tx_report(req).await?;
+            success_count += self.process_fee_single_tx_report(req).await?;
         }
-        ApiWindowRepo::upsert_api_offset(&pool, 20, offset + transfer_fees_len as i64).await?;
+        if success_count == transfer_fees_len as i32 {
+            ApiWindowRepo::upsert_api_offset(&pool, 20, offset + transfer_fees_len as i64).await?;
+        }
         Ok(())
     }
 
     async fn process_fee_single_tx_report(
         &self,
         req: ApiFeeEntity,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<i32, crate::ServiceError> {
+        // 判断超时时间
+        let now = chrono::Utc::now();
+        let timeout = now - req.updated_at.unwrap();
+        if timeout > TimeDelta::seconds(req.post_tx_count as i64) {
+            return Ok(0);
+        }
         let status = if req.status == ApiFeeStatus::SendingTxFailed {
             TransStatus::Fail
         } else {
             TransStatus::Success
         };
         let backend_api = Context::get_global_backend_api()?;
-        let _ = backend_api
+        match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,
                 TransType::Fee,
@@ -310,16 +327,31 @@ impl ProcessWithdrawTxReport {
                 status,
                 &req.notes,
             ))
-            .await?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_next_status(
-            &pool,
-            &req.trade_no,
-            ApiFeeStatus::SendingTx,
-            ApiFeeStatus::ReceivedTxReport,
-        )
-        .await?;
-        tracing::info!("upload tx exec receipt success ---");
-        Ok(())
+            .await
+        {
+            Ok(_) => {
+                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                ApiFeeRepo::update_api_fee_next_status(
+                    &pool,
+                    &req.trade_no,
+                    ApiFeeStatus::SendingTx,
+                    ApiFeeStatus::ReceivedTxReport,
+                )
+                .await?;
+                tracing::info!("upload tx exec receipt success ---");
+                return Ok(1);
+            }
+            Err(err) => {
+                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                ApiFeeRepo::update_api_fee_post_tx_count(
+                    &pool,
+                    &req.trade_no,
+                    ApiFeeStatus::SendingTx,
+                )
+                .await?;
+                tracing::error!("failed to upload tx exec receipt: {}", err);
+                return Ok(0);
+            }
+        }
     }
 }
