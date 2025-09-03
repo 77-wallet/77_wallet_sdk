@@ -199,7 +199,7 @@ impl AssetsService {
                 .await?;
                 if let Some(existing_asset) = res
                     .iter_mut()
-                    .find(|a| a.symbol == assets.symbol && coin.is_default == 1)
+                    .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
                 {
                     token_currencies
                         .calculate_assets(assets, existing_asset)

@@ -115,7 +115,7 @@ impl CoinService {
         for coin in list.data {
             if let Some(d) = data
                 .iter_mut()
-                .find(|info| info.symbol == coin.symbol && coin.is_default == 1)
+                .find(|info| info.symbol == coin.symbol && info.is_default && coin.is_default == 1)
             {
                 d.chain_list
                     .entry(coin.chain_code.clone())
