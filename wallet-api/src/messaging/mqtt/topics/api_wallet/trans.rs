@@ -3,6 +3,7 @@ use crate::{
         api_wallet::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
         coin::CoinDomain,
     },
+    infrastructure::GLOBAL_CACHE,
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
 };
 
@@ -37,13 +38,21 @@ impl TransMsg {
         Ok(())
     }
 
+    pub(crate) async fn get_passwd(&self) -> Result<String, crate::ServiceError> {
+        let password = GLOBAL_CACHE
+            .get::<String>(crate::infrastructure::WALLET_PASSWORD)
+            .await
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::PasswordNotCached))?;
+        Ok(password)
+    }
+
     pub(crate) async fn transfer_fee(&self) -> Result<(), crate::ServiceError> {
         // 获取密码缓存
-        let password = "[REDACTED:password]";
-        // 从出款地址转手续费到from_addr
+        let password = self.get_passwd().await?;
 
+        // 从出款地址转手续费到from_addr
         tracing::info!("打手续费 fee: {}", self.value);
-        todo!();
+        // todo!();
         let coin =
             CoinDomain::get_coin(&self.chain_code, &self.symbol, Some(self.token_address.clone()))
                 .await?;

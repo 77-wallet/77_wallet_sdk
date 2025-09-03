@@ -12,6 +12,8 @@ pub enum ApiWalletError {
     NotFoundAccount,
     #[error("gas oracle not exist")]
     GasOracle,
+    #[error("Password not cached")]
+    PasswordNotCached,
 }
 
 impl ApiWalletError {
@@ -23,6 +25,7 @@ impl ApiWalletError {
             ApiWalletError::ChainConfigNotFound(_) => 4403,
             ApiWalletError::NotFoundAccount => 4403,
             ApiWalletError::GasOracle => 4404,
+            ApiWalletError::PasswordNotCached => 4405,
         }
     }
 }

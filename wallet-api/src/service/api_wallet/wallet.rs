@@ -6,7 +6,10 @@ use wallet_transport_backend::request::LanguageInitReq;
 
 use crate::{
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    infrastructure::{
+        GLOBAL_CACHE, WALLET_PASSWORD,
+        task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    },
 };
 
 pub struct ApiWalletService {}
@@ -294,6 +297,11 @@ impl ApiWalletService {
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
+        Ok(())
+    }
+
+    pub async fn set_passwd_cache(self, wallet_password: &str) -> Result<(), crate::ServiceError> {
+        GLOBAL_CACHE.set(WALLET_PASSWORD, wallet_password).await?;
         Ok(())
     }
 

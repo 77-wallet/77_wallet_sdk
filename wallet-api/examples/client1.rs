@@ -12,6 +12,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .unwrap();
     // Self::init_log(Some("error")).await?;
     let (wallet_manager, test_params) = get_manager().await.unwrap();
+    let wallet_password = "q1111111";
+
+    wallet_manager.set_passwd_cache(wallet_password).await;
     // wallet_api::WalletManager::init_log(Some("info"), "xxxx").await?;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
@@ -34,7 +37,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wallet_name = "api_wallet";
     let account_name = "ccccc";
     let is_default_name = true;
-    let wallet_password = "q1111111";
     let invite_code = None;
     let api_wallet_type = ApiWalletType::SubAccount;
     let wallet = wallet_manager

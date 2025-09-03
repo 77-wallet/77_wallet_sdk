@@ -1,10 +1,21 @@
+use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
+    sync::Arc,
     time::{Duration, Instant},
 };
+
+pub(crate) const WALLET_PASSWORD: &str = "wallet password";
+
 use tokio::sync::RwLock;
+
+pub(crate) static GLOBAL_CACHE: Lazy<Arc<SharedCache>> = Lazy::new(|| {
+    let cache = Arc::new(SharedCache::new());
+    cache.spawn_cleaner();
+    cache
+});
 
 #[derive(Debug)]
 pub struct SharedCache {

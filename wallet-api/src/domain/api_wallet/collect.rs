@@ -1,11 +1,10 @@
 use crate::{
     domain::{
         api_wallet::{
-            account::ApiAccountDomain,
             adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
             fee::ApiFeeDomain,
         },
-        chain::{TransferResp, transaction::ChainTransDomain},
+        chain::transaction::ChainTransDomain,
         coin::CoinDomain,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
@@ -146,7 +145,12 @@ impl ApiCollectDomain {
             );
             params.with_token(coin.token_address(), coin.decimals, &coin.symbol);
 
-            let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
+            let password = crate::infrastructure::GLOBAL_CACHE
+                .get::<String>(crate::infrastructure::WALLET_PASSWORD)
+                .await
+                .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::PasswordNotCached))?;
+
+            let transfer_req = ApiTransferReq { base: params, password };
             // 上链
             // 发交易
             let tx_resp = ApiFeeDomain::transfer(transfer_req).await?;
