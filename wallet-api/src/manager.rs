@@ -1,9 +1,7 @@
 use crate::{
     domain,
-    domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
-    infrastructure,
     infrastructure::{
-        SharedCache,
+        self, SharedCache,
         inner_event::InnerEventHandle,
         process_fee_tx::ProcessFeeTxHandle,
         process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
@@ -223,8 +221,8 @@ impl Context {
         CONTEXT.get().ok_or(crate::SystemError::ContextNotInit)
     }
 
-    pub(crate) fn get_global_sqlite_pool()
-    -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError> {
+    pub(crate) fn get_global_sqlite_pool() -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError>
+    {
         Ok(Context::get_context()?.sqlite_context.get_pool()?.clone())
     }
 
@@ -409,9 +407,6 @@ impl WalletManager {
             if let Err(e) = do_some_init().await {
                 tracing::error!("init_data error: {}", e);
             };
-            let _ = API_ADAPTER_FACTORY
-                .get_or_try_init(|| async { ApiChainAdapterFactory::new().await })
-                .await;
         });
 
         Ok(())

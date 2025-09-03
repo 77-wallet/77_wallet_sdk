@@ -14,10 +14,10 @@ use crate::{
     },
     infrastructure::swap_client::AggQuoteResp,
     request::transaction::{
-        ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+        ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
     },
     response_vo::{
-        EthereumFeeDetails, FeeDetails, FeeDetailsVo, MultisigQueueFeeParams, TransferParams,
+        EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams,
     },
 };
 
@@ -70,7 +70,7 @@ impl EthTx {
         Ok(Self { chain_code, chain: eth_chain })
     }
 
-    pub(super) async fn estimate_swap(
+    async fn estimate_swap(
         &self,
         swap_params: SwapParams,
     ) -> Result<EstimateSwapResult<FeeSetting>, crate::ServiceError> {
@@ -96,7 +96,7 @@ impl EthTx {
         Ok(resp)
     }
 
-    pub(super) async fn swap_base_transfer(
+    async fn swap_base_transfer(
         &self,
         swap_params: &SwapParams,
         fee: String,
@@ -609,11 +609,11 @@ impl Multisig for EthTx {
 
     async fn build_multisig_fee(
         &self,
-        req: &MultisigQueueFeeParams,
-        account: &MultisigAccountEntity,
-        decimal: u8,
-        token: Option<String>,
-        main_symbol: &str,
+        _req: &MultisigQueueFeeParams,
+        _account: &MultisigAccountEntity,
+        _decimal: u8,
+        _token: Option<String>,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         Ok("".to_string())
     }
@@ -621,9 +621,9 @@ impl Multisig for EthTx {
     async fn build_multisig_with_account(
         &self,
         req: &TransferParams,
-        account: &MultisigAccountEntity,
+        _account: &MultisigAccountEntity,
         assets: &ApiAssetsEntity,
-        key: ChainPrivateKey,
+        _key: ChainPrivateKey,
     ) -> Result<MultisigTxResp, ServiceError> {
         let decimal = assets.decimals;
         let token = assets.token_address();
@@ -639,9 +639,9 @@ impl Multisig for EthTx {
 
     async fn build_multisig_with_permission(
         &self,
-        req: &TransferParams,
-        p: &PermissionEntity,
-        coin: &CoinEntity,
+        _req: &TransferParams,
+        _p: &PermissionEntity,
+        _coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
             .into())
@@ -649,18 +649,18 @@ impl Multisig for EthTx {
 
     async fn sign_fee(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
-        raw_data: &str,
-        main_symbol: &str,
+        _account: &MultisigAccountEntity,
+        _address: &str,
+        _raw_data: &str,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         Ok(" ".to_string())
     }
 
     async fn sign_multisig_tx(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
+        _account: &MultisigAccountEntity,
+        _address: &str,
         key: ChainPrivateKey,
         raw_data: &str,
     ) -> Result<MultisigSignResp, ServiceError> {
@@ -673,7 +673,7 @@ impl Multisig for EthTx {
         &self,
         queue: &MultisigQueueEntity,
         coin: &CoinEntity,
-        backend: &BackendApi,
+        _backend: &BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {

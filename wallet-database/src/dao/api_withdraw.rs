@@ -44,25 +44,29 @@ impl ApiWithdrawDao {
         exec: E,
         page: i64,
         page_size: i64,
-        status: ApiWithdrawStatus,
+        vec_status: &[ApiWithdrawStatus],
     ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + Clone,
     {
-        let count_sql = "SELECT count(*) FROM api_withdraws where status=$1";
-        let count = sqlx::query_scalar::<_, i64>(count_sql)
-            .bind(status)
-            .fetch_one(exec.clone())
-            .await
+        let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let count_sql = format!("SELECT count(*) FROM api_withdraws where status in ({})", placeholders);
+        let sql = format!("SELECT * FROM api_withdraws where status in ({}) ORDER BY id ASC LIMIT ? OFFSET ?", placeholders);
+        
+        let mut query = sqlx::query_scalar::<_, i64>(&count_sql);
+        for status in vec_status {
+            query = query.bind(status);
+        }
+        let count = query.fetch_one(exec.clone()).await
             .map_err(|e| crate::Error::Database(e.into()))?;
-        let sql = "SELECT * FROM api_withdraws where status=$1 ORDER BY id ASC LIMIT $2 OFFSET $3";
-        let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(status)
-            .bind(page_size)
-            .bind(page)
-            .fetch_all(exec)
-            .await
+        
+        let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql);
+        for status in vec_status {
+            query = query.bind(status);
+        }
+        let res = query.bind(page_size).bind(page).fetch_all(exec).await
             .map_err(|e| crate::Error::Database(e.into()))?;
+        
         Ok((count, res))
     }
 
@@ -175,6 +179,34 @@ impl ApiWithdrawDao {
         sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_next_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+        next_status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                status = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(&next_status)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

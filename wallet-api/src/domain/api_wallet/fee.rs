@@ -7,14 +7,12 @@ use crate::{
         },
         chain::TransferResp,
     },
-    messaging::notify::api_wallet::WithdrawFront,
+    messaging::notify::api_wallet::FeeFront,
     request::api_wallet::trans::{ApiTransferFeeReq, ApiTransferReq},
 };
-use rust_decimal::Decimal;
-use std::str::FromStr;
 use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
-    repositories::{api_account::ApiAccountRepo, api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
+    repositories::{api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
 };
 
 pub struct ApiFeeDomain {}
@@ -29,10 +27,10 @@ impl ApiFeeDomain {
             .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
         // 获取账号
-        let from_account =
-            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
-                .await?
-                .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
+        // let from_account =
+        //     ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+        //         .await?
+        //         .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
 
         ApiFeeRepo::upsert_api_fee(
             &pool,
@@ -50,7 +48,7 @@ impl ApiFeeDomain {
         .await?;
         tracing::info!("upsert_api_fee ------------------- 5:");
 
-        let data = NotifyEvent::Withdraw(WithdrawFront {
+        let data = NotifyEvent::Fee(FeeFront {
             uid: req.uid.to_string(),
             from_addr: req.from.to_string(),
             to_addr: req.to.to_string(),
@@ -59,17 +57,13 @@ impl ApiFeeDomain {
         FrontendNotifyEvent::new(data).send().await?;
 
         // 可能发交易
-        let value = Decimal::from_str(&req.value).unwrap();
-        if value < Decimal::from(10) {
-            tracing::info!("transfer ------------------- 9:");
-            ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Init).await?;
-        }
+        ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Init).await?;
         Ok(())
     }
 
     /// transfer
     pub async fn transfer(params: ApiTransferReq) -> Result<TransferResp, crate::ServiceError> {
-        tracing::info!("transfer ------------------- 7:");
+        tracing::info!("transfer fee ------------------- 7:");
         let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,
             &params.base.chain_code,
@@ -77,7 +71,7 @@ impl ApiFeeDomain {
         )
         .await?;
 
-        tracing::info!("transfer ------------------- 8:");
+        tracing::info!("transfer fee ------------------- 8:");
 
         let adapter = API_ADAPTER_FACTORY
             .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
@@ -87,7 +81,7 @@ impl ApiFeeDomain {
 
         let resp = adapter.transfer(&params, private_key).await?;
 
-        tracing::info!("transfer ------------------- 10:");
+        tracing::info!("transfer fee ------------------- 10:");
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::manager::Context::get_global_backend_api()?;
@@ -95,5 +89,17 @@ impl ApiFeeDomain {
         }
 
         Ok(resp)
+    }
+
+    pub async fn confirm_transfer_fee_tx_report(trade_no: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::ReceivedTxReport).await?;
+        Ok(())
+    }
+
+    pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::Success).await?;
+        Ok(())
     }
 }

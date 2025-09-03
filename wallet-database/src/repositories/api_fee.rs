@@ -23,7 +23,7 @@ impl ApiFeeRepo {
         pool: &DbPool,
         page: i64,
         page_size: i64,
-        status: ApiFeeStatus,
+        status: &[ApiFeeStatus],
     ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error> {
         ApiFeeDao::page_api_fee_with_status(pool.as_ref(), page, page_size, status).await
     }

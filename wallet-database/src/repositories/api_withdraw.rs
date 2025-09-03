@@ -23,9 +23,9 @@ impl ApiWithdrawRepo {
         pool: &DbPool,
         page: i64,
         page_size: i64,
-        status: ApiWithdrawStatus,
+        vec_status: &[ApiWithdrawStatus],
     ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error> {
-        ApiWithdrawDao::page_api_withdraw_with_status(pool.as_ref(), page, page_size, status).await
+        ApiWithdrawDao::page_api_withdraw_with_status(pool.as_ref(), page, page_size, vec_status).await
     }
 
     pub async fn upsert_api_withdraw(
@@ -92,5 +92,14 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_status(pool.as_ref(), trade_no, status).await
+    }
+
+    pub async fn update_api_withdraw_next_status(
+        pool: &DbPool,
+        trade_no: &str,
+        status : ApiWithdrawStatus,
+        next_status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
     }
 }

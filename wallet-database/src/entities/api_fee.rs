@@ -26,13 +26,20 @@ pub struct ApiFeeEntity {
 }
 
 #[derive(
-    sqlx::Type, Debug, Clone, Copy, serde_repr::Deserialize_repr, serde_repr::Serialize_repr,
+    sqlx::Type,
+    Debug,
+    Clone,
+    Copy,
+    serde_repr::Deserialize_repr,
+    serde_repr::Serialize_repr,
+    PartialEq,
 )]
 #[repr(u8)]
 pub enum ApiFeeStatus {
     Init,
     SendingTx,
-    SendingTxReport,
+    SendingTxFailed,
+    ReceivedTxReport,
     Success,
     Failure,
 }

@@ -8,7 +8,7 @@ use crate::{
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
+        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
 };
@@ -47,7 +47,7 @@ impl TonTx {
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
-        let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        // let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(http_client);
@@ -80,7 +80,7 @@ impl TonTx {
 impl Tx for TonTx {
     async fn account_resource(
         &self,
-        owner_address: &str,
+        _owner_address: &str,
     ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
@@ -179,7 +179,7 @@ impl Tx for TonTx {
         req: ApiBaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        // let backend = crate::manager::Context::get_global_backend_api()?;
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
@@ -210,81 +210,81 @@ impl Tx for TonTx {
 
     async fn approve(
         &self,
-        req: &ApproveReq,
-        key: ChainPrivateKey,
-        value: U256,
+        _req: &ApproveReq,
+        _key: ChainPrivateKey,
+        _value: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(
         &self,
-        req: &ApproveReq,
-        value: U256,
-        main_symbol: &str,
+        _req: &ApproveReq,
+        _value: U256,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(
         &self,
-        from: &str,
-        token: &str,
-        spender: &str,
+        _from: &str,
+        _token: &str,
+        _spender: &str,
     ) -> Result<U256, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
         &self,
-        req: &QuoteReq,
-        quote_resp: &AggQuoteResp,
-        symbol: &str,
+        _req: &QuoteReq,
+        _quote_resp: &AggQuoteResp,
+        _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
         &self,
-        req: &SwapReq,
-        fee: String,
-        key: ChainPrivateKey,
+        _req: &SwapReq,
+        _fee: String,
+        _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
         &self,
-        req: DepositReq,
-        main_coin: &CoinEntity,
+        _req: DepositReq,
+        _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
         &self,
-        req: &DepositReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
+        _req: &DepositReq,
+        _fee: String,
+        _key: ChainPrivateKey,
+        _value: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw_fee(
         &self,
-        req: WithdrawReq,
-        main_coin: &CoinEntity,
+        _req: WithdrawReq,
+        _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
         &self,
-        req: &WithdrawReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
+        _req: &WithdrawReq,
+        _fee: String,
+        _key: ChainPrivateKey,
+        _value: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
@@ -294,88 +294,88 @@ impl Tx for TonTx {
 impl Multisig for TonTx {
     async fn multisig_address(
         &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
+        _account: &MultisigAccountEntity,
+        _member: &MultisigMemberEntities,
     ) -> Result<FetchMultisigAddressResp, ServiceError> {
         todo!()
     }
 
     async fn deploy_multisig_account(
         &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
-        fee_setting: Option<String>,
-        key: ChainPrivateKey,
+        _account: &MultisigAccountEntity,
+        _member: &MultisigMemberEntities,
+        _fee_setting: Option<String>,
+        _key: ChainPrivateKey,
     ) -> Result<(String, String), ServiceError> {
         todo!()
     }
 
     async fn deploy_multisig_fee(
         &self,
-        account: &MultisigAccountEntity,
-        member: MultisigMemberEntities,
-        main_symbol: &str,
+        _account: &MultisigAccountEntity,
+        _member: MultisigMemberEntities,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         todo!()
     }
 
     async fn build_multisig_fee(
         &self,
-        req: &MultisigQueueFeeParams,
-        account: &MultisigAccountEntity,
-        decimal: u8,
-        token: Option<String>,
-        main_symbol: &str,
+        _req: &MultisigQueueFeeParams,
+        _account: &MultisigAccountEntity,
+        _decimal: u8,
+        _token: Option<String>,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         todo!()
     }
 
     async fn build_multisig_with_account(
         &self,
-        req: &TransferParams,
-        account: &MultisigAccountEntity,
-        assets: &ApiAssetsEntity,
-        key: ChainPrivateKey,
+        _req: &TransferParams,
+        _account: &MultisigAccountEntity,
+        _assets: &ApiAssetsEntity,
+        _key: ChainPrivateKey,
     ) -> Result<MultisigTxResp, ServiceError> {
         todo!()
     }
 
     async fn build_multisig_with_permission(
         &self,
-        req: &TransferParams,
-        p: &PermissionEntity,
-        coin: &CoinEntity,
+        _req: &TransferParams,
+        _p: &PermissionEntity,
+        _coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         todo!()
     }
 
     async fn sign_fee(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
-        raw_data: &str,
-        main_symbol: &str,
+        _account: &MultisigAccountEntity,
+        _address: &str,
+        _raw_data: &str,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         todo!()
     }
 
     async fn sign_multisig_tx(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
-        key: ChainPrivateKey,
-        raw_data: &str,
+        _account: &MultisigAccountEntity,
+        _address: &str,
+        _key: ChainPrivateKey,
+        _raw_data: &str,
     ) -> Result<MultisigSignResp, ServiceError> {
         todo!()
     }
 
     async fn estimate_multisig_fee(
         &self,
-        queue: &MultisigQueueEntity,
-        coin: &CoinEntity,
-        backend: &BackendApi,
-        sign_list: Vec<String>,
-        main_symbol: &str,
+        _queue: &MultisigQueueEntity,
+        _coin: &CoinEntity,
+        _backend: &BackendApi,
+        _sign_list: Vec<String>,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         todo!()
     }

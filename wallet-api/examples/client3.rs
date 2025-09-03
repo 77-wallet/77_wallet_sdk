@@ -60,8 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("res --------------------- 3: {res:?}");
 
     // bnb
-    // let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
-    // let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
+    let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
+    let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
 
     // tron
     // let from = "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n";
@@ -72,17 +72,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let to = "J8ByH2pUySpXL4fXdgPpwnaL7R381xunqXT2cqaZ1tm";
 
     // ton
-    let from = "UQBTmOIHin7OrxheQ979Y3_xJjHxMUJocknrv3_J_dCocuqy";
-    let to = "0QDex-zBG6cbJCwaxA7999xIB_ZhNAwOr37lsw5HxB7Ldrpq";
+    // let from = "UQBTmOIHin7OrxheQ979Y3_xJjHxMUJocknrv3_J_dCocuqy";
+    // let to = "0QDex-zBG6cbJCwaxA7999xIB_ZhNAwOr37lsw5HxB7Ldrpq";
 
     // sui
     // let from = "0xb69713b670ba3bfcfa7ea577005de40bf026e277b574773bc4c6f0adb7e1ced8";
     // let to = "0xd830497ecd7321d4e0e501d3f71689380e8e8883ee5e1597cf06b3b72a95d226";
 
     let value = "0.000001";
-    let trade_no = "0x0000000104";
+    let trade_no = "0x0000000110";
     let res1 = wallet_manager
-        .api_transfer_fee_order(from, to, value, "ton", None, "TON", trade_no, 3, uid)
+        .api_transfer_fee_order(from, to, value, "bnb", None, "BNB", trade_no, 3, uid)
         .await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 

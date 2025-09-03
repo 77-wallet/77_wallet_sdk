@@ -67,7 +67,7 @@ active = true
 
 [[nodes.bnb.nodes]]
 node_name = "77 Official Nodes"
-rpc_url = "https://bsc-testnet-rpc.publicnode.com"
+rpc_url = "https://bsc-testnet.therpc.io"
 http_url = ""
 network = "testnet"
 active = true
