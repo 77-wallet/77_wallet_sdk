@@ -18,7 +18,7 @@ use crate::messaging::{
         BulletinMsg,
         api_wallet::{AddressUseMsg, UnbindUidMsg},
     },
-    notify::api_wallet::{CollectFeeNotEnoughFront, WithdrawFront, WithdrawNoPassFront},
+    notify::api_wallet::{CollectFeeNotEnoughFront, FeeFront, WithdrawFront, WithdrawNoPassFront},
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -69,6 +69,7 @@ pub enum NotifyEvent {
     Withdraw(WithdrawFront),
     WithdrawNoPass(WithdrawNoPassFront),
     CollectFeeNotEnough(CollectFeeNotEnoughFront),
+    Fee(FeeFront),
 }
 
 impl NotifyEvent {
@@ -118,6 +119,7 @@ impl NotifyEvent {
             NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
             NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),
             NotifyEvent::CollectFeeNotEnough(_) => "COLLECT_FEE_NOT_ENOUGH".to_string(),
+            NotifyEvent::Fee(_) => "FEE".to_string(),
         }
     }
 }

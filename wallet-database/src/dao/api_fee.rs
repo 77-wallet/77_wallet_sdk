@@ -156,7 +156,7 @@ impl ApiFeeDao {
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
-        tracing::info!(xx=%res.rows_affected(), "withdraw api");
+        tracing::info!(xx=%res.rows_affected(), "tx fee api");
         Ok(())
     }
 

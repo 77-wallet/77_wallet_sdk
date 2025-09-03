@@ -7,14 +7,12 @@ use crate::{
         },
         chain::TransferResp,
     },
-    messaging::notify::api_wallet::WithdrawFront,
+    messaging::notify::api_wallet::FeeFront,
     request::api_wallet::trans::{ApiTransferFeeReq, ApiTransferReq},
 };
-use rust_decimal::Decimal;
-use std::str::FromStr;
 use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
-    repositories::{api_account::ApiAccountRepo, api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
+    repositories::{api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
 };
 
 pub struct ApiFeeDomain {}
@@ -29,10 +27,10 @@ impl ApiFeeDomain {
             .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
         // 获取账号
-        let from_account =
-            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
-                .await?
-                .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
+        // let from_account =
+        //     ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
+        //         .await?
+        //         .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
 
         ApiFeeRepo::upsert_api_fee(
             &pool,
@@ -50,7 +48,7 @@ impl ApiFeeDomain {
         .await?;
         tracing::info!("upsert_api_fee ------------------- 5:");
 
-        let data = NotifyEvent::Withdraw(WithdrawFront {
+        let data = NotifyEvent::Fee(FeeFront {
             uid: req.uid.to_string(),
             from_addr: req.from.to_string(),
             to_addr: req.to.to_string(),
@@ -59,11 +57,7 @@ impl ApiFeeDomain {
         FrontendNotifyEvent::new(data).send().await?;
 
         // 可能发交易
-        let value = Decimal::from_str(&req.value).unwrap();
-        if value < Decimal::from(10) {
-            tracing::info!("transfer ------------------- 9:");
-            ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Init).await?;
-        }
+        ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Init).await?;
         Ok(())
     }
 

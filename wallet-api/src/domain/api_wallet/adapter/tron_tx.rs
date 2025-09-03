@@ -16,7 +16,7 @@ use crate::{
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         transaction::{
-            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+            ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
         },
     },
     response_vo::{MultisigQueueFeeParams, TransferParams, TronFeeDetails},
@@ -61,7 +61,7 @@ impl TronTx {
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
-        let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        // let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let http_client = HttpClient::new(rpc_url, header_opt, timeout)?;
         let provider = tron::Provider::new(http_client)?;
@@ -290,7 +290,7 @@ impl Tx for TronTx {
             let value_f64 = unit::format_to_f64(transfer_amount, params.base.decimals)?;
             let value_i64 = (value_f64 * tron::consts::TRX_TO_SUN as f64) as i64;
 
-            let mut param = tron::operations::transfer::TransferOpt::new(
+            let param = tron::operations::transfer::TransferOpt::new(
                 &params.base.from,
                 &params.base.to,
                 transfer_amount,
@@ -332,8 +332,8 @@ impl Tx for TronTx {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
+        // let token_currency =
+        //     TokenCurrencyGetter::get_currency(currency, &req.chain_code, main_symbol, None).await?;
 
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
         let consumer = if let Some(contract) = req.token_address {
@@ -492,7 +492,7 @@ impl Tx for TronTx {
     async fn swap(
         &self,
         req: &SwapReq,
-        fee: String,
+        _fee: String,
         key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         let swap_params = SwapParams::try_from(req)?;
@@ -564,7 +564,7 @@ impl Tx for TronTx {
     async fn deposit(
         &self,
         req: &DepositReq,
-        fee: String,
+        _fee: String,
         key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, ServiceError> {
@@ -632,7 +632,7 @@ impl Tx for TronTx {
     async fn withdraw(
         &self,
         req: &WithdrawReq,
-        fee: String,
+        _fee: String,
         key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, ServiceError> {
@@ -671,7 +671,7 @@ impl Multisig for TronTx {
     async fn multisig_address(
         &self,
         account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
+        _member: &MultisigMemberEntities,
     ) -> Result<FetchMultisigAddressResp, ServiceError> {
         Ok(FetchMultisigAddressResp {
             authority_address: "".to_string(),
@@ -684,7 +684,7 @@ impl Multisig for TronTx {
         &self,
         account: &MultisigAccountEntity,
         member: &MultisigMemberEntities,
-        fee_setting: Option<String>,
+        _fee_setting: Option<String>,
         key: ChainPrivateKey,
     ) -> Result<(String, String), ServiceError> {
         let params = tron::operations::multisig::MultisigAccountOpt::new(
@@ -723,7 +723,7 @@ impl Multisig for TronTx {
         let currency_lock = crate::app_state::APP_STATE.read().await;
         let currency = currency_lock.currency();
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        // let backend = crate::manager::Context::get_global_backend_api()?;
 
         let account_info = self.chain.get_provider().account_info(&account.initiator_addr).await?;
         if account_info.address.is_empty() {
@@ -750,11 +750,11 @@ impl Multisig for TronTx {
 
     async fn build_multisig_fee(
         &self,
-        req: &MultisigQueueFeeParams,
-        account: &MultisigAccountEntity,
-        decimal: u8,
-        token: Option<String>,
-        main_symbol: &str,
+        _req: &MultisigQueueFeeParams,
+        _account: &MultisigAccountEntity,
+        _decimal: u8,
+        _token: Option<String>,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         Ok("".to_string())
     }
@@ -799,18 +799,18 @@ impl Multisig for TronTx {
 
     async fn sign_fee(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
-        raw_data: &str,
-        main_symbol: &str,
+        _account: &MultisigAccountEntity,
+        _address: &str,
+        _raw_data: &str,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         Ok(" ".to_string())
     }
 
     async fn sign_multisig_tx(
         &self,
-        account: &MultisigAccountEntity,
-        address: &str,
+        _account: &MultisigAccountEntity,
+        _address: &str,
         key: ChainPrivateKey,
         raw_data: &str,
     ) -> Result<MultisigSignResp, ServiceError> {
@@ -822,22 +822,22 @@ impl Multisig for TronTx {
         &self,
         queue: &MultisigQueueEntity,
         coin: &CoinEntity,
-        backend: &BackendApi,
+        _backend: &BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,
     ) -> Result<String, ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
-        let token_currency =
-            TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
-                .await?;
+        // let token_currency =
+        //     TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
+        //         .await?;
 
         let signature_num = sign_list.len() as u8;
         let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
         let memo = (!queue.notes.is_empty()).then(|| queue.notes.clone());
 
-        let mut consumer = if let Some(token) = coin.token_address() {
+        let consumer = if let Some(token) = coin.token_address() {
             let params = tron::operations::transfer::ContractTransferOpt::new(
                 &token,
                 &queue.from_addr,

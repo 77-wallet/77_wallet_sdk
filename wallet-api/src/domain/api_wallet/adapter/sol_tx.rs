@@ -12,7 +12,7 @@ use crate::{
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         transaction::{
-            ApproveReq, BaseTransferReq, DepositReq, QuoteReq, SwapReq, TransferReq, WithdrawReq,
+            ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
         },
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
@@ -54,7 +54,7 @@ impl SolTx {
         rpc_url: &str,
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
-        let network = wallet_types::chain::network::NetworkKind::Mainnet;
+        // let network = wallet_types::chain::network::NetworkKind::Mainnet;
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
         let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
         let provider = Provider::new(rpc_client)?;
@@ -120,7 +120,7 @@ impl SolTx {
 impl Tx for SolTx {
     async fn account_resource(
         &self,
-        owner_address: &str,
+        _owner_address: &str,
     ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
@@ -228,62 +228,62 @@ impl Tx for SolTx {
 
     async fn approve(
         &self,
-        req: &ApproveReq,
-        key: ChainPrivateKey,
-        value: U256,
+        _req: &ApproveReq,
+        _key: ChainPrivateKey,
+        _value: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(
         &self,
-        req: &ApproveReq,
-        value: U256,
-        main_symbol: &str,
+        _req: &ApproveReq,
+        _value: U256,
+        _main_symbol: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(
         &self,
-        from: &str,
-        token: &str,
-        spender: &str,
+        _from: &str,
+        _token: &str,
+        _spender: &str,
     ) -> Result<U256, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
         &self,
-        req: &QuoteReq,
-        quote_resp: &AggQuoteResp,
-        symbol: &str,
+        _req: &QuoteReq,
+        _quote_resp: &AggQuoteResp,
+        _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
         &self,
-        req: &SwapReq,
-        fee: String,
-        key: ChainPrivateKey,
+        _req: &SwapReq,
+        _fee: String,
+        _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
         &self,
-        req: DepositReq,
-        main_coin: &CoinEntity,
+        _req: DepositReq,
+        _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
         &self,
-        req: &DepositReq,
-        fee: String,
-        key: ChainPrivateKey,
+        _req: &DepositReq,
+        _fee: String,
+        _key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
@@ -291,18 +291,18 @@ impl Tx for SolTx {
 
     async fn withdraw_fee(
         &self,
-        req: WithdrawReq,
-        main_coin: &CoinEntity,
+        _req: WithdrawReq,
+        _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
         &self,
-        req: &WithdrawReq,
-        fee: String,
-        key: ChainPrivateKey,
-        value: U256,
+        _req: &WithdrawReq,
+        _fee: String,
+        _key: ChainPrivateKey,
+        _value: U256,
     ) -> Result<TransferResp, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
@@ -312,8 +312,8 @@ impl Tx for SolTx {
 impl Multisig for SolTx {
     async fn multisig_address(
         &self,
-        account: &MultisigAccountEntity,
-        member: &MultisigMemberEntities,
+        _account: &MultisigAccountEntity,
+        _member: &MultisigMemberEntities,
     ) -> Result<FetchMultisigAddressResp, ServiceError> {
         Ok(MultisigAccountOpt::multisig_address()?)
     }
@@ -322,7 +322,7 @@ impl Multisig for SolTx {
         &self,
         account: &MultisigAccountEntity,
         member: &MultisigMemberEntities,
-        fee_setting: Option<String>,
+        _fee_setting: Option<String>,
         key: ChainPrivateKey,
     ) -> Result<(String, String), ServiceError> {
         let params = MultisigAccountOpt::new(
@@ -472,9 +472,9 @@ impl Multisig for SolTx {
 
     async fn build_multisig_with_permission(
         &self,
-        req: &TransferParams,
-        p: &PermissionEntity,
-        coin: &CoinEntity,
+        _req: &TransferParams,
+        _p: &PermissionEntity,
+        _coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
             .into())
@@ -505,7 +505,7 @@ impl Multisig for SolTx {
 
     async fn sign_multisig_tx(
         &self,
-        account: &MultisigAccountEntity,
+        _account: &MultisigAccountEntity,
         address: &str,
         key: ChainPrivateKey,
         raw_data: &str,

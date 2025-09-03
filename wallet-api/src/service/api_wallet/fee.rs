@@ -48,7 +48,7 @@ impl TransferFeeService {
         match res {
             Ok(_) => Ok(()),
             Err(e) => {
-                tracing::error!("withdrawal_order failed with {:?}", e);
+                tracing::error!("transfer_fee_order failed with {:?}", e);
                 Err(e.into())
             }
         }

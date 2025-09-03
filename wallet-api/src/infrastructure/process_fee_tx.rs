@@ -44,11 +44,6 @@ impl ProcessFeeTxHandle {
         }
     }
 
-    pub(crate) async fn submit_tx(&self, tx: ProcessFeeTxCommand) -> Result<(), anyhow::Error> {
-        let _ = self.tx.send(tx);
-        Ok(())
-    }
-
     pub(crate) async fn close(&self) -> Result<(), crate::ServiceError> {
         let _ = self.tx.send(ProcessFeeTxCommand::Close);
         if let Some(handle) = self.tx_handle.lock().await.take() {
@@ -118,9 +113,13 @@ impl ProcessWithdrawTx {
     async fn process_fee_tx(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 2).await?;
-        let (_, transfer_fees) =
-            ApiFeeRepo::page_api_fee_with_status(&pool.clone(), offset, 1000, &[ApiFeeStatus::Init])
-                .await?;
+        let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
+            &pool.clone(),
+            offset,
+            1000,
+            &[ApiFeeStatus::Init],
+        )
+        .await?;
         let transfer_fees_len = transfer_fees.len();
         for req in transfer_fees {
             self.process_fee_single_tx(req).await?;
@@ -132,7 +131,6 @@ impl ProcessWithdrawTx {
     async fn process_fee_single_tx(&self, req: ApiFeeEntity) -> Result<(), crate::ServiceError> {
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
-
         let mut params = ApiBaseTransferReq::new(
             &req.from_addr,
             &req.to_addr.to_string(),
@@ -153,7 +151,10 @@ impl ProcessWithdrawTx {
         let tx_resp = ApiFeeDomain::transfer(transfer_req).await;
         match tx_resp {
             Ok(tx) => self.handle_fee_tx_success(&req.trade_no, tx).await,
-            Err(_) => self.handle_fee_tx_failed(&req.trade_no).await,
+            Err(err) => {
+                tracing::error!("failed to process fee tx: {}", err);
+                self.handle_fee_tx_failed(&req.trade_no).await
+            },
         }
     }
 
@@ -276,9 +277,13 @@ impl ProcessWithdrawTxReport {
     async fn process_fee_tx_report(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 20).await?;
-        let (_, transfer_fees) =
-            ApiFeeRepo::page_api_fee_with_status(&pool, offset, 1000, &[ApiFeeStatus::SendingTx, ApiFeeStatus::SendingTxFailed])
-                .await?;
+        let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
+            &pool,
+            offset,
+            1000,
+            &[ApiFeeStatus::SendingTx, ApiFeeStatus::SendingTxFailed],
+        )
+        .await?;
         let transfer_fees_len = transfer_fees.len();
         for req in transfer_fees {
             self.process_fee_single_tx_report(req).await?;
@@ -291,7 +296,11 @@ impl ProcessWithdrawTxReport {
         &self,
         req: ApiFeeEntity,
     ) -> Result<(), crate::ServiceError> {
-        let status = if req.status == ApiFeeStatus::SendingTxFailed { TransStatus::Fail } else { TransStatus::Success };
+        let status = if req.status == ApiFeeStatus::SendingTxFailed {
+            TransStatus::Fail
+        } else {
+            TransStatus::Success
+        };
         let backend_api = Context::get_global_backend_api()?;
         let _ = backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(

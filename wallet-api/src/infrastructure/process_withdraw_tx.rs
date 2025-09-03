@@ -44,14 +44,6 @@ impl ProcessWithdrawTxHandle {
         }
     }
 
-    pub(crate) async fn submit_tx(
-        &self,
-        tx: ProcessWithdrawTxCommand,
-    ) -> Result<(), anyhow::Error> {
-        let _ = self.tx.send(tx);
-        Ok(())
-    }
-
     pub(crate) async fn close(&self) -> Result<(), crate::ServiceError> {
         let _ = self.tx.send(ProcessWithdrawTxCommand::Close);
         if let Some(handle) = self.tx_handle.lock().await.take() {
