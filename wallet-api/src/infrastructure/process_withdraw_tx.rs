@@ -131,7 +131,7 @@ impl ProcessWithdrawTx {
     async fn process_withdraw_single_tx(
         &self,
         req: ApiWithdrawEntity,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), crate::ServiceError> {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
 
         let coin =
