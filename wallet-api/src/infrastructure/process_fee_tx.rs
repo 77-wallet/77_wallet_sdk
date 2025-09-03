@@ -45,6 +45,11 @@ impl ProcessFeeTxHandle {
         }
     }
 
+    pub(crate) async fn submit_tx(&self) -> Result<(), crate::ServiceError> {
+        let _ = self.tx.send(ProcessFeeTxCommand::Tx);
+        Ok(())
+    }
+
     pub(crate) async fn close(&self) -> Result<(), crate::ServiceError> {
         let _ = self.tx.send(ProcessFeeTxCommand::Close);
         if let Some(handle) = self.tx_handle.lock().await.take() {
@@ -181,9 +186,12 @@ impl ProcessWithdrawTx {
             ApiFeeStatus::SendingTx,
         )
         .await?;
+        tracing::info!("send tx success ---");
         // 上报交易不影响交易偏移量计算
-        let _ = self.handle_fee_tx_report(trade_no, &tx.tx_hash, TransStatus::Success, "", ApiFeeStatus::SendingTx).await;
-        tracing::info!("upload tx exec receipt success ---");
+        let res = self.handle_fee_tx_report(trade_no, &tx.tx_hash, TransStatus::Success, "", ApiFeeStatus::SendingTx).await;
+        if res.is_err() {
+            tracing::error!("failed to handle fee tx report: {}", res.err().unwrap());
+        }
         Ok(())
     }
 

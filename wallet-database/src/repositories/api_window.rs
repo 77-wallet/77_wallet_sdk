@@ -1,5 +1,4 @@
 use crate::{DbPool, dao::api_window::ApiWindowDao};
-use sqlx::Pool;
 
 pub struct ApiWindowRepo;
 

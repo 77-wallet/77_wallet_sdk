@@ -102,4 +102,12 @@ impl ApiWithdrawRepo {
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
     }
+
+    pub async fn update_api_fee_post_tx_count(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+    }
 }
