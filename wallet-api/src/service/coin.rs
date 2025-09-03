@@ -134,7 +134,7 @@ impl CoinService {
                         coin.token_address.unwrap_or_default(),
                     )])),
                     is_default: coin.is_default == 1,
-                    hot_coin: true,
+                    hot_coin: coin.status == 1,
                     show_contract: false,
                 })
             }
@@ -442,7 +442,7 @@ impl CoinService {
                 decimals,
                 0,
                 0,
-                1,
+                0,
                 false,
                 time,
                 time,
