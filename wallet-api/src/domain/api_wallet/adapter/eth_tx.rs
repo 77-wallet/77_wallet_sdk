@@ -13,12 +13,8 @@ use crate::{
         multisig::MultisigDomain,
     },
     infrastructure::swap_client::AggQuoteResp,
-    request::transaction::{
-        ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
-    },
-    response_vo::{
-        EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams,
-    },
+    request::transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
+    response_vo::{EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams},
 };
 
 use crate::request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq};

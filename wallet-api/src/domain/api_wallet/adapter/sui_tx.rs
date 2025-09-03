@@ -8,9 +8,7 @@ use crate::{
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{
-            ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
-        },
+        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
 };

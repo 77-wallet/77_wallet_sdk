@@ -156,12 +156,8 @@ impl ProcessWithdrawTx {
         // 发交易
         let tx_resp = ApiWithdrawDomain::transfer(transfer_req).await;
         match tx_resp {
-            Ok(tx) => {
-                self.handle_withdraw_tx_success(&req.trade_no, tx).await
-            }
-            Err(_) => {
-                self.handle_withdraw_tx_failed(&req.trade_no).await
-            }
+            Ok(tx) => self.handle_withdraw_tx_success(&req.trade_no, tx).await,
+            Err(_) => self.handle_withdraw_tx_failed(&req.trade_no).await,
         }
     }
 
@@ -220,7 +216,13 @@ impl ProcessWithdrawTx {
         // 上报交易
         let backend_api = Context::get_global_backend_api()?;
         let _ = backend_api
-            .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(trade_no, TransType::Wd, "", TransStatus::Fail, ""))
+            .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
+                trade_no,
+                TransType::Wd,
+                "",
+                TransStatus::Fail,
+                "",
+            ))
             .await?;
         ApiWithdrawRepo::update_api_withdraw_next_status(
             &pool,
@@ -287,11 +289,14 @@ impl ProcessWithdrawTxReport {
 
     async fn process_withdraw_tx_report(&self) -> Result<(), anyhow::Error> {
         tracing::info!("starting process withdraw tx report -------------------------------");
-        
+
         Ok(())
     }
-    
-    async fn process_withdraw_single_tx_report(&self, req: ApiWithdrawEntity) -> Result<(), anyhow::Error> {
+
+    async fn process_withdraw_single_tx_report(
+        &self,
+        req: ApiWithdrawEntity,
+    ) -> Result<(), anyhow::Error> {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
         Ok(())
     }

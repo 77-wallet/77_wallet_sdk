@@ -14,7 +14,7 @@ use wallet_database::{
     entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
     repositories::{api_collect::ApiCollectRepo, api_wallet::ApiWalletRepo},
 };
-use wallet_transport_backend::request::api_wallet::transaction::FeeCollectionUploadReq;
+use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
 
@@ -119,7 +119,7 @@ impl ApiCollectDomain {
                 let fee = unit::format_to_string(fee, coin.decimals)?;
 
                 let backend_api = crate::Context::get_global_backend_api()?;
-                let req = FeeCollectionUploadReq::new(
+                let req = ServiceFeeUploadReq::new(
                     &req.trade_no,
                     &req.chain_code,
                     &main_symbol,
@@ -129,7 +129,7 @@ impl ApiCollectDomain {
                     unit::string_to_f64(&fee)?,
                 );
 
-                backend_api.upload_fee_collection_record(&req).await?;
+                backend_api.upload_service_fee_record(&req).await?;
             }
         }
         // 执行归集

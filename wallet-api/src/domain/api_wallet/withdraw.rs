@@ -99,13 +99,19 @@ impl ApiWithdrawDomain {
 
     pub async fn confirm_withdraw_tx_report(trade_no: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::ReceivedTxReport).await?;
+        ApiWithdrawRepo::update_api_withdraw_status(
+            &pool,
+            trade_no,
+            ApiWithdrawStatus::ReceivedTxReport,
+        )
+        .await?;
         Ok(())
     }
 
     pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::Success).await?;
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::Success)
+            .await?;
         Ok(())
     }
 }

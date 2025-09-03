@@ -221,8 +221,8 @@ impl Context {
         CONTEXT.get().ok_or(crate::SystemError::ContextNotInit)
     }
 
-    pub(crate) fn get_global_sqlite_pool() -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError>
-    {
+    pub(crate) fn get_global_sqlite_pool()
+    -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError> {
         Ok(Context::get_context()?.sqlite_context.get_pool()?.clone())
     }
 

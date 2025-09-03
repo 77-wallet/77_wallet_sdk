@@ -1,5 +1,6 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
+use wallet_database::entities::api_wallet::ApiWalletType;
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
@@ -27,30 +28,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("res: {res:?}");
 
     // 创建钱包
-    // let language_code = 1;
-    // let phrase = &test_params.create_wallet_req.phrase;
-    // let salt = "q1111111";
-    // let wallet_name = "api_wallet";
-    // let account_name = "ccccc";
-    // let is_default_name = true;
-    // let wallet_password = "q1111111";
-    // let invite_code = None;
-    // let api_wallet_type = ApiWalletType::SubAccount;
-    // let wallet = wallet_manager
-    //     .create_api_wallet(
-    //         language_code,
-    //         phrase,
-    //         salt,
-    //         wallet_name,
-    //         account_name,
-    //         is_default_name,
-    //         wallet_password,
-    //         invite_code,
-    //         api_wallet_type,
-    //     )
-    //     .await
-    //     .result;
-    // tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
+    let language_code = 1;
+    let phrase = &test_params.create_wallet_req.phrase;
+    let salt = "q1111111";
+    let wallet_name = "api_wallet";
+    let account_name = "ccccc";
+    let is_default_name = true;
+    let wallet_password = "q1111111";
+    let invite_code = None;
+    let api_wallet_type = ApiWalletType::SubAccount;
+    let wallet = wallet_manager
+        .create_api_wallet(
+            language_code,
+            phrase,
+            salt,
+            wallet_name,
+            account_name,
+            is_default_name,
+            wallet_password,
+            invite_code,
+            api_wallet_type,
+        )
+        .await
+        .result;
+    tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
 
     // let order_list = wallet_manager.get_api_collect_order_list().await.result;
     // tracing::info!("order_list ------------------- 2: {order_list:#?}");
