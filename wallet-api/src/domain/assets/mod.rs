@@ -473,38 +473,12 @@ impl From<&[ApiAssetsEntity]> for BalanceTasks {
 }
 
 impl ChainBalance {
-    pub(crate) async fn balance_tasks_from_assets(assets: &[AssetsEntity]) -> Vec<BalanceTask> {
-        let mut tasks = vec![];
-        for asset in assets.iter() {
-            let bal = BalanceTask {
-                address: asset.address.clone(),
-                chain_code: asset.chain_code.clone(),
-                symbol: asset.symbol.clone(),
-                decimals: asset.decimals,
-                token_address: asset.token_address(),
-            };
-            tasks.push(bal);
-        }
-        tasks
-    }
-
     pub(crate) async fn sync_address_balance(
         assets: impl Into<BalanceTasks>,
     ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
         // 限制最大并发数为 10
         let sem = Arc::new(Semaphore::new(10));
-        // let mut tasks = vec![];
         let tasks: BalanceTasks = assets.into();
-        // for asset in assets.into().0.iter() {
-        //     let bal = BalanceTask {
-        //         address: asset.address.clone(),
-        //         chain_code: asset.chain_code.clone(),
-        //         symbol: asset.symbol.clone(),
-        //         decimals: asset.decimals,
-        //         token_address: asset.token_address(),
-        //     };
-        //     tasks.push(bal);
-        // }
 
         // 并发获取余额并格式化
         let results = stream::iter(tasks.0)
@@ -516,35 +490,6 @@ impl ChainBalance {
 
         Ok(results)
     }
-
-    // pub(crate) async fn sync_address_balance(
-    //     assets: &[AssetsEntity],
-    // ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
-    //     // 限制最大并发数为 10
-    //     let sem = Arc::new(Semaphore::new(10));
-    //     let mut tasks = vec![];
-
-    //     for asset in assets.iter() {
-    //         let bal = BalanceTask {
-    //             address: asset.address.clone(),
-    //             chain_code: asset.chain_code.clone(),
-    //             symbol: asset.symbol.clone(),
-    //             decimals: asset.decimals,
-    //             token_address: asset.token_address(),
-    //         };
-    //         tasks.push(bal);
-    //     }
-
-    //     // 并发获取余额并格式化
-    //     let results = stream::iter(tasks)
-    //         .map(|task| Self::fetch_balance(task, sem.clone()))
-    //         .buffer_unordered(10)
-    //         .filter_map(|x| async move { x })
-    //         .collect::<Vec<_>>()
-    //         .await;
-
-    //     Ok(results)
-    // }
 
     // 从任务获取余额并返回结果
     async fn fetch_balance(task: BalanceTask, sem: Arc<Semaphore>) -> Option<(AssetsId, String)> {
