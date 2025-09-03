@@ -93,6 +93,7 @@ impl AssetsDomain {
             .await
             .map_err(crate::ServiceError::Database)?;
 
+        let show_contract = keyword.is_some();
         let mut res = crate::response_vo::coin::CoinInfoList::default();
         for assets in assets_list {
             let coin =
@@ -116,7 +117,7 @@ impl AssetsDomain {
                     )])),
                     is_default: coin.is_default == 1,
                     hot_coin: coin.status == 1,
-                    show_contract: false,
+                    show_contract,
                 });
             }
         }

@@ -109,6 +109,8 @@ impl CoinService {
         let list = tx
             .hot_coin_list_symbol_not_in(&exclude, keyword, page, page_size)
             .await?;
+
+        let show_contract = keyword.is_some();
         let mut data = CoinInfoList::default();
         for coin in list.data {
             if let Some(d) = data
@@ -128,7 +130,7 @@ impl CoinService {
                     )])),
                     is_default: coin.is_default == 1,
                     hot_coin: coin.status == 1,
-                    show_contract: false,
+                    show_contract,
                 })
             }
         }
