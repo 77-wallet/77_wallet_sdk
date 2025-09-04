@@ -1,5 +1,5 @@
 use crate::{
-    consts::endpoint::api_wallet::{TRANS_EXECUTE_COMPLETE, TRANS_SERVICE_FEE_TRANS},
+    consts::endpoint::api_wallet::{TRANS_EVENT_ACK, TRANS_EXECUTE_COMPLETE, TRANS_SERVICE_FEE_TRANS},
     request::api_wallet::transaction::*,
     response::BackendResponse,
 };
@@ -50,6 +50,19 @@ impl BackendApi {
             .send::<BackendResponse>()
             .await?;
 
+        res.process(&self.aes_cbc_cryptor)
+    }
+
+    pub async fn event_accept_tx(
+        &self,
+        req: &EventAcceptTxReq,
+    ) -> Result<Option<()>, crate::Error> {
+        let res = self
+            .client
+            .post(TRANS_EVENT_ACK)
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
         res.process(&self.aes_cbc_cryptor)
     }
 }

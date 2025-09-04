@@ -5,7 +5,7 @@ use crate::{
 };
 use chrono::TimeDelta;
 use tokio::{
-    sync::{broadcast, mpsc, Mutex},
+    sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
 };
 use wallet_database::{
@@ -27,11 +27,18 @@ pub(crate) enum ProcessFeeTxReportCommand {
     Tx,
 }
 
+#[derive(Clone)]
+pub(crate) enum ProcessFeeTxConfirmReportCommand {
+    Tx,
+}
+
 #[derive(Debug)]
 pub(crate) struct ProcessFeeTxHandle {
     tx: broadcast::Sender<ProcessFeeTxCommand>,
+    confirm_report_tx: mpsc::Sender<ProcessFeeTxConfirmReportCommand>,
     tx_handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
     tx_report_handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
+    tx_confirm_report_handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
 }
 
 impl ProcessFeeTxHandle {
@@ -39,20 +46,34 @@ impl ProcessFeeTxHandle {
         let (shutdown_tx, _) = broadcast::channel(1);
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
+        let shutdown_rx3 = shutdown_tx.subscribe();
         let (report_tx, report_rx) = mpsc::channel(1);
+        // 发交易
         let mut tx = ProcessFeeTx::new(shutdown_rx1, report_tx);
         let tx_handle = tokio::spawn(async move { tx.run().await });
+        // 上报交易
         let mut tx_report = ProcessFeeTxReport::new(shutdown_rx2, report_rx);
         let tx_report_handle = tokio::spawn(async move { tx_report.run().await });
+        // 上报已经确认交易
+        let (confirm_report_tx, confirm_report_rx) = mpsc::channel(1);
+        let mut tx_confirm_report = ProcessFeeTxConfirmReport::new(shutdown_rx3, confirm_report_rx);
+        let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
         Self {
             tx: shutdown_tx,
+            confirm_report_tx,
             tx_handle: Mutex::new(Some(tx_handle)),
             tx_report_handle: Mutex::new(Some(tx_report_handle)),
+            tx_confirm_report_handle: Mutex::new(Some(tx_confirm_report_handle)),
         }
     }
 
     pub(crate) async fn submit_tx(&self) -> Result<(), crate::ServiceError> {
         let _ = self.tx.send(ProcessFeeTxCommand::Tx);
+        Ok(())
+    }
+
+    pub(crate) async fn submit_confirm_report_tx(&self) -> Result<(), crate::ServiceError> {
+        let _ = self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx);
         Ok(())
     }
 
@@ -68,6 +89,11 @@ impl ProcessFeeTxHandle {
                 crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound)
             })??;
         }
+        if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
+            handle.await.map_err(|_| {
+                crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound)
+            })??;
+        }
         Ok(())
     }
 }
@@ -78,7 +104,10 @@ struct ProcessFeeTx {
 }
 
 impl ProcessFeeTx {
-    fn new(shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>, report_tx: mpsc::Sender<ProcessFeeTxReportCommand>) -> Self {
+    fn new(
+        shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+        report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
+    ) -> Self {
         Self { shutdown_rx, report_tx }
     }
 
@@ -206,35 +235,6 @@ impl ProcessFeeTx {
         let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx);
         Ok(())
     }
-
-    // async fn handle_fee_tx_report(
-    //     &self,
-    //     trade_no: &str,
-    //     hash: &str,
-    //     status: TransStatus,
-    //     remark: &str,
-    //     tx_status: ApiFeeStatus,
-    // ) -> Result<(), crate::ServiceError> {
-    //     let backend_api = Context::get_global_backend_api()?;
-    //     let _ = backend_api
-    //         .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
-    //             trade_no,
-    //             TransType::Fee,
-    //             hash,
-    //             status,
-    //             remark,
-    //         ))
-    //         .await?;
-    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    //     ApiFeeRepo::update_api_fee_next_status(
-    //         &pool,
-    //         &trade_no,
-    //         tx_status,
-    //         ApiFeeStatus::ReceivedTxReport,
-    //     )
-    //     .await?;
-    //     Ok(())
-    // }
 }
 
 struct ProcessFeeTxReport {
@@ -243,7 +243,10 @@ struct ProcessFeeTxReport {
 }
 
 impl ProcessFeeTxReport {
-    fn new(shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>, report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>) -> Self {
+    fn new(
+        shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+        report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
+    ) -> Self {
         Self { shutdown_rx, report_rx }
     }
 
@@ -256,8 +259,7 @@ impl ProcessFeeTxReport {
                     match msg {
                         Ok(cmd) => {
                             match cmd {
-                                ProcessFeeTxCommand::Tx => {
-                                }
+                                ProcessFeeTxCommand::Tx => {}
                                 ProcessFeeTxCommand::Close => {
                                     tracing::info!("closing process fee tx report -------------------------------");
                                     break;
@@ -268,21 +270,18 @@ impl ProcessFeeTxReport {
                     }
                 }
                 report_msg = self.report_rx.recv() => {
-                    match report_msg {
-                        Some(cmd) => {
-                            match cmd {
-                                ProcessFeeTxReportCommand::Tx => {
-                                    match self.process_fee_tx_report().await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            tracing::error!("failed to process fee tx report: {}", err);
-                                        }
+                    if let Some(cmd) = report_msg {
+                        match cmd {
+                            ProcessFeeTxReportCommand::Tx => {
+                                match self.process_fee_tx_report().await {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        tracing::error!("failed to process fee tx report: {}", err);
                                     }
-                                    iv.reset();
                                 }
                             }
                         }
-                        None => {}
+                        iv.reset();
                     }
                 }
                 _ = iv.tick() => {
@@ -348,13 +347,23 @@ impl ProcessFeeTxReport {
         {
             Ok(_) => {
                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
-                ApiFeeRepo::update_api_fee_next_status(
-                    &pool,
-                    &req.trade_no,
-                    ApiFeeStatus::SendingTx,
-                    ApiFeeStatus::ReceivedTxReport,
-                )
-                .await?;
+                if req.status == ApiFeeStatus::SendingTxFailed {
+                    ApiFeeRepo::update_api_fee_next_status(
+                        &pool,
+                        &req.trade_no,
+                        ApiFeeStatus::SendingTxFailed,
+                        ApiFeeStatus::ReceivedTxFailedReport,
+                    )
+                    .await?;
+                } else {
+                    ApiFeeRepo::update_api_fee_next_status(
+                        &pool,
+                        &req.trade_no,
+                        ApiFeeStatus::SendingTx,
+                        ApiFeeStatus::ReceivedTxReport,
+                    )
+                    .await?;
+                }
                 tracing::info!("upload tx exec receipt success ---");
                 return Ok(1);
             }
@@ -370,5 +379,99 @@ impl ProcessFeeTxReport {
                 return Ok(0);
             }
         }
+    }
+}
+
+struct ProcessFeeTxConfirmReport {
+    shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+    report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
+}
+
+impl ProcessFeeTxConfirmReport {
+    fn new(
+        shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+        report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
+    ) -> Self {
+        Self { shutdown_rx, report_rx }
+    }
+
+    async fn run(&mut self) -> Result<(), crate::ServiceError> {
+        tracing::info!("starting process fee tx confirm report -------------------------------");
+        let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
+        loop {
+            tokio::select! {
+                msg = self.shutdown_rx.recv() => {
+                    match msg {
+                        Ok(cmd) => {
+                            match cmd {
+                                ProcessFeeTxCommand::Tx => {
+                                }
+                                ProcessFeeTxCommand::Close => {
+                                    tracing::info!("closing process fee tx confirm report -------------------------------");
+                                    break;
+                                }
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                }
+                report_msg = self.report_rx.recv() => {
+                    match report_msg {
+                        Some(cmd) => {
+                            match cmd {
+                                ProcessFeeTxConfirmReportCommand::Tx => {
+                                    match self.process_fee_tx_confirm_report().await {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            tracing::error!("failed to process fee tx confirm report: {}", err);
+                                        }
+                                    }
+                                    iv.reset();
+                                }
+                            }
+                        }
+                        None => {}
+                    }
+                }
+                _ = iv.tick() => {
+                    match self.process_fee_tx_confirm_report().await {
+                        Ok(_) => {}
+                        Err(err) => {
+                            tracing::error!("failed to process fee tx confirm report: {}", err);
+                        }
+                    }
+                }
+            }
+        }
+        tracing::info!("closing process fee tx confirm report ------------------------------- end");
+        Ok(())
+    }
+
+    async fn process_fee_tx_confirm_report(&self) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 21).await?;
+        let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
+            &pool,
+            offset,
+            1000,
+            &[ApiFeeStatus::Failure, ApiFeeStatus::Success],
+        )
+        .await?;
+        let transfer_fees_len = transfer_fees.len();
+        for req in transfer_fees {
+            self.process_fee_single_tx_confirm_report(req).await?;
+        }
+        ApiWindowRepo::upsert_api_offset(&pool, 21, offset + transfer_fees_len as i64).await?;
+        Ok(())
+    }
+
+    async fn process_fee_single_tx_confirm_report(
+        &self,
+        req: ApiFeeEntity,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Success).await?;
+        tracing::info!("confirm fee tx success ---");
+        Ok(())
     }
 }

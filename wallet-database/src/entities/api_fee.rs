@@ -40,8 +40,10 @@ pub enum ApiFeeStatus {
     SendingTx,
     SendingTxFailed,
     ReceivedTxReport,
+    ReceivedTxFailedReport,
     Success,
     Failure,
+    ConfirmReport,
 }
 
 impl Display for ApiFeeStatus {

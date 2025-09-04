@@ -20,6 +20,7 @@ CREATE TABLE api_fee
     block_height     VARCHAR(32) NULL,                 --块高
     notes            TEXT NULL,                        --备注
     post_tx_count    INTEGER      DEFAULT 0  NOT NULL, -- 已发送交易次数
+    post_confirm_tx_count    INTEGER      DEFAULT 0  NOT NULL, -- 已确认交易次数
     created_at       TIMESTAMP               NOT NULL,
     updated_at       TIMESTAMP
 );
