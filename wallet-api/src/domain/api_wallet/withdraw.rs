@@ -70,6 +70,7 @@ impl ApiWithdrawDomain {
                 ApiWithdrawStatus::AuditPass,
             )
             .await?;
+            crate::manager::Context::get_global_processed_withdraw_tx_handle()?.submit_tx(&req.trade_no).await?;
         }
         Ok(())
     }
@@ -97,15 +98,8 @@ impl ApiWithdrawDomain {
         Ok(resp)
     }
 
-    pub async fn confirm_withdraw_tx_report(trade_no: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::ReceivedTxReport).await?;
-        Ok(())
-    }
-
     pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::Success).await?;
+        let _ = crate::manager::Context::get_global_processed_withdraw_tx_handle()?.submit_confirm_report_tx().await;
         Ok(())
     }
 }

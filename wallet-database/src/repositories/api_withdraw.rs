@@ -28,6 +28,13 @@ impl ApiWithdrawRepo {
         ApiWithdrawDao::page_api_withdraw_with_status(pool.as_ref(), page, page_size, vec_status).await
     }
 
+    pub async fn get_api_withdraw_by_trade_no(
+        pool: &DbPool,
+        trade_no: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error> {
+        ApiWithdrawDao::get_api_withdraw_by_trade_no(pool.as_ref(), trade_no).await
+    }
+
     pub async fn upsert_api_withdraw(
         pool: &DbPool,
         uid: &str,

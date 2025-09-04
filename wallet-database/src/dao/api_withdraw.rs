@@ -70,6 +70,22 @@ impl ApiWithdrawDao {
         Ok((count, res))
     }
 
+    pub async fn get_api_withdraw_by_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE trade_no = ?";
+        let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
     async fn upsert<'c, E>(executor: E, input: ApiWithdrawEntity) -> Result<(), crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
