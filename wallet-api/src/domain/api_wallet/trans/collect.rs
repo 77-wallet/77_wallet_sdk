@@ -14,7 +14,9 @@ use wallet_database::{
     entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
     repositories::{api_collect::ApiCollectRepo, api_wallet::ApiWalletRepo},
 };
-use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
+use wallet_transport_backend::request::api_wallet::{
+    strategy::ChainConfig, transaction::ServiceFeeUploadReq,
+};
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
 
@@ -59,20 +61,12 @@ impl ApiCollectDomain {
         .await?;
         tracing::info!("估算手续费: {}", fee);
 
-        let backend_api = crate::Context::get_global_backend_api()?;
         // 查询策略
-        let strategy = backend_api.query_collect_strategy(&req.uid).await?;
-        let Some(chain_config) =
-            strategy.chain_configs.iter().find(|config| config.chain_code == req.chain_code)
-        else {
-            return Err(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::ChainConfigNotFound(req.chain_code.to_owned()),
-            )
-            .into());
-        };
+        let chain_config = Self::get_collect_config(&req.uid, &req.chain_code).await?;
 
         // 查询资产主币余额
-        let balance = Self::query_balance(&req.from, &req.chain_code, None).await?;
+        let balance =
+            Self::query_balance(&req.from, &req.chain_code, None, main_coin.decimals).await?;
 
         tracing::info!("from: {}, to: {}", req.from, req.to);
         tracing::info!("资产主币余额: {balance}, 手续费: {fee}");
@@ -84,17 +78,17 @@ impl ApiCollectDomain {
         // 如果手续费不足，则从其他地址转入手续费费用
         if balance < need {
             // 查询出款地址余额主币余额
-            // let withdraw_address = &chain_config.normal_address.address;
+            let withdraw_address = &chain_config.normal_address.address;
             // let withdraw_address = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
-            let withdraw_address = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+            // let withdraw_address = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
 
             let withdraw_balance =
-                Self::query_balance(withdraw_address, &req.chain_code, None).await?;
+                Self::query_balance(withdraw_address, &req.chain_code, None, main_coin.decimals)
+                    .await?;
 
             tracing::info!(
                 "subaccount wallet balance not enough，subaccount balance: {withdraw_balance}"
             );
-            // todo!();
             // 出款地址余额够不够
             // if 不够 -> 出款地址余额 -> 不够 -> 通知后端：失败原因
             let withdraw_balance = conversion::decimal_from_str(&withdraw_balance)?;
@@ -105,13 +99,15 @@ impl ApiCollectDomain {
                     ApiCollectStatus::WithdrawInsufficientBalance,
                 )
                 .await?;
+
                 tracing::info!("withdraw wallet balance not enough");
+                // todo!();
             }
             // else 够 -> 转账手续费 -> 通知后端手续费转账
             else {
-                let coin = CoinDomain::get_coin(&req.chain_code, &main_symbol, None).await?;
-                let fee = unit::format_to_string(fee, coin.decimals)?;
-
+                // let coin = CoinDomain::get_coin(&req.chain_code, &main_symbol, None).await?;
+                // let fee = unit::format_to_string(fee, coin.decimals)?;
+                tracing::info!("need transfer withdraw fee");
                 let backend_api = crate::Context::get_global_backend_api()?;
                 let req = ServiceFeeUploadReq::new(
                     &req.trade_no,
@@ -170,10 +166,30 @@ impl ApiCollectDomain {
         Ok(())
     }
 
+    async fn get_collect_config(
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<ChainConfig, crate::ServiceError> {
+        // 查询策略
+        let backend_api = crate::Context::get_global_backend_api()?;
+        let strategy = backend_api.query_collect_strategy(uid).await?;
+        let Some(chain_config) =
+            strategy.chain_configs.into_iter().find(|config| config.chain_code == chain_code)
+        else {
+            return Err(crate::BusinessError::ApiWallet(
+                crate::ApiWalletError::ChainConfigNotFound(chain_code.to_owned()),
+            )
+            .into());
+        };
+
+        Ok(chain_config)
+    }
+
     async fn query_balance(
         owner_address: &str,
         chain_code: &str,
         token_address: Option<String>,
+        decimals: u8,
     ) -> Result<String, crate::ServiceError> {
         let adapter = API_ADAPTER_FACTORY
             .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
@@ -181,7 +197,8 @@ impl ApiCollectDomain {
             .get_transaction_adapter(chain_code)
             .await?;
         let account = adapter.balance(&owner_address, token_address).await?;
-        Ok(account.to_string())
+        let ammount = unit::format_to_string(account, decimals)?;
+        Ok(ammount)
     }
 
     async fn estimate_fee(
@@ -193,7 +210,7 @@ impl ApiCollectDomain {
         main_symbol: &str,
         token_address: Option<String>,
         decimals: u8,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
+    ) -> Result<String, crate::ServiceError> {
         let adapter = API_ADAPTER_FACTORY
             .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
             .await
@@ -216,7 +233,7 @@ impl ApiCollectDomain {
             ChainCode::Sui => todo!(),
             ChainCode::Ton => todo!(),
         };
-        let amount = unit::convert_to_u256(&amount, decimals)?;
+        // let amount = unit::convert_to_u256(&amount, decimals)?;
         Ok(amount)
     }
 }
