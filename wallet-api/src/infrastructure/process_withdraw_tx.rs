@@ -113,7 +113,7 @@ impl ProcessWithdrawTx {
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             tokio::select! {
-                msg = self.rx.recv() => {
+                msg = self.shutdown_rx.recv() => {
                     match msg {
                         Ok(cmd) => {
                             match cmd {
