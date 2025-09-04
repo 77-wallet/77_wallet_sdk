@@ -217,7 +217,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // let wallet_address = "0x668fb1D3Df02391064CEe50F6A3ffdbAE0CDb406";
-        let wallet_address = "0x48914c12BbB44a4c32e6CA7A99831c46267533B0";
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         let res = wallet_manager.physical_delete_wallet(wallet_address).await;
         tracing::info!("res: {res:?}");
