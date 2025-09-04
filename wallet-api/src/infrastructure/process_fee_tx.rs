@@ -18,7 +18,7 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 
 #[derive(Clone)]
 pub(crate) enum ProcessFeeTxCommand {
-    Tx,
+    Tx(String),
 }
 
 #[derive(Clone)]
@@ -69,8 +69,8 @@ impl ProcessFeeTxHandle {
         }
     }
 
-    pub(crate) async fn submit_tx(&self) -> Result<(), crate::ServiceError> {
-        let _ = self.tx_tx.send(ProcessFeeTxCommand::Tx);
+    pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
+        let _ = self.tx_tx.send(ProcessFeeTxCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 
@@ -127,14 +127,18 @@ impl ProcessFeeTx {
                 msg = self.tx_rx.recv() => {
                     if let Some(cmd) = msg {
                         match cmd {
-                            ProcessFeeTxCommand::Tx => {
-                                match self.process_fee_tx().await {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        tracing::error!("failed to process fee tx: {}", err);
+                            ProcessFeeTxCommand::Tx(trade_no) => {
+                                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                                let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
+                                if res.is_ok() {
+                                    match self.process_fee_single_tx(res.unwrap()).await {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            tracing::error!("failed to process fee tx: {}", err);
+                                        }
                                     }
+                                    iv.reset();
                                 }
-                                iv.reset();
                             }
                         }
                     }
@@ -314,10 +318,12 @@ impl ProcessFeeTxReport {
         &self,
         req: ApiFeeEntity,
     ) -> Result<i32, crate::ServiceError> {
+        tracing::info!(trade_no=%req.trade_no, "process fee tx report -------------------------------");
         // 判断超时时间
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
-        if timeout > TimeDelta::seconds(req.post_tx_count as i64) {
+        if timeout < TimeDelta::seconds(req.post_tx_count as i64) {
+            tracing::warn!("process fee tx report timeout ---");
             return Ok(0);
         }
         let status = if req.status == ApiFeeStatus::SendingTxFailed {
@@ -360,12 +366,21 @@ impl ProcessFeeTxReport {
             }
             Err(err) => {
                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
-                ApiFeeRepo::update_api_fee_post_tx_count(
-                    &pool,
-                    &req.trade_no,
-                    ApiFeeStatus::SendingTx,
-                )
-                .await?;
+                if req.status == ApiFeeStatus::SendingTx {
+                    ApiFeeRepo::update_api_fee_post_tx_count(
+                        &pool,
+                        &req.trade_no,
+                        ApiFeeStatus::SendingTx,
+                    )
+                    .await?;
+                } else {
+                    ApiFeeRepo::update_api_fee_post_tx_count(
+                        &pool,
+                        &req.trade_no,
+                        ApiFeeStatus::SendingTxFailed,
+                    )
+                    .await?;
+                }
                 tracing::error!("failed to upload tx exec receipt: {}", err);
                 return Ok(0);
             }

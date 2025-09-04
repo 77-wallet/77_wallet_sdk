@@ -56,10 +56,7 @@ impl ApiFeeDomain {
         });
         FrontendNotifyEvent::new(data).send().await?;
 
-        // 可能发交易
-        ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Init).await?;
-
-        let _ = crate::manager::Context::get_global_processed_fee_tx_handle()?.submit_tx().await;
+        let _ = crate::manager::Context::get_global_processed_fee_tx_handle()?.submit_tx(&req.trade_no).await;
         Ok(())
     }
 

@@ -70,6 +70,16 @@ impl ApiFeeDao {
         Ok((count, res))
     }
 
+    pub async fn get_api_fee_by_trade_no<'a, E>(exec: E, trade_no: &str) -> Result<ApiFeeEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_fee WHERE trade_no = ?";
+        let res = sqlx::query_as::<_, ApiFeeEntity>(sql).bind(trade_no).fetch_one(exec).await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
     async fn upsert<'c, E>(executor: E, input: ApiFeeEntity) -> Result<(), crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
