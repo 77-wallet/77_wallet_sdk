@@ -1,8 +1,8 @@
 use crate::{
     domain::{
         api_wallet::{
-            collect::ApiCollectDomain, fee::ApiFeeDomain, wallet::ApiWalletDomain,
-            withdraw::ApiWithdrawDomain,
+            trans::{ApiTransDomain, collect::ApiCollectDomain, withdraw::ApiWithdrawDomain},
+            wallet::ApiWalletDomain,
         },
         coin::CoinDomain,
     },
@@ -57,7 +57,7 @@ impl TransMsg {
         let transfer_req = ApiTransferReq { base: params, password: password.to_string() };
         // 上链
         // 发交易
-        let tx_resp = ApiFeeDomain::transfer(transfer_req).await?;
+        let tx_resp = ApiTransDomain::transfer(transfer_req).await?;
         // ApiChainTransDomain::transfer(params, bill_kind, adapter)
         let _resource_consume = if tx_resp.consumer.is_none() {
             "0".to_string()

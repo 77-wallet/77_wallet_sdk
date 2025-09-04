@@ -1,6 +1,6 @@
 use crate::{
     Context,
-    domain::{api_wallet::withdraw::ApiWithdrawDomain, chain::TransferResp, coin::CoinDomain},
+    domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use tokio::{
@@ -154,7 +154,7 @@ impl ProcessWithdrawTx {
         let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
 
         // 发交易
-        let tx_resp = ApiWithdrawDomain::transfer(transfer_req).await;
+        let tx_resp = ApiTransDomain::transfer(transfer_req).await;
         match tx_resp {
             Ok(tx) => self.handle_withdraw_tx_success(&req.trade_no, tx).await,
             Err(_) => self.handle_withdraw_tx_failed(&req.trade_no).await,

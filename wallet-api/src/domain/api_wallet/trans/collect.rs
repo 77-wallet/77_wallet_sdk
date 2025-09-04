@@ -2,7 +2,7 @@ use crate::{
     domain::{
         api_wallet::{
             adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
-            fee::ApiFeeDomain,
+            trans::ApiTransDomain,
             wallet::ApiWalletDomain,
         },
         chain::transaction::ChainTransDomain,
@@ -145,7 +145,7 @@ impl ApiCollectDomain {
             let transfer_req = ApiTransferReq { base: params, password };
             // 上链
             // 发交易
-            let tx_resp = ApiFeeDomain::transfer(transfer_req).await?;
+            let tx_resp = ApiTransDomain::transfer(transfer_req).await?;
             let resource_consume = if tx_resp.consumer.is_none() {
                 "0".to_string()
             } else {
