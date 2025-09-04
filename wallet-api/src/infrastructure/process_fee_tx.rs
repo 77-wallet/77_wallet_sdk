@@ -10,7 +10,7 @@ use tokio::{
 };
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
-    repositories::{api_fee::ApiFeeRepo, api_window::ApiWindowRepo},
+    repositories::api_fee::ApiFeeRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransStatus, TransType, TxExecReceiptUploadReq,
@@ -159,20 +159,17 @@ impl ProcessFeeTx {
 
     async fn process_fee_tx(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 2).await?;
         // 获取交易这里有问题
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool.clone(),
-            offset,
+            0,
             1000,
             &[ApiFeeStatus::Init],
         )
         .await?;
-        let transfer_fees_len = transfer_fees.len();
         for req in transfer_fees {
             self.process_fee_single_tx(req).await?;
         }
-        ApiWindowRepo::upsert_api_offset(&pool, 2, offset + transfer_fees_len as i64).await?;
         Ok(())
     }
 
@@ -248,6 +245,7 @@ impl ProcessFeeTx {
 struct ProcessFeeTxReport {
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
+    failed_count: i64,
 }
 
 impl ProcessFeeTxReport {
@@ -255,7 +253,7 @@ impl ProcessFeeTxReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
     ) -> Self {
-        Self { shutdown_rx, report_rx }
+        Self { shutdown_rx, report_rx, failed_count: 0 }
     }
 
     async fn run(&mut self) -> Result<(), crate::ServiceError> {
@@ -296,23 +294,24 @@ impl ProcessFeeTxReport {
         Ok(())
     }
 
-    async fn process_fee_tx_report(&self) -> Result<(), crate::ServiceError> {
+    async fn process_fee_tx_report(&mut self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 20).await?;
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool,
-            offset,
-            1000,
+            0,
+            1000 + self.failed_count,
             &[ApiFeeStatus::SendingTx, ApiFeeStatus::SendingTxFailed],
         )
         .await?;
         let transfer_fees_len = transfer_fees.len();
-        let mut success_count = 0;
+        let mut failed_count = 0;
         for req in transfer_fees {
-            success_count += self.process_fee_single_tx_report(req).await?;
+            if let Err(_) = self.process_fee_single_tx_report(req).await {
+                failed_count += 1;
+            }
         }
-        if success_count == transfer_fees_len as i32 {
-            ApiWindowRepo::upsert_api_offset(&pool, 20, offset + transfer_fees_len as i64).await?;
+        if failed_count == transfer_fees_len as i32 {
+            self.failed_count += 1;
         }
         Ok(())
     }
@@ -384,8 +383,7 @@ impl ProcessFeeTxReport {
                     )
                     .await?;
                 }
-                tracing::error!("failed to upload tx exec receipt: {}", err);
-                return Ok(0);
+                return Err(crate::ServiceError::TransportBackend(err));
             }
         }
     }
@@ -394,6 +392,7 @@ impl ProcessFeeTxReport {
 struct ProcessFeeTxConfirmReport {
     shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
+    failed_count: i64,
 }
 
 impl ProcessFeeTxConfirmReport {
@@ -401,7 +400,7 @@ impl ProcessFeeTxConfirmReport {
         shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
     ) -> Self {
-        Self { shutdown_rx, report_rx }
+        Self { shutdown_rx, report_rx, failed_count: 0 }
     }
 
     async fn run(&mut self) -> Result<(), crate::ServiceError> {
@@ -445,21 +444,25 @@ impl ProcessFeeTxConfirmReport {
         Ok(())
     }
 
-    async fn process_fee_tx_confirm_report(&self) -> Result<(), crate::ServiceError> {
+    async fn process_fee_tx_confirm_report(&mut self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let offset = ApiWindowRepo::get_api_offset(&pool.clone(), 21).await?;
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool,
-            offset,
-            1000,
+            0,
+            1000 + self.failed_count,
             &[ApiFeeStatus::Failure, ApiFeeStatus::Success],
         )
         .await?;
         let transfer_fees_len = transfer_fees.len();
+        let mut failed_count = 0;
         for req in transfer_fees {
-            self.process_fee_single_tx_confirm_report(req).await?;
+            if let Err(_) = self.process_fee_single_tx_confirm_report(req).await {
+                failed_count += 1;
+            }
         }
-        ApiWindowRepo::upsert_api_offset(&pool, 21, offset + transfer_fees_len as i64).await?;
+        if failed_count == transfer_fees_len as i32 {
+            self.failed_count += 1;
+        }
         Ok(())
     }
 
