@@ -2,9 +2,8 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        assets::AssetsDomain,
-        chain::ChainDomain,
-        coin::{CoinDomain, coin_info_to_coin_data},
+        chain::{adapter::ChainAdapterFactory, ChainDomain},
+        coin::{coin_info_to_coin_data, CoinDomain},
     },
     infrastructure::{
         parse_utc_with_error,
@@ -15,7 +14,7 @@ use crate::{
         coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
     },
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
@@ -25,7 +24,6 @@ use wallet_database::{
     repositories::{
         ResourcesRepo,
         assets::AssetsRepoTrait,
-        chain::ChainRepo,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
     },
@@ -85,37 +83,34 @@ impl CoinService {
         } else {
             is_multisig
         };
-        let symbol_list = tx
+        let assets = tx
             .get_chain_assets_by_address_chain_code_symbol(
                 addresses,
                 chain_code.clone(),
                 None,
                 _is_multisig,
             )
-            .await
-            .map_err(crate::ServiceError::Database)?;
-
-        let symbol_list: std::collections::HashSet<String> =
-            symbol_list.into_iter().map(|coin| coin.symbol).collect();
-
-        let chain_codes = if let Some(chain_code) = chain_code {
-            HashSet::from([chain_code])
-        } else {
-            ChainRepo::get_chain_list(&pool)
-                .await?
-                .into_iter()
-                .map(|chain| chain.chain_code)
-                .collect()
-        };
+            .await?;
+        let exclude = assets
+            .iter()
+            .map(|asset| CoinId {
+                symbol: asset.symbol.clone(),
+                chain_code: asset.chain_code.clone(),
+                token_address: asset.token_address(),
+            })
+            .collect::<Vec<CoinId>>();
 
         tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
         let list = tx
-            .hot_coin_list_symbol_not_in(&chain_codes, keyword, &symbol_list, page, page_size)
+            .hot_coin_list_symbol_not_in(&exclude, chain_code, keyword, page, page_size)
             .await?;
+
+        let show_contract = keyword.is_some();
         let mut data = CoinInfoList::default();
         for coin in list.data {
-            if let Some(d) =
-                data.iter_mut().find(|info| info.symbol == coin.symbol && coin.is_default == 1)
+            if let Some(d) = data
+                .iter_mut()
+                .find(|info| info.symbol == coin.symbol && info.is_default && coin.is_default == 1)
             {
                 d.chain_list
                     .entry(coin.chain_code.clone())
@@ -130,13 +125,13 @@ impl CoinService {
                     )])),
                     is_default: coin.is_default == 1,
                     hot_coin: coin.status == 1,
-                    show_contract: false,
+                    show_contract,
                 })
             }
         }
 
-        let pool = tx.pool();
-        AssetsDomain::show_contract(&pool, keyword, &mut data).await?;
+        // let pool = tx.pool();
+        // AssetsDomain::show_contract(&pool, keyword, &mut data).await?;
 
         let res = wallet_database::pagination::Pagination {
             page,
@@ -377,14 +372,12 @@ impl CoinService {
     ) -> Result<(), crate::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
-        domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
+        ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
 
         let tx = &mut self.repo;
         let _ = ChainDomain::get_node(chain_code).await?;
 
-        let chain_instance =
-            domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code)
-                .await?;
+        let chain_instance = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         let coin =
             CoinRepoTrait::get_coin_by_chain_code_token_address(tx, chain_code, &token_address)
@@ -428,6 +421,7 @@ impl CoinService {
             )
             .with_custom(1);
             let coin = vec![cus_coin];
+            tracing::warn!("[customize_coin] coin: {:?} ", coin);
             tx.upsert_multi_coin(coin).await?;
 
             (decimals, symbol, name)

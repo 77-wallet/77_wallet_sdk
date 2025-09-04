@@ -279,8 +279,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let account_id = 1;
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let account_id = 2;
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let password = &_test_params.create_wallet_req.wallet_password;
         let account =
             wallet_manager.physical_delete_account(wallet_address, account_id, password).await;

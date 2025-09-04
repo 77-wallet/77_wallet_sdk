@@ -71,7 +71,14 @@ impl<'q> super::SqlQueryBuilder<'q> for DynamicDeleteBuilder<'q> {
             sql.push_str(" WHERE ");
             sql.push_str(&self.where_clauses.join(" AND "));
         }
-        let arg_fns = self.arg_fns.iter().cloned().map(|f| f as ArgFn<'q>).collect();
+
+        sql.push_str(" RETURNING *");
+        let arg_fns = self
+            .arg_fns
+            .iter()
+            .cloned()
+            .map(|f| f as ArgFn<'q>)
+            .collect();
         (sql, arg_fns)
     }
 }

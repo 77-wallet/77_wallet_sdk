@@ -20,8 +20,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // 创建钱包
-    if false {
-        let _wallet = wallet_manager.create_wallet(test_params.create_wallet_req).await.result;
+    if true {
+        let _wallet = wallet_manager
+            .create_wallet(test_params.create_wallet_req)
+            .await
+            .result;
     }
 
     while let Some(_data) = rx.next().await {
