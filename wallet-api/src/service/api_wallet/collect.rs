@@ -1,5 +1,6 @@
 use crate::{
-    domain::api_wallet::collect::ApiCollectDomain, request::api_wallet::trans::ApiWithdrawReq,
+    domain::api_wallet::trans::collect::ApiCollectDomain,
+    request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
     entities::api_collect::ApiCollectEntity, repositories::api_collect::ApiCollectRepo,

@@ -75,31 +75,21 @@ impl ApiWithdrawDomain {
         Ok(())
     }
 
-    /// transfer
-    pub async fn transfer(params: ApiTransferReq) -> Result<TransferResp, crate::ServiceError> {
-        tracing::info!("transfer ------------------- 7:");
-        let private_key = ApiAccountDomain::get_private_key(
-            &params.base.from,
-            &params.base.chain_code,
-            &params.password,
+    pub async fn confirm_withdraw_tx_report(trade_no: &str) -> Result<(), crate::ServiceError> {
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiWithdrawRepo::update_api_withdraw_status(
+            &pool,
+            trade_no,
+            ApiWithdrawStatus::ReceivedTxReport,
         )
         .await?;
-
-        tracing::info!("transfer ------------------- 8:");
-
-        let adapter = API_ADAPTER_FACTORY
-            .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
-            .await
-            .get_transaction_adapter(params.base.chain_code.as_str())
-            .await?;
-
-        let resp = adapter.transfer(&params, private_key).await?;
-
-        Ok(resp)
+        Ok(())
     }
 
     pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
-        let _ = crate::manager::Context::get_global_processed_withdraw_tx_handle()?.submit_confirm_report_tx().await;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::Success)
+            .await?;
         Ok(())
     }
 }

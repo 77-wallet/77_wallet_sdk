@@ -8,9 +8,7 @@ use crate::{
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{
-            ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
-        },
+        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
 };
@@ -89,7 +87,7 @@ impl Tx for LtcTx {
 
     async fn block_num(&self) -> Result<u64, Error> {
         self.chin.block_num().await
-    }   
+    }
 
     async fn query_tx_res(&self, hash: &str) -> Result<Option<QueryTransactionResult>, Error> {
         self.chin.query_tx_res(hash).await
@@ -111,7 +109,7 @@ impl Tx for LtcTx {
         Ok(false)
     }
 
-    async fn transfer(  
+    async fn transfer(
         &self,
         params: &ApiTransferReq,
         private_key: ChainPrivateKey,

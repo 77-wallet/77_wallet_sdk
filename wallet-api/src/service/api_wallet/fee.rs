@@ -1,6 +1,8 @@
 use wallet_database::{entities::api_fee::ApiFeeEntity, repositories::api_fee::ApiFeeRepo};
 
-use crate::{domain::api_wallet::fee::ApiFeeDomain, request::api_wallet::trans::ApiTransferFeeReq};
+use crate::{
+    domain::api_wallet::trans::fee::ApiFeeDomain, request::api_wallet::trans::ApiTransferFeeReq,
+};
 
 pub struct TransferFeeService {}
 

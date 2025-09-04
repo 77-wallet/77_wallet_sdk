@@ -67,7 +67,7 @@ impl ApiWithdrawDao {
         }
         let res = query.bind(page_size).fetch_all(exec).await
             .map_err(|e| crate::Error::Database(e.into()))?;
-        
+
         Ok((count, res))
     }
 

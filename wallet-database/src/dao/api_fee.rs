@@ -57,16 +57,16 @@ impl ApiFeeDao {
         for status in vec_status {
             query = query.bind(status);
         }
-        let count = query.fetch_one(exec.clone()).await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-        
+        let count =
+            query.fetch_one(exec.clone()).await.map_err(|e| crate::Error::Database(e.into()))?;
+
         let mut query = sqlx::query_as::<_, ApiFeeEntity>(&sql);
         for status in vec_status {
             query = query.bind(status);
         }
         let res = query.bind(page_size).fetch_all(exec).await
             .map_err(|e| crate::Error::Database(e.into()))?;
-        
+
         Ok((count, res))
     }
 

@@ -54,6 +54,10 @@ impl crate::WalletManager {
         ApiWalletService::new().edit_wallet_name(wallet_address, wallet_name).await?.into()
     }
 
+    pub async fn set_passwd_cache(&self, wallet_password: &str) -> ReturnType<()> {
+        ApiWalletService::new().set_passwd_cache(wallet_password).await?.into()
+    }
+
     // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
     //     WalletService::new(self.repo_factory.resource_repo())
     //         .physical_reset()

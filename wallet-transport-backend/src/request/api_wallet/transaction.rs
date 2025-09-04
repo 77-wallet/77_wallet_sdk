@@ -10,13 +10,23 @@ impl RestoreTxRecordsReq {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MsgReceiptUploadReq {}
+pub struct TransEventAckReq {
+    pub trade_no: String,
+    #[serde(rename = "type")]
+    pub typ: String,
+    pub ack_type: String,
+}
 
-impl MsgReceiptUploadReq {
-    pub fn new() -> Self {
-        Self {}
+impl TransEventAckReq {
+    pub fn new(trade_no: &str, typ: &str, ack_type: &str) -> Self {
+        Self {
+            trade_no: trade_no.to_string(),
+            typ: typ.to_string(),
+            ack_type: ack_type.to_string(),
+        }
     }
 }
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TxExecReceiptUploadReq {
@@ -67,7 +77,7 @@ impl TxExecReceiptUploadReq {
 }
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FeeCollectionUploadReq {
+pub struct ServiceFeeUploadReq {
     trade_no: String,
     from: String,
     to: String,
@@ -79,7 +89,7 @@ pub struct FeeCollectionUploadReq {
     token_address: String,
 }
 
-impl FeeCollectionUploadReq {
+impl ServiceFeeUploadReq {
     pub fn new(
         trade_no: &str,
         chain_code: &str,

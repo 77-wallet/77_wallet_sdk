@@ -1,6 +1,9 @@
 use crate::{
     domain::{
-        api_wallet::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
+        api_wallet::{
+            trans::{ApiTransDomain, collect::ApiCollectDomain, withdraw::ApiWithdrawDomain},
+            wallet::ApiWalletDomain,
+        },
         coin::CoinDomain,
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
@@ -39,11 +42,11 @@ impl TransMsg {
 
     pub(crate) async fn transfer_fee(&self) -> Result<(), crate::ServiceError> {
         // 获取密码缓存
-        let password = "[REDACTED:password]";
-        // 从出款地址转手续费到from_addr
+        let password = ApiWalletDomain::get_passwd().await?;
 
+        // 从出款地址转手续费到from_addr
         tracing::info!("打手续费 fee: {}", self.value);
-        todo!();
+        // todo!();
         let coin =
             CoinDomain::get_coin(&self.chain_code, &self.symbol, Some(self.token_address.clone()))
                 .await?;
@@ -54,7 +57,7 @@ impl TransMsg {
         let transfer_req = ApiTransferReq { base: params, password: password.to_string() };
         // 上链
         // 发交易
-        let tx_resp = ApiFeeDomain::transfer(transfer_req).await?;
+        let tx_resp = ApiTransDomain::transfer(transfer_req).await?;
         // ApiChainTransDomain::transfer(params, bill_kind, adapter)
         let _resource_consume = if tx_resp.consumer.is_none() {
             "0".to_string()

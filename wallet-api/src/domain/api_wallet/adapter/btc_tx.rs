@@ -9,9 +9,7 @@ use crate::{
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
-        transaction::{
-            ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq,
-        },
+        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     },
     response_vo::{CommonFeeDetails, MultisigQueueFeeParams, TransferParams},
 };
@@ -83,10 +81,7 @@ impl BtcTx {
 
 #[async_trait::async_trait]
 impl Tx for BtcTx {
-    async fn account_resource(
-        &self,
-        _: &str,
-    ) -> Result<AccountResourceDetail, ServiceError> {
+    async fn account_resource(&self, _: &str) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
 
@@ -200,21 +195,11 @@ impl Tx for BtcTx {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
-    async fn approve_fee(
-        &self,
-        _: &ApproveReq,
-        _: U256,
-        _: &str,
-    ) -> Result<String, ServiceError> {
+    async fn approve_fee(&self, _: &ApproveReq, _: U256, _: &str) -> Result<String, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 
-    async fn allowance(
-        &self,
-        _: &str,
-        _: &str,
-        _: &str,
-    ) -> Result<U256, ServiceError> {
+    async fn allowance(&self, _: &str, _: &str, _: &str) -> Result<U256, ServiceError> {
         Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
     }
 

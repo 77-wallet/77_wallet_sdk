@@ -1,8 +1,4 @@
-use crate::domain::{
-    account::AccountDomain, api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain,
-    coin::CoinDomain,
-};
-use wallet_database::repositories::ResourcesRepo;
+use crate::domain::{api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain};
 
 #[derive(Debug, Clone)]
 pub struct AddressChainCode {
