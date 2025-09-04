@@ -19,7 +19,6 @@ use wallet_transport_backend::request::api_wallet::transaction::{
 #[derive(Clone)]
 pub(crate) enum ProcessFeeTxCommand {
     Tx,
-    Close,
 }
 
 #[derive(Clone)]
@@ -34,7 +33,8 @@ pub(crate) enum ProcessFeeTxConfirmReportCommand {
 
 #[derive(Debug)]
 pub(crate) struct ProcessFeeTxHandle {
-    tx: broadcast::Sender<ProcessFeeTxCommand>,
+    shutdown_tx: broadcast::Sender<()>,
+    tx_tx: mpsc::Sender<ProcessFeeTxCommand>,
     confirm_report_tx: mpsc::Sender<ProcessFeeTxConfirmReportCommand>,
     tx_handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
     tx_report_handle: Mutex<Option<JoinHandle<Result<(), crate::ServiceError>>>>,
@@ -47,9 +47,10 @@ impl ProcessFeeTxHandle {
         let shutdown_rx1 = shutdown_tx.subscribe();
         let shutdown_rx2 = shutdown_tx.subscribe();
         let shutdown_rx3 = shutdown_tx.subscribe();
+        let (tx_tx, tx_rx) = mpsc::channel(1);
         let (report_tx, report_rx) = mpsc::channel(1);
         // 发交易
-        let mut tx = ProcessFeeTx::new(shutdown_rx1, report_tx);
+        let mut tx = ProcessFeeTx::new(shutdown_rx1, tx_rx, report_tx);
         let tx_handle = tokio::spawn(async move { tx.run().await });
         // 上报交易
         let mut tx_report = ProcessFeeTxReport::new(shutdown_rx2, report_rx);
@@ -59,7 +60,8 @@ impl ProcessFeeTxHandle {
         let mut tx_confirm_report = ProcessFeeTxConfirmReport::new(shutdown_rx3, confirm_report_rx);
         let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
         Self {
-            tx: shutdown_tx,
+            shutdown_tx: shutdown_tx,
+            tx_tx: tx_tx,
             confirm_report_tx,
             tx_handle: Mutex::new(Some(tx_handle)),
             tx_report_handle: Mutex::new(Some(tx_report_handle)),
@@ -68,7 +70,7 @@ impl ProcessFeeTxHandle {
     }
 
     pub(crate) async fn submit_tx(&self) -> Result<(), crate::ServiceError> {
-        let _ = self.tx.send(ProcessFeeTxCommand::Tx);
+        let _ = self.tx_tx.send(ProcessFeeTxCommand::Tx);
         Ok(())
     }
 
@@ -78,7 +80,7 @@ impl ProcessFeeTxHandle {
     }
 
     pub(crate) async fn close(&self) -> Result<(), crate::ServiceError> {
-        let _ = self.tx.send(ProcessFeeTxCommand::Close);
+        let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.tx_handle.lock().await.take() {
             handle.await.map_err(|_| {
                 crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound)
@@ -99,16 +101,18 @@ impl ProcessFeeTxHandle {
 }
 
 struct ProcessFeeTx {
-    shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+    shutdown_rx: broadcast::Receiver<()>,
+    tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
     report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
 }
 
 impl ProcessFeeTx {
     fn new(
-        shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+        shutdown_rx: broadcast::Receiver<()>,
+        tx_rx: mpsc::Receiver<ProcessFeeTxCommand>,
         report_tx: mpsc::Sender<ProcessFeeTxReportCommand>,
     ) -> Self {
-        Self { shutdown_rx, report_tx }
+        Self { shutdown_rx, tx_rx, report_tx }
     }
 
     async fn run(&mut self) -> Result<(), crate::ServiceError> {
@@ -116,26 +120,23 @@ impl ProcessFeeTx {
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             tokio::select! {
-                msg = self.shutdown_rx.recv() => {
-                    match msg {
-                        Ok(cmd) => {
-                            match cmd {
-                                ProcessFeeTxCommand::Tx => {
-                                     match self.process_fee_tx().await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            tracing::error!("failed to process fee tx: {}", err);
-                                        }
+                _ = self.shutdown_rx.recv() => {
+                    tracing::info!("closing process fee tx -------------------------------");
+                    break;
+                }
+                msg = self.tx_rx.recv() => {
+                    if let Some(cmd) = msg {
+                        match cmd {
+                            ProcessFeeTxCommand::Tx => {
+                                match self.process_fee_tx().await {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        tracing::error!("failed to process fee tx: {}", err);
                                     }
-                                    iv.reset();
                                 }
-                                ProcessFeeTxCommand::Close => {
-                                    tracing::info!("closing process fee tx -------------------------------");
-                                    break;
-                                }
+                                iv.reset();
                             }
                         }
-                        Err(_) => {}
                     }
                 }
                 _ = iv.tick() => {
@@ -238,13 +239,13 @@ impl ProcessFeeTx {
 }
 
 struct ProcessFeeTxReport {
-    shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+    shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
 }
 
 impl ProcessFeeTxReport {
     fn new(
-        shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+        shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxReportCommand>,
     ) -> Self {
         Self { shutdown_rx, report_rx }
@@ -255,19 +256,9 @@ impl ProcessFeeTxReport {
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             tokio::select! {
-                msg = self.shutdown_rx.recv() => {
-                    match msg {
-                        Ok(cmd) => {
-                            match cmd {
-                                ProcessFeeTxCommand::Tx => {}
-                                ProcessFeeTxCommand::Close => {
-                                    tracing::info!("closing process fee tx report -------------------------------");
-                                    break;
-                                }
-                            }
-                        }
-                        Err(_) => {}
-                    }
+                _ = self.shutdown_rx.recv() => {
+                    tracing::info!("closing process fee tx report -------------------------------");
+                    break;
                 }
                 report_msg = self.report_rx.recv() => {
                     if let Some(cmd) = report_msg {
@@ -383,13 +374,13 @@ impl ProcessFeeTxReport {
 }
 
 struct ProcessFeeTxConfirmReport {
-    shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+    shutdown_rx: broadcast::Receiver<()>,
     report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
 }
 
 impl ProcessFeeTxConfirmReport {
     fn new(
-        shutdown_rx: broadcast::Receiver<ProcessFeeTxCommand>,
+        shutdown_rx: broadcast::Receiver<()>,
         report_rx: mpsc::Receiver<ProcessFeeTxConfirmReportCommand>,
     ) -> Self {
         Self { shutdown_rx, report_rx }
@@ -400,20 +391,9 @@ impl ProcessFeeTxConfirmReport {
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
             tokio::select! {
-                msg = self.shutdown_rx.recv() => {
-                    match msg {
-                        Ok(cmd) => {
-                            match cmd {
-                                ProcessFeeTxCommand::Tx => {
-                                }
-                                ProcessFeeTxCommand::Close => {
-                                    tracing::info!("closing process fee tx confirm report -------------------------------");
+                _ = self.shutdown_rx.recv() => {
+                    tracing::info!("closing process fee tx confirm report -------------------------------");
                                     break;
-                                }
-                            }
-                        }
-                        Err(_) => {}
-                    }
                 }
                 report_msg = self.report_rx.recv() => {
                     match report_msg {
