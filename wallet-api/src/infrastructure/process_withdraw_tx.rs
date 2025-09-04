@@ -330,7 +330,7 @@ impl ProcessWithdrawTxReport {
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
         if timeout < TimeDelta::seconds(req.post_tx_count as i64) {
-            return Ok(0);
+            return Ok(());
         }
         let status = if req.status == ApiWithdrawStatus::SendingTxFailed {
             TransStatus::Fail
