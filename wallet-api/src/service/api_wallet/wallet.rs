@@ -301,7 +301,7 @@ impl ApiWalletService {
     }
 
     pub async fn set_passwd_cache(self, wallet_password: &str) -> Result<(), crate::ServiceError> {
-        GLOBAL_CACHE.set(WALLET_PASSWORD, wallet_password).await?;
+        ApiWalletDomain::set_passwd(wallet_password).await?;
         Ok(())
     }
 

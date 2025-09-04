@@ -160,4 +160,19 @@ impl ApiWalletDomain {
 
         Ok(())
     }
+
+    pub(crate) async fn get_passwd() -> Result<String, crate::ServiceError> {
+        let password = crate::infrastructure::GLOBAL_CACHE
+            .get::<String>(crate::infrastructure::WALLET_PASSWORD)
+            .await
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::PasswordNotCached))?;
+        Ok(password)
+    }
+
+    pub(crate) async fn set_passwd(wallet_password: &str) -> Result<(), crate::ServiceError> {
+        crate::infrastructure::GLOBAL_CACHE
+            .set(crate::infrastructure::WALLET_PASSWORD, wallet_password)
+            .await?;
+        Ok(())
+    }
 }

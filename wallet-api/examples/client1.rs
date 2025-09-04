@@ -1,6 +1,5 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
-use wallet_database::entities::api_wallet::ApiWalletType;
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
@@ -30,46 +29,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("res: {res:?}");
 
-    // 创建钱包
-    let language_code = 1;
-    let phrase = &test_params.create_wallet_req.phrase;
-    let salt = "q1111111";
-    let wallet_name = "api_wallet";
-    let account_name = "ccccc";
-    let is_default_name = true;
-    let invite_code = None;
-    let api_wallet_type = ApiWalletType::SubAccount;
-    let wallet = wallet_manager
-        .create_api_wallet(
-            language_code,
-            phrase,
-            salt,
-            wallet_name,
-            account_name,
-            is_default_name,
-            wallet_password,
-            invite_code,
-            api_wallet_type,
-        )
-        .await
-        .result;
-    tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
+    // // 创建钱包
+    // let language_code = 1;
+    // let phrase = &test_params.create_wallet_req.phrase;
+    // let salt = "";
+    // let wallet_name = "api_wallet";
+    // let account_name = "ccccc";
+    // let is_default_name = true;
+    // let invite_code = None;
+    // let api_wallet_type = wallet_database::entities::api_wallet::ApiWalletType::SubAccount;
+    // let wallet = wallet_manager
+    //     .create_api_wallet(
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //         wallet_name,
+    //         account_name,
+    //         is_default_name,
+    //         wallet_password,
+    //         invite_code,
+    //         api_wallet_type,
+    //     )
+    //     .await
+    //     .result;
+    // tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
 
     // let order_list = wallet_manager.get_api_collect_order_list().await.result;
     // tracing::info!("order_list ------------------- 2: {order_list:#?}");
-    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
-    // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
-    let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
-    // let to = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
-    let to = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
-    // let to = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
-    let value = "23";
-    let trade_no = "0x000000001";
-    let res1 = wallet_manager
-        .api_collect_order(from, to, value, "tron", None, "TRX", trade_no, 1, uid)
-        .await;
-    tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+    // let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+
+    // // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+    // let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
+    // // let to = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
+    // let to = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
+    // // let to = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+    // let value = "23";
+    // let trade_no = "0x000000001";
+    // let res1 = wallet_manager
+    //     .api_collect_order(from, to, value, "tron", None, "TRX", trade_no, 1, uid)
+    //     .await;
+    // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)
@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
 
     let sync_res = wallet_manager
-        .sync_api_assets_by_wallet("0x418Ea813dd2d9AA21597912b62a10465FCe48033", None, vec![])
+        .sync_api_assets_by_wallet("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b", None, vec![])
         .await;
     tracing::info!("sync res: {sync_res:#?}");
     // let wallet = wallet.unwrap();

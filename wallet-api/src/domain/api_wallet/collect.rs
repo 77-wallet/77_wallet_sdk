@@ -3,6 +3,7 @@ use crate::{
         api_wallet::{
             adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
             fee::ApiFeeDomain,
+            wallet::ApiWalletDomain,
         },
         chain::transaction::ChainTransDomain,
         coin::CoinDomain,
@@ -60,7 +61,7 @@ impl ApiCollectDomain {
 
         let backend_api = crate::Context::get_global_backend_api()?;
         // 查询策略
-        let strategy = backend_api.query_collection_strategy(&req.uid).await?;
+        let strategy = backend_api.query_collect_strategy(&req.uid).await?;
         let Some(chain_config) =
             strategy.chain_configs.iter().find(|config| config.chain_code == req.chain_code)
         else {
@@ -94,12 +95,6 @@ impl ApiCollectDomain {
                 "subaccount wallet balance not enough，subaccount balance: {withdraw_balance}"
             );
             // todo!();
-            // let assets_id = AssetsId::new(withdraw_address, &req.chain_code, &main_symbol, None);
-
-            // let withdraw_assets = ApiAssetsRepo::find_by_id(&pool, &assets_id)
-            //     .await?
-            //     .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
-            // let withdraw_balance = withdraw_assets.balance;
             // 出款地址余额够不够
             // if 不够 -> 出款地址余额 -> 不够 -> 通知后端：失败原因
             let withdraw_balance = conversion::decimal_from_str(&withdraw_balance)?;
@@ -145,10 +140,7 @@ impl ApiCollectDomain {
             );
             params.with_token(coin.token_address(), coin.decimals, &coin.symbol);
 
-            let password = crate::infrastructure::GLOBAL_CACHE
-                .get::<String>(crate::infrastructure::WALLET_PASSWORD)
-                .await
-                .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::PasswordNotCached))?;
+            let password = ApiWalletDomain::get_passwd().await?;
 
             let transfer_req = ApiTransferReq { base: params, password };
             // 上链

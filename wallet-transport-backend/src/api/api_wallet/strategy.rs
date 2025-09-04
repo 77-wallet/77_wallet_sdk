@@ -12,9 +12,9 @@ use super::BackendApi;
 
 impl BackendApi {
     // 保存&更新归集策略配置
-    pub async fn save_collection_strategy(
+    pub async fn save_collect_strategy(
         &self,
-        req: &Strategy,
+        req: &SaveCollectStrategyReq,
     ) -> Result<Option<()>, crate::Error> {
         let res =
             self.client.post(TRANS_SERVICE_FEE_TRANS).json(req).send::<BackendResponse>().await?;
@@ -23,7 +23,7 @@ impl BackendApi {
     }
 
     // 保存&更新出款策略配置
-    pub async fn save_withdraw_strategy(
+    pub async fn save_withdrawal_strategy(
         &self,
         req: &SaveWithdrawStrategyReq,
     ) -> Result<Option<()>, crate::Error> {
@@ -38,7 +38,7 @@ impl BackendApi {
     }
 
     // 查询归集策略配置
-    pub async fn query_collection_strategy(
+    pub async fn query_collect_strategy(
         &self,
         uid: &str,
     ) -> Result<CollectionStrategyResp, crate::Error> {
@@ -55,7 +55,7 @@ impl BackendApi {
     }
 
     // 查询出款策略配置
-    pub async fn query_withdraw_strategy(
+    pub async fn query_withdrawal_strategy(
         &self,
         uid: &str,
     ) -> Result<WithdrawStrategyResp, crate::Error> {

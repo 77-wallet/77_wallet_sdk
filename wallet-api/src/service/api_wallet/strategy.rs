@@ -18,7 +18,7 @@ impl StrategyService {
         let backend_api = crate::Context::get_global_backend_api()?;
 
         let req = SaveCollectStrategyReq::new(uid, threshold, chain_config);
-        backend_api.save_collection_strategy(&req).await?;
+        backend_api.save_collect_strategy(&req).await?;
 
         Ok(())
     }
@@ -32,7 +32,7 @@ impl StrategyService {
         let backend_api = crate::Context::get_global_backend_api()?;
 
         let req = SaveWithdrawStrategyReq::new(uid, threshold, chain_config);
-        backend_api.save_withdraw_strategy(&req).await?;
+        backend_api.save_withdrawal_strategy(&req).await?;
 
         Ok(())
     }
