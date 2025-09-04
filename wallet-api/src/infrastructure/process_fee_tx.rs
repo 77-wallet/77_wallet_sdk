@@ -177,6 +177,7 @@ impl ProcessFeeTx {
     }
 
     async fn process_fee_single_tx(&self, req: ApiFeeEntity) -> Result<(), crate::ServiceError> {
+        tracing::info!(trade_no=%req.trade_no, "process fee tx -------------------------------");
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
         let mut params = ApiBaseTransferReq::new(
@@ -201,7 +202,8 @@ impl ProcessFeeTx {
             Ok(tx) => self.handle_fee_tx_success(&req.trade_no, tx).await,
             Err(err) => {
                 tracing::error!("failed to process fee tx: {}", err);
-                self.handle_fee_tx_failed(&req.trade_no).await
+                self.handle_fee_tx_failed(&req.trade_no).await?;
+                return Err(err);                
             }
         }
     }
@@ -322,8 +324,8 @@ impl ProcessFeeTxReport {
         // 判断超时时间
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
-        if timeout < TimeDelta::seconds(req.post_tx_count as i64) {
-            tracing::warn!("process fee tx report timeout ---");
+        if timeout < TimeDelta::seconds(1 << req.post_tx_count as i64) {
+            tracing::warn!(trade_no=%req.trade_no, "process fee tx report timeout ---");
             return Ok(0);
         }
         let status = if req.status == ApiFeeStatus::SendingTxFailed {

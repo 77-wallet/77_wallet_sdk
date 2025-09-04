@@ -169,18 +169,21 @@ impl ProcessWithdrawTx {
         )
         .await?;
         let withdraws_len = withdraws.len();
+        let mut success_count = 0;
         for req in withdraws {
-            self.process_withdraw_single_tx(req).await?;
+            success_count += self.process_withdraw_single_tx(req).await?;
         }
-        ApiWindowRepo::upsert_api_offset(&pool, 1, offset + withdraws_len as i64).await?;
+        if success_count == withdraws_len as i32 {
+            ApiWindowRepo::upsert_api_offset(&pool, 1, offset + withdraws_len as i64).await?;
+        }
         Ok(())
     }
 
     async fn process_withdraw_single_tx(
         &self,
         req: ApiWithdrawEntity,
-    ) -> Result<(), crate::ServiceError> {
-        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
+    ) -> Result<i32, crate::ServiceError> {
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx ---------------------------------4");
 
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
@@ -213,7 +216,7 @@ impl ProcessWithdrawTx {
         &self,
         trade_no: &str,
         tx: TransferResp,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<i32, crate::ServiceError> {
         let resource_consume = if tx.consumer.is_none() {
             "0".to_string()
         } else {
@@ -233,10 +236,10 @@ impl ProcessWithdrawTx {
 
         // 上报交易
         let _ = self.report_tx.send(ProcessWithdrawTxReportCommand::Tx);
-        Ok(())
+        Ok(1)
     }
 
-    async fn handle_withdraw_tx_failed(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
+    async fn handle_withdraw_tx_failed(&self, trade_no: &str) -> Result<i32, crate::ServiceError> {
         // 更新交易状态,发送失败
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(
@@ -247,7 +250,7 @@ impl ProcessWithdrawTx {
         .await?;
         // 上报交易
         let _ = self.report_tx.send(ProcessWithdrawTxReportCommand::Tx);
-        Ok(())
+        Ok(1)
     }
 }
 
@@ -327,10 +330,10 @@ impl ProcessWithdrawTxReport {
         &self,
         req: ApiWithdrawEntity,
     ) -> Result<i32, anyhow::Error> {
-        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "---------------------------------4");
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
-        if timeout > TimeDelta::seconds(req.post_tx_count as i64) {
+        if timeout < TimeDelta::seconds(req.post_tx_count as i64) {
             return Ok(0);
         }
         let status = if req.status == ApiWithdrawStatus::SendingTxFailed {
