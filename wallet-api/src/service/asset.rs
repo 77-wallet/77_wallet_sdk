@@ -523,10 +523,8 @@ impl AssetsService {
             .account_domain
             .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
             .await?;
-        let account_addresses = account_addresses
-            .into_iter()
-            .map(|address| address.address)
-            .collect::<Vec<String>>();
+        let account_addresses =
+            account_addresses.into_iter().map(|address| address.address).collect::<Vec<String>>();
         let res = self
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)

@@ -2,8 +2,8 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        chain::{adapter::ChainAdapterFactory, ChainDomain},
-        coin::{coin_info_to_coin_data, CoinDomain},
+        chain::{ChainDomain, adapter::ChainAdapterFactory},
+        coin::{CoinDomain, coin_info_to_coin_data},
     },
     infrastructure::{
         parse_utc_with_error,
@@ -101,9 +101,8 @@ impl CoinService {
             .collect::<Vec<CoinId>>();
 
         tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
-        let list = tx
-            .hot_coin_list_symbol_not_in(&exclude, chain_code, keyword, page, page_size)
-            .await?;
+        let list =
+            tx.hot_coin_list_symbol_not_in(&exclude, chain_code, keyword, page, page_size).await?;
 
         let show_contract = keyword.is_some();
         let mut data = CoinInfoList::default();

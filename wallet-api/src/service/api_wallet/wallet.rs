@@ -59,6 +59,10 @@ impl ApiWalletService {
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
+
+        // uid类型检查
+        let backend = crate::Context::get_global_backend_api()?;
+        backend.keys_uid_check(&uid)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 

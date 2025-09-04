@@ -180,15 +180,11 @@ pub(super) async fn estimate_swap(
     let tx = tx.with_gas_limit(gas_limit.to::<u64>());
 
     let result =
-        chain
-            .provider
-            .eth_call(tx)
-            .await
-            .map_err(|e| crate::ServiceError::AggregatorError {
-                code: 10500,
-                agg_code: 0,
-                msg: format!("eth call error: {}", e),
-            })?;
+        chain.provider.eth_call(tx).await.map_err(|e| crate::ServiceError::AggregatorError {
+            code: 10500,
+            agg_code: 0,
+            msg: format!("eth call error: {}", e),
+        })?;
     let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
 
     let (amount_in, amount_out): (U256, U256) =

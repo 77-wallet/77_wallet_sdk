@@ -570,9 +570,7 @@ impl SwapServer {
         )
         .await?;
         if last_bill.is_some() {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::ApproveRepeated,
-            ))?;
+            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
         }
 
         let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;

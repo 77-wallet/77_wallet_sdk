@@ -73,12 +73,7 @@ impl<'q> super::SqlQueryBuilder<'q> for DynamicDeleteBuilder<'q> {
         }
 
         sql.push_str(" RETURNING *");
-        let arg_fns = self
-            .arg_fns
-            .iter()
-            .cloned()
-            .map(|f| f as ArgFn<'q>)
-            .collect();
+        let arg_fns = self.arg_fns.iter().cloned().map(|f| f as ArgFn<'q>).collect();
         (sql, arg_fns)
     }
 }
