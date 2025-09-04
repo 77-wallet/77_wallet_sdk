@@ -70,6 +70,7 @@ impl ApiWithdrawDomain {
                 ApiWithdrawStatus::AuditPass,
             )
             .await?;
+            crate::manager::Context::get_global_processed_withdraw_tx_handle()?.submit_tx(&req.trade_no).await?;
         }
         Ok(())
     }

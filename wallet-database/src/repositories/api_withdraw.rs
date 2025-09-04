@@ -29,6 +29,13 @@ impl ApiWithdrawRepo {
             .await
     }
 
+    pub async fn get_api_withdraw_by_trade_no(
+        pool: &DbPool,
+        trade_no: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error> {
+        ApiWithdrawDao::get_api_withdraw_by_trade_no(pool.as_ref(), trade_no).await
+    }
+
     pub async fn upsert_api_withdraw(
         pool: &DbPool,
         uid: &str,
@@ -102,5 +109,13 @@ impl ApiWithdrawRepo {
         next_status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+    }
+
+    pub async fn update_api_fee_post_tx_count(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
     }
 }

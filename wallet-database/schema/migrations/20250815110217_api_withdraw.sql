@@ -12,7 +12,7 @@ CREATE TABLE api_withdraws
     symbol           VARCHAR(128) DEFAULT "" NOT NULL,
     trade_no         VARCHAR(32)             NOT NULL,
     trade_type       INTEGER                 NOT NULL,
-    status           INTEGER                 NOT NULL,
+    status           INTEGER         DEFAULT 0        NOT NULL,
     tx_hash          VARCHAR(32)             NOT NULL,
     transaction_fee  VARCHAR(256)            NOT NULL, --手续费
     resource_consume VARCHAR(256) DEFAULT "0",         --资源消耗
@@ -20,6 +20,7 @@ CREATE TABLE api_withdraws
     block_height     VARCHAR(32) NULL,                 --块高
     notes            TEXT NULL,                        --备注
     post_tx_count    INTEGER       DEFAULT 0 NOT NULL, -- 已发送交易次数
+    post_confirm_tx_count    INTEGER      DEFAULT 0  NOT NULL, -- 已确认交易次数
     created_at       TIMESTAMP               NOT NULL,
     updated_at       TIMESTAMP
 );

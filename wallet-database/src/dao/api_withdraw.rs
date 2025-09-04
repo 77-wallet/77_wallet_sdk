@@ -42,7 +42,7 @@ impl ApiWithdrawDao {
 
     pub async fn page_api_withdraw_with_status<'a, E>(
         exec: E,
-        page: i64,
+        _page: i64,
         page_size: i64,
         vec_status: &[ApiWithdrawStatus],
     ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error>
@@ -50,32 +50,41 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite> + Clone,
     {
         let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let count_sql =
-            format!("SELECT count(*) FROM api_withdraws where status in ({})", placeholders);
-        let sql = format!(
-            "SELECT * FROM api_withdraws where status in ({}) ORDER BY id ASC LIMIT ? OFFSET ?",
-            placeholders
-        );
-
+        let count_sql = format!("SELECT count(*) FROM api_withdraws where status in ({})", placeholders);
+        let sql = format!("SELECT * FROM api_withdraws where status in ({}) ORDER BY id ASC LIMIT ?", placeholders);
+        
         let mut query = sqlx::query_scalar::<_, i64>(&count_sql);
         for status in vec_status {
             query = query.bind(status);
         }
-        let count =
-            query.fetch_one(exec.clone()).await.map_err(|e| crate::Error::Database(e.into()))?;
-
+        let count = query.fetch_one(exec.clone()).await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        
+        tracing::info!(status=%vec_status[0], "sql: {}", sql);
         let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql);
         for status in vec_status {
             query = query.bind(status);
         }
-        let res = query
-            .bind(page_size)
-            .bind(page)
-            .fetch_all(exec)
-            .await
+        let res = query.bind(page_size).fetch_all(exec).await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok((count, res))
+    }
+
+    pub async fn get_api_withdraw_by_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<ApiWithdrawEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_withdraws WHERE trade_no = ?";
+        let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
     }
 
     async fn upsert<'c, E>(executor: E, input: ApiWithdrawEntity) -> Result<(), crate::Error>
@@ -249,6 +258,32 @@ impl ApiWithdrawDao {
             .bind(tx_hash)
             .bind(resource_consume)
             .bind(transaction_fee)
+            .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_post_tx_count<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                post_tx_count = MIN(post_tx_count + 1, 63),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
             .bind(&status)
             .execute(exec)
             .await

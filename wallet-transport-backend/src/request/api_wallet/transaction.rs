@@ -110,3 +110,18 @@ impl ServiceFeeUploadReq {
         }
     }
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventAcceptTxReq {
+    pub trade_no: String,
+    #[serde(rename = "type")]
+    pub typ: TransType,
+    pub ack_type: String,
+}
+
+impl EventAcceptTxReq {
+    pub fn new(trade_no: &str, typ: TransType, ack_type: &str) -> Self {
+        Self { trade_no: trade_no.to_string(), typ, ack_type: ack_type.to_string() }
+    }
+}

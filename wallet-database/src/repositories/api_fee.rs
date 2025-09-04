@@ -28,6 +28,10 @@ impl ApiFeeRepo {
         ApiFeeDao::page_api_fee_with_status(pool.as_ref(), page, page_size, status).await
     }
 
+    pub async fn get_api_fee_by_trade_no(pool: &DbPool, trade_no: &str) -> Result<ApiFeeEntity, crate::Error> {
+        ApiFeeDao::get_api_fee_by_trade_no(pool.as_ref(), trade_no).await
+    }
+
     pub async fn upsert_api_fee(
         pool: &DbPool,
         uid: &str,
@@ -101,5 +105,13 @@ impl ApiFeeRepo {
         next_status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
         ApiFeeDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+    }
+
+    pub async fn update_api_fee_post_tx_count(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error> {
+        ApiFeeDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
     }
 }
