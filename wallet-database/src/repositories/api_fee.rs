@@ -48,7 +48,7 @@ impl ApiFeeRepo {
         trade_no: &str,
         trade_type: u8,
     ) -> Result<(), crate::Error> {
-        let withdraw_req = ApiFeeEntity {
+        let fee_req = ApiFeeEntity {
             id: 0,
             name: name.to_string(),
             uid: uid.to_string(),
@@ -68,10 +68,11 @@ impl ApiFeeRepo {
             block_height: "".to_string(),
             notes: "".to_string(),
             post_tx_count: 0,
+            post_confirm_tx_count: 0,
             created_at: Default::default(),
             updated_at: None,
         };
-        ApiFeeDao::add(pool.as_ref(), withdraw_req).await
+        ApiFeeDao::add(pool.as_ref(), fee_req).await
     }
 
     pub async fn update_api_fee_tx_status(
@@ -116,5 +117,13 @@ impl ApiFeeRepo {
         status: ApiFeeStatus,
     ) -> Result<(), crate::Error> {
         ApiFeeDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+    }
+
+    pub async fn update_api_fee_post_confirm_tx_count(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error> {
+        ApiFeeDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
 }

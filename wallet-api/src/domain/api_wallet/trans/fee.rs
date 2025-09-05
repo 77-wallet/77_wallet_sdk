@@ -1,14 +1,7 @@
 use crate::{
     ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent,
-    domain::{
-        api_wallet::{
-            account::ApiAccountDomain,
-            adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
-        },
-        chain::TransferResp,
-    },
     messaging::notify::api_wallet::FeeFront,
-    request::api_wallet::trans::{ApiTransferFeeReq, ApiTransferReq},
+    request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
