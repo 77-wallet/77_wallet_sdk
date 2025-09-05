@@ -72,8 +72,9 @@ impl ApiCollectDomain {
         tracing::info!("资产主币余额: {balance}, 手续费: {fee}");
 
         let balance = conversion::decimal_from_str(&balance)?;
+        let value = conversion::decimal_from_str(&req.value)?;
         let fee_decimal = conversion::decimal_from_str(&fee.to_string())?;
-        let need = if req.token_address.is_some() { fee_decimal } else { fee_decimal + balance };
+        let need = if req.token_address.is_some() { fee_decimal } else { fee_decimal + value };
         tracing::info!("need: {need}");
         // 如果手续费不足，则从其他地址转入手续费费用
         if balance < need {
@@ -137,6 +138,8 @@ impl ApiCollectDomain {
             params.with_token(coin.token_address(), coin.decimals, &coin.symbol);
 
             let password = ApiWalletDomain::get_passwd().await?;
+
+            // todo!();
 
             let transfer_req = ApiTransferReq { base: params, password };
             // 上链

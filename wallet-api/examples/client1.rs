@@ -59,15 +59,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
-    // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
-    let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
+    let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+    // let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
     // let to = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
     let to = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
     // let to = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
-    let value = "23";
+    let value = "20";
     let trade_no = "0x000000001";
+    let chain_code = "tron";
+    let symbol = "USDT";
+    let token_address = Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string());
+
     let res1 = wallet_manager
-        .api_collect_order(from, to, value, "tron", None, "TRX", trade_no, 1, uid)
+        .api_collect_order(from, to, value, chain_code, token_address, symbol, trade_no, 1, uid)
         .await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
