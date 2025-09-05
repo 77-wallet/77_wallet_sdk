@@ -13,7 +13,7 @@ use wallet_database::{
     repositories::api_withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
-    TransStatus, TransType, TxExecReceiptUploadReq,
+    TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq
 };
 
 #[derive(Clone)]
@@ -350,13 +350,23 @@ impl ProcessWithdrawTxReport {
         {
             Ok(_) => {
                 let pool = crate::manager::Context::get_global_sqlite_pool()?;
-                ApiWithdrawRepo::update_api_withdraw_next_status(
-                    &pool,
-                    &req.trade_no,
-                    ApiWithdrawStatus::SendingTx,
-                    ApiWithdrawStatus::ReceivedTxReport,
-                )
-                .await?;
+                if req.status == ApiWithdrawStatus::SendingTxFailed {
+                    ApiWithdrawRepo::update_api_withdraw_next_status(
+                        &pool,
+                        &req.trade_no,
+                        ApiWithdrawStatus::SendingTxFailed,
+                        ApiWithdrawStatus::ReceivedTxFailedReport,
+                    )
+                    .await?;
+                } else {
+                    ApiWithdrawRepo::update_api_withdraw_next_status(
+                        &pool,
+                        &req.trade_no,
+                        ApiWithdrawStatus::SendingTx,
+                        ApiWithdrawStatus::ReceivedTxReport,
+                    )
+                    .await?;
+                }
                 tracing::info!("upload tx exec receipt success ---");
                 return Ok(());
             }
@@ -449,13 +459,49 @@ impl ProcessWithdrawTxConfirmReport {
         &self,
         req: ApiWithdrawEntity,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(
-            &pool,
-            &req.trade_no,
-            ApiWithdrawStatus::Success,
-        )
-        .await?;
+        tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
+        let now = chrono::Utc::now();
+        let timeout = now - req.updated_at.unwrap();
+        if timeout < TimeDelta::seconds(req.post_confirm_tx_count as i64) {
+            return Ok(());
+        }
+        let status = if req.status == ApiWithdrawStatus::SendingTxFailed {
+            TransStatus::Fail
+        } else {
+            TransStatus::Success
+        };
+        let backend_api = Context::get_global_backend_api()?;
+        match backend_api
+            .trans_event_ack(&TransEventAckReq::new(
+                &req.trade_no,
+                TransType::Wd,
+                "Success"
+            ))
+            .await
+        {
+            Ok(_) => {
+                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                ApiWithdrawRepo::update_api_withdraw_next_status(
+                    &pool,
+                    &req.trade_no,
+                    req.status,
+                    ApiWithdrawStatus::ReceivedTxReport,
+                )
+                .await?;
+                tracing::info!("upload tx exec receipt success ---");
+                return Ok(());
+            }
+            Err(err) => {
+                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                ApiWithdrawRepo::update_api_withdraw_post_confirm_tx_count(
+                    &pool,
+                    &req.trade_no,
+                    req.status,
+                )
+                .await?;
+                return Err(crate::ServiceError::TransportBackend(err.into()));
+            }
+        }
         Ok(())
     }
 }

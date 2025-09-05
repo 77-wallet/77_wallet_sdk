@@ -291,4 +291,29 @@ impl ApiWithdrawDao {
 
         Ok(())
     }
+
+    pub async fn update_post_confirm_tx_count<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_withdraws
+            SET
+                post_confirm_tx_count = MIN(post_confirm_tx_count + 1, 63),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
 }

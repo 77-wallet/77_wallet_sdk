@@ -60,17 +60,4 @@ impl BackendApi {
             .await?;
         res.process(&self.aes_cbc_cryptor)
     }
-
-    pub async fn event_accept_tx(
-        &self,
-        req: &EventAcceptTxReq,
-    ) -> Result<Option<()>, crate::Error> {
-        let res = self
-            .client
-            .post(TRANS_EVENT_ACK)
-            .json(serde_json::json!(req))
-            .send::<BackendResponse>()
-            .await?;
-        res.process(&self.aes_cbc_cryptor)
-    }
 }

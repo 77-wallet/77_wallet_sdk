@@ -13,17 +13,13 @@ impl RestoreTxRecordsReq {
 pub struct TransEventAckReq {
     pub trade_no: String,
     #[serde(rename = "type")]
-    pub typ: String,
+    typ: TransType,
     pub ack_type: String,
 }
 
 impl TransEventAckReq {
-    pub fn new(trade_no: &str, typ: &str, ack_type: &str) -> Self {
-        Self {
-            trade_no: trade_no.to_string(),
-            typ: typ.to_string(),
-            ack_type: ack_type.to_string(),
-        }
+    pub fn new(trade_no: &str, typ: TransType, ack_type: &str) -> Self {
+        Self { trade_no: trade_no.to_string(), typ: typ, ack_type: ack_type.to_string() }
     }
 }
 
@@ -108,20 +104,5 @@ impl ServiceFeeUploadReq {
             to: to.to_string(),
             amount,
         }
-    }
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EventAcceptTxReq {
-    pub trade_no: String,
-    #[serde(rename = "type")]
-    pub typ: TransType,
-    pub ack_type: String,
-}
-
-impl EventAcceptTxReq {
-    pub fn new(trade_no: &str, typ: TransType, ack_type: &str) -> Self {
-        Self { trade_no: trade_no.to_string(), typ, ack_type: ack_type.to_string() }
     }
 }
