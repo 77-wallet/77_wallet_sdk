@@ -266,13 +266,13 @@ impl AssetsService {
             .coin_list_by_chain_token_map_batch(&pool, &chain_list)
             .await?;
 
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
+        // let Some(device) = tx.get_device_info().await? else {
+        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        // };
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
 
-        let mut token_balance_refresh_req: TokenBalanceRefreshReq =
-            TokenBalanceRefreshReq(Vec::new());
+        // let mut token_balance_refresh_req: TokenBalanceRefreshReq =
+        //     TokenBalanceRefreshReq(Vec::new());
 
         for coin in coins {
             if let Some(account) = accounts
@@ -312,19 +312,19 @@ impl AssetsService {
                     );
                 }
                 tx.upsert_assets(assets).await?;
-                token_balance_refresh_req
-                    .push(TokenBalanceRefresh::new(address, chain_code, &device.sn));
+                // token_balance_refresh_req
+                //     .push(TokenBalanceRefresh::new(address, chain_code, &device.sn));
             }
         }
 
-        let task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::TOKEN_BALANCE_REFRESH,
-            &token_balance_refresh_req,
-        )?;
+        // let task_data = BackendApiTaskData::new(
+        //     wallet_transport_backend::consts::endpoint::TOKEN_BALANCE_REFRESH,
+        //     &token_balance_refresh_req,
+        // )?;
 
         Tasks::new()
             .push(CommonTask::QueryCoinPrice(req))
-            .push(BackendApiTask::BackendApi(task_data))
+            // .push(BackendApiTask::BackendApi(task_data))
             .send()
             .await?;
         Ok(())
