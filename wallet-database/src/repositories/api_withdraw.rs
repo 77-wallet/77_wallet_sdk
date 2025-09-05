@@ -69,6 +69,7 @@ impl ApiWithdrawRepo {
             block_height: "".to_string(),
             notes: "".to_string(),
             post_tx_count: 0,
+            post_confirm_tx_count: 0,
             created_at: Default::default(),
             updated_at: None,
         };
@@ -117,5 +118,13 @@ impl ApiWithdrawRepo {
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
         ApiWithdrawDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+    }
+
+    pub async fn update_api_withdraw_post_confirm_tx_count(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiWithdrawStatus,
+    ) -> Result<(), crate::Error> {
+        ApiWithdrawDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
 }

@@ -21,6 +21,7 @@ pub struct ApiFeeEntity {
     pub block_height: String,
     pub notes: String,
     pub post_tx_count: u32,
+    pub post_confirm_tx_count: u32,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
@@ -40,10 +41,10 @@ pub enum ApiFeeStatus {
     SendingTx,
     SendingTxFailed,
     ReceivedTxReport,
-    ReceivedTxFailedReport,
+    ReceivedTxFailedReport, // 结束
     Success,
     Failure,
-    ConfirmReport,
+    ReceivedConfirmReport, // 结束
 }
 
 impl Display for ApiFeeStatus {
