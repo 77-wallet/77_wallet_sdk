@@ -57,13 +57,13 @@ impl TransMsg {
         let transfer_req = ApiTransferReq { base: params, password: password.to_string() };
         // 上链
         // 发交易
-        let tx_resp = ApiTransDomain::transfer(transfer_req).await?;
+        let _tx_resp = ApiTransDomain::transfer(transfer_req).await?;
         // ApiChainTransDomain::transfer(params, bill_kind, adapter)
-        let _resource_consume = if tx_resp.consumer.is_none() {
-            "0".to_string()
-        } else {
-            tx_resp.consumer.unwrap().energy_used.to_string()
-        };
+        // let _resource_consume = if tx_resp.consumer.is_none() {
+        //     "0".to_string()
+        // } else {
+        //     tx_resp.consumer.unwrap().energy_used.to_string()
+        // };
         tracing::info!(
             "withdraw wallet transfer fee {} to {} value {}",
             self.from,

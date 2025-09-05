@@ -49,7 +49,9 @@ impl ApiFeeDomain {
         });
         FrontendNotifyEvent::new(data).send().await?;
 
-        let _ = crate::manager::Context::get_global_processed_fee_tx_handle()?.submit_tx(&req.trade_no).await;
+        let _ = crate::manager::Context::get_global_processed_fee_tx_handle()?
+            .submit_tx(&req.trade_no)
+            .await;
         Ok(())
     }
 
@@ -62,7 +64,9 @@ impl ApiFeeDomain {
     pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::Success).await?;
-        let _ = crate::manager::Context::get_global_processed_withdraw_tx_handle()?.submit_confirm_report_tx().await;
+        let _ = crate::manager::Context::get_global_processed_withdraw_tx_handle()?
+            .submit_confirm_report_tx()
+            .await;
         Ok(())
     }
 }

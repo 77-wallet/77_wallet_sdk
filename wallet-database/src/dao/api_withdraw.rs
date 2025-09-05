@@ -50,22 +50,29 @@ impl ApiWithdrawDao {
         E: Executor<'a, Database = Sqlite> + Clone,
     {
         let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let count_sql = format!("SELECT count(*) FROM api_withdraws where status in ({})", placeholders);
-        let sql = format!("SELECT * FROM api_withdraws where status in ({}) ORDER BY id ASC LIMIT ?", placeholders);
-        
+        let count_sql =
+            format!("SELECT count(*) FROM api_withdraws where status in ({})", placeholders);
+        let sql = format!(
+            "SELECT * FROM api_withdraws where status in ({}) ORDER BY id ASC LIMIT ?",
+            placeholders
+        );
+
         let mut query = sqlx::query_scalar::<_, i64>(&count_sql);
         for status in vec_status {
             query = query.bind(status);
         }
-        let count = query.fetch_one(exec.clone()).await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-        
+        let count =
+            query.fetch_one(exec.clone()).await.map_err(|e| crate::Error::Database(e.into()))?;
+
         tracing::info!(status=%vec_status[0], "sql: {}", sql);
         let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql);
         for status in vec_status {
             query = query.bind(status);
         }
-        let res = query.bind(page_size).fetch_all(exec).await
+        let res = query
+            .bind(page_size)
+            .fetch_all(exec)
+            .await
             .map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok((count, res))

@@ -550,11 +550,28 @@ impl SwapServer {
     ) -> Result<EstimateFeeResp, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        let value =
-            if is_cancel { alloy::primitives::U256::ZERO } else { alloy::primitives::U256::MAX };
+        let (value, tx_kind) = if is_cancel {
+            (alloy::primitives::U256::ZERO, BillKind::UnApprove)
+        } else {
+            (alloy::primitives::U256::MAX, BillKind::Approve)
+        };
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
+
+        // 验证是否有存在的approve
+        let last_bill = BillRepo::last_approve_bill(
+            &req.from,
+            &req.spender,
+            &req.contract,
+            &req.chain_code,
+            tx_kind,
+            &pool,
+        )
+        .await?;
+        if last_bill.is_some() {
+            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
+        }
 
         let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;
 

@@ -57,19 +57,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let order_list = wallet_manager.get_api_collect_order_list().await.result;
     // tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
-    // let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
-    // // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
-    // let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
-    // // let to = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
-    // let to = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
-    // // let to = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
-    // let value = "23";
-    // let trade_no = "0x000000001";
-    // let res1 = wallet_manager
-    //     .api_collect_order(from, to, value, "tron", None, "TRX", trade_no, 1, uid)
-    //     .await;
-    // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+    // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+    let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
+    // let to = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
+    let to = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
+    // let to = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
+    let value = "23";
+    let trade_no = "0x000000001";
+    let res1 = wallet_manager
+        .api_collect_order(from, to, value, "tron", None, "TRX", trade_no, 1, uid)
+        .await;
+    tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)

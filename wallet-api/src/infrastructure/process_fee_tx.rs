@@ -201,7 +201,7 @@ impl ProcessFeeTx {
             Err(err) => {
                 tracing::error!("failed to process fee tx: {}", err);
                 self.handle_fee_tx_failed(&req.trade_no).await?;
-                return Err(err);                
+                return Err(err);
             }
         }
     }

@@ -139,10 +139,10 @@ pub struct BalanceInfo {
     // currency of symbol
     pub currency: String,
     // unit price or currency
-    #[serde(serialize_with = "default_unit_price_as_zero")]
+    #[serde(serialize_with = "zero_or_truncate")]
     pub unit_price: Option<f64>,
     // fiat value of token
-    #[serde(serialize_with = "default_unit_price_as_zero")]
+    #[serde(serialize_with = "zero_or_truncate")]
     pub fiat_value: Option<f64>,
 }
 
@@ -158,22 +158,28 @@ where
         let formatted = format!("{:.8}", x);
         // 去除多余的尾部 0
         let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
-        s.serialize_str(trimmed)
+        s.serialize_str(&trimmed)
     }
+}
 
-    // let rounded = if x.fract() == 0.0 {
-    //     *x // 如果是整数，直接返回
-    // } else {
-    //     let multiplier = 10f64.powi(8);
-    //     (*x * multiplier).trunc() / multiplier // 截断到 8 位小数
-    // };
-
-    // // 根据是否是整数选择序列化方式
-    // if rounded.fract() == 0.0 {
-    //     s.serialize_str(&(rounded as i64).to_string()) // 序列化为整数
-    // } else {
-    //     s.serialize_str(&rounded.to_string()) // 序列化为浮点数
-    // }
+// none 为0 ，其余截断8位
+pub fn zero_or_truncate<S>(price: &Option<f64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let number = match price {
+        Some(val) => {
+            // 转成字符串，截断小数点后 8 位
+            let mut s = format!("{:.20}", val); // 保证有足够多的小数位
+            if let Some(pos) = s.find('.') {
+                let end = (pos + 9).min(s.len()); // 小数点后最多 8 位
+                s.truncate(end);
+            }
+            s.parse::<f64>().unwrap_or(0.0)
+        }
+        None => 0.0,
+    };
+    serializer.serialize_f64(number)
 }
 
 pub fn default_unit_price_as_zero<S>(price: &Option<f64>, serializer: S) -> Result<S::Ok, S::Error>

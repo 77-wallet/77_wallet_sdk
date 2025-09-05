@@ -77,6 +77,8 @@ pub mod endpoint {
         pub const TRANS_EXECUTE_COMPLETE: &str = "aw/trans/executeComplete";
         /// 收到交易事件确认
         pub const TRANS_EVENT_ACK: &str = "aw/trans/eventAck";
+        /// uid 检查
+        pub const KEYS_UID_CHECK: &str = "keys/uidCheck";
 
         /// 提币策略保存
         pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "aw/strategy/withdrawal/save";

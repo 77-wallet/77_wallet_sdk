@@ -311,6 +311,9 @@ impl WalletService {
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
+        // uid类型检查
+        let backend = crate::Context::get_global_backend_api()?;
+        backend.keys_uid_check(&uid).await?;
         let seed = seed.clone();
 
         // 检查钱包状态
