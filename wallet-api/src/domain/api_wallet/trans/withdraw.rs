@@ -1,7 +1,6 @@
 use crate::{
     ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent,
-    messaging::notify::api_wallet::WithdrawFront,
-    request::api_wallet::trans::ApiWithdrawReq,
+    messaging::notify::api_wallet::WithdrawFront, request::api_wallet::trans::ApiWithdrawReq,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;

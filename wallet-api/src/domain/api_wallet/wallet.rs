@@ -70,6 +70,20 @@ impl ApiWalletDomain {
         Ok(WalletRepo::detail(&pool, address).await?.is_some())
     }
 
+    pub(crate) async fn bind_uid(
+        uid: &str,
+        merchain_id: &str,
+        org_app_id: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))
+            .await?
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+        ApiWalletRepo::update_merchant_id(&pool, &api_wallet.address, merchain_id).await?;
+        ApiWalletRepo::update_app_id(&pool, &api_wallet.address, org_app_id).await?;
+        Ok(())
+    }
+
     pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))

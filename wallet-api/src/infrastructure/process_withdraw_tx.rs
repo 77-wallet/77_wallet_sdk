@@ -13,7 +13,7 @@ use wallet_database::{
     repositories::api_withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
-    TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq
+    TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
 #[derive(Clone)]
@@ -472,11 +472,7 @@ impl ProcessWithdrawTxConfirmReport {
         };
         let backend_api = Context::get_global_backend_api()?;
         match backend_api
-            .trans_event_ack(&TransEventAckReq::new(
-                &req.trade_no,
-                TransType::Wd,
-                "Success"
-            ))
+            .trans_event_ack(&TransEventAckReq::new(&req.trade_no, TransType::Wd, "Success"))
             .await
         {
             Ok(_) => {

@@ -160,13 +160,9 @@ impl ProcessFeeTx {
     async fn process_fee_tx(&self) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // 获取交易这里有问题
-        let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
-            &pool.clone(),
-            0,
-            1000,
-            &[ApiFeeStatus::Init],
-        )
-        .await?;
+        let (_, transfer_fees) =
+            ApiFeeRepo::page_api_fee_with_status(&pool.clone(), 0, 1000, &[ApiFeeStatus::Init])
+                .await?;
         for req in transfer_fees {
             self.process_fee_single_tx(req).await?;
         }

@@ -1,7 +1,6 @@
 use crate::{
     ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent,
-    messaging::notify::api_wallet::FeeFront,
-    request::api_wallet::trans::ApiTransferFeeReq,
+    messaging::notify::api_wallet::FeeFront, request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},

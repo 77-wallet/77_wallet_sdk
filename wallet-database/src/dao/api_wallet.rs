@@ -129,7 +129,6 @@ impl ApiWalletDao {
         exec: E,
         address: &str,
         merchant_id: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -139,7 +138,7 @@ impl ApiWalletDao {
             UPDATE api_wallet SET
                 merchant_id = $1,
                 updated_at = $2
-            WHERE address = $3 AND wallet_type = $4 AND status = 1
+            WHERE address = $3 AND status = 1
             RETURNING *;
         "#;
 
@@ -147,7 +146,6 @@ impl ApiWalletDao {
             .bind(merchant_id)
             .bind(now)
             .bind(address)
-            .bind(api_wallet_type)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -157,7 +155,6 @@ impl ApiWalletDao {
         exec: E,
         address: &str,
         app_id: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -167,7 +164,7 @@ impl ApiWalletDao {
             UPDATE api_wallet SET
                 app_id = $1,
                 updated_at = $2
-            WHERE address = $3  AND wallet_type = $4 AND status = 1
+            WHERE address = $3 AND status = 1
             RETURNING *;
         "#;
 
@@ -175,7 +172,6 @@ impl ApiWalletDao {
             .bind(app_id)
             .bind(now)
             .bind(address)
-            .bind(api_wallet_type)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

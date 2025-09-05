@@ -1,5 +1,6 @@
 use crate::{
-    request::api_wallet::address::*, response_vo::api_wallet::address::UsedAddressListResp,
+    consts::endpoint::api_wallet::QUERY_ADDRESS_LIST, request::api_wallet::address::*,
+    response::BackendResponse, response_vo::api_wallet::address::UsedAddressListResp,
 };
 
 use super::BackendApi;
@@ -24,8 +25,14 @@ impl BackendApi {
     // 查询已使用的地址列表
     pub async fn query_used_address_list(
         &self,
-        req: &UsedAddressListReq,
+        req: &AddressListReq,
     ) -> Result<UsedAddressListResp, crate::Error> {
-        todo!()
+        let res = self
+            .client
+            .post(QUERY_ADDRESS_LIST)
+            .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+        res.process(&self.aes_cbc_cryptor)
     }
 }

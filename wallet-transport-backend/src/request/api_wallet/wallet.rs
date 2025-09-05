@@ -1,0 +1,18 @@
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BindAppIdReq {
+    recharge_uid: String,
+    withdrawal_uid: String,
+    org_app_id: String,
+}
+
+impl BindAppIdReq {
+    pub fn new(recharge_uid: &str, withdrawal_uid: &str, org_app_id: &str) -> Self {
+        Self {
+            recharge_uid: recharge_uid.to_string(),
+            withdrawal_uid: withdrawal_uid.to_string(),
+            org_app_id: org_app_id.to_string(),
+        }
+    }
+}
+pub type UnBindAppIdReq = BindAppIdReq;

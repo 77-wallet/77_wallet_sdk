@@ -38,12 +38,25 @@ impl crate::WalletManager {
     //         .into()
     // }
 
-    pub async fn bind_merchant(&self, key: &str, merchain_id: &str, uid: &str) -> ReturnType<()> {
-        ApiWalletService::new().bind_merchant(key, merchain_id, uid).await?.into()
+    pub async fn bind_merchant(
+        &self,
+        org_app_id: &str,
+        merchain_id: &str,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> ReturnType<()> {
+        ApiWalletService::new()
+            .bind_merchant(org_app_id, merchain_id, recharge_uid, withdrawal_uid)
+            .await?
+            .into()
     }
 
-    pub async fn unbind_merchant(&self, uid: &str) -> ReturnType<()> {
-        ApiWalletService::new().unbind_merchant(uid).await?.into()
+    pub async fn unbind_merchant(
+        &self,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> ReturnType<()> {
+        ApiWalletService::new().unbind_merchant(recharge_uid, withdrawal_uid).await?.into()
     }
 
     pub async fn edit_api_wallet_name(
@@ -136,7 +149,7 @@ mod test {
         let merchain_id = "test_merchain";
         let uid = "04de3a5eff89883fecd1469fbc7621f37122c83d6680b95ad5c67cd9a141cd4e";
 
-        let res = wallet_manager.bind_merchant(key, merchain_id, uid).await;
+        let res = wallet_manager.bind_merchant(key, merchain_id, uid, uid).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }

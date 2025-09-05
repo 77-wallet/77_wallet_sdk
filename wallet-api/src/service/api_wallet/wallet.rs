@@ -2,7 +2,7 @@ use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{api_wallet::ApiWalletRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::LanguageInitReq;
+use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
 
 use crate::{
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
@@ -270,29 +270,36 @@ impl ApiWalletService {
 
     pub async fn bind_merchant(
         self,
-        key: &str,
+        org_app_id: &str,
         merchain_id: &str,
-        uid: &str,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))
-            .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
-        ApiWalletRepo::update_merchant_id(
-            &pool,
-            &api_wallet.address,
-            merchain_id,
-            ApiWalletType::SubAccount,
-        )
-        .await?;
-        ApiWalletRepo::update_app_id(&pool, &api_wallet.address, key, ApiWalletType::SubAccount)
-            .await?;
 
+        ApiWalletDomain::bind_uid(recharge_uid, merchain_id, org_app_id).await?;
+        ApiWalletDomain::bind_uid(withdrawal_uid, merchain_id, org_app_id).await?;
+
+        let backend = crate::Context::get_global_backend_api()?;
+        backend
+            .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
+            .await?;
         Ok(())
     }
 
-    pub async fn unbind_merchant(self, uid: &str) -> Result<(), crate::ServiceError> {
-        ApiWalletDomain::unbind_uid(uid).await?;
+    pub async fn unbind_merchant(
+        self,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> Result<(), crate::ServiceError> {
+        ApiWalletDomain::unbind_uid(recharge_uid).await?;
+        ApiWalletDomain::unbind_uid(withdrawal_uid).await?;
+
+        todo!();
+        // let backend = crate::Context::get_global_backend_api()?;
+        // backend
+        //     .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
+        //     .await?;
         Ok(())
     }
 
