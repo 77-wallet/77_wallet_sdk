@@ -62,7 +62,7 @@ impl ApiWalletService {
 
         // uid类型检查
         let backend = crate::Context::get_global_backend_api()?;
-        backend.keys_uid_check(&uid)?;
+        backend.keys_uid_check(&uid).await?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 
