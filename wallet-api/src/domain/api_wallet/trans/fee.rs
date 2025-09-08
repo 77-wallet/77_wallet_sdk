@@ -59,7 +59,7 @@ impl ApiFeeDomain {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::Success).await?;
         let _ = crate::manager::Context::get_global_processed_withdraw_tx_handle()?
-            .submit_confirm_report_tx()
+            .submit_confirm_report_tx(trade_no)
             .await;
         Ok(())
     }

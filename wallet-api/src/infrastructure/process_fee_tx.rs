@@ -23,12 +23,12 @@ pub(crate) enum ProcessFeeTxCommand {
 
 #[derive(Clone)]
 pub(crate) enum ProcessFeeTxReportCommand {
-    Tx,
+    Tx(String),
 }
 
 #[derive(Clone)]
 pub(crate) enum ProcessFeeTxConfirmReportCommand {
-    Tx,
+    Tx(String),
 }
 
 #[derive(Debug)]
@@ -74,8 +74,8 @@ impl ProcessFeeTxHandle {
         Ok(())
     }
 
-    pub(crate) async fn submit_confirm_report_tx(&self) -> Result<(), crate::ServiceError> {
-        let _ = self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx);
+    pub(crate) async fn submit_confirm_report_tx(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
+        let _ = self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 
@@ -229,7 +229,7 @@ impl ProcessFeeTx {
         .await?;
         tracing::info!("send tx success ---");
         // 上报交易不影响交易偏移量计算
-        let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx);
+        let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 
@@ -237,7 +237,7 @@ impl ProcessFeeTx {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
         // 上报交易不影响交易偏移量计算
-        let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx);
+        let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 }
@@ -268,11 +268,15 @@ impl ProcessFeeTxReport {
                 report_msg = self.report_rx.recv() => {
                     if let Some(cmd) = report_msg {
                         match cmd {
-                            ProcessFeeTxReportCommand::Tx => {
-                                match self.process_fee_tx_report().await {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        tracing::error!("failed to process fee tx report: {}", err);
+                            ProcessFeeTxReportCommand::Tx(trade_no) => {
+                                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                                let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
+                                if res.is_ok() {
+                                    match self.process_fee_single_tx_report(res.unwrap()).await {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            tracing::error!("failed to process fee tx report: {}", err);
+                                        }
                                     }
                                 }
                             }
@@ -416,11 +420,15 @@ impl ProcessFeeTxConfirmReport {
                     match report_msg {
                         Some(cmd) => {
                             match cmd {
-                                ProcessFeeTxConfirmReportCommand::Tx => {
-                                    match self.process_fee_tx_confirm_report().await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            tracing::error!("failed to process fee tx confirm report: {}", err);
+                                ProcessFeeTxConfirmReportCommand::Tx(trade_no) => {
+                                    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                                    let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
+                                    if res.is_ok() {
+                                        match self.process_fee_single_tx_confirm_report(res.unwrap()).await {
+                                            Ok(_) => {}
+                                            Err(err) => {
+                                                tracing::error!("failed to process fee tx confirm report: {}", err);
+                                            }
                                         }
                                     }
                                     iv.reset();
