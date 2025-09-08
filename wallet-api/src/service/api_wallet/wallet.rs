@@ -6,10 +6,7 @@ use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::Bin
 
 use crate::{
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
-    infrastructure::{
-        GLOBAL_CACHE, WALLET_PASSWORD,
-        task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
-    },
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
 };
 
 pub struct ApiWalletService {}
@@ -275,8 +272,6 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
-
         ApiWalletDomain::bind_uid(recharge_uid, merchain_id, org_app_id).await?;
         ApiWalletDomain::bind_uid(withdrawal_uid, merchain_id, org_app_id).await?;
 

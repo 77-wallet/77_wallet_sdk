@@ -9,7 +9,7 @@ impl StrategyService {
         Self {}
     }
 
-    pub async fn update_collection_strategy(
+    pub async fn update_collect_strategy(
         self,
         uid: &str,
         threshold: f64,
@@ -23,7 +23,14 @@ impl StrategyService {
         Ok(())
     }
 
-    pub async fn update_withdraw_strategy(
+    pub async fn query_collect_strategy(self, uid: &str) -> Result<(), crate::ServiceError> {
+        let backend_api = crate::Context::get_global_backend_api()?;
+        backend_api.query_collect_strategy(&uid).await?;
+
+        Ok(())
+    }
+
+    pub async fn update_withdrawal_strategy(
         self,
         uid: &str,
         threshold: f64,
@@ -33,6 +40,13 @@ impl StrategyService {
 
         let req = SaveWithdrawStrategyReq::new(uid, threshold, chain_config);
         backend_api.save_withdrawal_strategy(&req).await?;
+
+        Ok(())
+    }
+
+    pub async fn query_withdrawal_strategy(self, uid: &str) -> Result<(), crate::ServiceError> {
+        let backend_api = crate::Context::get_global_backend_api()?;
+        backend_api.query_withdrawal_strategy(&uid).await?;
 
         Ok(())
     }

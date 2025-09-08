@@ -3,7 +3,7 @@ use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
 use crate::{api::ReturnType, service::api_wallet::strategy::StrategyService};
 
 impl crate::WalletManager {
-    pub async fn update_collection_strategy(
+    pub async fn update_collect_strategy(
         &self,
         uid: &str,
         threshold: f64,
@@ -11,10 +11,11 @@ impl crate::WalletManager {
         // risk_index: i32,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
-        StrategyService::new()
-            .update_collection_strategy(uid, threshold, chain_config)
-            .await?
-            .into()
+        StrategyService::new().update_collect_strategy(uid, threshold, chain_config).await?.into()
+    }
+
+    pub async fn get_collect_strategy(&self, uid: &str) -> ReturnType<()> {
+        StrategyService::new().query_collect_strategy(uid).await?.into()
     }
 
     pub async fn update_withdrawal_strategy(
@@ -23,7 +24,14 @@ impl crate::WalletManager {
         threshold: f64,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
-        StrategyService::new().update_withdraw_strategy(uid, threshold, chain_config).await?.into()
+        StrategyService::new()
+            .update_withdrawal_strategy(uid, threshold, chain_config)
+            .await?
+            .into()
+    }
+
+    pub async fn get_withdrawal_strategy(&self, uid: &str) -> ReturnType<()> {
+        StrategyService::new().query_withdrawal_strategy(uid).await?.into()
     }
 }
 
