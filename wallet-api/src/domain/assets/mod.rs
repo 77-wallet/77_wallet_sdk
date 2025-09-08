@@ -1,17 +1,23 @@
 use super::chain::adapter::ChainAdapterFactory;
-use crate::request::transaction::SwapTokenInfo;
+use crate::{
+    domain::coin::CoinDomain,
+    request::transaction::SwapTokenInfo,
+    response_vo::{chain::ChainList, coin::CoinInfoList},
+};
 use futures::{stream, StreamExt};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
         assets::{AssetsEntity, AssetsId},
-        coin::{CoinData, CoinEntity, CoinMultisigStatus},
+        coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
-    repositories::{account::AccountRepoTrait, assets::AssetsRepoTrait, ResourcesRepo},
+    repositories::{
+        account::AccountRepoTrait, assets::AssetsRepoTrait, coin::CoinRepo, ResourcesRepo,
+    },
     DbPool,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
@@ -28,50 +34,6 @@ impl AssetsDomain {
     pub fn new() -> Self {
         Self {}
     }
-
-    // pub async fn upsert_assets(
-    //     &mut self,
-    //     repo: &mut ResourcesRepo,
-    //     mut req: TokenQueryPriceReq,
-    //     address: &str,
-    //     chain_code: &str,
-    //     symbol: &str,
-    //     decimals: u8,
-    //     token_address: Option<String>,
-    //     protocol: Option<String>,
-    //     is_multisig: i32,
-    //     name: &str,
-    //     price: &str,
-    // ) -> Result<(), crate::ServiceError> {
-    //     let tx = repo;
-    //     let assets_id = wallet_database::entities::assets::AssetsId::new(
-    //         address,
-    //         chain_code,
-    //         symbol,
-    //         token_address,
-    //     );
-
-    //     let assets = wallet_database::dao::assets::CreateAssetsVo::new(
-    //         assets_id,
-    //         decimals,
-    //         protocol.clone(),
-    //         is_multisig,
-    //     )
-    //     .with_name(name)
-    //     .with_u256(alloy::primitives::U256::default(), decimals)?;
-
-    //     let wallet_type = GLOBAL_WALLET_TYPE.get_or_error().await?;
-    //     if price.is_empty() {
-    //         req.insert(
-    //             chain_code,
-    //             &assets.assets_id.token_address.clone().unwrap_or_default(),
-    //         );
-    //         let task = Task::Common(CommonTask::QueryCoinPrice(req));
-    //         Tasks::new().push(task).send().await?;
-    //     }
-    //     tx.upsert_assets(assets, wallet_type).await?;
-    //     Ok(())
-    // }
 
     pub async fn get_account_assets_entity(
         &mut self,
@@ -126,36 +88,83 @@ impl AssetsDomain {
             is_multisig
         };
 
-        let coin_list = tx
+        let assets_list = tx
             .lists(addresses, chain_code, keyword, _is_multisig)
             .await
             .map_err(crate::ServiceError::Database)?;
 
+        let show_contract = keyword.is_some();
         let mut res = crate::response_vo::coin::CoinInfoList::default();
-        for coin in coin_list {
-            if let Some(info) = res.iter_mut().find(|info| info.symbol == coin.symbol) {
-                info.chain_list.insert(crate::response_vo::coin::ChainInfo {
-                    chain_code: coin.chain_code,
-                    token_address: Some(coin.token_address),
-                    protocol: coin.protocol,
-                });
+        for assets in assets_list {
+            let coin =
+                CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
+                    .await?;
+            if let Some(info) = res
+                .iter_mut()
+                .find(|info| info.symbol == assets.symbol && coin.is_default == 1)
+            {
+                info.chain_list
+                    .entry(assets.chain_code.clone())
+                    .or_insert(assets.token_address);
             } else {
                 res.push(crate::response_vo::coin::CoinInfo {
-                    symbol: coin.symbol,
-                    name: Some(coin.name),
-                    chain_list: std::collections::HashSet::from([
-                        crate::response_vo::coin::ChainInfo {
-                            chain_code: coin.chain_code,
-                            token_address: Some(coin.token_address),
-                            protocol: coin.protocol,
-                        },
-                    ]),
-                    is_multichain: false,
+                    symbol: assets.symbol,
+                    name: Some(assets.name),
+
+                    chain_list: ChainList(HashMap::from([(
+                        assets.chain_code.clone(),
+                        assets.token_address,
+                    )])),
+                    is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
+                    show_contract,
                 });
             }
         }
 
         Ok(res)
+    }
+
+    // keyword 存在都要展示合约地址
+    // 链相同，symbol相同 大于2 显示地址
+    pub async fn show_contract(
+        pool: &DbPool,
+        keyword: Option<&str>,
+        res: &mut CoinInfoList,
+    ) -> Result<(), crate::ServiceError> {
+        let has_keyword = keyword.is_some();
+
+        for coin in res.iter_mut() {
+            let chain_len = coin.chain_list.len();
+
+            if has_keyword || coin.is_default {
+                // 有 keyword：只有恰好 1 条链才显示
+                coin.show_contract = chain_len == 1;
+                continue;
+            }
+
+            // 无 keyword 的逻辑
+            match chain_len {
+                1 => {
+                    let chain_code = coin
+                        .chain_list
+                        .keys()
+                        .next()
+                        .expect("len()==1 已保证存在 key");
+
+                    let same_coin_num =
+                        CoinRepo::same_coin_num(pool, &coin.symbol, chain_code).await?;
+
+                    coin.show_contract = same_coin_num > 1;
+                }
+                _ => {
+                    // 0 或 >1 条链都不显示
+                    coin.show_contract = false;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     // 根据钱包地址来同步资产余额( 目前不需要在进行使用 )
@@ -374,24 +383,26 @@ impl AssetsDomain {
     ) -> Result<(), crate::ServiceError> {
         // notes 不能更新币价
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let time = wallet_utils::time::now();
-        let coin_data = CoinData::new(
-            Some(token.symbol.clone()),
-            &token.symbol,
-            &chain_code,
-            Some(token.token_addr.clone()),
-            Some("0".to_string()),
-            None,
-            token.decimals as u8,
-            0,
-            0,
-            1,
-            time,
-            time,
-        );
-        if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
-            tracing::error!("swap insert coin faild : {}", e);
-        };
+        // let time = wallet_utils::time::now();
+        let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &pool).await?;
+        // let coin_data = CoinData::new(
+        //     Some(token.symbol.clone()),
+        //     &token.symbol,
+        //     &chain_code,
+        //     Some(token.token_addr.clone()),
+        //     Some("0".to_string()),
+        //     None,
+        //     token.decimals as u8,
+        //     0,
+        //     0,
+        //     1,
+        //     true,
+        //     time,
+        //     time,
+        // );
+        // if let Err(e) = CoinEntity::upsert_multi_coin(pool.as_ref(), vec![coin_data]).await {
+        //     tracing::error!("swap insert coin faild : {}", e);
+        // };
 
         // 资产是否存在不存在新增
         let assets_id = AssetsId::new(
@@ -400,7 +411,8 @@ impl AssetsDomain {
             &token.symbol,
             Some(token.token_addr),
         );
-        let assets = CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0);
+        let assets =
+            CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0).with_name(&coin.name);
 
         if let Err(e) = AssetsEntity::upsert_assets(pool.as_ref(), assets).await {
             tracing::error!("swap insert assets faild : {}", e);

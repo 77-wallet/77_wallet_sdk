@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{
@@ -132,16 +134,13 @@ impl ChainService {
         // let device_bind_address_task_data =
         //     DeviceDomain::gen_device_bind_address_task_data().await?;
 
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         let address_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
             &address_batch_init_task_data,
         )?;
         Tasks::new()
-            .push(task)
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                address_init_task_data,
-            )))
+            .push(CommonTask::QueryCoinPrice(req))
+            .push(BackendApiTask::BackendApi(address_init_task_data))
             .send()
             .await?;
 
@@ -151,7 +150,7 @@ impl ChainService {
     pub async fn get_hot_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        let res = tx.get_chain_list().await?;
+        let res = tx.get_chain_list_v2().await?;
         tx.commit_transaction().await?;
 
         Ok(res)
@@ -190,7 +189,8 @@ impl ChainService {
         mut self,
         address: &str,
         account_id: Option<u32>,
-        symbol: &str,
+        // symbol: &str,
+        chain_list: HashMap<String, String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
         let mut tx = self.repo;
@@ -236,8 +236,18 @@ impl ChainService {
             }
         }
         let datas = tx
-            .get_assets_by_address(account_addresses, None, Some(symbol), is_multisig)
+            .get_assets_by_address(account_addresses, is_multisig)
             .await?;
+
+        let datas = datas
+            .into_iter()
+            .filter(|data| {
+                chain_list
+                    .get(&data.chain_code)
+                    .is_some_and(|token_address| data.token_address == *token_address)
+            })
+            .collect();
+
         let chains = tx.get_chain_list().await?;
         let res = token_currencies
             .calculate_chain_assets_list(datas, chains)

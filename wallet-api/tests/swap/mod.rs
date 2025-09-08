@@ -11,6 +11,7 @@ use wallet_api::request::transaction::{
 async fn test_default_quote() {
     let wallet_manager = get_manager().await;
 
+    let chain_code = "tron".to_string();
     let chain_code = "sol".to_string();
     let token_in = "".to_string();
     // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
@@ -34,7 +35,7 @@ async fn test_token_list() {
     let req = SwapTokenListReq {
         chain_code: "".to_string(),
         search: "".to_string(),
-        wallet_address: "0xab17D82c9810c91DAd8842D4C8f1771DB39919bC".to_string(),
+        wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
         account_id: 1,
         exclude_token: vec![],
         page_num: 0,
@@ -55,7 +56,6 @@ async fn test_approve() {
         contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         value: "2".to_string(),
         chain_code: "tron".to_string(),
-        approve_type: "NORMAL".to_string(),
     };
 
     let password = "123456".to_string();
@@ -74,10 +74,9 @@ async fn test_approve_fee() {
         contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         value: "2".to_string(),
         chain_code: "tron".to_string(),
-        approve_type: "UN_LIMIT".to_string(),
     };
 
-    let resp = wallet_manager.approve_fee(params).await;
+    let resp = wallet_manager.approve_fee(params, false).await;
     println!("{}", serde_json::to_string(&resp).unwrap());
 }
 
@@ -85,7 +84,7 @@ async fn test_approve_fee() {
 async fn test_approve_list() {
     let wallet_manager = get_manager().await;
 
-    let uid = "f091ca89e48bc1cd3e4cb84e8d3e3d9e2564e3616efd1feb468793687037d66f".to_string();
+    let uid = "0b859b5fc29eb644d7ec048f10339cb4b38cc67d9ec327d7e6531bed7984303d".to_string();
     let account_id = 1;
 
     let resp = wallet_manager.approve_list(uid, account_id).await;
@@ -102,7 +101,6 @@ async fn test_approve_cancel() {
         contract: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf".to_string(),
         value: "15".to_string(),
         chain_code: "tron".to_string(),
-        approve_type: "UN_LIMIT".to_string(),
     };
 
     let password = "123456".to_string();

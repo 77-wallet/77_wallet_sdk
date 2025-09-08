@@ -15,12 +15,8 @@ async fn main() {
 
     let config =
         wallet_api::config::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
-    let oss_client = wallet_oss::oss_client::OssClient::new(
-        &config.oss.access_key_id,
-        &config.oss.access_key_secret,
-        &config.oss.endpoint,
-        &config.oss.bucket_name,
-    );
+    let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
+
     println!("bucket_name: {}", config.oss.bucket_name);
     let _c = start_upload_scheduler(base_path, 20, oss_client).await;
 

@@ -312,8 +312,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let account_id = 2147483648;
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let account_id = 2;
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let password = &_test_params.create_wallet_req.wallet_password;
         let account = wallet_manager
             .physical_delete_account(wallet_address, account_id, password)
@@ -329,7 +329,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x48914c12BbB44a4c32e6CA7A99831c46267533B0";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account = wallet_manager
             .edit_account_name(1, wallet_address, "new_account")
             .await;
@@ -346,12 +346,13 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0x3A616291F1b7CcA94E753DaAc8fC96806e21Ea26";
+        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account_id = 1;
         let account = wallet_manager
             .get_account_list(Some(wallet_address), Some(account_id))
             .await;
-        tracing::info!("[test_] account: {account:?}");
+        let res = serde_json::to_string(&account).unwrap();
+        tracing::info!("[test_] account: {res:?}");
 
         Ok(())
     }

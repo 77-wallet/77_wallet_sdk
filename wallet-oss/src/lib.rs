@@ -1,18 +1,12 @@
 pub(crate) mod error;
 pub mod oss_client;
-
 pub use error::TransportError;
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use serde::Deserialize;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[derive(Deserialize, Debug)]
+pub struct OssConfig {
+    pub access_key_id: String,
+    pub access_key_secret: String,
+    pub bucket_name: String,
+    pub endpoint: String,
 }

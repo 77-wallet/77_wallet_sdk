@@ -358,6 +358,7 @@ impl ConfigDomain {
                     info.chain_code.clone(),
                     info.address_url.clone(),
                     info.hash_url.clone(),
+                    info.token_url.clone(),
                 )
             })
             .collect();

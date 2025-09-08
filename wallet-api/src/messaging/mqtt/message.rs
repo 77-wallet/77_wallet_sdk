@@ -1,5 +1,5 @@
 use crate::messaging::mqtt::topics::{
-    AcctChange, BulletinMsg, Init, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
+    AcctChange, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange,
@@ -58,8 +58,8 @@ pub enum BizType {
     MultiSignTransAcceptHashComplete,
     // 账变
     AcctChange,
-    // 账户余额初始化
-    Init,
+    // // 账户余额初始化
+    // Init,
     // 代币价格变动
     TokenPriceChange,
     /// 公告
@@ -92,7 +92,7 @@ pub enum Body {
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsg),
     /// 账变
     AcctChange(AcctChange),
-    Init(Init),
+    // Init(Init),
     #[cfg(feature = "token")]
     TokenPriceChange(crate::messaging::mqtt::topics::TokenPriceChange),
     BulletinMsg(BulletinMsg),

@@ -1,6 +1,7 @@
+use wallet_database::entities::task_queue::KnownTaskName;
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
-use crate::infrastructure::task_queue::{CommonTask, InitializationTask, MqttTask, Task, TaskType};
+use crate::infrastructure::task_queue::task::{task_type::TaskType, TaskTrait};
 
 const HISTORICAL_TASK_OFFSET: u8 = 10;
 
@@ -11,7 +12,10 @@ pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
     (TaskType::Common, 2),
 ];
 
-pub(crate) fn assign_priority(task: &Task, is_history: bool) -> Result<u8, crate::ServiceError> {
+pub(crate) fn assign_priority(
+    task: &dyn TaskTrait,
+    is_history: bool,
+) -> Result<u8, crate::ServiceError> {
     let base = get_base_priority(task)?; // 任务类型对应基础优先级，比如 sync=1，其他=3
     Ok(if is_history {
         // 历史任务统一加偏移，确保比新任务优先级低
@@ -22,21 +26,59 @@ pub(crate) fn assign_priority(task: &Task, is_history: bool) -> Result<u8, crate
 }
 
 /// 动态确定任务优先级（0 = 高，1 = 中，2 = 低）
-fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
-    Ok(match task {
-        Task::Initialization(initialization_task) => match initialization_task {
-            InitializationTask::PullAnnouncement => 3,
-            InitializationTask::PullHotCoins => 0,
-            InitializationTask::SetBlockBrowserUrl => 0,
-            InitializationTask::SetFiat => 0,
-            InitializationTask::RecoverQueueData => 1,
-            InitializationTask::InitMqtt => 0,
-        },
-        Task::BackendApi(backend_api_task) => match backend_api_task {
-            crate::infrastructure::task_queue::BackendApiTask::BackendApi(
-                backend_api_task_data,
-            ) => {
-                match backend_api_task_data.endpoint.as_str() {
+fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
+    let name = task.get_name();
+
+    let priority = match name {
+        wallet_database::entities::task_queue::TaskName::Known(known_task_name) => {
+            match known_task_name {
+                KnownTaskName::PullAnnouncement => 3,
+                KnownTaskName::PullHotCoins => 0,
+                KnownTaskName::SetBlockBrowserUrl => 0,
+                KnownTaskName::SetFiat => 0,
+                KnownTaskName::RecoverQueueData => 1,
+                KnownTaskName::InitMqtt => 0,
+
+                KnownTaskName::BackendApi => {
+                    return extract_backend_priority(task);
+                }
+
+                KnownTaskName::OrderMultiSignAccept => 0,
+                KnownTaskName::OrderMultiSignAcceptCompleteMsg => 1,
+                KnownTaskName::OrderMultiSignServiceComplete => 1,
+                KnownTaskName::OrderMultiSignCancel => 0,
+                KnownTaskName::MultiSignTransAccept => 0,
+                KnownTaskName::MultiSignTransCancel => 0,
+                KnownTaskName::MultiSignTransAcceptCompleteMsg => 1,
+                KnownTaskName::MultiSignTransExecute => 0,
+                KnownTaskName::AcctChange => 3,
+                KnownTaskName::OrderMultiSignCreated => 2,
+                KnownTaskName::BulletinMsg => 4,
+                KnownTaskName::PermissionAccept => 2,
+                KnownTaskName::CleanPermission => 2,
+                KnownTaskName::QueryCoinPrice => 2, // 中等优先级，通常用于用户操作但不阻塞主流程
+                KnownTaskName::QueryQueueResult => 3, // 查询结果，偏后台逻辑，较低优先级
+                KnownTaskName::RecoverMultisigAccountData => 1, // 多签账户恢复，重要流程，高优先级
+                KnownTaskName::SyncNodesAndLinkToChains => 4, // 链接节点的同步任务，后台操作，较低优先级
+                KnownTaskName::OrderAllConfirmed => 1,
+            }
+        }
+        wallet_database::entities::task_queue::TaskName::Unknown(_) => 0,
+    };
+
+    Ok(priority)
+}
+
+fn extract_backend_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
+    // 使用 downcast_ref 获取 BackendApiTask 类型
+    let backend_task = task
+        .as_any()
+        .downcast_ref::<crate::infrastructure::task_queue::BackendApiTask>()
+        .ok_or_else(|| crate::SystemError::Service("BackendApi 类型错误".to_string()))?;
+
+    let priority = match backend_task {
+        crate::infrastructure::task_queue::BackendApiTask::BackendApi(backend_api_task_data) => {
+            match backend_api_task_data.endpoint.as_str() {
                     DEVICE_INIT
                     | MQTT_INIT
                     | KEYS_RESET
@@ -83,32 +125,10 @@ fn get_base_priority(task: &Task) -> Result<u8, crate::ServiceError> {
                     // 其它未知/扩展任务，最低优先级
                     _ => 7,
                 }
-            }
-        },
-        Task::Mqtt(mqtt_task) => match **mqtt_task {
-            MqttTask::OrderMultiSignAccept(_) => 0,
-            MqttTask::OrderMultiSignAcceptCompleteMsg(_) => 1,
-            MqttTask::OrderMultiSignServiceComplete(_) => 1,
-            MqttTask::OrderMultiSignCreated(_) => 2,
-            MqttTask::OrderAllConfirmed(_) => 1,
-            MqttTask::OrderMultiSignCancel(_) => 0,
-            MqttTask::MultiSignTransAccept(_) => 0,
-            MqttTask::MultiSignTransCancel(_) => 0,
-            MqttTask::MultiSignTransAcceptCompleteMsg(_) => 1,
-            MqttTask::MultiSignTransExecute(_) => 0,
-            MqttTask::AcctChange(_) => 3,
-            MqttTask::Init(_) => 0,
-            MqttTask::BulletinMsg(_) => 4,
-            MqttTask::PermissionAccept(_) => 2,
-            MqttTask::CleanPermission(_) => 2,
-        },
-        Task::Common(common_task) => match common_task {
-            CommonTask::QueryCoinPrice(_) => 2, // 中等优先级，通常用于用户操作但不阻塞主流程
-            CommonTask::QueryQueueResult(_) => 3, // 查询结果，偏后台逻辑，较低优先级
-            CommonTask::RecoverMultisigAccountData(_) => 1, // 多签账户恢复，重要流程，高优先级
-            CommonTask::SyncNodesAndLinkToChains(_) => 4, // 链接节点的同步任务，后台操作，较低优先级
-        },
-    })
+        }
+    };
+
+    Ok(priority)
 }
 
 #[cfg(test)]
@@ -155,9 +175,9 @@ mod tests {
             1,
         );
 
-        let task1 = (&task1).try_into().unwrap();
-        let task2 = (&task2).try_into().unwrap();
-        assert_eq!(assign_priority(&task1, false).unwrap(), 1);
-        assert_eq!(assign_priority(&task2, false).unwrap(), 0);
+        let task1: Box<dyn TaskTrait> = (&task1).try_into().unwrap();
+        let task2: Box<dyn TaskTrait> = (&task2).try_into().unwrap();
+        assert_eq!(assign_priority(&*task1, false).unwrap(), 1);
+        assert_eq!(assign_priority(&*task2, false).unwrap(), 0);
     }
 }

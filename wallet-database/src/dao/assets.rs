@@ -31,18 +31,6 @@ impl AssetsEntity {
             .to_string(),
         );
 
-        conditions.push(
-            " EXISTS (
-                    SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = assets.chain_code
-                    AND coin.token_address = assets.token_address
-                    AND coin.symbol = assets.symbol
-                    AND coin.status = 1
-                )"
-            .to_string(),
-        );
-
         sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
             .fetch_all(exec)
             .await
@@ -63,17 +51,6 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )"
-            .to_string(),
-        );
-        conditions.push(
-            " EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
             )"
             .to_string(),
         );
@@ -119,18 +96,6 @@ impl AssetsEntity {
             .to_string(),
         );
 
-        conditions.push(
-            " EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
-            )"
-            .to_string(),
-        );
-
         if !conditions.is_empty() {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
@@ -154,6 +119,7 @@ impl AssetsEntity {
         address: Vec<String>,
         chain_code: Option<String>,
         symbol: Option<&str>,
+        token_address: Option<&str>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<AssetsEntityWithAddressType>, crate::Error>
     where
@@ -174,14 +140,6 @@ impl AssetsEntity {
                         FROM chain
                         WHERE chain.chain_code = a.chain_code
                         AND chain.status = 1
-                    )
-                    AND EXISTS (
-                        SELECT 1
-                        FROM coin
-                        WHERE coin.chain_code = a.chain_code
-                        AND coin.token_address = a.token_address
-                        AND coin.symbol = a.symbol
-                        AND coin.status = 1
                     )"
             )
         };
@@ -195,6 +153,9 @@ impl AssetsEntity {
             }
             if symbol.is_some() {
                 sql.push_str(" AND a.symbol = ?");
+            }
+            if token_address.is_some() {
+                sql.push_str(" AND a.token_address = ?");
             }
             if let Some(is_multisig) = is_multisig {
                 let is_multisig_values = if is_multisig { vec![1] } else { vec![0, 2] };
@@ -234,6 +195,10 @@ impl AssetsEntity {
             query = query.bind(sym);
         }
 
+        if let Some(token_address) = token_address {
+            query = query.bind(token_address);
+        }
+
         query
             .fetch_all(exec)
             .await
@@ -258,14 +223,6 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
             )"
         .to_string();
 
@@ -322,21 +279,13 @@ impl AssetsEntity {
                     FROM chain
                     WHERE chain.chain_code = assets.chain_code
                     AND chain.status = 1
-                )
-                AND EXISTS (
-                    SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = assets.chain_code
-                    AND coin.token_address = assets.token_address
-                    AND coin.symbol = assets.symbol
-                    AND coin.status = 1
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
             .bind(assets_id.address.clone())
             .bind(assets_id.symbol.clone())
             .bind(assets_id.chain_code.clone())
-            .bind(assets_id.token_address.clone())
+            .bind(assets_id.token_address.clone().unwrap_or_default())
             .fetch_optional(exec)
             .await;
 
@@ -344,6 +293,40 @@ impl AssetsEntity {
             Ok(rs) => Ok(rs),
             Err(_e) => Err(crate::Error::Database(DatabaseError::QueryFailed)),
         }
+    }
+
+    pub async fn list_by_chain_token_map_batch<'a, E>(
+        exec: E,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<Self>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if chain_list.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut where_parts: Vec<String> = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+
+        for (chain_code, token_address) in chain_list {
+            where_parts.push("(chain_code = ? AND token_address = ?)".to_string());
+            params.push(chain_code.clone());
+            params.push(token_address.clone());
+        }
+
+        let where_clause = where_parts.join(" OR ");
+        let sql = format!("SELECT * FROM assets WHERE ({})", where_clause);
+
+        let mut query = sqlx::query_as::<_, AssetsEntity>(&sql);
+        for param in params {
+            query = query.bind(param);
+        }
+
+        query
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_by_addr_token<'a, E>(
@@ -366,14 +349,6 @@ impl AssetsEntity {
                     FROM chain
                     WHERE chain.chain_code = assets.chain_code
                     AND chain.status = 1
-                )
-                AND EXISTS (
-                    SELECT 1
-                    FROM coin
-                    WHERE coin.chain_code = assets.chain_code
-                    AND coin.token_address = assets.token_address
-                    AND coin.symbol = assets.symbol
-                    AND coin.status = 1
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(sql)
@@ -406,7 +381,7 @@ impl AssetsEntity {
             WHERE address = ?
             AND symbol = ?
             AND chain_code = ?
-            AND token_address IS ?
+            AND token_address = ?
         "#,
         );
 
@@ -525,18 +500,6 @@ impl AssetsEntity {
             .to_string(),
         );
 
-        conditions.push(
-            " EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
-            )"
-            .to_string(),
-        );
-
         if let Some(chain_code) = chain_code {
             conditions.push(format!("chain_code = '{chain_code}'"));
         }
@@ -581,14 +544,6 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
             );
     "#;
 
@@ -623,16 +578,7 @@ impl AssetsEntity {
                 FROM chain
                 WHERE chain.chain_code = assets.chain_code
                 AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = assets.chain_code
-                AND coin.token_address = assets.token_address
-                AND coin.symbol = assets.symbol
-                AND coin.status = 1
-            );
-        "#;
+            );"#;
 
         sqlx::query(sql)
             .bind(chain_code)

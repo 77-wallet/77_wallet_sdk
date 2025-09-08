@@ -3,7 +3,7 @@ use wallet_database::{entities::task_queue::TaskQueueEntity, factory::Repository
 use wallet_utils::serde_func;
 
 use crate::{
-    infrastructure::task_queue::{MqttTask, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, MqttTask},
     messaging::{
         mqtt::topics::OutgoingPayload,
         notify::{event::NotifyEvent, FrontendNotifyEvent},
@@ -14,7 +14,7 @@ use crate::{
 use super::{
     message::BizType,
     topics::{
-        AcctChange, BulletinMsg, ChainChange, CleanPermission, Init, MultiSignTransAccept,
+        AcctChange, BulletinMsg, ChainChange, CleanPermission, MultiSignTransAccept,
         MultiSignTransAcceptCompleteMsg, MultiSignTransCancel, MultiSignTransExecute,
         OrderAllConfirmed, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
         OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete,
@@ -54,7 +54,7 @@ pub(crate) async fn exec_incoming(
 pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Error> {
     let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
-    let topic = Topic::from_bytes(publish.topic.to_vec())?;
+    let topic = Topic::from_bytes_v3(publish.topic.to_vec())?;
 
     match topic.topic {
         Topic::Switch => {}
@@ -148,7 +148,6 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
             .await?
         }
         BizType::AcctChange => exec_task::<AcctChange, _>(&payload, MqttTask::AcctChange).await?,
-        BizType::Init => exec_task::<Init, _>(&payload, MqttTask::Init).await?,
         BizType::OrderMultiSignCreated => {
             exec_task::<OrderMultiSignCreated, _>(&payload, MqttTask::OrderMultiSignCreated).await?
         }
@@ -188,7 +187,10 @@ where
 {
     let data = serde_func::serde_from_value::<T>(payload.body.clone())?;
     Tasks::new()
-        .push_with_id(&payload.msg_id, Task::Mqtt(Box::new(task_ctor(data))))
+        .push_with_id(
+            &payload.msg_id,
+            task_ctor(data), // Task::Mqtt(Box::new())
+        )
         .send()
         .await?;
     Ok(())

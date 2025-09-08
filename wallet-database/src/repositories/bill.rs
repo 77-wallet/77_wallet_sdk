@@ -1,7 +1,7 @@
 use super::ResourcesRepo;
 use crate::{
     dao::bill::BillDao,
-    entities::bill::{BillEntity, BillUpdateEntity, RecentBillListVo},
+    entities::bill::{BillEntity, BillKind, BillUpdateEntity, RecentBillListVo},
     pagination::Pagination,
     DbPool,
 };
@@ -44,6 +44,15 @@ impl BillRepo {
         Ok(bill)
     }
 
+    pub async fn get_by_hash_opt(
+        hash: &str,
+        pool: &DbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        let bill = BillDao::get_one_by_hash(hash, pool.as_ref()).await?;
+
+        Ok(bill)
+    }
+
     pub async fn find_by_id(id: &str, pool: &DbPool) -> Result<BillEntity, crate::Error> {
         let bill = BillDao::find_by_id(pool.as_ref(), id)
             .await?
@@ -64,7 +73,7 @@ impl BillRepo {
     }
 
     pub async fn recent_bill(
-        symbol: &str,
+        token: &str,
         addr: &str,
         chain_code: &str,
         page: i64,
@@ -73,8 +82,7 @@ impl BillRepo {
     ) -> Result<Pagination<RecentBillListVo>, crate::Error> {
         let min_value = None;
         let lists =
-            BillDao::recent_bill(symbol, addr, chain_code, min_value, page, page_size, pool)
-                .await?;
+            BillDao::recent_bill(token, addr, chain_code, min_value, page, page_size, pool).await?;
 
         Ok(lists)
     }
@@ -123,6 +131,25 @@ impl BillRepo {
         )
         .await?;
         Ok(lists)
+    }
+
+    pub async fn last_swap_bill(
+        from: &str,
+        chain_code: &str,
+        pool: &DbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        BillDao::last_swap_bill(pool.as_ref(), from, chain_code).await
+    }
+
+    pub async fn last_approve_bill(
+        from: &str,
+        to: &str,
+        contract: &str,
+        chain_code: &str,
+        tx_kind: BillKind,
+        pool: &DbPool,
+    ) -> Result<Option<BillEntity>, crate::Error> {
+        BillDao::last_approve_bill(pool.as_ref(), from, to, contract, chain_code, tx_kind).await
     }
 }
 

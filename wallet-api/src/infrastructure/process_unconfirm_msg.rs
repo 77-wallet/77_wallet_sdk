@@ -99,84 +99,66 @@ impl UnconfirmedMsgProcessor {
     async fn handle_once(client_id: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
 
+        // 判断数据库中是否存在大量的未处理消息,如果有则跳过
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        let failed_tasks = repo.failed_mqtt_task_queue().await?;
-
-        if failed_tasks.len() < 500 {
-            tracing::debug!("未完成的mqtt任务数小于500个，处理未确认消息");
+        if repo.failed_mqtt_task_queue().await?.len() < 500 {
+            tracing::debug!("未完成的mqtt任务数小于500个,处理未确认消息");
         } else {
-            tracing::debug!("未完成的mqtt任务达到500个，跳过处理未确认消息");
+            tracing::debug!("未完成的mqtt任务达到500个,跳过处理未确认消息");
             return Ok(());
         }
-        // match TaskQueueEntity::has_unfinished_task_by_type(&*pool, 2).await {
-        //     Ok(true) => {
-        //         tracing::debug!("存在未完成的mqtt任务，跳过处理未确认消息");
-        //         return Ok(());
-        //     }
-        //     Ok(false) => {
-        //         tracing::debug!("不存在未完成mqtt任务，处理未确认消息");
-        //     }
-        //     Err(e) => {
-        //         tracing::error!("has_unfinished_task error: {}", e);
-        //         return Err(e.into());
-        //     }
-        // }
 
-        if let Err(e) = MqttDomain::process_unconfirm_msg(client_id).await {
-            if let Err(e) = FrontendNotifyEvent::send_error(
+        MqttDomain::process_unconfirm_msg(client_id).await
+    }
+
+    async fn handle_and_report(client_id: &str) {
+        if let Err(e) = Self::handle_once(client_id).await {
+            tracing::error!("处理未确认消息失败: {}", e);
+            if let Err(send_err) = FrontendNotifyEvent::send_error(
                 "InitializationTask::ProcessUnconfirmMsg",
                 e.to_string(),
             )
             .await
             {
-                tracing::error!("send_error error: {}", e);
+                tracing::error!("发送错误通知失败: {}", send_err);
             }
-            tracing::error!("process unconfirm msg error:{}", e);
-        };
-
-        Ok(())
+        }
     }
 
-    pub async fn start(&self) -> Result<(), crate::ServiceError> {
+    /// Runs once at startup, then repeats either when notified
+    /// or every 30 seconds on a timer.
+    pub async fn start(&self) {
         let client_id = self.client_id.to_string();
         let notify = self.notify.clone();
         tokio::spawn(async move {
-            if let Err(e) = Self::handle_once(&client_id).await {
-                if let Err(send_err) = FrontendNotifyEvent::send_error(
-                    "InitializationTask::ProcessUnconfirmMsg",
-                    e.to_string(),
-                )
-                .await
-                {
-                    tracing::error!("send_error error: {}", send_err);
-                }
-            };
-            tracing::debug!("process_unconfirm_msg start");
+            // 启动的时候执行一次
+            Self::handle_and_report(&client_id).await;
             loop {
                 tokio::select! {
-                    _ = notify.notified() => {
-                        tracing::debug!("收到通知，开始处理");
-                    }
-                    _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {
-                        tracing::debug!("30秒超时，开始自动处理");
-                    }
+                     _ = notify.notified() => {
+                         tracing::debug!("收到通知，开始处理");
+                     }
+                     _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {
+                         tracing::debug!("30秒超时,开始自动处理");
+                     }
                 }
-                if let Err(e) = Self::handle_once(&client_id).await {
-                    tracing::error!("处理未确认消息失败: {}", e);
-                    // 尝试发送错误通知给前端
-                    if let Err(send_err) = FrontendNotifyEvent::send_error(
-                        "InitializationTask::ProcessUnconfirmMsg",
-                        e.to_string(),
-                    )
-                    .await
-                    {
-                        tracing::error!("发送错误通知失败: {}", send_err);
-                    }
-                }
+                // 定时执行
+                Self::handle_and_report(&client_id).await;
             }
         });
-
-        Ok(())
     }
 }
+
+// match TaskQueueEntity::has_unfinished_task_by_type(&*pool, 2).await {
+//     Ok(true) => {
+//         tracing::debug!("存在未完成的mqtt任务，跳过处理未确认消息");
+//         return Ok(());
+//     }
+//     Ok(false) => {
+//         tracing::debug!("不存在未完成mqtt任务，处理未确认消息");
+//     }
+//     Err(e) => {
+//         tracing::error!("has_unfinished_task error: {}", e);
+//         return Err(e.into());
+//     }
+// }

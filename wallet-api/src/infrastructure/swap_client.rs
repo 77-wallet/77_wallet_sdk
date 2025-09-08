@@ -59,14 +59,14 @@ impl SwapClient {
         self.handle_result::<AggQuoteResp>(res)
     }
 
-    pub async fn chain_list(&self) -> Result<SupportChain, crate::ServiceError> {
-        let res = self
-            .client
-            .post_request::<_, AggregatorResp>("get_support_chain_dex", "")
-            .await?;
+    // pub async fn chain_list(&self) -> Result<SupportChain, crate::ServiceError> {
+    //     let res = self
+    //         .client
+    //         .post_request::<_, AggregatorResp>("get_support_chain_dex", "")
+    //         .await?;
 
-        self.handle_result::<SupportChain>(res)
-    }
+    //     self.handle_result::<SupportChain>(res)
+    // }
 
     // pub async fn dex_list(&self, chain_code: &str) -> Result<Vec<SupportDex>, crate::ServiceError> {
     //     let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
@@ -111,27 +111,27 @@ impl SwapClient {
     // }
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct SupportChain {
-    pub chain_dexs: Vec<ChainDex>,
-}
+// #[derive(Debug, serde::Deserialize, serde::Serialize)]
+// pub struct SupportChain {
+//     pub chain_dexs: Vec<ChainDex>,
+// }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChainDex {
-    pub chain_code: String,
-    #[serde(alias = "swapContractAddr")]
-    pub aggregator_addr: String,
-    pub dexs: Vec<DexInfo>,
-}
+// #[derive(Debug, serde::Deserialize, serde::Serialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct ChainDex {
+//     pub chain_code: String,
+//     #[serde(alias = "swapContractAddr")]
+//     pub aggregator_addr: String,
+//     pub dexs: Vec<DexInfo>,
+// }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DexInfo {
-    pub dex_id: u64,
-    pub dex_name: String,
-    pub icon_code: String,
-}
+// #[derive(Debug, serde::Deserialize, serde::Serialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct DexInfo {
+//     pub dex_id: u64,
+//     pub dex_name: String,
+//     pub icon_code: String,
+// }
 
 // 响应
 #[derive(Debug, serde::Deserialize)]

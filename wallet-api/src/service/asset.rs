@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+
 use crate::{
     domain::{
         account::AccountDomain, assets::AssetsDomain, coin::CoinDomain, multisig::MultisigDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, Task, Tasks},
-    response_vo::assets::{
-        AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes,
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
+    response_vo::{
+        assets::{AccountChainAsset, AccountChainAssetList, CoinAssets, GetAccountAssetsRes},
+        chain::ChainList,
     },
 };
 use wallet_database::{
@@ -159,94 +162,6 @@ impl AssetsService {
     }
 
     // 指定账户下的链的资产列表，需要去重
-    // pub async fn get_account_chain_assets(
-    //     &self,
-    //     address: &str,
-    //     account_id: Option<u32>,
-    //     chain_code: Option<String>, // mut get_chain: wallet_entity::resources::assets::GetChain,
-    //     is_multisig: Option<bool>,
-    // ) -> Result<Vec<AccountChainAsset>, crate::ServiceError> {
-    //     let service = Service::default();
-    //     let account_addresses = self
-    //         .account_domain
-    //         .get_addresses(address, account_id, chain_code.clone(), is_multisig)
-    //         .await?;
-    //     let mut account_addresses = account_addresses
-    //         .into_iter()
-    //         .map(|address| address.address)
-    //         .collect::<Vec<String>>();
-    //     let mut res = Vec::<AccountChainAsset>::new();
-
-    //     // 根据账户地址、网络查询币资产
-    //     for address in account_addresses {
-    //         let assets: Vec<AssetsEntity> = service
-    //             .asset_service
-    //             .get_chain_assets_by_account_address_chain_code_symbol(
-    //                 vec![address],
-    //                 chain_code.clone(),
-    //                 None,
-    //             )
-    //             .await?;
-
-    //         for asset in assets {
-    //             let token_currency =
-    //                 super::get_current_coin_unit_price(&asset.symbol, &asset.chain_code).await?;
-
-    //             if let Some(existing_asset) = res.iter_mut().find(|a| a.symbol == asset.symbol) {
-    //                 // 如果资产已存在，合并
-    //                 let balance = wallet_utils::parse_func::decimal_from_str(&asset.balance)?;
-    //                 let balacne_f = wallet_utils::parse_func::f64_from_str(&asset.balance)?;
-    //                 let config = crate::config::CONFIG.read().unwrap();
-    //                 let currency = config.currency();
-
-    //                 let price = token_currency.get_price(currency);
-
-    //                 let BalanceInfo {
-    //                     amount,
-    //                     currency,
-    //                     unit_price,
-    //                     fiat_value,
-    //                 } = &mut existing_asset.balance;
-
-    //                 let after_balance = *amount + balacne_f;
-    //                 *amount = after_balance;
-    //                 let fiat_balance = price * after_balance;
-    //                 *fiat_value = Some(fiat_balance);
-
-    //                 // existing_asset.usdt_balance = (after_balance * unit_price).to_string();
-    //                 // FIXME: btc 的资产是 非multisig 的，需要特殊处理
-    //                 existing_asset.is_multichain = true;
-    //             } else {
-    //                 let balance = (token_currency, &asset).try_into()?;
-    //                 res.push(AccountChainAsset {
-    //                     chain_code: asset.chain_code,
-    //                     symbol: asset.symbol,
-    //                     balance,
-    //                     is_multichain: false,
-    //                     is_multisig: asset.is_multisig, // chains: vec![chain_assets],
-    //                 });
-    //             }
-    //         }
-    //     }
-
-    //     // 过滤掉multisig的资产
-    //     if let Some(is_multisig) = is_multisig {
-    //         res = res
-    //             .into_iter()
-    //             .filter(|asset| {
-    //                 if is_multisig {
-    //                     asset.is_multisig == 1
-    //                 } else {
-    //                     asset.is_multisig == 0 || asset.is_multisig == 2
-    //                 }
-    //             })
-    //             .collect();
-    //     }
-
-    //     Ok(res)
-    // }
-
-    // 指定账户下的链的资产列表，需要去重
     pub async fn get_account_chain_assets_v2(
         mut self,
         address: &str,
@@ -255,24 +170,19 @@ impl AssetsService {
         is_multisig: Option<bool>,
     ) -> Result<AccountChainAssetList, crate::ServiceError> {
         let mut tx = self.repo;
+
+        let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
             .account_domain
-            .get_addresses(
-                &mut tx,
-                address,
-                account_id,
-                chain_code.clone(),
-                is_multisig,
-            )
+            .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
             .await?;
-
-        // tracing::debug!("account_addresses: {:?}", account_addresses);
 
         let mut res = AccountChainAssetList::default();
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
+
         // 根据账户地址、网络查询币资产
         for address in account_addresses {
-            let assets: Vec<AssetsEntity> = tx
+            let assets_list: Vec<AssetsEntity> = tx
                 .get_chain_assets_by_address_chain_code_symbol(
                     vec![address.address],
                     Some(address.chain_code),
@@ -280,34 +190,44 @@ impl AssetsService {
                     None,
                 )
                 .await?;
-            for asset in assets {
-                if let Some(existing_asset) = res.iter_mut().find(|a| a.symbol == asset.symbol) {
+            for assets in assets_list {
+                let coin = CoinDomain::get_coin(
+                    &assets.chain_code,
+                    &assets.symbol,
+                    assets.token_address(),
+                )
+                .await?;
+                if let Some(existing_asset) = res
+                    .iter_mut()
+                    .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
+                {
                     token_currencies
-                        .calculate_assets(asset, existing_asset)
+                        .calculate_assets(assets, existing_asset)
                         .await?;
+                    existing_asset
+                        .chain_list
+                        .entry(coin.chain_code.clone())
+                        .or_insert(coin.token_address.unwrap_or_default());
                 } else {
-                    let balance = token_currencies.calculate_assets_entity(&asset).await?;
+                    let balance = token_currencies.calculate_assets_entity(&assets).await?;
 
-                    // if balance.unit_price == Some(0.0) {
-                    //     continue;
-                    // }
                     let chain_code = if chain_code.is_none()
-                        && let Some(chain) = tx.detail_with_main_symbol(&asset.symbol).await?
+                        && let Some(chain) = tx.detail_with_main_symbol(&assets.symbol).await?
                     {
                         chain.chain_code
                     } else {
-                        asset.chain_code
+                        assets.chain_code
                     };
 
                     res.push(AccountChainAsset {
                         chain_code: chain_code.clone(),
-                        symbol: asset.symbol,
-                        name: asset.name,
-                        // chain_list: HashMap::from([(chain_code, asset.token_address)]),
+                        symbol: assets.symbol,
+                        name: assets.name,
+                        chain_list: ChainList(HashMap::from([(chain_code, assets.token_address)])),
                         balance,
-                        is_multichain: false,
-                        is_multisig: asset.is_multisig, // chains: vec![chain_assets],
-                    });
+                        is_multisig: assets.is_multisig, // chains: vec![chain_assets],
+                        is_default: coin.is_default == 1,
+                    })
                 }
             }
         }
@@ -322,12 +242,94 @@ impl AssetsService {
                 }
             });
         }
-        res.mark_multichain_assets();
+        // res.mark_multichain_assets();
         res.sort_account_chain_assets();
         Ok(res)
     }
 
-    // TODO: 有问题：两个相同chainCode相同symbol的不知道怎么添加
+    pub async fn add_coin_v2(
+        self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_list: ChainList,
+        // token_address: Option<String>,
+        is_multisig: Option<bool>,
+    ) -> Result<(), crate::ServiceError> {
+        let mut tx = self.repo;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let chains = chain_list.keys().cloned().collect();
+        let accounts = self
+            .account_domain
+            .get_addresses(&mut tx, address, account_id, chains, is_multisig)
+            .await?;
+        let coins = tx
+            .coin_list_by_chain_token_map_batch(&pool, &chain_list)
+            .await?;
+
+        // let Some(device) = tx.get_device_info().await? else {
+        //     return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        // };
+        let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
+
+        // let mut token_balance_refresh_req: TokenBalanceRefreshReq =
+        //     TokenBalanceRefreshReq(Vec::new());
+
+        for coin in coins {
+            if let Some(account) = accounts
+                .iter()
+                .find(|account| account.chain_code == coin.chain_code)
+            {
+                let chain_code = account.chain_code.as_str();
+                // let code: ChainCode = chain_code.try_into()?;
+
+                let is_multisig = if let Some(is_multisig) = is_multisig
+                    && is_multisig
+                {
+                    1
+                } else {
+                    0
+                };
+
+                let assets_id = AssetsId::new(
+                    &account.address,
+                    chain_code,
+                    &coin.symbol,
+                    coin.token_address(),
+                );
+                let assets = CreateAssetsVo::new(
+                    assets_id,
+                    coin.decimals,
+                    coin.protocol.clone(),
+                    is_multisig,
+                )
+                .with_name(&coin.name)
+                .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+
+                if coin.price.is_empty() {
+                    req.insert(
+                        chain_code,
+                        &assets.assets_id.token_address.clone().unwrap_or_default(),
+                    );
+                }
+                tx.upsert_assets(assets).await?;
+                // token_balance_refresh_req
+                //     .push(TokenBalanceRefresh::new(address, chain_code, &device.sn));
+            }
+        }
+
+        // let task_data = BackendApiTaskData::new(
+        //     wallet_transport_backend::consts::endpoint::TOKEN_BALANCE_REFRESH,
+        //     &token_balance_refresh_req,
+        // )?;
+
+        Tasks::new()
+            .push(CommonTask::QueryCoinPrice(req))
+            // .push(BackendApiTask::BackendApi(task_data))
+            .send()
+            .await?;
+        Ok(())
+    }
+
     pub async fn add_coin(
         self,
         address: &str,
@@ -338,17 +340,11 @@ impl AssetsService {
         is_multisig: Option<bool>,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
+        let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let accounts = self
             .account_domain
-            .get_addresses(
-                &mut tx,
-                address,
-                account_id,
-                chain_code.clone(),
-                is_multisig,
-            )
+            .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
             .await?;
-
         let coins = tx
             .coin_list_v2(Some(symbol.to_string()), chain_code.clone())
             .await?;
@@ -361,10 +357,10 @@ impl AssetsService {
         let mut token_balance_refresh_req: TokenBalanceRefreshReq =
             TokenBalanceRefreshReq(Vec::new());
         for account in accounts {
-            if let Some(coin) = coins
-                .iter()
-                .find(|coin| coin.chain_code == account.chain_code)
-            {
+            if let Some(coin) = coins.iter().find(|coin| {
+                coin.chain_code == account.chain_code && coin.symbol == symbol
+                // && coin.is_default == 1
+            }) {
                 let chain_code = account.chain_code.as_str();
                 // let code: ChainCode = chain_code.try_into()?;
 
@@ -378,7 +374,6 @@ impl AssetsService {
 
                 let assets_id =
                     AssetsId::new(&account.address, chain_code, symbol, coin.token_address());
-
                 let assets = CreateAssetsVo::new(
                     assets_id,
                     coin.decimals,
@@ -405,12 +400,76 @@ impl AssetsService {
             &token_balance_refresh_req,
         )?;
 
-        let task = Task::Common(CommonTask::QueryCoinPrice(req));
         Tasks::new()
-            .push(task)
-            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .push(CommonTask::QueryCoinPrice(req))
+            .push(BackendApiTask::BackendApi(task_data))
             .send()
             .await?;
+        Ok(())
+    }
+
+    pub async fn remove_coin_v2(
+        &mut self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_list: ChainList,
+        // symbol: &str,
+        // token_address: Option<String>,
+        is_multisig: Option<bool>,
+    ) -> Result<(), crate::ServiceError> {
+        let tx = &mut self.repo;
+        let pool = crate::Context::get_global_sqlite_pool()?;
+
+        let chains = chain_list.keys().cloned().collect();
+
+        let accounts = self
+            .account_domain
+            .get_addresses(tx, address, account_id, chains, is_multisig)
+            .await?;
+
+        let assets: Vec<AssetsEntity> = tx
+            .list_by_chain_token_map_batch(&pool, &chain_list)
+            .await?
+            .into_iter()
+            .filter(|asset| {
+                accounts.iter().any(|account| {
+                    account.address == asset.address && account.chain_code == asset.chain_code
+                })
+            })
+            .collect();
+        let mut assets_ids = Vec::new();
+        let mut coin_ids = std::collections::HashSet::new();
+
+        for asset in assets {
+            let assets_id = AssetsId::new(
+                &asset.address,
+                &asset.chain_code,
+                &asset.symbol,
+                Some(asset.token_address),
+            );
+            assets_ids.push(assets_id);
+            let coin_id = SymbolId::new(&asset.chain_code, &asset.symbol);
+            coin_ids.insert(coin_id);
+        }
+        tx.delete_multi_assets(assets_ids).await?;
+
+        let mut should_drop_coin = std::collections::HashSet::new();
+        for coin in coin_ids {
+            let asset = tx
+                .get_chain_assets_by_address_chain_code_symbol(
+                    Vec::new(),
+                    Some(coin.chain_code.clone()),
+                    Some(&coin.symbol),
+                    None,
+                )
+                .await?;
+            if asset.is_empty() {
+                should_drop_coin.insert(coin);
+            }
+        }
+
+        tx.drop_multi_custom_coin(should_drop_coin).await?;
+
         Ok(())
     }
 
@@ -426,7 +485,7 @@ impl AssetsService {
         let tx = &mut self.repo;
         let accounts = self
             .account_domain
-            .get_addresses(tx, address, account_id, None, is_multisig)
+            .get_addresses(tx, address, account_id, vec![], is_multisig)
             .await?
             .into_iter()
             .map(|account| account.address)
@@ -478,25 +537,23 @@ impl AssetsService {
         is_multisig: Option<bool>,
     ) -> Result<crate::response_vo::coin::CoinInfoList, crate::ServiceError> {
         let mut tx = self.repo;
+        let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
             .account_domain
-            .get_addresses(
-                &mut tx,
-                address,
-                account_id,
-                chain_code.clone(),
-                is_multisig,
-            )
+            .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
             .await?;
         let account_addresses = account_addresses
             .into_iter()
             .map(|address| address.address)
             .collect::<Vec<String>>();
-        let mut res = self
+        let res = self
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)
             .await?;
-        res.mark_multi_chain_assets();
+
+        // let pool = tx.pool();
+        // AssetsDomain::show_contract(&pool, keyword, &mut res).await?;
+
         Ok(res)
     }
 

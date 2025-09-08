@@ -138,12 +138,12 @@ impl From<&AcctChange> for AcctChangeFrontend {
 }
 
 impl AcctChange {
-    pub(crate) async fn exec(self, msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, msg_id: &str) -> Result<(), crate::ServiceError> {
         // let event_name = self.name();
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
 
         // bill create
-        let tx = NewBillEntity::<serde_json::Value>::try_from(&self)?;
+        let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
         let tx_kind = tx.tx_kind;
 
         if tx.chain_code == chain_code::TON {
@@ -171,7 +171,7 @@ impl AcctChange {
         }
 
         // send acct_change to frontend
-        let change_frontend = AcctChangeFrontend::from(&self);
+        let change_frontend = AcctChangeFrontend::from(self);
         let data = NotifyEvent::AcctChange(change_frontend);
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
@@ -313,6 +313,7 @@ impl AcctChange {
             &acct_change.chain_code,
             &transaction_status,
             &transaction_hash,
+            acct_change.token.clone(),
             &notification_type,
         );
         let req = notify.gen_create_system_notification_entity(

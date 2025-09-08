@@ -60,12 +60,26 @@ pub struct ApproveReq {
     pub spender: String,
     pub value: String,
     pub chain_code: String,
-    // NORMAL , UN_LIMIT(无限制)
-    pub approve_type: String,
 }
 impl ApproveReq {
-    // pub const NORMAL: &'static str = "NORMAL";
+    pub const NORMAL: &'static str = "NORMAL";
     pub const UN_LIMIT: &'static str = "UN_LIMIT";
+
+    pub fn get_approve_type(&self) -> &'static str {
+        if self.value == "-1" || self.value == "0" {
+            Self::UN_LIMIT
+        } else {
+            Self::NORMAL
+        }
+    }
+
+    pub fn get_value(&self, decimals: u8) -> Result<U256, crate::ServiceError> {
+        if self.value == "-1" || self.value == "0" {
+            Ok(U256::MAX)
+        } else {
+            Ok(wallet_utils::unit::convert_to_u256(&self.value, decimals)?)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -136,7 +150,7 @@ impl TryFrom<&SwapReq> for SwapParams {
             value.token_out.decimals as u8,
         )?;
 
-        if value.chain_code == chain_code::ETHEREUM {
+        if value.chain_code == chain_code::ETHEREUM || value.chain_code == chain_code::BNB {
             Ok(SwapParams {
                 aggregator_addr: wallet_utils::address::parse_eth_address(&value.aggregator_addr)?,
                 amount_in,
@@ -171,8 +185,10 @@ impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
 
         let extra = BillExtraSwap {
             from_token_symbol: value.token_in.symbol.clone(),
+            from_token_address: value.token_in.token_addr.clone(),
             from_token_amount: amount_in,
             to_token_symbol: value.token_out.symbol.clone(),
+            to_token_address: value.token_out.token_addr.clone(),
             to_token_amount: amount_out,
             price: amount_out / amount_in,
         };

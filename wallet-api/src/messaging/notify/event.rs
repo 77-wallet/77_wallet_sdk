@@ -13,7 +13,7 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
-use crate::messaging::mqtt::topics::{BulletinMsg, Init};
+use crate::messaging::mqtt::topics::BulletinMsg;
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
@@ -27,7 +27,7 @@ pub enum NotifyEvent {
     MultiSignTransAcceptCompleteMsg(MultiSignTransAcceptCompleteMsgFrontend),
     AcctChange(AcctChangeFrontend),
     TokenPriceChange(crate::response_vo::coin::TokenPriceChangeRes),
-    Init(Init),
+    // Init(Init),
     BulletinMsg(BulletinMsg),
 
     FetchBulletinMsg,
@@ -76,7 +76,6 @@ impl NotifyEvent {
             }
             NotifyEvent::AcctChange(_) => "ACCT_CHANGE".to_string(),
             NotifyEvent::TokenPriceChange(_) => "TOKEN_PRICE_CHANGE".to_string(),
-            NotifyEvent::Init(_) => "INIT".to_string(),
             NotifyEvent::BulletinMsg(_) => "BULLETIN_MSG".to_string(),
 
             NotifyEvent::ChainChange(_) => "CHAIN_CHANGE".to_string(),

@@ -1,5 +1,5 @@
 use crate::{api::ReturnType, response_vo::coin::TokenPriceChangeRes, service::coin::CoinService};
-use wallet_transport_backend::response_vo::coin::TokenHistoryPrices;
+use wallet_transport_backend::response_vo::coin::{CoinMarketValue, TokenHistoryPrices};
 
 impl crate::WalletManager {
     pub async fn get_hot_coin_list(
@@ -127,6 +127,16 @@ impl crate::WalletManager {
             .into()
     }
 
+    pub async fn coin_market_value(
+        &self,
+        req: std::collections::HashMap<String, String>,
+    ) -> ReturnType<CoinMarketValue> {
+        CoinService::new(self.repo_factory.resource_repo())
+            .market_value(req)
+            .await?
+            .into()
+    }
+
     pub async fn query_popular_by_page(
         &self,
         keyword: Option<String>,
@@ -169,15 +179,17 @@ mod test {
 
         // let keyword = Some("StR");
         // let keyword = None;
-        let keyword = Some("USDT");
+        // let keyword = Some("USDT");
+        let keyword = None;
         // let chain_code = Some("btc");
-        let chain_code = None;
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let chain_code = Some("sol".to_string());
+        // let chain_code = None;
+        let wallet_address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let res = wallet_manager
             .get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000)
             .await;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
+        tracing::info!("res: {}", res);
         Ok(())
     }
 
@@ -224,7 +236,7 @@ mod test {
         // let chain_code = "tron";
         // let chain_code = "btc";
         // let chain_code = "sol";
-        let chain_code = "ton";
+        let chain_code = "sui";
         // let token_address = "0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24";
         // let token_address = "0xB8c77482e45F1F44dE1745F52C74426C631bDD52";
         // let token_address = "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB";
@@ -234,7 +246,8 @@ mod test {
         let token_address =
         // "0x55d398326f99059fF775485246999027B3197955";
         // "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
-        "EQACLXDwit01stiqK9FvYiJo15luVzfD5zU8uwDSq6JXxbP8";
+        // "EQACLXDwit01stiqK9FvYiJo15luVzfD5zU8uwDSq6JXxbP8";
+        "0xdeeb7a4662eec9f2f3def03fb937a663dddaa2e215b8078a284d026b7946c270::deep::DEEP";
 
         // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
 
@@ -265,40 +278,10 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        // let wallet_address = "0xE63EB4fba134978EfdD529BBea8a2F64B30068C1";
-        // let wallet_address = "0x454c162DFCB6ad39FC89cD84a28A47879793E41A";
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-        // let chain_code = "eth";
-        // let chain_code = "sol";
-        // let chain_code = "btc";
-        // let chain_code = "bnb";
-        // let chain_code = "eth";
-        // let chain_code = "sol";
-        let chain_code = "ton";
-        // let symbol = "ATLA";
-        // let token_address = Some("0x45e9F834539bC2a0936f184779cED638c9B26459".to_string());
-        // let protocol = Some("ERC20".to_string());
-        // let decimals = 18;
-
-        // let symbol = "XRP";
-        // let token_address = Some("0x628F76eAB0C1298F7a24d337bBbF1ef8A1Ea6A24".to_string());
-        // let protocol = Some("ERC20".to_string());
+        let wallet_address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
+        let chain_code = "sol";
         let protocol = None;
-        // let decimals = 6;
-
-        // let chain_code = "tron";
-        // let token_address = "TR3DLthpnDdCGabhVDbD3VMsiJoCXY3bZd";
-        // let token_address = "TQCfza5xo7srwPsYvdpQgYbgQAUWcAcjSa";
-        // let token_address = "0x55d398326f99059fF775485246999027B3197955";
-        // let token_address = "0x55d398326f99059ff775485246999027b3197955";
-        // let token_address = "So11111111111111111111111111111111111111112";
-        let token_address =
-            // "0x506a6fc25f1c7d52ceb06ea44a3114c9380f8e2029b4356019822f248b49e411::memefi::MEMEFI";
-            // "0x288710173f12f677ac38b0c2b764a0fea8108cb5e32059c3dd8f650d65e2cb25::pepe::PEPE";
-            "EQACLXDwit01stiqK9FvYiJo15luVzfD5zU8uwDSq6JXxbP8";
-
-        // let token_address = "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84";
-        // let token_address = "0x7a19f93b1ACF9FF8d33d21702298f2F0CdC93654";
+        let token_address = "5goWRao6a3yNC4d6UjMdQxonkCMvKBwdpubU3qhfcdf1";
 
         let res = wallet_manager
             .customize_coin(wallet_address, Some(1), chain_code, token_address, protocol)

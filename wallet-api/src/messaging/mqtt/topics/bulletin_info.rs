@@ -96,7 +96,7 @@ pub enum Operation {
 }
 
 impl BulletinMsg {
-    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let Self {
             ref id,
             ref operation,
@@ -126,7 +126,7 @@ impl BulletinMsg {
                 }
             }
         }
-        let data = NotifyEvent::BulletinMsg(self);
+        let data = NotifyEvent::BulletinMsg(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
 
         Ok(())

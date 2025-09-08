@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 use crate::{api::ReturnType, response_vo::chain::ChainAssets, service::chain::ChainService};
@@ -63,10 +65,11 @@ impl crate::WalletManager {
         &self,
         wallet_address: &str,
         account_id: u32,
-        symbol: &str,
+        // symbol: &str,
+        chain_list: HashMap<String, String>,
     ) -> ReturnType<Vec<ChainAssets>> {
         ChainService::new(self.repo_factory.resource_repo())
-            .get_chain_assets_list(wallet_address, Some(account_id), symbol, None)
+            .get_chain_assets_list(wallet_address, Some(account_id), chain_list, None)
             .await?
             .into()
     }
@@ -74,10 +77,10 @@ impl crate::WalletManager {
     pub async fn get_multisig_chain_list(
         &self,
         address: &str,
-        symbol: &str,
+        chain_list: HashMap<String, String>,
     ) -> ReturnType<Vec<ChainAssets>> {
         ChainService::new(self.repo_factory.resource_repo())
-            .get_chain_assets_list(address, None, symbol, Some(true))
+            .get_chain_assets_list(address, None, chain_list, Some(true))
             .await?
             .into()
     }
@@ -85,6 +88,8 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::test::env::get_manager;
     use anyhow::Result;
 
@@ -96,8 +101,18 @@ mod tests {
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         // let symbol = "LTC";
-        let symbol = "USDT";
-        let res = wallet_manager.get_chain_list(address, 1, symbol).await;
+        let chain_list = HashMap::from([
+            (
+                "bnb".to_string(),
+                "0x55d398326f99059fF775485246999027B3197955".to_string(),
+            ),
+            (
+                "sui".to_string(),
+                "0xc060006111016b8a020ad5b33834984a437aaa7d3c74c18e09a95d48aceab08c::coin::COIN"
+                    .to_string(),
+            ),
+        ]);
+        let res = wallet_manager.get_chain_list(address, 1, chain_list).await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res}");
         Ok(())
@@ -122,9 +137,13 @@ mod tests {
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
         let address = "TBk86hq1e8C1gNX6RDXhk1wLamwzKnotmo";
-        let symbol = "TRX";
+        // let symbol = "TRX";
+        let chain_list = HashMap::from([(
+            "bnb".to_string(),
+            "0x55d398326f99059fF775485246999027B3197955".to_string(),
+        )]);
         let res = wallet_manager
-            .get_multisig_chain_list(address, symbol)
+            .get_multisig_chain_list(address, chain_list)
             .await;
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");

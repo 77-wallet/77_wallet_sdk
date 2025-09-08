@@ -97,7 +97,7 @@ impl OrderMultiSignAccept {
         Ok(is_cancel.status)
     }
 
-    pub(crate) async fn exec(self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,

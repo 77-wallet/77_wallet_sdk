@@ -1,6 +1,6 @@
 use crate::{
     domain::{self, chain::ChainDomain, node::NodeDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
 };
 use wallet_database::{
     entities::node::NodeCreateVo,
@@ -112,7 +112,7 @@ impl NodeService {
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(chain_list_req)))
+            .push(BackendApiTask::BackendApi(chain_list_req))
             .send()
             .await?;
         Ok(())

@@ -18,7 +18,7 @@ use wallet_transport_backend::{
 
 use crate::{
     domain::app::{config::ConfigDomain, DeviceDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, Task, Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
     response_vo::app::{GetConfigRes, GlobalMsg, MultisigAccountBase},
 };
 
@@ -150,7 +150,7 @@ impl<
             &req,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .push(BackendApiTask::BackendApi(task_data))
             .send()
             .await?;
 
@@ -230,7 +230,7 @@ impl<
 
     pub async fn get_configs(self) -> Result<Vec<ConfigEntity>, crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let res = ConfigDao::lists(pool.as_ref()).await?;
+        let res = ConfigDao::list_v2(pool.as_ref()).await?;
         Ok(res)
     }
 
@@ -337,12 +337,8 @@ impl<
             }),
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                app_install_save_data,
-            )))
-            .push(Task::BackendApi(BackendApiTask::BackendApi(
-                keys_reset_data,
-            )))
+            .push(BackendApiTask::BackendApi(app_install_save_data))
+            .push(BackendApiTask::BackendApi(keys_reset_data))
             .send()
             .await?;
         // backend.keys_reset(sn).await?;
@@ -434,10 +430,17 @@ impl<
             &req,
         )?;
         Tasks::new()
-            .push(Task::BackendApi(BackendApiTask::BackendApi(task_data)))
+            .push(BackendApiTask::BackendApi(task_data))
             .send()
             .await?;
 
         Ok(())
+    }
+
+    pub async fn backend_config(
+        self,
+    ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
+        let backend = crate::manager::Context::get_global_backend_api()?;
+        Ok(backend.all_config().await?.configs)
     }
 }

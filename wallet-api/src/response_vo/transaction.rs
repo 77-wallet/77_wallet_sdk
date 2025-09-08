@@ -1,8 +1,7 @@
-use crate::request::transaction::Signer;
-
 use super::account::default_unit_price_as_zero;
 use super::account::BalanceInfo;
 use super::account::BalanceNotTruncate;
+use crate::request::transaction::Signer;
 use alloy::primitives::U256;
 use wallet_chain_interact::eth::FeeSetting;
 use wallet_chain_interact::{eth, tron};
@@ -198,19 +197,23 @@ impl FeeStructure<EthereumFeeDetails> {
     pub fn new(
         gas_limit: i64,
         base_fee: U256,
-        priority_fee: U256,
+        mut priority_fee: U256,
         types: &str,
     ) -> Result<Self, crate::ServiceError> {
-        let max_fee_per_gas = base_fee + priority_fee;
-        // max fee add 1.3
-        let multiplier = U256::from(13);
-        let divisor = U256::from(10);
+        let base_plus_tip = base_fee + priority_fee;
 
-        let max_fee_per_gas = max_fee_per_gas * multiplier / divisor;
+        // 1.2 倍
+        let mut max_fee_per_gas = base_plus_tip * U256::from(12) / U256::from(10);
 
-        // 截断8位()
-        let scale = U256::from(10).pow(U256::from(8));
-        let max_fee_per_gas = (max_fee_per_gas / scale).max(U256::from(1)) * scale;
+        // 向上取整到 0.1 gwei（1e8 wei）
+        let scale = U256::from(10).pow(U256::from(8)); // 0.1 gwei
+        max_fee_per_gas = ((max_fee_per_gas + (scale - U256::from(1))) / scale) * scale;
+        max_fee_per_gas = max_fee_per_gas.max(base_plus_tip);
+
+        // 避免节点最小费用拦截
+        if priority_fee == U256::ZERO {
+            priority_fee = U256::from(10000);
+        }
 
         let fee_setting = EthereumFeeDetails::new(
             gas_limit,

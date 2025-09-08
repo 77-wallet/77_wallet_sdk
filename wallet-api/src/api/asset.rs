@@ -1,15 +1,15 @@
 use crate::api::ReturnType;
 use crate::response_vo::assets::{AccountChainAssetList, GetAccountAssetsRes};
+use crate::response_vo::chain::ChainList;
 use crate::service::asset::AssetsService;
 
 impl crate::WalletManager {
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .add_coin(
+            .add_coin_v2(
                 &req.wallet_address,
                 Some(req.account_id),
-                &req.symbol,
-                req.chain_code,
+                req.chain_list,
                 None,
             )
             .await?
@@ -18,11 +18,10 @@ impl crate::WalletManager {
 
     pub async fn add_regular_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .add_coin(
+            .add_coin_v2(
                 &req.wallet_address,
                 Some(req.account_id),
-                &req.symbol,
-                req.chain_code,
+                req.chain_list,
                 Some(false),
             )
             .await?
@@ -34,7 +33,7 @@ impl crate::WalletManager {
         req: crate::request::coin::AddMultisigCoinReq,
     ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .add_coin(&req.address, None, &req.symbol, None, Some(true))
+            .add_coin_v2(&req.address, None, req.chain_list, Some(true))
             .await?
             .into()
     }
@@ -47,6 +46,7 @@ impl crate::WalletManager {
         symbol: &str,
         token_address: Option<String>,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
+        let token_address = token_address.filter(|s| !s.is_empty());
         AssetsService::new(self.repo_factory.resource_repo())
             .detail(address, account_id, chain_code, symbol, token_address)
             .await?
@@ -57,24 +57,32 @@ impl crate::WalletManager {
         &self,
         wallet_address: &str,
         account_id: u32,
-        symbol: &str,
+        chain_list: ChainList,
     ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .remove_coin(wallet_address, Some(account_id), symbol, None)
+            .remove_coin_v2(wallet_address, Some(account_id), chain_list, None)
             .await?
             .into()
     }
 
-    pub async fn remove_regular_coin(&self, address: &str, symbol: &str) -> ReturnType<()> {
+    pub async fn remove_regular_coin(
+        &self,
+        address: &str,
+        chain_list: ChainList,
+    ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .remove_coin(address, None, symbol, Some(false))
+            .remove_coin_v2(address, None, chain_list, Some(false))
             .await?
             .into()
     }
 
-    pub async fn remove_multisig_coin(&self, address: &str, symbol: &str) -> ReturnType<()> {
+    pub async fn remove_multisig_coin(
+        &self,
+        address: &str,
+        chain_list: ChainList,
+    ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
-            .remove_coin(address, None, symbol, Some(true))
+            .remove_coin_v2(address, None, chain_list, Some(true))
             .await?
             .into()
     }
@@ -201,7 +209,9 @@ impl crate::WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::test::env::get_manager;
+    use std::collections::HashMap;
+
+    use crate::{response_vo::chain::ChainList, test::env::get_manager};
     use anyhow::Result;
 
     #[tokio::test]
@@ -210,14 +220,16 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
-        let account_id = 2147483648;
+        let account_id = 1;
         let add_coin_req = crate::request::coin::AddCoinReq {
             account_id,
             // symbol: "BNB".to_string(),
-            symbol: "USDT".to_string(),
-            wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
-            chain_code: None,
-            // token_address,
+            // wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
+            wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
+            chain_list: ChainList(HashMap::from([(
+                "eth".to_string(),
+                "0x111111111117dC0aa78b770fA6A738034120C302".to_string(),
+            )])), // token_address,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;
         tracing::info!("res: {res:?}");
@@ -230,7 +242,10 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         let add_coin_req = crate::request::coin::AddMultisigCoinReq {
-            symbol: "USDT".to_string(),
+            chain_list: ChainList(HashMap::from([(
+                "bnb".to_string(),
+                "0x55d398326f99059fF775485246999027B3197955".to_string(),
+            )])),
             address: "TBtrFfwCQEtR8HZ4hEgfmYWiVetMF11czn".to_string(),
             // token_address: token_address,
         };
@@ -246,11 +261,11 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         // wallet_manager.init_wallet_type("api").await?;
-        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let account_id = Some(1);
-        let chain_code = "bnb";
-        let symbol = "USDT";
-        let token_address = Some("0x55d398326f99059fF775485246999027B3197955".to_string());
+        let chain_code = "ton";
+        let symbol = "TON";
+        let token_address = Some("".to_string());
         let res = wallet_manager
             .get_assets(address, account_id, chain_code, symbol, token_address)
             .await;
@@ -269,13 +284,22 @@ mod test {
         // wallet_manager.init_wallet_type("api").await?;
         // let wallet_address = "0xd8dc4B7daEfc0C993d1A7d3E2D4Dc998436032b3";
         // let wallet_address = "0xa32D8B667Fd6d2e30C1E6D7fE6E4319Bf1D4D310";
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         let account_id = 1;
         // let symbol = "LTC";
         // let symbol = "BEANS";
-        let symbol = "USDT";
         let res = wallet_manager
-            .remove_coin(wallet_address, account_id, symbol)
+            .remove_coin(wallet_address, account_id, ChainList(HashMap::from([
+                (
+                    "tron".to_string(),
+                    "TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8".to_string(),
+                ),
+                (
+                    "sui".to_string(),
+                    "0x294de7579d55c110a00a7c4946e09a1b5cbeca2592fbb83fd7bfacba3cfeaf0e::drf::DRF"
+                        .to_string(),
+                ),
+            ])))
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -288,7 +312,17 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let res = wallet_manager
-            .remove_multisig_coin("0x3bAc24b73c7A03C8715697cA1646a6f85B91023a", "USDT")
+            .remove_multisig_coin("0x3bAc24b73c7A03C8715697cA1646a6f85B91023a", ChainList(HashMap::from([
+                (
+                    "tron".to_string(),
+                    "TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8".to_string(),
+                ),
+                (
+                    "sui".to_string(),
+                    "0x294de7579d55c110a00a7c4946e09a1b5cbeca2592fbb83fd7bfacba3cfeaf0e::drf::DRF"
+                        .to_string(),
+                ),
+            ])))
             .await;
         tracing::info!("res: {res:?}");
         Ok(())
@@ -306,17 +340,16 @@ mod test {
         let chain_code = None;
         // let is_multisig = None;
         let is_multisig = Some(false);
-        let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
 
         // let account_id = Some(1);
-        let account_id = Some(2147483648);
+        let account_id = Some(1);
 
         let res = wallet_manager
             .get_coin_list(wallet_address, account_id, chain_code, keyword, is_multisig)
             .await;
-        tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-        tracing::info!("res: {res:?}");
+        tracing::info!("res: {}", res);
         Ok(())
     }
 
@@ -424,7 +457,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
+        let address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let chain_code = None;
         let is_multisig = None;
         // let account_id = Some(1);
@@ -435,9 +468,9 @@ mod test {
         let res = wallet_manager
             .get_assets_list_v2(address, account_id, chain_code, is_multisig)
             .await;
-        tracing::info!("get_account_chain_assets: {res:?}");
+        // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
-        tracing::info!("get_account_chain_assets: {res:?}");
+        tracing::info!("get_account_chain_assets: {}", res);
         Ok(())
     }
 

@@ -167,6 +167,13 @@ impl crate::WalletManager {
             .await?
             .into()
     }
+
+    pub async fn backend_config(&self) -> ReturnType<std::collections::HashMap<String, String>> {
+        AppService::new(self.repo_factory.resource_repo())
+            .backend_config()
+            .await?
+            .into()
+    }
 }
 
 #[cfg(test)]

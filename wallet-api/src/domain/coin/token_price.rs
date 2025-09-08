@@ -58,7 +58,7 @@ impl TokenCurrencyGetter {
         ))
     }
 
-    // 查询后端的币价，并转换为balance数据结构
+    // 查询后端的币价，并转换为balance数据结构(修改为本地)
     pub async fn get_bal_by_backend(
         chain_code: &str,
         token_addr: &str,
@@ -70,10 +70,12 @@ impl TokenCurrencyGetter {
             state.currency().to_string() // 或复制 enum 值，取决于类型
         };
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let token_price = backend.token_price(chain_code, token_addr).await?;
+        // let backend = crate::manager::Context::get_global_backend_api()?;
+        // let token_price = backend.token_price(chain_code, token_addr).await?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let token = CoinRepo::coin_by_chain_address(chain_code, token_addr, &pool).await?;
 
-        let price = unit::string_to_f64(&token_price.price)?;
+        let price = unit::string_to_f64(&token.price)?;
 
         // 对应汇率的价格
         let unit_price = if currency.eq_ignore_ascii_case("usdt") {

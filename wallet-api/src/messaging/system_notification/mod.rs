@@ -83,6 +83,7 @@ pub struct TransactionNotification {
     pub(crate) chain_code: String,
     transaction_status: TransactionStatus,
     pub(crate) transaction_hash: String,
+    pub token_address: Option<String>,
     notification_type: NotificationType,
 }
 
@@ -172,6 +173,7 @@ impl Notification {
         chain_code: &str,
         transaction_status: &TransactionStatus,
         transaction_hash: &str,
+        token_address: Option<String>,
         notification_type: &NotificationType,
     ) -> Self {
         Notification::Transaction(TransactionNotification {
@@ -182,6 +184,7 @@ impl Notification {
             to_addr: to_addr.to_string(),
             transaction_amount,
             symbol: currency.to_string(),
+            token_address,
             chain_code: chain_code.to_string(),
             transaction_status: transaction_status.clone(),
             transaction_hash: transaction_hash.to_string(),

@@ -56,12 +56,12 @@ impl CreateTaskQueueEntity {
     }
 
     pub fn with_mqtt_request_string(
-        id: String,
+        id: &str,
         task_name: TaskName,
         request_body: Option<String>,
         // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
-        Self::new(Some(id), task_name, request_body, 2, 0)
+        Self::new(Some(id.to_string()), task_name, request_body, 2, 0)
     }
 
     pub fn with_backend_request<T: serde::Serialize>(
@@ -140,6 +140,7 @@ impl From<String> for TaskName {
     sqlx::Type,
     PartialEq,
     Eq,
+    Hash,
     strum_macros::EnumString,
     strum_macros::AsRefStr,
 )]
@@ -163,7 +164,6 @@ pub enum KnownTaskName {
     MultiSignTransAcceptCompleteMsg,
     MultiSignTransExecute,
     AcctChange,
-    Init,
     OrderMultiSignCreated,
     BulletinMsg,
     // TronSignFreezeDelegateVoteChange,
