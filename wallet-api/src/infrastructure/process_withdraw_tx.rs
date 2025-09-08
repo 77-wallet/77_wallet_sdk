@@ -23,12 +23,12 @@ pub(crate) enum ProcessWithdrawTxCommand {
 
 #[derive(Clone)]
 pub(crate) enum ProcessWithdrawTxReportCommand {
-    Tx,
+    Tx(String),
 }
 
 #[derive(Clone)]
 pub(crate) enum ProcessWithdrawTxConfirmReportCommand {
-    Tx,
+    Tx(String),
 }
 
 #[derive(Debug)]
@@ -75,8 +75,8 @@ impl ProcessWithdrawTxHandle {
         Ok(())
     }
 
-    pub(crate) async fn submit_confirm_report_tx(&self) -> Result<(), crate::ServiceError> {
-        let _ = self.confirm_report_tx.send(ProcessWithdrawTxConfirmReportCommand::Tx);
+    pub(crate) async fn submit_confirm_report_tx(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
+        let _ = self.confirm_report_tx.send(ProcessWithdrawTxConfirmReportCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 
@@ -229,7 +229,7 @@ impl ProcessWithdrawTx {
         .await?;
 
         // 上报交易
-        let _ = self.report_tx.send(ProcessWithdrawTxReportCommand::Tx);
+        let _ = self.report_tx.send(ProcessWithdrawTxReportCommand::Tx(trade_no.to_string()));
         Ok(1)
     }
 
@@ -243,7 +243,7 @@ impl ProcessWithdrawTx {
         )
         .await?;
         // 上报交易
-        let _ = self.report_tx.send(ProcessWithdrawTxReportCommand::Tx);
+        let _ = self.report_tx.send(ProcessWithdrawTxReportCommand::Tx(trade_no.to_string()));
         Ok(1)
     }
 }
@@ -274,7 +274,7 @@ impl ProcessWithdrawTxReport {
                 msg = self.report_rx.recv() => {
                     if let Some(cmd) = msg {
                         match cmd {
-                            ProcessWithdrawTxReportCommand::Tx => {
+                            ProcessWithdrawTxReportCommand::Tx(trade_no) => {
                                 match self.process_withdraw_tx_report().await {
                                     Ok(_) => {},
                                     Err(_) => {
@@ -412,7 +412,7 @@ impl ProcessWithdrawTxConfirmReport {
                 msg = self.report_rx.recv() => {
                     if let Some(cmd) = msg {
                         match cmd {
-                            ProcessWithdrawTxConfirmReportCommand::Tx => {}
+                            ProcessWithdrawTxConfirmReportCommand::Tx(trade_no) => {}
                         }
                         iv.reset();
                     }

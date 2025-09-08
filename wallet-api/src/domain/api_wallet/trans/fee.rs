@@ -55,12 +55,6 @@ impl ApiFeeDomain {
         Ok(())
     }
 
-    pub async fn confirm_transfer_fee_tx_report(trade_no: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::ReceivedTxReport).await?;
-        Ok(())
-    }
-
     pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::Success).await?;
