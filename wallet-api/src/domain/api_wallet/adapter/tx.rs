@@ -1,7 +1,7 @@
 use alloy::primitives::U256;
 use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
-    types::{FetchMultisigAddressResp, MultisigSignResp},
+    types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
 use wallet_utils::unit;
 
@@ -18,6 +18,7 @@ use crate::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
         transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     },
+    response_vo::{MultisigQueueFeeParams, TransferParams},
 };
 
 use wallet_chain_interact::types::ChainPrivateKey;
@@ -39,7 +40,6 @@ pub trait Oracle {
 }
 
 #[async_trait::async_trait]
-#[enum_dispatch::enum_dispatch]
 pub trait Tx {
     fn check_min_transfer(&self, value: &str, decimal: u8) -> Result<U256, crate::ServiceError> {
         let min = U256::from(1);
