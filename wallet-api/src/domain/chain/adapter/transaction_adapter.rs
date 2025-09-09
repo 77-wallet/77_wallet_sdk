@@ -211,7 +211,7 @@ impl TransactionAdapter {
                 }
 
                 let params = chain::eth::operations::TransferOpt::try_from(&params.base)?;
-                let tx_hash = chain.exec_transaction(params, fee_setting, private_key).await?;
+                let tx_hash = chain.exec_transaction(params, fee_setting, private_key, None).await?;
 
                 Ok(TransferResp::new(
                     tx_hash,
