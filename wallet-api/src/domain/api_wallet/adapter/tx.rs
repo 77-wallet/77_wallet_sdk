@@ -1,356 +1,240 @@
-use crate::{
-    ServiceError,
-    domain::api_wallet::adapter::{
-        Tx, btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
-        sui_tx::SuiTx, ton_tx::TonTx, tron_tx::TronTx,
-    },
-    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+use alloy::primitives::U256;
+use wallet_chain_interact::{
+    tron::protocol::account::AccountResourceDetail,
+    types::{FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_chain_interact::tron::protocol::account::AccountResourceDetail;
+use wallet_utils::unit;
 
-// 创建一个枚举来包装所有 Tx 实现
-pub enum ApiTxAdapter {
-    Btc(BtcTx),
-    Doge(DogeTx),
-    Eth(EthTx),
-    Bnb(EthTx),
-    Ltc(LtcTx),
-    Sol(SolTx),
-    Sui(SuiTx),
-    Ton(TonTx),
-    Tron(TronTx),
+use crate::{
+    domain::{
+        api_wallet::adapter::{
+            btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
+            sui_tx::SuiTx, ton_tx::TonTx, tron_tx::TronTx,
+        },
+        chain::TransferResp,
+    },
+    infrastructure::swap_client::AggQuoteResp,
+    request::{
+        api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
+        transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
+    },
+    response_vo::{MultisigQueueFeeParams, TransferParams},
+};
+
+use wallet_chain_interact::types::ChainPrivateKey;
+
+use wallet_database::entities::coin::CoinEntity;
+
+use wallet_database::entities::{
+    api_assets::ApiAssetsEntity, multisig_account::MultisigAccountEntity,
+    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+    permission::PermissionEntity,
+};
+use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
+
+#[async_trait::async_trait]
+pub trait Oracle {
+    async fn gas_oracle(&self) -> Result<GasOracle, crate::ServiceError>;
+
+    async fn default_gas_oracle(&self) -> Result<GasOracle, crate::ServiceError>;
 }
 
-// 为枚举实现 Tx trait
 #[async_trait::async_trait]
-impl Tx for ApiTxAdapter {
+pub trait Tx {
+    fn check_min_transfer(&self, value: &str, decimal: u8) -> Result<U256, crate::ServiceError> {
+        let min = U256::from(1);
+        let transfer_amount = unit::convert_to_u256(value, decimal)?;
+
+        if transfer_amount < min {
+            return Err(crate::BusinessError::Chain(crate::ChainError::AmountLessThanMin))?;
+        }
+        Ok(transfer_amount)
+    }
+
     async fn account_resource(
         &self,
         owner_address: &str,
-    ) -> Result<AccountResourceDetail, ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.account_resource(owner_address).await,
-            Self::Doge(tx) => tx.account_resource(owner_address).await,
-            Self::Eth(tx) => tx.account_resource(owner_address).await,
-            Self::Ltc(tx) => tx.account_resource(owner_address).await,
-            Self::Sol(tx) => tx.account_resource(owner_address).await,
-            Self::Sui(tx) => tx.account_resource(owner_address).await,
-            Self::Ton(tx) => tx.account_resource(owner_address).await,
-            Self::Tron(tx) => tx.account_resource(owner_address).await,
-            Self::Bnb(tx) => tx.account_resource(owner_address).await,
-        }
-    }
+    ) -> Result<AccountResourceDetail, crate::ServiceError>;
 
     async fn balance(
         &self,
         addr: &str,
         token: Option<String>,
-    ) -> Result<alloy::primitives::U256, wallet_chain_interact::Error> {
-        match self {
-            Self::Btc(tx) => tx.balance(addr, token).await,
-            Self::Doge(tx) => tx.balance(addr, token).await,
-            Self::Eth(tx) => tx.balance(addr, token).await,
-            Self::Ltc(tx) => tx.balance(addr, token).await,
-            Self::Sol(tx) => tx.balance(addr, token).await,
-            Self::Sui(tx) => tx.balance(addr, token).await,
-            Self::Ton(tx) => tx.balance(addr, token).await,
-            Self::Tron(tx) => tx.balance(addr, token).await,
-            Self::Bnb(tx) => tx.balance(addr, token).await,
-        }
-    }
-
-    async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error> {
-        match self {
-            Self::Btc(tx) => tx.block_num().await,
-            Self::Doge(tx) => tx.block_num().await,
-            Self::Eth(tx) => tx.block_num().await,
-            Self::Ltc(tx) => tx.block_num().await,
-            Self::Sol(tx) => tx.block_num().await,
-            Self::Sui(tx) => tx.block_num().await,
-            Self::Ton(tx) => tx.block_num().await,
-            Self::Tron(tx) => tx.block_num().await,
-            Self::Bnb(tx) => tx.block_num().await,
-        }
-    }
+    ) -> Result<U256, wallet_chain_interact::Error>;
+    async fn block_num(&self) -> Result<u64, wallet_chain_interact::Error>;
 
     async fn query_tx_res(
         &self,
         hash: &str,
-    ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>
-    {
-        match self {
-            Self::Btc(tx) => tx.query_tx_res(hash).await,
-            Self::Doge(tx) => tx.query_tx_res(hash).await,
-            Self::Eth(tx) => tx.query_tx_res(hash).await,
-            Self::Ltc(tx) => tx.query_tx_res(hash).await,
-            Self::Sol(tx) => tx.query_tx_res(hash).await,
-            Self::Sui(tx) => tx.query_tx_res(hash).await,
-            Self::Ton(tx) => tx.query_tx_res(hash).await,
-            Self::Tron(tx) => tx.query_tx_res(hash).await,
-            Self::Bnb(tx) => tx.query_tx_res(hash).await,
-        }
-    }
+    ) -> Result<Option<wallet_chain_interact::QueryTransactionResult>, wallet_chain_interact::Error>;
 
-    async fn decimals(&self, token: &str) -> Result<u8, wallet_chain_interact::Error> {
-        match self {
-            Self::Btc(tx) => tx.decimals(token).await,
-            Self::Doge(tx) => tx.decimals(token).await,
-            Self::Eth(tx) => tx.decimals(token).await,
-            Self::Ltc(tx) => tx.decimals(token).await,
-            Self::Sol(tx) => tx.decimals(token).await,
-            Self::Sui(tx) => tx.decimals(token).await,
-            Self::Ton(tx) => tx.decimals(token).await,
-            Self::Tron(tx) => tx.decimals(token).await,
-            Self::Bnb(tx) => tx.decimals(token).await,
-        }
-    }
+    async fn decimals(&self, token: &str) -> Result<u8, wallet_chain_interact::Error>;
 
-    async fn token_symbol(&self, token: &str) -> Result<String, wallet_chain_interact::Error> {
-        match self {
-            Self::Btc(tx) => tx.token_symbol(token).await,
-            Self::Doge(tx) => tx.token_symbol(token).await,
-            Self::Eth(tx) => tx.token_symbol(token).await,
-            Self::Ltc(tx) => tx.token_symbol(token).await,
-            Self::Sol(tx) => tx.token_symbol(token).await,
-            Self::Sui(tx) => tx.token_symbol(token).await,
-            Self::Ton(tx) => tx.token_symbol(token).await,
-            Self::Tron(tx) => tx.token_symbol(token).await,
-            Self::Bnb(tx) => tx.token_symbol(token).await,
-        }
-    }
+    async fn token_symbol(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
 
-    async fn token_name(&self, token: &str) -> Result<String, wallet_chain_interact::Error> {
-        match self {
-            Self::Btc(tx) => tx.token_name(token).await,
-            Self::Doge(tx) => tx.token_name(token).await,
-            Self::Eth(tx) => tx.token_name(token).await,
-            Self::Ltc(tx) => tx.token_name(token).await,
-            Self::Sol(tx) => tx.token_name(token).await,
-            Self::Sui(tx) => tx.token_name(token).await,
-            Self::Ton(tx) => tx.token_name(token).await,
-            Self::Tron(tx) => tx.token_name(token).await,
-            Self::Bnb(tx) => tx.token_name(token).await,
-        }
-    }
+    async fn token_name(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
 
-    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.black_address(token, owner).await,
-            Self::Doge(tx) => tx.black_address(token, owner).await,
-            Self::Eth(tx) => tx.black_address(token, owner).await,
-            Self::Ltc(tx) => tx.black_address(token, owner).await,
-            Self::Sol(tx) => tx.black_address(token, owner).await,
-            Self::Sui(tx) => tx.black_address(token, owner).await,
-            Self::Ton(tx) => tx.black_address(token, owner).await,
-            Self::Tron(tx) => tx.black_address(token, owner).await,
-            Self::Bnb(tx) => tx.black_address(token, owner).await,
-        }
-    }
+    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, crate::ServiceError>;
 
     async fn transfer(
         &self,
         params: &ApiTransferReq,
-        private_key: wallet_chain_interact::types::ChainPrivateKey,
-    ) -> Result<crate::domain::chain::TransferResp, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.transfer(params, private_key).await,
-            Self::Doge(tx) => tx.transfer(params, private_key).await,
-            Self::Eth(tx) => tx.transfer(params, private_key).await,
-            Self::Ltc(tx) => tx.transfer(params, private_key).await,
-            Self::Sol(tx) => tx.transfer(params, private_key).await,
-            Self::Sui(tx) => tx.transfer(params, private_key).await,
-            Self::Ton(tx) => tx.transfer(params, private_key).await,
-            Self::Tron(tx) => tx.transfer(params, private_key).await,
-            Self::Bnb(tx) => tx.transfer(params, private_key).await,
-        }
-    }
+        private_key: ChainPrivateKey,
+    ) -> Result<TransferResp, crate::ServiceError>;
 
     async fn estimate_fee(
         &self,
         req: ApiBaseTransferReq,
         main_symbol: &str,
-    ) -> Result<String, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Doge(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Eth(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Ltc(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Sol(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Sui(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Ton(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Tron(tx) => tx.estimate_fee(req, main_symbol).await,
-            Self::Bnb(tx) => tx.estimate_fee(req, main_symbol).await,
-        }
-    }
+    ) -> Result<String, crate::ServiceError>;
 
     async fn approve(
         &self,
-        req: &crate::request::transaction::ApproveReq,
-        key: wallet_chain_interact::types::ChainPrivateKey,
-        value: alloy::primitives::U256,
-    ) -> Result<crate::domain::chain::TransferResp, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.approve(req, key, value).await,
-            Self::Doge(tx) => tx.approve(req, key, value).await,
-            Self::Eth(tx) => tx.approve(req, key, value).await,
-            Self::Ltc(tx) => tx.approve(req, key, value).await,
-            Self::Sol(tx) => tx.approve(req, key, value).await,
-            Self::Sui(tx) => tx.approve(req, key, value).await,
-            Self::Ton(tx) => tx.approve(req, key, value).await,
-            Self::Tron(tx) => tx.approve(req, key, value).await,
-            Self::Bnb(tx) => tx.approve(req, key, value).await,
-        }
-    }
+        req: &ApproveReq,
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError>;
 
     async fn approve_fee(
         &self,
-        req: &crate::request::transaction::ApproveReq,
-        value: alloy::primitives::U256,
+        req: &ApproveReq,
+        value: U256,
         main_symbol: &str,
-    ) -> Result<String, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Doge(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Eth(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Ltc(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Sol(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Sui(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Ton(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Tron(tx) => tx.approve_fee(req, value, main_symbol).await,
-            Self::Bnb(tx) => tx.approve_fee(req, value, main_symbol).await,
-        }
-    }
+    ) -> Result<String, crate::ServiceError>;
 
     async fn allowance(
         &self,
         from: &str,
         token: &str,
         spender: &str,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.allowance(from, token, spender).await,
-            Self::Doge(tx) => tx.allowance(from, token, spender).await,
-            Self::Eth(tx) => tx.allowance(from, token, spender).await,
-            Self::Ltc(tx) => tx.allowance(from, token, spender).await,
-            Self::Sol(tx) => tx.allowance(from, token, spender).await,
-            Self::Sui(tx) => tx.allowance(from, token, spender).await,
-            Self::Ton(tx) => tx.allowance(from, token, spender).await,
-            Self::Tron(tx) => tx.allowance(from, token, spender).await,
-            Self::Bnb(tx) => tx.allowance(from, token, spender).await,
-        }
-    }
+    ) -> Result<U256, crate::ServiceError>;
 
     async fn swap_quote(
         &self,
-        req: &crate::request::transaction::QuoteReq,
-        quote_resp: &crate::infrastructure::swap_client::AggQuoteResp,
+        req: &QuoteReq,
+        quote_resp: &AggQuoteResp,
         symbol: &str,
-    ) -> Result<(alloy::primitives::U256, String, String), crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Doge(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Eth(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Ltc(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Sol(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Sui(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Ton(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Tron(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-            Self::Bnb(tx) => tx.swap_quote(req, quote_resp, symbol).await,
-        }
-    }
+    ) -> Result<(U256, String, String), crate::ServiceError>;
 
     async fn swap(
         &self,
-        req: &crate::request::transaction::SwapReq,
+        req: &SwapReq,
         fee: String,
-        key: wallet_chain_interact::types::ChainPrivateKey,
-    ) -> Result<crate::domain::chain::TransferResp, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.swap(req, fee, key).await,
-            Self::Doge(tx) => tx.swap(req, fee, key).await,
-            Self::Eth(tx) => tx.swap(req, fee, key).await,
-            Self::Ltc(tx) => tx.swap(req, fee, key).await,
-            Self::Sol(tx) => tx.swap(req, fee, key).await,
-            Self::Sui(tx) => tx.swap(req, fee, key).await,
-            Self::Ton(tx) => tx.swap(req, fee, key).await,
-            Self::Tron(tx) => tx.swap(req, fee, key).await,
-            Self::Bnb(tx) => tx.swap(req, fee, key).await,
-        }
-    }
+        key: ChainPrivateKey,
+    ) -> Result<TransferResp, crate::ServiceError>;
 
     async fn deposit_fee(
         &self,
-        req: crate::request::transaction::DepositReq,
-        main_coin: &wallet_database::entities::coin::CoinEntity,
-    ) -> Result<(String, String), crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Doge(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Eth(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Ltc(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Sol(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Sui(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Ton(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Tron(tx) => tx.deposit_fee(req, main_coin).await,
-            Self::Bnb(tx) => tx.deposit_fee(req, main_coin).await,
-        }
-    }
+        req: DepositReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), crate::ServiceError>;
 
     async fn deposit(
         &self,
-        req: &crate::request::transaction::DepositReq,
+        req: &DepositReq,
         fee: String,
-        key: wallet_chain_interact::types::ChainPrivateKey,
-        value: alloy::primitives::U256,
-    ) -> Result<crate::domain::chain::TransferResp, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Doge(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Eth(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Ltc(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Sol(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Sui(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Ton(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Tron(tx) => tx.deposit(req, fee, key, value).await,
-            Self::Bnb(tx) => tx.deposit(req, fee, key, value).await,
-        }
-    }
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError>;
 
     async fn withdraw_fee(
         &self,
-        req: crate::request::transaction::WithdrawReq,
-        main_coin: &wallet_database::entities::coin::CoinEntity,
-    ) -> Result<(String, String), crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Doge(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Eth(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Ltc(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Sol(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Sui(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Ton(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Tron(tx) => tx.withdraw_fee(req, main_coin).await,
-            Self::Bnb(tx) => tx.withdraw_fee(req, main_coin).await,
-        }
-    }
+        req: WithdrawReq,
+        main_coin: &CoinEntity,
+    ) -> Result<(String, String), crate::ServiceError>;
 
     async fn withdraw(
         &self,
-        req: &crate::request::transaction::WithdrawReq,
+        req: &WithdrawReq,
         fee: String,
-        key: wallet_chain_interact::types::ChainPrivateKey,
-        value: alloy::primitives::U256,
-    ) -> Result<crate::domain::chain::TransferResp, crate::ServiceError> {
-        match self {
-            Self::Btc(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Doge(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Eth(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Ltc(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Sol(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Sui(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Ton(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Tron(tx) => tx.withdraw(req, fee, key, value).await,
-            Self::Bnb(tx) => tx.withdraw(req, fee, key, value).await,
-        }
-    }
+        key: ChainPrivateKey,
+        value: U256,
+    ) -> Result<TransferResp, crate::ServiceError>;
 }
+
+#[async_trait::async_trait]
+pub trait Multisig {
+    async fn multisig_address(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+    ) -> Result<FetchMultisigAddressResp, crate::ServiceError>;
+
+    async fn deploy_multisig_account(
+        &self,
+        account: &MultisigAccountEntity,
+        member: &MultisigMemberEntities,
+        fee_setting: Option<String>,
+        key: ChainPrivateKey,
+    ) -> Result<(String, String), crate::ServiceError>;
+
+    async fn deploy_multisig_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        member: MultisigMemberEntities,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+
+    async fn build_multisig_fee(
+        &self,
+        req: &MultisigQueueFeeParams,
+        account: &MultisigAccountEntity,
+        decimal: u8,
+        token: Option<String>,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+
+    async fn build_multisig_with_account(
+        &self,
+        req: &TransferParams,
+        account: &MultisigAccountEntity,
+        assets: &ApiAssetsEntity,
+        key: ChainPrivateKey,
+    ) -> Result<MultisigTxResp, crate::ServiceError>;
+
+    async fn build_multisig_with_permission(
+        &self,
+        req: &TransferParams,
+        p: &PermissionEntity,
+        coin: &CoinEntity,
+    ) -> Result<MultisigTxResp, crate::ServiceError>;
+
+    async fn sign_fee(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        raw_data: &str,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+
+    async fn sign_multisig_tx(
+        &self,
+        account: &MultisigAccountEntity,
+        address: &str,
+        key: ChainPrivateKey,
+        raw_data: &str,
+    ) -> Result<MultisigSignResp, crate::ServiceError>;
+
+    async fn estimate_multisig_fee(
+        &self,
+        queue: &MultisigQueueEntity,
+        coin: &CoinEntity,
+        backend: &BackendApi,
+        sign_list: Vec<String>,
+        main_symbol: &str,
+    ) -> Result<String, crate::ServiceError>;
+}
+
+// 创建一个枚举来包装所有 Tx 实现
+// #[enum_dispatch::enum_dispatch(Tx)]
+// pub enum ApiTxAdapter {
+//     Btc(BtcTx),
+//     Doge(DogeTx),
+//     Eth(EthTx),
+//     Bnb(EthTx),
+//     Ltc(LtcTx),
+//     Sol(SolTx),
+//     Sui(SuiTx),
+//     Ton(TonTx),
+//     Tron(TronTx),
+// }

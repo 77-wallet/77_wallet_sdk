@@ -101,3 +101,5 @@ dashmap = { workspace = true }
 governor = "0.4"
 
 rust_decimal = { workspace = true }
+
+enum_dispatch = "0.3.1"

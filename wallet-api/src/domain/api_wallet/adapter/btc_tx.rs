@@ -1,7 +1,7 @@
 use crate::{
     ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, TIME_OUT, Tx},
+        api_wallet::adapter::{tx::Multisig, TIME_OUT, tx::Tx},
         chain::TransferResp,
         coin::TokenCurrencyGetter,
         multisig::MultisigDomain,

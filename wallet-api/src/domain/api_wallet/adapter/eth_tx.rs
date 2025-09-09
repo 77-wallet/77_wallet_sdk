@@ -1,7 +1,10 @@
 use crate::{
     ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, Oracle, TIME_OUT, Tx},
+        api_wallet::adapter::{
+            TIME_OUT,
+            tx::{Multisig, Oracle, Tx},
+        },
         chain::{
             TransferResp, pare_fee_setting,
             swap::{
@@ -37,11 +40,11 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_database::entities::{
+use wallet_database::{entities::{
     api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
     multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
     permission::PermissionEntity,
-};
+}, repositories::api_nonce::ApiNonceRepo};
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
@@ -50,6 +53,7 @@ use wallet_utils::{serde_func, unit};
 pub(crate) struct EthTx {
     chain_code: ChainCode,
     chain: EthChain,
+    provider: eth::Provider,
 }
 
 impl EthTx {
@@ -60,10 +64,12 @@ impl EthTx {
         header_opt: Option<HashMap<String, String>>,
     ) -> Result<Self, wallet_chain_interact::Error> {
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
-        let rpc_client = RpcClient::new(rpc_url, header_opt, timeout)?;
+        let rpc_client = RpcClient::new(rpc_url, header_opt.clone(), timeout)?;
         let provider = eth::Provider::new(rpc_client)?;
         let eth_chain = EthChain::new(provider, network, chain_code)?;
-        Ok(Self { chain_code, chain: eth_chain })
+        let rpc_client1 = RpcClient::new(rpc_url, header_opt, timeout)?;
+        let provider1 = eth::Provider::new(rpc_client1)?;
+        Ok(Self { chain_code, chain: eth_chain, provider: provider1 })
     }
 
     async fn estimate_swap(
@@ -104,7 +110,7 @@ impl EthTx {
         let tx = self.build_base_swap_tx(&swap_params)?;
         let tx = self.chain.provider.set_transaction_fee(tx, fee, self.chain.chain_code).await?;
 
-        let tx_hash = self.chain.provider.send_raw_transaction(tx, &key).await?;
+        let tx_hash = self.chain.provider.send_raw_transaction(tx, &key, None).await?;
 
         Ok(TransferResp::new(
             tx_hash,
@@ -212,7 +218,7 @@ impl Oracle for EthTx {
 impl Tx for EthTx {
     async fn account_resource(
         &self,
-        owner_address: &str,
+        _owner_address: &str,
     ) -> Result<AccountResourceDetail, ServiceError> {
         todo!()
     }
@@ -258,7 +264,8 @@ impl Tx for EthTx {
         tracing::info!(from=%from,to=%to,value=%transfer_amount, "transfer ------------------- 12");
 
         // 获取主币余额
-        let eth_balance = self.chain.balance(&params.base.from, None).await?;
+        let eth_balance =
+            self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 13");
         // check balance
         let remain_balance = self
@@ -291,8 +298,21 @@ impl Tx for EthTx {
         let fee = fee_setting.transaction_fee();
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
-        tracing::info!(private_key=%private_key.to_string(), "");
-        let tx_hash = self.chain.exec_transaction(transfer_opt, fee_setting, private_key).await?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let mut nonce = ApiNonceRepo::get_api_nonce(&pool, from, &params.base.chain_code).await? as u64;
+        if nonce == 0 {
+            let ol_nonce = self.provider.nonce(&from).await?;
+            if ol_nonce > nonce {
+                nonce = ol_nonce;
+            }
+        }
+        let tx_hash = self
+            .chain
+            .exec_transaction(transfer_opt, fee_setting, private_key, Some(nonce))
+            .await?;
+
+        ApiNonceRepo::upsert_and_get_api_nonce(&pool, from, &params.base.chain_code, nonce as i32).await?;
+
 
         tracing::info!("transfer ------------------- 16: {tx_hash}");
         Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
@@ -338,7 +358,7 @@ impl Tx for EthTx {
         let fee = fee_setting.transaction_fee();
 
         // exec tx
-        let tx_hash = self.chain.exec_transaction(approve, fee_setting, key).await?;
+        let tx_hash = self.chain.exec_transaction(approve, fee_setting, key, None).await?;
 
         Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
     }
@@ -479,7 +499,7 @@ impl Tx for EthTx {
         let transfer_fee = fee_setting.transaction_fee();
 
         // exec tx
-        let tx_hash = self.chain.exec_transaction(approve, fee_setting, key).await?;
+        let tx_hash = self.chain.exec_transaction(approve, fee_setting, key, None).await?;
 
         Ok(TransferResp::new(
             tx_hash,
@@ -530,7 +550,7 @@ impl Tx for EthTx {
         let transfer_fee = fee_setting.transaction_fee();
 
         // exec tx
-        let tx_hash = self.chain.exec_transaction(withdraw, fee_setting, key).await?;
+        let tx_hash = self.chain.exec_transaction(withdraw, fee_setting, key, None).await?;
 
         Ok(TransferResp::new(
             tx_hash,
@@ -572,7 +592,7 @@ impl Multisig for EthTx {
             return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
         }
 
-        let tx_hash = self.chain.exec_transaction(params, fee_setting, key).await?;
+        let tx_hash = self.chain.exec_transaction(params, fee_setting, key, None).await?;
         Ok((tx_hash, "".to_string()))
     }
 

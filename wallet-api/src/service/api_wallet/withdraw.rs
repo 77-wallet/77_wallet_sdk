@@ -64,7 +64,7 @@ impl WithdrawService {
         let req = AuditResultReportReq::new();
         backend_api.report_audit_result(&req).await?;
 
-        Ok(())
+        ApiWithdrawDomain::sign_withdrawal_order(order_id).await
     }
 
     pub async fn reject_withdrawal_order(
@@ -77,6 +77,6 @@ impl WithdrawService {
         let req = AuditResultReportReq::new();
         backend_api.report_audit_result(&req).await?;
 
-        Ok(())
+        ApiWithdrawDomain::reject_withdrawal_order(order_id).await
     }
 }

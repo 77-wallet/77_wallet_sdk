@@ -176,7 +176,7 @@ impl MultisigAdapter {
                     ))?;
                 }
 
-                let tx_hash = chain.exec_transaction(params, fee_setting, key).await?;
+                let tx_hash = chain.exec_transaction(params, fee_setting, key, None).await?;
                 Ok((tx_hash, "".to_string()))
             }
             Self::BitCoin(_chain) => Ok(("".to_string(), "".to_string())),

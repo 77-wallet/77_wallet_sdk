@@ -57,7 +57,7 @@ pub(super) async fn approve(
     }
 
     // exec tx
-    let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
+    let tx_hash = chain.exec_transaction(approve, fee_setting, key, None).await?;
 
     Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
 }
@@ -103,7 +103,7 @@ pub(super) async fn withdraw(
     }
 
     // exec tx
-    let tx_hash = chain.exec_transaction(withdraw, fee_setting, key).await?;
+    let tx_hash = chain.exec_transaction(withdraw, fee_setting, key, None).await?;
 
     Ok(TransferResp::new(tx_hash, unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?))
 }
@@ -137,7 +137,7 @@ pub(super) async fn deposit(
     }
 
     // exec tx
-    let tx_hash = chain.exec_transaction(approve, fee_setting, key).await?;
+    let tx_hash = chain.exec_transaction(approve, fee_setting, key, None).await?;
 
     Ok(TransferResp::new(tx_hash, unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?))
 }
@@ -218,7 +218,7 @@ pub(super) async fn swap(
     let tx = build_base_swap_tx(&swap_params)?;
     let tx = chain.provider.set_transaction_fee(tx, fee_setting, chain.chain_code).await?;
 
-    let tx_hash = chain.provider.send_raw_transaction(tx, &key).await?;
+    let tx_hash = chain.provider.send_raw_transaction(tx, &key, None).await?;
 
     Ok(TransferResp::new(tx_hash, unit::format_to_string(transfer_fee, eth::consts::ETH_DECIMAL)?))
 }

@@ -48,6 +48,7 @@ impl ApiWithdrawRepo {
         symbol: &str,
         trade_no: &str,
         trade_type: u8,
+        status: ApiWithdrawStatus,
     ) -> Result<(), crate::Error> {
         let withdraw_req = ApiWithdrawEntity {
             id: 0,
@@ -61,7 +62,7 @@ impl ApiWithdrawRepo {
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
-            status: ApiWithdrawStatus::Init,
+            status: status,
             tx_hash: "".to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),

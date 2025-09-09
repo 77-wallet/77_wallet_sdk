@@ -3,13 +3,21 @@ use crate::{DbPool, dao::api_nonce::ApiNonceDao};
 pub struct ApiNonceRepo;
 
 impl ApiNonceRepo {
-    pub async fn upsert_and_get_api_nonce(
+
+    pub async fn get_api_nonce(
         pool: &DbPool,
-        uid: &str,
-        name: &str,
         from_addr: &str,
         chain_code: &str,
     ) -> Result<i32, crate::Error> {
-        ApiNonceDao::upsert_and_get_api_nonce(pool.as_ref(), uid, name, from_addr, chain_code).await
+        ApiNonceDao::get_api_nonce(pool.as_ref(), from_addr, chain_code).await
+    }
+
+    pub async fn upsert_and_get_api_nonce(
+        pool: &DbPool,
+        from_addr: &str,
+        chain_code: &str,
+        nonce: i32,
+    ) -> Result<i32, crate::Error> {
+        ApiNonceDao::upsert_and_get_api_nonce(pool.as_ref(), from_addr, chain_code, nonce).await
     }
 }

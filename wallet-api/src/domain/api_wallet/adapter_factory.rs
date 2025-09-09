@@ -2,7 +2,7 @@ use crate::{
     BusinessError, Context, ServiceError,
     domain::{
         api_wallet::adapter::{
-            Tx, btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
+            tx::Tx, btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
             sui_tx::SuiTx, ton_tx::TonTx, tron_tx::TronTx,
         },
         chain::rpc_need_header,

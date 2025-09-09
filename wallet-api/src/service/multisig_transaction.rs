@@ -595,7 +595,7 @@ impl MultisigTransactionService {
                     ))?;
                 }
 
-                let tx_hash = chain.exec_transaction(params, fee_setting, key).await?;
+                let tx_hash = chain.exec_transaction(params, fee_setting, key, None).await?;
                 TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?)
             }
             MultisigAdapter::BitCoin(chain) => {
