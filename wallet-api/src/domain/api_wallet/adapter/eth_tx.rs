@@ -1,7 +1,7 @@
 use crate::{
     ServiceError,
     domain::{
-        api_wallet::adapter::{Multisig, Oracle, TIME_OUT, Tx},
+        api_wallet::adapter::{tx::Multisig, tx::Oracle, TIME_OUT, tx::Tx},
         chain::{
             TransferResp, pare_fee_setting,
             swap::{
