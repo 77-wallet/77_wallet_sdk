@@ -226,14 +226,15 @@ pub trait Multisig {
 }
 
 // 创建一个枚举来包装所有 Tx 实现
-pub enum ApiTxAdapter {
-    Btc(BtcTx),
-    Doge(DogeTx),
-    Eth(EthTx),
-    Bnb(EthTx),
-    Ltc(LtcTx),
-    Sol(SolTx),
-    Sui(SuiTx),
-    Ton(TonTx),
-    Tron(TronTx),
-}
+// #[enum_dispatch::enum_dispatch(Tx)]
+// pub enum ApiTxAdapter {
+//     Btc(BtcTx),
+//     Doge(DogeTx),
+//     Eth(EthTx),
+//     Bnb(EthTx),
+//     Ltc(LtcTx),
+//     Sol(SolTx),
+//     Sui(SuiTx),
+//     Ton(TonTx),
+//     Tron(TronTx),
+// }
