@@ -6,11 +6,13 @@ use crate::{
         coin::{CoinDomain, TokenCurrencyGetter},
         task_queue::TaskQueueDomain,
     },
-    infrastructure::swap_client::{AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SwapClient},
+    infrastructure::swap_client::{
+        AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SolInstructionReq, SwapClient,
+    },
     messaging::notify::other::{Process, TransactionProcessFrontend},
     request::transaction::{
-        ApproveReq, DepositReq, DexRoute, QuoteReq, SwapInnerType, SwapReq, SwapTokenListReq,
-        WithdrawReq,
+        request_identity, ApproveReq, DepositReq, DexRoute, QuoteReq, SwapInnerType, SwapReq,
+        SwapTokenListReq, WithdrawReq,
     },
     response_vo::{
         account::{BalanceInfo, BalanceStr},
@@ -21,6 +23,7 @@ use crate::{
 };
 use alloy::primitives::U256;
 use std::time::{self};
+use wallet_chain_interact::sol::protocol::Instruction;
 use wallet_database::{
     entities::{
         account::AccountEntity,
@@ -40,7 +43,7 @@ use wallet_transport_backend::{
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
     request::TokenQueryPriceReq,
 };
-use wallet_types::chain::chain::ChainCode;
+use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 use wallet_utils::{
     address::AccountIndexMap,
     conversion,
@@ -202,6 +205,7 @@ impl SwapServer {
 
             let (consumer, content) = match tx_type {
                 SwapInnerType::Withdraw => {
+                    tracing::warn!("withdraw");
                     let params = WithdrawReq {
                         from: req.recipient.clone(),
                         token: req.token_in.token_addr.clone(),
@@ -211,6 +215,7 @@ impl SwapServer {
                     adapter.withdraw_fee(params, &main_coin).await?
                 }
                 SwapInnerType::Deposit => {
+                    tracing::warn!("deposit");
                     let params = DepositReq {
                         from: req.recipient.clone(),
                         token: req.token_out.token_addr.clone(),
@@ -305,7 +310,7 @@ impl SwapServer {
                 .check_bal_with_last_swap(&assets.balance, &req, &pool)
                 .await?
             {
-                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+                // self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
             return Ok(res);
@@ -335,7 +340,7 @@ impl SwapServer {
                 .check_bal_with_last_swap(&assets.balance, &req, &pool)
                 .await?
             {
-                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+                // self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
             return Ok(res);
@@ -344,6 +349,27 @@ impl SwapServer {
             res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
 
             return Ok(res);
+        }
+    }
+
+    pub async fn sol_instructions(
+        &self,
+        payer: &str,
+        quote_resp: &AggQuoteResp,
+    ) -> Result<Option<Vec<Instruction>>, crate::ServiceError> {
+        if quote_resp.chain_code == chain_code::SOLANA {
+            let req = SolInstructionReq {
+                unique: request_identity(payer),
+                payer: payer.to_string(),
+                amount_in: quote_resp.amount_in.clone(),
+                amount_out: quote_resp.amount_out.clone(),
+                dex_route_list: quote_resp.dex_route_list.clone(),
+            };
+            let res = self.client.sol_instructions(req).await?;
+
+            Ok(Some(res.ins))
+        } else {
+            Ok(None)
         }
     }
 
@@ -359,9 +385,13 @@ impl SwapServer {
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
-        // 模拟报价
+
+        // 如果是solana，需要获取交易指令
+        let instructions = self.sol_instructions(&req.recipient, &quote_resp).await?;
+
+        // 模拟报价(consumer 资源的消耗，，content 费用的具体内容)
         let (amount_out, consumer, content) = adapter
-            .swap_quote(req, quote_resp, &main_coin.symbol)
+            .swap_quote(req, quote_resp, &main_coin.symbol, instructions)
             .await?;
 
         let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
@@ -460,7 +490,7 @@ impl SwapServer {
 
                 adapter.withdraw(&params, fee, key, value).await?
             }
-            SwapInnerType::Swap => adapter.swap(&req, fee, key).await?,
+            SwapInnerType::Swap => adapter.swap(&req, fee, key, None).await?,
         };
 
         //  if token_out if new assets add it

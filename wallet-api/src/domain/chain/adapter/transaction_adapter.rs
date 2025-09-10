@@ -4,6 +4,7 @@ use crate::{
     domain::{
         self,
         chain::{
+            adapter::sol_tx,
             pare_fee_setting,
             swap::evm_swap::SwapParams,
             transaction::{ChainTransDomain, DEFAULT_UNITS},
@@ -13,7 +14,7 @@ use crate::{
     },
     infrastructure::swap_client::AggQuoteResp,
     request::transaction::{self, DepositReq, QuoteReq, SwapReq, WithdrawReq},
-    response_vo::{self, FeeDetails, TronFeeDetails},
+    response_vo::{self, CommonFeeDetails, FeeDetails, TronFeeDetails},
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
@@ -23,7 +24,7 @@ use wallet_chain_interact::{
     dog,
     eth::{self},
     ltc,
-    sol::{self, operations::SolInstructionOperation},
+    sol::{self, operations::SolInstructionOperation, protocol::Instruction},
     sui,
     ton::{self},
     tron::{
@@ -857,6 +858,7 @@ impl TransactionAdapter {
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
         symbol: &str,
+        sol_instructions: Option<Vec<Instruction>>,
     ) -> Result<(U256, String, String), crate::ServiceError> {
         // let amount_out = quote_resp.amount_out_u256()?;
 
@@ -891,13 +893,7 @@ impl TransactionAdapter {
 
                 let resp = eth_tx::estimate_swap(swap_params, chain).await?;
 
-                // let instance = std::time::Instant::now();
-                // let backend_api = crate::Context::get_global_backend_api()?;
-                // let gas_oracle =
-                //     ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
-                //         .await?;
                 let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
-                // tracing::warn!("gas oracle time: {}", instance.elapsed().as_secs_f64());
                 let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
                     .to_resp(token_currency, &currency);
 
@@ -929,6 +925,18 @@ impl TransactionAdapter {
 
                 (resp.amount_out, consumer, fee)
             }
+            Self::Solana(chain) => {
+                let resp =
+                    sol_tx::estimate_swap(&req.recipient, sol_instructions.unwrap(), chain).await?;
+
+                let fee = resp.consumer.transaction_fee();
+                let consumer = wallet_utils::serde_func::serde_to_string(&resp.consumer)?;
+
+                let sol_fee =
+                    CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+
+                (resp.amount_out, consumer, sol_fee)
+            }
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -944,12 +952,16 @@ impl TransactionAdapter {
         req: &SwapReq,
         fee: String,
         key: ChainPrivateKey,
+        instructions: Option<Vec<Instruction>>,
     ) -> Result<TransferResp, crate::ServiceError> {
         let swap_params = SwapParams::try_from(req)?;
 
         let resp = match self {
             Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
             Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
+            Self::Solana(chain) => {
+                sol_tx::swap(chain, &req.recipient, fee, instructions.unwrap(), key).await?
+            }
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -974,7 +986,7 @@ impl TransactionAdapter {
             TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
                 .await?;
         let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;
-
+        // 返回具体消耗了多少资源以及费用的包装结构
         let resp = match self {
             Self::Tron(chain) => {
                 let resource = tron_tx::deposit_fee(chain, &req, value).await?;
@@ -998,6 +1010,16 @@ impl TransactionAdapter {
 
                 (consumer, fee)
             }
+            Self::Solana(chain) => {
+                let resource = sol_tx::deposit_fee(chain, &req, value).await?;
+                let fee = resource.transaction_fee();
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
+
+                let fee = CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+
+                (consumer, fee)
+            }
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -1018,6 +1040,7 @@ impl TransactionAdapter {
         let resp = match self {
             Self::Tron(chain) => tron_tx::deposit(chain, &req, value, key).await?,
             Self::Ethereum(chain) => eth_tx::deposit(chain, &req, value, fee, key).await?,
+            Self::Solana(chain) => sol_tx::deposit(chain, req, value, fee, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -1067,6 +1090,15 @@ impl TransactionAdapter {
 
                 (consumer, fee)
             }
+            Self::Solana(chain) => {
+                let resource = sol_tx::withdraw_fee(chain, &req, value).await?;
+                let fee = resource.transaction_fee();
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
+                let fee = CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+
+                (consumer, fee)
+            }
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -1087,6 +1119,7 @@ impl TransactionAdapter {
         let resp = match self {
             Self::Tron(chain) => tron_tx::withdraw(chain, &req, value, key).await?,
             Self::Ethereum(chain) => eth_tx::withdraw(chain, &req, value, fee, key).await?,
+            Self::Solana(chain) => sol_tx::withdraw(chain, &req, value, fee, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
@@ -1185,7 +1218,7 @@ mod tests {
             allow_partial_fill: true,
         };
 
-        let result = adapter.swap_quote(&req, &resp, "usdt").await.unwrap();
+        let result = adapter.swap_quote(&req, &resp, "usdt", None).await.unwrap();
 
         // tracing::warn!(
         //     "amount_in {}",

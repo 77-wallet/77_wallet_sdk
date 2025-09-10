@@ -7,6 +7,13 @@ use rand::Rng as _;
 use wallet_database::entities::bill::{BillExtraSwap, NewBillEntity};
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
+pub fn request_identity(user: &str) -> String {
+    let mut rng = rand::thread_rng();
+    let n: u32 = rng.gen_range(0..1000);
+
+    format!("{}_{}_{}", user, wallet_utils::time::now().timestamp(), n)
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct SwapTokenListReq {
     pub chain_code: String,
@@ -310,15 +317,8 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
         let amount =
             wallet_utils::unit::convert_to_u256(&value.amount_in, value.token_in.decimals as u8)?;
 
-        let mut rng = rand::thread_rng();
-        let n: u32 = rng.gen_range(0..1000);
+        let unique = request_identity(value.recipient.as_str());
 
-        let unique = format!(
-            "{}_{}_{}",
-            value.recipient,
-            wallet_utils::time::now().timestamp(),
-            n,
-        );
         let dex_ids = value
             .dex_list
             .iter()

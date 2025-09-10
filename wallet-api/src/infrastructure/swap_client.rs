@@ -1,6 +1,7 @@
 // 先放在这里，不知道最终会不会和后端用一个
 use crate::request::transaction::DexRoute;
 use alloy::primitives::U256;
+use wallet_chain_interact::sol::protocol::Instruction;
 use wallet_transport::client::HttpClient;
 
 pub struct SwapClient {
@@ -59,79 +60,18 @@ impl SwapClient {
         self.handle_result::<AggQuoteResp>(res)
     }
 
-    // pub async fn chain_list(&self) -> Result<SupportChain, crate::ServiceError> {
-    //     let res = self
-    //         .client
-    //         .post_request::<_, AggregatorResp>("get_support_chain_dex", "")
-    //         .await?;
+    pub async fn sol_instructions(
+        &self,
+        req: SolInstructionReq,
+    ) -> Result<SolInstructResp, crate::ServiceError> {
+        let res = self
+            .client
+            .post_request::<_, AggregatorResp>("get_sol_dexswap_instrs", req)
+            .await?;
 
-    //     self.handle_result::<SupportChain>(res)
-    // }
-
-    // pub async fn dex_list(&self, chain_code: &str) -> Result<Vec<SupportDex>, crate::ServiceError> {
-    //     let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
-
-    //     let res = self
-    //         .client
-    //         .post_request::<_, AggregatorResp>("get_support_dex", payload)
-    //         .await?;
-
-    //     self.handle_result::<Vec<SupportDex>>(res)
-    // }
-
-    // pub async fn default_quote(
-    //     &self,
-    //     chain_code: &str,
-    //     token_in: &str,
-    //     token_out: &str,
-    // ) -> Result<DefaultQuoteResp, crate::ServiceError> {
-    //     let payload = std::collections::HashMap::from([
-    //         ("chain_code", chain_code),
-    //         ("in_token_addr", token_in),
-    //         ("out_token_addr", token_out),
-    //     ]);
-
-    //     let res = self
-    //         .client
-    //         .post_request::<_, AggregatorResp>("default_quote", payload)
-    //         .await?;
-    //     self.handle_result::<DefaultQuoteResp>(res)
-    // }
-
-    // pub async fn swap_contract(
-    //     &self,
-    //     chain_code: String,
-    // ) -> Result<serde_json::Value, crate::ServiceError> {
-    //     let payload = std::collections::HashMap::from([("chain_code", chain_code)]);
-    //     let res = self
-    //         .client
-    //         .post_request::<_, AggregatorResp>("get_swap_contract_address", payload)
-    //         .await?;
-    //     self.handle_result::<serde_json::Value>(res)
-    // }
+        self.handle_result::<SolInstructResp>(res)
+    }
 }
-
-// #[derive(Debug, serde::Deserialize, serde::Serialize)]
-// pub struct SupportChain {
-//     pub chain_dexs: Vec<ChainDex>,
-// }
-
-// #[derive(Debug, serde::Deserialize, serde::Serialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct ChainDex {
-//     pub chain_code: String,
-//     #[serde(alias = "swapContractAddr")]
-//     pub aggregator_addr: String,
-//     pub dexs: Vec<DexInfo>,
-// }
-
-// #[derive(Debug, serde::Deserialize, serde::Serialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct DexInfo {
-//     pub dex_id: u64,
-//     pub dex_name: String,
-//     pub icon_code: String,
-// }
 
 // 响应
 #[derive(Debug, serde::Deserialize)]
@@ -181,6 +121,21 @@ impl AggQuoteResp {
 pub struct DefaultQuoteResp {
     pub token_in: crate::response_vo::swap::SwapTokenInfo,
     pub token_out: crate::response_vo::swap::SwapTokenInfo,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct SolInstructionReq {
+    pub unique: String,
+    pub payer: String,
+    pub amount_in: String,
+    pub amount_out: String,
+    pub dex_route_list: Vec<DexRoute>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SolInstructResp {
+    pub ins: Vec<Instruction>,
+    pub alts: Vec<String>,
 }
 
 #[cfg(test)]
