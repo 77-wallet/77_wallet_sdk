@@ -179,5 +179,6 @@ pub enum KnownTaskName {
     /// api wallet
     UnbindUid,
     AddressUse,
+    AddressAllock,
     Trans,
 }

@@ -7,7 +7,7 @@ pub(crate) struct MqttDomain;
 impl MqttDomain {
     pub(crate) async fn init() -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         let content = DeviceDomain::device_content(&device)?;

@@ -1,35 +1,40 @@
-use crate::domain::api_wallet::wallet::ApiWalletDomain;
+use wallet_database::{
+    entities::api_wallet::ApiWalletType,
+    repositories::{api_account::ApiAccountRepo, api_wallet::ApiWalletRepo},
+};
+use wallet_transport_backend::request::api_wallet::address::{AddressParam, ExpandAddressReq};
+
+use crate::domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain};
 
 // biz_type = ADDRESS_ALLOCK
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressAllockMsg {
-    /// uid
-    pub r#type: String,
-    pub chain: String,
-    pub index: i32,
+    /// 扩容类型： CHA_ALL / CHA_INDEX
+    #[serde(rename = "type")]
+    pub typ: AddressAllockType,
+    #[serde(rename = "chain")]
+    pub chain_code: String,
+    pub index: Option<i32>,
     pub uid: String,
+    pub serial_no: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum AddressAllockType {
+    ChaBatch,
+    ChaIndex,
 }
 
 // 地址池扩容
 impl AddressAllockMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
-
         // let data = NotifyEvent::AddressUse(self.to_owned());
         // FrontendNotifyEvent::new(data).send().await?;
 
-        // ApiWalletDomain::create_account(
-        //     tx,
-        //     wallet_address,
-        //     wallet_password,
-        //     index,
-        //     name,
-        //     is_default_name,
-        //     number,
-        //     api_wallet_type,
-        // )
-        // .await?;
+        ApiWalletDomain::expand_address(&self.typ, self.index, &self.uid, &self.chain_code).await?;
+
         Ok(())
     }
 }

@@ -12,6 +12,9 @@ pub use infrastructure::log::*;
 mod manager;
 mod messaging;
 pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+
+pub use messaging::mqtt::topics::api_wallet::AddressAllockType;
+
 pub mod request;
 mod response;
 pub mod response_vo;

@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
-    repositories::{api_wallet::ApiWalletRepo, device::DeviceRepo},
+    repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
 
@@ -35,7 +35,7 @@ impl ApiWalletService {
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -85,13 +85,17 @@ impl ApiWalletService {
         match api_wallet_type {
             ApiWalletType::SubAccount => {}
             ApiWalletType::Withdrawal => {
+                let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+
+                let chains: Vec<String> =
+                    default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
                 ApiWalletDomain::create_account(
                     address,
                     wallet_password,
-                    None,
+                    chains,
+                    vec![0],
                     account_name,
                     is_default_name,
-                    1,
                     api_wallet_type,
                 )
                 .await?
@@ -219,7 +223,7 @@ impl ApiWalletService {
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 

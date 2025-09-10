@@ -65,7 +65,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     let sn = Context::get_context()?.device.sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
-    let device = DeviceRepo::get_device_info(&pool).await?;
+    let device = DeviceRepo::get_device_info(pool).await?;
 
     let mut tasks = Tasks::new().push(InitializationTask::InitMqtt);
     if let Some(device) = device

@@ -332,7 +332,7 @@ impl AssetsService {
         let coins = tx.coin_list_v2(Some(symbol.to_string()), chain_code.clone()).await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());

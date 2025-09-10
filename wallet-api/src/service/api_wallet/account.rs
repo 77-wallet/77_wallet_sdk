@@ -1,10 +1,13 @@
 use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_database::entities::api_wallet::ApiWalletType;
-use wallet_transport_backend::request::api_wallet::address::UploadAllocatedAddressesReq;
+use wallet_database::{entities::api_wallet::ApiWalletType, repositories::chain::ChainRepo};
+use wallet_transport_backend::request::api_wallet::address::{AddressParam, ExpandAddressReq};
 
-use crate::domain::{
-    api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
-    wallet::WalletDomain,
+use crate::{
+    domain::{
+        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        wallet::WalletDomain,
+    },
+    messaging::mqtt::topics::api_wallet::AddressAllockType,
 };
 
 pub struct ApiAccountService {}
@@ -14,15 +17,14 @@ impl ApiAccountService {
         Self {}
     }
 
-    pub async fn upload_allocated_addresses(
+    pub async fn expand_address(
         self,
-        wallet_address: &str,
-        addresses: Vec<String>,
+        address_allock_type: AddressAllockType,
+        chain_code: &str,
+        index: Option<i32>,
+        uid: &str,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
-
-        let req = UploadAllocatedAddressesReq::new(wallet_address, addresses);
-        backend_api.upload_allocated_addresses(&req).await?;
+        ApiWalletDomain::expand_address(&address_allock_type, index, &uid, &chain_code).await?;
 
         Ok(())
     }
@@ -32,22 +34,24 @@ impl ApiAccountService {
         wallet_address: &str,
         wallet_password: &str,
         // derivation_path: Option<String>,
-        index: Option<i32>,
+        indices: Vec<i32>,
         name: &str,
         is_default_name: bool,
-        number: u32,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
-
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let chains: Vec<String> =
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
         ApiWalletDomain::create_account(
             wallet_address,
             wallet_password,
-            index,
+            chains,
+            indices,
             name,
             is_default_name,
-            number,
             api_wallet_type,
         )
         .await?;

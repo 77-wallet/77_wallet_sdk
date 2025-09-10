@@ -74,8 +74,12 @@ impl ProcessFeeTxHandle {
         Ok(())
     }
 
-    pub(crate) async fn submit_confirm_report_tx(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
-        let _ = self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
+    pub(crate) async fn submit_confirm_report_tx(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let _ =
+            self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 

@@ -29,35 +29,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("res: {res:?}");
 
-    // 创建钱包
-    let language_code = 1;
-    let phrase = &test_params.create_wallet_req.phrase;
-    let salt = "";
-    let wallet_name = "api_wallet";
-    let account_name = "ccccc";
-    let is_default_name = true;
-    let invite_code = None;
-    let api_wallet_type = wallet_database::entities::api_wallet::ApiWalletType::SubAccount;
-    let wallet = wallet_manager
-        .create_api_wallet(
-            language_code,
-            phrase,
-            salt,
-            wallet_name,
-            account_name,
-            is_default_name,
-            wallet_password,
-            invite_code,
-            api_wallet_type,
-        )
-        .await
-        .result;
-    tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
+    // // 创建钱包
+    // let language_code = 1;
+    // let phrase = &test_params.create_wallet_req.phrase;
+    // let salt = "";
+    // let wallet_name = "api_wallet";
+    // let account_name = "ccccc";
+    // let is_default_name = true;
+    // let invite_code = None;
+    // let api_wallet_type = wallet_database::entities::api_wallet::ApiWalletType::SubAccount;
+    // let wallet = wallet_manager
+    //     .create_api_wallet(
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //         wallet_name,
+    //         account_name,
+    //         is_default_name,
+    //         wallet_password,
+    //         invite_code,
+    //         api_wallet_type,
+    //     )
+    //     .await
+    //     .result;
+    // tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
 
     // let order_list = wallet_manager.get_api_collect_order_list().await.result;
     // tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
-    // let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
 
     // let from = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
     // // let from = "TRLJd4avtuGfW5KZHzigxVxZfVdrwvkoJ5";
@@ -74,6 +74,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .api_collect_order(from, to, value, chain_code, token_address, symbol, trade_no, 1, uid)
     //     .await;
     // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+
+    // let index = Some(7);
+    let index = None;
+    let address_allock_type = wallet_api::AddressAllockType::ChaBatch;
+    let chain_code = "tron";
+
+    let res1 = wallet_manager.expand_address(address_allock_type, chain_code, index, uid).await;
+    tracing::info!("expand_address ------------------- 5: {res1:#?}");
 
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)

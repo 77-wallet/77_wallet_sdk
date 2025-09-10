@@ -67,7 +67,7 @@ impl WalletService {
         password: &str,
     ) -> Result<String, crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -91,7 +91,7 @@ impl WalletService {
             tx.update_uid(Some(&wallet.uid)).await?;
 
             let pool = crate::Context::get_global_sqlite_pool()?;
-            let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            let Some(device) = DeviceRepo::get_device_info(pool).await? else {
                 return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
             };
 
@@ -122,7 +122,7 @@ impl WalletService {
         let wallet_list = tx.edit_wallet_name(wallet_address, wallet_name).await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -287,7 +287,7 @@ impl WalletService {
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -615,7 +615,7 @@ impl WalletService {
             if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
         tx.update_uid(uid.as_deref()).await?;
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -653,7 +653,7 @@ impl WalletService {
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -723,7 +723,7 @@ impl WalletService {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -752,7 +752,7 @@ impl WalletService {
         let mut tx = self.repo;
 
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 

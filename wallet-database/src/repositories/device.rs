@@ -3,7 +3,7 @@ use crate::{DbPool, entities::device::DeviceEntity};
 pub struct DeviceRepo;
 
 impl DeviceRepo {
-    pub async fn get_device_info(pool: &DbPool) -> Result<Option<DeviceEntity>, crate::Error> {
+    pub async fn get_device_info(pool: DbPool) -> Result<Option<DeviceEntity>, crate::Error> {
         Ok(DeviceEntity::get_device_info(pool.as_ref()).await?)
     }
 }

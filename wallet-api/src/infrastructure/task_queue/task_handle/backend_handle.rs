@@ -38,6 +38,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::TOKEN_BALANCE_REFRESH,
         endpoint::SWAP_APPROVE_CANCEL,
         endpoint::SWAP_APPROVE_SAVE,
+        endpoint::api_wallet::ADDRESS_POOL_EXPAND,
     ]
     .iter()
     .cloned()
@@ -96,7 +97,7 @@ impl EndpointHandler for DefaultHandler {
         // _wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -176,7 +177,7 @@ impl EndpointHandler for SpecialHandler {
             }
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
                 let pool = crate::Context::get_global_sqlite_pool()?;
-                let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+                let Some(device) = DeviceRepo::get_device_info(pool).await? else {
                     return Err(
                         crate::BusinessError::Device(crate::DeviceError::Uninitialized).into()
                     );

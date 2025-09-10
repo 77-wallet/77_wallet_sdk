@@ -59,15 +59,13 @@ impl ApiWalletDao {
     pub async fn detail<'a, E>(
         exec: E,
         address: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_wallet WHERE address = ? AND wallet_type = ? AND status = 1;";
+        let sql = "SELECT * FROM api_wallet WHERE address = ? AND status = 1;";
         sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
             .bind(address)
-            .bind(api_wallet_type)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

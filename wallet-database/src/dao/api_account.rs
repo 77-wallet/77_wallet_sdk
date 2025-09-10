@@ -296,4 +296,16 @@ impl ApiAccountDao {
             .fetch_optional(exec)
             .await
     }
+
+    pub async fn get_all_account_indices<'a, E>(exec: E) -> Result<Vec<u32>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT DISTINCT account_id FROM api_account")
+            .and_where_eq("wallet_type", ApiWalletType::SubAccount)
+            .order_by("account_id")
+            .fetch_all(exec)
+            .await
+            .map(|rows: Vec<(u32,)>| rows.into_iter().map(|(id,)| id).collect())
+    }
 }

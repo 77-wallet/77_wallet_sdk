@@ -9,6 +9,18 @@ use crate::{
 
 pub struct ApiAccountRepo;
 
+pub async fn find_one(
+    pool: DbPool,
+    address: &str,
+    chain_code: &str,
+    address_type: &str,
+    api_wallet_type: ApiWalletType,
+) -> Result<Option<ApiAccountEntity>, crate::Error> {
+    Ok(ApiAccountDao::find_one(pool.as_ref(), address, chain_code, address_type, api_wallet_type)
+        .await?)
+    // Ok(None)
+}
+
 impl ApiAccountRepo {
     pub async fn upsert(pool: &DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {
         Ok(ApiAccountDao::upsert_multi(pool.as_ref(), input).await?)
@@ -20,6 +32,10 @@ impl ApiAccountRepo {
         account_id: u32,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::update_is_used(pool.as_ref(), wallet_address, account_id, true).await?)
+    }
+
+    pub async fn get_all_account_indices(pool: &DbPool) -> Result<Vec<u32>, crate::Error> {
+        Ok(ApiAccountDao::get_all_account_indices(pool.as_ref()).await?)
     }
 
     // pub async fn mark_as_unused(
@@ -81,22 +97,23 @@ impl ApiAccountRepo {
     // ) -> Result<Option<ApiAccountEntity>, crate::Error> {
     //     Ok(ApiAccountEntity::detail(self.repo.pool().as_ref(), address).await?)
     // }
-    pub async fn find_one(
-        pool: &DbPool,
-        address: &str,
-        chain_code: &str,
-        address_type: &str,
-        api_wallet_type: ApiWalletType,
-    ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one(
-            pool.as_ref(),
-            address,
-            chain_code,
-            address_type,
-            api_wallet_type,
-        )
-        .await?)
-    }
+    // pub async fn find_one(
+    //     // pool: DbPool,
+    //     // address: &str,
+    //     // chain_code: &str,
+    //     // address_type: &str,
+    //     // api_wallet_type: ApiWalletType,
+    // ) -> Result<Option<ApiAccountEntity>, crate::Error> {
+    //     // Ok(ApiAccountDao::find_one(
+    //     //     pool.as_ref(),
+    //     //     address,
+    //     //     chain_code,
+    //     //     address_type,
+    //     //     api_wallet_type,
+    //     // )
+    //     // .await?)
+    //     Ok(None)
+    // }
 
     pub async fn find_one_by_wallet_address_index(
         pool: &DbPool,

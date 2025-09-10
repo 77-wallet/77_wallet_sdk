@@ -79,12 +79,14 @@ pub mod endpoint {
         pub const TRANS_EVENT_ACK: &str = "aw/trans/eventAck";
         /// 查询uid的地址列表
         pub const QUERY_ADDRESS_LIST: &str = "aw/address/list";
-        /// uid 检查
-        pub const KEYS_UID_CHECK: &str = "keys/uidCheck";
         /// UID绑定appId
         pub const APP_ID_BIND: &str = "aw/appid/bind";
         /// UID解绑appId
         pub const APP_ID_UNBIND: &str = "aw/appid/unbind";
+        /// 地址池扩容
+        pub const ADDRESS_POOL_EXPAND: &str = "aw/address/expand";
+        /// uid 检查
+        pub const KEYS_UID_CHECK: &str = "keys/uidCheck";
 
         /// 提币策略保存
         pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "aw/strategy/withdrawal/save";
