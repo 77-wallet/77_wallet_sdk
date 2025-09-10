@@ -1,7 +1,7 @@
 use wallet_database::entities::announcement::CreateAnnouncementVo;
 
 use crate::{
-    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     service::announcement::AnnouncementService,
 };
 
@@ -97,7 +97,7 @@ pub enum Operation {
 
 impl BulletinMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        let Self {
+        let &Self {
             ref id,
             ref operation,
             ..

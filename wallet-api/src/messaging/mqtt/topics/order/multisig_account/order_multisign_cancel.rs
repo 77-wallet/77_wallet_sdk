@@ -4,7 +4,7 @@ use wallet_database::{
 };
 
 use crate::messaging::notify::{
-    event::NotifyEvent, multisig::OrderMultisignCanceledFrontend, FrontendNotifyEvent,
+    FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultisignCanceledFrontend,
 };
 
 // 发起方取消多签账号消息，参与方同步自己多签账号的状态
@@ -31,7 +31,7 @@ impl OrderMultiSignCancel {
             ?self,
             "Starting to process OrderMultiSignCancel"
         );
-        let OrderMultiSignCancel {
+        let &OrderMultiSignCancel {
             ref multisig_account_id,
         } = self;
 

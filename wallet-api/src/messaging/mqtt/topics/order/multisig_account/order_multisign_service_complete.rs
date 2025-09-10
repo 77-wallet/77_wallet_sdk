@@ -1,16 +1,16 @@
 use wallet_database::{
+    DbPool,
     dao::multisig_account::MultisigAccountDaoV1,
     entities::multisig_account::{
         MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
     },
-    DbPool,
 };
 
 use crate::{
     domain::multisig::MultisigDomain,
     messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront,
-        FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend,
+        other::ErrFront,
     },
 };
 
@@ -42,7 +42,7 @@ impl OrderMultiSignServiceComplete {
             "Starting to process OrderMultiSignServiceComplete"
         );
 
-        let OrderMultiSignServiceComplete {
+        let &OrderMultiSignServiceComplete {
             ref multisig_account_id,
             status,
             r#type,
@@ -53,7 +53,7 @@ impl OrderMultiSignServiceComplete {
         let multi_account_id = account.id;
 
         // 更新多签账户手续费状态
-        let (status, pay_status) = Self::get_status(*r#type, *status);
+        let (status, pay_status) = Self::get_status(r#type, status);
         MultisigAccountDaoV1::update_status(&multi_account_id, status, pay_status, pool.as_ref())
             .await
             .map_err(crate::ServiceError::Database)?;
@@ -67,7 +67,7 @@ impl OrderMultiSignServiceComplete {
             NotifyEvent::OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend {
                 multisign_address: account.address,
                 status: self.status,
-                r#type: *r#type,
+                r#type: r#type,
             });
         FrontendNotifyEvent::new(data).send().await?;
 

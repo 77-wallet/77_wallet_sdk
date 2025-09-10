@@ -6,8 +6,8 @@ use wallet_database::{
 use crate::{
     domain::multisig::MultisigDomain,
     messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignAcceptCompleteMsgFrontend, other::ErrFront,
-        FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignAcceptCompleteMsgFrontend,
+        other::ErrFront,
     },
 };
 // 参与放同意参与多签
@@ -42,11 +42,11 @@ impl OrderMultiSignAcceptCompleteMsg {
 
         let OrderMultiSignAcceptCompleteMsg {
             status,
-            ref multisig_account_id,
+            multisig_account_id,
             accept_address_list: _,
             address_list,
             accept_status,
-        } = self;
+        } = &self;
 
         let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
 
