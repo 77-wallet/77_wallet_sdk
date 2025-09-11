@@ -106,8 +106,7 @@ impl ApiWalletRepo {
     pub async fn find_by_uid(
         pool: &DbPool,
         uid: &str,
-        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::detail_by_uid(pool.as_ref(), uid, api_wallet_type).await?)
+        Ok(ApiWalletDao::detail_by_uid(pool.as_ref(), uid).await?)
     }
 }

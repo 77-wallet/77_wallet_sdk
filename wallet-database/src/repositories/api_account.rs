@@ -30,8 +30,16 @@ impl ApiAccountRepo {
         pool: &DbPool,
         wallet_address: &str,
         account_id: u32,
+        chain_code: &str,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::update_is_used(pool.as_ref(), wallet_address, account_id, true).await?)
+        Ok(ApiAccountDao::update_is_used(
+            pool.as_ref(),
+            wallet_address,
+            account_id,
+            chain_code,
+            true,
+        )
+        .await?)
     }
 
     pub async fn get_all_account_indices(pool: &DbPool) -> Result<Vec<u32>, crate::Error> {
@@ -115,13 +123,13 @@ impl ApiAccountRepo {
     //     Ok(None)
     // }
 
-    pub async fn find_one_by_wallet_address_index(
+    pub async fn find_all_by_wallet_address_index(
         pool: &DbPool,
         wallet_address: &str,
         chain_code: &str,
         account_id: u32,
-    ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one_by_wallet_address_index(
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::find_all_by_wallet_address_index(
             pool.as_ref(),
             wallet_address,
             chain_code,

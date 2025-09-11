@@ -74,18 +74,15 @@ impl ApiWalletDao {
     pub async fn detail_by_uid<'a, E>(
         exec: E,
         uid: &str,
-        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Option<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut builder = DynamicQueryBuilder::new("SELECT * FROM api_wallet");
-
-        if let Some(api_wallet_type) = api_wallet_type {
-            builder = builder.and_where_eq("wallet_type", api_wallet_type)
-        }
-
-        builder.and_where_eq("uid", uid).and_where_eq("status", "1").fetch_optional(exec).await
+        DynamicQueryBuilder::new("SELECT * FROM api_wallet")
+            .and_where_eq("uid", uid)
+            .and_where_eq("status", "1")
+            .fetch_optional(exec)
+            .await
     }
 
     pub async fn list<'a, E>(

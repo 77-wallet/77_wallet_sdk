@@ -45,6 +45,10 @@ impl crate::WalletManager {
             .to_string()
             .into()
     }
+
+    pub async fn address_used(&self, chain_code: &str, index: i32, uid: &str) -> ReturnType<()> {
+        ApiAccountService::new().address_used(chain_code, index, uid).await?.into()
+    }
 }
 
 #[cfg(test)]
@@ -90,6 +94,24 @@ mod test {
         let password = "q1111111";
 
         let res = wallet_manager.get_api_account_private_key(address, chain_code, password).await;
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_address_used() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let chain_code = "tron";
+
+        let res = wallet_manager
+            .address_used(
+                chain_code,
+                1,
+                "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c",
+            )
+            .await;
         tracing::info!("res: {res:?}");
 
         Ok(())

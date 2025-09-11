@@ -67,4 +67,13 @@ impl ApiAccountService {
     ) -> Result<ChainPrivateKey, crate::ServiceError> {
         Ok(ApiAccountDomain::get_private_key(address, chain_code, password).await?)
     }
+
+    pub async fn address_used(
+        self,
+        chain_code: &str,
+        index: i32,
+        uid: &str,
+    ) -> Result<(), crate::ServiceError> {
+        Ok(ApiAccountDomain::address_used(chain_code, index, uid).await?)
+    }
 }

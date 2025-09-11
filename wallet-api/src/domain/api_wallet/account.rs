@@ -225,23 +225,28 @@ impl ApiAccountDomain {
         chain_code: &str,
         index: i32,
         uid: &str,
-        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, api_wallet_type)
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid)
             .await?
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 
-        let account = ApiAccountRepo::find_one_by_wallet_address_index(
+        let accounts = ApiAccountRepo::find_all_by_wallet_address_index(
             &pool,
             &api_wallet.address,
             chain_code,
             index.account_id,
         )
         .await?;
-        if let Some(account) = account {
-            ApiAccountRepo::mark_as_used(&pool, &api_wallet.address, account.account_id).await?;
+        for account in accounts {
+            ApiAccountRepo::mark_as_used(
+                &pool,
+                &api_wallet.address,
+                account.account_id,
+                chain_code,
+            )
+            .await?;
         }
 
         Ok(())

@@ -1,10 +1,6 @@
-use wallet_database::{
-    entities::api_wallet::ApiWalletType,
-    repositories::{api_account::ApiAccountRepo, api_wallet::ApiWalletRepo},
-};
 use wallet_transport_backend::request::api_wallet::address::{AddressParam, ExpandAddressReq};
 
-use crate::domain::api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain};
+use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 // biz_type = ADDRESS_ALLOCK
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]

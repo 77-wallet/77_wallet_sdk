@@ -108,6 +108,7 @@ impl ApiAccountDao {
         exec: E,
         wallet_address: &str,
         account_id: u32,
+        chain_code: &str,
         is_used: bool,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
@@ -117,7 +118,7 @@ impl ApiAccountDao {
             UPDATE api_account SET 
                 is_used = $3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE wallet_address = $1 AND account_id = $2
+            WHERE wallet_address = $1 AND account_id = $2 AND chain_code = $4
             RETURNING *
         "#;
 
@@ -125,6 +126,7 @@ impl ApiAccountDao {
             .bind(wallet_address)
             .bind(account_id)
             .bind(is_used)
+            .bind(chain_code)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -197,12 +199,12 @@ impl ApiAccountDao {
             .await
     }
 
-    pub async fn find_one_by_wallet_address_index<'a, E>(
+    pub async fn find_all_by_wallet_address_index<'a, E>(
         exec: E,
         wallet_address: &str,
         chain_code: &str,
         account_id: u32,
-    ) -> Result<Option<ApiAccountEntity>, crate::Error>
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -212,7 +214,7 @@ impl ApiAccountDao {
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("chain_code", chain_code)
             .and_where_eq("account_id", account_id)
-            .fetch_optional(exec)
+            .fetch_all(exec)
             .await
     }
 

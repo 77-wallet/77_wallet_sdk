@@ -25,7 +25,7 @@ pub struct ApiCollectDomain {}
 impl ApiCollectDomain {
     pub(crate) async fn collect(req: &ApiWithdrawReq) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid, Some(ApiWalletType::SubAccount))
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid)
             .await?
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
 

@@ -9,15 +9,16 @@ use crate::{
 pub struct AddressUseMsg {
     /// uid
     pub uid: String,
-    pub chain: String,
+    #[serde(rename = "chain")]
+    pub chain_code: String,
     pub index: i32,
     pub address: String,
 }
 
-// 按下标递增
+// 地址使用
 impl AddressUseMsg {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        ApiAccountDomain::address_used(&self.chain, self.index, &self.uid, None).await?;
+        ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid).await?;
 
         let data = NotifyEvent::AddressUse(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
