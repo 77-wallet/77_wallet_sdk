@@ -10,12 +10,11 @@ use super::BackendApi;
 impl BackendApi {
     // 地址池扩容
     pub async fn expand_address(&self, req: &ExpandAddressReq) -> Result<Option<()>, crate::Error> {
-        let res = self
-            .client
-            .post(ADDRESS_POOL_EXPAND)
-            .json(serde_json::json!(req))
-            .send::<BackendResponse>()
-            .await?;
+        let req = serde_json::json!(req);
+        tracing::info!("req: {}", req.to_string());
+
+        let res = self.client.post(ADDRESS_POOL_EXPAND).json(req).send::<BackendResponse>().await?;
+        tracing::info!("res: {res:#?}");
         res.process(&self.aes_cbc_cryptor)
     }
 

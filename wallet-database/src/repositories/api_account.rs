@@ -46,6 +46,22 @@ impl ApiAccountRepo {
         Ok(ApiAccountDao::get_all_account_indices(pool.as_ref()).await?)
     }
 
+    pub async fn init(
+        pool: &DbPool,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::init(pool.as_ref(), address, chain_code).await?)
+    }
+
+    pub async fn expand(
+        pool: &DbPool,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::expand(pool.as_ref(), address, chain_code).await?)
+    }
+
     // pub async fn mark_as_unused(
     //     pool: &DbPool,
     //     wallet_address: &str,

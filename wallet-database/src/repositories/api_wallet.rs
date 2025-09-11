@@ -109,4 +109,17 @@ impl ApiWalletRepo {
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
         Ok(ApiWalletDao::detail_by_uid(pool.as_ref(), uid).await?)
     }
+
+    pub async fn bind_withdraw_and_subaccount_relation(
+        pool: DbPool,
+        wallet_address: &str,
+        binding_address: &str,
+    ) -> Result<(), crate::Error> {
+        ApiWalletDao::bind_withdraw_and_subaccount_relation(
+            pool.as_ref(),
+            wallet_address,
+            binding_address,
+        )
+        .await
+    }
 }

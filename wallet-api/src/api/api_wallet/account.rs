@@ -67,7 +67,7 @@ mod test {
 
         let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
         let wallet_password = "q1111111";
-        let index = vec![1, 3];
+        let index = vec![1];
         let name = "666";
         let is_default_name = true;
         let api_wallet_type = ApiWalletType::SubAccount;

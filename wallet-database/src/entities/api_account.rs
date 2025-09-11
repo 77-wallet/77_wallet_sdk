@@ -16,6 +16,7 @@ pub struct ApiAccountEntity {
     pub wallet_type: ApiWalletType,
     pub status: i32,
     pub is_init: i32,
+    pub is_expand: i32,
     pub is_used: bool,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,

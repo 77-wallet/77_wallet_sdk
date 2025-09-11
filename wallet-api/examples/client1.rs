@@ -76,12 +76,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 
     // let index = Some(7);
-    let index = None;
-    let address_allock_type = wallet_api::AddressAllockType::ChaBatch;
-    let chain_code = "tron";
+    // let index = None;
+    // let address_allock_type = wallet_api::AddressAllockType::ChaBatch;
+    // let chain_code = "tron";
 
-    let res1 = wallet_manager.expand_address(address_allock_type, chain_code, index, uid).await;
-    tracing::info!("expand_address ------------------- 5: {res1:#?}");
+    // let res1 = wallet_manager.expand_address(address_allock_type, chain_code, index, uid).await;
+    // tracing::info!("expand_address ------------------- 5: {res1:#?}");
 
     // let wallet = wallet_manager
     //     .create_wallet(test_params.create_wallet_req)
@@ -89,27 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .result;
     // tracing::warn!("wallet: {wallet:#?}");
 
-    // let topics = vec![
-    //     "wallet/token/eth/usdc".to_string(),
-    //     "wallet/token/tron/trx".to_string(),
-    //     "wallet/token/doge/doge".to_string(),
-    //     "wallet/token/tron/sun".to_string(),
-    //     "wallet/token/tron/win".to_string(),
-    //     "wallet/token/eth/hkby".to_string(),
-    //     "wallet/token/btc/btc".to_string(),
-    //     "wallet/token/eth/eth".to_string(),
-    //     "wallet/token/bnb/bnb".to_string(),
-    //     "wallet/token/sol/sol".to_string(),
-    //     "wallet/token/ltc/ltc".to_string(),
-    //     "wallet/token/eth/link".to_string(),
-    //     "wallet/token/ton/ton".to_string(),
-    //     "wallet/token/sui/sui".to_string(),
-    //     "wallet/token/eth/cake".to_string(),
-    //     "wallet/token/sol/usdt".to_string(),
-    // ];
-    // {
-    //     wallet_manager.mqtt_subscribe(topics, None).await;
-    // }
+    // subscribe(&wallet_manager).await;
 
     let sync_res = wallet_manager
         .sync_api_assets_by_wallet("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b", None, vec![])
@@ -136,4 +116,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+#[allow(dead_code)]
+async fn subscribe(wallet_manager: &wallet_api::WalletManager) {
+    let topics = vec![
+        "wallet/token/eth/usdc".to_string(),
+        "wallet/token/tron/trx".to_string(),
+        "wallet/token/doge/doge".to_string(),
+        "wallet/token/tron/sun".to_string(),
+        "wallet/token/tron/win".to_string(),
+        "wallet/token/eth/hkby".to_string(),
+        "wallet/token/btc/btc".to_string(),
+        "wallet/token/eth/eth".to_string(),
+        "wallet/token/bnb/bnb".to_string(),
+        "wallet/token/sol/sol".to_string(),
+        "wallet/token/ltc/ltc".to_string(),
+        "wallet/token/eth/link".to_string(),
+        "wallet/token/ton/ton".to_string(),
+        "wallet/token/sui/sui".to_string(),
+        "wallet/token/eth/cake".to_string(),
+        "wallet/token/sol/usdt".to_string(),
+    ];
+    {
+        wallet_manager.mqtt_subscribe(topics, None).await;
+    }
 }

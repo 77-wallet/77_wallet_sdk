@@ -1,6 +1,9 @@
 use crate::{
     entities::api_wallet::{ApiWalletEntity, ApiWalletType},
-    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
+    sql_utils::{
+        SqlExecutableNoReturn, SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+        update_builder::DynamicUpdateBuilder,
+    },
 };
 use sqlx::{Executor, Sqlite};
 
@@ -144,6 +147,21 @@ impl ApiWalletDao {
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn bind_withdraw_and_subaccount_relation<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        binding_address: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let builder = DynamicUpdateBuilder::new("api_wallet")
+            .set("binding_address", binding_address)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("address", wallet_address);
+        SqlExecutableNoReturn::execute(&builder, exec).await
     }
 
     pub async fn update_app_id<'a, E>(

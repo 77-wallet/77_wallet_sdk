@@ -13,6 +13,7 @@ use wallet_transport_backend::request::{
 };
 
 use crate::{
+    api::api_wallet::withdraw,
     domain::{
         api_wallet::account::ApiAccountDomain, app::config::ConfigDomain, chain::ChainDomain,
     },
@@ -85,6 +86,34 @@ impl ApiWalletDomain {
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         ApiWalletRepo::update_merchant_id(&pool, &api_wallet.address, merchain_id).await?;
         ApiWalletRepo::update_app_id(&pool, &api_wallet.address, org_app_id).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn bind_withdraw_and_subaccount_relation(
+        subaccount_uid: &str,
+        withdraw_uid: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let subaccount_uid = ApiWalletRepo::find_by_uid(&pool, subaccount_uid)
+            .await?
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+        let withdraw_uid = ApiWalletRepo::find_by_uid(&pool, withdraw_uid)
+            .await?
+            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+        ApiWalletRepo::bind_withdraw_and_subaccount_relation(
+            pool.clone(),
+            &subaccount_uid.address,
+            &withdraw_uid.address,
+        )
+        .await?;
+
+        ApiWalletRepo::bind_withdraw_and_subaccount_relation(
+            pool,
+            &withdraw_uid.address,
+            &subaccount_uid.address,
+        )
+        .await?;
         Ok(())
     }
 
@@ -95,6 +124,58 @@ impl ApiWalletDomain {
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         ApiWalletRepo::upbind_uid(&pool, &api_wallet.address, ApiWalletType::SubAccount).await?;
 
+        Ok(())
+    }
+
+    pub(crate) async fn create_sub_account(
+        wallet_address: &str,
+        password: &str,
+        chains: Vec<String>,
+        account_name: &str,
+        is_default_name: bool,
+    ) -> Result<(), crate::ServiceError> {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        // 查询已有的账户
+        let num = 3;
+        let account_indices = ApiAccountRepo::get_all_account_indices(&pool).await?;
+        let account_indices = ApiAccountDomain::next_account_indices(account_indices, num);
+        let mut input_indices = Vec::new();
+        for account_id in account_indices {
+            input_indices.push(
+                wallet_utils::address::AccountIndexMap::from_account_id(account_id)?.input_index,
+            );
+        }
+
+        ApiWalletDomain::create_account(
+            wallet_address,
+            password,
+            chains,
+            input_indices,
+            account_name,
+            is_default_name,
+            ApiWalletType::SubAccount,
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn create_withdrawal_account(
+        wallet_address: &str,
+        password: &str,
+        chains: Vec<String>,
+        account_name: &str,
+        is_default_name: bool,
+    ) -> Result<(), crate::ServiceError> {
+        ApiWalletDomain::create_account(
+            wallet_address,
+            password,
+            chains,
+            vec![0, 1],
+            account_name,
+            is_default_name,
+            ApiWalletType::Withdrawal,
+        )
+        .await?;
         Ok(())
     }
 
@@ -113,28 +194,14 @@ impl ApiWalletDomain {
 
         match address_allock_type {
             AddressAllockType::ChaBatch => {
-                // 查询已有的账户
-                let num = 3;
-                let account_indices = ApiAccountRepo::get_all_account_indices(&pool).await?;
-                let account_indices = ApiAccountDomain::next_account_indices(account_indices, num);
-                let mut input_indices = Vec::new();
-                for account_id in account_indices {
-                    input_indices.push(
-                        wallet_utils::address::AccountIndexMap::from_account_id(account_id)?
-                            .input_index,
-                    );
-                }
-
-                ApiWalletDomain::create_account(
+                ApiWalletDomain::create_sub_account(
                     &api_wallet.address,
                     &password,
                     vec![chain_code.to_string()],
-                    input_indices,
                     "name",
                     true,
-                    ApiWalletType::SubAccount,
                 )
-                .await?;
+                .await?; // 查询已有的账户
             }
             AddressAllockType::ChaIndex => {
                 // 扩容一个链地址
@@ -229,23 +296,23 @@ impl ApiWalletDomain {
             created_count += 1;
             // current_id += 1;
         }
-
         if created_count > 0 {
             let address_batch_init_task_data = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
                 &address_batch_init_task_data,
             )?;
+
             // let backend_api = crate::Context::get_global_backend_api()?;
             // backend_api.expand_address(&expand_address_req).await?;
-            let expand_address_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_POOL_EXPAND,
-                &expand_address_req,
-            )?;
+            // let expand_address_task_data = BackendApiTaskData::new(
+            //     wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_POOL_EXPAND,
+            //     &expand_address_req,
+            // )?;
 
             Tasks::new()
                 .push(CommonTask::QueryCoinPrice(req))
                 .push(BackendApiTask::BackendApi(address_batch_init_task_data))
-                .push(BackendApiTask::BackendApi(expand_address_task_data))
+                // .push(BackendApiTask::BackendApi(expand_address_task_data))
                 .send()
                 .await?;
         }

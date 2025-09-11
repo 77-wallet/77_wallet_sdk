@@ -81,22 +81,28 @@ impl ApiWalletService {
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
 
+        let chains: Vec<String> =
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
         match api_wallet_type {
-            ApiWalletType::SubAccount => {}
-            ApiWalletType::Withdrawal => {
-                let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
-
-                let chains: Vec<String> =
-                    default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-                ApiWalletDomain::create_account(
+            ApiWalletType::SubAccount => {
+                ApiWalletDomain::create_sub_account(
                     address,
                     wallet_password,
                     chains,
-                    vec![0],
                     account_name,
                     is_default_name,
-                    api_wallet_type,
+                )
+                .await?
+            }
+            ApiWalletType::Withdrawal => {
+                ApiWalletDomain::create_withdrawal_account(
+                    address,
+                    wallet_password,
+                    chains,
+                    account_name,
+                    is_default_name,
                 )
                 .await?
             }
@@ -278,6 +284,9 @@ impl ApiWalletService {
     ) -> Result<(), crate::ServiceError> {
         ApiWalletDomain::bind_uid(recharge_uid, merchain_id, org_app_id).await?;
         ApiWalletDomain::bind_uid(withdrawal_uid, merchain_id, org_app_id).await?;
+
+        ApiWalletDomain::bind_withdraw_and_subaccount_relation(recharge_uid, withdrawal_uid)
+            .await?;
 
         let backend = crate::Context::get_global_backend_api()?;
         backend

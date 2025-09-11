@@ -14,6 +14,7 @@ CREATE TABLE api_account (
     wallet_type INTEGER NOT NULL,
     status INTEGER NOT NULL,
     is_init INTEGER NOT NULL,
+    is_expand INTEGER NOT NULL DEFAULT 0,
     is_used Boolean NOT NULL DEFAULT false,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP
