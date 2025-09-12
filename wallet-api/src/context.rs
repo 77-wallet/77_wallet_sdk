@@ -1,5 +1,5 @@
 use crate::{
-    Dirs, FrontendNotifyEvent,
+    dirs::Dirs, FrontendNotifyEvent,
     infrastructure::{
         SharedCache,
         inner_event::InnerEventHandle,
@@ -8,7 +8,7 @@ use crate::{
         process_withdraw_tx::ProcessWithdrawTxHandle,
         task_queue::task_manager::TaskManager,
     },
-    manager::{DeviceInfo, FrontendNotifySender, RpcToken},
+    data::{DeviceInfo, FrontendNotifySender, RpcToken},
     messaging::mqtt::subscribed::Topics,
 };
 use std::{collections::HashMap, sync::Arc};
@@ -154,7 +154,7 @@ impl Context {
         Ok(&Context::get_context()?.backend_api)
     }
 
-    pub(crate) fn get_global_dirs() -> Result<&'static crate::manager::Dirs, crate::SystemError> {
+    pub(crate) fn get_global_dirs() -> Result<&'static crate::dirs::Dirs, crate::SystemError> {
         Ok(&Context::get_context()?.dirs)
     }
 
@@ -181,7 +181,7 @@ impl Context {
     }
 
     pub(crate) fn get_global_frontend_notify_sender() -> Result<
-        &'static std::sync::Arc<RwLock<crate::manager::FrontendNotifySender>>,
+        &'static std::sync::Arc<RwLock<crate::data::FrontendNotifySender>>,
         crate::SystemError,
     > {
         Ok(&Context::get_context()?.frontend_notify)

@@ -243,7 +243,7 @@ impl WalletDomain {
     }
 
     pub(crate) async fn get_seed(
-        dirs: &crate::manager::Dirs,
+        dirs: &crate::dirs::Dirs,
         wallet_address: &str,
         wallet_password: &str,
     ) -> Result<Vec<u8>, crate::ServiceError> {

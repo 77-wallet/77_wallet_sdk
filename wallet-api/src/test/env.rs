@@ -1,4 +1,4 @@
-use crate::{Dirs, WalletManager};
+use crate::{dirs::Dirs, WalletManager};
 use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;

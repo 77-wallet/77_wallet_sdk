@@ -13,6 +13,8 @@ mod manager;
 mod messaging;
 pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 mod context;
+mod dirs;
+mod data;
 pub mod request;
 mod response;
 pub mod response_vo;
@@ -34,7 +36,8 @@ pub use error::{
 
 pub use config::*;
 pub use context::Context;
-pub use manager::{Dirs, WalletManager};
+pub use dirs::Dirs;
+pub use manager::WalletManager;
 pub use request::{
     account::CreateAccountReq, app::UploadLogFileReq, assets::GetChain, devices::InitDeviceReq,
     wallet::CreateWalletReq,
