@@ -134,8 +134,8 @@ impl ProcessWithdrawTx {
                                 if res.is_ok() {
                                     match self.process_withdraw_single_tx(res.unwrap()).await {
                                         Ok(_) => {}
-                                        Err(_) => {
-                                            tracing::error!("failed to process withdraw tx");
+                                        Err(err) => {
+                                            tracing::error!("failed to process withdraw tx: {}", err);
                                         }
                                     }
                                 }
@@ -147,8 +147,8 @@ impl ProcessWithdrawTx {
                 _ = iv.tick() => {
                     match self.process_withdraw_tx().await {
                         Ok(_) => {}
-                        Err(_) => {
-                            tracing::error!("failed to process withdraw tx");
+                        Err(err) => {
+                            tracing::error!("failed to process withdraw tx: {}", err);
                         }
                     }
                 }
@@ -202,7 +202,10 @@ impl ProcessWithdrawTx {
         let tx_resp = ApiTransDomain::transfer(transfer_req).await;
         match tx_resp {
             Ok(tx) => self.handle_withdraw_tx_success(&req.trade_no, tx).await,
-            Err(_) => self.handle_withdraw_tx_failed(&req.trade_no).await,
+            Err(err) => { 
+                tracing::warn!("failed to process withdraw tx: {}", err);
+                self.handle_withdraw_tx_failed(&req.trade_no).await 
+            }
         }
     }
 

@@ -9,6 +9,8 @@ pub(crate) mod api_nonce;
 pub(crate) mod api_wallet;
 pub(crate) mod api_window;
 pub(crate) mod api_withdraw;
+pub(crate) mod api_withdraw_strategy;
+pub(crate) mod api_collect_strategy;
 pub mod assets;
 pub mod bill;
 pub mod chain;

@@ -9,6 +9,8 @@ pub mod api_fee;
 pub mod api_nonce;
 pub mod api_wallet;
 pub mod api_withdraw;
+pub mod api_withdraw_strategy;
+pub mod api_collect_strategy;
 pub mod assets;
 pub mod bill;
 pub mod chain;
