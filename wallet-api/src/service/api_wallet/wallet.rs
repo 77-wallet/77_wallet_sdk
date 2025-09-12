@@ -108,66 +108,6 @@ impl ApiWalletService {
             }
         }
 
-        // let default_chain_list = tx.get_chain_list().await?;
-        // let coins = tx.default_coin_list().await?;
-
-        // let default_chain_list = default_chain_list
-        //     .into_iter()
-        //     .map(|chain| chain.chain_code)
-        //     .collect::<Vec<String>>();
-        // tracing::info!("coins: {:?}", coins);
-        // let account_creation_start = std::time::Instant::now();
-        // let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-        // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
-
-        // let mut address_init_task_data = AddressBatchInitReq(Vec::new());
-        // for account_id in account_ids {
-        //     let account_index_map =
-        //         wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
-
-        //     ChainDomain::init_chains_api_assets(
-        //         tx,
-        //         &coins,
-        //         &mut req,
-        //         &mut address_init_task_data,
-        //         &mut subkeys,
-        //         &default_chain_list,
-        //         &seed,
-        //         &account_index_map,
-        //         None,
-        //         &uid,
-        //         address,
-        //         account_name,
-        //         is_default_name,
-        //     )
-        //     .await?;
-        // }
-        // tracing::info!(
-        //     "Account creation and subkey generation took: {:?}",
-        //     account_creation_start.elapsed()
-        // );
-
-        // let child_keystore_start = std::time::Instant::now();
-        // let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
-        // let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        // let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
-
-        // KeystoreApi::initialize_child_keystores(
-        //     wallet_tree,
-        //     subkeys,
-        //     dirs.get_subs_dir(address)?,
-        //     wallet_password,
-        //     algorithm,
-        // )?;
-        // tracing::debug!(
-        //     "Child keystore initialization took: {:?}",
-        //     child_keystore_start.elapsed()
-        // );
-
-        // let task = Task::Common(CommonTask::QueryCoinPrice(req));
-        // Tasks::new().push(task).send().await?;
-        // tx.update_uid(Some(&uid)).await?;
-
         let client_id = DeviceDomain::client_id_by_device(&device)?;
 
         let language_req = {

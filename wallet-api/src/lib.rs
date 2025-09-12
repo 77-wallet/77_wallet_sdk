@@ -14,6 +14,7 @@ mod messaging;
 pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 
 pub use messaging::mqtt::topics::api_wallet::AddressAllockType;
+pub use wallet_database::entities::api_wallet::ApiWalletType;
 
 pub mod request;
 mod response;

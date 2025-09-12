@@ -21,6 +21,7 @@ pub struct CryptoConfig {
 
 #[derive(Deserialize, Debug)]
 pub struct AggregateApi {
+    pub dev_url: String,
     pub test_url: String,
     pub prod_url: String,
 }

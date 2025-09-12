@@ -13,7 +13,6 @@ use wallet_transport_backend::request::{
 };
 
 use crate::{
-    api::api_wallet::withdraw,
     domain::{
         api_wallet::account::ApiAccountDomain, app::config::ConfigDomain, chain::ChainDomain,
     },
@@ -35,23 +34,40 @@ impl ApiWalletDomain {
     ) -> Result<(), crate::ServiceError> {
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
         let pool = crate::Context::get_global_sqlite_pool()?;
-        let phrase = wallet_utils::serde_func::serde_to_vec(&phrase)?;
+        // let phrase = wallet_utils::serde_func::serde_to_vec(&phrase)?;
 
-        let rng = rand::thread_rng();
-        let mut generator = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
-        let phrase = generator.generate(password.as_bytes(), &phrase)?;
-        let phrase = wallet_utils::serde_func::serde_to_string(&phrase)?;
-        let seed =
-            KeystoreJsonGenerator::new(rng, algorithm).generate(password.as_bytes(), seed)?;
-        let seed = wallet_utils::serde_func::serde_to_string(&seed)?;
+        // let rng = rand::thread_rng();
+        // let mut generator = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
+        // let phrase = generator.generate(password.as_bytes(), &phrase)?;
+        // let phrase = wallet_utils::serde_func::serde_to_string(&phrase)?;
+        // let seed =
+        //     KeystoreJsonGenerator::new(rng, algorithm).generate(password.as_bytes(), seed)?;
+        // let seed = wallet_utils::serde_func::serde_to_string(&seed)?;
+
+        let (phrase_enc, seed_enc) = {
+            // rng 在这个 block 内创建并使用，block 结束时 rng 被 drop
+            let rng = rand::thread_rng();
+
+            // 用 rng 生成 phrase
+            let mut gen1 = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
+            let phrase_keystore = gen1.generate(password.as_bytes(), phrase.as_bytes())?;
+            let phrase_enc = wallet_utils::serde_func::serde_to_string(&phrase_keystore)?;
+
+            // 用 rng（或其 clone）生成 seed
+            let mut gen2 = KeystoreJsonGenerator::new(rng, algorithm.clone());
+            let seed_keystore = gen2.generate(password.as_bytes(), seed)?;
+            let seed_enc = wallet_utils::serde_func::serde_to_string(&seed_keystore)?;
+
+            (phrase_enc, seed_enc)
+        };
 
         ApiWalletRepo::upsert(
             &pool,
             &uid,
             wallet_name,
             wallet_address,
-            &phrase,
-            &seed,
+            &phrase_enc,
+            &seed_enc,
             api_wallet_type,
         )
         .await?;
