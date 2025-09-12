@@ -17,7 +17,7 @@ impl TaskTrait for BackendApiTask {
     }
 
     async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::manager::Context::get_global_backend_api()?;
+        let backend_api = crate::context::Context::get_global_backend_api()?;
         match self {
             BackendApiTask::BackendApi(data) => {
                 BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)

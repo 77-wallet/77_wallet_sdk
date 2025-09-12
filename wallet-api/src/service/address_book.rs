@@ -83,7 +83,7 @@ impl AddressBookService {
         let address_book = self.repo.find_by_address(&address, &chain_code).await?;
 
         // check is first transfer
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let bill = BillDao::first_transfer(&address, &chain_code, pool.as_ref())
             .await
             .map_err(|e| crate::ServiceError::Database(e.into()))?;

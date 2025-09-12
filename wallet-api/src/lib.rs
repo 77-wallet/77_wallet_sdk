@@ -12,6 +12,7 @@ pub use infrastructure::log::*;
 mod manager;
 mod messaging;
 pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+mod context;
 pub mod request;
 mod response;
 pub mod response_vo;
@@ -32,7 +33,8 @@ pub use error::{
 };
 
 pub use config::*;
-pub use manager::{Context, Dirs, WalletManager};
+pub use context::Context;
+pub use manager::{Dirs, WalletManager};
 pub use request::{
     account::CreateAccountReq, app::UploadLogFileReq, assets::GetChain, devices::InitDeviceReq,
     wallet::CreateWalletReq,

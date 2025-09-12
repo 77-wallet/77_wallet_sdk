@@ -11,7 +11,7 @@ use crate::{
         task_queue,
         task_queue::{BackendApiTaskData, task::Tasks},
     },
-    manager::Context,
+    context::Context,
     messaging::notify::{
         FrontendNotifyEvent,
         event::NotifyEvent,
@@ -1525,7 +1525,7 @@ impl StackService {
         password: String,
         signer: Signer,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let to = args.get_to();
 
         let permission =
@@ -1577,7 +1577,7 @@ impl StackService {
         expiration: i64,
         password: String,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let to = args.get_to();
 
         let account = MultisigDomain::account_by_address(&address, true, &pool).await?;

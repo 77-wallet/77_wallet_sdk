@@ -123,7 +123,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn check_version(self, r#type: &str) -> Result<AppVersionRes, crate::ServiceError> {
         let req = VersionViewReq::new(r#type);
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
 
         let res = backend.version_view(req).await?;
         Ok(res)
@@ -164,7 +164,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn set_block_browser_url(&mut self) -> Result<(), crate::ServiceError> {
         // let tx = &mut self.repo;
-        let backend_api = crate::manager::Context::get_global_backend_api()?;
+        let backend_api = crate::context::Context::get_global_backend_api()?;
 
         let app_version = ConfigDomain::get_app_version().await?;
 
@@ -178,7 +178,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> Result<(), crate::ServiceError> {
-        let oss_client = crate::manager::Context::get_global_oss_client()?;
+        let oss_client = crate::context::Context::get_global_oss_client()?;
         for req in req.into_iter() {
             oss_client.upload_local_file(&req.src_file_path, &req.dst_file_name).await?;
         }
@@ -192,7 +192,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         qos: Option<u8>,
     ) -> Result<(), crate::ServiceError> {
         // 获取全局 topics
-        let global_topics = crate::manager::Context::get_global_mqtt_topics()?;
+        let global_topics = crate::context::Context::get_global_mqtt_topics()?;
         let mut global_topics = global_topics.write().await;
 
         global_topics.subscribe(topics, qos).await?;
@@ -205,7 +205,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         topics: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
         // 获取全局已订阅的主题
-        let global_topics = crate::manager::Context::get_global_mqtt_topics()?;
+        let global_topics = crate::context::Context::get_global_mqtt_topics()?;
         let mut global_topics = global_topics.write().await;
 
         global_topics.unsubscribe(topics).await?;
@@ -215,7 +215,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn mqtt_resubscribe(self) -> Result<(), crate::ServiceError> {
         // 获取全局已订阅的主题
-        let global_topics = crate::manager::Context::get_global_mqtt_topics()?;
+        let global_topics = crate::context::Context::get_global_mqtt_topics()?;
         let global_topics = global_topics.write().await;
 
         global_topics.resubscribe().await?;
@@ -224,7 +224,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     }
 
     pub async fn get_configs(self) -> Result<Vec<ConfigEntity>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let res = ConfigDao::list_v2(pool.as_ref()).await?;
         Ok(res)
     }
@@ -234,7 +234,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         key: String,
         value: String,
     ) -> Result<ConfigEntity, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         // let min_config =
         //     wallet_database::entities::config::MinValueSwitchConfig::try_from(value.clone())?;
@@ -266,7 +266,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         amount: f64,
         switch: bool,
     ) -> Result<MinValueSwitchConfig, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let cx = crate::Context::get_context()?;
         let sn = cx.device.sn.clone();
@@ -296,7 +296,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         symbol: String,
     ) -> Result<Option<MinValueSwitchConfig>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let symbol = symbol.to_uppercase();
         let cx = crate::Context::get_context()?;
@@ -345,7 +345,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         endpoint: &str,
         body: String,
     ) -> Result<serde_json::Value, crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
 
         let result = backend.post_req_string::<serde_json::Value>(endpoint, body).await?;
         Ok(result)
@@ -425,7 +425,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     pub async fn backend_config(
         self,
     ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
         Ok(backend.all_config().await?.configs)
     }
 }

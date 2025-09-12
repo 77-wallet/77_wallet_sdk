@@ -46,7 +46,7 @@ impl FrontendNotifyEvent {
     }
 
     pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
-        let sender = crate::manager::Context::get_global_frontend_notify_sender()?;
+        let sender = crate::context::Context::get_global_frontend_notify_sender()?;
         let sender = sender.read().await;
         if let Some(sender) = sender.as_ref() {
             sender.send(self).map_err(|e| {

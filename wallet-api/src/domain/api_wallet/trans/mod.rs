@@ -39,7 +39,7 @@ impl ApiTransDomain {
         tracing::info!("transfer fee ------------------- 10:");
 
         if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::manager::Context::get_global_backend_api()?;
+            let backend = crate::context::Context::get_global_backend_api()?;
             let _ = backend.delegate_complete(&request_id).await;
         }
 

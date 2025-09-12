@@ -6,10 +6,7 @@ use wallet_transport_backend::request::LanguageInitReq;
 
 use crate::{
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
-    infrastructure::{
-        GLOBAL_CACHE, WALLET_PASSWORD,
-        task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
-    },
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
 };
 
 pub struct ApiWalletService {}
@@ -35,7 +32,7 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
-        tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
+        tracing::info!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::Context::get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
@@ -54,16 +51,16 @@ impl ApiWalletService {
             .into());
         }
 
-        tracing::debug!("Master key generation took: {:?}", master_key_start.elapsed());
+        tracing::info!("Master key generation took: {:?}", master_key_start.elapsed());
 
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
 
         // uid类型检查
-        let backend = crate::Context::get_global_backend_api()?;
-        backend.keys_uid_check(&uid).await?;
-        tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
+        // let backend = crate::Context::get_global_backend_api()?;
+        // backend.keys_uid_check(&uid).await?;
+        tracing::info!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -78,7 +75,7 @@ impl ApiWalletService {
             api_wallet_type,
         )
         .await?;
-        tracing::debug!(
+        tracing::info!(
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
@@ -224,7 +221,7 @@ impl ApiWalletService {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =

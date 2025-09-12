@@ -18,7 +18,7 @@ pub struct ConfigDomain;
 
 impl ConfigDomain {
     pub async fn get_config_min_value(symbol: &str) -> Result<Option<f64>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let cx = crate::Context::get_context()?;
         let sn = cx.device.sn.clone();
@@ -58,7 +58,7 @@ impl ConfigDomain {
     }
 
     pub async fn set_config(key: &str, value: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         ConfigDao::upsert(key, value, None, pool.as_ref()).await?;
 
@@ -145,7 +145,7 @@ impl ConfigDomain {
     // }
 
     pub async fn init_app_install_download_url() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let app_install_download_url =
             ConfigDao::find_by_key(APP_DOWNLOAD_QR_CODE_URL, pool.as_ref()).await?;
         if let Some(app_install_download_url) = app_install_download_url {
@@ -171,7 +171,7 @@ impl ConfigDomain {
     // }
 
     pub async fn init_official_website() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let official_website = ConfigDao::find_by_key(OFFICIAL_WEBSITE, pool.as_ref()).await?;
         if let Some(official_website) = official_website {
             let official_website = OfficialWebsite::try_from(official_website.value)?;
@@ -183,7 +183,7 @@ impl ConfigDomain {
     }
 
     pub async fn init_currency() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let currency = ConfigDao::find_by_key(CURRENCY, pool.as_ref()).await?;
         if let Some(currency) = currency {
             let mut config = crate::app_state::APP_STATE.write().await;
@@ -196,7 +196,7 @@ impl ConfigDomain {
     }
 
     pub async fn init_language() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let language = ConfigDao::find_by_key(LANGUAGE, pool.as_ref()).await?;
         let mut config = crate::app_state::APP_STATE.write().await;
         if let Some(language) = language {
@@ -213,7 +213,7 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn get_currency() -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let currency = ConfigDao::find_by_key(CURRENCY, pool.as_ref()).await?;
         if let Some(currency) = currency {
             let currency = wallet_database::entities::config::Currency::try_from(currency.value)?;
@@ -224,7 +224,7 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn get_invite_code() -> Result<Option<InviteCode>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let invite_code = ConfigDao::find_by_key(INVITE_CODE, pool.as_ref()).await?;
 
         invite_code
@@ -253,7 +253,7 @@ impl ConfigDomain {
 
     pub(crate) async fn get_keys_reset_status()
     -> Result<Option<KeysResetStatus>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let keys_reset_status = ConfigDao::find_by_key(KEYS_RESET_STATUS, pool.as_ref()).await?;
 
@@ -265,7 +265,7 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn get_app_version() -> Result<AppVersion, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let app_version = ConfigDao::find_by_key(APP_VERSION, pool.as_ref()).await?.ok_or(
             crate::ServiceError::Business(crate::BusinessError::Config(
@@ -297,7 +297,7 @@ impl ConfigDomain {
     }
 
     pub(crate) async fn get_keystore_kdf_algorithm() -> Result<KdfAlgorithm, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let keystore_kdf_algorithm =
             ConfigDao::find_by_key(KEYSTORE_KDF_ALGORITHM, pool.as_ref()).await?;
         if let Some(keystore_kdf_algorithm) = keystore_kdf_algorithm {
@@ -314,7 +314,7 @@ impl ConfigDomain {
 
     pub(crate) async fn get_wallet_tree_strategy()
     -> Result<wallet_tree::WalletTreeStrategy, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let wallet_tree_strategy =
             ConfigDao::find_by_key(WALLET_TREE_STRATEGY, pool.as_ref()).await?;
         if let Some(wallet_tree_strategy) = wallet_tree_strategy {
@@ -330,7 +330,7 @@ impl ConfigDomain {
     }
 
     pub async fn init_block_browser_url_list() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let block_browser_url_list =
             ConfigDao::find_by_key(BLOCK_BROWSER_URL_LIST, pool.as_ref()).await?;
         if let Some(block_browser_url_list) = block_browser_url_list {
@@ -381,7 +381,7 @@ impl ConfigDomain {
     pub async fn get_mqtt_uri() -> Result<Option<String>, crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         if let Ok(mqtt_url) = backend_api.mqtt_init().await {
             let config = MqttUrl { url: mqtt_url.clone() };

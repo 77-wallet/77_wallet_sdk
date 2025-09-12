@@ -166,7 +166,7 @@ impl AssetsDomain {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let list = AccountEntity::lists_by_wallet_address(
             &wallet_address,
@@ -187,7 +187,7 @@ impl AssetsDomain {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, symbol).await
     }
@@ -392,7 +392,7 @@ impl AssetsDomain {
         chain_code: String,
     ) -> Result<(), crate::ServiceError> {
         // notes 不能更新币价
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         // let time = wallet_utils::time::now();
         let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &pool).await?;
         // let coin_data = CoinData::new(

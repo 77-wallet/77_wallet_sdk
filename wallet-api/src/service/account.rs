@@ -101,7 +101,7 @@ impl AccountService {
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::Context::get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
 
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
@@ -260,7 +260,7 @@ impl AccountService {
         WalletDomain::validate_password(password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
 
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -410,7 +410,7 @@ impl AccountService {
         }
 
         Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
@@ -458,8 +458,8 @@ impl AccountService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::ServiceError> {
-        let dirs = crate::manager::Context::get_global_dirs()?;
-        let db = crate::manager::Context::get_global_sqlite_pool()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
+        let db = crate::context::Context::get_global_sqlite_pool()?;
         let req = wallet_database::entities::account::QueryReq {
             wallet_address: None,
             address: Some(address.to_string()),
@@ -573,7 +573,7 @@ impl AccountService {
         account_id: u32,
         chain_code: &str,
     ) -> Result<Vec<QueryAccountDerivationPath>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let res = AccountRepo::current_chain_address(uid, account_id, chain_code, &pool).await?;
 
@@ -598,7 +598,7 @@ impl AccountService {
             )
             .await?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let mut repo = MultisigAccountRepo::new(pool);
 
         let mut result = vec![];

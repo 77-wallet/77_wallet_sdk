@@ -10,7 +10,7 @@ use wallet_database::{
 };
 
 use crate::{
-    manager::Context,
+    context::Context,
     messaging::{
         notify::{FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignAcceptFrontend},
         system_notification::{Notification, NotificationType},

@@ -78,7 +78,7 @@ impl MultisigDomain {
     pub(crate) async fn recover_multisig_data_by_id(
         multisig_account_id: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()
@@ -116,7 +116,7 @@ impl MultisigDomain {
         uid: &str,
         filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()
@@ -140,8 +140,8 @@ impl MultisigDomain {
         business_id: Option<String>,
         filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let req = FindAddressRawDataReq::new_multisig(uid, business_id);
         let data = backend.address_find_address_raw_data(req).await?;
@@ -654,7 +654,7 @@ impl MultisigDomain {
     pub(crate) async fn check_multisig_account_exists(
         multisig_account_id: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
             .map_err(crate::ServiceError::Database)?

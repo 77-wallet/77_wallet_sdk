@@ -154,7 +154,7 @@ impl WalletService {
         let mut tx = self.repo;
 
         WalletDomain::validate_password(wallet_password).await?;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
@@ -243,7 +243,7 @@ impl WalletService {
         wallet_address: &str,
     ) -> Result<crate::response_vo::wallet::ExportDerivationPathRes, crate::ServiceError> {
         let tx = &mut self.repo;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let account_list = tx
             .get_account_list_by_wallet_address_and_account_id(Some(wallet_address), None)
             .await?;
@@ -291,7 +291,7 @@ impl WalletService {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
@@ -464,7 +464,7 @@ impl WalletService {
         wallet_address: &str,
         password: &str,
     ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::ServiceError> {
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let root_dir = dirs.get_root_dir(wallet_address)?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -657,7 +657,7 @@ impl WalletService {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(Some(address));
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
 
@@ -730,7 +730,7 @@ impl WalletService {
         WalletRepoTrait::reset_all_wallet(&mut tx).await?;
         AccountRepoTrait::reset_all_account(&mut tx).await?;
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
         tx.commit_transaction().await?;
@@ -786,7 +786,7 @@ impl WalletService {
             .send()
             .await?;
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;

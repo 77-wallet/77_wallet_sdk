@@ -96,15 +96,6 @@ impl ApiAccountDomain {
         Ok(private_key.into())
     }
 
-    // pub(crate) async fn decrypt_phrase(
-    //     password: &str,
-    //     phrase: &str,
-    // ) -> Result<String, crate::ServiceError> {
-    //     let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), phrase)?;
-    //     let phrase = wallet_utils::conversion::vec_to_string(&data)?;
-    //     Ok(phrase)
-    // }
-
     pub(crate) async fn derive_subkey(
         uid: &str,
         seed: &[u8],
@@ -233,7 +224,7 @@ impl ApiAccountDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<ApiAccountEntity, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
             .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(

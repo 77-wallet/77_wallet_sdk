@@ -128,7 +128,7 @@ impl EndpointHandler for SpecialHandler {
         // TODO： 完全不需要这个
         // wallet_type: WalletType,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         match endpoint {

@@ -201,13 +201,13 @@ impl TransactionService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<RecentBillListVo>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         Ok(BillRepo::recent_bill(token, addr, chain_code, page, page_size, pool).await?)
     }
 
     pub async fn query_tx_result(req: Vec<String>) -> Result<Vec<BillEntity>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let mut res = vec![];
         for id in req.iter() {
@@ -298,7 +298,7 @@ impl TransactionService {
 
     // 对不同kind的交易做不同类型的处理
     async fn handle_tx_kind(bill_detail: &BillEntity) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let tx_kind = BillKind::try_from(bill_detail.tx_kind).unwrap();
         match tx_kind {
             // deploy multisig account

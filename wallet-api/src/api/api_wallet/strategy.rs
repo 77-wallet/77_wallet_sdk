@@ -1,8 +1,15 @@
-use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
+use wallet_transport_backend::{
+    request::api_wallet::strategy::ChainConfig,
+    response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
+};
 
 use crate::{api::ReturnType, service::api_wallet::strategy::StrategyService};
 
 impl crate::WalletManager {
+    pub async fn get_collection_strategy(&self, uid: &str) -> ReturnType<CollectionStrategyResp> {
+        StrategyService::new().get_collection_strategy(uid).await?.into()
+    }
+
     pub async fn update_collection_strategy(
         &self,
         uid: &str,
@@ -13,6 +20,10 @@ impl crate::WalletManager {
             .update_collection_strategy(uid, threshold, chain_config)
             .await?
             .into()
+    }
+
+    pub async fn get_withdrawal_strategy(&self, uid: &str) -> ReturnType<WithdrawStrategyResp> {
+        StrategyService::new().get_withdraw_strategy(uid).await?.into()
     }
 
     pub async fn update_withdrawal_strategy(

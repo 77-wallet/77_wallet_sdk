@@ -330,8 +330,8 @@ impl AccountDomain {
     ) -> Result<(), crate::ServiceError> {
         // let tx = &mut self.repo;
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
-        let db = crate::manager::Context::get_global_sqlite_pool()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
+        let db = crate::context::Context::get_global_sqlite_pool()?;
 
         let wallet = WalletEntity::detail(db.as_ref(), wallet_address)
             .await?
@@ -363,7 +363,7 @@ impl AccountDomain {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::ServiceError> {
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         let subs_dir = dirs.get_subs_dir(wallet_address)?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -384,7 +384,7 @@ impl AccountDomain {
     }
 
     pub async fn set_verify_password(password: &str) -> Result<(), crate::ServiceError> {
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
         wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -424,8 +424,8 @@ pub async fn open_accounts_pk_with_password(
     std::collections::HashMap<wallet_tree::KeyMeta, wallet_chain_interact::types::ChainPrivateKey>,
     crate::ServiceError,
 > {
-    let db = crate::manager::Context::get_global_sqlite_pool()?;
-    let dirs = crate::manager::Context::get_global_dirs()?;
+    let db = crate::context::Context::get_global_sqlite_pool()?;
+    let dirs = crate::context::Context::get_global_dirs()?;
 
     let subs_path = dirs.get_subs_dir(address)?;
     // let storage_path = subs_path.join(name);
@@ -470,8 +470,8 @@ pub async fn open_subpk_with_password(
 ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
     // super::wallet::WalletDomain::validate_password(password).await?;
 
-    let db = crate::manager::Context::get_global_sqlite_pool()?;
-    let dirs = crate::manager::Context::get_global_dirs()?;
+    let db = crate::context::Context::get_global_sqlite_pool()?;
+    let dirs = crate::context::Context::get_global_dirs()?;
 
     let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
 

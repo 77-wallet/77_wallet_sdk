@@ -53,7 +53,7 @@ pub struct SwapServer {
 
 impl SwapServer {
     pub fn new() -> Result<Self, crate::ServiceError> {
-        let url = crate::manager::Context::get_aggregate_api()?;
+        let url = crate::context::Context::get_aggregate_api()?;
         let swap_client = SwapClient::new(&url);
 
         Ok(Self { client: swap_client? })
@@ -69,7 +69,7 @@ impl SwapServer {
         let code = ChainCode::try_from(chain_code.as_str())?;
         let token_addr = CoinDomain::get_stable_coin(code)?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let stable_coin = CoinRepo::coin_by_chain_address(&chain_code, &token_addr, &pool).await?;
 
         let (from_token, out_token) = if token_in.is_empty() {
@@ -177,7 +177,7 @@ impl SwapServer {
             ApiQuoteResp::new_with_default_slippage(&req, vec![dex_route_list], bal_in, bal_out);
         res.set_amount_out(amount_out, req.token_out.decimals);
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let assets = self
             .token0_assets(&pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
             .await?;
@@ -284,7 +284,7 @@ impl SwapServer {
 
         // 主币处理
         if req.token_in.token_addr.is_empty() {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let pool = crate::context::Context::get_global_sqlite_pool()?;
             let assets =
                 AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
             if self.check_bal_with_last_swap(&assets.balance, &req, &pool).await? {
@@ -305,7 +305,7 @@ impl SwapServer {
         }
 
         if allowance >= amount_in {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let pool = crate::context::Context::get_global_sqlite_pool()?;
             let assets = self
                 .token0_assets(&pool, &req.chain_code, &req.token_in.token_addr, &req.recipient)
                 .await?;
@@ -331,7 +331,7 @@ impl SwapServer {
     ) -> Result<(), crate::ServiceError> {
         let instance = time::Instant::now();
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         // 模拟报价
@@ -371,7 +371,7 @@ impl SwapServer {
             ChainTransDomain::get_key(&req.recipient, &req.chain_code, &password, &None).await?;
 
         // 查询余额是否足够
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let token_in = AssetsRepo::get_by_addr_token(
             &pool,
             &req.chain_code,
@@ -458,7 +458,7 @@ impl SwapServer {
         &self,
         req: SwapTokenListReq,
     ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let chain_code = (!req.chain_code.is_empty()).then(|| req.chain_code.clone());
 
@@ -556,7 +556,7 @@ impl SwapServer {
             (alloy::primitives::U256::MAX, BillKind::Approve)
         };
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
 
         // 验证是否有存在的approve
@@ -585,7 +585,7 @@ impl SwapServer {
         password: String,
     ) -> Result<String, crate::ServiceError> {
         // get coin
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
         // 构建交易事件
@@ -670,12 +670,12 @@ impl SwapServer {
     ) -> Result<Vec<ApproveList>, crate::ServiceError> {
         let index_map = AccountIndexMap::from_account_id(account_id)?;
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
         let resp = backend.approve_list(uid, index_map.input_index).await?;
 
         let mut res = vec![];
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let mut used_ids = vec![];
         for item in resp.list.into_iter() {
             let coin =
@@ -753,7 +753,7 @@ impl SwapServer {
             ChainTransDomain::get_key(&req.from, &req.chain_code, &password, &None).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
 
         // 本地数据库中是否有授权的交易

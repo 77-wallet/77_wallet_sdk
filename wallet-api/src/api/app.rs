@@ -51,7 +51,7 @@ impl crate::WalletManager {
 
     /// Platform Energy Subsidy Switch Configuration
     pub async fn delegate_witch(&self) -> ReturnType<bool> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
         let res = backend.delegate_is_open().await;
 
         match res {
@@ -64,7 +64,7 @@ impl crate::WalletManager {
         &self,
         req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> ReturnType<()> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AppService::new(repo).upload_log_file(req).await?.into()

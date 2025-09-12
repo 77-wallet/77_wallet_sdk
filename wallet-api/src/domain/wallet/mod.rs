@@ -46,7 +46,7 @@ impl WalletDomain {
     }
 
     pub(crate) async fn validate_password(password: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let dirs = crate::Context::get_global_dirs()?;
 
         if WalletEntity::wallet_latest(&*pool).await?.is_none() {
@@ -95,7 +95,7 @@ impl WalletDomain {
         // if wallet.is_none() {
         //     return Err(crate::BusinessError::Wallet(crate::WalletError::NotFound).into());
         // }
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::Context::get_global_dirs()?;
 
         // let wallet_tree =
         // wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
@@ -220,7 +220,7 @@ impl WalletDomain {
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         for k in delete_roots {
             let root_dir = dirs.get_root_dir(k)?;

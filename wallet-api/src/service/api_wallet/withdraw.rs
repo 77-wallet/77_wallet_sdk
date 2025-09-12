@@ -17,7 +17,7 @@ impl WithdrawService {
     pub async fn get_withdraw_order_list(
         &self,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         ApiWithdrawRepo::list_api_withdraw(&pool).await.map_err(|e| e.into())
     }
 

@@ -522,7 +522,7 @@ impl TransactionAdapter {
         req: transaction::BaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();

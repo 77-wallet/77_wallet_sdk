@@ -15,7 +15,7 @@ impl ApiAssetsDomain {
         from: &str,
         token_address: Option<String>,
     ) -> Result<ApiAssetsEntity, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
             address: from.to_string(),
@@ -37,7 +37,7 @@ impl ApiAssetsDomain {
         token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
             address: address.to_string(),
@@ -57,7 +57,7 @@ impl ApiAssetsDomain {
                     .map_err(crate::ServiceError::Database)?;
 
                 // 上报后端修改余额
-                let backend = crate::manager::Context::get_global_backend_api()?;
+                let backend = crate::context::Context::get_global_backend_api()?;
                 let rs = backend.wallet_assets_refresh_bal(address, chain_code, symbol).await;
                 if let Err(e) = rs {
                     tracing::warn!("upload balance refresh error = {}", e);
@@ -74,7 +74,7 @@ impl ApiAssetsDomain {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let list =
             ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;

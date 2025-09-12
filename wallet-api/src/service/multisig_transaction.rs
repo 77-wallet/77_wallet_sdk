@@ -49,7 +49,7 @@ impl MultisigTransactionService {
     pub async fn create_queue_fee(
         req_params: MultisigQueueFeeParams,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let account = MultisigDomain::account_by_address(&req_params.from, true, &pool).await?;
 
@@ -96,7 +96,7 @@ impl MultisigTransactionService {
         req: TransferParams,
         password: &str,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let assets = ChainTransDomain::assets(
             &req.chain_code,
@@ -149,7 +149,7 @@ impl MultisigTransactionService {
         password: &str,
         signer: Signer,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone()).await?;
@@ -200,7 +200,7 @@ impl MultisigTransactionService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigQueueInfoVo>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         // 先处理过期的交易
         let _ = MultisigQueueDaoV1::update_expired_queue(pool.as_ref()).await;
@@ -259,7 +259,7 @@ impl MultisigTransactionService {
     pub async fn multisig_queue_info(
         queue_id: &str,
     ) -> Result<MultisigQueueInfoVo, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let queue = MultisigQueueRepo::find_by_id_with_extra(queue_id, &pool)
             .await?
@@ -286,7 +286,7 @@ impl MultisigTransactionService {
         queue_id: String,
         address: String,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
         let queue = MultisigDomain::queue_by_id(&queue_id, &pool).await?;
         let multisig_account =
             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;
@@ -314,7 +314,7 @@ impl MultisigTransactionService {
         let status = MultisigSignatureStatus::try_from(status)
             .map_err(|e| crate::ServiceError::Parameter(e.to_string()))?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
         MultisigQueueDomain::validate_queue(&queue, false)?;
@@ -358,7 +358,7 @@ impl MultisigTransactionService {
     pub async fn multisig_transfer_fee(
         queue_id: &str,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
 
@@ -372,7 +372,7 @@ impl MultisigTransactionService {
         let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
         let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::Context::get_global_backend_api()?;
         let fee = instance
             .estimate_fee(&queue, &coin, backend, sign_list, main_coin.symbol.as_str())
             .await?;
@@ -537,7 +537,7 @@ impl MultisigTransactionService {
         fee_setting: Option<String>,
         request_resource_id: Option<String>,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         let queue = MultisigDomain::queue_by_id(queue_id, &pool).await?;
         MultisigQueueDomain::validate_queue(&queue, true)?;
@@ -799,7 +799,7 @@ impl MultisigTransactionService {
 
         // 回收资源
         if let Some(request_id) = request_resource_id {
-            let backend = crate::manager::Context::get_global_backend_api()?;
+            let backend = crate::context::Context::get_global_backend_api()?;
             let _rs = backend.delegate_complete(&request_id).await;
         }
 
@@ -814,7 +814,7 @@ impl MultisigTransactionService {
             || chain_code.as_str() == chain_code::BNB
             || chain_code.as_str() == chain_code::BTC
         {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let pool = crate::context::Context::get_global_sqlite_pool()?;
 
             let rs = MultisigQueueRepo::ongoing_queue(&chain_code, &address, &pool)
                 .await?

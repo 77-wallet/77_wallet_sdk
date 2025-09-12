@@ -140,7 +140,7 @@ impl From<&AcctChange> for AcctChangeFrontend {
 impl AcctChange {
     pub(crate) async fn exec(&self, msg_id: &str) -> Result<(), crate::ServiceError> {
         // let event_name = self.name();
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::Context::get_global_sqlite_pool()?;
 
         // bill create
         let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
@@ -205,7 +205,7 @@ impl AcctChange {
             return Ok(());
         }
 
-        let inner_event_handle = crate::manager::Context::get_global_inner_event_handle()?;
+        let inner_event_handle = crate::context::Context::get_global_inner_event_handle()?;
         inner_event_handle.send(InnerEvent::SyncAssets {
             addr_list: vec![acct_change.from_addr.to_string(), acct_change.to_addr.to_string()],
             chain_code: acct_change.chain_code.to_string(),
