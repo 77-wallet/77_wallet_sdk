@@ -6,6 +6,7 @@ impl crate::WalletManager {
         TransferFeeService::new().get_transfer_fee_order_list().await?.into()
     }
 
+    // 测试
     pub async fn api_transfer_fee_order(
         &self,
         from: &str,

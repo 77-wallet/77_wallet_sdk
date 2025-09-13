@@ -1,4 +1,5 @@
-use wallet_transport_backend::{
+
+pub use wallet_transport_backend::{
     request::api_wallet::strategy::ChainConfig,
     response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
 };

@@ -1,8 +1,13 @@
+use wallet_database::entities::api_wallet::ApiWalletEntity;
 pub use wallet_database::entities::api_wallet::ApiWalletType;
 
 use crate::{api::ReturnType, service::api_wallet::wallet::ApiWalletService};
 
 impl crate::WalletManager {
+    pub async fn get_api_wallet_list(&self) -> ReturnType<Vec<ApiWalletEntity>> {
+        vec![].into()
+    }
+
     pub async fn create_api_wallet(
         &self,
         language_code: u8,
@@ -31,19 +36,12 @@ impl crate::WalletManager {
             .into()
     }
 
-    // pub async fn get_wallet_address(&self) -> ReturnType<()> {
-    //     ApiWalletService::new(self.repo_factory.resource_repo())
-    //         .get_wallet_address(key, merchain_id, uid)
-    //         .await?
-    //         .into()
-    // }
-
-    pub async fn bind_merchant(&self, key: &str, merchain_id: &str, uid: &str) -> ReturnType<()> {
-        ApiWalletService::new().bind_merchant(key, merchain_id, uid).await?.into()
+    pub async fn bind_merchant(&self, key: &str, merchain_id: &str, recharge_uid: &str, withdrawal_uid: &str) -> ReturnType<()> {
+        ApiWalletService::new().bind_merchant(key, merchain_id, recharge_uid).await?.into()
     }
 
-    pub async fn unbind_merchant(&self, uid: &str) -> ReturnType<()> {
-        ApiWalletService::new().unbind_merchant(uid).await?.into()
+    pub async fn unbind_merchant(&self, recharge_uid: &str, withdrawal_uid: &str) -> ReturnType<()> {
+        ApiWalletService::new().unbind_merchant(recharge_uid).await?.into()
     }
 
     pub async fn edit_api_wallet_name(
@@ -57,32 +55,6 @@ impl crate::WalletManager {
     pub async fn set_passwd_cache(&self, wallet_password: &str) -> ReturnType<()> {
         ApiWalletService::new().set_passwd_cache(wallet_password).await?.into()
     }
-
-    // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
-    //     WalletService::new(self.repo_factory.resource_repo())
-    //         .physical_reset()
-    //         .await?
-    //         .into()
-    // }
-
-    // pub async fn get_api_wallet_list(
-    //     &self,
-    //     wallet_address: Option<String>,
-    //     chain_code: Option<String>,
-    //     account_id: Option<u32>,
-    // ) -> ReturnType<Vec<crate::response_vo::wallet::WalletInfo>> {
-    //     WalletService::new(self.repo_factory.resource_repo())
-    //         .get_wallet_list(wallet_address, chain_code, account_id)
-    //         .await?
-    //         .into()
-    // }
-
-    // pub async fn physical_delete_api_wallet(&self, address: &str) -> ReturnType<()> {
-    //     WalletService::new(self.repo_factory.resource_repo())
-    //         .physical_delete(address)
-    //         .await?
-    //         .into()
-    // }
 }
 
 #[cfg(test)]

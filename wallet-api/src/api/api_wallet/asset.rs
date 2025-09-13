@@ -1,6 +1,15 @@
 use crate::{api::ReturnType, service::api_wallet::asset::ApiAssetsService};
+use wallet_database::entities::api_assets::ApiAssetsEntity;
 
 impl crate::WalletManager {
+    pub async fn get_api_assets_list(
+        &self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+    ) -> ReturnType<Vec<ApiAssetsEntity>> {
+        vec![].into()
+    }
+
     // 根据钱包去同步资产
     pub async fn sync_api_assets_by_wallet(
         &self,

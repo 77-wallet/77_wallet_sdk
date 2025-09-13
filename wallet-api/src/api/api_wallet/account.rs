@@ -2,8 +2,16 @@ use crate::{
     api::ReturnType, request::api_wallet::account::CreateApiAccountReq,
     service::api_wallet::account::ApiAccountService,
 };
+use wallet_database::entities::api_account::ApiAccountEntity;
 
 impl crate::WalletManager {
+    pub async fn get_api_account_list(
+        &self,
+        wallet_address: &str,
+    ) -> ReturnType<Vec<ApiAccountEntity>> {
+        vec![].into()
+    }
+
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
         ApiAccountService::new()
             .create_account(
