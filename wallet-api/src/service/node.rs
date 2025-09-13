@@ -81,7 +81,7 @@ impl NodeService {
 
     pub async fn init_chain_info(&mut self) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let list = crate::default_data::chain::get_default_chains_list()?;
 
         // tracing::warn!("list {:#?}", list);

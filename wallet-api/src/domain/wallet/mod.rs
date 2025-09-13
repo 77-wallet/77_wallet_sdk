@@ -46,8 +46,8 @@ impl WalletDomain {
     }
 
     pub(crate) async fn validate_password(password: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let dirs = crate::Context::get_global_dirs()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         if WalletEntity::wallet_latest(&*pool).await?.is_none() {
             KeystoreApi::remove_verify_file(&dirs.root_dir)?;
@@ -95,7 +95,7 @@ impl WalletDomain {
         // if wallet.is_none() {
         //     return Err(crate::BusinessError::Wallet(crate::WalletError::NotFound).into());
         // }
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         // let wallet_tree =
         // wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;
@@ -220,7 +220,7 @@ impl WalletDomain {
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         for k in delete_roots {
             let root_dir = dirs.get_root_dir(k)?;
@@ -243,7 +243,7 @@ impl WalletDomain {
     }
 
     pub(crate) async fn get_seed(
-        dirs: &crate::manager::Dirs,
+        dirs: &crate::dirs::Dirs,
         wallet_address: &str,
         wallet_password: &str,
     ) -> Result<Vec<u8>, crate::ServiceError> {
@@ -404,7 +404,7 @@ impl WalletDomain {
     }
 
     pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Ok(!ApiWalletRepo::list(&pool, Some(address), None).await?.is_empty())
     }

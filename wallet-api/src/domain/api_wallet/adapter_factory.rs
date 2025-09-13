@@ -1,5 +1,5 @@
 use crate::{
-    BusinessError, Context, ServiceError,
+    BusinessError, ServiceError,
     domain::{
         api_wallet::adapter::{
             btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,
@@ -65,7 +65,7 @@ impl ApiChainAdapterFactory {
     }
 
     async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, crate::ServiceError> {
-        let pool = Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code.to_string().as_str())
             .await?
             .ok_or(crate::BusinessError::Chain(crate::ChainError::NotFound(
@@ -80,7 +80,7 @@ impl ApiChainAdapterFactory {
         let node = Self::get_chain_node(chain_code).await?;
         tracing::info!(rpc_url=%node.rpc_url, "new_transaction_adapter");
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };

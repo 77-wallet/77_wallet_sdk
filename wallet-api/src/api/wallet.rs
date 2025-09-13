@@ -94,7 +94,7 @@ impl crate::WalletManager {
         &self,
         wallet_address: &str,
     ) -> ReturnType<crate::response_vo::wallet::ExportDerivationPathRes> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         WalletService::new(repo).export_derivation_path(wallet_address).await?.into()

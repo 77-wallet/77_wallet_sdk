@@ -57,7 +57,7 @@ impl CoinService {
         crate::ServiceError,
     > {
         let tx = &mut self.repo;
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let accounts = self
@@ -148,7 +148,7 @@ impl CoinService {
 
         tx.drop_coin_just_null_token_address().await?;
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
@@ -157,7 +157,7 @@ impl CoinService {
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
 
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
-        let api = crate::Context::get_global_backend_api()?;
+        let api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let coin = api.swappable_coin().await?;
 
         let swap_coins = coin
@@ -175,8 +175,8 @@ impl CoinService {
     }
 
     pub async fn init_token_price(mut self) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let update_at = if let Some(last_coin) = CoinRepo::last_coin(&pool, false).await? {
             last_coin.updated_at.map(|s| s.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -215,7 +215,7 @@ impl CoinService {
         mut self,
         req: &TokenQueryPriceReq,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let tx = &mut self.repo;
 
@@ -248,7 +248,7 @@ impl CoinService {
         symbols: Vec<String>,
     ) -> Result<Vec<TokenPriceChangeRes>, crate::ServiceError> {
         let tx = &mut self.repo;
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let coins = tx.coin_list_with_symbols(&symbols, None).await?;
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -502,7 +502,7 @@ impl CoinService {
         self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> Result<TokenHistoryPrices, crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let prices = backend_api.query_history_price(&req).await?;
 
@@ -516,7 +516,7 @@ impl CoinService {
     ) -> Result<wallet_database::pagination::Pagination<TokenPriceChangeRes>, crate::ServiceError>
     {
         let tx = &mut self.repo;
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let prices = backend_api.query_popular_by_page(&req).await?;
 
@@ -560,7 +560,7 @@ impl CoinService {
         self,
         coin: std::collections::HashMap<String, String>,
     ) -> Result<CoinMarketValue, crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.coin_market_value(coin).await?)
     }
 }

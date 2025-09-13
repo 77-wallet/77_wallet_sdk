@@ -123,7 +123,7 @@ impl ChainDomain {
         chains: wallet_transport_backend::response_vo::chain::ChainList,
     ) -> Result<bool, crate::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         // // 本地后端节点
@@ -257,7 +257,7 @@ impl ChainDomain {
     // }
 
     pub(crate) async fn get_node(chain_code: &str) -> Result<NodeInfo, crate::error::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let node = match ChainRepo::detail_with_node(&pool, chain_code).await? {
             Some(node) => NodeInfo::new(
                 &node.chain_code,

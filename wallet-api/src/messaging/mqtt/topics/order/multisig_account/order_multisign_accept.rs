@@ -10,7 +10,6 @@ use wallet_database::{
 };
 
 use crate::{
-    manager::Context,
     messaging::{
         notify::{FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignAcceptFrontend},
         system_notification::{Notification, NotificationType},
@@ -87,7 +86,7 @@ impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
 impl OrderMultiSignAccept {
     async fn check_if_cancelled(id: &str) -> Result<bool, crate::ServiceError> {
         tracing::info!("Checking if multisig account {} is cancelled...", id);
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let is_cancel = backend_api.check_multisig_account_is_cancel(id).await?;
         tracing::info!("Multisig account {} cancellation status: {}", id, is_cancel.status);
         Ok(is_cancel.status)
@@ -101,7 +100,7 @@ impl OrderMultiSignAccept {
             "Starting to process OrderMultiSignAccept"
         );
 
-        let pool = Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = RepositoryFactory::repo(pool.clone());
 
         let account = AccountRepoTrait::detail(&mut repo, &self.address).await?;
@@ -211,7 +210,7 @@ impl OrderMultiSignAccept {
         account_address: &str,
         multisig_account_id: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = RepositoryFactory::repo(pool);
         let notification = Notification::new_multisig_notification(
             account_name,

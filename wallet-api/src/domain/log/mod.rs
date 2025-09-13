@@ -1,4 +1,4 @@
-use crate::manager::Context;
+use crate::context::Context;
 
 // pub async fn periodic_log_report(interval: Duration) {
 //     tokio::spawn(async move {
@@ -14,8 +14,8 @@ use crate::manager::Context;
 // }
 
 pub async fn upload_log_file() -> Result<(), crate::ServiceError> {
-    let oss_client = crate::manager::Context::get_global_oss_client()?;
-    let dirs = Context::get_global_dirs()?;
+    let oss_client = crate::context::CONTEXT.get().unwrap().get_global_oss_client();
+    let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
     let log_dir = &dirs.log_dir.to_string_lossy().to_string();
     let level = wallet_utils::log::get_log_level();
     let src_file_path = format!("{log_dir}/{level}.txt");

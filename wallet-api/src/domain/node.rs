@@ -72,9 +72,9 @@ impl NodeDomain {
     // 2.请求后端获取链列表，同样的，请求成功则更新链表的链数据，请求失败则发送到任务队列去重试，直到成功，并更新链表的信息
     // 请求成功的话，遍历链列表，执行1的操作
     pub(crate) async fn process_backend_nodes() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let local_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo)
             .await?
@@ -160,10 +160,10 @@ impl NodeDomain {
     pub(crate) async fn assign_missing_nodes_to_chains(
         backend_nodes: &[NodeEntity],
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let chain_list = ChainRepo::get_chain_list(&pool).await?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         for chain in chain_list {
             if chain.node_id.is_none() {
@@ -185,7 +185,7 @@ impl NodeDomain {
         // default_nodes: &[NodeData],
         chain_code: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let list = NodeRepoTrait::list(repo, Some(1)).await?;
 
         let mut default_nodes = Vec::new();

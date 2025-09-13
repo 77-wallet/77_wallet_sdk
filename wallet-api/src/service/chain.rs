@@ -35,7 +35,7 @@ impl ChainService {
         protocols: &[String],
         main_symbol: &str,
     ) -> Result<(), crate::error::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let input = ChainCreateVo::new(name, chain_code, protocols, main_symbol);
         let _res = ChainRepo::add(&pool, input).await?;
 
@@ -47,14 +47,14 @@ impl ChainService {
         chain_code: &str,
         node_id: &str,
     ) -> Result<(), crate::error::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ChainRepo::set_chain_node(&pool, chain_code, node_id).await?;
 
         Ok(())
     }
 
     pub async fn sync_chains(self) -> Result<bool, crate::error::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let app_version = ConfigDomain::get_app_version().await?;
 
@@ -68,9 +68,9 @@ impl ChainService {
         self,
         wallet_password: &str,
     ) -> Result<(), crate::error::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         domain::wallet::WalletDomain::validate_password(wallet_password).await?;
         let chain_list: Vec<String> = ChainRepoTrait::get_chain_node_list(&mut tx)
@@ -90,7 +90,7 @@ impl ChainService {
                 wallet_utils::address::AccountIndexMap::from_account_id(wallet.account_id)?;
 
             let seed = domain::wallet::WalletDomain::get_seed(
-                dirs,
+                dirs.as_ref(),
                 &wallet.wallet_address,
                 wallet_password,
             )
@@ -187,7 +187,7 @@ impl ChainService {
         chain_list: HashMap<String, String>,
         is_multisig: Option<bool>,
     ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
 

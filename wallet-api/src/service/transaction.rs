@@ -47,7 +47,7 @@ impl TransactionService {
     ) -> Result<Balance, crate::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address.clone(), &pool)
             .await?;
 
@@ -151,7 +151,7 @@ impl TransactionService {
     ) -> Result<BillDetailVo, crate::ServiceError> {
         let tx_hash = BillDomain::handle_hash(tx_hash);
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let mut bill = BillRepo::get_by_hash_and_owner(&tx_hash, owner, &pool).await?;
         bill.truncate_to_8_decimals();
@@ -201,13 +201,13 @@ impl TransactionService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<RecentBillListVo>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Ok(BillRepo::recent_bill(token, addr, chain_code, page, page_size, pool).await?)
     }
 
     pub async fn query_tx_result(req: Vec<String>) -> Result<Vec<BillEntity>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let mut res = vec![];
         for id in req.iter() {
@@ -298,7 +298,7 @@ impl TransactionService {
 
     // 对不同kind的交易做不同类型的处理
     async fn handle_tx_kind(bill_detail: &BillEntity) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx_kind = BillKind::try_from(bill_detail.tx_kind).unwrap();
         match tx_kind {
             // deploy multisig account
@@ -379,7 +379,7 @@ impl TransactionService {
         owner: String,
         hashs: Vec<String>,
     ) -> Result<Vec<BillEntity>, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Ok(BillRepo::lists_by_hashs(&owner, hashs, &pool).await?)
     }

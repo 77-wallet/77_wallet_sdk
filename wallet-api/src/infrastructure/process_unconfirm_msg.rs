@@ -66,7 +66,7 @@ impl UnconfirmedMsgCollector {
 
                             last_recv_time = None;
 
-                            let notify = crate::manager::Context::get_global_notify().unwrap();
+                            let notify = crate::context::CONTEXT.get().unwrap().get_global_notify();
                             notify.notify_one();
                             tracing::debug!("notify_one");
                         }else{
@@ -92,7 +92,7 @@ impl UnconfirmedMsgProcessor {
     }
 
     async fn handle_once(client_id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());

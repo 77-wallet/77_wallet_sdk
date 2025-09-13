@@ -73,7 +73,7 @@ impl MultisigQueueDomain {
     }
 
     pub async fn recover_all_uid_queue_data() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()
@@ -98,7 +98,7 @@ impl MultisigQueueDomain {
     pub(crate) async fn get_raw_time(
         uid_list: &[String],
     ) -> Result<Option<String>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account_ids = MultisigMemberDaoV1::list_by_uids(uid_list, &*pool)
             .await
             .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
@@ -131,8 +131,8 @@ impl MultisigQueueDomain {
         uid: &str,
         raw_time: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let req = wallet_transport_backend::request::FindAddressRawDataReq::new_trans(
             Some(uid.to_string()),
@@ -210,7 +210,7 @@ impl MultisigQueueDomain {
 
     // For transactions in the confirmation queue, periodically query the transaction results.
     pub async fn sync_queue_status(queue_id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let queue = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
             .await
@@ -248,7 +248,7 @@ impl MultisigQueueDomain {
     pub async fn update_raw_data(queue_id: &str, pool: DbPool) -> Result<(), crate::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
 
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
     }
 

@@ -34,7 +34,7 @@ impl ApiWalletService {
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
@@ -168,12 +168,12 @@ impl ApiWalletService {
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
@@ -228,7 +228,7 @@ impl ApiWalletService {
         ApiWalletDomain::bind_withdraw_and_subaccount_relation(recharge_uid, withdrawal_uid)
             .await?;
 
-        let backend = crate::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend
             .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
             .await?;
@@ -256,7 +256,7 @@ impl ApiWalletService {
         address: &str,
         name: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }

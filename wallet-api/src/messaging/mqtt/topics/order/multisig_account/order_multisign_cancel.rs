@@ -25,7 +25,7 @@ impl OrderMultiSignCancel {
 impl OrderMultiSignCancel {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(
             event_name = %event_name,
             ?self,

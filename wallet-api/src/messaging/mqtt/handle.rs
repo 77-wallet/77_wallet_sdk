@@ -54,7 +54,7 @@ pub(crate) async fn exec_incoming(
 }
 
 pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Error> {
-    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
     let topic = Topic::from_bytes_v3(publish.topic.to_vec())?;
 
@@ -199,12 +199,12 @@ async fn exec_incoming_connack(
     client: &rumqttc::v5::AsyncClient,
     conn_ack: rumqttc::v5::mqttbytes::v5::ConnAck,
 ) -> Result<(), anyhow::Error> {
-    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let repo = RepositoryFactory::repo(pool.clone());
     let device_service = DeviceService::new(repo);
 
     if conn_ack.code == rumqttc::v5::mqttbytes::v5::ConnectReturnCode::Success {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(repo).mqtt_resubscribe().await?;
     }

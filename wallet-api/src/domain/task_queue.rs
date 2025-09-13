@@ -8,7 +8,7 @@ impl TaskQueueDomain {
         if !ids.is_empty() {
             const BATCH_SIZE: usize = 500;
             for chunk in ids.chunks(BATCH_SIZE) {
-                let api = crate::Context::get_global_backend_api()?;
+                let api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 api.send_msg_confirm(&wallet_transport_backend::request::SendMsgConfirmReq::new(
                     chunk.to_vec(),
                 ))
@@ -23,7 +23,7 @@ impl TaskQueueDomain {
         req: T,
         endpoint: &str,
     ) -> Result<Option<BackendApiTask>, crate::ServiceError> {
-        let backend = crate::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let res = backend.post_request::<_, serde_json::Value>(endpoint, &req).await;
 

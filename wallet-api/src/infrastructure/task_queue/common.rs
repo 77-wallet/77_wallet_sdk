@@ -57,7 +57,7 @@ impl TaskTrait for CommonTask {
     }
 
     async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             CommonTask::QueryCoinPrice(data) => {
                 let repo = RepositoryFactory::repo(pool.clone());

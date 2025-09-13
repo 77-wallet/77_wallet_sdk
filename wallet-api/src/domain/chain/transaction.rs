@@ -41,7 +41,7 @@ impl ChainTransDomain {
         from: &str,
         token_address: Option<String>,
     ) -> Result<AssetsEntity, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
             address: from.to_string(),
@@ -60,7 +60,7 @@ impl ChainTransDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<AccountEntity, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account =
             AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
                 .await?
@@ -77,7 +77,7 @@ impl ChainTransDomain {
         token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
             address: address.to_string(),
@@ -97,7 +97,7 @@ impl ChainTransDomain {
                     .map_err(crate::ServiceError::Database)?;
 
                 // 上报后端修改余额
-                let backend = crate::manager::Context::get_global_backend_api()?;
+                let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 let rs = backend.wallet_assets_refresh_bal(address, chain_code, symbol).await;
                 if let Err(e) = rs {
                     tracing::warn!("upload balance refresh error = {}", e);
@@ -109,7 +109,7 @@ impl ChainTransDomain {
     }
 
     pub async fn main_coin(chain_code: &str) -> Result<CoinEntity, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let coin = CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(
             crate::BusinessError::Coin(crate::error::business::coin::CoinError::NotFound(format!(
                 "chain = {}",
@@ -121,7 +121,7 @@ impl ChainTransDomain {
 
     // btc 验证是否存在未确认的交易
     async fn check_ongoing_bill(from: &str, chain_code: &str) -> Result<bool, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if chain_code == chain_code::BTC {
             let res = BillDao::on_going_bill(chain_code::BTC, from, pool.as_ref()).await?;
@@ -170,7 +170,7 @@ impl ChainTransDomain {
 
         // 如果使用了权限，上报给后端
         if let Some(signer) = params.signer {
-            let pool = crate::Context::get_global_sqlite_pool()?;
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
             let permission = PermissionRepo::permission_with_user(
                 &pool,
                 &params.base.from,
@@ -207,7 +207,7 @@ impl ChainTransDomain {
         BillDomain::create_bill(new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::manager::Context::get_global_backend_api()?;
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let _ = backend.delegate_complete(&request_id).await;
         }
 
