@@ -1,4 +1,4 @@
-use wallet_database::entities::api_wallet::ApiWalletType;
+pub use wallet_database::entities::api_wallet::ApiWalletType;
 
 use crate::{api::ReturnType, service::api_wallet::wallet::ApiWalletService};
 
