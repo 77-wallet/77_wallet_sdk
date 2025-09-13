@@ -1,7 +1,10 @@
 use crate::{
     ServiceError,
     domain::{
-        api_wallet::adapter::{tx::Multisig, TIME_OUT, tx::Tx},
+        api_wallet::adapter::{
+            TIME_OUT,
+            tx::{Multisig, Tx},
+        },
         chain::{
             TransferResp,
             transaction::{ChainTransDomain, DEFAULT_UNITS},

@@ -12,9 +12,10 @@ pub use infrastructure::log::*;
 mod manager;
 mod messaging;
 pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
-mod context;
-mod dirs;
-mod data;
+
+pub use messaging::mqtt::topics::api_wallet::AddressAllockType;
+pub use wallet_database::entities::api_wallet::ApiWalletType;
+
 pub mod request;
 mod response;
 pub mod response_vo;
@@ -35,9 +36,7 @@ pub use error::{
 };
 
 pub use config::*;
-pub use context::Context;
-pub use dirs::Dirs;
-pub use manager::WalletManager;
+pub use manager::{Context, Dirs, WalletManager};
 pub use request::{
     account::CreateAccountReq, app::UploadLogFileReq, assets::GetChain, devices::InitDeviceReq,
     wallet::CreateWalletReq,

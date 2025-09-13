@@ -1,5 +1,6 @@
 use crate::{
-    api::ReturnType, request::api_wallet::account::CreateApiAccountReq,
+    api::ReturnType, messaging::mqtt::topics::api_wallet::AddressAllockType,
+    request::api_wallet::account::CreateApiAccountReq,
     service::api_wallet::account::ApiAccountService,
 };
 use wallet_database::entities::api_account::ApiAccountEntity;
@@ -17,10 +18,9 @@ impl crate::WalletManager {
             .create_account(
                 &req.wallet_address,
                 &req.wallet_password,
-                req.index,
+                req.indices,
                 &req.name,
                 req.is_default_name,
-                req.number,
                 req.api_wallet_type,
             )
             .await?
@@ -28,12 +28,17 @@ impl crate::WalletManager {
     }
 
     #[allow(unused)]
-    pub(crate) async fn upload_allocated_addresses(
+    pub async fn expand_address(
         &self,
-        wallet_address: &str,
-        addresses: Vec<String>,
+        address_allock_type: AddressAllockType,
+        chain_code: &str,
+        index: Option<i32>,
+        uid: &str,
     ) -> ReturnType<()> {
-        ApiAccountService::new().upload_allocated_addresses(wallet_address, addresses).await?.into()
+        ApiAccountService::new()
+            .expand_address(address_allock_type, chain_code, index, uid)
+            .await?
+            .into()
     }
 
     pub async fn get_api_account_private_key(
@@ -47,6 +52,10 @@ impl crate::WalletManager {
             .await?
             .to_string()
             .into()
+    }
+
+    pub async fn address_used(&self, chain_code: &str, index: i32, uid: &str) -> ReturnType<()> {
+        ApiAccountService::new().address_used(chain_code, index, uid).await?.into()
     }
 }
 
@@ -66,10 +75,9 @@ mod test {
 
         let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
         let wallet_password = "q1111111";
-        let index = None;
+        let index = vec![1];
         let name = "666";
         let is_default_name = true;
-        let number = 3;
         let api_wallet_type = ApiWalletType::SubAccount;
 
         let req = CreateApiAccountReq::new(
@@ -78,7 +86,6 @@ mod test {
             index,
             name,
             is_default_name,
-            number,
             api_wallet_type,
         );
         let res = wallet_manager.create_api_account(req).await;
@@ -95,6 +102,24 @@ mod test {
         let password = "q1111111";
 
         let res = wallet_manager.get_api_account_private_key(address, chain_code, password).await;
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_address_used() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let chain_code = "tron";
+
+        let res = wallet_manager
+            .address_used(
+                chain_code,
+                1,
+                "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c",
+            )
+            .await;
         tracing::info!("res: {res:?}");
 
         Ok(())

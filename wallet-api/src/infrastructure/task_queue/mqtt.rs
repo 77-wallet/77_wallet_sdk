@@ -45,6 +45,7 @@ impl TaskTrait for MqttTask {
             // api wallet
             MqttTask::UnbindUid(_) => TaskName::Known(KnownTaskName::UnbindUid),
             MqttTask::AddressUse(_) => TaskName::Known(KnownTaskName::AddressUse),
+            MqttTask::AddressAllock(_) => TaskName::Known(KnownTaskName::AddressAllock),
             MqttTask::Trans(_) => TaskName::Known(KnownTaskName::Trans),
         }
     }
@@ -91,6 +92,7 @@ impl TaskTrait for MqttTask {
             MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::UnbindUid(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::AddressUse(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
+            MqttTask::AddressAllock(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::Trans(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
         };
         Ok(res)
@@ -114,6 +116,7 @@ impl TaskTrait for MqttTask {
             MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
             MqttTask::UnbindUid(data) => data.exec(id).await?,
             MqttTask::AddressUse(data) => data.exec(id).await?,
+            MqttTask::AddressAllock(data) => data.exec(id).await?,
             MqttTask::Trans(data) => data.exec(id).await?,
         }
         Ok(())
@@ -141,5 +144,6 @@ pub(crate) enum MqttTask {
     CleanPermission(topics::CleanPermission),
     UnbindUid(topics::api_wallet::UnbindUidMsg),
     AddressUse(topics::api_wallet::AddressUseMsg),
+    AddressAllock(topics::api_wallet::AddressAllockMsg),
     Trans(topics::api_wallet::TransMsg),
 }

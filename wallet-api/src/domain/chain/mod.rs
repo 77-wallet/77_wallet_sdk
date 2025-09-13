@@ -17,7 +17,10 @@ use wallet_database::{
         node::NodeRepo,
     },
 };
-use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
+use wallet_transport_backend::request::{
+    AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq,
+    api_wallet::address::{AddressParam, ExpandAddressReq},
+};
 use wallet_types::chain::{
     chain::ChainCode,
     network::{self, NetworkKind},
@@ -361,6 +364,7 @@ impl ChainDomain {
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
         address_batch_init_task_data: &mut AddressBatchInitReq,
+        expand_address_req: &mut ExpandAddressReq,
         // subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
         chain_list: &[String],
         seed: &[u8],
@@ -373,6 +377,9 @@ impl ChainDomain {
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::error::ServiceError> {
         for chain in chain_list.iter() {
+            let index = account_index_map.input_index;
+            let mut params = AddressParam::new(index);
+
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
@@ -384,7 +391,6 @@ impl ChainDomain {
                 let instance: wallet_chain_instance::instance::ChainObject =
                     (&code, &address_type, node.network.as_str().into()).try_into()?;
                 // (&code, &address_type, "mainnet".into()).try_into()?;
-
                 let (account_address, address_init_req) = ApiAccountDomain::create_api_account(
                     seed,
                     &instance,
@@ -400,6 +406,7 @@ impl ChainDomain {
 
                 if let Some(address_init_req) = address_init_req {
                     address_batch_init_task_data.0.push(address_init_req);
+                    params.push(&account_address.address);
                 } else {
                     tracing::info!("不上报： {}", account_address.address);
                 };
@@ -415,6 +422,7 @@ impl ChainDomain {
                 //     )
                 //     .await?,
                 // );
+
                 AssetsDomain::init_default_api_assets(
                     coins,
                     &account_address.address,
@@ -423,7 +431,12 @@ impl ChainDomain {
                 )
                 .await?;
             }
+
+            if !params.address_list.is_empty() {
+                expand_address_req.add_chain_code(chain, params);
+            }
         }
+
         Ok(())
     }
 

@@ -3,7 +3,10 @@ use crate::{
         api_account::{ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
-    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
+    sql_utils::{
+        SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+        update_builder::DynamicUpdateBuilder,
+    },
 };
 use sqlx::{Executor, Sqlite};
 
@@ -108,6 +111,7 @@ impl ApiAccountDao {
         exec: E,
         wallet_address: &str,
         account_id: u32,
+        chain_code: &str,
         is_used: bool,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
@@ -117,7 +121,7 @@ impl ApiAccountDao {
             UPDATE api_account SET 
                 is_used = $3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE wallet_address = $1 AND account_id = $2
+            WHERE wallet_address = $1 AND account_id = $2 AND chain_code = $4
             RETURNING *
         "#;
 
@@ -125,6 +129,7 @@ impl ApiAccountDao {
             .bind(wallet_address)
             .bind(account_id)
             .bind(is_used)
+            .bind(chain_code)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -197,12 +202,12 @@ impl ApiAccountDao {
             .await
     }
 
-    pub async fn find_one_by_wallet_address_index<'a, E>(
+    pub async fn find_all_by_wallet_address_index<'a, E>(
         exec: E,
         wallet_address: &str,
         chain_code: &str,
         account_id: u32,
-    ) -> Result<Option<ApiAccountEntity>, crate::Error>
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -212,7 +217,7 @@ impl ApiAccountDao {
             .and_where_eq("wallet_address", wallet_address)
             .and_where_eq("chain_code", chain_code)
             .and_where_eq("account_id", account_id)
-            .fetch_optional(exec)
+            .fetch_all(exec)
             .await
     }
 
@@ -294,6 +299,52 @@ impl ApiAccountDao {
             .and_where_eq("address", address)
             .and_where_eq("chain_code", chain_code)
             .fetch_optional(exec)
+            .await
+    }
+
+    pub async fn get_all_account_indices<'a, E>(exec: E) -> Result<Vec<u32>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT DISTINCT account_id FROM api_account")
+            .and_where_eq("wallet_type", ApiWalletType::SubAccount)
+            .order_by("account_id")
+            .fetch_all(exec)
+            .await
+            .map(|rows: Vec<(u32,)>| rows.into_iter().map(|(id,)| id).collect())
+    }
+
+    pub async fn init<'a, E>(
+        exec: E,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicUpdateBuilder::new("api_account")
+            .set("is_init", 1)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("address", address)
+            .and_where_eq("chain_code", chain_code)
+            .fetch_all(exec)
+            .await
+    }
+
+    pub async fn expand<'a, E>(
+        exec: E,
+        address: &str,
+        chain_code: &str,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicUpdateBuilder::new("api_account")
+            .set("is_expand", 1)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("address", address)
+            .and_where_eq("chain_code", chain_code)
+            .fetch_all(exec)
             .await
     }
 }

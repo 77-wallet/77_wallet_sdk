@@ -1,6 +1,9 @@
 use crate::{
     entities::api_wallet::{ApiWalletEntity, ApiWalletType},
-    sql_utils::{SqlExecutableReturn as _, query_builder::DynamicQueryBuilder},
+    sql_utils::{
+        SqlExecutableNoReturn, SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+        update_builder::DynamicUpdateBuilder,
+    },
 };
 use sqlx::{Executor, Sqlite};
 
@@ -59,15 +62,13 @@ impl ApiWalletDao {
     pub async fn detail<'a, E>(
         exec: E,
         address: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_wallet WHERE address = ? AND wallet_type = ? AND status = 1;";
+        let sql = "SELECT * FROM api_wallet WHERE address = ? AND status = 1;";
         sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
             .bind(address)
-            .bind(api_wallet_type)
             .fetch_optional(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
@@ -76,18 +77,15 @@ impl ApiWalletDao {
     pub async fn detail_by_uid<'a, E>(
         exec: E,
         uid: &str,
-        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Option<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut builder = DynamicQueryBuilder::new("SELECT * FROM api_wallet");
-
-        if let Some(api_wallet_type) = api_wallet_type {
-            builder = builder.and_where_eq("wallet_type", api_wallet_type)
-        }
-
-        builder.and_where_eq("uid", uid).and_where_eq("status", "1").fetch_optional(exec).await
+        DynamicQueryBuilder::new("SELECT * FROM api_wallet")
+            .and_where_eq("uid", uid)
+            .and_where_eq("status", "1")
+            .fetch_optional(exec)
+            .await
     }
 
     pub async fn list<'a, E>(
@@ -129,7 +127,6 @@ impl ApiWalletDao {
         exec: E,
         address: &str,
         merchant_id: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -139,7 +136,7 @@ impl ApiWalletDao {
             UPDATE api_wallet SET
                 merchant_id = $1,
                 updated_at = $2
-            WHERE address = $3 AND wallet_type = $4 AND status = 1
+            WHERE address = $3 AND status = 1
             RETURNING *;
         "#;
 
@@ -147,17 +144,30 @@ impl ApiWalletDao {
             .bind(merchant_id)
             .bind(now)
             .bind(address)
-            .bind(api_wallet_type)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn bind_withdraw_and_subaccount_relation<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        binding_address: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let builder = DynamicUpdateBuilder::new("api_wallet")
+            .set("binding_address", binding_address)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("address", wallet_address);
+        SqlExecutableNoReturn::execute(&builder, exec).await
     }
 
     pub async fn update_app_id<'a, E>(
         exec: E,
         address: &str,
         app_id: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -167,7 +177,7 @@ impl ApiWalletDao {
             UPDATE api_wallet SET
                 app_id = $1,
                 updated_at = $2
-            WHERE address = $3  AND wallet_type = $4 AND status = 1
+            WHERE address = $3 AND status = 1
             RETURNING *;
         "#;
 
@@ -175,7 +185,6 @@ impl ApiWalletDao {
             .bind(app_id)
             .bind(now)
             .bind(address)
-            .bind(api_wallet_type)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))

@@ -6,8 +6,8 @@ pub(crate) struct MqttDomain;
 
 impl MqttDomain {
     pub(crate) async fn init() -> Result<(), crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         let content = DeviceDomain::device_content(&device)?;
@@ -28,7 +28,7 @@ impl MqttDomain {
     }
 
     pub(crate) async fn process_unconfirm_msg(client_id: &str) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::manager::Context::get_global_backend_api()?;
 
         let data = backend_api
             .query_unconfirm_msg(&wallet_transport_backend::request::QueryUnconfirmMsgReq {

@@ -60,7 +60,7 @@ impl ApiAccountDomain {
         chain_code: &str,
         password: &str,
     ) -> Result<ChainPrivateKey, crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
             .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
@@ -96,6 +96,15 @@ impl ApiAccountDomain {
         Ok(private_key.into())
     }
 
+    // pub(crate) async fn decrypt_phrase(
+    //     password: &str,
+    //     phrase: &str,
+    // ) -> Result<String, crate::ServiceError> {
+    //     let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), phrase)?;
+    //     let phrase = wallet_utils::conversion::vec_to_string(&data)?;
+    //     Ok(phrase)
+    // }
+
     pub(crate) async fn derive_subkey(
         uid: &str,
         seed: &[u8],
@@ -113,25 +122,56 @@ impl ApiAccountDomain {
             account_name.to_string()
         };
 
-        let keypair = instance
-            .gen_keypair_with_index_address_type(seed, account_index_map.input_index)
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+        let (address, pubkey, private_key, chain_code, derivation_path) = {
+            let keypair = instance
+                .gen_keypair_with_index_address_type(seed, account_index_map.input_index)
+                .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+            (
+                keypair.address(),
+                keypair.pubkey(),
+                keypair.private_key_bytes()?,
+                keypair.chain_code().to_string(),
+                keypair.derivation_path(),
+            )
+        };
 
-        let derivation_path = keypair.derivation_path();
-        let chain_code = keypair.chain_code().to_string();
+        // let keypair = instance
+        //     .gen_keypair_with_index_address_type(seed, account_index_map.input_index)
+        //     .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+
+        // let derivation_path = keypair.derivation_path();
+        // let chain_code = keypair.chain_code().to_string();
 
         let address_type = instance.address_type();
-        let address = keypair.address();
-        let pubkey = keypair.pubkey();
+        // let address = keypair.address();
+        // let pubkey = keypair.pubkey();
         // let private_key = keypair.private_key()?;
-        let private_key = keypair.private_key_bytes()?;
+        // let private_key = keypair.private_key_bytes()?;
 
-        let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
-        let rng = rand::thread_rng();
-        let mut generator = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let account = wallet_database::repositories::api_account::find_one(
+            pool.clone(),
+            &address,
+            &chain_code,
+            &address_type.to_string(),
+            api_wallet_type,
+        )
+        .await?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        };
+
         // let private_key = wallet_utils::serde_func::serde_to_vec(&private_key)?;
-        let private_key = generator.generate(wallet_password.as_bytes(), &private_key)?;
+
+        let private_key = {
+            let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
+            let rng = rand::thread_rng();
+            let mut generator = KeystoreJsonGenerator::new(rng.clone(), algorithm.clone());
+            generator.generate(wallet_password.as_bytes(), &private_key)?
+        };
+
         let private_key = wallet_utils::serde_func::serde_to_string(&private_key)?;
+
         let mut req = CreateApiAccountVo::new(
             account_index_map.account_id,
             &address,
@@ -144,19 +184,6 @@ impl ApiAccountDomain {
             &account_name,
             api_wallet_type,
         );
-
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-        };
-        let account = ApiAccountRepo::find_one(
-            &pool,
-            &address,
-            &chain_code,
-            &address_type.to_string(),
-            api_wallet_type,
-        )
-        .await?;
 
         let address_init_req = if let Some(account) = account {
             tracing::info!("已存在: {}", account.address);
@@ -198,23 +225,28 @@ impl ApiAccountDomain {
         chain_code: &str,
         index: i32,
         uid: &str,
-        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, api_wallet_type)
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid)
             .await?
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
         let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
 
-        let account = ApiAccountRepo::find_one_by_wallet_address_index(
+        let accounts = ApiAccountRepo::find_all_by_wallet_address_index(
             &pool,
             &api_wallet.address,
             chain_code,
             index.account_id,
         )
         .await?;
-        if let Some(account) = account {
-            ApiAccountRepo::mark_as_used(&pool, &api_wallet.address, account.account_id).await?;
+        for account in accounts {
+            ApiAccountRepo::mark_as_used(
+                &pool,
+                &api_wallet.address,
+                account.account_id,
+                chain_code,
+            )
+            .await?;
         }
 
         Ok(())
@@ -224,13 +256,30 @@ impl ApiAccountDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<ApiAccountEntity, crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
             .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
                 address.to_string(),
             )))?;
         Ok(account)
+    }
+
+    pub fn next_account_indices(mut existing: Vec<u32>, count: usize) -> Vec<u32> {
+        existing.sort();
+        let set: std::collections::HashSet<u32> = existing.into_iter().collect();
+
+        let mut result = Vec::new();
+        let mut candidate = 1;
+
+        while result.len() < count {
+            if !set.contains(&candidate) {
+                result.push(candidate);
+            }
+            candidate += 1;
+        }
+
+        result
     }
 }
 

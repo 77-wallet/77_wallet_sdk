@@ -32,19 +32,16 @@ impl ApiWalletRepo {
         pool: &DbPool,
         address: &str,
         merchant_id: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::update_merchain_id(pool.as_ref(), address, merchant_id, api_wallet_type)
-            .await?)
+        Ok(ApiWalletDao::update_merchain_id(pool.as_ref(), address, merchant_id).await?)
     }
 
     pub async fn update_app_id(
         pool: &DbPool,
         address: &str,
         app_id: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::update_app_id(pool.as_ref(), address, app_id, api_wallet_type).await?)
+        Ok(ApiWalletDao::update_app_id(pool.as_ref(), address, app_id).await?)
     }
 
     pub async fn upbind_uid(
@@ -103,15 +100,26 @@ impl ApiWalletRepo {
     pub async fn find_by_address(
         pool: &DbPool,
         address: &str,
-        api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::detail(pool.as_ref(), address, api_wallet_type).await?)
+        Ok(ApiWalletDao::detail(pool.as_ref(), address).await?)
     }
     pub async fn find_by_uid(
         pool: &DbPool,
         uid: &str,
-        api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::detail_by_uid(pool.as_ref(), uid, api_wallet_type).await?)
+        Ok(ApiWalletDao::detail_by_uid(pool.as_ref(), uid).await?)
+    }
+
+    pub async fn bind_withdraw_and_subaccount_relation(
+        pool: DbPool,
+        wallet_address: &str,
+        binding_address: &str,
+    ) -> Result<(), crate::Error> {
+        ApiWalletDao::bind_withdraw_and_subaccount_relation(
+            pool.as_ref(),
+            wallet_address,
+            binding_address,
+        )
+        .await
     }
 }

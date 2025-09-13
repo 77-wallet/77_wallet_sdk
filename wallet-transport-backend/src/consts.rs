@@ -72,22 +72,31 @@ pub mod endpoint {
 
     pub mod api_wallet {
         /// 上报打手续费
-        pub const TRANS_SERVICE_FEE_TRANS: &str = "aw/trans/serviceFeeTrans";
+        pub const TRANS_SERVICE_FEE_TRANS: &str = "awallet/aw/trans/serviceFeeTrans";
         /// 上报执行结果
-        pub const TRANS_EXECUTE_COMPLETE: &str = "aw/trans/executeComplete";
+        pub const TRANS_EXECUTE_COMPLETE: &str = "awallet/aw/trans/executeComplete";
         /// 收到交易事件确认
-        pub const TRANS_EVENT_ACK: &str = "aw/trans/eventAck";
+        pub const TRANS_EVENT_ACK: &str = "awallet/aw/trans/eventAck";
+        /// 查询uid的地址列表
+        pub const QUERY_ADDRESS_LIST: &str = "awallet/aw/address/list";
+        /// UID绑定appId
+        pub const APP_ID_BIND: &str = "awallet/aw/appid/bind";
+        /// UID解绑appId
+        pub const APP_ID_UNBIND: &str = "awallet/aw/appid/unbind";
+        /// 地址池扩容
+        pub const ADDRESS_POOL_EXPAND: &str = "awallet/aw/address/expand";
         /// uid 检查
-        pub const KEYS_UID_CHECK: &str = "keys/uidCheck";
+        pub const KEYS_UID_CHECK: &str = "awallet/keys/uidCheck";
 
         /// 提币策略保存
-        pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "aw/strategy/withdrawal/save";
+        pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "awallet/aw/strategy/withdrawal/save";
         /// 获取提币策略
-        pub const TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG: &str = "aw/strategy/getWithdrawalConfig";
+        pub const TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG: &str =
+            "awallet/aw/strategy/getWithdrawalConfig";
         /// 归集策略保存
-        pub const TRANS_STRATEGY_COLLECT_SAVE: &str = "aw/strategy/collect/save";
+        pub const TRANS_STRATEGY_COLLECT_SAVE: &str = "awallet/aw/strategy/collect/save";
         /// 获取归集策略
-        pub const TRANS_STRATEGY_GET_COLLECT_CONFIG: &str = "aw/strategy/getCollectConfig";
+        pub const TRANS_STRATEGY_GET_COLLECT_CONFIG: &str = "awallet/aw/strategy/getCollectConfig";
     }
 }
 

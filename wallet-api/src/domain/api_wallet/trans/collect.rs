@@ -24,8 +24,8 @@ pub struct ApiCollectDomain {}
 
 impl ApiCollectDomain {
     pub(crate) async fn collect(req: &ApiWithdrawReq) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid, Some(ApiWalletType::SubAccount))
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid)
             .await?
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
 
@@ -72,8 +72,9 @@ impl ApiCollectDomain {
         tracing::info!("资产主币余额: {balance}, 手续费: {fee}");
 
         let balance = conversion::decimal_from_str(&balance)?;
+        let value = conversion::decimal_from_str(&req.value)?;
         let fee_decimal = conversion::decimal_from_str(&fee.to_string())?;
-        let need = if req.token_address.is_some() { fee_decimal } else { fee_decimal + balance };
+        let need = if req.token_address.is_some() { fee_decimal } else { fee_decimal + value };
         tracing::info!("need: {need}");
         // 如果手续费不足，则从其他地址转入手续费费用
         if balance < need {
@@ -108,7 +109,7 @@ impl ApiCollectDomain {
                 // let coin = CoinDomain::get_coin(&req.chain_code, &main_symbol, None).await?;
                 // let fee = unit::format_to_string(fee, coin.decimals)?;
                 tracing::info!("need transfer withdraw fee");
-                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+                let backend_api = crate::Context::get_global_backend_api()?;
                 let req = ServiceFeeUploadReq::new(
                     &req.trade_no,
                     &req.chain_code,
@@ -137,6 +138,8 @@ impl ApiCollectDomain {
             params.with_token(coin.token_address(), coin.decimals, &coin.symbol);
 
             let password = ApiWalletDomain::get_passwd().await?;
+
+            // todo!();
 
             let transfer_req = ApiTransferReq { base: params, password };
             // 上链
@@ -171,7 +174,7 @@ impl ApiCollectDomain {
         chain_code: &str,
     ) -> Result<ChainConfig, crate::ServiceError> {
         // 查询策略
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend_api = crate::Context::get_global_backend_api()?;
         let strategy = backend_api.query_collect_strategy(uid).await?;
         let Some(chain_config) =
             strategy.chain_configs.into_iter().find(|config| config.chain_code == chain_code)

@@ -11,6 +11,7 @@ CREATE TABLE api_wallet (
     seed TEXT,
     -- 同上，长度可能更长
     wallet_type INTEGER NOT NULL,
+    binding_address VARCHAR(64),
     merchant_id TEXT,
     app_id TEXT,
     status INTEGER NOT NULL,

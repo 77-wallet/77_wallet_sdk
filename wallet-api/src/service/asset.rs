@@ -60,7 +60,7 @@ impl AssetsService {
         let tx = &mut self.repo;
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
         let address = vec![multisig.address];
 
@@ -78,7 +78,7 @@ impl AssetsService {
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
         let tx = &mut self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
@@ -247,7 +247,7 @@ impl AssetsService {
         is_multisig: Option<bool>,
     ) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let chains = chain_list.keys().cloned().collect();
         let accounts = self
             .account_domain
@@ -331,8 +331,8 @@ impl AssetsService {
             .await?;
         let coins = tx.coin_list_v2(Some(symbol.to_string()), chain_code.clone()).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -401,7 +401,7 @@ impl AssetsService {
         is_multisig: Option<bool>,
     ) -> Result<(), crate::ServiceError> {
         let tx = &mut self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
 
         let chains = chain_list.keys().cloned().collect();
 

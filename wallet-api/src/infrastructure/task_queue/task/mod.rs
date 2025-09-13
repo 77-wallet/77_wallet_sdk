@@ -197,6 +197,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
 
         KnownTaskName::UnbindUid => topics::api_wallet::UnbindUidMsg => |parsed| Box::new(MqttTask::UnbindUid(parsed)),
         KnownTaskName::AddressUse => topics::api_wallet::AddressUseMsg => |parsed| Box::new(MqttTask::AddressUse(parsed)),
+        KnownTaskName::AddressAllock => topics::api_wallet::AddressAllockMsg => |parsed| Box::new(MqttTask::AddressAllock(parsed)),
         KnownTaskName::Trans => topics::api_wallet::TransMsg => |parsed| Box::new(MqttTask::Trans(parsed)),
 
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),

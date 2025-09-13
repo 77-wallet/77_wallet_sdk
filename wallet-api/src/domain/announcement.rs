@@ -7,12 +7,12 @@ impl AnnouncementDomain {
     pub async fn pull_announcement(
         repo: &mut wallet_database::repositories::ResourcesRepo,
     ) -> Result<(), crate::error::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::Context::get_global_backend_api()?;
 
         let list = AnnouncementRepoTrait::list(repo).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 

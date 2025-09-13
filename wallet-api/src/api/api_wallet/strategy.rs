@@ -1,30 +1,21 @@
-
-pub use wallet_transport_backend::{
-    request::api_wallet::strategy::ChainConfig,
-    response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
-};
+use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
 
 use crate::{api::ReturnType, service::api_wallet::strategy::StrategyService};
 
 impl crate::WalletManager {
-    pub async fn get_collection_strategy(&self, uid: &str) -> ReturnType<CollectionStrategyResp> {
-        StrategyService::new().get_collection_strategy(uid).await?.into()
-    }
-
-    pub async fn update_collection_strategy(
+    pub async fn update_collect_strategy(
         &self,
         uid: &str,
         threshold: f64,
+        // normal_index: i32,
+        // risk_index: i32,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
-        StrategyService::new()
-            .update_collection_strategy(uid, threshold, chain_config)
-            .await?
-            .into()
+        StrategyService::new().update_collect_strategy(uid, threshold, chain_config).await?.into()
     }
 
-    pub async fn get_withdrawal_strategy(&self, uid: &str) -> ReturnType<WithdrawStrategyResp> {
-        StrategyService::new().get_withdraw_strategy(uid).await?.into()
+    pub async fn get_collect_strategy(&self, uid: &str) -> ReturnType<()> {
+        StrategyService::new().query_collect_strategy(uid).await?.into()
     }
 
     pub async fn update_withdrawal_strategy(
@@ -33,7 +24,14 @@ impl crate::WalletManager {
         threshold: f64,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
-        StrategyService::new().update_withdraw_strategy(uid, threshold, chain_config).await?.into()
+        StrategyService::new()
+            .update_withdrawal_strategy(uid, threshold, chain_config)
+            .await?
+            .into()
+    }
+
+    pub async fn get_withdrawal_strategy(&self, uid: &str) -> ReturnType<()> {
+        StrategyService::new().query_withdrawal_strategy(uid).await?.into()
     }
 }
 

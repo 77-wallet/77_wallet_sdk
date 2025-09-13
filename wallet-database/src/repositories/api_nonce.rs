@@ -3,7 +3,6 @@ use crate::{DbPool, dao::api_nonce::ApiNonceDao};
 pub struct ApiNonceRepo;
 
 impl ApiNonceRepo {
-
     pub async fn get_api_nonce(
         pool: &DbPool,
         from_addr: &str,

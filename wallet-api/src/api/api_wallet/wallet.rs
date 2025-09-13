@@ -1,13 +1,8 @@
-use wallet_database::entities::api_wallet::ApiWalletEntity;
-pub use wallet_database::entities::api_wallet::ApiWalletType;
+use wallet_database::entities::api_wallet::ApiWalletType;
 
 use crate::{api::ReturnType, service::api_wallet::wallet::ApiWalletService};
 
 impl crate::WalletManager {
-    pub async fn get_api_wallet_list(&self) -> ReturnType<Vec<ApiWalletEntity>> {
-        vec![].into()
-    }
-
     pub async fn create_api_wallet(
         &self,
         language_code: u8,
@@ -36,12 +31,32 @@ impl crate::WalletManager {
             .into()
     }
 
-    pub async fn bind_merchant(&self, key: &str, merchain_id: &str, recharge_uid: &str, withdrawal_uid: &str) -> ReturnType<()> {
-        ApiWalletService::new().bind_merchant(key, merchain_id, recharge_uid).await?.into()
+    // pub async fn get_wallet_address(&self) -> ReturnType<()> {
+    //     ApiWalletService::new(self.repo_factory.resource_repo())
+    //         .get_wallet_address(key, merchain_id, uid)
+    //         .await?
+    //         .into()
+    // }
+
+    pub async fn bind_merchant(
+        &self,
+        org_app_id: &str,
+        merchain_id: &str,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> ReturnType<()> {
+        ApiWalletService::new()
+            .bind_merchant(org_app_id, merchain_id, recharge_uid, withdrawal_uid)
+            .await?
+            .into()
     }
 
-    pub async fn unbind_merchant(&self, recharge_uid: &str, withdrawal_uid: &str) -> ReturnType<()> {
-        ApiWalletService::new().unbind_merchant(recharge_uid).await?.into()
+    pub async fn unbind_merchant(
+        &self,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> ReturnType<()> {
+        ApiWalletService::new().unbind_merchant(recharge_uid, withdrawal_uid).await?.into()
     }
 
     pub async fn edit_api_wallet_name(
@@ -55,6 +70,32 @@ impl crate::WalletManager {
     pub async fn set_passwd_cache(&self, wallet_password: &str) -> ReturnType<()> {
         ApiWalletService::new().set_passwd_cache(wallet_password).await?.into()
     }
+
+    // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
+    //     WalletService::new(self.repo_factory.resource_repo())
+    //         .physical_reset()
+    //         .await?
+    //         .into()
+    // }
+
+    // pub async fn get_api_wallet_list(
+    //     &self,
+    //     wallet_address: Option<String>,
+    //     chain_code: Option<String>,
+    //     account_id: Option<u32>,
+    // ) -> ReturnType<Vec<crate::response_vo::wallet::WalletInfo>> {
+    //     WalletService::new(self.repo_factory.resource_repo())
+    //         .get_wallet_list(wallet_address, chain_code, account_id)
+    //         .await?
+    //         .into()
+    // }
+
+    // pub async fn physical_delete_api_wallet(&self, address: &str) -> ReturnType<()> {
+    //     WalletService::new(self.repo_factory.resource_repo())
+    //         .physical_delete(address)
+    //         .await?
+    //         .into()
+    // }
 }
 
 #[cfg(test)]
@@ -94,7 +135,25 @@ mod test {
                 api_wallet_type,
             )
             .await;
-        tracing::info!("res: {res:?}");
+        tracing::info!("create sub wallet res: {res:?}");
+
+        let api_wallet_type = ApiWalletType::Withdrawal;
+        let invite_code = None;
+        let salt = "qwer1234";
+        let res = wallet_manager
+            .create_api_wallet(
+                language_code,
+                phrase,
+                salt,
+                wallet_name,
+                account_name,
+                is_default_name,
+                wallet_password,
+                invite_code,
+                api_wallet_type,
+            )
+            .await;
+        tracing::info!("create withdrawal wallet res: {res:?}");
         Ok(())
     }
 
@@ -104,11 +163,13 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let key = "app_id";
-        let merchain_id = "test_merchain";
-        let uid = "04de3a5eff89883fecd1469fbc7621f37122c83d6680b95ad5c67cd9a141cd4e";
+        let key = "68c27dfaa06b0c05e37c5e86";
+        let merchain_id = "68be7271a7307e042404e276";
+        let subaccount_uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+        let withdrawal_uid = "e6de8afd756e7cb81a3d965f959c896738ed07cebc919c7f96c97fc6069ad44f";
 
-        let res = wallet_manager.bind_merchant(key, merchain_id, uid, uid).await;
+        let res =
+            wallet_manager.bind_merchant(key, merchain_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }

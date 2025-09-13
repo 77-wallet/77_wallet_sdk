@@ -1,8 +1,8 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
-    repositories::{api_wallet::ApiWalletRepo, device::DeviceRepo},
+    repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::LanguageInitReq;
+use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
 
 use crate::{
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
@@ -32,10 +32,10 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
-        tracing::info!("Password validation took: {:?}", password_validation_start.elapsed());
+        tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -51,16 +51,18 @@ impl ApiWalletService {
             .into());
         }
 
-        tracing::info!("Master key generation took: {:?}", master_key_start.elapsed());
+        tracing::debug!("Master key generation took: {:?}", master_key_start.elapsed());
 
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
 
         // uid类型检查
+        // TODO:
         // let backend = crate::Context::get_global_backend_api()?;
         // backend.keys_uid_check(&uid).await?;
-        tracing::info!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
+
+        tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -75,86 +77,36 @@ impl ApiWalletService {
             api_wallet_type,
         )
         .await?;
-        tracing::info!(
+        tracing::debug!(
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
 
+        let chains: Vec<String> =
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
         match api_wallet_type {
-            ApiWalletType::SubAccount => {}
-            ApiWalletType::Withdrawal => {
-                ApiWalletDomain::create_account(
+            ApiWalletType::SubAccount => {
+                ApiWalletDomain::create_sub_account(
                     address,
                     wallet_password,
-                    None,
+                    chains,
                     account_name,
                     is_default_name,
-                    1,
-                    api_wallet_type,
+                )
+                .await?
+            }
+            ApiWalletType::Withdrawal => {
+                ApiWalletDomain::create_withdrawal_account(
+                    address,
+                    wallet_password,
+                    chains,
+                    account_name,
+                    is_default_name,
                 )
                 .await?
             }
         }
-
-        // let default_chain_list = tx.get_chain_list().await?;
-        // let coins = tx.default_coin_list().await?;
-
-        // let default_chain_list = default_chain_list
-        //     .into_iter()
-        //     .map(|chain| chain.chain_code)
-        //     .collect::<Vec<String>>();
-        // tracing::info!("coins: {:?}", coins);
-        // let account_creation_start = std::time::Instant::now();
-        // let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-        // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
-
-        // let mut address_init_task_data = AddressBatchInitReq(Vec::new());
-        // for account_id in account_ids {
-        //     let account_index_map =
-        //         wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
-
-        //     ChainDomain::init_chains_api_assets(
-        //         tx,
-        //         &coins,
-        //         &mut req,
-        //         &mut address_init_task_data,
-        //         &mut subkeys,
-        //         &default_chain_list,
-        //         &seed,
-        //         &account_index_map,
-        //         None,
-        //         &uid,
-        //         address,
-        //         account_name,
-        //         is_default_name,
-        //     )
-        //     .await?;
-        // }
-        // tracing::info!(
-        //     "Account creation and subkey generation took: {:?}",
-        //     account_creation_start.elapsed()
-        // );
-
-        // let child_keystore_start = std::time::Instant::now();
-        // let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
-        // let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        // let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
-
-        // KeystoreApi::initialize_child_keystores(
-        //     wallet_tree,
-        //     subkeys,
-        //     dirs.get_subs_dir(address)?,
-        //     wallet_password,
-        //     algorithm,
-        // )?;
-        // tracing::debug!(
-        //     "Child keystore initialization took: {:?}",
-        //     child_keystore_start.elapsed()
-        // );
-
-        // let task = Task::Common(CommonTask::QueryCoinPrice(req));
-        // Tasks::new().push(task).send().await?;
-        // tx.update_uid(Some(&uid)).await?;
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
 
@@ -216,12 +168,12 @@ impl ApiWalletService {
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
@@ -265,29 +217,37 @@ impl ApiWalletService {
 
     pub async fn bind_merchant(
         self,
-        key: &str,
+        org_app_id: &str,
         merchain_id: &str,
-        uid: &str,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))
-            .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
-        ApiWalletRepo::update_merchant_id(
-            &pool,
-            &api_wallet.address,
-            merchain_id,
-            ApiWalletType::SubAccount,
-        )
-        .await?;
-        ApiWalletRepo::update_app_id(&pool, &api_wallet.address, key, ApiWalletType::SubAccount)
+        ApiWalletDomain::bind_uid(recharge_uid, merchain_id, org_app_id).await?;
+        ApiWalletDomain::bind_uid(withdrawal_uid, merchain_id, org_app_id).await?;
+
+        ApiWalletDomain::bind_withdraw_and_subaccount_relation(recharge_uid, withdrawal_uid)
             .await?;
 
+        let backend = crate::Context::get_global_backend_api()?;
+        backend
+            .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
+            .await?;
         Ok(())
     }
 
-    pub async fn unbind_merchant(self, uid: &str) -> Result<(), crate::ServiceError> {
-        ApiWalletDomain::unbind_uid(uid).await?;
+    pub async fn unbind_merchant(
+        self,
+        recharge_uid: &str,
+        withdrawal_uid: &str,
+    ) -> Result<(), crate::ServiceError> {
+        ApiWalletDomain::unbind_uid(recharge_uid).await?;
+        ApiWalletDomain::unbind_uid(withdrawal_uid).await?;
+
+        todo!();
+        // let backend = crate::Context::get_global_backend_api()?;
+        // backend
+        //     .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
+        //     .await?;
         Ok(())
     }
 
@@ -296,7 +256,7 @@ impl ApiWalletService {
         address: &str,
         name: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }

@@ -66,8 +66,8 @@ impl WalletService {
         self,
         password: &str,
     ) -> Result<String, crate::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -90,8 +90,8 @@ impl WalletService {
         if let Some(wallet) = wallet {
             tx.update_uid(Some(&wallet.uid)).await?;
 
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-            let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+            let pool = crate::Context::get_global_sqlite_pool()?;
+            let Some(device) = DeviceRepo::get_device_info(pool).await? else {
                 return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
             };
 
@@ -121,8 +121,8 @@ impl WalletService {
         let mut tx = self.repo;
         let wallet_list = tx.edit_wallet_name(wallet_address, wallet_name).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -154,12 +154,12 @@ impl WalletService {
         let mut tx = self.repo;
 
         WalletDomain::validate_password(wallet_password).await?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
         let exports: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
-        let seed = WalletDomain::get_seed(dirs.as_ref(), wallet_address, wallet_password).await?;
+        let seed = WalletDomain::get_seed(dirs, wallet_address, wallet_password).await?;
 
         let wallet = tx
             .wallet_detail_by_address(wallet_address)
@@ -243,7 +243,7 @@ impl WalletService {
         wallet_address: &str,
     ) -> Result<crate::response_vo::wallet::ExportDerivationPathRes, crate::ServiceError> {
         let tx = &mut self.repo;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
         let account_list = tx
             .get_account_list_by_wallet_address_and_account_id(Some(wallet_address), None)
             .await?;
@@ -286,12 +286,12 @@ impl WalletService {
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
@@ -312,7 +312,7 @@ impl WalletService {
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         // uid类型检查
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let backend = crate::Context::get_global_backend_api()?;
         backend.keys_uid_check(&uid).await?;
         let seed = seed.clone();
 
@@ -464,7 +464,7 @@ impl WalletService {
         wallet_address: &str,
         password: &str,
     ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::ServiceError> {
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
         let root_dir = dirs.get_root_dir(wallet_address)?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -531,7 +531,7 @@ impl WalletService {
         account_id: Option<u32>,
     ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
         let tx = &mut self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
@@ -614,13 +614,13 @@ impl WalletService {
         let uid =
             if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
         tx.update_uid(uid.as_deref()).await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
         tx.commit_transaction().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {
             let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool)
@@ -652,12 +652,12 @@ impl WalletService {
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(Some(address));
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
 
@@ -674,7 +674,7 @@ impl WalletService {
         };
         tx.update_uid(uid.as_deref()).await?;
         tx.commit_transaction().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = crate::Context::get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
@@ -722,15 +722,15 @@ impl WalletService {
     pub async fn logic_reset(self) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
         WalletRepoTrait::reset_all_wallet(&mut tx).await?;
         AccountRepoTrait::reset_all_account(&mut tx).await?;
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
         tx.commit_transaction().await?;
@@ -751,8 +751,8 @@ impl WalletService {
     pub async fn physical_reset(self) -> Result<(), crate::ServiceError> {
         let mut tx = self.repo;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
+        let pool = crate::Context::get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
@@ -786,7 +786,7 @@ impl WalletService {
             .send()
             .await?;
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let dirs = crate::manager::Context::get_global_dirs()?;
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
