@@ -108,7 +108,7 @@ mod test {
         let merchain_id = "test_merchain";
         let uid = "04de3a5eff89883fecd1469fbc7621f37122c83d6680b95ad5c67cd9a141cd4e";
 
-        let res = wallet_manager.bind_merchant(key, merchain_id, uid).await;
+        let res = wallet_manager.bind_merchant(key, merchain_id, uid, uid).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }

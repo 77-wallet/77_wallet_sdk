@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
 
     // 获取订单记录
-    let order_list = wallet_manager.get_api_withdraw_order_list().await.result;
+    let order_list = wallet_manager.get_api_withdraw_order_list("").await.result;
     tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
     // 绑定钱包
