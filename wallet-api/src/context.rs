@@ -1,5 +1,7 @@
 use crate::{
-    dirs::Dirs, FrontendNotifyEvent,
+    FrontendNotifyEvent,
+    data::{DeviceInfo, RpcToken},
+    dirs::Dirs,
     infrastructure::{
         SharedCache,
         inner_event::InnerEventHandle,
@@ -8,12 +10,13 @@ use crate::{
         process_withdraw_tx::ProcessWithdrawTxHandle,
         task_queue::task_manager::TaskManager,
     },
-    data::{DeviceInfo, FrontendNotifySender, RpcToken},
     messaging::mqtt::subscribed::Topics,
 };
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 use wallet_database::SqliteContext;
+
+pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
 pub(crate) static CONTEXT: once_cell::sync::Lazy<tokio::sync::OnceCell<Context>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
@@ -37,22 +40,22 @@ pub(crate) async fn init_context<'a>(
 
 #[derive(Debug, Clone)]
 pub struct Context {
-    pub(crate) dirs: Dirs,
-    pub(crate) aggregate_api: Arc<String>,
-    pub(crate) backend_api: wallet_transport_backend::api::BackendApi,
-    pub(crate) sqlite_context: wallet_database::SqliteContext,
-    pub(crate) oss_client: wallet_oss::oss_client::OssClient,
-    pub(crate) frontend_notify: Arc<RwLock<FrontendNotifySender>>,
-    pub(crate) task_manager: TaskManager,
-    pub(crate) mqtt_topics: Arc<RwLock<Topics>>,
-    pub(crate) rpc_token: Arc<RwLock<RpcToken>>,
-    pub(crate) device: Arc<DeviceInfo>,
-    pub(crate) cache: Arc<SharedCache>,
-    pub(crate) inner_event_handle: InnerEventHandle,
-    pub(crate) unconfirmed_msg_collector: UnconfirmedMsgCollector,
-    pub(crate) unconfirmed_msg_processor: UnconfirmedMsgProcessor,
-    pub(crate) process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
-    pub(crate) process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
+    dirs: Arc<Dirs>,
+    aggregate_api: Arc<String>,
+    backend_api: Arc<wallet_transport_backend::api::BackendApi>,
+    sqlite_context: Arc<wallet_database::SqliteContext>,
+    oss_client: Arc<wallet_oss::oss_client::OssClient>,
+    frontend_notify: Arc<RwLock<FrontendNotifySender>>,
+    task_manager: Arc<TaskManager>,
+    mqtt_topics: Arc<RwLock<Topics>>,
+    rpc_token: Arc<RwLock<RpcToken>>,
+    device: Arc<DeviceInfo>,
+    cache: Arc<SharedCache>,
+    inner_event_handle: Arc<InnerEventHandle>,
+    unconfirmed_msg_collector: Arc<UnconfirmedMsgCollector>,
+    unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessor>,
+    process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
+    process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
 }
 
 impl Context {
@@ -112,93 +115,101 @@ impl Context {
         let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
 
         Ok(Context {
-            dirs,
-            backend_api,
+            dirs: Arc::new(dirs),
+            backend_api: Arc::new(backend_api),
             aggregate_api: Arc::new(aggregate_api),
-            sqlite_context,
+            sqlite_context: Arc::new(sqlite_context),
             frontend_notify,
-            oss_client,
-            task_manager,
+            oss_client: Arc::new(oss_client),
+            task_manager: Arc::new(task_manager),
             mqtt_topics: Arc::new(RwLock::new(Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
-            inner_event_handle,
-            unconfirmed_msg_collector,
-            unconfirmed_msg_processor,
+            inner_event_handle: Arc::new(inner_event_handle),
+            unconfirmed_msg_collector: Arc::new(unconfirmed_msg_collector),
+            unconfirmed_msg_processor: Arc::new(unconfirmed_msg_processor),
             process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
         })
-    }
-
-    pub async fn set_frontend_notify_sender(
-        frontend_notify: FrontendNotifySender,
-    ) -> Result<(), crate::ServiceError> {
-        let cx = Context::get_context()?;
-        let mut lock = cx.frontend_notify.write().await;
-        *lock = frontend_notify;
-        Ok(())
     }
 
     pub(crate) fn get_context() -> Result<&'static Context, crate::SystemError> {
         CONTEXT.get().ok_or(crate::SystemError::ContextNotInit)
     }
 
-    pub(crate) fn get_global_sqlite_pool()
-    -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError> {
-        Ok(Context::get_context()?.sqlite_context.get_pool()?.clone())
+    pub async fn set_frontend_notify_sender(
+        &self,
+        frontend_notify: FrontendNotifySender,
+    ) -> Result<(), crate::ServiceError> {
+        let mut lock = self.frontend_notify.write().await;
+        *lock = frontend_notify;
+        Ok(())
     }
 
-    pub(crate) fn get_global_backend_api()
-    -> Result<&'static wallet_transport_backend::api::BackendApi, crate::ServiceError> {
-        Ok(&Context::get_context()?.backend_api)
+    pub(crate) fn get_global_device(&self) -> Result<Arc<DeviceInfo>, crate::SystemError> {
+        Ok(self.device.clone())
     }
 
-    pub(crate) fn get_global_dirs() -> Result<&'static crate::dirs::Dirs, crate::SystemError> {
-        Ok(&Context::get_context()?.dirs)
+    pub(crate) fn get_global_sqlite_pool(
+        &self,
+    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::ServiceError> {
+        Ok(self.sqlite_context.get_pool()?.clone())
     }
 
-    pub(crate) fn get_aggregate_api() -> Result<String, crate::SystemError> {
-        Ok((&Context::get_context()?.aggregate_api.clone()).to_string())
+    pub(crate) fn get_global_backend_api(
+        &self,
+    ) -> Result<Arc<wallet_transport_backend::api::BackendApi>, crate::ServiceError> {
+        Ok(self.backend_api.clone())
     }
 
-    pub(crate) fn get_global_oss_client()
-    -> Result<&'static wallet_oss::oss_client::OssClient, crate::SystemError> {
-        Ok(&Context::get_context()?.oss_client)
+    pub(crate) fn get_global_dirs(&self) -> Result<Arc<crate::dirs::Dirs>, crate::SystemError> {
+        Ok(self.dirs.clone())
     }
 
-    pub(crate) fn get_global_task_manager() -> Result<&'static TaskManager, crate::SystemError> {
-        Ok(&Context::get_context()?.task_manager)
+    pub(crate) fn get_aggregate_api(&self) -> Result<String, crate::SystemError> {
+        Ok((self.aggregate_api.clone()).to_string())
     }
 
-    pub(crate) fn get_global_cache() -> Result<Arc<SharedCache>, crate::SystemError> {
-        Ok(Context::get_context()?.cache.clone())
+    pub(crate) fn get_global_oss_client(
+        &self,
+    ) -> Result<Arc<wallet_oss::oss_client::OssClient>, crate::SystemError> {
+        Ok(self.oss_client.clone())
     }
 
-    pub(crate) fn get_global_mqtt_topics()
-    -> Result<&'static std::sync::Arc<RwLock<Topics>>, crate::SystemError> {
-        Ok(&Context::get_context()?.mqtt_topics)
+    pub(crate) fn get_global_task_manager(
+        &self,
+    ) -> Result<Arc<TaskManager>, crate::SystemError> {
+        Ok(self.task_manager.clone())
     }
 
-    pub(crate) fn get_global_frontend_notify_sender() -> Result<
-        &'static std::sync::Arc<RwLock<crate::data::FrontendNotifySender>>,
-        crate::SystemError,
-    > {
-        Ok(&Context::get_context()?.frontend_notify)
+    pub(crate) fn get_global_cache(&self) -> Result<Arc<SharedCache>, crate::SystemError> {
+        Ok(self.cache.clone())
     }
 
-    pub(crate) async fn get_rpc_header()
-    -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
-        let cx = Context::get_context()?;
+    pub(crate) fn get_global_mqtt_topics(
+        &self,
+    ) -> Result<std::sync::Arc<RwLock<Topics>>, crate::SystemError> {
+        Ok(self.mqtt_topics.clone())
+    }
 
+    pub(crate) fn get_global_frontend_notify_sender(
+        &self,
+    ) -> Result<std::sync::Arc<RwLock<FrontendNotifySender>>, crate::SystemError> {
+        Ok(self.frontend_notify.clone())
+    }
+
+    pub(crate) async fn get_rpc_header(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
         let token_expired = {
-            let token_guard = cx.rpc_token.read().await;
+            let token_guard = self.rpc_token.read().await;
             token_guard.instance < tokio::time::Instant::now()
         };
 
         if token_expired {
-            let backend_api = cx.backend_api.clone();
-            let new_token_response = backend_api.rpc_token(&cx.device.client_id).await;
+            let backend_api = self.backend_api.clone();
+            let new_token_response = backend_api.rpc_token(&self.device.client_id).await;
             match new_token_response {
                 Ok(token) => {
                     let new_token = RpcToken {
@@ -208,7 +219,7 @@ impl Context {
                     };
 
                     {
-                        let mut token_guard = cx.rpc_token.write().await;
+                        let mut token_guard = self.rpc_token.write().await;
                         *token_guard = new_token.clone();
                     }
 
@@ -217,7 +228,7 @@ impl Context {
                 Err(e) => {
                     // 服务端报错,如果token有值那么使用原来的值，服务端token的过期时间会大于我本地的。
 
-                    let token_guard = cx.rpc_token.read().await;
+                    let token_guard = self.rpc_token.read().await;
                     let token = token_guard.token.clone();
                     if !token.is_empty() {
                         Ok(HashMap::from([("token".to_string(), token)]))
@@ -230,39 +241,44 @@ impl Context {
             }
         } else {
             // 未过期使用缓存里面的token
-            let token_guard = cx.rpc_token.read().await;
+            let token_guard = self.rpc_token.read().await;
             let token = token_guard.token.clone();
 
             Ok(HashMap::from([("token".to_string(), token)]))
         }
     }
 
-    pub(crate) fn get_global_inner_event_handle()
-    -> Result<&'static InnerEventHandle, crate::SystemError> {
-        Ok(&Context::get_context()?.inner_event_handle)
+    pub(crate) fn get_global_inner_event_handle(
+        &self,
+    ) -> Result<Arc<InnerEventHandle>, crate::SystemError> {
+        Ok(self.inner_event_handle.clone())
     }
 
-    pub(crate) fn get_global_notify() -> Result<Arc<tokio::sync::Notify>, crate::SystemError> {
-        Ok(Context::get_context()?.task_manager.notify.clone())
+    pub(crate) fn get_global_notify(&self) -> Result<Arc<tokio::sync::Notify>, crate::SystemError> {
+        Ok(self.task_manager.notify.clone())
     }
 
-    pub(crate) fn get_global_unconfirmed_msg_collector()
-    -> Result<&'static UnconfirmedMsgCollector, crate::SystemError> {
-        Ok(&Context::get_context()?.unconfirmed_msg_collector)
+    pub(crate) fn get_global_unconfirmed_msg_collector(
+        &self,
+    ) -> Result<Arc<UnconfirmedMsgCollector>, crate::SystemError> {
+        Ok(self.unconfirmed_msg_collector.clone())
     }
 
-    pub(crate) fn get_global_unconfirmed_msg_processor()
-    -> Result<&'static UnconfirmedMsgProcessor, crate::SystemError> {
-        Ok(&Context::get_context()?.unconfirmed_msg_processor)
+    pub(crate) fn get_global_unconfirmed_msg_processor(
+        &self,
+    ) -> Result<Arc<UnconfirmedMsgProcessor>, crate::SystemError> {
+        Ok(self.unconfirmed_msg_processor.clone())
     }
 
-    pub(crate) fn get_global_processed_withdraw_tx_handle()
-    -> Result<Arc<ProcessWithdrawTxHandle>, crate::SystemError> {
-        Ok(Context::get_context()?.process_withdraw_tx_handle.clone())
+    pub(crate) fn get_global_processed_withdraw_tx_handle(
+        &self,
+    ) -> Result<Arc<ProcessWithdrawTxHandle>, crate::SystemError> {
+        Ok(self.process_withdraw_tx_handle.clone())
     }
 
-    pub(crate) fn get_global_processed_fee_tx_handle()
-    -> Result<Arc<ProcessFeeTxHandle>, crate::SystemError> {
-        Ok(Context::get_context()?.process_fee_tx_handle.clone())
+    pub(crate) fn get_global_processed_fee_tx_handle(
+        &self,
+    ) -> Result<Arc<ProcessFeeTxHandle>, crate::SystemError> {
+        Ok(self.process_fee_tx_handle.clone())
     }
 }

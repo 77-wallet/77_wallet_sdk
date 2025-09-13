@@ -14,7 +14,7 @@ pub struct ApiWithdrawDomain {}
 impl ApiWithdrawDomain {
     pub(crate) async fn withdraw(req: &ApiWithdrawReq) -> Result<(), crate::ServiceError> {
         // 验证金额是否需要输入密码
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 获取钱包
         let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid, Some(ApiWalletType::Withdrawal))
             .await?
@@ -58,21 +58,21 @@ impl ApiWithdrawDomain {
 
         // 可能发交易
 
-        crate::context::Context::get_global_processed_withdraw_tx_handle()?
+        crate::context::CONTEXT.get().unwrap().get_global_processed_withdraw_tx_handle()?
             .submit_tx(&req.trade_no)
             .await?;
         Ok(())
     }
 
     pub async fn sign_withdrawal_order(trade_no: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
             .await?;
         Ok(())
     }
 
     pub async fn reject_withdrawal_order(trade_no: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(
             &pool,
             trade_no,
@@ -86,10 +86,10 @@ impl ApiWithdrawDomain {
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, status).await?;
 
-        crate::context::Context::get_global_processed_withdraw_tx_handle()?
+        crate::context::CONTEXT.get().unwrap().get_global_processed_withdraw_tx_handle()?
             .submit_confirm_report_tx(trade_no)
             .await?;
         Ok(())

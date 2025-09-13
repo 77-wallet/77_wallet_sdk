@@ -78,7 +78,7 @@ impl MultisigDomain {
     pub(crate) async fn recover_multisig_data_by_id(
         multisig_account_id: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()
@@ -116,7 +116,7 @@ impl MultisigDomain {
         uid: &str,
         filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()
@@ -140,8 +140,8 @@ impl MultisigDomain {
         business_id: Option<String>,
         filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let backend = crate::context::Context::get_global_backend_api()?;
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let req = FindAddressRawDataReq::new_multisig(uid, business_id);
         let data = backend.address_find_address_raw_data(req).await?;
@@ -508,7 +508,7 @@ impl MultisigDomain {
         let raw_data =
             MultisigAccountRepo::multisig_raw_data(account_id, pool).await?.to_string()?;
 
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         Ok(backend_api.update_raw_data(account_id, raw_data).await?)
     }
 
@@ -599,7 +599,7 @@ impl MultisigDomain {
         deleted: &[wallet_database::entities::account::AccountEntity],
         sn: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let addresses = deleted.iter().map(|d| d.address.clone()).collect::<Vec<_>>();
         // 这个被删除的账户所关联的多签账户的成员
         let members =
@@ -654,7 +654,7 @@ impl MultisigDomain {
     pub(crate) async fn check_multisig_account_exists(
         multisig_account_id: &str,
     ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
             .map_err(crate::ServiceError::Database)?

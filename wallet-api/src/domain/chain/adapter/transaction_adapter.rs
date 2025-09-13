@@ -522,7 +522,7 @@ impl TransactionAdapter {
         req: transaction::BaseTransferReq,
         main_symbol: &str,
     ) -> Result<String, crate::ServiceError> {
-        let backend = crate::context::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
@@ -546,7 +546,7 @@ impl TransactionAdapter {
                 }
 
                 let gas_oracle =
-                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend).await?;
+                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend.as_ref()).await?;
 
                 let params = eth::operations::TransferOpt::new(
                     &req.from,

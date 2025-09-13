@@ -165,7 +165,7 @@ impl StakeDomain {
         let key = format!("{}_{}_delegate", from, to);
 
         // 现从缓存中获取数据、没有在从链上获取
-        let cache = crate::Context::get_global_cache()?;
+        let cache = crate::context::CONTEXT.get().unwrap().get_global_cache()?;
         let res: Option<DelegatedResource> = cache.get(&key).await;
         match res {
             Some(res) => {
@@ -218,7 +218,7 @@ impl StakeDomain {
     // 从后端获取代表列表
     pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::ServiceError>
     {
-        let backend = crate::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         let mut list = backend.vote_list().await?;
         // let witness_list = list.node_resp_list;
         list.node_resp_list.iter_mut().for_each(|item| {

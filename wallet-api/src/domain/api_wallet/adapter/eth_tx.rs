@@ -40,11 +40,14 @@ use wallet_chain_interact::{
     tron::protocol::account::AccountResourceDetail,
     types::{ChainPrivateKey, FetchMultisigAddressResp, MultisigSignResp, MultisigTxResp},
 };
-use wallet_database::{entities::{
-    api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
-    multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
-    permission::PermissionEntity,
-}, repositories::api_nonce::ApiNonceRepo};
+use wallet_database::{
+    entities::{
+        api_assets::ApiAssetsEntity, coin::CoinEntity, multisig_account::MultisigAccountEntity,
+        multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
+        permission::PermissionEntity,
+    },
+    repositories::api_nonce::ApiNonceRepo,
+};
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};
 use wallet_types::chain::{chain::ChainCode, network::NetworkKind};
@@ -169,7 +172,7 @@ impl EthTx {
 #[async_trait::async_trait]
 impl Oracle for EthTx {
     async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
-        let backend = crate::context::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         let gas_oracle = backend.gas_oracle(&self.chain_code.to_string()).await;
 
         match gas_oracle {
@@ -298,8 +301,9 @@ impl Tx for EthTx {
         let fee = fee_setting.transaction_fee();
         let transfer_opt =
             TransferOpt::new(from, to, transfer_amount, params.base.token_address.clone())?;
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
-        let mut nonce = ApiNonceRepo::get_api_nonce(&pool, from, &params.base.chain_code).await? as u64;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let mut nonce =
+            ApiNonceRepo::get_api_nonce(&pool, from, &params.base.chain_code).await? as u64;
         if nonce == 0 {
             let ol_nonce = self.provider.nonce(&from).await?;
             if ol_nonce > nonce {
@@ -311,8 +315,8 @@ impl Tx for EthTx {
             .exec_transaction(transfer_opt, fee_setting, private_key, Some(nonce))
             .await?;
 
-        ApiNonceRepo::upsert_and_get_api_nonce(&pool, from, &params.base.chain_code, nonce as i32).await?;
-
+        ApiNonceRepo::upsert_and_get_api_nonce(&pool, from, &params.base.chain_code, nonce as i32)
+            .await?;
 
         tracing::info!("transfer ------------------- 16: {tx_hash}");
         Ok(TransferResp::new(tx_hash, unit::format_to_string(fee, eth::consts::ETH_DECIMAL)?))
@@ -700,7 +704,7 @@ impl Multisig for EthTx {
             TokenCurrencyGetter::get_currency(currency, &queue.chain_code, main_symbol, None)
                 .await?;
 
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
         let multisig_account =
             MultisigDomain::account_by_address(&queue.from_addr, true, &pool).await?;

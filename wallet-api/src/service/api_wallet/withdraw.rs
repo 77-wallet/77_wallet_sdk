@@ -17,7 +17,7 @@ impl WithdrawService {
     pub async fn get_withdraw_order_list(
         &self,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::list_api_withdraw(&pool).await.map_err(|e| e.into())
     }
 
@@ -59,7 +59,7 @@ impl WithdrawService {
         order_id: &str,
         status: i8,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         let req = AuditResultReportReq::new();
         backend_api.report_audit_result(&req).await?;
@@ -72,7 +72,7 @@ impl WithdrawService {
         order_id: &str,
         status: i8,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         let req = AuditResultReportReq::new();
         backend_api.report_audit_result(&req).await?;

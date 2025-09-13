@@ -81,7 +81,7 @@ impl OrderMultiSignAcceptCompleteMsg {
         multi_account_id: &str,
         status: i8,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for address in address_list.iter() {
             MultisigMemberDaoV1::sync_confirmed_and_pubkey_status(
                 multi_account_id,

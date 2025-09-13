@@ -1,10 +1,12 @@
 use crate::{
     Dirs,
-    context::{Context, init_context},
+    api::ReturnType,
+    context::{CONTEXT, init_context},
+    data::do_some_init,
     domain,
     infrastructure::{self},
     messaging::notify::FrontendNotifyEvent,
-    data::do_some_init,
+    service::{device::DeviceService, task_queue::TaskQueueService},
 };
 use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::factory::RepositoryFactory;
@@ -23,17 +25,17 @@ impl WalletManager {
         dir: Dirs,
     ) -> Result<WalletManager, crate::ServiceError> {
         let base_path = infrastructure::log::LogBasePath(dir.get_log_dir());
-        let context = init_context(sn, device_type, dir, sender, config).await?;
+        let ctx = init_context(sn, device_type, dir, sender, config).await?;
         // 以前的上报日志
         // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
 
         // 现在的上报日志
-        infrastructure::log::start_upload_scheduler(base_path, 5 * 60, context.oss_client.clone())
+        infrastructure::log::start_upload_scheduler(base_path, 5 * 60, ctx.get_global_oss_client()?)
             .await?;
 
-        Context::get_global_unconfirmed_msg_processor()?.start().await;
-        Context::get_global_task_manager()?.start_task_check().await?;
-        let pool = context.sqlite_context.get_pool()?;
+        ctx.get_global_unconfirmed_msg_processor()?.start().await;
+        ctx.get_global_task_manager()?.start_task_check().await?;
+        let pool = ctx.get_global_sqlite_pool()?;
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
         let manager = WalletManager { repo_factory };
@@ -41,7 +43,25 @@ impl WalletManager {
         Ok(manager)
     }
 
-    pub async fn init_data(&self) -> Result<(), crate::ServiceError> {
+    pub async fn init(&self, req: crate::InitDeviceReq) -> ReturnType<()> {
+        DeviceService::new(self.repo_factory.resource_repo()).init_device(req).await?;
+        self.init_data().await.into()
+    }
+
+    pub async fn process_jpush_message(&self, message: &str) -> ReturnType<()> {
+        crate::service::jpush::JPushService::jpush(message).await.into()
+    }
+
+    pub async fn get_task_queue_status(
+        &self,
+    ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
+        TaskQueueService::new(self.repo_factory.resource_repo())
+            .get_task_queue_status()
+            .await?
+            .into()
+    }
+
+    async fn init_data(&self) -> Result<(), crate::ServiceError> {
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 
@@ -88,13 +108,17 @@ impl WalletManager {
         &self,
         sender: UnboundedSender<FrontendNotifyEvent>,
     ) -> Result<(), crate::ServiceError> {
-        Context::set_frontend_notify_sender(Some(sender)).await
+        CONTEXT.get().unwrap().set_frontend_notify_sender(Some(sender)).await
     }
 
-    pub async fn close(&self) -> Result<(), crate::ServiceError> {
-        let withdraw_handle = Context::get_global_processed_withdraw_tx_handle()?;
+    pub async fn close(&self) -> ReturnType<()> {
+        self.close_handles().await.into()
+    }
+
+    async fn close_handles(&self) -> Result<(), crate::ServiceError> {
+        let withdraw_handle = CONTEXT.get().unwrap().get_global_processed_withdraw_tx_handle()?;
         withdraw_handle.close().await?;
-        let fee_handle = Context::get_global_processed_fee_tx_handle()?;
+        let fee_handle = CONTEXT.get().unwrap().get_global_processed_fee_tx_handle()?;
         fee_handle.close().await?;
         Ok(())
     }
@@ -108,7 +132,7 @@ mod tests {
     };
     use tempfile::tempdir;
 
-    use crate::Dirs;
+    use crate::{context::CONTEXT, Dirs};
 
     #[tokio::test]
     async fn test_traverse_directory_structure() -> Result<(), anyhow::Error> {
@@ -159,7 +183,7 @@ mod tests {
 
         let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
         let _manager = crate::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = CONTEXT.get().unwrap().get_global_dirs()?;
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(
             &dirs.wallet_dir,

@@ -7,6 +7,7 @@ use rotator::SizeRotatingWriter;
 use std::{
     io::SeekFrom,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 use tokio::{
@@ -45,7 +46,7 @@ pub fn init_logger(
 pub async fn start_upload_scheduler(
     base_path: LogBasePath,
     interval_sec: u64,
-    oss_client: oss_client::OssClient,
+    oss_client: Arc<oss_client::OssClient>,
 ) -> Result<(), crate::ServiceError> {
     let mut interval = interval(Duration::from_secs(interval_sec));
 

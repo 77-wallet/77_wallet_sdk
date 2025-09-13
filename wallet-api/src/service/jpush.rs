@@ -13,7 +13,8 @@ impl JPushService {
         // Self::jpush_multi(vec![message.to_string()], "JG").await?;
         match serde_func::serde_from_str::<Message>(message) {
             Ok(data) => {
-                let backend_api = crate::context::Context::get_global_backend_api()?;
+                let backend_api =
+                    crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
                 // 重新查询一次,前端给到的数据不全面
                 let data = backend_api
@@ -45,9 +46,9 @@ impl JPushService {
         messages: Vec<String>,
         // source: MsgConfirmSource,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let unconfirmed_msg_collector =
-            crate::context::Context::get_global_unconfirmed_msg_collector()?;
+            crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector()?;
         for message in messages {
             let payload = match serde_func::serde_from_str::<Message>(message.as_str()) {
                 Ok(data) => data,

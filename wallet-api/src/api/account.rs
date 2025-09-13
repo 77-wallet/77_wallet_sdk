@@ -34,14 +34,14 @@ impl crate::WalletManager {
         wallet_address: &str,
         name: &str,
     ) -> ReturnType<()> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AccountService::new(repo).edit_account_name(account_id, wallet_address, name).await?.into()
     }
 
     #[allow(dead_code)]
     pub(crate) async fn account_detail(&self, address: &str) -> ReturnType<Option<AccountEntity>> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AccountService::new(repo).account_details(address).await?.into()
     }
@@ -51,7 +51,7 @@ impl crate::WalletManager {
         wallet_address: Option<&str>,
         account_id: Option<u32>,
     ) -> ReturnType<Vec<AccountEntity>> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo).get_account_list(wallet_address, account_id).await?.into()
@@ -62,7 +62,7 @@ impl crate::WalletManager {
         wallet_address: &str,
         index: u32,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo).get_account_derivation_path(wallet_address, index).await?.into()
@@ -75,7 +75,7 @@ impl crate::WalletManager {
         password: &str,
         all: bool,
     ) -> ReturnType<Vec<DerivedAddressesList>> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo)
@@ -98,7 +98,7 @@ impl crate::WalletManager {
         wallet_address: String,
         account_id: i32,
     ) -> ReturnType<Vec<CurrentAccountInfo>> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo).current_accounts(&wallet_address, account_id).await?.into()
@@ -134,7 +134,7 @@ impl crate::WalletManager {
         wallet_address: &str,
         account_id: u32,
     ) -> ReturnType<crate::response_vo::account::GetAccountPrivateKeyRes> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo)
@@ -144,7 +144,7 @@ impl crate::WalletManager {
     }
 
     pub async fn set_all_password(&self, old_password: &str, new_password: &str) -> ReturnType<()> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo).set_all_password(old_password, new_password).await?.into()
@@ -156,7 +156,7 @@ impl crate::WalletManager {
         account_id: u32,
         password: &str,
     ) -> ReturnType<()> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         AccountService::new(repo)

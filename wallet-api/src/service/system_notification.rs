@@ -73,7 +73,7 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         page_size: i64,
     ) -> Result<wallet_database::pagination::Pagination<SystemNotification>, crate::ServiceError>
     {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let list = tx.list(page, page_size).await.map_err(crate::ServiceError::Database)?;
 

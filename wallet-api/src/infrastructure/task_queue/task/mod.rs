@@ -105,8 +105,8 @@ impl Tasks {
     }
 
     async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::ServiceError> {
-        let task_sender = crate::context::Context::get_global_task_manager()?;
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let task_sender = crate::context::CONTEXT.get().unwrap().get_global_task_manager()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
@@ -140,7 +140,7 @@ impl Tasks {
             return Ok(());
         }
         let create_entities = self.create_task_entities().await?;
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let entities = repo.create_multi_task(&create_entities).await?;
         Self::dispatch_tasks(entities).await?;

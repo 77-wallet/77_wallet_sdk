@@ -29,7 +29,7 @@ impl ApiWalletDomain {
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let phrase = wallet_utils::serde_func::serde_to_vec(&phrase)?;
 
         let rng = rand::thread_rng();
@@ -65,13 +65,13 @@ impl ApiWalletDomain {
     pub(crate) async fn check_normal_wallet_exist(
         address: &str,
     ) -> Result<bool, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Ok(WalletRepo::detail(&pool, address).await?.is_some())
     }
 
     pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, Some(ApiWalletType::SubAccount))
             .await?
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
@@ -89,7 +89,7 @@ impl ApiWalletDomain {
         number: u32,
         api_wallet_type: ApiWalletType,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address, api_wallet_type)
             .await?
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;

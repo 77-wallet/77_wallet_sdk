@@ -1,5 +1,4 @@
 use crate::{
-    Context,
     domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -74,8 +73,12 @@ impl ProcessFeeTxHandle {
         Ok(())
     }
 
-    pub(crate) async fn submit_confirm_report_tx(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
-        let _ = self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
+    pub(crate) async fn submit_confirm_report_tx(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let _ =
+            self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 
@@ -128,7 +131,7 @@ impl ProcessFeeTx {
                     if let Some(cmd) = msg {
                         match cmd {
                             ProcessFeeTxCommand::Tx(trade_no) => {
-                                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                                 let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
                                 if res.is_ok() {
                                     match self.process_fee_single_tx(res.unwrap()).await {
@@ -158,15 +161,11 @@ impl ProcessFeeTx {
     }
 
     async fn process_fee_tx(&self) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 获取交易这里有问题
-        let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
-            &pool.clone(),
-            0,
-            1000,
-            &[ApiFeeStatus::Init],
-        )
-        .await?;
+        let (_, transfer_fees) =
+            ApiFeeRepo::page_api_fee_with_status(&pool.clone(), 0, 1000, &[ApiFeeStatus::Init])
+                .await?;
         for req in transfer_fees {
             self.process_fee_single_tx(req).await?;
         }
@@ -217,7 +216,7 @@ impl ProcessFeeTx {
             tx.consumer.unwrap().energy_used.to_string()
         };
         // 更新发送交易状态
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_tx_status(
             &pool,
             trade_no,
@@ -234,7 +233,7 @@ impl ProcessFeeTx {
     }
 
     async fn handle_fee_tx_failed(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
         // 上报交易不影响交易偏移量计算
         let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
@@ -269,7 +268,7 @@ impl ProcessFeeTxReport {
                     if let Some(cmd) = report_msg {
                         match cmd {
                             ProcessFeeTxReportCommand::Tx(trade_no) => {
-                                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                                 let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
                                 if res.is_ok() {
                                     match self.process_fee_single_tx_report(res.unwrap()).await {
@@ -299,7 +298,7 @@ impl ProcessFeeTxReport {
     }
 
     async fn process_fee_tx_report(&mut self) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool,
             0,
@@ -337,7 +336,7 @@ impl ProcessFeeTxReport {
         } else {
             TransStatus::Success
         };
-        let backend_api = Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,
@@ -349,7 +348,7 @@ impl ProcessFeeTxReport {
             .await
         {
             Ok(_) => {
-                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 if req.status == ApiFeeStatus::SendingTxFailed {
                     ApiFeeRepo::update_api_fee_next_status(
                         &pool,
@@ -371,7 +370,7 @@ impl ProcessFeeTxReport {
                 return Ok(1);
             }
             Err(err) => {
-                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 if req.status == ApiFeeStatus::SendingTx {
                     ApiFeeRepo::update_api_fee_post_tx_count(
                         &pool,
@@ -421,7 +420,7 @@ impl ProcessFeeTxConfirmReport {
                         Some(cmd) => {
                             match cmd {
                                 ProcessFeeTxConfirmReportCommand::Tx(trade_no) => {
-                                    let pool = crate::context::Context::get_global_sqlite_pool()?;
+                                    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                                     let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
                                     if res.is_ok() {
                                         match self.process_fee_single_tx_confirm_report(res.unwrap()).await {
@@ -453,7 +452,7 @@ impl ProcessFeeTxConfirmReport {
     }
 
     async fn process_fee_tx_confirm_report(&mut self) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool,
             0,
@@ -478,7 +477,7 @@ impl ProcessFeeTxConfirmReport {
         &self,
         req: ApiFeeEntity,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Success).await?;
         tracing::info!("confirm fee tx success ---");
         Ok(())

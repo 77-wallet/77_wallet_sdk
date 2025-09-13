@@ -1,5 +1,4 @@
 use crate::{
-    Context,
     domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -13,7 +12,7 @@ use wallet_database::{
     repositories::api_withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
-    TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq
+    TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
 
 #[derive(Clone)]
@@ -75,8 +74,13 @@ impl ProcessWithdrawTxHandle {
         Ok(())
     }
 
-    pub(crate) async fn submit_confirm_report_tx(&self, trade_no: &str) -> Result<(), crate::ServiceError> {
-        let _ = self.confirm_report_tx.send(ProcessWithdrawTxConfirmReportCommand::Tx(trade_no.to_string()));
+    pub(crate) async fn submit_confirm_report_tx(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), crate::ServiceError> {
+        let _ = self
+            .confirm_report_tx
+            .send(ProcessWithdrawTxConfirmReportCommand::Tx(trade_no.to_string()));
         Ok(())
     }
 
@@ -129,7 +133,7 @@ impl ProcessWithdrawTx {
                     if let Some(cmd) = msg {
                         match cmd {
                             ProcessWithdrawTxCommand::Tx(trade_no) => {
-                                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                                 let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, &trade_no).await;
                                 if res.is_ok() {
                                     match self.process_withdraw_single_tx(res.unwrap()).await {
@@ -159,7 +163,7 @@ impl ProcessWithdrawTx {
     }
 
     async fn process_withdraw_tx(&self) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool.clone(),
             0,
@@ -202,9 +206,9 @@ impl ProcessWithdrawTx {
         let tx_resp = ApiTransDomain::transfer(transfer_req).await;
         match tx_resp {
             Ok(tx) => self.handle_withdraw_tx_success(&req.trade_no, tx).await,
-            Err(err) => { 
+            Err(err) => {
                 tracing::warn!("failed to process withdraw tx: {}", err);
-                self.handle_withdraw_tx_failed(&req.trade_no).await 
+                self.handle_withdraw_tx_failed(&req.trade_no).await
             }
         }
     }
@@ -220,7 +224,7 @@ impl ProcessWithdrawTx {
             tx.consumer.unwrap().energy_used.to_string()
         };
         // 更新交易状态
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_tx_status(
             &pool,
             trade_no,
@@ -238,7 +242,7 @@ impl ProcessWithdrawTx {
 
     async fn handle_withdraw_tx_failed(&self, trade_no: &str) -> Result<i32, crate::ServiceError> {
         // 更新交易状态,发送失败
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(
             &pool,
             trade_no,
@@ -304,7 +308,7 @@ impl ProcessWithdrawTxReport {
     }
 
     async fn process_withdraw_tx_report(&mut self) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool,
             0,
@@ -340,7 +344,7 @@ impl ProcessWithdrawTxReport {
         } else {
             TransStatus::Success
         };
-        let backend_api = Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,
@@ -352,7 +356,7 @@ impl ProcessWithdrawTxReport {
             .await
         {
             Ok(_) => {
-                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 if req.status == ApiWithdrawStatus::SendingTxFailed {
                     ApiWithdrawRepo::update_api_withdraw_next_status(
                         &pool,
@@ -374,7 +378,7 @@ impl ProcessWithdrawTxReport {
                 return Ok(());
             }
             Err(err) => {
-                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 ApiWithdrawRepo::update_api_fee_post_tx_count(
                     &pool,
                     &req.trade_no,
@@ -437,7 +441,7 @@ impl ProcessWithdrawTxConfirmReport {
     }
 
     async fn process_withdraw_tx_confirm_report(&mut self) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool,
             0,
@@ -473,17 +477,13 @@ impl ProcessWithdrawTxConfirmReport {
         } else {
             TransStatus::Success
         };
-        let backend_api = Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         match backend_api
-            .trans_event_ack(&TransEventAckReq::new(
-                &req.trade_no,
-                TransType::Wd,
-                "Success"
-            ))
+            .trans_event_ack(&TransEventAckReq::new(&req.trade_no, TransType::Wd, "Success"))
             .await
         {
             Ok(_) => {
-                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 ApiWithdrawRepo::update_api_withdraw_next_status(
                     &pool,
                     &req.trade_no,
@@ -495,7 +495,7 @@ impl ProcessWithdrawTxConfirmReport {
                 return Ok(());
             }
             Err(err) => {
-                let pool = crate::context::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 ApiWithdrawRepo::update_api_withdraw_post_confirm_tx_count(
                     &pool,
                     &req.trade_no,

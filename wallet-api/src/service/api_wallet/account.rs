@@ -2,10 +2,10 @@ use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::address::UploadAllocatedAddressesReq;
 
-use crate::domain::{
+use crate::{context::CONTEXT, domain::{
     api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
     wallet::WalletDomain,
-};
+}};
 
 pub struct ApiAccountService {}
 
@@ -19,7 +19,7 @@ impl ApiAccountService {
         wallet_address: &str,
         addresses: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         let req = UploadAllocatedAddressesReq::new(wallet_address, addresses);
         backend_api.upload_allocated_addresses(&req).await?;

@@ -46,7 +46,7 @@ impl TaskManager {
     pub async fn start_task_check(&self) -> Result<(), crate::ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
 
-        let pool = crate::context::Context::get_global_sqlite_pool().unwrap();
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         repo.delete_tasks_with_request_body_like(SEND_MSG_CONFIRM).await?;
 
@@ -64,7 +64,7 @@ impl TaskManager {
     /// 任务检查函数
     async fn task_check(running_tasks: RunningTasks) {
         // 在 TaskManager 的方法中启动
-        let pool = crate::context::Context::get_global_sqlite_pool().unwrap();
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool().unwrap();
 
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -78,7 +78,7 @@ impl TaskManager {
         mut repo: wallet_database::repositories::ResourcesRepo,
         running_tasks: &RunningTasks,
     ) -> Result<(), crate::ServiceError> {
-        let manager = crate::context::Context::get_global_task_manager()?;
+        let manager = crate::context::CONTEXT.get().unwrap().get_global_task_manager()?;
 
         repo.delete_old(15).await?;
 
@@ -157,7 +157,9 @@ impl TaskManager {
                         }
                     }
 
-                    if let Ok(pool) = crate::context::Context::get_global_sqlite_pool() {
+                    if let Ok(pool) =
+                        crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
+                    {
                         let mut repo =
                             wallet_database::factory::RepositoryFactory::repo(pool.clone());
                         let _ = repo.task_failed(&task_id).await;
@@ -169,7 +171,9 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) = crate::context::Context::get_global_sqlite_pool() {
+                        if let Ok(pool) =
+                            crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
+                        {
                             let mut repo =
                                 wallet_database::factory::RepositoryFactory::repo(pool.clone());
                             let _ = repo.task_hang_up(&task_id).await;
@@ -213,7 +217,7 @@ impl TaskManager {
         task_entity: &TaskQueueEntity,
         error_info: &str,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
@@ -232,13 +236,13 @@ impl TaskManager {
             error_info,
         );
 
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         backend_api.client_task_log_upload(req).await?;
 
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
             let unconfirmed_msg_collector =
-                crate::context::Context::get_global_unconfirmed_msg_collector()?;
+                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector()?;
             tracing::info!("mqtt submit unconfirmed msg collector: {}", task_entity.id);
             unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
         }
@@ -250,7 +254,7 @@ impl TaskManager {
         task_id: &str,
         retry_count: i32,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         if retry_count > 0 {
@@ -261,7 +265,7 @@ impl TaskManager {
     }
 
     async fn handle_task(task_entity: &TaskQueueEntity) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         let id = task_entity.id.clone();
@@ -276,7 +280,7 @@ impl TaskManager {
 
         if task_type == TaskType::Mqtt {
             let unconfirmed_msg_collector =
-                crate::context::Context::get_global_unconfirmed_msg_collector()?;
+                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector()?;
             tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
             unconfirmed_msg_collector.submit(vec![id])?;
         }

@@ -103,7 +103,7 @@ impl PermissionAccept {
     pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account = chain.account_info(&self.grantor_addr).await?;
 
         // 判断当前的事件是否是删除(删除需要同步所有的权限数据)

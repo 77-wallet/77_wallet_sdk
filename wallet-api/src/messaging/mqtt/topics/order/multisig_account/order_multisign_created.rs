@@ -52,7 +52,7 @@ impl OrderMultiSignCreated {
 impl OrderMultiSignCreated {
     pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
         let event_name = self.name();
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(
             event_name = %event_name,
             ?self,
@@ -139,7 +139,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (_, _) = get_manager().await?;
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 准备测试数据
         // let multisig_account_id = uuid::Uuid::new_v4(); // 生成一个新的 UUID 作为测试用的账户 ID
         let multisig_account_id = "216422221999116288";

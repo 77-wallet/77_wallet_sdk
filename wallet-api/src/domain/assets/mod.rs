@@ -166,7 +166,7 @@ impl AssetsDomain {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let list = AccountEntity::lists_by_wallet_address(
             &wallet_address,
@@ -187,7 +187,7 @@ impl AssetsDomain {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, symbol).await
     }
@@ -198,9 +198,9 @@ impl AssetsDomain {
         chain_code: Option<String>,
     ) -> Result<(), crate::ServiceError> {
         // 单个地址处理
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let backhand = crate::Context::get_global_backend_api()?;
+        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         // 获取这个地址对应的链码,如果未传
         let codes = if let Some(chain_code) = chain_code.clone() {
@@ -243,11 +243,11 @@ impl AssetsDomain {
         wallet_address: String,
         account_id: Option<u32>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            let backhand = crate::Context::get_global_backend_api()?;
+            let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
             // 本地的index 进行了 + 1
             let index = account_id.map(|x| x - 1);
@@ -306,7 +306,7 @@ impl AssetsDomain {
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
@@ -333,7 +333,7 @@ impl AssetsDomain {
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
                 let assets_id =
@@ -360,7 +360,7 @@ impl AssetsDomain {
         address: String,
         chain_code: String,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let default_coins =
             CoinEntity::list_v2(&*pool, None, Some(chain_code.clone()), Some(1)).await?;
         let mut symbols = Vec::new();
@@ -392,7 +392,7 @@ impl AssetsDomain {
         chain_code: String,
     ) -> Result<(), crate::ServiceError> {
         // notes 不能更新币价
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // let time = wallet_utils::time::now();
         let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &pool).await?;
         // let coin_data = CoinData::new(

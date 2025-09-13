@@ -39,7 +39,7 @@ macro_rules! dispatch {
 pub struct ChainAdapterFactory;
 impl ChainAdapterFactory {
     async fn get_chain_node(chain_code: &str) -> Result<ChainWithNode, crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or(
             crate::BusinessError::Chain(crate::ChainError::NotFound(chain_code.to_string())),
@@ -55,7 +55,7 @@ impl ChainAdapterFactory {
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };
@@ -70,7 +70,7 @@ impl ChainAdapterFactory {
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };
@@ -82,7 +82,7 @@ impl ChainAdapterFactory {
         let node = ChainAdapterFactory::get_chain_node(chain_code::TRON).await?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };
@@ -101,7 +101,7 @@ impl ChainAdapterFactory {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
 
         let header_opt = if rpc_need_header(rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };

@@ -15,7 +15,7 @@ use crate::{
         AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
     },
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use wallet_database::{
     dao::multisig_account::MultisigAccountDaoV1,
     entities::{
@@ -49,14 +49,14 @@ use wallet_utils::serde_func;
 
 pub struct MultisigAccountService {
     repo: wallet_database::repositories::multisig_account::MultisigAccountRepo,
-    backend: BackendApi,
+    backend: Arc<BackendApi>,
 }
 
 impl MultisigAccountService {
     pub fn new(
         repo: wallet_database::repositories::multisig_account::MultisigAccountRepo,
     ) -> Result<Self, crate::ServiceError> {
-        let backend = crate::context::Context::get_global_backend_api()?.clone();
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?.clone();
         Ok(Self { repo, backend })
     }
 
@@ -69,7 +69,7 @@ impl MultisigAccountService {
         mut member_list: Vec<MemberVo>,
         address_type: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // check address type
         let address_type = match chain_code.as_str() {
             chain_code::BTC => {
@@ -274,7 +274,7 @@ impl MultisigAccountService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<MultisigAccountList>, crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 同步部署中多签账号的状态
         let _r = domain::multisig::MultisigDomain::sync_multisig_status(pool.clone()).await;
@@ -323,7 +323,7 @@ impl MultisigAccountService {
         account_chain: &str,
         pay_address: &str,
     ) -> Result<MultisigFeeVo, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let account_with_wallet =
             AccountRepo::account_with_wallet(pay_address, pay_chain, &pool).await?;
@@ -495,7 +495,7 @@ impl MultisigAccountService {
             ]);
             let multisig_account = self.repo.update_by_id(&multisig_account.id, hash_map).await?;
 
-            let pool = crate::context::Context::get_global_sqlite_pool()?;
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
             // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
             AssetsDomain::init_default_multisig_assets(
@@ -565,7 +565,7 @@ impl MultisigAccountService {
             }
         }
 
-        let backend = crate::context::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         // fetch address
         let req = SignedFindAddressReq::new(&payer.chain_code);
@@ -573,7 +573,7 @@ impl MultisigAccountService {
         let to = &address.address;
 
         // fetch value
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account_with_wallet =
             AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, &pool).await?;
 
@@ -708,7 +708,7 @@ impl MultisigAccountService {
         &mut self,
         account_id: &str,
     ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let account = MultisigDomain::account_by_id(account_id, pool.clone()).await?;
 

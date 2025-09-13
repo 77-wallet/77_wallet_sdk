@@ -1,6 +1,7 @@
-use wallet_transport_backend::{request::api_wallet::strategy::{
-    ChainConfig, SaveCollectStrategyReq, SaveWithdrawStrategyReq,
-}, response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp}};
+use wallet_transport_backend::{
+    request::api_wallet::strategy::{ChainConfig, SaveCollectStrategyReq, SaveWithdrawStrategyReq},
+    response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
+};
 
 pub struct StrategyService {}
 
@@ -13,7 +14,7 @@ impl StrategyService {
         self,
         uid: &str,
     ) -> Result<CollectionStrategyResp, crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         let resp = backend_api.query_collect_strategy(uid).await?;
         Ok(resp)
     }
@@ -24,7 +25,7 @@ impl StrategyService {
         threshold: f64,
         chain_config: Vec<ChainConfig>,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         let req = SaveCollectStrategyReq::new(uid, threshold, chain_config);
         backend_api.save_collect_strategy(&req).await?;
@@ -36,7 +37,7 @@ impl StrategyService {
         self,
         uid: &str,
     ) -> Result<WithdrawStrategyResp, crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         let resp = backend_api.query_withdrawal_strategy(uid).await?;
         Ok(resp)
     }
@@ -47,7 +48,7 @@ impl StrategyService {
         threshold: f64,
         chain_config: Vec<ChainConfig>,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
 
         let req = SaveWithdrawStrategyReq::new(uid, threshold, chain_config);
         backend_api.save_withdrawal_strategy(&req).await?;

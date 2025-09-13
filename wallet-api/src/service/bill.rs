@@ -25,7 +25,7 @@ impl BillService {
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<BillEntity>, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
@@ -89,7 +89,7 @@ impl BillService {
         account_id: u32,
     ) -> Result<(), crate::ServiceError> {
         // get all
-        let executor = crate::Context::get_global_sqlite_pool()?;
+        let executor = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let accounts = AccountEntity::account_list_v2(
             executor.as_ref(),

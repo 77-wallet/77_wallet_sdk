@@ -1,9 +1,9 @@
 use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRepo};
 
 use crate::{
-    domain, infrastructure::task_queue::{
+    context::CONTEXT, domain, infrastructure::task_queue::{
         task::Tasks, BackendApiTask, BackendApiTaskData, InitializationTask
-    }, service::node::NodeService, Context, FrontendNotifyEvent
+    }, service::node::NodeService, Context
 };
 
 /// Marks whether initialization has already been performed to prevent duplication.
@@ -16,10 +16,10 @@ pub async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
     INIT_DATA.get_or_try_init(|| async { init_some_data().await }).await
 }
 
-pub async fn init_some_data() -> Result<(), crate::ServiceError> {
+async fn init_some_data() -> Result<(), crate::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
-    let pool = Context::get_global_sqlite_pool()?;
+    let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut node_service = NodeService::new(repo);
     node_service.init_chain_info().await?;
@@ -48,7 +48,7 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
     // let mqtt_init_req =
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-    let sn = Context::get_context()?.device.sn.clone();
+    let sn = Context::get_context()?.get_global_device()?.sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
     let device = DeviceRepo::get_device_info(&pool).await?;
@@ -75,8 +75,6 @@ pub async fn init_some_data() -> Result<(), crate::ServiceError> {
 
     Ok(())
 }
-
-pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
 #[derive(Debug, Clone)]
 pub struct DeviceInfo {

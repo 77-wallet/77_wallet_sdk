@@ -34,7 +34,7 @@ impl CoinDomain {
         symbol: &str,
         token_address: Option<String>,
     ) -> Result<CoinEntity, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
 
@@ -144,7 +144,7 @@ impl CoinDomain {
 
     pub async fn fetch_all_coin(pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
         let mut coins = Vec::new();
 
         // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。

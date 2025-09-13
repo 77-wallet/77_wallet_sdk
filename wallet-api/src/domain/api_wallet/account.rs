@@ -60,7 +60,7 @@ impl ApiAccountDomain {
         chain_code: &str,
         password: &str,
     ) -> Result<ChainPrivateKey, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
             .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
@@ -145,7 +145,7 @@ impl ApiAccountDomain {
             api_wallet_type,
         );
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(&pool).await? else {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
@@ -200,7 +200,7 @@ impl ApiAccountDomain {
         uid: &str,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid, api_wallet_type)
             .await?
             .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
@@ -224,7 +224,7 @@ impl ApiAccountDomain {
         chain_code: &str,
         address: &str,
     ) -> Result<ApiAccountEntity, crate::ServiceError> {
-        let pool = crate::context::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one_by_address_chain_code(address, chain_code, &pool)
             .await?
             .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
