@@ -19,7 +19,7 @@ impl ApiAccountService {
         wallet_address: &str,
         addresses: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = UploadAllocatedAddressesReq::new(wallet_address, addresses);
         backend_api.upload_allocated_addresses(&req).await?;

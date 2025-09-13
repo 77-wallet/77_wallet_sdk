@@ -372,7 +372,7 @@ impl MultisigTransactionService {
         let instance = ChainAdapterFactory::get_multisig_adapter(&queue.chain_code).await?;
         let main_coin = ChainTransDomain::main_coin(&queue.chain_code).await?;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let fee = instance
             .estimate_fee(&queue, &coin, backend.as_ref(), sign_list, main_coin.symbol.as_str())
             .await?;
@@ -799,7 +799,7 @@ impl MultisigTransactionService {
 
         // 回收资源
         if let Some(request_id) = request_resource_id {
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let _rs = backend.delegate_complete(&request_id).await;
         }
 
@@ -843,7 +843,7 @@ impl MultisigTransactionService {
         // report to backend ,if error rollback status
         let raw_data =
             MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone()).await?.to_string()?;
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         if let Err(e) = backend.signed_trans_cancel(&queue_id, raw_data).await {
             tracing::error!("cancel queue[{}] upload fail roolback err:{}", queue_id, e);

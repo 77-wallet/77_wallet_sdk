@@ -205,7 +205,7 @@ impl AcctChange {
             return Ok(());
         }
 
-        let inner_event_handle = crate::context::CONTEXT.get().unwrap().get_global_inner_event_handle()?;
+        let inner_event_handle = crate::context::CONTEXT.get().unwrap().get_global_inner_event_handle();
         inner_event_handle.send(InnerEvent::SyncAssets {
             addr_list: vec![acct_change.from_addr.to_string(), acct_change.to_addr.to_string()],
             chain_code: acct_change.chain_code.to_string(),

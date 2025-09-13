@@ -53,7 +53,7 @@ pub struct SwapServer {
 
 impl SwapServer {
     pub fn new() -> Result<Self, crate::ServiceError> {
-        let url = crate::context::CONTEXT.get().unwrap().get_aggregate_api()?;
+        let url = crate::context::CONTEXT.get().unwrap().get_aggregate_api();
         let swap_client = SwapClient::new(&url);
 
         Ok(Self { client: swap_client? })
@@ -521,7 +521,7 @@ impl SwapServer {
             resp.data.push(token_info);
         }
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let tokens = backend_api.token_query_price(&req).await?.list;
         for token in tokens {
             CoinRepo::update_price_unit1(
@@ -537,7 +537,7 @@ impl SwapServer {
     }
 
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let result = backend_api.support_chain_list().await?;
 
         Ok(result.support_chain)
@@ -670,7 +670,7 @@ impl SwapServer {
     ) -> Result<Vec<ApproveList>, crate::ServiceError> {
         let index_map = AccountIndexMap::from_account_id(account_id)?;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let resp = backend.approve_list(uid, index_map.input_index).await?;
 
         let mut res = vec![];

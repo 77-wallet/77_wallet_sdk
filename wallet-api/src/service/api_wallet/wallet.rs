@@ -221,7 +221,7 @@ impl ApiWalletService {
             return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
         };
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =

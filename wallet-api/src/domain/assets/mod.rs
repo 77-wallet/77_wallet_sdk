@@ -200,7 +200,7 @@ impl AssetsDomain {
         // 单个地址处理
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // 获取这个地址对应的链码,如果未传
         let codes = if let Some(chain_code) = chain_code.clone() {
@@ -247,7 +247,7 @@ impl AssetsDomain {
         let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+            let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
             // 本地的index 进行了 + 1
             let index = account_id.map(|x| x - 1);

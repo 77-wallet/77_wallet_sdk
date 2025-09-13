@@ -21,7 +21,7 @@ impl ConfigDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let cx = crate::context::CONTEXT.get().unwrap();
-        let sn = cx.get_global_device()?.sn.clone();
+        let sn = cx.get_global_device().sn.clone();
         let key = MinValueSwitchConfig::get_key(symbol, &sn);
 
         if let Some(config) = ConfigDao::find_by_key(&key, pool.as_ref()).await? {
@@ -40,7 +40,7 @@ impl ConfigDomain {
     pub async fn fetch_min_config(sn: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let res = backend.fetch_min_config(sn.to_string()).await?;
 
         for item in res.list {
@@ -379,7 +379,7 @@ impl ConfigDomain {
     // Attempt to get the MQTT URI from the backend.
     // If an error occurs or the URI is not found, use the URI from the database instead.
     pub async fn get_mqtt_uri() -> Result<Option<String>, crate::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 

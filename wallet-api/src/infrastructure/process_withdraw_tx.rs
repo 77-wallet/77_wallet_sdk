@@ -344,7 +344,7 @@ impl ProcessWithdrawTxReport {
         } else {
             TransStatus::Success
         };
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,
@@ -477,7 +477,7 @@ impl ProcessWithdrawTxConfirmReport {
         } else {
             TransStatus::Success
         };
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(&req.trade_no, TransType::Wd, "Success"))
             .await

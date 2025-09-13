@@ -30,11 +30,11 @@ impl WalletManager {
         // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
 
         // 现在的上报日志
-        infrastructure::log::start_upload_scheduler(base_path, 5 * 60, ctx.get_global_oss_client()?)
+        infrastructure::log::start_upload_scheduler(base_path, 5 * 60, ctx.get_global_oss_client())
             .await?;
 
-        ctx.get_global_unconfirmed_msg_processor()?.start().await;
-        ctx.get_global_task_manager()?.start_task_check().await?;
+        ctx.get_global_unconfirmed_msg_processor().start().await;
+        ctx.get_global_task_manager().start_task_check().await?;
         let pool = ctx.get_global_sqlite_pool()?;
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
@@ -116,9 +116,9 @@ impl WalletManager {
     }
 
     async fn close_handles(&self) -> Result<(), crate::ServiceError> {
-        let withdraw_handle = CONTEXT.get().unwrap().get_global_processed_withdraw_tx_handle()?;
+        let withdraw_handle = CONTEXT.get().unwrap().get_global_processed_withdraw_tx_handle();
         withdraw_handle.close().await?;
-        let fee_handle = CONTEXT.get().unwrap().get_global_processed_fee_tx_handle()?;
+        let fee_handle = CONTEXT.get().unwrap().get_global_processed_fee_tx_handle();
         fee_handle.close().await?;
         Ok(())
     }
@@ -183,7 +183,7 @@ mod tests {
 
         let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
         let _manager = crate::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
-        let dirs = CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = CONTEXT.get().unwrap().get_global_dirs();
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(
             &dirs.wallet_dir,

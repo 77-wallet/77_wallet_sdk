@@ -97,7 +97,7 @@ impl ChainTransDomain {
                     .map_err(crate::ServiceError::Database)?;
 
                 // 上报后端修改余额
-                let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+                let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 let rs = backend.wallet_assets_refresh_bal(address, chain_code, symbol).await;
                 if let Err(e) = rs {
                     tracing::warn!("upload balance refresh error = {}", e);
@@ -207,7 +207,7 @@ impl ChainTransDomain {
         BillDomain::create_bill(new_bill).await?;
 
         if let Some(request_id) = params.base.request_resource_id {
-            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let _ = backend.delegate_complete(&request_id).await;
         }
 

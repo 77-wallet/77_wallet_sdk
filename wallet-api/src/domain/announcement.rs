@@ -7,7 +7,7 @@ impl AnnouncementDomain {
     pub async fn pull_announcement(
         repo: &mut wallet_database::repositories::ResourcesRepo,
     ) -> Result<(), crate::error::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let list = AnnouncementRepoTrait::list(repo).await?;
 

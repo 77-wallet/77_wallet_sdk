@@ -74,7 +74,7 @@ impl NodeDomain {
     pub(crate) async fn process_backend_nodes() -> Result<(), crate::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let local_chains = ChainRepoTrait::get_chain_list_all_status(&mut repo)
             .await?

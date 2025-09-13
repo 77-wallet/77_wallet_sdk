@@ -105,7 +105,7 @@ impl Tasks {
     }
 
     async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::ServiceError> {
-        let task_sender = crate::context::CONTEXT.get().unwrap().get_global_task_manager()?;
+        let task_sender = crate::context::CONTEXT.get().unwrap().get_global_task_manager();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 

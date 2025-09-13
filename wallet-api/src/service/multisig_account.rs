@@ -56,7 +56,7 @@ impl MultisigAccountService {
     pub fn new(
         repo: wallet_database::repositories::multisig_account::MultisigAccountRepo,
     ) -> Result<Self, crate::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?.clone();
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api().clone();
         Ok(Self { repo, backend })
     }
 
@@ -565,7 +565,7 @@ impl MultisigAccountService {
             }
         }
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // fetch address
         let req = SignedFindAddressReq::new(&payer.chain_code);

@@ -48,7 +48,7 @@ async fn init_some_data() -> Result<(), crate::ServiceError> {
     // let mqtt_init_req =
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-    let sn = Context::get_context()?.get_global_device()?.sn.clone();
+    let sn = Context::get_context()?.get_global_device().sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
     let device = DeviceRepo::get_device_info(&pool).await?;

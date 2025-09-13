@@ -66,7 +66,7 @@ impl UnconfirmedMsgCollector {
 
                             last_recv_time = None;
 
-                            let notify = crate::context::CONTEXT.get().unwrap().get_global_notify().unwrap();
+                            let notify = crate::context::CONTEXT.get().unwrap().get_global_notify();
                             notify.notify_one();
                             tracing::debug!("notify_one");
                         }else{

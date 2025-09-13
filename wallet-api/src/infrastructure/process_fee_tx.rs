@@ -336,7 +336,7 @@ impl ProcessFeeTxReport {
         } else {
             TransStatus::Success
         };
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,

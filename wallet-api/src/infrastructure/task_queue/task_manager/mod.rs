@@ -78,7 +78,7 @@ impl TaskManager {
         mut repo: wallet_database::repositories::ResourcesRepo,
         running_tasks: &RunningTasks,
     ) -> Result<(), crate::ServiceError> {
-        let manager = crate::context::CONTEXT.get().unwrap().get_global_task_manager()?;
+        let manager = crate::context::CONTEXT.get().unwrap().get_global_task_manager();
 
         repo.delete_old(15).await?;
 
@@ -236,13 +236,13 @@ impl TaskManager {
             error_info,
         );
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend_api.client_task_log_upload(req).await?;
 
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
             let unconfirmed_msg_collector =
-                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector()?;
+                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector();
             tracing::info!("mqtt submit unconfirmed msg collector: {}", task_entity.id);
             unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
         }
@@ -280,7 +280,7 @@ impl TaskManager {
 
         if task_type == TaskType::Mqtt {
             let unconfirmed_msg_collector =
-                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector()?;
+                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector();
             tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
             unconfirmed_msg_collector.submit(vec![id])?;
         }

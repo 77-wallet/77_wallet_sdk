@@ -1287,7 +1287,7 @@ impl StackService {
         &self,
         address: String,
     ) -> Result<SystemEnergyResp, crate::error::ServiceError> {
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let req = serde_json::json!({
             "address": address
         });
@@ -1302,7 +1302,7 @@ impl StackService {
         account: String,
         energy: i64,
     ) -> Result<String, crate::error::ServiceError> {
-        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // 验证后端的配置(是否开启了能量的补偿)
         if !backhand.delegate_is_open().await? {

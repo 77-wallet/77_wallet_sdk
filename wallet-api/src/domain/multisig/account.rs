@@ -140,7 +140,7 @@ impl MultisigDomain {
         business_id: Option<String>,
         filter_multisig_account_address: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let req = FindAddressRawDataReq::new_multisig(uid, business_id);
@@ -508,7 +508,7 @@ impl MultisigDomain {
         let raw_data =
             MultisigAccountRepo::multisig_raw_data(account_id, pool).await?.to_string()?;
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.update_raw_data(account_id, raw_data).await?)
     }
 

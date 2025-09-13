@@ -54,7 +54,7 @@ impl ChainService {
     }
 
     pub async fn sync_chains(self) -> Result<bool, crate::error::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let app_version = ConfigDomain::get_app_version().await?;
 
@@ -70,7 +70,7 @@ impl ChainService {
     ) -> Result<(), crate::error::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         domain::wallet::WalletDomain::validate_password(wallet_password).await?;
         let chain_list: Vec<String> = ChainRepoTrait::get_chain_node_list(&mut tx)

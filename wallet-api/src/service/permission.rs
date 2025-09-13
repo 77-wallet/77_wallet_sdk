@@ -143,7 +143,7 @@ impl PermissionService {
 
     // 上报后端
     async fn upload_backend(&self, params: PermissionAcceptReq) -> Result<(), crate::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.permission_accept(params).await?)
     }
 }

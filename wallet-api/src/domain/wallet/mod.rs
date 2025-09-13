@@ -47,7 +47,7 @@ impl WalletDomain {
 
     pub(crate) async fn validate_password(password: &str) -> Result<(), crate::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         if WalletEntity::wallet_latest(&*pool).await?.is_none() {
             KeystoreApi::remove_verify_file(&dirs.root_dir)?;
@@ -95,7 +95,7 @@ impl WalletDomain {
         // if wallet.is_none() {
         //     return Err(crate::BusinessError::Wallet(crate::WalletError::NotFound).into());
         // }
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         // let wallet_tree =
         // wallet_tree::wallet_tree::WalletTree::traverse_directory_structure(&dirs.wallet_dir)?;

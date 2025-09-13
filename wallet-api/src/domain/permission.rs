@@ -32,7 +32,7 @@ impl PermissionDomain {
 
     // 恢复权限数据
     pub async fn recover_permission(addresses: Vec<String>) -> Result<(), crate::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 

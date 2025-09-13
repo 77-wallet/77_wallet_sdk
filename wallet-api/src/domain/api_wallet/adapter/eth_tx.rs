@@ -172,7 +172,7 @@ impl EthTx {
 #[async_trait::async_trait]
 impl Oracle for EthTx {
     async fn gas_oracle(&self) -> Result<GasOracle, ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let gas_oracle = backend.gas_oracle(&self.chain_code.to_string()).await;
 
         match gas_oracle {

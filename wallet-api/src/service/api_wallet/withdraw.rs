@@ -59,7 +59,7 @@ impl WithdrawService {
         order_id: &str,
         status: i8,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = AuditResultReportReq::new();
         backend_api.report_audit_result(&req).await?;
@@ -72,7 +72,7 @@ impl WithdrawService {
         order_id: &str,
         status: i8,
     ) -> Result<(), crate::ServiceError> {
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = AuditResultReportReq::new();
         backend_api.report_audit_result(&req).await?;

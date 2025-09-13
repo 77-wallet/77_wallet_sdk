@@ -123,7 +123,7 @@ impl BillDomain {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
         // let start_time = None;
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let resp = backend.record_lists(chain_code, address, start_time).await?;
 
         for item in resp.list {

@@ -123,7 +123,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn check_version(self, r#type: &str) -> Result<AppVersionRes, crate::ServiceError> {
         let req = VersionViewReq::new(r#type);
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let res = backend.version_view(req).await?;
         Ok(res)
@@ -164,7 +164,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn set_block_browser_url(&mut self) -> Result<(), crate::ServiceError> {
         // let tx = &mut self.repo;
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let app_version = ConfigDomain::get_app_version().await?;
 
@@ -178,7 +178,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         req: Vec<crate::request::app::UploadLogFileReq>,
     ) -> Result<(), crate::ServiceError> {
-        let oss_client = crate::context::CONTEXT.get().unwrap().get_global_oss_client()?;
+        let oss_client = crate::context::CONTEXT.get().unwrap().get_global_oss_client();
         for req in req.into_iter() {
             oss_client.upload_local_file(&req.src_file_path, &req.dst_file_name).await?;
         }
@@ -192,7 +192,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         qos: Option<u8>,
     ) -> Result<(), crate::ServiceError> {
         // 获取全局 topics
-        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics()?;
+        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
 
         global_topics.subscribe(topics, qos).await?;
@@ -205,7 +205,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         topics: Vec<String>,
     ) -> Result<(), crate::ServiceError> {
         // 获取全局已订阅的主题
-        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics()?;
+        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
 
         global_topics.unsubscribe(topics).await?;
@@ -215,7 +215,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn mqtt_resubscribe(self) -> Result<(), crate::ServiceError> {
         // 获取全局已订阅的主题
-        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics()?;
+        let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
         let global_topics = global_topics.write().await;
 
         global_topics.resubscribe().await?;
@@ -269,7 +269,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let cx = crate::context::CONTEXT.get().unwrap();
-        let sn = cx.get_global_device()?.sn.clone();
+        let sn = cx.get_global_device().sn.clone();
 
         let symbol = symbol.to_ascii_uppercase();
         let key = MinValueSwitchConfig::get_key(&symbol, &sn);
@@ -283,7 +283,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
             symbol,
             is_open: switch,
         };
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         if let Err(e) = backend.save_send_msg_account(vec![req]).await {
             tracing::warn!("filter min value report faild sn = {} error = {}", sn, e);
@@ -300,7 +300,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
         let symbol = symbol.to_uppercase();
         let cx = crate::context::CONTEXT.get().unwrap();
-        let sn = cx.get_global_device()?.sn.clone();
+        let sn = cx.get_global_device().sn.clone();
 
         let key = MinValueSwitchConfig::get_key(&symbol, &sn);
 
@@ -345,7 +345,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         endpoint: &str,
         body: String,
     ) -> Result<serde_json::Value, crate::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let result = backend.post_req_string::<serde_json::Value>(endpoint, body).await?;
         Ok(result)
@@ -425,7 +425,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     pub async fn backend_config(
         self,
     ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.all_config().await?.configs)
     }
 }

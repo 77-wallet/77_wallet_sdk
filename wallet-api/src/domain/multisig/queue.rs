@@ -131,7 +131,7 @@ impl MultisigQueueDomain {
         uid: &str,
         raw_time: Option<String>,
     ) -> Result<(), crate::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let req = wallet_transport_backend::request::FindAddressRawDataReq::new_trans(
@@ -248,7 +248,7 @@ impl MultisigQueueDomain {
     pub async fn update_raw_data(queue_id: &str, pool: DbPool) -> Result<(), crate::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
 
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
     }
 

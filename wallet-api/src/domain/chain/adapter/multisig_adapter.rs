@@ -249,7 +249,7 @@ impl MultisigAdapter {
         let currency_lock = crate::app_state::APP_STATE.read().await;
         let currency = currency_lock.currency();
 
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
             currency,

@@ -101,7 +101,7 @@ impl AccountService {
     ) -> Result<(), crate::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
@@ -260,7 +260,7 @@ impl AccountService {
         WalletDomain::validate_password(password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -410,7 +410,7 @@ impl AccountService {
         }
 
         Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
@@ -458,7 +458,7 @@ impl AccountService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), crate::ServiceError> {
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let req = wallet_database::entities::account::QueryReq {
             wallet_address: None,

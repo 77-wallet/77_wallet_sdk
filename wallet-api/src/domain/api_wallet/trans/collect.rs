@@ -108,7 +108,7 @@ impl ApiCollectDomain {
                 // let coin = CoinDomain::get_coin(&req.chain_code, &main_symbol, None).await?;
                 // let fee = unit::format_to_string(fee, coin.decimals)?;
                 tracing::info!("need transfer withdraw fee");
-                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
                 let req = ServiceFeeUploadReq::new(
                     &req.trade_no,
                     &req.chain_code,
@@ -171,7 +171,7 @@ impl ApiCollectDomain {
         chain_code: &str,
     ) -> Result<ChainConfig, crate::ServiceError> {
         // 查询策略
-        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let strategy = backend_api.query_collect_strategy(uid).await?;
         let Some(chain_config) =
             strategy.chain_configs.into_iter().find(|config| config.chain_code == chain_code)

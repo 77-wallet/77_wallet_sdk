@@ -51,7 +51,7 @@ impl crate::WalletManager {
 
     /// Platform Energy Subsidy Switch Configuration
     pub async fn delegate_witch(&self) -> ReturnType<bool> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let res = backend.delegate_is_open().await;
 
         match res {
