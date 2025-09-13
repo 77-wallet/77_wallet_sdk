@@ -9,9 +9,12 @@ pub mod domain;
 mod error;
 pub(crate) mod infrastructure;
 pub use infrastructure::log::*;
+mod context;
+mod data;
+mod dirs;
 mod manager;
 mod messaging;
-pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+pub use messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
 
 pub use messaging::mqtt::topics::api_wallet::AddressAllockType;
 pub use wallet_database::entities::api_wallet::ApiWalletType;
@@ -23,20 +26,20 @@ pub mod service;
 pub mod test;
 
 pub use error::{
-    Errors, ServiceError,
     business::{
-        BusinessError, account::AccountError, announcement::AnnouncementError,
-        api_wallet::ApiWalletError, assets::AssetsError, bill::BillError, chain::ChainError,
-        chain_node::ChainNodeError, coin::CoinError, config::ConfigError, device::DeviceError,
-        exchange_rate::ExchangeRate, multisig_account::MultisigAccountError,
-        multisig_queue::MultisigQueueError, permission::PermissionError, stake::StakeError,
-        wallet::WalletError,
-    },
-    system::SystemError,
+        account::AccountError, announcement::AnnouncementError, api_wallet::ApiWalletError,
+        assets::AssetsError, bill::BillError, chain::ChainError, chain_node::ChainNodeError,
+        coin::CoinError, config::ConfigError, device::DeviceError, exchange_rate::ExchangeRate,
+        multisig_account::MultisigAccountError, multisig_queue::MultisigQueueError,
+        permission::PermissionError, stake::StakeError, wallet::WalletError,
+        BusinessError,
+    }, system::SystemError,
+    Errors,
+    ServiceError,
 };
 
 pub use config::*;
-pub use manager::{Context, Dirs, WalletManager};
+pub use manager::WalletManager;
 pub use request::{
     account::CreateAccountReq, app::UploadLogFileReq, assets::GetChain, devices::InitDeviceReq,
     wallet::CreateWalletReq,

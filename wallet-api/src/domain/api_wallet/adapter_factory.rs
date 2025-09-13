@@ -1,5 +1,5 @@
 use crate::{
-    BusinessError, Context, ServiceError,
+    BusinessError, ServiceError,
     domain::{
         api_wallet::adapter::{
             btc_tx::BtcTx, doge_tx::DogeTx, eth_tx::EthTx, ltx_tx::LtcTx, sol_tx::SolTx,

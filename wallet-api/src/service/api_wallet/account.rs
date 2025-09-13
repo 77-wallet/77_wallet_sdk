@@ -41,7 +41,7 @@ impl ApiAccountService {
     ) -> Result<(), crate::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();

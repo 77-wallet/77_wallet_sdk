@@ -78,6 +78,8 @@ impl Context {
         let api_url = config.backend_api.prod_url;
 
         // 聚合器api
+        #[cfg(feature = "dev")]
+        let aggregate_api = config.aggregate_api.dev_url;
         #[cfg(feature = "test")]
         let aggregate_api = config.aggregate_api.test_url;
         #[cfg(feature = "prod")]
@@ -117,7 +119,7 @@ impl Context {
         Ok(Context {
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
-            aggregate_api: aggregate_api,
+            aggregate_api,
             sqlite_context: Arc::new(sqlite_context),
             frontend_notify,
             oss_client: Arc::new(oss_client),
@@ -133,11 +135,7 @@ impl Context {
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
         })
     }
-
-    pub(crate) fn get_context() -> Result<&'static Context, crate::SystemError> {
-        CONTEXT.get().ok_or(crate::SystemError::ContextNotInit)
-    }
-
+    
     pub async fn set_frontend_notify_sender(
         &self,
         frontend_notify: FrontendNotifySender,

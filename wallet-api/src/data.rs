@@ -3,7 +3,7 @@ use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRe
 use crate::{
     context::CONTEXT, domain, infrastructure::task_queue::{
         task::Tasks, BackendApiTask, BackendApiTaskData, InitializationTask
-    }, service::node::NodeService, Context
+    }, service::node::NodeService
 };
 
 /// Marks whether initialization has already been performed to prevent duplication.
@@ -48,10 +48,10 @@ async fn init_some_data() -> Result<(), crate::ServiceError> {
     // let mqtt_init_req =
     //     BackendApiTaskData::new(wallet_transport_backend::consts::endpoint::MQTT_INIT, &())?;
 
-    let sn = Context::get_context()?.get_global_device().sn.clone();
+    let sn = CONTEXT.get().unwrap().get_global_device().sn.clone();
     let _ = domain::app::config::ConfigDomain::fetch_min_config(&sn).await;
 
-    let device = DeviceRepo::get_device_info(&pool).await?;
+    let device = DeviceRepo::get_device_info(pool).await?;
 
     let mut tasks = Tasks::new().push(InitializationTask::InitMqtt);
     if let Some(device) = device

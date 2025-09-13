@@ -20,7 +20,7 @@ impl TaskTrait for BackendApiTask {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match self {
             BackendApiTask::BackendApi(data) => {
-                BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api.as_ref())
+                BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
                     .await?;
             }
             BackendApiTask::ApiBackendApi(data) => {
