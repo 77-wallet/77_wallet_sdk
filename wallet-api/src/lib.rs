@@ -8,34 +8,36 @@ pub(crate) mod default_data;
 pub mod domain;
 mod error;
 pub(crate) mod infrastructure;
-pub use infrastructure::log::*;
+
 mod context;
 mod data;
-mod dirs;
+pub mod dirs;
 mod manager;
 mod messaging;
-pub use messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
-
-pub use messaging::mqtt::topics::api_wallet::AddressAllockType;
-pub use wallet_database::entities::api_wallet::ApiWalletType;
 
 pub mod request;
-mod response;
 pub mod response_vo;
 pub mod service;
 pub mod test;
 
+pub use infrastructure::log::*;
+
+pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+
+pub use messaging::mqtt::topics::api_wallet::AddressAllockType;
+pub use wallet_database::entities::api_wallet::ApiWalletType;
+
 pub use error::{
+    Errors, ServiceError,
     business::{
-        account::AccountError, announcement::AnnouncementError, api_wallet::ApiWalletError,
-        assets::AssetsError, bill::BillError, chain::ChainError, chain_node::ChainNodeError,
-        coin::CoinError, config::ConfigError, device::DeviceError, exchange_rate::ExchangeRate,
-        multisig_account::MultisigAccountError, multisig_queue::MultisigQueueError,
-        permission::PermissionError, stake::StakeError, wallet::WalletError,
-        BusinessError,
-    }, system::SystemError,
-    Errors,
-    ServiceError,
+        BusinessError, account::AccountError, announcement::AnnouncementError,
+        api_wallet::ApiWalletError, assets::AssetsError, bill::BillError, chain::ChainError,
+        chain_node::ChainNodeError, coin::CoinError, config::ConfigError, device::DeviceError,
+        exchange_rate::ExchangeRate, multisig_account::MultisigAccountError,
+        multisig_queue::MultisigQueueError, permission::PermissionError, stake::StakeError,
+        wallet::WalletError,
+    },
+    system::SystemError,
 };
 
 pub use config::*;

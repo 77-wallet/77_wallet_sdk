@@ -1,50 +1,56 @@
 use crate::get_manager;
+use anyhow::Result;
+
 #[tokio::test]
-async fn test_add_address_book() {
+async fn test_add_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let name = "2".to_string();
     let address = "TNPTj8Dbba6YxW5Za6tFh6SJMZGbUyucXQ".to_string();
     let chain_code = "tron".to_string();
-    let detail = wallet_manager.create_address_book(name, address, chain_code).await;
+    let detail = wallet_manager.create_address_book(name, address, chain_code).await?;
 
     tracing::info!("{}", serde_json::to_string(&detail).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_update_address_book() {
+async fn test_update_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let id = 1;
     let name = "f".to_string();
     let address = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string();
     let chain_code = "tron".to_string();
-    let detail = wallet_manager.update_address_book(id, name, address, chain_code).await;
+    let detail = wallet_manager.update_address_book(id, name, address, chain_code).await?;
 
     tracing::info!("{}", serde_json::to_string(&detail).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_update_delete_address_book() {
+async fn test_update_delete_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
     let id = 1;
-    let detail = wallet_manager.delete_address_book(id).await;
+    let detail = wallet_manager.delete_address_book(id).await?;
 
-    tracing::info!("{:?}", detail)
+    tracing::info!("{:?}", detail);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_list_address_book() {
+async fn test_list_address_book() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let chain_code: Option<String> = None;
-    let detail = wallet_manager.list_address_book(chain_code, 0, 10).await;
+    let detail = wallet_manager.list_address_book(chain_code, 0, 10).await?;
 
     tracing::info!("{}", serde_json::to_string(&detail).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_valid_address() {
+async fn test_valid_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     // tron test
@@ -59,7 +65,7 @@ async fn test_valid_address() {
     let address = "bc1qplxq3sfd56ruya09tg5znjqcnna30wsz9wtfr7".to_string();
     let chain_code = "btc".to_string();
 
-    let res = wallet_manager.is_valid_address(address, chain_code).await;
+    let res = wallet_manager.is_valid_address(address, chain_code).await?;
     tracing::info!("res {:?}", res);
 
     // bnb test
@@ -82,10 +88,11 @@ async fn test_valid_address() {
 
     // let res = wallet_manager.is_valid_address(address, chain_code).await;
     // tracing::info!("res {:?}", res);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_address_status() {
+async fn test_address_status() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     // tron test
@@ -93,7 +100,7 @@ async fn test_address_status() {
     // let address = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string();
     let chain_code = "tron".to_string();
 
-    let res = wallet_manager.address_status(address, chain_code).await;
+    let res = wallet_manager.address_status(address, chain_code).await?;
     tracing::info!("res {:?}", serde_json::to_string(&res).unwrap());
 
     // btc test
@@ -120,14 +127,16 @@ async fn test_address_status() {
     // let chain_code = "eth".to_string();
     // let res = wallet_manager.address_status(address, chain_code).await;
     // tracing::info!("res {:?}", res);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_find_address() {
+async fn test_find_address() -> Result<()> {
     let wallet_manager = get_manager().await;
     let chain_code = "tron".to_string();
     let address = "TUe3T6ErJvnoHMQwVrqK246MWeuCEBbyuR".to_string();
 
-    let res = wallet_manager.find_by_address(address, chain_code).await;
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    let res = wallet_manager.find_by_address(address, chain_code).await?;
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }

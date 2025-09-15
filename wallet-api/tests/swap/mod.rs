@@ -4,29 +4,32 @@ pub mod eth_swap;
 use wallet_api::request::transaction::{
     ApproveReq, DexRoute, QuoteReq, RouteInDex, SwapReq, SwapTokenInfo, SwapTokenListReq,
 };
+use anyhow::Result;
 
 #[tokio::test]
-async fn test_default_quote() {
+async fn test_default_quote() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
     let token_in = "".to_string();
     // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
 
-    let resp = wallet_manager.default_quote(chain_code, token_in).await;
+    let resp = wallet_manager.default_quote(chain_code, token_in).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_support_chain() {
+async fn test_support_chain() -> Result<()> {
     let wallet_manager = get_manager().await;
 
-    let resp = wallet_manager.chain_list().await;
+    let resp = wallet_manager.chain_list().await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_token_list() {
+async fn test_token_list() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let req = SwapTokenListReq {
@@ -39,12 +42,13 @@ async fn test_token_list() {
         page_size: 3,
     };
 
-    let resp = wallet_manager.token_list(req).await;
+    let resp = wallet_manager.token_list(req).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve() {
+async fn test_approve() -> Result<()> {
     let wallet_manager = get_manager().await;
     // TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc
     let params = ApproveReq {
@@ -57,12 +61,13 @@ async fn test_approve() {
 
     let password = "123456".to_string();
 
-    let resp = wallet_manager.approve(params, password).await;
+    let resp = wallet_manager.approve(params, password).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve_fee() {
+async fn test_approve_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
@@ -73,23 +78,25 @@ async fn test_approve_fee() {
         chain_code: "tron".to_string(),
     };
 
-    let resp = wallet_manager.approve_fee(params, false).await;
+    let resp = wallet_manager.approve_fee(params, false).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve_list() {
+async fn test_approve_list() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let uid = "0b859b5fc29eb644d7ec048f10339cb4b38cc67d9ec327d7e6531bed7984303d".to_string();
     let account_id = 1;
 
-    let resp = wallet_manager.approve_list(uid, account_id).await;
+    let resp = wallet_manager.approve_list(uid, account_id).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve_cancel() {
+async fn test_approve_cancel() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
@@ -102,12 +109,13 @@ async fn test_approve_cancel() {
 
     let password = "123456".to_string();
 
-    let resp = wallet_manager.approve_cancel(params, password).await;
+    let resp = wallet_manager.approve_cancel(params, password).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_quote() {
+async fn test_quote() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     // TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR wtrx
@@ -137,13 +145,14 @@ async fn test_quote() {
         allow_partial_fill: false,
     };
 
-    let result = wallet_manager.quote(req).await;
+    let result = wallet_manager.quote(req).await?;
     tracing::warn!("quote = {}", serde_json::to_string(&result).unwrap());
+    Ok(())
 }
 
 // (选择的流动性)流动性
 #[tokio::test]
-async fn test_swap() {
+async fn test_swap() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let o_value = "2";
@@ -195,8 +204,9 @@ async fn test_swap() {
                     .to_string();
     let password = "123456".to_string();
 
-    let result = wallet_manager.swap(req, fee, password).await;
+    let result = wallet_manager.swap(req, fee, password).await?;
     tracing::warn!("swap hash = {}", serde_json::to_string(&result).unwrap());
+    Ok(())
 }
 
 #[test]

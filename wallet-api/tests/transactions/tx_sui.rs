@@ -1,5 +1,6 @@
 use crate::get_manager;
 use wallet_api::request::transaction;
+use anyhow::Result;
 
 // 余额测试
 #[tokio::test]
@@ -18,7 +19,7 @@ async fn test_balance() {
 
 //交易的手续费
 #[tokio::test]
-async fn test_fee() {
+async fn test_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "0xfba1550112b16f3608669c8ab4268366c7bacb3a2cb844594ad67c21af85a1dd";
@@ -28,14 +29,15 @@ async fn test_fee() {
     let symbol = "USDT";
 
     let params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
-    let res = wallet_manager.transaction_fee(params).await;
+    let res = wallet_manager.transaction_fee(params).await?;
 
     tracing::info!("res: {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 转账
 #[tokio::test]
-async fn test_transfer() {
+async fn test_transfer() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "0xca93df9d481ff298080047e612dac1ff537d3e24a843e2608428848a108083ec";
@@ -53,6 +55,7 @@ async fn test_transfer() {
         signer: None,
     };
 
-    let token_fee = wallet_manager.transfer(params).await;
+    let token_fee = wallet_manager.transfer(params).await?;
     println!("token transaction: {:?}", token_fee);
+    Ok(())
 }

@@ -3,9 +3,10 @@ use wallet_api::{
     MemberVo,
     response_vo::{MultisigQueueFeeParams, transaction::TransferParams},
 };
+use anyhow::Result;
 
 #[tokio::test]
-async fn test_create_multisig_account() {
+async fn test_create_multisig_account() -> Result<()> {
     let wallet_manager = get_manager().await;
     let address = "bc1qgzfqayxf0gw4vnu440uugyawlmvqyzw5c73k79".to_string();
     let chain_code = "btc".to_string();
@@ -39,26 +40,28 @@ async fn test_create_multisig_account() {
             member_list,
             Some(address_type),
         )
-        .await;
+        .await?;
 
     tracing::info!("{:?}", serde_json::to_string(&res));
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_balance() {
+async fn test_balance() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let addr = "bcrt1qrdx3vk9shh7yshszmss0qrdyd8mqxs4muldel0fnrd64wm4zsh8q87d3y5";
     let chain_code = "btc";
     let symbol = "BTC";
     let token_address = None;
-    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await?;
 
     tracing::info!("balance: {:?}", balance);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_create_queue_fee() {
+async fn test_create_queue_fee() -> Result<()> {
     let manager = get_manager().await;
 
     let params = MultisigQueueFeeParams {
@@ -72,13 +75,14 @@ async fn test_create_queue_fee() {
     };
 
     // 创建交易
-    let res = manager.create_queue_fee(params).await;
+    let res = manager.create_queue_fee(params).await?;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("transaction fee = {}", res);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_create_transfer() {
+async fn test_create_transfer() -> Result<()> {
     let manager = get_manager().await;
 
     let password = "123456".to_string();
@@ -96,58 +100,63 @@ async fn test_create_transfer() {
     };
 
     // 创建交易
-    let res = manager.create_multisig_queue(params, password).await;
+    let res = manager.create_multisig_queue(params, password).await?;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("tx info of = {:?}", res);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_queue_list() {
+async fn test_queue_list() -> Result<()> {
     let manager = get_manager().await;
 
     // 创建交易
-    let res = manager.multisig_queue_list(None, None, 1, 0, 10).await;
+    let res = manager.multisig_queue_list(None, None, 1, 0, 10).await?;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("queue list = {:?}", res);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_queue_info() {
+async fn test_queue_info() -> Result<()> {
     let manager = get_manager().await;
 
     // 队列详情
     let id = "159405911742484480".to_string();
-    let res = manager.multisig_queue_info(id).await;
+    let res = manager.multisig_queue_info(id).await?;
     let res = serde_json::to_string(&res).unwrap();
     tracing::info!("queue info = {:?}", res);
+    Ok(())
 }
 
 // 签名交易
 #[tokio::test]
-async fn test_sign_transaction() {
+async fn test_sign_transaction() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let queue_id = "218846320662810624".to_owned();
     let status = 1;
     let password = "123456".to_string();
-    let sign = wallet_manager.sign_transaction(queue_id, status, password, None).await;
+    let sign = wallet_manager.sign_transaction(queue_id, status, password, None).await?;
 
     tracing::info!("sign res  = {:?}", sign);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_multisig_transfer_fee() {
+async fn test_multisig_transfer_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let queue_id = "218846320662810624".to_owned();
-    let fee = wallet_manager.estimate_multisig_transfer_fee(queue_id).await;
+    let fee = wallet_manager.estimate_multisig_transfer_fee(queue_id).await?;
 
     tracing::info!("transfer fee = {}", serde_json::to_string(&fee).unwrap());
+    Ok(())
 }
 
 // 执行交易
 #[tokio::test]
-async fn test_execute() {
+async fn test_execute() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let id = "218846320662810624".to_string();
@@ -155,6 +164,7 @@ async fn test_execute() {
     let fee_setting = None;
     let request_resource_id = None;
 
-    let result = wallet_manager.exec_transaction(id, pass, fee_setting, request_resource_id).await;
+    let result = wallet_manager.exec_transaction(id, pass, fee_setting, request_resource_id).await?;
     tracing::info!("execute res = {:?}", serde_json::to_string(&result));
+    Ok(())
 }

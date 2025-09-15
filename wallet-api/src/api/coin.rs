@@ -22,8 +22,7 @@ impl crate::WalletManager {
                 page,
                 page_size,
             )
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_multisig_hot_coin_list(
@@ -37,19 +36,18 @@ impl crate::WalletManager {
     {
         CoinService::new(self.repo_factory.resource_repo())
             .get_hot_coin_list(address, None, chain_code, keyword, Some(true), page, page_size)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn pull_hot_coins(&self) -> ReturnType<()> {
-        CoinService::new(self.repo_factory.resource_repo()).pull_hot_coins().await?.into()
+        CoinService::new(self.repo_factory.resource_repo()).pull_hot_coins().await
     }
 
     pub async fn get_token_price(
         &self,
         symbols: Vec<String>,
     ) -> ReturnType<Vec<TokenPriceChangeRes>> {
-        CoinService::new(self.repo_factory.resource_repo()).get_token_price(symbols).await?.into()
+        CoinService::new(self.repo_factory.resource_repo()).get_token_price(symbols).await
     }
 
     pub async fn query_token_info(
@@ -59,8 +57,7 @@ impl crate::WalletManager {
     ) -> ReturnType<crate::response_vo::coin::TokenInfo> {
         CoinService::new(self.repo_factory.resource_repo())
             .query_token_info(chain_code, token_address.to_string())
-            .await?
-            .into()
+            .await
     }
     pub async fn customize_coin(
         &self,
@@ -79,8 +76,7 @@ impl crate::WalletManager {
                 protocol,
                 false,
             )
-            .await?
-            .into()
+            .await
     }
 
     pub async fn customize_multisig_coin(
@@ -92,22 +88,21 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         CoinService::new(self.repo_factory.resource_repo())
             .customize_coin(address, None, chain_code, token_address.to_string(), protocol, true)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn query_history_price(
         &self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
     ) -> ReturnType<TokenHistoryPrices> {
-        CoinService::new(self.repo_factory.resource_repo()).query_history_price(req).await?.into()
+        CoinService::new(self.repo_factory.resource_repo()).query_history_price(req).await
     }
 
     pub async fn coin_market_value(
         &self,
         req: std::collections::HashMap<String, String>,
     ) -> ReturnType<CoinMarketValue> {
-        CoinService::new(self.repo_factory.resource_repo()).market_value(req).await?.into()
+        CoinService::new(self.repo_factory.resource_repo()).market_value(req).await
     }
 
     pub async fn query_popular_by_page(
@@ -131,7 +126,7 @@ impl crate::WalletManager {
             page_size,
         };
 
-        CoinService::new(self.repo_factory.resource_repo()).query_popular_by_page(req).await?.into()
+        CoinService::new(self.repo_factory.resource_repo()).query_popular_by_page(req).await
     }
 }
 
@@ -156,7 +151,7 @@ mod test {
         // let chain_code = None;
         let wallet_address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
         let res =
-            wallet_manager.get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000).await;
+            wallet_manager.get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000).await?;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {}", res);
         Ok(())
@@ -179,7 +174,7 @@ mod test {
                 0,
                 1000,
             )
-            .await;
+            .await?;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
@@ -190,7 +185,7 @@ mod test {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let res = wallet_manager.pull_hot_coins().await;
+        let res = wallet_manager.pull_hot_coins().await?;
 
         tracing::info!("res: {res:?}");
         Ok(())
@@ -232,7 +227,7 @@ mod test {
         // let chain_code = "tron";
         // let token_address = "TTFreuJ4pYDaCeEMEtiR1GQDwPPrS4jKFk";
 
-        let res = wallet_manager.query_token_info(chain_code, token_address).await;
+        let res = wallet_manager.query_token_info(chain_code, token_address).await?;
         tracing::info!("res: {res:?}");
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -252,7 +247,7 @@ mod test {
 
         let res = wallet_manager
             .customize_coin(wallet_address, Some(1), chain_code, token_address, protocol)
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -268,7 +263,7 @@ mod test {
 
         let res = wallet_manager
             .customize_multisig_coin(address, chain_code, token_address, protocol)
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -291,7 +286,7 @@ mod test {
         // ];
         let symbols = vec!["TRX".to_string()];
 
-        let res = wallet_manager.get_token_price(symbols).await;
+        let res = wallet_manager.get_token_price(symbols).await?;
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
@@ -316,7 +311,7 @@ mod test {
             contract_address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
         };
 
-        let res = wallet_manager.query_history_price(req).await;
+        let res = wallet_manager.query_history_price(req).await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -346,7 +341,7 @@ mod test {
                 page_num,
                 page_size,
             )
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

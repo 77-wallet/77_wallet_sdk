@@ -11,12 +11,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
 
-    if wallet_manager.init(test_params.device_req).await.code != 200 {
-        tracing::error!("init failed");
-        return Ok(());
-    };
+    wallet_manager.init(test_params.device_req).await?;
 
-    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await;
+    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("set_invite_code ------------------------0: {res:?}");
 
@@ -43,12 +40,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             invite_code,
             api_wallet_type,
         )
-        .await
-        .result;
+        .await?;
     tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
 
     // 获取订单记录
-    let order_list = wallet_manager.get_api_withdraw_order_list("").await.result;
+    let order_list = wallet_manager.get_api_withdraw_order_list("").await?;
     tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
     // 绑定钱包

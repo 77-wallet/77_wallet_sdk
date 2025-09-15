@@ -26,8 +26,7 @@ impl crate::WalletManager {
         // The result is then converted into the response type `GeneratePhraseRes`.
 
         WalletService::new(self.repo_factory.resource_repo())
-            .generate_phrase(language_code, count)?
-            .into()
+            .generate_phrase(language_code, count)
     }
 
     /// Queries mnemonic phrases based on the specified language, keyword, and mode.
@@ -56,8 +55,7 @@ impl crate::WalletManager {
         // The result is then converted into the response type `QueryPhraseRes`.
 
         WalletService::new(self.repo_factory.resource_repo())
-            .query_phrases(language_code, keyword, mode)?
-            .into()
+            .query_phrases(language_code, keyword, mode)
     }
 
     /// Validates an array of mnemonic phrases and returns an array of valid phrases.
@@ -80,8 +78,7 @@ impl crate::WalletManager {
         phrases: Vec<&str>,
     ) -> ReturnType<Vec<String>> {
         WalletService::new(self.repo_factory.resource_repo())
-            .exact_query_phrase(language_code, phrases)?
-            .into()
+            .exact_query_phrase(language_code, phrases)
     }
 }
 

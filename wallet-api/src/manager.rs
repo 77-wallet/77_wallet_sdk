@@ -1,16 +1,15 @@
 use crate::{
+    api::ReturnType,
     context::init_context,
     data::do_some_init,
     dirs::Dirs,
     domain,
     infrastructure::{self},
     messaging::notify::FrontendNotifyEvent,
+    service::{device::DeviceService, task_queue::TaskQueueService},
 };
 use tokio::sync::mpsc::UnboundedSender;
-use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRepo};
-use crate::api::ReturnType;
-use crate::service::device::DeviceService;
-use crate::service::task_queue::TaskQueueService;
+use wallet_database::factory::RepositoryFactory;
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
@@ -62,8 +61,7 @@ impl WalletManager {
     ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
         TaskQueueService::new(self.repo_factory.resource_repo())
             .get_task_queue_status()
-            .await?
-            .into()
+            .await
     }
 
     async fn init_data(&self) -> Result<(), crate::ServiceError> {
@@ -116,7 +114,7 @@ impl WalletManager {
         crate::context::CONTEXT.get().unwrap().set_frontend_notify_sender(Some(sender)).await
     }
 
-    pub async fn close(&self)->ReturnType<()> {
+    pub async fn close(&self) -> ReturnType<()> {
         self.close_handles().await.into()
     }
 

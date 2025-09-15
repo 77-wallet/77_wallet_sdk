@@ -7,7 +7,7 @@ impl crate::WalletManager {
         wallet_address: &str,
         account_id: Option<u32>,
     ) -> ReturnType<Vec<ApiAssetsEntity>> {
-        vec![].into()
+        Ok(vec![])
     }
 
     // 根据钱包去同步资产
@@ -25,7 +25,7 @@ impl crate::WalletManager {
             tracing::error!("sync_assets error: {}", e);
         }
 
-        ().into()
+        Ok(())
     }
 }
 

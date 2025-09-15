@@ -1,18 +1,20 @@
 use crate::get_manager;
+use anyhow::Result;
 
 #[tokio::test]
-async fn bill_detail() {
+async fn bill_detail() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let hash = "22d88a9855cc19d46ff268f5d2906b474ef7eecd2b44728916f2bff66e27c95a";
     let owner = "TYskFdYh9zsx4XcVRtGY6KhdwgwinmEhSZ";
-    let detail = wallet_manager.bill_detail(&hash, &owner).await;
+    let detail = wallet_manager.bill_detail(&hash, &owner).await?;
 
     tracing::info!("result {}", serde_json::to_string(&detail).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn bill_list_by_hashs() {
+async fn bill_list_by_hashs() -> Result<()> {
     let owner = "UQAJr_aCqkWARCMkTHYkpKL9B-kYOFvXxvyDumUXsZ79ZnYY".to_string();
     let hashs = vec![
         "a86da9424486b91a4adb4aa11e4acbc0edf67bf1a716ed00029aeff09bd1d59f".to_string(),
@@ -21,12 +23,13 @@ async fn bill_list_by_hashs() {
 
     let wallet_manager = get_manager().await;
 
-    let res = wallet_manager.list_by_hashs(owner, hashs).await;
+    let res = wallet_manager.list_by_hashs(owner, hashs).await?;
     tracing::info!("result {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn bill_lists() {
+async fn bill_lists() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let root_addr: Option<String> = None;
@@ -60,44 +63,48 @@ async fn bill_lists() {
             page,
             page_size,
         )
-        .await;
+        .await?;
     // tracing::info!("{}", serde_json::to_string(&detail).unwrap());
     tracing::info!("{:#?}", detail);
+    Ok(())
 }
 
 #[tokio::test]
-async fn query_bill_result() {
+async fn query_bill_result() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let req = vec!["3".to_string()];
 
-    let result = wallet_manager.query_tx_result(req).await;
+    let result = wallet_manager.query_tx_result(req).await?;
 
     tracing::info!("查询结果{:?}", result);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_sync_bill() {
+async fn test_sync_bill() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let chain_code = "tron".to_string();
     let address = "TMgiqqdyLCvnZtjzKpesqciGNaB99KwHQx".to_string();
-    let _c = wallet_manager.sync_bill(chain_code, address).await;
+    let _c = wallet_manager.sync_bill(chain_code, address).await?;
     tracing::warn!("同步结果{:?}", _c);
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_sync_bill_by_address() {
+async fn test_sync_bill_by_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let wallet_address = "0x3d669d78532F763118561b55daa431956ede4155".to_string();
     let account_id = 1;
-    let _c = wallet_manager.sync_bill_by_wallet_and_account(wallet_address, account_id).await;
+    let _c = wallet_manager.sync_bill_by_wallet_and_account(wallet_address, account_id).await?;
     tracing::warn!("同步结果{:?}", _c);
+    Ok(())
 }
 
 #[tokio::test]
-async fn recent_bill() {
+async fn recent_bill() ->Result<()> {
     let wallet_manager = get_manager().await;
 
     let symbol = "TON".to_string();
@@ -106,24 +113,27 @@ async fn recent_bill() {
     let page = 0;
     let page_size = 10;
 
-    let detail = wallet_manager.recent_bill(symbol, addr, chain_code, page, page_size).await;
+    let detail = wallet_manager.recent_bill(symbol, addr, chain_code, page, page_size).await?;
 
     tracing::warn!("{:#?}", detail);
+    Ok(())
 }
+
 #[tokio::test]
-async fn coin_currency_price() {
+async fn coin_currency_price() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let symbol = "TRX".to_string();
     let chain_code = "tron".to_string();
 
-    let res = wallet_manager.coin_currency_price(chain_code, symbol, None).await;
+    let res = wallet_manager.coin_currency_price(chain_code, symbol, None).await?;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_create_bill() {
+async fn test_create_bill() -> Result<()> {
     let _wallet_manager = get_manager().await;
 
     let kind = wallet_database::entities::bill::BillKind::Transfer;
@@ -142,10 +152,11 @@ async fn test_create_bill() {
     .with_transaction_fee("0.003");
 
     wallet_api::domain::bill::BillDomain::create_bill(params).await.unwrap();
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_create() {
+async fn test_create() -> Result<()> {
     let value = wallet_utils::unit::convert_to_u256("0.00330888", 18).unwrap();
 
     // let b_fee = wallet_utils::unit::u256_from_str("35054491035").unwrap();
@@ -157,5 +168,6 @@ async fn test_create() {
     let cost = gas_limit * m_fee;
 
     let aa = value + cost;
-    println!("cost {},aa = {}", cost, aa)
+    println!("cost {},aa = {}", cost, aa);
+    Ok(())
 }

@@ -1,11 +1,12 @@
 use std::{env, path::PathBuf};
-use wallet_api::{Dirs, InitDeviceReq, WalletManager};
+use wallet_api::{dirs::Dirs, InitDeviceReq, WalletManager};
 use wallet_chain_instance::instance::ChainObject;
 use wallet_types::chain::{
     address::r#type::{AddressType, TonAddressType},
     chain::ChainCode,
 };
 use wallet_utils::init_test_log;
+use anyhow::Result;
 
 async fn get_manager() -> WalletManager {
     init_test_log();
@@ -115,13 +116,14 @@ async fn physical_delete() {
 }
 
 #[tokio::test]
-async fn test_generate_phrase() {
+async fn test_generate_phrase()-> Result<()> {
     let wallet_manager = get_manager().await;
-    let c = wallet_manager.generate_phrase(1, 12);
+    let c = wallet_manager.generate_phrase(1, 12)?;
 
-    let phrase = c.result.unwrap().phrases.join(" ");
+    let phrase = c.phrases.join(" ");
 
-    tracing::info!("{}", phrase)
+    tracing::info!("{}", phrase);
+    Ok(())
 }
 
 #[tokio::test]
@@ -157,26 +159,28 @@ async fn test_delete_account() {
 }
 
 #[tokio::test]
-async fn test_current_chain_address() {
+async fn test_current_chain_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let uid = "f091ca89e48bc1cd3e4cb84e8d3e3d9e2564e3616efd1feb468793687037d66f".to_string();
     let account_id = 1;
     let chain_code = "tron".to_string();
 
-    let c = wallet_manager.current_chain_address(uid, account_id, chain_code).await;
+    let c = wallet_manager.current_chain_address(uid, account_id, chain_code).await?;
 
     tracing::info!("response {}", serde_json::to_string(&c).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_current_address() {
+async fn test_current_address() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let wallet_address = "0x32296819E5A42B04cb21f6bA16De3f3C4B024DDc".to_string();
     let account_id = 1;
 
-    let c = wallet_manager.current_account(wallet_address, account_id).await;
+    let c = wallet_manager.current_account(wallet_address, account_id).await?;
 
     tracing::info!("response {}", serde_json::to_string(&c).unwrap());
+    Ok(())
 }

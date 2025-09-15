@@ -4,9 +4,10 @@ use wallet_api::request::{
     transaction::Signer,
 };
 use wallet_database::entities::bill::BillKind;
+use anyhow::Result;
 
 #[tokio::test]
-async fn test_build_freeze() {
+async fn test_build_freeze() -> Result<()> {
     let manager = get_manager().await;
 
     let _singer =
@@ -24,13 +25,14 @@ async fn test_build_freeze() {
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await?;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_build_delegate() {
+async fn test_build_delegate() -> Result<()> {
     let manager = get_manager().await;
 
     let req = DelegateReq {
@@ -47,13 +49,14 @@ async fn test_build_delegate() {
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await?;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_build_un_delegate() {
+async fn test_build_un_delegate() -> Result<()> {
     let manager = get_manager().await;
 
     let req = UnDelegateReq {
@@ -68,13 +71,14 @@ async fn test_build_un_delegate() {
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await?;
 
     tracing::info!("delegate {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_build_vote() {
+async fn test_build_vote() -> Result<()> {
     let manager = get_manager().await;
 
     let owner_address = "TFdDqaoMkPbWWv9EUTbmfGP142f9ysiJq2";
@@ -87,7 +91,8 @@ async fn test_build_vote() {
     let content = serde_json::to_string(&req).unwrap();
 
     let password = "123456".to_string();
-    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await;
+    let res = manager.build_multisig_stake(bill_kind, content, 1, password).await?;
 
     tracing::info!("vote {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }

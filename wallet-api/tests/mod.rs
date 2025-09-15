@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use tokio_stream::StreamExt;
-use wallet_api::{Dirs, FrontendNotifyEvent, WalletManager};
+use wallet_api::{dirs::Dirs, FrontendNotifyEvent, WalletManager};
 use wallet_utils::init_test_log;
 
 mod account;

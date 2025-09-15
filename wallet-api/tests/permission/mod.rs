@@ -3,40 +3,44 @@ use wallet_api::{
     domain,
     request::permission::{KeysReq, PermissionReq},
 };
+use anyhow::Result;
 
 // 权限列表
 #[tokio::test]
-async fn test_permission_list() {
+async fn test_permission_list() -> Result<()> {
     let wallet_manager = get_manager().await;
 
-    let res = wallet_manager.permission_list();
+    let res = wallet_manager.permission_list()?;
 
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 账户权限
 #[tokio::test]
-async fn test_permission_accounts() {
+async fn test_permission_accounts() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let address = "TFtvHtfuLo5xJJe9HpSAEaEi4bzT8Eeyu2".to_string();
-    let res = wallet_manager.account_permission(address).await;
+    let res = wallet_manager.account_permission(address).await?;
 
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // manager permission
 #[tokio::test]
-async fn test_manager_permission() {
+async fn test_manager_permission() -> Result<()> {
     let wallet_manager = get_manager().await;
     let address = "TKDDywzwyYJD8n1BMy5cqr7cxjEFaKJ8h3".to_string();
-    let res = wallet_manager.manager_permission(address).await;
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    let res = wallet_manager.manager_permission(address).await?;
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 新增权限手续费
 #[tokio::test]
-async fn test_add_permission_fee() {
+async fn test_add_permission_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let keys = vec![
@@ -54,14 +58,15 @@ async fn test_add_permission_fee() {
         keys,
     };
 
-    let res = wallet_manager.modify_permission_fee(req, "update".to_string()).await;
+    let res = wallet_manager.modify_permission_fee(req, "update".to_string()).await?;
 
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 新增权限
 #[tokio::test]
-async fn test_add_permission() {
+async fn test_add_permission() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let keys =
@@ -77,14 +82,15 @@ async fn test_add_permission() {
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager.modify_permission(req, "new".to_string(), password).await;
+    let res = wallet_manager.modify_permission(req, "new".to_string(), password).await?;
 
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 修改权限
 #[tokio::test]
-async fn test_up_permission() {
+async fn test_up_permission() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let keys = vec![
@@ -103,14 +109,15 @@ async fn test_up_permission() {
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager.modify_permission(req, "update".to_string(), password).await;
+    let res = wallet_manager.modify_permission(req, "update".to_string(), password).await?;
 
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 删除权限
 #[tokio::test]
-async fn test_del_permission() {
+async fn test_del_permission() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let keys =
@@ -126,13 +133,14 @@ async fn test_del_permission() {
     };
     let password = "123456".to_string();
 
-    let res = wallet_manager.modify_permission(req, "delete".to_string(), password).await;
+    let res = wallet_manager.modify_permission(req, "delete".to_string(), password).await?;
 
-    tracing::info!("{}", serde_json::to_string(&res).unwrap())
+    tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_build_multisig_queue() {
+async fn test_build_multisig_queue() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let keys = vec![
@@ -152,9 +160,10 @@ async fn test_build_multisig_queue() {
     let expiration = 5;
 
     let res =
-        wallet_manager.build_multisig_queue(req, "new".to_string(), password, expiration).await;
+        wallet_manager.build_multisig_queue(req, "new".to_string(), password, expiration).await?;
 
     tracing::info!("{}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 #[tokio::test]

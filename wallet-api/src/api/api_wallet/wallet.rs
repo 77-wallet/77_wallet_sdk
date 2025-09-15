@@ -27,8 +27,7 @@ impl crate::WalletManager {
                 invite_code,
                 api_wallet_type,
             )
-            .await?
-            .into()
+            .await
     }
 
     // pub async fn get_wallet_address(&self) -> ReturnType<()> {
@@ -47,8 +46,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         ApiWalletService::new()
             .bind_merchant(org_app_id, merchain_id, recharge_uid, withdrawal_uid)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn unbind_merchant(
@@ -56,7 +54,7 @@ impl crate::WalletManager {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> ReturnType<()> {
-        ApiWalletService::new().unbind_merchant(recharge_uid, withdrawal_uid).await?.into()
+        ApiWalletService::new().unbind_merchant(recharge_uid, withdrawal_uid).await
     }
 
     pub async fn edit_api_wallet_name(
@@ -64,11 +62,11 @@ impl crate::WalletManager {
         wallet_name: &str,
         wallet_address: &str,
     ) -> ReturnType<()> {
-        ApiWalletService::new().edit_wallet_name(wallet_address, wallet_name).await?.into()
+        ApiWalletService::new().edit_wallet_name(wallet_address, wallet_name).await
     }
 
     pub async fn set_passwd_cache(&self, wallet_password: &str) -> ReturnType<()> {
-        ApiWalletService::new().set_passwd_cache(wallet_password).await?.into()
+        ApiWalletService::new().set_passwd_cache(wallet_password).await
     }
 
     // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
