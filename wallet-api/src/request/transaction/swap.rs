@@ -1,5 +1,5 @@
 use crate::{
-    domain::chain::swap::{evm_swap::SwapParams, get_warp_address, SLIPPAGE},
+    domain::chain::swap::{SLIPPAGE, evm_swap::SwapParams, get_warp_address},
     infrastructure::swap_client::{AggQuoteRequest, DexId},
 };
 use alloy::primitives::U256;
@@ -143,6 +143,16 @@ pub struct SwapReq {
     pub dex_router: Vec<DexRoute>,
     // 允许部分兑换
     pub allow_partial_fill: bool,
+}
+
+impl SwapReq {
+    pub fn is_native_token(&self) -> bool {
+        if self.token_in.token_addr.is_empty() || self.token_out.token_addr.is_empty() {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl TryFrom<&SwapReq> for SwapParams {
@@ -300,6 +310,11 @@ impl QuoteReq {
     pub fn get_slippage(&self, default_slippage: u64) -> f64 {
         self.slippage.unwrap_or(default_slippage as f64 / SLIPPAGE)
     }
+
+    // 是否是进行主币之间的兑换
+    pub fn is_native(&self) -> bool {
+        self.token_in.token_addr.is_empty() || self.token_out.token_addr.is_empty()
+    }
 }
 
 #[derive(Clone)]
@@ -338,14 +353,11 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
 
 // 路由
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-// #[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct DexRoute {
-    #[serde(rename = "amountIn", alias = "amount_in")]
     pub amount_in: String,
-    #[serde(rename = "amountOut", alias = "amount_out")]
     pub amount_out: String,
     pub percentage: String,
-    #[serde(rename = "routeInDex", alias = "route_in_dex")]
     pub route_in_dex: Vec<RouteInDex>,
 }
 
@@ -376,25 +388,25 @@ impl DexRoute {
 
 // 子路由
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-// #[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct RouteInDex {
-    #[serde(rename = "dexId", alias = "dex_id")]
+    // #[serde(rename = "dexId", alias = "dex_id")]
     pub dex_id: u16,
-    #[serde(rename = "poolId", alias = "pool_id")]
+    // #[serde(rename = "poolId", alias = "pool_id")]
     pub pool_id: String,
-    #[serde(rename = "inTokenSymbol", alias = "in_token_symbol")]
+    // #[serde(rename = "inTokenSymbol", alias = "in_token_symbol")]
     pub in_token_symbol: String,
-    #[serde(rename = "inTokenAddr", alias = "in_token_addr")]
+    // #[serde(rename = "inTokenAddr", alias = "in_token_addr")]
     pub in_token_addr: String,
-    #[serde(rename = "outTokenSymbol", alias = "out_token_symbol")]
+    // #[serde(rename = "outTokenSymbol", alias = "out_token_symbol")]
     pub out_token_symbol: String,
-    #[serde(rename = "outTokenAddr", alias = "out_token_addr")]
+    // #[serde(rename = "outTokenAddr", alias = "out_token_addr")]
     pub out_token_addr: String,
-    #[serde(rename = "zeroForOne", alias = "zero_for_one")]
+    // #[serde(rename = "zeroForOne", alias = "zero_for_one")]
     pub zero_for_one: bool,
     pub fee: String,
-    #[serde(rename = "amountIn", alias = "amount_in")]
+    // #[serde(rename = "amountIn", alias = "amount_in")]
     pub amount_in: String,
-    #[serde(rename = "minAmountOut", alias = "min_amount_out")]
+    // #[serde(rename = "minAmountOut", alias = "min_amount_out")]
     pub min_amount_out: String,
 }

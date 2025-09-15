@@ -2,12 +2,12 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        chain::{adapter::ChainAdapterFactory, ChainDomain},
-        coin::{coin_info_to_coin_data, CoinDomain},
+        chain::{ChainDomain, adapter::ChainAdapterFactory},
+        coin::CoinDomain,
     },
     infrastructure::{
         parse_utc_with_error,
-        task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask},
+        task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
     },
     response_vo::{
         chain::ChainList,
@@ -17,15 +17,12 @@ use crate::{
 use std::collections::HashMap;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{
-        assets::AssetsId,
-        coin::{BatchCoinSwappable, CoinData, CoinId},
-    },
+    entities::{assets::AssetsId, coin::CoinId},
     repositories::{
+        ResourcesRepo,
         assets::AssetsRepoTrait,
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
-        ResourcesRepo,
     },
 };
 use wallet_transport_backend::{
@@ -159,25 +156,37 @@ impl CoinService {
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
 
-        let data = coins
-            .into_iter()
-            .map(|d| coin_info_to_coin_data(d))
-            .collect::<Vec<CoinData>>();
-        CoinDomain::upsert_hot_coin_list(tx, data).await?;
+        // let mut count = 0;
+        // let mut result = vec![];
+        // for coin in coins {
+        //     if coin.chain_code.clone().unwrap() == "sol" {
+        //         count += 1;
+        //         result.push(coin.clone());
+        //     }
+        // }
 
-        // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
-        let api = crate::Context::get_global_backend_api()?;
-        let coin = api.swappable_coin().await?;
+        // fs::write("result.json", serde_json::to_string(&result).unwrap()).unwrap();
+        // tracing::warn!("count: {}", count);
 
-        let swap_coins = coin
-            .into_iter()
-            .map(|c| BatchCoinSwappable {
-                symbol: c.symbol,
-                chain_code: c.chain_code,
-                token_address: c.token_address,
-            })
-            .collect::<Vec<_>>();
-        CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
+        // let data = coins
+        //     .into_iter()
+        //     .map(|d| coin_info_to_coin_data(d))
+        //     .collect::<Vec<CoinData>>();
+        // CoinDomain::upsert_hot_coin_list(tx, data).await?;
+
+        // // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
+        // let api = crate::Context::get_global_backend_api()?;
+        // let coin = api.swappable_coin().await?;
+
+        // let swap_coins = coin
+        //     .into_iter()
+        //     .map(|c| BatchCoinSwappable {
+        //         symbol: c.symbol,
+        //         chain_code: c.chain_code,
+        //         token_address: c.token_address,
+        //     })
+        //     .collect::<Vec<_>>();
+        // CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
 
         Ok(())

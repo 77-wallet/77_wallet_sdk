@@ -127,6 +127,7 @@ pub struct DefaultQuoteResp {
 pub struct SolInstructionReq {
     pub unique: String,
     pub payer: String,
+    pub is_native_token: bool,
     pub amount_in: String,
     pub amount_out: String,
     pub dex_route_list: Vec<DexRoute>,

@@ -1,4 +1,5 @@
 use crate::{
+    FrontendNotifyEvent, NotifyEvent,
     domain::{
         assets::AssetsDomain,
         bill::BillDomain,
@@ -7,24 +8,24 @@ use crate::{
         task_queue::TaskQueueDomain,
     },
     infrastructure::swap_client::{
-        AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SolInstructionReq, SwapClient,
+        AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SolInstructResp, SolInstructionReq,
+        SwapClient,
     },
     messaging::notify::other::{Process, TransactionProcessFrontend},
     request::transaction::{
-        request_identity, ApproveReq, DepositReq, DexRoute, QuoteReq, SwapInnerType, SwapReq,
-        SwapTokenListReq, WithdrawReq,
+        ApproveReq, DepositReq, DexRoute, QuoteReq, SwapInnerType, SwapReq, SwapTokenListReq,
+        WithdrawReq, request_identity,
     },
     response_vo::{
+        EstimateFeeResp,
         account::{BalanceInfo, BalanceStr},
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
-        EstimateFeeResp,
     },
-    FrontendNotifyEvent, NotifyEvent,
 };
 use alloy::primitives::U256;
 use std::time::{self};
-use wallet_chain_interact::sol::protocol::Instruction;
 use wallet_database::{
+    DbPool,
     entities::{
         account::AccountEntity,
         assets::AssetsEntity,
@@ -36,7 +37,6 @@ use wallet_database::{
         account::AccountRepo, assets::AssetsRepo, bill::BillRepo, coin::CoinRepo,
         exchange_rate::ExchangeRateRepo,
     },
-    DbPool,
 };
 use wallet_transport_backend::{
     api::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams, ChainDex},
@@ -276,6 +276,7 @@ impl SwapServer {
         use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
+        tracing::warn!("quote params: {:#?}", params);
 
         let instance = time::Instant::now();
         let quote_resp = self.client.get_quote(params).await?;
@@ -310,7 +311,7 @@ impl SwapServer {
                 .check_bal_with_last_swap(&assets.balance, &req, &pool)
                 .await?
             {
-                // self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
             return Ok(res);
@@ -340,7 +341,7 @@ impl SwapServer {
                 .check_bal_with_last_swap(&assets.balance, &req, &pool)
                 .await?
             {
-                // self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
             }
 
             return Ok(res);
@@ -355,19 +356,25 @@ impl SwapServer {
     pub async fn sol_instructions(
         &self,
         payer: &str,
-        quote_resp: &AggQuoteResp,
-    ) -> Result<Option<Vec<Instruction>>, crate::ServiceError> {
-        if quote_resp.chain_code == chain_code::SOLANA {
+        chain_code: &str,
+        is_native_token: bool,
+        amount_in: String,
+        amount_out: String,
+        dex_route_list: Vec<DexRoute>,
+    ) -> Result<Option<SolInstructResp>, crate::ServiceError> {
+        if chain_code == chain_code::SOLANA {
             let req = SolInstructionReq {
                 unique: request_identity(payer),
                 payer: payer.to_string(),
-                amount_in: quote_resp.amount_in.clone(),
-                amount_out: quote_resp.amount_out.clone(),
-                dex_route_list: quote_resp.dex_route_list.clone(),
+                is_native_token,
+                amount_in,
+                amount_out,
+                dex_route_list,
             };
+
             let res = self.client.sol_instructions(req).await?;
 
-            Ok(Some(res.ins))
+            Ok(Some(res))
         } else {
             Ok(None)
         }
@@ -386,8 +393,17 @@ impl SwapServer {
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        // 如果是solana，需要获取交易指令
-        let instructions = self.sol_instructions(&req.recipient, &quote_resp).await?;
+        // 获取交易指令
+        let instructions = self
+            .sol_instructions(
+                &req.recipient,
+                &req.chain_code,
+                req.is_native(),
+                quote_resp.amount_in.clone(),
+                0.to_string(),
+                quote_resp.dex_route_list.clone(),
+            )
+            .await?;
 
         // 模拟报价(consumer 资源的消耗，，content 费用的具体内容)
         let (amount_out, consumer, content) = adapter
@@ -490,7 +506,31 @@ impl SwapServer {
 
                 adapter.withdraw(&params, fee, key, value).await?
             }
-            SwapInnerType::Swap => adapter.swap(&req, fee, key, None).await?,
+            SwapInnerType::Swap => {
+                let amount_in = wallet_utils::unit::convert_to_u256(
+                    &req.amount_in,
+                    req.token_in.decimals as u8,
+                )?
+                .to_string();
+
+                let amount_out = wallet_utils::unit::convert_to_u256(
+                    &req.min_amount_out,
+                    req.token_out.decimals as u8,
+                )?
+                .to_string();
+
+                let instructions = self
+                    .sol_instructions(
+                        &req.recipient,
+                        &req.chain_code,
+                        req.is_native_token(),
+                        amount_in,
+                        amount_out,
+                        req.dex_router.clone(),
+                    )
+                    .await?;
+                adapter.swap(&req, fee, key, instructions).await?
+            }
         };
 
         //  if token_out if new assets add it

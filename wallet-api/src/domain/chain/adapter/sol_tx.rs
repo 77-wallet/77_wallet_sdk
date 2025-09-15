@@ -1,16 +1,16 @@
 use crate::{
-    domain::chain::{swap::EstimateSwapResult, TransferResp},
+    domain::chain::{TransferResp, swap::EstimateSwapResult},
+    infrastructure::swap_client::SolInstructResp,
     request::transaction::{DepositReq, WithdrawReq},
 };
 use alloy::primitives::U256;
 use wallet_chain_interact::{
     sol::{
-        operations::{
-            native_coin::{Deposit, Swap, Withdraw},
-            SolInstructionOperation,
-        },
-        protocol::Instruction,
         SolFeeSetting, SolanaChain,
+        operations::{
+            SolInstructionOperation,
+            native_coin::{Deposit, Swap, Withdraw},
+        },
     },
     types::ChainPrivateKey,
 };
@@ -18,23 +18,44 @@ use wallet_utils::serde_func;
 
 pub(super) async fn estimate_swap(
     payer: &str,
-    instructions: Vec<Instruction>,
+    instructions: SolInstructResp,
     chain: &SolanaChain,
 ) -> Result<EstimateSwapResult<SolFeeSetting>, crate::ServiceError> {
     let payer = wallet_utils::address::parse_sol_address(payer)?;
 
-    let _res = chain.similar_transaction(&payer, &instructions).await?;
+    let res = chain
+        .similar_transaction(&payer, &instructions.ins, Some(instructions.alts.clone()))
+        .await?;
+    if res.value.err.is_some() {
+        let log = res.value.logs.join(",");
+        return Err(crate::BusinessError::Chain(
+            crate::ChainError::SwapSimulate(log),
+        ))?;
+    }
+
+    //
+    let return_data = res.value.return_data;
+
+    let mut amount_in = 0_u64;
+    let mut amount_out = 0_u64;
+    if let Some(return_data) = return_data {
+        let bytes = wallet_utils::base64_to_bytes(&return_data.data[0])?;
+        amount_in = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
+        amount_out = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
+    }
+
+    let consumer = res.value.units_consumed;
 
     let fee_setting = SolFeeSetting {
         base_fee: 5000,
         priority_fee_per_compute_unit: None,
-        compute_units_consumed: 10000,
+        compute_units_consumed: consumer,
         extra_fee: None,
     };
 
     let res = EstimateSwapResult {
-        amount_in: U256::from(1),
-        amount_out: U256::from(2),
+        amount_in: U256::from(amount_in),
+        amount_out: U256::from(amount_out),
         consumer: fee_setting,
     };
 
@@ -45,7 +66,7 @@ pub(super) async fn swap(
     chain: &SolanaChain,
     payer: &str,
     fee: String,
-    instructions: Vec<Instruction>,
+    instructions: SolInstructResp,
     key: ChainPrivateKey,
 ) -> Result<TransferResp, crate::ServiceError> {
     let fee_setting = wallet_utils::serde_func::serde_from_str::<SolFeeSetting>(&fee)?;
@@ -62,7 +83,13 @@ pub(super) async fn swap(
     let params = Swap::new(payer)?;
 
     let tx_hash = chain
-        .exec_transaction(params, key, Some(fee_setting), instructions, 0)
+        .exec_v0_transaction(
+            params,
+            key,
+            Some(fee_setting),
+            instructions.ins,
+            instructions.alts,
+        )
         .await?;
 
     let res = TransferResp {

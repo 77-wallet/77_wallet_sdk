@@ -1,30 +1,30 @@
-use super::{eth_tx, ton_tx, tron_tx, TIME_OUT};
+use super::{TIME_OUT, eth_tx, ton_tx, tron_tx};
 use crate::{
     dispatch,
     domain::{
         self,
         chain::{
+            TransferResp,
             adapter::sol_tx,
             pare_fee_setting,
             swap::evm_swap::SwapParams,
             transaction::{ChainTransDomain, DEFAULT_UNITS},
-            TransferResp,
         },
         coin::TokenCurrencyGetter,
     },
-    infrastructure::swap_client::AggQuoteResp,
+    infrastructure::swap_client::{AggQuoteResp, SolInstructResp},
     request::transaction::{self, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     response_vo::{self, CommonFeeDetails, FeeDetails, TronFeeDetails},
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    self as chain,
+    self as chain, BillResourceConsume,
     btc::{self},
     dog,
     eth::{self},
     ltc,
-    sol::{self, operations::SolInstructionOperation, protocol::Instruction},
+    sol::{self, operations::SolInstructionOperation},
     sui,
     ton::{self},
     tron::{
@@ -32,7 +32,6 @@ use wallet_chain_interact::{
         operations::{TronConstantOperation as _, TronTxOperation},
     },
     types::ChainPrivateKey,
-    BillResourceConsume,
 };
 use wallet_database::entities::coin::CoinEntity;
 use wallet_transport::client::{HttpClient, RpcClient};
@@ -778,7 +777,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -827,7 +826,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -843,10 +842,11 @@ impl TransactionAdapter {
         let resp = match self {
             Self::Ethereum(chain) => eth_tx::allowance(chain, from, token, spender).await?,
             Self::Tron(chain) => tron_tx::allowance(chain, from, token, spender).await?,
+            Self::Solana(_chain) => U256::MAX,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -858,10 +858,8 @@ impl TransactionAdapter {
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
         symbol: &str,
-        sol_instructions: Option<Vec<Instruction>>,
+        sol_instructions: Option<SolInstructResp>,
     ) -> Result<(U256, String, String), crate::ServiceError> {
-        // let amount_out = quote_resp.amount_out_u256()?;
-
         // 考虑滑点计算最小金额
         let min_amount_out = U256::from(1);
 
@@ -940,7 +938,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -952,7 +950,7 @@ impl TransactionAdapter {
         req: &SwapReq,
         fee: String,
         key: ChainPrivateKey,
-        instructions: Option<Vec<Instruction>>,
+        instructions: Option<SolInstructResp>,
     ) -> Result<TransferResp, crate::ServiceError> {
         let swap_params = SwapParams::try_from(req)?;
 
@@ -965,7 +963,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -1023,7 +1021,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -1044,7 +1042,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -1102,7 +1100,7 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
@@ -1123,130 +1121,10 @@ impl TransactionAdapter {
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,
-                ))?
+                ))?;
             }
         };
 
         Ok(resp)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        domain::chain::adapter::ChainAdapterFactory,
-        infrastructure::swap_client::AggQuoteResp,
-        request::transaction::{DexRoute, QuoteReq, RouteInDex, SwapTokenInfo},
-    };
-    use wallet_utils::{init_test_log, unit};
-
-    #[tokio::test]
-    async fn test_estimate_swap() {
-        init_test_log();
-
-        let chain_code = "tron";
-        // let rpc_url = "http://127.0.0.1:8545";
-        let rpc_url = "http://100.78.188.103:8090";
-        // let rpc_url = "https://api.nileex.io";
-
-        let adapter = ChainAdapterFactory::get_node_transaction_adapter(chain_code, rpc_url)
-            .await
-            .unwrap();
-
-        let amount_in = unit::convert_to_u256("0.1", 6).unwrap();
-
-        // TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf
-
-        // 模拟聚合器的响应
-        let resp = AggQuoteResp {
-            chain_code: "tron".to_string(),
-            amount_in: amount_in.to_string(),
-            amount_out: "0".to_string(),
-            dex_route_list: vec![DexRoute {
-                percentage: "100".to_string(),
-                amount_in: amount_in.to_string(),
-                amount_out: "0".to_string(),
-                route_in_dex: vec![
-                    RouteInDex {
-                        dex_id: 3,
-                        pool_id: "TSUUVjysXV8YqHytSNjfkNXnnB49QDvZpx".to_string(),
-                        zero_for_one: true,
-                        amount_in: amount_in.to_string(),
-                        min_amount_out: "0".to_string(),
-                        in_token_symbol: "TUSD".to_string(),
-                        in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
-                        out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-                        out_token_symbol: "USDT".to_string(),
-                        fee: "0".to_string(),
-                    },
-                    // RouteInDex {
-                    //     dex_id: 2,
-                    //     pool_id: "0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f".to_string(),
-                    //     zero_for_one: true,
-                    //     amount_in: "0".to_string(),
-                    //     min_amount_out: "0".to_string(),
-                    //     in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
-                    //     out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-                    //     fee: "0".to_string(),
-                    // },
-                ],
-            }],
-            default_slippage: 2,
-        };
-
-        let token_in = SwapTokenInfo {
-            token_addr: "".to_string(),
-            symbol: "WTRX".to_string(),
-            decimals: 6,
-        };
-
-        let token_out = SwapTokenInfo {
-            token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-            symbol: "USDT".to_string(),
-            decimals: 6,
-        };
-
-        let req = QuoteReq {
-            aggregator_addr: "TRNawqG4rNmbLr3Z7qXzpbbxHqciy9BVDC".to_string(),
-            recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
-            chain_code: "tron".to_string(),
-            amount_in: "0.1".to_string(),
-            token_in,
-            token_out,
-            dex_list: vec![3],
-            slippage: Some(0.2),
-            allow_partial_fill: true,
-        };
-
-        let result = adapter.swap_quote(&req, &resp, "usdt", None).await.unwrap();
-
-        // tracing::warn!(
-        //     "amount_in {}",
-        //     unit::format_to_f64(result.amount_in, req.token_in.decimals as u8).unwrap(),
-        // );
-
-        tracing::warn!(
-            "amount_out {}",
-            unit::format_to_f64(result.0, req.token_out.decimals as u8).unwrap(),
-        );
-    }
-}
-// pub async fn deposit(
-//     &self,
-//     req: &transaction::DepositParams,
-//     decimals: u8,
-//     key: ChainPrivateKey,
-// ) -> Result<String, crate::ServiceError> {
-//     let value = wallet_utils::unit::convert_to_u256(&req.value, decimals)?;
-
-//     let hash = match self {
-//         Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, key).await?,
-//         _ => {
-//             return Err(crate::BusinessError::Chain(
-//                 crate::ChainError::NotSupportChain,
-//             ))?
-//         }
-//     };
-
-//     Ok(hash)
-// }
