@@ -142,9 +142,9 @@ mod tests {
         init_log();
         let oss = Oss::from_env();
         let build = RequestBuilder::new()
-            .with_cdn("https://cdn.ipadump.com")
+            .with_cdn("")
             .with_expire(60)
-            .oss_download_allow_ip("14.145.28.62", 32);
+            .oss_download_allow_ip("", 32);
         // .oss_download_speed_limit(30);
         oss.sign_download_url(
             "hello.txt",
@@ -158,7 +158,7 @@ mod tests {
         init_log();
         let oss = Oss::from_env();
         let build = RequestBuilder::new()
-            .with_cdn("http://cdn.ipadump.com")
+            .with_cdn("")
             .with_content_type("text/plain")
             .with_expire(600);
         oss.sign_upload_url("tmp.txt", &build);

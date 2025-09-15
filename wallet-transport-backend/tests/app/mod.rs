@@ -56,7 +56,7 @@ async fn test_version_download_url() -> Result<(), wallet_transport_backend::Err
     let backend_api = init()?;
     // https://api.77wallet.org//version/view/https%3A%2F%2F77.im%2F%23%2Fdownload
 
-    let url = "https://77.im/#/download";
+    let url = "";
     let encode_url = urlencoding::encode(url);
     let res = backend_api.version_download_url(&encode_url).await.unwrap();
 
