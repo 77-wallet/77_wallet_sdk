@@ -1,12 +1,12 @@
 use crate::{
+    DbPool,
     entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
-    DbPool,
 };
 use chrono::SecondsFormat;
 use sqlx::{
-    types::chrono::{DateTime, Utc},
     Executor, Pool, QueryBuilder, Sqlite,
+    types::chrono::{DateTime, Utc},
 };
 use std::{collections::HashSet, sync::Arc};
 
@@ -638,7 +638,7 @@ impl CoinEntity {
             sql.push_str(&format!(" AND coin.chain_code = '{}'", chain_code));
         } else {
             // TODO: 优化目前只查询这些链的数据,后续支持了更多的链进行删除
-            sql.push_str(" AND coin.chain_code in ('tron','bnb','eth')");
+            sql.push_str(" AND coin.chain_code in ('tron','bnb','eth','sol')");
         }
 
         if !exclude_token.is_empty() {

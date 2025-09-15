@@ -31,9 +31,9 @@ async fn test_token_list() {
     let wallet_manager = get_manager().await;
 
     let req = SwapTokenListReq {
-        chain_code: "".to_string(),
+        chain_code: "sol".to_string(),
         search: "".to_string(),
-        wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
+        wallet_address: "0x67Fd771e4698D04f19ef4b29B8A95d5637f52B7C".to_string(),
         account_id: 1,
         exclude_token: vec![],
         page_num: 0,

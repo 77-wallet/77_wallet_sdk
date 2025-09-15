@@ -1,5 +1,5 @@
 use tokio_stream::StreamExt as _;
-use wallet_api::{test::env::get_manager, Dirs, FrontendNotifyEvent, WalletManager};
+use wallet_api::{Dirs, FrontendNotifyEvent, WalletManager, test::env::get_manager};
 
 // create wallet
 #[tokio::main]
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // 创建钱包
-    if true {
+    if false {
         let _wallet = wallet_manager
             .create_wallet(test_params.create_wallet_req)
             .await
