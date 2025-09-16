@@ -173,7 +173,7 @@ impl TokenCurrencies {
     pub async fn calculate_token_price_changes(
         data: &TokenPriceChangeBody,
         exchange_rate: f64,
-    ) -> Result<TokenPriceChangeRes, crate::ServiceError> {
+    ) -> Result<TokenPriceChangeRes, crate::error::service::ServiceError> {
         // let market_value = wallet_utils::conversion::decimal_from_f64(data.market_value)?;
         // let day_change_amount =
         //     wallet_utils::conversion::decimal_from_f64(data.day_change_amount.unwrap_or_default())?;
@@ -187,7 +187,7 @@ impl TokenCurrencies {
     pub async fn calculate(
         exchange_rate: f64,
         value: f64,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         // let config = crate::app_state::APP_STATE.read().await;
         // let currency = config.currency();
         // let currency = "USD";
@@ -206,7 +206,7 @@ impl TokenCurrencies {
         &self,
         data: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
         chains: Vec<ChainEntity>,
-    ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
+    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let mut res = Vec::new();
 
         // 计算所有币种的总数
@@ -259,7 +259,7 @@ impl TokenCurrencies {
         symbol: &str,
         chain_code: &str,
         token_address: Option<String>,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
 
         let currency = ConfigDomain::get_currency().await?;
@@ -289,7 +289,7 @@ impl TokenCurrencies {
     pub async fn calculate_account_total_assets(
         &self,
         data: &mut [wallet_database::entities::assets::AssetsEntity],
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
         // let config = crate::app_state::APP_STATE.read().await;
@@ -341,7 +341,7 @@ impl TokenCurrencies {
         &self,
         data: wallet_database::entities::assets::AssetsEntity,
         existing_asset: &mut super::assets::AccountChainAsset,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(&data.balance)?;
         if balance.is_zero() {
             return Ok(());
@@ -385,7 +385,7 @@ impl TokenCurrencies {
     pub async fn calculate_assets_entity(
         &self,
         assets: &wallet_database::entities::assets::AssetsEntity,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         self.calculate_to_balance(
             &assets.balance,
             &assets.symbol,
@@ -399,7 +399,7 @@ impl TokenCurrencies {
         &self,
         data: Vec<wallet_database::entities::account::AccountEntity>,
         chains: &ChainCodeAndName,
-    ) -> Result<AccountInfos, crate::ServiceError> {
+    ) -> Result<AccountInfos, crate::error::service::ServiceError> {
         let mut account_list = Vec::<crate::response_vo::wallet::AccountInfo>::new();
         for account in data {
             // let btc_address_type_opt: AddressType = account.address_type().try_into()?;

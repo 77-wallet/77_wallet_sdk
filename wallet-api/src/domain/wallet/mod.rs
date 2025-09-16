@@ -35,7 +35,7 @@ impl WalletDomain {
     pub(crate) fn encrypt_password(
         password: &str,
         salt: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let encrypted_password = wallet_utils::pbkdf2_string(
             password,
             &format!("{}{}", salt, DEFAULT_SALT),
@@ -45,7 +45,7 @@ impl WalletDomain {
         Ok(encrypted_password)
     }
 
-    pub(crate) async fn validate_password(password: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn validate_password(password: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
@@ -54,7 +54,7 @@ impl WalletDomain {
         };
 
         let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
 
         if device.password.is_none() {
@@ -65,8 +65,8 @@ impl WalletDomain {
             let file_path = dirs.root_dir.join(file_name);
             if wallet_utils::file_func::exists(&file_path)? {
                 if KeystoreApi::load_verify_file(&*wallet_tree, &dirs.root_dir, password).is_err() {
-                    return Err(crate::BusinessError::Wallet(
-                        crate::WalletError::PasswordIncorrect,
+                    return Err(crate::error::business::BusinessError::Wallet(
+                        crate::error::business::wallet::WalletError::PasswordIncorrect,
                     )
                     .into());
                 }
@@ -89,7 +89,7 @@ impl WalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), crate::error::service::ServiceError> {
         // let mut tx = self.repo;
         // let wallet = WalletRepoTrait::get_wallet_by_address(&mut tx, wallet_address).await?;
         // if wallet.is_none() {
@@ -246,7 +246,7 @@ impl WalletDomain {
         dirs: &crate::dirs::Dirs,
         wallet_address: &str,
         wallet_password: &str,
-    ) -> Result<Vec<u8>, crate::ServiceError> {
+    ) -> Result<Vec<u8>, crate::error::service::ServiceError> {
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
@@ -376,7 +376,7 @@ impl WalletDomain {
         &self,
         repo: &mut ResourcesRepo,
         address: &str,
-    ) -> Result<std::collections::HashSet<u32>, crate::ServiceError> {
+    ) -> Result<std::collections::HashSet<u32>, crate::error::service::ServiceError> {
         // 查询钱包状态并处理重启逻辑
         let mut account_ids = std::collections::HashSet::new();
         if let Some(wallet) = WalletRepoTrait::detail_all_status(repo, address).await? {
@@ -403,7 +403,7 @@ impl WalletDomain {
         }
     }
 
-    pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, crate::ServiceError> {
+    pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Ok(!ApiWalletRepo::list(&pool, Some(address), None).await?.is_empty())

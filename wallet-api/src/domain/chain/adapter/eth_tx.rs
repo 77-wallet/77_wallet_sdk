@@ -30,7 +30,7 @@ pub(super) async fn approve(
     req: &ApproveReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
 
     let gas_price = chain.provider.get_default_fee().await?;
@@ -53,7 +53,7 @@ pub(super) async fn approve(
     let fee = fee_setting.transaction_fee();
     let balance = chain.balance(&req.from, None).await?;
     if balance < fee {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     // exec tx
@@ -66,7 +66,7 @@ pub(super) async fn approve_fee(
     chain: &EthChain,
     req: &ApproveReq,
     value: alloy::primitives::U256,
-) -> Result<ResourceConsume, crate::ServiceError> {
+) -> Result<ResourceConsume, crate::error::service::ServiceError> {
     let approve = Approve::new(&req.from, &req.spender, value, &req.contract)?;
 
     let fee = chain.estimate_gas(approve).await?;
@@ -78,7 +78,7 @@ pub(super) async fn withdraw_fee(
     chain: &EthChain,
     req: &WithdrawReq,
     value: alloy::primitives::U256,
-) -> Result<ResourceConsume, crate::ServiceError> {
+) -> Result<ResourceConsume, crate::error::service::ServiceError> {
     let withdraw = Withdraw::new(&req.from, &req.token, value)?;
 
     Ok(chain.estimate_gas(withdraw).await?)
@@ -90,7 +90,7 @@ pub(super) async fn withdraw(
     value: alloy::primitives::U256,
     fee: String,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let withdraw = Withdraw::new(&req.from, &req.token, value)?;
 
     // 使用默认的手续费配置
@@ -99,7 +99,7 @@ pub(super) async fn withdraw(
 
     let balance = chain.balance(&req.from, None).await?;
     if balance < transfer_fee {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     // exec tx
@@ -112,7 +112,7 @@ pub(super) async fn deposit_fee(
     chain: &EthChain,
     req: &DepositReq,
     amount: alloy::primitives::U256,
-) -> Result<ResourceConsume, crate::ServiceError> {
+) -> Result<ResourceConsume, crate::error::service::ServiceError> {
     let approve = Deposit::new(&req.from, &req.token, amount)?;
 
     Ok(chain.estimate_gas(approve).await?)
@@ -124,7 +124,7 @@ pub(super) async fn deposit(
     amount: alloy::primitives::U256,
     fee: String,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let approve = Deposit::new(&req.from, &req.token, amount)?;
 
     // 使用默认的手续费配置
@@ -133,7 +133,7 @@ pub(super) async fn deposit(
 
     let balance = chain.balance(&req.from, None).await?;
     if balance < transfer_fee {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     // exec tx
@@ -147,7 +147,7 @@ pub(super) async fn allowance(
     from: &str,
     token: &str,
     spender: &str,
-) -> Result<U256, crate::ServiceError> {
+) -> Result<U256, crate::error::service::ServiceError> {
     let approve = Allowance::new(from, token, spender)?;
 
     let amount = chain.eth_call::<_, U256>(approve).await?;
@@ -155,7 +155,7 @@ pub(super) async fn allowance(
     Ok(amount)
 }
 
-fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, crate::ServiceError> {
+fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, crate::error::service::ServiceError> {
     let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
 
     let tx = TransactionRequest::default()
@@ -172,7 +172,7 @@ fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, cr
 pub(super) async fn estimate_swap(
     swap_params: SwapParams,
     chain: &EthChain,
-) -> Result<EstimateSwapResult<U256>, crate::ServiceError> {
+) -> Result<EstimateSwapResult<U256>, crate::error::service::ServiceError> {
     let tx = build_base_swap_tx(&swap_params)?;
 
     // estimate_gas_limit
@@ -180,7 +180,7 @@ pub(super) async fn estimate_swap(
     let tx = tx.with_gas_limit(gas_limit.to::<u64>());
 
     let result =
-        chain.provider.eth_call(tx).await.map_err(|e| crate::ServiceError::AggregatorError {
+        chain.provider.eth_call(tx).await.map_err(|e| crate::error::service::ServiceError::AggregatorError {
             code: 10500,
             agg_code: 0,
             msg: format!("eth call error: {}", e),
@@ -189,7 +189,7 @@ pub(super) async fn estimate_swap(
 
     let (amount_in, amount_out): (U256, U256) =
         <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
-            crate::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
+            crate::error::service::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
         })?;
 
     let resp = EstimateSwapResult { amount_in, amount_out, consumer: gas_limit };
@@ -201,7 +201,7 @@ pub(super) async fn swap(
     swap_params: &SwapParams,
     fee: String,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let fee_setting = pare_fee_setting(fee.as_str())?;
     let transfer_fee = fee_setting.transaction_fee();
     let mut check_bal = transfer_fee;
@@ -212,7 +212,7 @@ pub(super) async fn swap(
         check_bal += swap_params.amount_in;
     }
     if balance < check_bal {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     let tx = build_base_swap_tx(&swap_params)?;

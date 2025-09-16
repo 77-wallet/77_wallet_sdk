@@ -1,8 +1,10 @@
 use crate::get_manager;
 use wallet_api::request::transaction;
+use anyhow::Result;
+
 // 余额测试
 #[tokio::test]
-async fn test_balance() {
+async fn test_balance() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let addr = "bc1qgs3l6uh0atn3ks807anzy8sqhvtc2j9dv8axa7";
@@ -13,11 +15,12 @@ async fn test_balance() {
     let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 
     println!("balance: {:?}", balance);
+    Ok(())
 }
 
 //交易的手续费
 #[tokio::test]
-async fn test_fee() {
+async fn test_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "bc1qlmu59q3zjmzfqsljx860pw8sulvwfvgdh337mn";
@@ -29,13 +32,14 @@ async fn test_fee() {
     let mut params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     params.with_spend_all(true);
 
-    let res = wallet_manager.transaction_fee(params).await;
+    let res = wallet_manager.transaction_fee(params).await?;
     tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 转账
 #[tokio::test]
-async fn test_transfer() {
+async fn test_transfer() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "bc1qsvdsvhymcxkw6kwllncdq5h9slrhv20kmaufvt";
@@ -55,6 +59,7 @@ async fn test_transfer() {
         signer:None,
     };
 
-    let token_fee = wallet_manager.transfer(params).await;
+    let token_fee = wallet_manager.transfer(params).await?;
     tracing::info!("test_transfer: {}", serde_json::to_string(&token_fee).unwrap());
+    Ok(())
 }

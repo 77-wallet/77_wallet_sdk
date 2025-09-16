@@ -13,7 +13,7 @@ impl TokenCurrencyGetter {
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
-    ) -> Result<TokenCurrency, crate::ServiceError> {
+    ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
@@ -42,7 +42,7 @@ impl TokenCurrencyGetter {
         symbol: &str,
         amount: f64,
         token_address: Option<String>,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型
@@ -60,7 +60,7 @@ impl TokenCurrencyGetter {
         token_addr: &str,
         amount: &str,
         decimals: u8,
-    ) -> Result<BalanceStr, crate::ServiceError> {
+    ) -> Result<BalanceStr, crate::error::service::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型

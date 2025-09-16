@@ -56,13 +56,13 @@ pub struct SwapParams {
 
 impl SwapParams {
     // eth 地址类型转为tron的地址类型
-    pub fn aggregator_tron_addr(&self) -> Result<String, crate::ServiceError> {
+    pub fn aggregator_tron_addr(&self) -> Result<String, crate::error::service::ServiceError> {
         let address = self.aggregator_addr.to_string();
 
         Ok(wallet_utils::address::eth_addr_to_tron_addr(&address)?)
     }
 
-    pub fn recipient_tron_addr(&self) -> Result<String, crate::ServiceError> {
+    pub fn recipient_tron_addr(&self) -> Result<String, crate::error::service::ServiceError> {
         let address = self.recipient.to_string();
 
         Ok(wallet_utils::address::eth_addr_to_tron_addr(&address)?)
@@ -71,7 +71,7 @@ impl SwapParams {
     // 如果是主币,swap 合约接受zero地址
     pub fn eth_parse_or_zero_addr(
         addr: &str,
-    ) -> Result<alloy::primitives::Address, crate::ServiceError> {
+    ) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         if addr.is_empty() {
             Ok(alloy::primitives::Address::ZERO)
         } else {
@@ -81,7 +81,7 @@ impl SwapParams {
 
     pub fn tron_parse_or_zero_addr(
         addr: &str,
-    ) -> Result<alloy::primitives::Address, crate::ServiceError> {
+    ) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         if addr.is_empty() {
             Ok(alloy::primitives::Address::ZERO)
         } else {
@@ -96,7 +96,7 @@ impl SwapParams {
 }
 
 impl TryFrom<(&SwapParams, ChainCode)> for dexSwap1Call {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: (&SwapParams, ChainCode)) -> Result<Self, Self::Error> {
         use wallet_utils::{address::parse_eth_address, unit::u256_from_str};

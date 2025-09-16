@@ -40,7 +40,7 @@ pub(super) async fn build_build_tx(
     chain: &TronChain,
     threshold: i64,
     permission_id: Option<i64>,
-) -> Result<MultisigTxResp, crate::ServiceError> {
+) -> Result<MultisigTxResp, crate::error::service::ServiceError> {
     let expiration = MultisigQueueDomain::sub_expiration(req.expiration.unwrap_or(1));
 
     if let Some(token) = token {
@@ -68,7 +68,7 @@ pub(super) async fn approve(
     req: &ApproveReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let approve = Approve::new(&req.from, &req.spender, &req.contract, value);
     let mut wrap = WarpContract::new(approve)?;
 
@@ -80,7 +80,7 @@ pub(super) async fn approve(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if balance < fee {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     // get consumer
@@ -103,7 +103,7 @@ pub(super) async fn approve_fee(
     chain: &TronChain,
     req: &ApproveReq,
     value: alloy::primitives::U256,
-) -> Result<ResourceConsumer, crate::ServiceError> {
+) -> Result<ResourceConsumer, crate::error::service::ServiceError> {
     let approve = Approve::new(&req.from, &req.spender, &req.contract, value);
     let wrap = WarpContract::new(approve)?;
 
@@ -118,7 +118,7 @@ pub(super) async fn deposit_fee(
     chain: &TronChain,
     req: &DepositReq,
     value: alloy::primitives::U256,
-) -> Result<ResourceConsumer, crate::ServiceError> {
+) -> Result<ResourceConsumer, crate::error::service::ServiceError> {
     let approve = Deposit::new(&req.from, &req.token, value);
     let wrap = WarpContract::new(approve)?;
 
@@ -134,7 +134,7 @@ pub(super) async fn deposit(
     req: &DepositReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let approve = Deposit::new(&req.from, &req.token, value);
     let mut wrap = WarpContract::new(approve)?;
 
@@ -146,7 +146,7 @@ pub(super) async fn deposit(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64()) + value;
     if balance < fee {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     // get consumer
@@ -168,7 +168,7 @@ pub(super) async fn deposit(
 fn build_base_withdraw(
     req: &WithdrawReq,
     value: U256,
-) -> Result<TriggerContractParameter, crate::ServiceError> {
+) -> Result<TriggerContractParameter, crate::error::service::ServiceError> {
     // 构建调用合约的参数
     let parameter = abi_encode_u256(value);
     let function_selector = "withdraw(uint256)";
@@ -190,7 +190,7 @@ pub(super) async fn withdraw_fee(
     chain: &TronChain,
     req: &WithdrawReq,
     value: alloy::primitives::U256,
-) -> Result<ResourceConsumer, crate::ServiceError> {
+) -> Result<ResourceConsumer, crate::error::service::ServiceError> {
     let trigger = build_base_withdraw(req, value)?;
     let wrap = WarpContract { params: trigger };
 
@@ -206,7 +206,7 @@ pub(super) async fn withdraw(
     req: &WithdrawReq,
     value: alloy::primitives::U256,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let trigger = build_base_withdraw(req, value)?;
     let mut wrap = WarpContract { params: trigger };
 
@@ -217,7 +217,7 @@ pub(super) async fn withdraw(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if balance < fee {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     // get consumer
@@ -241,7 +241,7 @@ pub(super) async fn allowance(
     from: &str,
     token: &str,
     spender: &str,
-) -> Result<U256, crate::ServiceError> {
+) -> Result<U256, crate::error::service::ServiceError> {
     let approve = Allowance::new(from, spender, token);
     let wrap = WarpContract::new(approve)?;
 
@@ -253,7 +253,7 @@ pub(super) async fn allowance(
 
 fn build_base_swap(
     swap_params: &SwapParams,
-) -> Result<(TriggerContractParameter, String), crate::ServiceError> {
+) -> Result<(TriggerContractParameter, String), crate::error::service::ServiceError> {
     let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Tron))?;
 
     // tracing::warn!("call value: {:#?}", call_value);
@@ -287,7 +287,7 @@ fn build_base_swap(
 pub(super) async fn estimate_swap(
     swap_params: &SwapParams,
     chain: &TronChain,
-) -> Result<EstimateSwapResult<ResourceConsumer>, crate::ServiceError> {
+) -> Result<EstimateSwapResult<ResourceConsumer>, crate::error::service::ServiceError> {
     let (params, owner_address) = build_base_swap(swap_params)?;
 
     let wrap = WarpContract { params };
@@ -301,7 +301,7 @@ pub(super) async fn estimate_swap(
     // 模拟的结果k
     let (amount_in, amount_out): (U256, U256) =
         <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
-            crate::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
+            crate::error::service::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
         })?;
 
     // get fee
@@ -319,7 +319,7 @@ pub(super) async fn swap(
     chain: &TronChain,
     swap_params: &SwapParams,
     key: ChainPrivateKey,
-) -> Result<TransferResp, crate::ServiceError> {
+) -> Result<TransferResp, crate::error::service::ServiceError> {
     let (params, owner_address) = build_base_swap(&swap_params)?;
 
     let mut wrap = WarpContract { params };
@@ -337,7 +337,7 @@ pub(super) async fn swap(
         fee += swap_params.amount_in;
     }
     if balance < fee {
-        return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
     }
 
     let bill_consumer = BillResourceConsume::new_tron(

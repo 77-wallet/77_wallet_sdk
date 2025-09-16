@@ -1,5 +1,5 @@
 use crate::{
-    FrontendNotifyEvent, NotifyEvent,
+    messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent,
     domain::{
         assets::AssetsDomain,
         bill::BillDomain,
@@ -52,7 +52,7 @@ pub struct SwapServer {
 }
 
 impl SwapServer {
-    pub fn new() -> Result<Self, crate::ServiceError> {
+    pub fn new() -> Result<Self, crate::error::service::ServiceError> {
         let url = crate::context::CONTEXT.get().unwrap().get_aggregate_api();
         let swap_client = SwapClient::new(&url);
 
@@ -65,7 +65,7 @@ impl SwapServer {
         &self,
         chain_code: String,
         token_in: String,
-    ) -> Result<DefaultQuoteResp, crate::ServiceError> {
+    ) -> Result<DefaultQuoteResp, crate::error::service::ServiceError> {
         let code = ChainCode::try_from(chain_code.as_str())?;
         let token_addr = CoinDomain::get_stable_coin(code)?;
 
@@ -112,7 +112,7 @@ impl SwapServer {
         &self,
         req: &QuoteReq,
         amount_out: U256,
-    ) -> Result<(BalanceStr, BalanceStr), crate::ServiceError> {
+    ) -> Result<(BalanceStr, BalanceStr), crate::error::service::ServiceError> {
         // 查询两次后端
         let bal_in = TokenCurrencyGetter::get_bal_by_backend(
             &req.chain_code,
@@ -133,7 +133,7 @@ impl SwapServer {
         Ok((bal_in, bal_out))
     }
 
-    pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
+    pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
         let chain_code = ChainCode::try_from(req.chain_code.as_str())?;
 
         let swap_inner_type =
@@ -146,7 +146,7 @@ impl SwapServer {
         }
     }
 
-    fn check_bal(&self, val: &str, bal: &str) -> Result<bool, crate::ServiceError> {
+    fn check_bal(&self, val: &str, bal: &str) -> Result<bool, crate::error::service::ServiceError> {
         Ok(conversion::decimal_from_str(val)? <= conversion::decimal_from_str(bal)?)
     }
 
@@ -156,17 +156,17 @@ impl SwapServer {
         chain_code: &str,
         token_addr: &str,
         recipient: &str,
-    ) -> Result<AssetsEntity, crate::ServiceError> {
+    ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
         Ok(AssetsRepo::get_by_addr_token_opt(&pool, chain_code, token_addr, recipient)
             .await?
-            .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFoundAssets))?)
+            .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFoundAssets))?)
     }
 
     async fn common_quote(
         &self,
         req: QuoteReq,
         tx_type: SwapInnerType,
-    ) -> Result<ApiQuoteResp, crate::ServiceError> {
+    ) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
         let amount_out =
             wallet_utils::unit::convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
 
@@ -206,7 +206,7 @@ impl SwapServer {
                     adapter.deposit_fee(params, &main_coin).await?
                 }
                 SwapInnerType::Swap => {
-                    return Err(crate::ServiceError::Parameter(
+                    return Err(crate::error::service::ServiceError::Parameter(
                         "不支持 Swap 类型用于 common_quote".into(),
                     ));
                 }
@@ -225,7 +225,7 @@ impl SwapServer {
         bal: &str,
         req: &QuoteReq,
         pool: &DbPool,
-    ) -> Result<bool, crate::ServiceError> {
+    ) -> Result<bool, crate::error::service::ServiceError> {
         // 尝试获取“需要扣减的金额”（如果条件不满足则为 None）
         let maybe_deduction = BillRepo::last_swap_bill(&req.recipient, &req.chain_code, pool)
             .await?
@@ -253,7 +253,7 @@ impl SwapServer {
         self.check_bal(&req.amount_in, bal_ref)
     }
 
-    async fn swap_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
+    async fn swap_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
         use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
@@ -328,7 +328,7 @@ impl SwapServer {
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
         res: &mut ApiQuoteResp,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let instance = time::Instant::now();
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -349,7 +349,7 @@ impl SwapServer {
         Ok(())
     }
 
-    async fn check_allowance(&self, req: &QuoteReq) -> Result<U256, crate::ServiceError> {
+    async fn check_allowance(&self, req: &QuoteReq) -> Result<U256, crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         adapter.allowance(&req.recipient, &req.token_in.token_addr, &req.aggregator_addr).await
     }
@@ -360,7 +360,7 @@ impl SwapServer {
         req: SwapReq,
         fee: String,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         // 构建事件
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             wallet_database::entities::bill::BillKind::Swap,
@@ -380,7 +380,7 @@ impl SwapServer {
         )
         .await?;
         if !self.check_bal(&req.amount_in, &token_in.balance)? {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance)));
         }
 
         // 广播事件
@@ -457,7 +457,7 @@ impl SwapServer {
     pub async fn token_list(
         &self,
         req: SwapTokenListReq,
-    ) -> Result<Pagination<SwapTokenInfo>, crate::ServiceError> {
+    ) -> Result<Pagination<SwapTokenInfo>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let chain_code = (!req.chain_code.is_empty()).then(|| req.chain_code.clone());
@@ -536,7 +536,7 @@ impl SwapServer {
         Ok(resp)
     }
 
-    pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
+    pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let result = backend_api.support_chain_list().await?;
 
@@ -547,7 +547,7 @@ impl SwapServer {
         &self,
         req: ApproveReq,
         is_cancel: bool,
-    ) -> Result<EstimateFeeResp, crate::ServiceError> {
+    ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
         let (value, tx_kind) = if is_cancel {
@@ -570,7 +570,7 @@ impl SwapServer {
         )
         .await?;
         if last_bill.is_some() {
-            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveRepeated)));
         }
 
         let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;
@@ -583,7 +583,7 @@ impl SwapServer {
         &self,
         req: ApproveReq,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         // get coin
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(&req.chain_code, &req.contract, &pool).await?;
@@ -608,19 +608,19 @@ impl SwapServer {
         )
         .await?;
         if last_bill.is_some() {
-            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveRepeated)));
         }
 
         // check already approved
         let allowance = adapter.allowance(&req.from, &req.contract, &req.spender).await?;
         if allowance > alloy::primitives::U256::ZERO {
-            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveRepeated))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveRepeated)));
         }
 
         // check balance
         let token_in = self.token0_assets(&pool, &req.chain_code, &req.contract, &req.from).await?;
         if !self.check_bal(&req.value, &token_in.balance)? {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance)));
         }
 
         let private_key =
@@ -667,7 +667,7 @@ impl SwapServer {
         &self,
         uid: String,
         account_id: u32,
-    ) -> Result<Vec<ApproveList>, crate::ServiceError> {
+    ) -> Result<Vec<ApproveList>, crate::error::service::ServiceError> {
         let index_map = AccountIndexMap::from_account_id(account_id)?;
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -706,7 +706,7 @@ impl SwapServer {
         pool: &DbPool,
         res: &mut Vec<ApproveList>,
         used_ids: &mut Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 1) 只有在 bill 不存在，或者存在且状态为 Success 时才继续
         if let Some(bill) = BillRepo::get_by_hash_opt(&item.hash, pool).await? {
             if bill.status != BillStatus::Success.to_i8() {
@@ -742,7 +742,7 @@ impl SwapServer {
         &self,
         req: ApproveReq,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             wallet_database::entities::bill::BillKind::UnApprove,
             Process::Building,
@@ -767,7 +767,7 @@ impl SwapServer {
         )
         .await?;
         if last_bill.is_some() {
-            return Err(crate::BusinessError::Chain(crate::ChainError::ApproveCanceling))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveCanceling)));
         }
 
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(

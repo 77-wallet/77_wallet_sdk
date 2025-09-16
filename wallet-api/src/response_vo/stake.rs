@@ -199,7 +199,7 @@ impl DelegateListResp {
         delegate: &DelegateResouce,
         resource: ResourceResp,
         expire_time: i64,
-    ) -> Result<DelegateListResp, crate::ServiceError> {
+    ) -> Result<DelegateListResp, crate::error::service::ServiceError> {
         let expire_time =
             if expire_time > 0 { DateTime::from_timestamp_millis(expire_time) } else { None };
 

@@ -24,7 +24,7 @@ impl BillService {
         transfer_type: Vec<i32>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<BillEntity>, crate::ServiceError> {
+    ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let adds = if let Some(addr) = addr {
             vec![addr]
@@ -80,14 +80,14 @@ impl BillService {
     pub async fn sync_bill_by_address(
         chain_code: &str,
         address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         BillDomain::sync_bills(chain_code, address).await
     }
 
     pub async fn sync_bill_by_wallet_and_account(
         wallet_address: String,
         account_id: u32,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // get all
         let executor = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -119,7 +119,7 @@ impl BillService {
         chain_code: String,
         symbol: String,
         token_address: Option<String>,
-    ) -> Result<CoinCurrency, crate::ServiceError> {
+    ) -> Result<CoinCurrency, crate::error::service::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 

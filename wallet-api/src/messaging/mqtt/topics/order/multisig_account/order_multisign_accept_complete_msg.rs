@@ -32,7 +32,7 @@ impl OrderMultiSignAcceptCompleteMsg {
 
 // 参与方同意后、同步数据给其他的成员同步对应的状态数据(多签账号数据状态流转)
 impl OrderMultiSignAcceptCompleteMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,
@@ -52,7 +52,7 @@ impl OrderMultiSignAcceptCompleteMsg {
 
         let Some(account) = account else {
             tracing::error!(event_name = %event_name, multisig_account_id = %multisig_account_id, "multisig account not found");
-            let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
+            let err = crate::error::service::ServiceError::Business(crate::error::business::multisig_account::MultisigAccountError::NotFound.into());
 
             let data = NotifyEvent::Err(ErrFront { event: event_name, message: err.to_string() });
             FrontendNotifyEvent::new(data).send().await?;
@@ -80,7 +80,7 @@ impl OrderMultiSignAcceptCompleteMsg {
         address_list: &[wallet_transport_backend::ConfirmedAddress],
         multi_account_id: &str,
         status: i8,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for address in address_list.iter() {
             MultisigMemberDaoV1::sync_confirmed_and_pubkey_status(
@@ -92,11 +92,11 @@ impl OrderMultiSignAcceptCompleteMsg {
                 pool.as_ref(),
             )
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
             let member = MultisigMemberDaoV1::find_records_by_id(multi_account_id, pool.as_ref())
                 .await
-                .map_err(|e| crate::ServiceError::Database(e.into()))?;
+                .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
             tracing::info!(
                 multi_account_id = %multi_account_id,
@@ -118,7 +118,7 @@ impl OrderMultiSignAcceptCompleteMsg {
                     pool.as_ref(),
                 )
                 .await
-                .map_err(crate::ServiceError::Database)?;
+                .map_err(crate::error::service::ServiceError::Database)?;
             }
         }
         Ok(())
@@ -129,7 +129,7 @@ impl OrderMultiSignAcceptCompleteMsg {
         address: &str,
         address_list: Vec<wallet_transport_backend::ConfirmedAddress>,
         accept_status: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let data =
             NotifyEvent::OrderMultiSignAcceptCompleteMsg(OrderMultiSignAcceptCompleteMsgFrontend {
                 status,

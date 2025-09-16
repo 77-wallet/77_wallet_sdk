@@ -2,15 +2,16 @@ use crate::{
     api::ReturnType, messaging::mqtt::topics::api_wallet::AddressAllockType,
     request::api_wallet::account::CreateApiAccountReq,
     service::api_wallet::account::ApiAccountService,
+    manager::WalletManager,
 };
 use wallet_database::entities::api_account::ApiAccountEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_api_account_list(
         &self,
         wallet_address: &str,
     ) -> ReturnType<Vec<ApiAccountEntity>> {
-        vec![].into()
+        Ok(vec![])
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
@@ -23,8 +24,7 @@ impl crate::WalletManager {
                 req.is_default_name,
                 req.api_wallet_type,
             )
-            .await?
-            .into()
+            .await
     }
 
     #[allow(unused)]
@@ -37,8 +37,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         ApiAccountService::new()
             .expand_address(address_allock_type, chain_code, index, uid)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_api_account_private_key(
@@ -47,15 +46,14 @@ impl crate::WalletManager {
         chain_code: &str,
         password: &str,
     ) -> ReturnType<String> {
-        ApiAccountService::new()
+        let res = ApiAccountService::new()
             .get_account_private_key(address, chain_code, password)
-            .await?
-            .to_string()
-            .into()
+            .await?;
+        Ok(res.to_string())
     }
 
     pub async fn address_used(&self, chain_code: &str, index: i32, uid: &str) -> ReturnType<()> {
-        ApiAccountService::new().address_used(chain_code, index, uid).await?.into()
+        ApiAccountService::new().address_used(chain_code, index, uid).await
     }
 }
 

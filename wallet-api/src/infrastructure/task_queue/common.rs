@@ -10,7 +10,8 @@ use wallet_database::{
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
-    FrontendNotifyEvent, NotifyEvent,
+    error::service::ServiceError,
+    messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent,
     domain::{
         multisig::{MultisigDomain, MultisigQueueDomain},
         node::NodeDomain,
@@ -37,7 +38,7 @@ impl TaskTrait for CommonTask {
     fn get_type(&self) -> TaskType {
         TaskType::Common
     }
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+    fn get_body(&self) -> Result<Option<String>, ServiceError> {
         let res = match self {
             CommonTask::QueryCoinPrice(query_coin_price) => {
                 Some(wallet_utils::serde_func::serde_to_string(query_coin_price)?)
@@ -56,7 +57,7 @@ impl TaskTrait for CommonTask {
         Ok(res)
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
+    async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             CommonTask::QueryCoinPrice(data) => {

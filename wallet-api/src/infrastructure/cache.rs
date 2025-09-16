@@ -53,7 +53,7 @@ impl SharedCache {
         key: &str,
         value: T,
         expiration: u64,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let entry = CacheEntry::new(value, Some(Duration::from_secs(expiration)))?;
         let mut lock = self.inner.write().await;
         lock.set(key.to_string(), entry);
@@ -64,7 +64,7 @@ impl SharedCache {
         &self,
         key: &str,
         value: T,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let entry = CacheEntry::new(value, None)?;
         let mut lock = self.inner.write().await;
         lock.set(key.to_string(), entry);
@@ -102,7 +102,7 @@ impl SharedCache {
     }
 
     #[allow(dead_code)]
-    pub async fn delete(&self, key: &str) -> Result<(), crate::ServiceError> {
+    pub async fn delete(&self, key: &str) -> Result<(), crate::error::service::ServiceError> {
         let mut lock = self.inner.write().await;
         lock.delete(key);
 
@@ -172,7 +172,7 @@ impl CacheEntry {
     fn new<T: serde::Serialize + std::fmt::Debug>(
         data: T,
         expiration: Option<Duration>,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let bytes = wallet_utils::hex_func::bin_encode_bytes(&data)?;
 
         let instant = expiration.map(|d| Instant::now() + d);
@@ -184,7 +184,7 @@ impl CacheEntry {
         self.instant.is_some_and(|instant| instant <= Instant::now())
     }
 
-    pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, crate::ServiceError> {
+    pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, crate::error::service::ServiceError> {
         Ok(wallet_utils::hex_func::bin_decode_bytes(&self.data)?)
     }
 }

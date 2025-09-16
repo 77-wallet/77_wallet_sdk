@@ -5,21 +5,20 @@ use crate::{
         chain::ChainList,
     },
     service::asset::AssetsService,
+    manager::WalletManager,
 };
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
             .add_coin_v2(&req.wallet_address, Some(req.account_id), req.chain_list, None)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn add_regular_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
             .add_coin_v2(&req.wallet_address, Some(req.account_id), req.chain_list, Some(false))
-            .await?
-            .into()
+            .await
     }
 
     pub async fn add_multisig_coin(
@@ -28,8 +27,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
             .add_coin_v2(&req.address, None, req.chain_list, Some(true))
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_assets(
@@ -43,8 +41,7 @@ impl crate::WalletManager {
         let token_address = token_address.filter(|s| !s.is_empty());
         AssetsService::new(self.repo_factory.resource_repo())
             .detail(address, account_id, chain_code, symbol, token_address)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn remove_coin(
@@ -55,8 +52,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
             .remove_coin_v2(wallet_address, Some(account_id), chain_list, None)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn remove_regular_coin(
@@ -66,8 +62,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
             .remove_coin_v2(address, None, chain_list, Some(false))
-            .await?
-            .into()
+            .await
     }
 
     pub async fn remove_multisig_coin(
@@ -77,8 +72,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
             .remove_coin_v2(address, None, chain_list, Some(true))
-            .await?
-            .into()
+            .await
     }
 
     /// 获取普通账户已添加的币列表
@@ -92,8 +86,7 @@ impl crate::WalletManager {
     ) -> ReturnType<crate::response_vo::coin::CoinInfoList> {
         AssetsService::new(self.repo_factory.resource_repo())
             .get_coin_list(address, account_id, chain_code, keyword, is_multisig)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_all_account_assets(
@@ -103,8 +96,7 @@ impl crate::WalletManager {
     ) -> ReturnType<GetAccountAssetsRes> {
         AssetsService::new(self.repo_factory.resource_repo())
             .get_all_account_assets(account_id, wallet_address)
-            .await?
-            .into()
+            .await
     }
 
     /// 获取普通账户总资产
@@ -116,8 +108,7 @@ impl crate::WalletManager {
     ) -> ReturnType<GetAccountAssetsRes> {
         AssetsService::new(self.repo_factory.resource_repo())
             .get_account_assets(account_id, wallet_address, chain_code)
-            .await?
-            .into()
+            .await
     }
 
     /// 获取多签账户总资产
@@ -127,8 +118,7 @@ impl crate::WalletManager {
     ) -> ReturnType<GetAccountAssetsRes> {
         AssetsService::new(self.repo_factory.resource_repo())
             .get_multisig_account_assets(address)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_assets_list_v2(
@@ -140,8 +130,7 @@ impl crate::WalletManager {
     ) -> ReturnType<AccountChainAssetList> {
         AssetsService::new(self.repo_factory.resource_repo())
             .get_account_chain_assets_v2(address, account_id, chain_code, is_multisig)
-            .await?
-            .into()
+            .await
     }
 
     // 根据资产地址、后端同步。
@@ -151,16 +140,9 @@ impl crate::WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        // let res = AssetsService::new(self.repo_factory.resource_repo())
-        //     .sync_assets_from_backend(addr, chain_code, symbol)
-        //     .await;
-        let res = AssetsService::new(self.repo_factory.resource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .sync_assets_by_addr(vec![addr], chain_code, symbol)
-            .await;
-        if let Err(e) = res {
-            tracing::error!("sync_assets error: {}", e);
-        }
-        ().into()
+            .await
     }
 
     // 根据资产地址、链以及符号来同步余额(直接重链上同步余额)。
@@ -170,14 +152,9 @@ impl crate::WalletManager {
         chain_code: Option<String>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        let res = AssetsService::new(self.repo_factory.resource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .sync_assets_by_addr(vec![addr], chain_code, symbol)
-            .await;
-        if let Err(e) = res {
-            tracing::error!("sync_assets error: {}", e);
-        }
-
-        ().into()
+            .await
     }
 
     // 根据钱包去同步资产
@@ -187,17 +164,9 @@ impl crate::WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        let res = AssetsService::new(self.repo_factory.resource_repo())
+        AssetsService::new(self.repo_factory.resource_repo())
             .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
-            .await;
-        // let res = AssetsService::new(self.repo_factory.resource_repo())
-        //     .sync_assets_by_wallet_backend(wallet_address, account_id, symbol)
-        //     .await;
-        if let Err(e) = res {
-            tracing::error!("sync_assets error: {}", e);
-        }
-
-        ().into()
+            .await
     }
 }
 
@@ -225,7 +194,7 @@ mod test {
                 "0x111111111117dC0aa78b770fA6A738034120C302".to_string(),
             )])), // token_address,
         };
-        let res = wallet_manager.add_coin(add_coin_req).await;
+        let res = wallet_manager.add_coin(add_coin_req).await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -243,7 +212,7 @@ mod test {
             address: "TBtrFfwCQEtR8HZ4hEgfmYWiVetMF11czn".to_string(),
             // token_address: token_address,
         };
-        let res = wallet_manager.add_multisig_coin(add_coin_req).await;
+        let res = wallet_manager.add_multisig_coin(add_coin_req).await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -261,7 +230,7 @@ mod test {
         let symbol = "TON";
         let token_address = Some("".to_string());
         let res =
-            wallet_manager.get_assets(address, account_id, chain_code, symbol, token_address).await;
+            wallet_manager.get_assets(address, account_id, chain_code, symbol, token_address).await?;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -293,7 +262,7 @@ mod test {
                         .to_string(),
                 ),
             ])))
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -340,7 +309,7 @@ mod test {
 
         let res = wallet_manager
             .get_coin_list(wallet_address, account_id, chain_code, keyword, is_multisig)
-            .await;
+            .await?;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {}", res);
         Ok(())
@@ -361,7 +330,7 @@ mod test {
 
         let address = "TRbHD77Y6WWDaz9X5esrVKwEVwRM4gTw6N";
         let res =
-            wallet_manager.get_coin_list(address, None, chain_code, keyword, is_multisig).await;
+            wallet_manager.get_coin_list(address, None, chain_code, keyword, is_multisig).await?;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -384,7 +353,7 @@ mod test {
                 address,
                 account_id,
             )
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -399,7 +368,7 @@ mod test {
         let account_id = 2147483648;
         // let account_id = 1;
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
-        let account_asset = wallet_manager.get_all_account_assets(account_id, Some(address)).await;
+        let account_asset = wallet_manager.get_all_account_assets(account_id, Some(address)).await?;
         tracing::info!("account_asset: {account_asset:?}");
 
         Ok(())
@@ -420,7 +389,7 @@ mod test {
         // let account_id = 2147483648;
         let account_id = 1;
         let account_asset =
-            wallet_manager.get_account_assets(account_id, address, chain_code).await;
+            wallet_manager.get_account_assets(account_id, address, chain_code).await?;
         tracing::info!("account_asset: {account_asset:?}");
         let res = wallet_utils::serde_func::serde_to_string(&account_asset).unwrap();
         tracing::info!("res: {res}");
@@ -434,7 +403,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let address = "TT4QgNx2rVD35tYU1LJ6tH5Ya1bxmannBK";
-        let account_asset = wallet_manager.get_multisig_account_assets(address).await;
+        let account_asset = wallet_manager.get_multisig_account_assets(address).await?;
         tracing::info!("account_asset: {account_asset:?}");
 
         Ok(())
@@ -455,7 +424,7 @@ mod test {
 
         wallet_manager.set_currency("USD").await;
         let res =
-            wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await;
+            wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await?;
         // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("get_account_chain_assets: {}", res);
@@ -474,7 +443,7 @@ mod test {
         let account_id = None;
 
         let res =
-            wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await;
+            wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await?;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");
@@ -492,7 +461,7 @@ mod test {
         let chain_code = None;
         let symbol = vec![];
 
-        let res = wallet_manager.sync_assets(address, chain_code, symbol).await;
+        let res = wallet_manager.sync_assets(address, chain_code, symbol).await?;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");
@@ -510,7 +479,7 @@ mod test {
         let account_id = Some(2147483648);
         let symbol = vec![];
 
-        let res = wallet_manager.sync_assets_by_wallet(wallet_address, account_id, symbol).await;
+        let res = wallet_manager.sync_assets_by_wallet(wallet_address, account_id, symbol).await?;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res:?}");

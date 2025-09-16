@@ -37,14 +37,16 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         Self { repo }
     }
 
-    pub async fn get_official_website(self) -> Result<GetOfficialWebsiteRes, crate::ServiceError> {
+    pub async fn get_official_website(
+        self,
+    ) -> Result<GetOfficialWebsiteRes, crate::error::service::ServiceError> {
         let config = crate::app_state::APP_STATE.read().await;
 
         let official_website = config.get_official_website();
         Ok(GetOfficialWebsiteRes { official_website })
     }
 
-    pub async fn get_config(self) -> Result<GetConfigRes, crate::ServiceError> {
+    pub async fn get_config(self) -> Result<GetConfigRes, crate::error::service::ServiceError> {
         let config = crate::app_state::APP_STATE.read().await;
         // if config.url().official_website.is_none() {
         //     let official_website = self.app_domain.get_official_website().await.ok();
@@ -88,7 +90,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn get_unread_status(
         self,
-    ) -> Result<crate::response_vo::app::UnreadCount, crate::ServiceError> {
+    ) -> Result<crate::response_vo::app::UnreadCount, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;
         let unread_system_notification_count =
@@ -99,13 +101,19 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         })
     }
 
-    pub async fn language_init(self, language: &str) -> Result<(), crate::ServiceError> {
+    pub async fn language_init(
+        self,
+        language: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let val = wallet_database::entities::config::Language::new(language);
         ConfigDomain::set_config(LANGUAGE, &val.to_json_str()?).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
         let task = DeviceDomain::language_init(&device, language).await?;
         Tasks::new().push(task).send().await?;
@@ -121,7 +129,10 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     //     Ok(())
     // }
 
-    pub async fn check_version(self, r#type: &str) -> Result<AppVersionRes, crate::ServiceError> {
+    pub async fn check_version(
+        self,
+        r#type: &str,
+    ) -> Result<AppVersionRes, crate::error::service::ServiceError> {
         let req = VersionViewReq::new(r#type);
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
@@ -130,19 +141,28 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     }
 
     // fiat  = CNY
-    pub async fn set_fiat(&mut self, fiat: &str) -> Result<(), crate::ServiceError> {
+    pub async fn set_fiat(
+        &mut self,
+        fiat: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let config = wallet_database::entities::config::Currency { currency: fiat.to_string() };
         ConfigDomain::set_currency(Some(config)).await?;
 
         Ok(())
     }
 
-    pub async fn set_app_id(mut self, app_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn set_app_id(
+        mut self,
+        app_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let tx = &mut self.repo;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
         tx.update_app_id(app_id).await?;
 
@@ -156,13 +176,15 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         Ok(())
     }
 
-    pub async fn get_fiat(self) -> Result<GetFiatRes, crate::ServiceError> {
+    pub async fn get_fiat(self) -> Result<GetFiatRes, crate::error::service::ServiceError> {
         let config = crate::app_state::APP_STATE.read().await;
 
         Ok(GetFiatRes { fiat: config.currency().to_string() })
     }
 
-    pub async fn set_block_browser_url(&mut self) -> Result<(), crate::ServiceError> {
+    pub async fn set_block_browser_url(
+        &mut self,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let tx = &mut self.repo;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
@@ -177,7 +199,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     pub async fn upload_log_file(
         self,
         req: Vec<crate::request::app::UploadLogFileReq>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let oss_client = crate::context::CONTEXT.get().unwrap().get_global_oss_client();
         for req in req.into_iter() {
             oss_client.upload_local_file(&req.src_file_path, &req.dst_file_name).await?;
@@ -190,7 +212,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         topics: Vec<String>,
         qos: Option<u8>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 获取全局 topics
         let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
@@ -203,7 +225,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     pub async fn mqtt_unsubscribe_unsubscribe(
         self,
         topics: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 获取全局已订阅的主题
         let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
         let mut global_topics = global_topics.write().await;
@@ -213,7 +235,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         Ok(())
     }
 
-    pub async fn mqtt_resubscribe(self) -> Result<(), crate::ServiceError> {
+    pub async fn mqtt_resubscribe(self) -> Result<(), crate::error::service::ServiceError> {
         // 获取全局已订阅的主题
         let global_topics = crate::context::CONTEXT.get().unwrap().get_global_mqtt_topics();
         let global_topics = global_topics.write().await;
@@ -223,7 +245,9 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         Ok(())
     }
 
-    pub async fn get_configs(self) -> Result<Vec<ConfigEntity>, crate::ServiceError> {
+    pub async fn get_configs(
+        self,
+    ) -> Result<Vec<ConfigEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let res = ConfigDao::list_v2(pool.as_ref()).await?;
         Ok(res)
@@ -233,7 +257,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         key: String,
         value: String,
-    ) -> Result<ConfigEntity, crate::ServiceError> {
+    ) -> Result<ConfigEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // let min_config =
@@ -265,7 +289,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         symbol: String,
         amount: f64,
         switch: bool,
-    ) -> Result<MinValueSwitchConfig, crate::ServiceError> {
+    ) -> Result<MinValueSwitchConfig, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let cx = crate::context::CONTEXT.get().unwrap();
@@ -295,7 +319,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     pub async fn get_min_value_config(
         self,
         symbol: String,
-    ) -> Result<Option<MinValueSwitchConfig>, crate::ServiceError> {
+    ) -> Result<Option<MinValueSwitchConfig>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let symbol = symbol.to_uppercase();
@@ -315,7 +339,7 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         sn: &str,
         device_type: &str,
         channel: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let req = AppInstallSaveReq::new(sn, device_type, channel);
         // let backend = crate::manager::Context::get_global_backend_api()?;
         //
@@ -344,14 +368,14 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
         self,
         endpoint: &str,
         body: String,
-    ) -> Result<serde_json::Value, crate::ServiceError> {
+    ) -> Result<serde_json::Value, crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let result = backend.post_req_string::<serde_json::Value>(endpoint, body).await?;
         Ok(result)
     }
 
-    pub async fn global_msg(self) -> Result<GlobalMsg, crate::ServiceError> {
+    pub async fn global_msg(self) -> Result<GlobalMsg, crate::error::service::ServiceError> {
         let mut msg = GlobalMsg::default();
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -400,10 +424,13 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     pub async fn set_invite_code(
         self,
         invite_code: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         let is_invite = invite_code.is_some();
@@ -424,7 +451,8 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
 
     pub async fn backend_config(
         self,
-    ) -> Result<std::collections::HashMap<String, String>, crate::ServiceError> {
+    ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError>
+    {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.all_config().await?.configs)
     }

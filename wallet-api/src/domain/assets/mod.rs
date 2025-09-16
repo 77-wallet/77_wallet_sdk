@@ -3,6 +3,7 @@ use crate::{
     domain::coin::CoinDomain,
     request::transaction::SwapTokenInfo,
     response_vo::{chain::ChainList, coin::CoinInfoList},
+    error::service::ServiceError,
 };
 use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
@@ -44,7 +45,7 @@ impl AssetsDomain {
         wallet_address: &str,
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
-    ) -> Result<Vec<AssetsEntity>, crate::ServiceError> {
+    ) -> Result<Vec<AssetsEntity>, ServiceError> {
         let tx = repo;
 
         let accounts = tx
@@ -76,7 +77,7 @@ impl AssetsDomain {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> Result<crate::response_vo::coin::CoinInfoList, crate::ServiceError> {
+    ) -> Result<crate::response_vo::coin::CoinInfoList, ServiceError> {
         let tx = repo;
 
         let _is_multisig = if let Some(is_multisig) = is_multisig
@@ -90,7 +91,7 @@ impl AssetsDomain {
         let assets_list = tx
             .lists(addresses, chain_code, keyword, _is_multisig)
             .await
-            .map_err(crate::ServiceError::Database)?;
+            .map_err(ServiceError::Database)?;
 
         let show_contract = keyword.is_some();
         let mut res = crate::response_vo::coin::CoinInfoList::default();
@@ -127,7 +128,7 @@ impl AssetsDomain {
         pool: &DbPool,
         keyword: Option<&str>,
         res: &mut CoinInfoList,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let has_keyword = keyword.is_some();
 
         for coin in res.iter_mut() {
@@ -165,7 +166,7 @@ impl AssetsDomain {
         wallet_address: String,
         account_id: Option<u32>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let list = AccountEntity::lists_by_wallet_address(
@@ -186,7 +187,7 @@ impl AssetsDomain {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, symbol).await
@@ -196,7 +197,7 @@ impl AssetsDomain {
     pub async fn async_balance_from_backend_addr(
         addr: String,
         chain_code: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         // 单个地址处理
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -242,7 +243,7 @@ impl AssetsDomain {
     pub async fn async_balance_from_backend_wallet(
         wallet_address: String,
         account_id: Option<u32>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
 
@@ -282,7 +283,7 @@ impl AssetsDomain {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let mut assets =
             AssetsEntity::all_assets(pool.as_ref(), addr, chain_code, None, None).await?;
         if !symbol.is_empty() {
@@ -305,7 +306,7 @@ impl AssetsDomain {
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
@@ -332,7 +333,7 @@ impl AssetsDomain {
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
@@ -359,7 +360,7 @@ impl AssetsDomain {
     pub async fn init_default_multisig_assets(
         address: String,
         chain_code: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let default_coins =
             CoinEntity::list_v2(&*pool, None, Some(chain_code.clone()), Some(1)).await?;
@@ -390,7 +391,7 @@ impl AssetsDomain {
         token: SwapTokenInfo,
         recipient: String,
         chain_code: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         // notes 不能更新币价
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // let time = wallet_utils::time::now();
@@ -476,7 +477,7 @@ impl From<&[ApiAssetsEntity]> for BalanceTasks {
 impl ChainBalance {
     pub(crate) async fn sync_address_balance(
         assets: impl Into<BalanceTasks>,
-    ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
+    ) -> Result<Vec<(AssetsId, String)>, crate::error::service::ServiceError> {
         // 限制最大并发数为 10
         let sem = Arc::new(Semaphore::new(10));
         let tasks: BalanceTasks = assets.into();

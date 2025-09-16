@@ -1,4 +1,8 @@
-use crate::{FrontendNotifyEvent, NotifyEvent, domain::assets::AssetsDomain};
+use crate::{
+    domain::assets::AssetsDomain,
+    error::service::ServiceError,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -126,10 +130,10 @@ impl InnerEventHandle {
         Self { inner_event_sender: tx }
     }
 
-    pub(crate) fn send(&self, event: InnerEvent) -> Result<(), crate::ServiceError> {
+    pub(crate) fn send(&self, event: InnerEvent) -> Result<(), ServiceError> {
         self.inner_event_sender
             .send(event)
-            .map_err(|e| crate::SystemError::ChannelSendFailed(e.to_string()))?;
+            .map_err(|e| crate::error::system::SystemError::ChannelSendFailed(e.to_string()))?;
         Ok(())
     }
 
@@ -187,7 +191,7 @@ impl InnerEventHandle {
         chain_code: String,
         symbol: String,
         addr_list: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         if addr_list.is_empty() {
             return Ok(());
         }

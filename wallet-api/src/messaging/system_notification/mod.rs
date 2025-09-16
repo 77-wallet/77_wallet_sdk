@@ -123,9 +123,9 @@ impl Notification {
         }
     }
 
-    pub fn serialize(&self) -> Result<String, crate::ServiceError> {
+    pub fn serialize(&self) -> Result<String, crate::error::service::ServiceError> {
         serde_json::to_string(self).map_err(|e| {
-            crate::ServiceError::Utils(wallet_utils::error::serde::SerdeError::Json(e).into())
+            crate::error::service::ServiceError::Utils(wallet_utils::error::serde::SerdeError::Json(e).into())
         })
     }
 
@@ -220,7 +220,7 @@ impl Notification {
         value: Option<String>,
     ) -> Result<
         wallet_database::entities::system_notification::CreateSystemNotificationEntity,
-        crate::ServiceError,
+        crate::error::service::ServiceError,
     > {
         let content = self.serialize()?;
         let r#type = self.type_name();

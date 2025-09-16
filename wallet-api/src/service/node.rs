@@ -27,18 +27,18 @@ impl NodeService {
         rpc_url: &str,
         _ws_url: &str,
         http_url: Option<String>,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let id = NodeDomain::gen_node_id(name, chain_code);
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
-        let res = NodeRepoTrait::add(tx, req).await.map_err(crate::ServiceError::Database)?;
+        let res = NodeRepoTrait::add(tx, req).await.map_err(crate::error::service::ServiceError::Database)?;
         Ok(res.node_id)
     }
 
     async fn init_default_nodes(
         repo: &mut ResourcesRepo,
         chains_set: &mut std::collections::HashSet<(String, String)>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let tx = repo;
         let node_list = crate::default_data::node::get_default_node_list()?;
         // let mut default_nodes = Vec::new();
@@ -79,7 +79,7 @@ impl NodeService {
         Ok(())
     }
 
-    pub async fn init_chain_info(&mut self) -> Result<(), crate::ServiceError> {
+    pub async fn init_chain_info(&mut self) -> Result<(), crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let list = crate::default_data::chain::get_default_chains_list()?;
@@ -120,7 +120,7 @@ impl NodeService {
 
     // 首先在没有请求后端接口的情况下，只需要初始化默认的链信息和节点信息
     // 然后请求后端接口，获取后端默认的链信息和节点信息，然后更新到数据库中
-    pub async fn init_node_info(&mut self) -> Result<(), crate::ServiceError> {
+    pub async fn init_node_info(&mut self) -> Result<(), crate::error::service::ServiceError> {
         let tx = &mut self.repo;
 
         let mut chains_set = std::collections::HashSet::new();
@@ -139,12 +139,12 @@ impl NodeService {
     pub async fn get_node_list(
         &mut self,
         chain_code: &str,
-    ) -> Result<Vec<crate::response_vo::chain::NodeListRes>, crate::ServiceError> {
+    ) -> Result<Vec<crate::response_vo::chain::NodeListRes>, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
 
         let Some(chain) = ChainRepoTrait::detail(tx, chain_code).await? else {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
-                crate::ChainError::NotFound(chain_code.to_string()),
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
             )));
         };
 
@@ -174,7 +174,7 @@ impl NodeService {
     pub async fn get_node_dynamic_data(
         &mut self,
         chain_code: &str,
-    ) -> Result<Vec<crate::response_vo::chain::NodeDynData>, crate::ServiceError> {
+    ) -> Result<Vec<crate::response_vo::chain::NodeDynData>, crate::error::service::ServiceError> {
         // let node_list = self.get_node_list(chain_code).await?;
         let tx = &mut self.repo;
         // let list_with_node =

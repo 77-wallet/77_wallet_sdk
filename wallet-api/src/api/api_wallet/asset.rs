@@ -1,13 +1,13 @@
-use crate::{api::ReturnType, service::api_wallet::asset::ApiAssetsService};
+use crate::{api::ReturnType, service::api_wallet::asset::ApiAssetsService, manager::WalletManager};
 use wallet_database::entities::api_assets::ApiAssetsEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_api_assets_list(
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
     ) -> ReturnType<Vec<ApiAssetsEntity>> {
-        vec![].into()
+        Ok(vec![])
     }
 
     // 根据钱包去同步资产
@@ -25,7 +25,7 @@ impl crate::WalletManager {
             tracing::error!("sync_assets error: {}", e);
         }
 
-        ().into()
+        Ok(())
     }
 }
 

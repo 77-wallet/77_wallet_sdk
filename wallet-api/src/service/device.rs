@@ -25,12 +25,12 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         Self { repo }
     }
 
-    pub async fn get_device_info(self) -> Result<Option<DeviceEntity>, crate::ServiceError> {
+    pub async fn get_device_info(self) -> Result<Option<DeviceEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         Ok(DeviceRepo::get_device_info(pool).await?)
     }
 
-    pub async fn init_device(self, req: InitDeviceReq) -> Result<Option<()>, crate::ServiceError> {
+    pub async fn init_device(self, req: InitDeviceReq) -> Result<Option<()>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
 
         // let package_id = req.package_id.clone();
@@ -39,7 +39,7 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into()));
         };
 
         if device.is_init == 0 {
@@ -59,14 +59,14 @@ impl<T: DeviceRepoTrait> DeviceService<T> {
         Ok(None)
     }
 
-    pub async fn add_device(self, req: CreateDeviceEntity) -> Result<(), crate::ServiceError> {
+    pub async fn add_device(self, req: CreateDeviceEntity) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.upsert(req).await?;
 
         Ok(())
     }
 
-    pub async fn unbind_device(self, sn: &str) -> Result<(), crate::ServiceError> {
+    pub async fn unbind_device(self, sn: &str) -> Result<(), crate::error::service::ServiceError> {
         let task_data = BackendApiTaskData {
             endpoint: endpoint::KEYS_RESET.to_string(),
             body: serde_json::json!({

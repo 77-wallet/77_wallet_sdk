@@ -1,6 +1,5 @@
 pub(crate) mod business;
 pub mod service;
-pub use service::ServiceError;
 pub(crate) mod system;
 
 #[derive(Debug, thiserror::Error)]

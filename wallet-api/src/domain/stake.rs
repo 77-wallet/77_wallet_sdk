@@ -40,7 +40,7 @@ impl StakeArgs {
         self,
         account: &str,
         chain: &TronChain,
-    ) -> Result<ResourceConsumer, crate::ServiceError> {
+    ) -> Result<ResourceConsumer, crate::error::service::ServiceError> {
         let signature_num = 1;
         let res = match self {
             Self::Freeze(params) => chain.simple_fee(account, signature_num, params).await?,
@@ -112,7 +112,7 @@ impl StakeArgs {
         self,
         chain: &TronChain,
         expiration: u64,
-    ) -> Result<MultisigTxResp, crate::ServiceError> {
+    ) -> Result<MultisigTxResp, crate::error::service::ServiceError> {
         let res = match self {
             Self::Freeze(params) => chain.build_multisig_transaction(params, expiration).await?,
             Self::UnFreeze(params) => chain.build_multisig_transaction(params, expiration).await?,
@@ -129,8 +129,8 @@ impl StakeArgs {
                 chain.build_multisig_transaction(params, expiration).await?
             }
             _ => {
-                return Err(crate::BusinessError::Stake(
-                    crate::StakeError::MultisigUnSupportBillKind,
+                return Err(crate::error::business::BusinessError::Stake(
+                    crate::error::business::stake::StakeError::MultisigUnSupportBillKind,
                 ))?;
             }
         };
@@ -161,7 +161,7 @@ impl StakeDomain {
         from: &str,
         to: &str,
         chain: &TronChain,
-    ) -> Result<DelegatedResource, crate::ServiceError> {
+    ) -> Result<DelegatedResource, crate::error::service::ServiceError> {
         let key = format!("{}_{}_delegate", from, to);
 
         // 现从缓存中获取数据、没有在从链上获取
@@ -216,7 +216,7 @@ impl StakeDomain {
     }
 
     // 从后端获取代表列表
-    pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::ServiceError>
+    pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::service::ServiceError>
     {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut list = backend.vote_list().await?;
@@ -244,7 +244,7 @@ impl StakeDomain {
     #[allow(unused)]
     pub(crate) async fn vote_list(
         chain: &wallet_chain_interact::tron::Provider,
-    ) -> Result<VoteListResp, crate::error::ServiceError> {
+    ) -> Result<VoteListResp, crate::error::service::ServiceError> {
         let mut witness_list = chain.list_witnesses().await?.witnesses;
         witness_list.sort_by(|a, b| {
             let a_vote_count = a.vote_count;
@@ -357,7 +357,7 @@ pub struct EstimateTxConsumer {
 }
 impl EstimateTxConsumer {
     // 获取交易需要消耗的资源，TODO: 根据不同的网络来获取对应的代币地址
-    pub async fn new(_chain: &TronChain) -> Result<Self, crate::ServiceError> {
+    pub async fn new(_chain: &TronChain) -> Result<Self, crate::error::service::ServiceError> {
         // let contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
         // let from = "TFrszR3Bz1HUaEjL9ES1m424e5NJDsFsfT";
         // let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";

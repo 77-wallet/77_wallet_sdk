@@ -1,5 +1,5 @@
 // 先放在这里，不知道最终会不会和后端用一个
-use crate::request::transaction::DexRoute;
+use crate::{error::service::ServiceError, request::transaction::DexRoute};
 use alloy::primitives::U256;
 use wallet_transport::client::HttpClient;
 
@@ -8,7 +8,7 @@ pub struct SwapClient {
 }
 
 impl SwapClient {
-    pub fn new(url: &str) -> Result<Self, crate::ServiceError> {
+    pub fn new(url: &str) -> Result<Self, ServiceError> {
         let timeout = Some(std::time::Duration::from_secs(20));
         let client = HttpClient::new(&url, None, timeout)?;
 
@@ -23,13 +23,13 @@ impl SwapClient {
     // - **10500**: 流动性拆分失败, 也可以显示为流动性不足
     // - **20000**: 其它不常见的特殊错误, 按照错误消息字符串显示
     // - **30000**: 未知错误, 保留, 按照错误消息字符串显示
-    fn match_error(&self, res: AggregatorResp) -> crate::ServiceError {
+    fn match_error(&self, res: AggregatorResp) -> ServiceError {
         let code = match res.code {
             10100 => 4402,
             10200 | 10300 | 10400 | 10500 => 4403,
             _ => -1,
         };
-        crate::ServiceError::AggregatorError {
+        crate::error::service::ServiceError::AggregatorError {
             code,
             agg_code: res.code,
             msg: res.msg.unwrap_or_default(),
@@ -39,7 +39,7 @@ impl SwapClient {
     fn handle_result<T: serde::de::DeserializeOwned>(
         &self,
         res: AggregatorResp,
-    ) -> Result<T, crate::ServiceError> {
+    ) -> Result<T, ServiceError> {
         if res.code == 200 {
             Ok(wallet_utils::serde_func::serde_from_value::<T>(res.data)?)
         } else {
@@ -47,10 +47,7 @@ impl SwapClient {
         }
     }
 
-    pub async fn get_quote(
-        &self,
-        req: AggQuoteRequest,
-    ) -> Result<AggQuoteResp, crate::ServiceError> {
+    pub async fn get_quote(&self, req: AggQuoteRequest) -> Result<AggQuoteResp, ServiceError> {
         let res = self.client.post_request::<_, AggregatorResp>("quote", req).await?;
 
         self.handle_result::<AggQuoteResp>(res)
@@ -164,7 +161,7 @@ pub struct AggQuoteResp {
     pub default_slippage: u64,
 }
 impl AggQuoteResp {
-    pub fn amount_out_u256(&self) -> Result<U256, crate::ServiceError> {
+    pub fn amount_out_u256(&self) -> Result<U256, crate::error::service::ServiceError> {
         Ok(wallet_utils::unit::u256_from_str(&self.amount_out)?)
     }
 

@@ -1,9 +1,9 @@
-use crate::{api::ReturnType, service::api_wallet::withdraw::WithdrawService};
+use crate::{api::ReturnType, service::api_wallet::withdraw::WithdrawService, manager::WalletManager};
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_api_withdraw_order_list(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawEntity>> {
-        WithdrawService::new().get_withdraw_order_list().await?.into()
+        WithdrawService::new().get_withdraw_order_list().await
     }
 
     // 测试
@@ -31,16 +31,15 @@ impl crate::WalletManager {
                 trade_type,
                 uid,
             )
-            .await?
-            .into()
+            .await
     }
 
     pub async fn sign_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().sign_withdrawal_order(order_id, 1).await?.into()
+        WithdrawService::new().sign_withdrawal_order(order_id, 1).await
     }
 
     pub async fn reject_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().reject_withdrawal_order(order_id, 2).await?.into()
+        WithdrawService::new().reject_withdrawal_order(order_id, 2).await
     }
 }
 

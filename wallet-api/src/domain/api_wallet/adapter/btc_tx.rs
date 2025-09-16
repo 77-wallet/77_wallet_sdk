@@ -1,5 +1,5 @@
 use crate::{
-    ServiceError,
+    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -60,22 +60,22 @@ impl BtcTx {
         Ok(Self { chain: btc_chain })
     }
 
-    pub fn handle_btc_fee_error(&self, err: wallet_chain_interact::Error) -> crate::ServiceError {
+    pub fn handle_btc_fee_error(&self, err: wallet_chain_interact::Error) -> ServiceError {
         match err {
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientBalance) => {
-                crate::BusinessError::Chain(crate::ChainError::InsufficientBalance).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientFee(_fee)) => {
-                crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::ExceedsMaximum) => {
-                crate::BusinessError::Chain(crate::ChainError::ExceedsMaximum).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ExceedsMaximum).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::DustTx) => {
-                crate::BusinessError::Chain(crate::ChainError::DustTransaction).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::DustTransaction).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::ExceedsMaxFeeRate) => {
-                crate::BusinessError::Chain(crate::ChainError::ExceedsMaxFeerate).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ExceedsMaxFeerate).into()
             }
             _ => err.into(),
         }
@@ -132,7 +132,7 @@ impl Tx for BtcTx {
             &pool,
         )
         .await?
-        .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFoundAccount))?;
+        .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFoundAccount))?;
         let params = TransferArg::new(
             &params.base.from,
             &params.base.to,
@@ -166,7 +166,7 @@ impl Tx for BtcTx {
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
-                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
                     req.from.to_string(),
                 )))?;
         let params = TransferArg::new(
@@ -195,15 +195,15 @@ impl Tx for BtcTx {
         _: ChainPrivateKey,
         _: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(&self, _: &ApproveReq, _: U256, _: &str) -> Result<String, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(&self, _: &str, _: &str, _: &str) -> Result<U256, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
@@ -212,7 +212,7 @@ impl Tx for BtcTx {
         _: &AggQuoteResp,
         _: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
@@ -221,7 +221,7 @@ impl Tx for BtcTx {
         _: String,
         _: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
@@ -229,7 +229,7 @@ impl Tx for BtcTx {
         _: DepositReq,
         _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
@@ -239,7 +239,7 @@ impl Tx for BtcTx {
         _: ChainPrivateKey,
         _: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw_fee(
@@ -247,7 +247,7 @@ impl Tx for BtcTx {
         _: WithdrawReq,
         _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
@@ -257,7 +257,7 @@ impl Tx for BtcTx {
         _: ChainPrivateKey,
         _: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 }
 
@@ -370,7 +370,7 @@ impl Multisig for BtcTx {
         _: &PermissionEntity,
         _: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
+        Err(crate::error::business::BusinessError::Permission(crate::error::business::permission::PermissionError::UnSupportPermissionChain)
             .into())
     }
 

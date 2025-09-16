@@ -56,7 +56,7 @@ impl AssetsService {
     pub async fn get_multisig_account_assets(
         &mut self,
         address: &str,
-    ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
+    ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
 
@@ -76,7 +76,7 @@ impl AssetsService {
         account_id: u32,
         wallet_address: &str,
         chain_code: Option<String>,
-    ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
+    ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let chains = ChainRepo::get_chain_list(&pool).await?;
@@ -105,7 +105,7 @@ impl AssetsService {
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
-    ) -> Result<CoinAssets, crate::ServiceError> {
+    ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
 
         let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
@@ -115,7 +115,7 @@ impl AssetsService {
                     address, account_id, chain_code,
                 )
                 .await?
-                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
                     address.to_string(),
                 )))?;
             account.address
@@ -126,7 +126,7 @@ impl AssetsService {
         let assets = tx
             .assets_by_id(&assets_id)
             .await?
-            .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFound))?;
 
         let balance = token_currencies.calculate_assets_entity(&assets).await?;
         let data: CoinAssets = (balance, assets).into();
@@ -138,7 +138,7 @@ impl AssetsService {
         &mut self,
         account_id: u32,
         wallet_address: Option<&str>,
-    ) -> Result<GetAccountAssetsRes, crate::ServiceError> {
+    ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let accounts = tx
             .get_account_list_by_wallet_address_and_account_id(wallet_address, Some(account_id))
@@ -161,7 +161,7 @@ impl AssetsService {
         account_id: Option<u32>,
         chain_code: Option<String>,
         is_multisig: Option<bool>,
-    ) -> Result<AccountChainAssetList, crate::ServiceError> {
+    ) -> Result<AccountChainAssetList, crate::error::service::ServiceError> {
         let mut tx = self.repo;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
@@ -245,7 +245,7 @@ impl AssetsService {
         chain_list: ChainList,
         // token_address: Option<String>,
         is_multisig: Option<bool>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let chains = chain_list.keys().cloned().collect();
@@ -322,7 +322,7 @@ impl AssetsService {
         chain_code: Option<String>,
         // token_address: Option<String>,
         is_multisig: Option<bool>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let accounts = self
@@ -333,7 +333,7 @@ impl AssetsService {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
 
@@ -399,7 +399,7 @@ impl AssetsService {
         // symbol: &str,
         // token_address: Option<String>,
         is_multisig: Option<bool>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -462,7 +462,7 @@ impl AssetsService {
         symbol: &str,
         // token_address: Option<String>,
         is_multisig: Option<bool>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let accounts = self
             .account_domain
@@ -516,7 +516,7 @@ impl AssetsService {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> Result<crate::response_vo::coin::CoinInfoList, crate::ServiceError> {
+    ) -> Result<crate::response_vo::coin::CoinInfoList, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses = self
@@ -542,7 +542,7 @@ impl AssetsService {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         AssetsDomain::sync_assets_by_addr_chain(addr, chain_code, symbol).await
     }
 
@@ -552,7 +552,7 @@ impl AssetsService {
         addr: String,
         chain_code: Option<String>,
         _symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         AssetsDomain::async_balance_from_backend_addr(addr, chain_code).await
     }
 
@@ -562,7 +562,7 @@ impl AssetsService {
         wallet_address: String,
         account_id: Option<u32>,
         _symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         AssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
     }
 
@@ -571,7 +571,7 @@ impl AssetsService {
         wallet_address: String,
         account_id: Option<u32>,
         _symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         AssetsDomain::async_balance_from_backend_wallet(wallet_address, account_id).await
     }
 }

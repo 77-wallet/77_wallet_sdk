@@ -1,6 +1,9 @@
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
-use crate::infrastructure::task_queue::task::{TaskTrait, task_type::TaskType};
+use crate::{
+    error::service::ServiceError,
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
+};
 
 use super::task_handle::backend_handle::BackendTaskHandle;
 
@@ -12,11 +15,11 @@ impl TaskTrait for BackendApiTask {
     fn get_type(&self) -> TaskType {
         TaskType::BackendApi
     }
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+    fn get_body(&self) -> Result<Option<String>, ServiceError> {
         self.get_body()
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
+    async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match self {
             BackendApiTask::BackendApi(data) => {
@@ -46,7 +49,7 @@ impl BackendApiTask {
         TaskName::Known(KnownTaskName::BackendApi)
     }
 
-    pub(crate) fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+    pub(crate) fn get_body(&self) -> Result<Option<String>, ServiceError> {
         match self {
             BackendApiTask::BackendApi(api_data) => {
                 Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
@@ -66,7 +69,7 @@ pub(crate) struct BackendApiTaskData {
 }
 
 impl BackendApiTaskData {
-    pub(crate) fn new<T>(endpoint: &str, body: &T) -> Result<Self, crate::ServiceError>
+    pub(crate) fn new<T>(endpoint: &str, body: &T) -> Result<Self, ServiceError>
     where
         T: serde::Serialize,
     {

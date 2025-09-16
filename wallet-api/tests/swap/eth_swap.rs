@@ -2,32 +2,35 @@ use crate::get_manager;
 use wallet_api::request::transaction::{
     ApproveReq, DexRoute, QuoteReq, RouteInDex, SwapReq, SwapTokenInfo,
 };
+use anyhow::Result;
 
 // Ethereum aggregator address
 const AGGREGATOR: &str = "0xD084CbC32648346DC98BF667B2535d61E4243a95";
 
 #[tokio::test]
-async fn test_default_quote() {
+async fn test_default_quote() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let chain_code = "eth".to_string();
     let token_in = "".to_string();
     // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
 
-    let resp = wallet_manager.default_quote(chain_code, token_in).await;
+    let resp = wallet_manager.default_quote(chain_code, token_in).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_support_chain() {
+async fn test_support_chain() -> Result<()> {
     let wallet_manager = get_manager().await;
 
-    let resp = wallet_manager.chain_list().await;
+    let resp = wallet_manager.chain_list().await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve() {
+async fn test_approve() -> Result<()> {
     let wallet_manager = get_manager().await;
     let params = ApproveReq {
         from: "0x998522f928A37837Fa8d6743713170243b95f98a".to_string(),
@@ -39,12 +42,13 @@ async fn test_approve() {
 
     let password = "123456".to_string();
 
-    let resp = wallet_manager.approve(params, password).await;
+    let resp = wallet_manager.approve(params, password).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve_fee() {
+async fn test_approve_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
@@ -57,23 +61,25 @@ async fn test_approve_fee() {
 
     let is_cancel = true;
 
-    let resp = wallet_manager.approve_fee(params, is_cancel).await;
+    let resp = wallet_manager.approve_fee(params, is_cancel).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve_list() {
+async fn test_approve_list() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let uid = "41028d217798181a73225cc57ad401a66da21c5b0853e83a50f377dffc75651d".to_string();
     let account_id = 1;
 
-    let resp = wallet_manager.approve_list(uid, account_id).await;
+    let resp = wallet_manager.approve_list(uid, account_id).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_approve_cancel() {
+async fn test_approve_cancel() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let params = ApproveReq {
@@ -86,12 +92,13 @@ async fn test_approve_cancel() {
 
     let password = "123456".to_string();
 
-    let resp = wallet_manager.approve_cancel(params, password).await;
+    let resp = wallet_manager.approve_cancel(params, password).await?;
     println!("{}", serde_json::to_string(&resp).unwrap());
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_quote() {
+async fn test_quote() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let token_in =
@@ -115,13 +122,14 @@ async fn test_quote() {
         allow_partial_fill: false,
     };
 
-    let result = wallet_manager.quote(req).await;
+    let result = wallet_manager.quote(req).await?;
     tracing::warn!("quote = {}", serde_json::to_string(&result).unwrap());
+    Ok(())
 }
 
 // (选择的流动性)流动性
 #[tokio::test]
-async fn test_swap() {
+async fn test_swap() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let o_value = "5";
@@ -186,8 +194,9 @@ async fn test_swap() {
                     .to_string();
     let password = "123456".to_string();
 
-    let result = wallet_manager.swap(req, fee, password).await;
+    let result = wallet_manager.swap(req, fee, password).await?;
     tracing::warn!("swap hash = {}", serde_json::to_string(&result).unwrap());
+    Ok(())
 }
 
 #[test]

@@ -11,7 +11,7 @@ pub struct ChainChange(Vec<ChainUrlInfo>);
 
 // biz_type = CHAIN_CHANGE
 impl ChainChange {
-    pub(crate) async fn exec(&self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self) -> Result<(), crate::error::service::ServiceError> {
         let ChainChange(body) = &self;
         ConfigDomain::set_block_browser_url(body).await?;
 

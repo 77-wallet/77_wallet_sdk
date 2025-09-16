@@ -1,5 +1,5 @@
 use tokio_stream::StreamExt as _;
-use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
+use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
@@ -19,13 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
     wallet_manager.set_frontend_notify_sender(tx).await?;
+    wallet_manager.init(test_params.device_req).await?;
 
-    if wallet_manager.init(test_params.device_req).await.code != 200 {
-        tracing::error!("init failed");
-        return Ok(());
-    };
-
-    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await;
+    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("res: {res:?}");
 
@@ -119,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[allow(dead_code)]
-async fn subscribe(wallet_manager: &wallet_api::WalletManager) {
+async fn subscribe(wallet_manager: &wallet_api::manager::WalletManager) {
     let topics = vec![
         "wallet/token/eth/usdc".to_string(),
         "wallet/token/tron/trx".to_string(),

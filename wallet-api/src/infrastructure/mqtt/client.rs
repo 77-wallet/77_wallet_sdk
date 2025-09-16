@@ -31,10 +31,10 @@ impl MqttClientBuilder {
         }
     }
 
-    pub fn build(self) -> Result<(MqttAsyncClient, EventLoop), crate::SystemError> {
+    pub fn build(self) -> Result<(MqttAsyncClient, EventLoop), crate::error::system::SystemError> {
         let url = format!("{}?client_id={}", self.url, self.client_id);
         let mut mqtt_options =
-            MqttOptions::parse_url(url).map_err(|e| crate::SystemError::Service(e.to_string()))?;
+            MqttOptions::parse_url(url).map_err(|e| crate::error::system::SystemError::Service(e.to_string()))?;
 
         mqtt_options
             .set_transport(rumqttc::Transport::Tcp)

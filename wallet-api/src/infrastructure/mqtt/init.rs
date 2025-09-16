@@ -13,7 +13,7 @@ pub(crate) static MQTT_PROCESSOR: once_cell::sync::Lazy<tokio::sync::OnceCell<Mq
 pub async fn init_mqtt_processor<'a>(
     user_property: UserProperty,
     url: String,
-) -> Result<&'a MqttAsyncClient, crate::ServiceError> {
+) -> Result<&'a MqttAsyncClient, crate::error::service::ServiceError> {
     MQTT_PROCESSOR
         .get_or_try_init(|| async {
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -58,7 +58,7 @@ async fn handle_eventloop(tx: UnboundedSender<rumqttc::v5::Event>, mut eventloop
 pub async fn exec_event(
     mut rx: tokio_stream::wrappers::UnboundedReceiverStream<Event>,
     client: rumqttc::v5::AsyncClient,
-) -> Result<(), crate::ServiceError> {
+) -> Result<(), crate::error::service::ServiceError> {
     while let Some(event) = rx.next().await {
         // #[cfg(not(feature = "prod"))]
         // if filter_log_event(&event) {

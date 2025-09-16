@@ -1,9 +1,10 @@
 use crate::{
     api::ReturnType, messaging::system_notification::Notification,
     service::system_notification::SystemNotificationService,
+    manager::WalletManager,
 };
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_system_notification(
         &self,
         id: &str,
@@ -12,8 +13,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         SystemNotificationService::new(self.repo_factory.resource_repo())
             .add_system_notification(id, notification, status)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_system_notification_list(
@@ -27,8 +27,7 @@ impl crate::WalletManager {
     > {
         SystemNotificationService::new(self.repo_factory.resource_repo())
             .get_system_notification_list(page, page_size)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn update_system_notification_status(
@@ -38,8 +37,7 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         SystemNotificationService::new(self.repo_factory.resource_repo())
             .update_system_notification_status(id, status)
-            .await?
-            .into()
+            .await
     }
 }
 
@@ -183,7 +181,7 @@ mod test {
             let _res = wallet_manager.add_system_notification("1240", notification, status).await;
         }
 
-        let res = wallet_manager.get_system_notification_list(0, 10).await;
+        let res = wallet_manager.get_system_notification_list(0, 10).await?;
         tracing::info!("res: {res:#?}");
 
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
@@ -198,7 +196,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let status = 0;
-        let res = wallet_manager.get_system_notification_list(0, 10).await;
+        let res = wallet_manager.get_system_notification_list(0, 10).await?;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("res: {res}");

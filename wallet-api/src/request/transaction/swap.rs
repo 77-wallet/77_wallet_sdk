@@ -69,7 +69,7 @@ impl ApproveReq {
         if self.value == "-1" || self.value == "0" { Self::UN_LIMIT } else { Self::NORMAL }
     }
 
-    pub fn get_value(&self, decimals: u8) -> Result<U256, crate::ServiceError> {
+    pub fn get_value(&self, decimals: u8) -> Result<U256, crate::error::service::ServiceError> {
         if self.value == "-1" || self.value == "0" {
             Ok(U256::MAX)
         } else {
@@ -135,7 +135,7 @@ pub struct SwapReq {
 }
 
 impl TryFrom<&SwapReq> for SwapParams {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &SwapReq) -> Result<Self, Self::Error> {
         let amount_in =
@@ -173,7 +173,7 @@ impl TryFrom<&SwapReq> for SwapParams {
 }
 
 impl TryFrom<SwapReq> for NewBillEntity<BillExtraSwap> {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: SwapReq) -> Result<Self, Self::Error> {
         let amount_in = wallet_utils::unit::string_to_f64(&value.amount_in)?;
@@ -246,20 +246,20 @@ impl QuoteReq {
         }
     }
 
-    pub fn amount_in_u256(&self) -> Result<U256, crate::ServiceError> {
+    pub fn amount_in_u256(&self) -> Result<U256, crate::error::service::ServiceError> {
         Ok(wallet_utils::unit::convert_to_u256(&self.amount_in, self.token_in.decimals as u8)?)
     }
 
-    pub fn recipient_address(&self) -> Result<alloy::primitives::Address, crate::ServiceError> {
+    pub fn recipient_address(&self) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         Ok(wallet_utils::address::parse_eth_address(&self.recipient)?)
     }
 
-    pub fn aggregator_address(&self) -> Result<alloy::primitives::Address, crate::ServiceError> {
+    pub fn aggregator_address(&self) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         Ok(wallet_utils::address::parse_eth_address(&self.aggregator_addr)?)
     }
 
     // 波场的地址 转eth alloy Address type
-    pub fn addr_tron_to_eth(addr: &str) -> Result<alloy::primitives::Address, crate::ServiceError> {
+    pub fn addr_tron_to_eth(addr: &str) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         let hex_addr = wallet_utils::address::bs58_addr_to_hex_bytes(addr)?;
 
         let hex_addr = hex::encode(&hex_addr[1..21]);
@@ -294,7 +294,7 @@ pub struct SwapTokenInfo {
 }
 
 impl TryFrom<&QuoteReq> for AggQuoteRequest {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &QuoteReq) -> Result<Self, Self::Error> {
         let chain_code = ChainCode::try_from(value.chain_code.as_str())?;
 

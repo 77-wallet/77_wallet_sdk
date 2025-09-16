@@ -9,7 +9,7 @@ pub struct JPushService {}
 
 impl JPushService {
     // 前端发来的消息
-    pub async fn jpush(message: &str) -> Result<(), crate::ServiceError> {
+    pub async fn jpush(message: &str) -> Result<(), crate::error::service::ServiceError> {
         // Self::jpush_multi(vec![message.to_string()], "JG").await?;
         match serde_func::serde_from_str::<Message>(message) {
             Ok(data) => {
@@ -45,7 +45,7 @@ impl JPushService {
     pub async fn jpush_multi(
         messages: Vec<String>,
         // source: MsgConfirmSource,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let unconfirmed_msg_collector =
             crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector();

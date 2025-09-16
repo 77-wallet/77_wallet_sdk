@@ -5,10 +5,10 @@ use wallet_database::repositories::device::DeviceRepo;
 pub(crate) struct MqttDomain;
 
 impl MqttDomain {
-    pub(crate) async fn init() -> Result<(), crate::ServiceError> {
+    pub(crate) async fn init() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
         let content = DeviceDomain::device_content(&device)?;
         let client_id = DeviceDomain::client_id_by_device(&device)?;
@@ -21,13 +21,13 @@ impl MqttDomain {
 
         let url = ConfigDomain::get_mqtt_uri()
             .await?
-            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
+            .ok_or(crate::error::service::ServiceError::System(crate::error::system::SystemError::MqttClientNotInit))?;
         init_mqtt_processor(property, url).await?;
 
         Ok(())
     }
 
-    pub(crate) async fn process_unconfirm_msg(client_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn process_unconfirm_msg(client_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let data = backend_api

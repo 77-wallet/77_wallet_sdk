@@ -25,7 +25,7 @@ pub fn init_logger(
     format: CustomEventFormat,
     path: LogBasePath,
     log_level: &str,
-) -> Result<(), crate::ServiceError> {
+) -> Result<(), crate::error::service::ServiceError> {
     let writer = SizeRotatingWriter::new(path.log_path())?;
     let (non_blocking, guard) = tracing_appender::non_blocking(writer);
 
@@ -47,7 +47,7 @@ pub async fn start_upload_scheduler(
     base_path: LogBasePath,
     interval_sec: u64,
     oss_client: Arc<oss_client::OssClient>,
-) -> Result<(), crate::ServiceError> {
+) -> Result<(), crate::error::service::ServiceError> {
     let mut interval = interval(Duration::from_secs(interval_sec));
 
     tokio::spawn(async move {
@@ -100,7 +100,7 @@ async fn upload(
     path: &Path,
     tracker: &mut OffsetTracker,
     oss_client: &oss_client::OssClient,
-) -> Result<u64, crate::SystemError> {
+) -> Result<u64, crate::error::system::SystemError> {
     let file = File::open(path).await?;
     let mut reader = BufReader::new(file);
     let mut offset = tracker.get_offset();

@@ -16,7 +16,7 @@ pub struct FreezeBalanceReq {
     pub signer: Option<Signer>,
 }
 impl TryFrom<&FreezeBalanceReq> for stake::FreezeBalanceArgs {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &FreezeBalanceReq) -> Result<Self, Self::Error> {
         let args = stake::FreezeBalanceArgs::new(
@@ -39,7 +39,7 @@ pub struct UnFreezeBalanceReq {
 }
 
 impl TryFrom<&UnFreezeBalanceReq> for UnFreezeBalanceArgs {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &UnFreezeBalanceReq) -> Result<Self, Self::Error> {
         let args = stake::UnFreezeBalanceArgs::new(
             &value.owner_address,
@@ -71,7 +71,7 @@ pub struct DelegateReq {
 }
 
 impl TryFrom<&DelegateReq> for DelegateArgs {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &DelegateReq) -> Result<Self, Self::Error> {
         let lock_period = expiration_time(value.lock_period);
         let args = Self {
@@ -106,7 +106,7 @@ pub struct UnDelegateReq {
 }
 
 impl TryFrom<&UnDelegateReq> for UnDelegateArgs {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &UnDelegateReq) -> Result<Self, Self::Error> {
         let args = Self {
             owner_address: wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?,
@@ -152,7 +152,7 @@ impl VotesReq {
 }
 
 impl TryFrom<&VoteWitnessReq> for VoteWitnessArgs {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &VoteWitnessReq) -> Result<Self, Self::Error> {
         let mut votes = Vec::new();
         for v in &value.votes {
@@ -182,7 +182,7 @@ impl WithdrawBalanceReq {
 }
 
 impl TryFrom<&WithdrawBalanceReq> for WithdrawBalanceArgs {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &WithdrawBalanceReq) -> Result<Self, Self::Error> {
         let args = Self {
             owner_address: value.owner_address.clone(),
@@ -213,7 +213,7 @@ impl BatchDelegate {
 }
 
 impl TryFrom<&BatchDelegate> for Vec<DelegateArgs> {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &BatchDelegate) -> Result<Self, Self::Error> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;
@@ -257,7 +257,7 @@ impl BatchUnDelegate {
 }
 
 impl TryFrom<&BatchUnDelegate> for Vec<UnDelegateArgs> {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &BatchUnDelegate) -> Result<Self, Self::Error> {
         let owner_address = wallet_utils::address::bs58_addr_to_hex(&value.owner_address)?;
         let resource_type = stake::ResourceType::try_from(value.resource_type.as_str())?;

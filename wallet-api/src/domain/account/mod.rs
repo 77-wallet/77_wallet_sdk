@@ -11,9 +11,12 @@ use wallet_types::chain::{
     chain::ChainCode,
 };
 
-use crate::{response_vo::account::CreateAccountRes, service::asset::AddressChainCode};
-
 use super::app::config::ConfigDomain;
+use crate::{
+    error::{service::ServiceError, business::BusinessError, system::SystemError},
+    response_vo::account::CreateAccountRes,
+    service::asset::AddressChainCode,
+};
 
 pub struct AccountDomain {}
 
@@ -32,7 +35,7 @@ impl AccountDomain {
     pub fn get_show_address_type(
         chain_code: &str,
         address_type: Option<String>,
-    ) -> Result<AddressCategory, crate::ServiceError> {
+    ) -> Result<AddressCategory, ServiceError> {
         let chain_code = ChainCode::try_from(chain_code)?;
 
         if let Some(types_str) = address_type {
@@ -63,7 +66,7 @@ impl AccountDomain {
         account_id: Option<u32>,
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
-    ) -> Result<Vec<AddressChainCode>, crate::ServiceError> {
+    ) -> Result<Vec<AddressChainCode>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut account_addresses = Vec::new();
 
@@ -181,7 +184,7 @@ impl AccountDomain {
         wallet_address: &str,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(CreateAccountRes, String, Option<AddressInitReq>), crate::ServiceError> {
+    ) -> Result<(CreateAccountRes, String, Option<AddressInitReq>), ServiceError> {
         let (address, derivation_path, address_init_req) = Self::derive_subkey(
             repo,
             uid,
@@ -246,7 +249,7 @@ impl AccountDomain {
         wallet_address: &str,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(String, String, Option<AddressInitReq>), crate::ServiceError> {
+    ) -> Result<(String, String, Option<AddressInitReq>), ServiceError> {
         let account_name = if is_default_name {
             format!("{name}{}", account_index_map.account_id)
         } else {
@@ -256,11 +259,11 @@ impl AccountDomain {
         let keypair = if let Some(derivation_path) = derivation_path {
             instance
                 .gen_keypair_with_derivation_path(seed, derivation_path)
-                .map_err(|e| crate::SystemError::Service(e.to_string()))?
+                .map_err(|e| SystemError::Service(e.to_string()))?
         } else {
             instance
                 .gen_keypair_with_index_address_type(seed, account_index_map.input_index)
-                .map_err(|e| crate::SystemError::Service(e.to_string()))?
+                .map_err(|e| SystemError::Service(e.to_string()))?
         };
 
         let derivation_path = keypair.derivation_path();
@@ -282,7 +285,9 @@ impl AccountDomain {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(ServiceError::Business(
+                BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized),
+            ));
         };
 
         let account = repo
@@ -327,7 +332,7 @@ impl AccountDomain {
         wallet_address: &str,
         old_password: &str,
         new_password: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         // let tx = &mut self.repo;
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -335,7 +340,7 @@ impl AccountDomain {
 
         let wallet = WalletEntity::detail(db.as_ref(), wallet_address)
             .await?
-            .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound))?;
 
         // Get the path to the root directory for the given wallet name.
         let root_dir = dirs.get_root_dir(&wallet.address)?;
@@ -354,7 +359,7 @@ impl AccountDomain {
             new_password,
             algorithm,
         )
-        .map_err(|e| crate::SystemError::Service(e.to_string()))?)
+        .map_err(|e| SystemError::Service(e.to_string()))?)
     }
 
     pub async fn set_account_password(
@@ -362,7 +367,7 @@ impl AccountDomain {
         account_index_map: &wallet_utils::address::AccountIndexMap,
         old_password: &str,
         new_password: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let subs_dir = dirs.get_subs_dir(wallet_address)?;
 
@@ -378,12 +383,12 @@ impl AccountDomain {
             new_password,
             algorithm,
         )
-        .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+        .map_err(|e| SystemError::Service(e.to_string()))?;
 
         Ok(())
     }
 
-    pub async fn set_verify_password(password: &str) -> Result<(), crate::ServiceError> {
+    pub async fn set_verify_password(password: &str) -> Result<(), ServiceError> {
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         wallet_tree::api::KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -401,7 +406,7 @@ impl AccountDomain {
         chain_code: &str,
         account_index_map: &wallet_utils::address::AccountIndexMap,
         derivation_path: &str,
-    ) -> Result<wallet_tree::file_ops::BulkSubkey, crate::ServiceError> {
+    ) -> Result<wallet_tree::file_ops::BulkSubkey, crate::error::service::ServiceError> {
         let keypair =
             instance.gen_keypair_with_index_address_type(seed, account_index_map.input_index)?;
         let private_key = keypair.private_key_bytes()?;
@@ -422,7 +427,7 @@ pub async fn open_accounts_pk_with_password(
     password: &str,
 ) -> Result<
     std::collections::HashMap<wallet_tree::KeyMeta, wallet_chain_interact::types::ChainPrivateKey>,
-    crate::ServiceError,
+    ServiceError,
 > {
     let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -442,8 +447,8 @@ pub async fn open_accounts_pk_with_password(
     for (meta, key) in account_data.into_inner() {
         let chain_code = &meta.chain_code;
         let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), chain_code).await? else {
-            return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
-                crate::ChainError::NotFound(chain_code.to_string()),
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
             )));
         };
         let chain_code = chain_code.as_str().try_into()?;
@@ -467,7 +472,7 @@ pub async fn open_subpk_with_password(
     chain_code: &str,
     address: &str,
     password: &str,
-) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
+) -> Result<wallet_chain_interact::types::ChainPrivateKey, ServiceError> {
     // super::wallet::WalletDomain::validate_password(password).await?;
 
     let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -477,14 +482,14 @@ pub async fn open_subpk_with_password(
 
     let account = AccountEntity::detail(db.as_ref(), &req)
         .await?
-        .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())))?;
+        .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(address.to_string())))?;
 
     let wallet = WalletEntity::detail(db.as_ref(), &account.wallet_address)
         .await?
-        .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+        .ok_or(crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound))?;
     let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), chain_code).await? else {
-        return Err(crate::ServiceError::Business(crate::BusinessError::Chain(
-            crate::ChainError::NotFound(chain_code.to_string()),
+        return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
         )));
     };
 

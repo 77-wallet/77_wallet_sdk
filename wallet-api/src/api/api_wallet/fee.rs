@@ -1,9 +1,9 @@
-use crate::{api::ReturnType, service::api_wallet::fee::TransferFeeService};
+use crate::{api::ReturnType, service::api_wallet::fee::TransferFeeService, manager::WalletManager};
 use wallet_database::entities::api_fee::ApiFeeEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_api_transfer_fee_order_list(&self) -> ReturnType<Vec<ApiFeeEntity>> {
-        TransferFeeService::new().get_transfer_fee_order_list().await?.into()
+        TransferFeeService::new().get_transfer_fee_order_list().await
     }
 
     // 测试
@@ -31,8 +31,7 @@ impl crate::WalletManager {
                 trade_type,
                 uid,
             )
-            .await?
-            .into()
+            .await
     }
 }
 

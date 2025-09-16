@@ -1,27 +1,26 @@
 use crate::{
     api::ReturnType, response_vo::wallet::CreateWalletRes, service::wallet::WalletService,
+    manager::WalletManager,
 };
+use crate::request::wallet::CreateWalletReq;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
         WalletService::new(self.repo_factory.resource_repo())
             .encrypt_password(password)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn validate_password(&self, encrypted_password: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resource_repo())
             .validate_password(encrypted_password)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resource_repo())
             .switch_wallet(wallet_address)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn edit_wallet_name(
@@ -31,19 +30,18 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resource_repo())
             .edit_wallet_name(wallet_name, wallet_address)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn logic_reset(&self) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).logic_reset().await?.into()
+        WalletService::new(self.repo_factory.resource_repo()).logic_reset().await
     }
 
     pub async fn physical_reset(&self) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).physical_reset().await?.into()
+        WalletService::new(self.repo_factory.resource_repo()).physical_reset().await
     }
 
-    pub async fn create_wallet(&self, req: crate::CreateWalletReq) -> ReturnType<CreateWalletRes> {
+    pub async fn create_wallet(&self, req: CreateWalletReq) -> ReturnType<CreateWalletRes> {
         WalletService::new(self.repo_factory.resource_repo())
             .create_wallet(
                 req.language_code,
@@ -55,8 +53,7 @@ impl crate::WalletManager {
                 &req.wallet_password,
                 req.invite_code, // req.derive_password,
             )
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_phrase(
@@ -66,8 +63,7 @@ impl crate::WalletManager {
     ) -> ReturnType<crate::response_vo::wallet::GetPhraseRes> {
         WalletService::new(self.repo_factory.resource_repo())
             .get_phrase(wallet_address, password)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn import_derivation_path(
@@ -86,8 +82,7 @@ impl crate::WalletManager {
                 account_name,
                 is_default_name,
             )
-            .await?
-            .into()
+            .await
     }
 
     pub async fn export_derivation_path(
@@ -97,7 +92,7 @@ impl crate::WalletManager {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        WalletService::new(repo).export_derivation_path(wallet_address).await?.into()
+        WalletService::new(repo).export_derivation_path(wallet_address).await
     }
 
     pub async fn get_wallet_list(
@@ -108,30 +103,27 @@ impl crate::WalletManager {
     ) -> ReturnType<Vec<crate::response_vo::wallet::WalletInfo>> {
         WalletService::new(self.repo_factory.resource_repo())
             .get_wallet_list(wallet_address, chain_code, account_id)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn logic_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).logic_delete(address).await?.into()
+        WalletService::new(self.repo_factory.resource_repo()).logic_delete(address).await
     }
 
     pub async fn physical_delete_wallet(&self, address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo()).physical_delete(address).await?.into()
+        WalletService::new(self.repo_factory.resource_repo()).physical_delete(address).await
     }
 
     pub async fn recover_multisig_data(&self, wallet_address: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resource_repo())
             .recover_multisig_data(wallet_address)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn upgrade_algorithm(&self, password: &str) -> ReturnType<()> {
         WalletService::new(self.repo_factory.resource_repo())
             .upgrade_algorithm(password)
-            .await?
-            .into()
+            .await
     }
 }
 
@@ -260,7 +252,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let _address = wallet_manager.logic_reset().await.result.unwrap();
+        let _address = wallet_manager.logic_reset().await?;
         tracing::info!("res: {_address:?}");
         Ok(())
     }
@@ -271,7 +263,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let _address = wallet_manager.physical_reset().await;
+        let _address = wallet_manager.physical_reset().await?;
         tracing::info!("res: {_address:?}");
         Ok(())
     }
@@ -283,7 +275,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
-        let res = wallet_manager.switch_wallet(wallet_address).await;
+        let res = wallet_manager.switch_wallet(wallet_address).await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -295,7 +287,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x0996dc2A80F35D7075C426bf0Ac6e389e0AB99Fc";
-        let res = wallet_manager.export_derivation_path(wallet_address).await;
+        let res = wallet_manager.export_derivation_path(wallet_address).await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -322,7 +314,7 @@ mod test {
                 account_name,
                 true,
             )
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -335,7 +327,7 @@ mod test {
 
         // let chain_code = Some("tron".to_string());
         let chain_code = None;
-        let list = wallet_manager.get_wallet_list(None, chain_code, None).await;
+        let list = wallet_manager.get_wallet_list(None, chain_code, None).await?;
         let res = serde_json::to_string(&list).unwrap();
         tracing::info!("res: {res:?}");
         // tracing::info!("list: {list:#?}");
@@ -352,7 +344,7 @@ mod test {
 
         let res = wallet_manager
             .get_phrase(wallet_address, &test_params.create_wallet_req.wallet_password)
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -371,7 +363,7 @@ mod test {
         let res = wallet_manager
             // .service
             .set_all_password(old_passwd, new_passwd)
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         // let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
         // let key = wallet_manager
@@ -389,7 +381,7 @@ mod test {
         let res = wallet_manager
             // .upgrade_algorithm(&test_params.create_wallet_req.wallet_password)
             .upgrade_algorithm("q1111111")
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -402,7 +394,7 @@ mod test {
         let res = wallet_manager
             // .upgrade_algorithm(&test_params.create_wallet_req.wallet_password)
             .validate_password("q1111111")
-            .await;
+            .await?;
         tracing::info!("res: {res:?}");
         Ok(())
     }

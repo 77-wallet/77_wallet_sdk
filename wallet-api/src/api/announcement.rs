@@ -1,19 +1,21 @@
-use crate::{api::ReturnType, service::announcement::AnnouncementService};
+use crate::{
+    api::ReturnType, service::announcement::AnnouncementService,
+    manager::WalletManager,
+};
 use wallet_database::{entities::announcement::AnnouncementEntity, pagination::Pagination};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_announcement(
         &self,
         input: Vec<wallet_database::entities::announcement::CreateAnnouncementVo>,
     ) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resource_repo()).add(input).await?.into()
+        AnnouncementService::new(self.repo_factory.resource_repo()).add(input).await
     }
 
     pub async fn pull_announcement(&self) -> ReturnType<()> {
         AnnouncementService::new(self.repo_factory.resource_repo())
             .pull_announcement()
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_announcement_list(
@@ -23,19 +25,17 @@ impl crate::WalletManager {
     ) -> ReturnType<Pagination<AnnouncementEntity>> {
         AnnouncementService::new(self.repo_factory.resource_repo())
             .get_announcement_list(page, page_size)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn get_announcement_by_id(&self, id: &str) -> ReturnType<Option<AnnouncementEntity>> {
         AnnouncementService::new(self.repo_factory.resource_repo())
             .get_announcement_by_id(id)
-            .await?
-            .into()
+            .await
     }
 
     pub async fn read_announcement(&self, id: Option<&str>) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resource_repo()).read(id).await?.into()
+        AnnouncementService::new(self.repo_factory.resource_repo()).read(id).await
     }
 }
 
@@ -59,7 +59,7 @@ mod tests {
             send_time: Some("1732527339".to_string()),
         };
         let announcements = vec![an]; // Create an empty Vec<CreateAnnouncementVo>
-        let announcement_list = wallet_manager.add_announcement(announcements).await;
+        let announcement_list = wallet_manager.add_announcement(announcements).await?;
         tracing::info!("get_announcement_list: {announcement_list:?}");
         let res = wallet_utils::serde_func::serde_to_string(&announcement_list)?;
         tracing::info!("res: {res}");
@@ -71,7 +71,7 @@ mod tests {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let announcement_list = wallet_manager.get_announcement_list(0, 10).await;
+        let announcement_list = wallet_manager.get_announcement_list(0, 10).await?;
         tracing::info!("get_announcement_list: {announcement_list:?}");
         let res = wallet_utils::serde_func::serde_to_string(&announcement_list)?;
         tracing::info!("res: {res}");
@@ -83,7 +83,7 @@ mod tests {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let announcement_list = wallet_manager.pull_announcement().await;
+        let announcement_list = wallet_manager.pull_announcement().await?;
         tracing::info!("pull_announcement: {announcement_list:?}");
         let res = wallet_utils::serde_func::serde_to_string(&announcement_list)?;
         tracing::info!("res: {res}");
@@ -96,7 +96,7 @@ mod tests {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let id = "66fd0176b038070e17edd202";
-        let announcement = wallet_manager.get_announcement_by_id(id).await;
+        let announcement = wallet_manager.get_announcement_by_id(id).await?;
         tracing::info!("get_announcement_by_id: {announcement:?}");
         let res = wallet_utils::serde_func::serde_to_string(&announcement)?;
         tracing::info!("res: {res}");
@@ -109,7 +109,7 @@ mod tests {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let id = None;
-        let read_announcement = wallet_manager.read_announcement(id).await;
+        let read_announcement = wallet_manager.read_announcement(id).await?;
         tracing::info!("read_announcement: {read_announcement:?}");
         Ok(())
     }

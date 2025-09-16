@@ -44,7 +44,7 @@ impl TransferResp {
         self.consumer = Some(consumer);
     }
 
-    pub fn resource_consume(&self) -> Result<String, crate::ServiceError> {
+    pub fn resource_consume(&self) -> Result<String, crate::error::service::ServiceError> {
         if let Some(consumer) = &self.consumer {
             Ok(consumer.to_json_str()?)
         } else {
@@ -54,11 +54,11 @@ impl TransferResp {
 }
 
 /// Parses a fee setting string into a `FeeSetting` struct.
-pub fn pare_fee_setting(fee_setting: &str) -> Result<FeeSetting, crate::ServiceError> {
+pub fn pare_fee_setting(fee_setting: &str) -> Result<FeeSetting, crate::error::service::ServiceError> {
     fee_setting.try_into().and_then(|s: response_vo::EthereumFeeDetails| FeeSetting::try_from(s))
 }
 
-pub fn rpc_need_header(_url: &str) -> Result<bool, crate::ServiceError> {
+pub fn rpc_need_header(_url: &str) -> Result<bool, crate::error::service::ServiceError> {
     // let url = Url::parse(url).expect("Invalid URL");
     // Ok(url.host_str() == Some(wallet_transport_backend::consts::BASE_RPC_URL))
     Ok(true)
@@ -68,50 +68,50 @@ pub fn check_address(
     address: &str,
     chain: wallet_types::chain::chain::ChainCode,
     network: network::NetworkKind,
-) -> Result<(), crate::error::ServiceError> {
+) -> Result<(), crate::error::service::ServiceError> {
     match chain {
         wallet_types::chain::chain::ChainCode::Bitcoin => {
             let parse = ParseBtcAddress::new(network);
             parse.parse_address(address).map(|_| true).map_err(|_| {
-                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect)
             })?
         }
         wallet_types::chain::chain::ChainCode::BnbSmartChain
         | wallet_types::chain::chain::ChainCode::Ethereum => {
             wallet_utils::address::parse_eth_address(address).map(|_| true).map_err(|_| {
-                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect)
             })?
         }
         wallet_types::chain::chain::ChainCode::Tron => {
             if wallet_utils::address::is_tron_address(address) {
                 true
             } else {
-                return Err(crate::BusinessError::Account(crate::AccountError::AddressNotCorrect))?;
+                return Err(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect))?;
             }
         }
         wallet_types::chain::chain::ChainCode::Solana => {
             wallet_utils::address::parse_sol_address(address).map(|_| true).map_err(|_| {
-                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect)
             })?
         }
         wallet_types::chain::chain::ChainCode::Ton => parse_addr_from_bs64_url(address)
             .map(|_| true)
-            .map_err(|_| crate::BusinessError::Account(crate::AccountError::AddressNotCorrect))?,
+            .map_err(|_| crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect))?,
         wallet_types::chain::chain::ChainCode::Litecoin => {
             let parse = ParseLtcAddress::new(network);
             parse.parse_address(address).map(|_| true).map_err(|_| {
-                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect)
             })?
         }
         wallet_types::chain::chain::ChainCode::Dogcoin => {
             let parse = ParseDogAddress::new(network);
             parse.parse_address(address).map(|_| true).map_err(|_| {
-                crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect)
             })?
         }
         wallet_types::chain::chain::ChainCode::Sui => address::parse_sui_address(address)
             .map(|_| true)
-            .map_err(|_| crate::BusinessError::Account(crate::AccountError::AddressNotCorrect))?,
+            .map_err(|_| crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect))?,
     };
     Ok(())
 }
@@ -121,7 +121,7 @@ pub struct ChainDomain;
 impl ChainDomain {
     pub(crate) async fn upsert_multi_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::chain::ChainList,
-    ) -> Result<bool, crate::ServiceError> {
+    ) -> Result<bool, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -219,7 +219,7 @@ impl ChainDomain {
     pub(crate) async fn toggle_chains(
         repo: &mut wallet_database::repositories::ResourcesRepo,
         chain_codes: &[String],
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         wallet_database::repositories::chain::ChainRepoTrait::toggle_chains_status(
             repo,
             chain_codes,
@@ -256,7 +256,7 @@ impl ChainDomain {
     //     }
     // }
 
-    pub(crate) async fn get_node(chain_code: &str) -> Result<NodeInfo, crate::error::ServiceError> {
+    pub(crate) async fn get_node(chain_code: &str) -> Result<NodeInfo, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let node = match ChainRepo::detail_with_node(&pool, chain_code).await? {
             Some(node) => NodeInfo::new(
@@ -273,7 +273,7 @@ impl ChainDomain {
                 let node = NodeRepo::get_local_node_by_chain(&pool, chain_code)
                     .await?
                     .pop()
-                    .ok_or(crate::BusinessError::ChainNode(crate::ChainNodeError::NodeNotFound))?;
+                    .ok_or(crate::error::business::BusinessError::ChainNode(crate::error::business::chain_node::ChainNodeError::NodeNotFound))?;
                 NodeInfo::new(
                     &node.chain_code,
                     &node.node_id,
@@ -303,7 +303,7 @@ impl ChainDomain {
         wallet_address: &str,
         account_name: &str,
         is_default_name: bool,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         for chain in chain_list.iter() {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
@@ -375,7 +375,7 @@ impl ChainDomain {
         is_default_name: bool,
         wallet_password: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         for chain in chain_list.iter() {
             let index = account_index_map.input_index;
             let mut params = AddressParam::new(index);
@@ -444,7 +444,7 @@ impl ChainDomain {
         token_address: &mut String,
         chain_code: &str,
         net: NetworkKind,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let chain: wallet_types::chain::chain::ChainCode = chain_code.try_into()?;
 
         match chain {
@@ -458,7 +458,7 @@ impl ChainDomain {
         match chain {
             wallet_types::chain::chain::ChainCode::Sui => {
                 wallet_utils::address::parse_sui_type_tag(token_address).map_err(|_| {
-                    crate::BusinessError::Account(crate::AccountError::AddressNotCorrect)
+                    crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressNotCorrect)
                 })?;
             }
             _ => check_address(token_address, chain, net)?,

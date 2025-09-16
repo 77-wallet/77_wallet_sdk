@@ -4,7 +4,7 @@ use wallet_transport_backend::request::SendMsgConfirm;
 pub(crate) struct TaskQueueDomain;
 
 impl TaskQueueDomain {
-    pub async fn send_msg_confirm(ids: Vec<SendMsgConfirm>) -> Result<(), crate::ServiceError> {
+    pub async fn send_msg_confirm(ids: Vec<SendMsgConfirm>) -> Result<(), crate::error::service::ServiceError> {
         if !ids.is_empty() {
             const BATCH_SIZE: usize = 500;
             for chunk in ids.chunks(BATCH_SIZE) {
@@ -22,7 +22,7 @@ impl TaskQueueDomain {
     pub async fn send_or_wrap_task<T: serde::Serialize + std::fmt::Debug>(
         req: T,
         endpoint: &str,
-    ) -> Result<Option<BackendApiTask>, crate::ServiceError> {
+    ) -> Result<Option<BackendApiTask>, crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let res = backend.post_request::<_, serde_json::Value>(endpoint, &req).await;
@@ -40,7 +40,7 @@ impl TaskQueueDomain {
     pub async fn send_or_to_queue<T: serde::Serialize + std::fmt::Debug>(
         req: T,
         endpoint: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let task = Self::send_or_wrap_task(req, endpoint).await?;
 
         if let Some(task) = task {

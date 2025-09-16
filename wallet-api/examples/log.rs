@@ -1,6 +1,8 @@
 use std::{env, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::interval;
-use wallet_api::{CustomEventFormat, LogBasePath, init_logger, start_upload_scheduler};
+use wallet_api::infrastructure::log::{
+    CustomEventFormat, LogBasePath, init_logger, start_upload_scheduler,
+};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {

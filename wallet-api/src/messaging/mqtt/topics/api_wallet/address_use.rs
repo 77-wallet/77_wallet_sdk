@@ -17,7 +17,7 @@ pub struct AddressUseMsg {
 
 // 地址使用
 impl AddressUseMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid).await?;
 
         let data = NotifyEvent::AddressUse(self.to_owned());

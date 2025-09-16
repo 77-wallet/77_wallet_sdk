@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::error::service::ServiceError;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultChain {
@@ -17,7 +18,7 @@ pub(crate) struct DefaultChainList {
 static INIT_CHAINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultChainList>> =
     once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
 
-pub(crate) fn get_default_chains_list() -> Result<&'static DefaultChainList, crate::ServiceError> {
+pub(crate) fn get_default_chains_list() -> Result<&'static DefaultChainList, ServiceError> {
     INIT_CHAINS_INFO.get_or_try_init(|| {
         let toml_content = include_str!("../../data/config/chain.toml");
         let toml_data: DefaultChainList = wallet_utils::serde_func::toml_from_str(toml_content)?;

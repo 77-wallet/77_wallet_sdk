@@ -1,5 +1,5 @@
 use crate::{
-    ServiceError,
+    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -78,7 +78,7 @@ impl EthTx {
     async fn estimate_swap(
         &self,
         swap_params: SwapParams,
-    ) -> Result<EstimateSwapResult<FeeSetting>, crate::ServiceError> {
+    ) -> Result<EstimateSwapResult<FeeSetting>, ServiceError> {
         let tx = self.build_base_swap_tx(&swap_params)?;
 
         // estimate_fee
@@ -94,7 +94,7 @@ impl EthTx {
 
         let (amount_in, amount_out): (U256, U256) =
             <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
-                crate::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
+                crate::error::service::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
             })?;
 
         let resp = EstimateSwapResult { amount_in, amount_out, consumer: fee };
@@ -106,7 +106,7 @@ impl EthTx {
         swap_params: &SwapParams,
         fee: String,
         key: ChainPrivateKey,
-    ) -> Result<TransferResp, crate::ServiceError> {
+    ) -> Result<TransferResp, crate::error::service::ServiceError> {
         let fee = pare_fee_setting(fee.as_str())?;
         let transfer_fee = fee.transaction_fee();
 
@@ -124,7 +124,7 @@ impl EthTx {
     fn build_base_swap_tx(
         &self,
         swap_params: &SwapParams,
-    ) -> Result<TransactionRequest, crate::ServiceError> {
+    ) -> Result<TransactionRequest, crate::error::service::ServiceError> {
         let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
 
         let tx = TransactionRequest::default()
@@ -150,16 +150,16 @@ impl EthTx {
             Some(token) => {
                 let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance
             }
             None => {
                 if balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance - transfer_amount
@@ -288,13 +288,13 @@ impl Tx for EthTx {
         let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
         if remain_balance < rc.consume {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
         }
 
         let gas_oracle = self.gas_oracle().await?;
         let propose_gas_price = gas_oracle.propose_gas_price;
         if propose_gas_price.is_none() {
-            return Err(crate::BusinessError::ApiWallet(crate::ApiWalletError::GasOracle))?;
+            return Err(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::GasOracle))?;
         }
         let price = unit::convert_to_u256(&propose_gas_price.unwrap(), params.base.decimals)?;
         let fee_setting = FeeSetting::new_with_price(price);
@@ -334,7 +334,7 @@ impl Tx for EthTx {
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
         let balance = self.chain.balance(&req.from, req.token_address.clone()).await?;
         if balance < value {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
         }
 
         let gas_oracle = self.gas_oracle().await?;
@@ -593,7 +593,7 @@ impl Multisig for EthTx {
         // check transaction_fee
         let balance = self.chain.balance(&account.initiator_addr, None).await?;
         if balance < fee_setting.transaction_fee() {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
         }
 
         let tx_hash = self.chain.exec_transaction(params, fee_setting, key, None).await?;
@@ -663,7 +663,7 @@ impl Multisig for EthTx {
         _p: &PermissionEntity,
         _coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
+        Err(crate::error::business::BusinessError::Permission(crate::error::business::permission::PermissionError::UnSupportPermissionChain)
             .into())
     }
 
