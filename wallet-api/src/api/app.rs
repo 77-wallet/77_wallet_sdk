@@ -2,13 +2,14 @@ use crate::{
     api::ReturnType,
     response_vo::app::{GetConfigRes, GlobalMsg},
     service::app::AppService,
+    manager::WalletManager,
 };
 use wallet_database::entities::config::{ConfigEntity, MinValueSwitchConfig};
 use wallet_transport_backend::response_vo::app::{
     AppVersionRes, GetFiatRes, GetOfficialWebsiteRes,
 };
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn app_install(&self, sn: &str, device_type: &str, channel: &str) -> ReturnType<()> {
         AppService::new(self.repo_factory.resource_repo())
             .app_install_save(sn, device_type, channel)

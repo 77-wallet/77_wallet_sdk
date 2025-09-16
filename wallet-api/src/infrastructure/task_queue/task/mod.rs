@@ -20,9 +20,9 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 pub(crate) trait TaskTrait: Send + Sync {
     fn get_name(&self) -> TaskName;
     fn get_type(&self) -> TaskType;
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError>;
+    fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError>;
 
-    async fn execute(&self, id: &str) -> Result<(), crate::ServiceError>;
+    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError>;
 
     fn as_any(&self) -> &dyn Any;
 }
@@ -82,7 +82,7 @@ impl Tasks {
 
     async fn create_task_entities(
         &self,
-    ) -> Result<Vec<CreateTaskQueueEntity>, crate::ServiceError> {
+    ) -> Result<Vec<CreateTaskQueueEntity>, crate::error::ServiceError> {
         let mut create_entities = Vec::new();
         for task in self.0.iter() {
             let request_body = task.task.get_body()?;
@@ -104,7 +104,7 @@ impl Tasks {
         Ok(create_entities)
     }
 
-    async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::ServiceError> {
+    async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::error::ServiceError> {
         let task_sender = crate::context::CONTEXT.get().unwrap().get_global_task_manager();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -135,7 +135,7 @@ impl Tasks {
         Ok(())
     }
 
-    pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn send(self) -> Result<(), crate::error::ServiceError> {
         if self.0.is_empty() {
             return Ok(());
         }
@@ -148,7 +148,7 @@ impl Tasks {
     }
 }
 
-type TaskFactoryFn = fn(&str) -> Result<Box<dyn TaskTrait>, crate::ServiceError>;
+type TaskFactoryFn = fn(&str) -> Result<Box<dyn TaskTrait>, crate::error::ServiceError>;
 
 #[macro_export]
 macro_rules! register_tasks {
@@ -220,7 +220,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
 });
 
 impl TryFrom<&TaskQueueEntity> for Box<dyn TaskTrait> {
-    type Error = crate::ServiceError;
+    type Error = crate::error::ServiceError;
 
     fn try_from(value: &TaskQueueEntity) -> Result<Self, Self::Error> {
         match &value.task_name {
@@ -228,10 +228,14 @@ impl TryFrom<&TaskQueueEntity> for Box<dyn TaskTrait> {
                 if let Some(builder) = TASK_REGISTRY.get(name) {
                     builder(&value.request_body)
                 } else {
-                    Err(crate::SystemError::Service(format!("Unknown task: {:?}", name)).into())
+                    Err(crate::error::service::ServiceError::System(
+                        crate::error::system::SystemError::Service(format!("Unknown task: {:?}", name))
+                    ))
                 }
             }
-            _ => Err(crate::SystemError::Service("Unsupported TaskName type".to_string()).into()),
+            _ => Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Service("Unsupported TaskName type".to_string())
+            )),
         }
     }
 }

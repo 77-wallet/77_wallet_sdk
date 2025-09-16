@@ -21,9 +21,9 @@ impl WalletManager {
         sn: &str,
         device_type: &str,
         sender: Option<UnboundedSender<FrontendNotifyEvent>>,
-        config: crate::Config,
+        config: crate::config::Config,
         dir: Dirs,
-    ) -> Result<WalletManager, crate::ServiceError> {
+    ) -> Result<WalletManager, crate::error::ServiceError> {
         let base_path = infrastructure::log::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
         // 以前的上报日志
@@ -47,7 +47,7 @@ impl WalletManager {
         Ok(manager)
     }
 
-    pub async fn init(&self, req: crate::InitDeviceReq) -> ReturnType<()> {
+    pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {
         DeviceService::new(self.repo_factory.resource_repo()).init_device(req).await?;
         self.init_data().await.into()
     }
@@ -64,7 +64,7 @@ impl WalletManager {
             .await
     }
 
-    async fn init_data(&self) -> Result<(), crate::ServiceError> {
+    async fn init_data(&self) -> Result<(), crate::error::ServiceError> {
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 
@@ -82,7 +82,7 @@ impl WalletManager {
         app_code: &str,
         dirs: &Dirs,
         sn: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         // 修改后的版本
         let format =
             infrastructure::log::CustomEventFormat::new(app_code.to_string(), sn.to_string());
@@ -110,7 +110,7 @@ impl WalletManager {
     pub async fn set_frontend_notify_sender(
         &self,
         sender: UnboundedSender<FrontendNotifyEvent>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         crate::context::CONTEXT.get().unwrap().set_frontend_notify_sender(Some(sender)).await
     }
 
@@ -118,7 +118,7 @@ impl WalletManager {
         self.close_handles().await.into()
     }
 
-    async fn close_handles(&self) -> Result<(), crate::ServiceError> {
+    async fn close_handles(&self) -> Result<(), crate::error::ServiceError> {
         let withdraw_handle =
             crate::context::CONTEXT.get().unwrap().get_global_processed_withdraw_tx_handle();
         withdraw_handle.close().await?;
@@ -187,7 +187,7 @@ mod tests {
         let dirs = Dirs::new(dir)?;
 
         let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
-        let _manager = crate::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
+        let _manager = crate::manager::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(

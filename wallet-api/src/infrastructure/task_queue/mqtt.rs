@@ -52,7 +52,7 @@ impl TaskTrait for MqttTask {
     fn get_type(&self) -> TaskType {
         TaskType::Mqtt
     }
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+    fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError> {
         let res = match self {
             MqttTask::OrderMultiSignAccept(req) => {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
@@ -98,7 +98,7 @@ impl TaskTrait for MqttTask {
         Ok(res)
     }
 
-    async fn execute(&self, id: &str) -> Result<(), crate::ServiceError> {
+    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError> {
         match self {
             MqttTask::OrderMultiSignAccept(data) => data.exec(id).await?,
             MqttTask::OrderMultiSignAcceptCompleteMsg(data) => data.exec(id).await?,

@@ -2,10 +2,11 @@ use crate::{
     api::ReturnType, messaging::mqtt::topics::api_wallet::AddressAllockType,
     request::api_wallet::account::CreateApiAccountReq,
     service::api_wallet::account::ApiAccountService,
+    manager::WalletManager,
 };
 use wallet_database::entities::api_account::ApiAccountEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_api_account_list(
         &self,
         wallet_address: &str,

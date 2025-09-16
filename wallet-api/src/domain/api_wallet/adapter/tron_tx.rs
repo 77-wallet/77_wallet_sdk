@@ -1,5 +1,5 @@
 use crate::{
-    ServiceError,
+    error::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -79,7 +79,7 @@ impl TronTx {
         value: U256,
         threshold: i64,
         permission_id: Option<i64>,
-    ) -> Result<MultisigTxResp, crate::ServiceError> {
+    ) -> Result<MultisigTxResp, crate::error::service::ServiceError> {
         let expiration = MultisigQueueDomain::sub_expiration(req.expiration.unwrap_or(1));
 
         if let Some(token) = token {
@@ -105,7 +105,7 @@ impl TronTx {
     pub(super) async fn estimate_swap(
         &self,
         swap_params: &SwapParams,
-    ) -> Result<EstimateSwapResult<ResourceConsumer>, crate::ServiceError> {
+    ) -> Result<EstimateSwapResult<ResourceConsumer>, crate::error::service::ServiceError> {
         let (params, owner_address) = self.build_base_swap(swap_params)?;
 
         let wrap = WarpContract { params };
@@ -119,7 +119,7 @@ impl TronTx {
         // 模拟的结果k
         let (amount_in, amount_out): (U256, U256) =
             <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
-                crate::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
+                crate::error::service::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
             })?;
 
         // get fee
@@ -135,7 +135,7 @@ impl TronTx {
     fn build_base_swap(
         &self,
         swap_params: &SwapParams,
-    ) -> Result<(TriggerContractParameter, String), crate::ServiceError> {
+    ) -> Result<(TriggerContractParameter, String), crate::error::service::ServiceError> {
         let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Tron))?;
 
         // tracing::warn!("call value: {:#?}", call_value);
@@ -170,7 +170,7 @@ impl TronTx {
         &self,
         req: &WithdrawReq,
         value: U256,
-    ) -> Result<TriggerContractParameter, crate::ServiceError> {
+    ) -> Result<TriggerContractParameter, crate::error::service::ServiceError> {
         // 构建调用合约的参数
         let parameter = abi_encode_u256(value);
         let function_selector = "withdraw(uint256)";
@@ -252,15 +252,15 @@ impl Tx for TronTx {
             let provider = self.chain.get_provider();
             let balance = self.chain.balance(&params.base.from, Some(contract.clone())).await?;
             if balance < transfer_amount {
-                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
             }
             tracing::info!("transfer ---------------- 12");
 
             let account = provider.account_info(&transfer_params.owner_address).await?;
             // 主币是否有钱(可能账号未被初始化)
             if account.balance <= 0 {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::InsufficientFeeBalance,
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
                 ))?;
             }
             tracing::info!("transfer ---------------- 13");
@@ -271,8 +271,8 @@ impl Tx for TronTx {
                 provider.contract_fee(constant, 1, &transfer_params.owner_address).await?;
 
             if account.balance < consumer.transaction_fee_i64() {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::InsufficientFeeBalance,
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
                 ))?;
             }
 
@@ -307,7 +307,7 @@ impl Tx for TronTx {
             let provider = self.chain.get_provider();
             let account = provider.account_info(&param.from).await?;
             if account.balance <= 0 {
-                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
             }
 
             let tx = param.build_raw_transaction(provider).await?;
@@ -315,7 +315,7 @@ impl Tx for TronTx {
                 provider.transfer_fee(&param.from, Some(&param.to), &tx.raw_data_hex, 1).await?;
 
             if account.balance < consumer.transaction_fee_i64() + value_i64 {
-                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
             }
 
             let bill_consumer = BillResourceConsume::new_tron(consumer.act_bandwidth() as u64, 0);
@@ -344,7 +344,7 @@ impl Tx for TronTx {
         let consumer = if let Some(contract) = req.token_address {
             let balance = self.chain.balance(&req.from, Some(contract.clone())).await?;
             if balance < value {
-                return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
             }
 
             let params = tron::operations::transfer::ContractTransferOpt::new(
@@ -393,7 +393,7 @@ impl Tx for TronTx {
         let balance = self.chain.balance(&req.from, None).await?;
         let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
         if balance < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
         }
 
         // get consumer
@@ -520,7 +520,7 @@ impl Tx for TronTx {
             fee += swap_params.amount_in;
         }
         if balance < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
         }
 
         let bill_consumer = BillResourceConsume::new_tron(
@@ -586,7 +586,7 @@ impl Tx for TronTx {
         let balance = self.chain.balance(&req.from, None).await?;
         let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64()) + value;
         if balance < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
         }
 
         // get consumer
@@ -653,7 +653,7 @@ impl Tx for TronTx {
         let balance = self.chain.balance(&req.from, None).await?;
         let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
         if balance < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
         }
 
         // get consumer
@@ -712,7 +712,7 @@ impl Multisig for TronTx {
         let fee = consumer.transaction_fee_i64();
         let account = provider.account_info(&account.initiator_addr).await?;
         if account.balance < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
         }
 
         let consumer = BillResourceConsume::new_tron(consumer.bandwidth.consumer as u64, 0);
@@ -734,7 +734,7 @@ impl Multisig for TronTx {
 
         let account_info = self.chain.get_provider().account_info(&account.initiator_addr).await?;
         if account_info.address.is_empty() {
-            return Err(crate::BusinessError::Chain(crate::ChainError::AddressNotInit))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::AddressNotInit))?;
         }
 
         let params = tron::operations::multisig::MultisigAccountOpt::new(
@@ -779,7 +779,7 @@ impl Multisig for TronTx {
         let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         if balance < value {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
         }
 
         self.build_build_tx(req, token, value, account.threshold as i64, None).await
@@ -797,7 +797,7 @@ impl Multisig for TronTx {
         let value = self.check_min_transfer(&req.value, decimal)?;
         let balance = self.chain.balance(&req.from, token.clone()).await?;
         if balance < value {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
         }
 
         let permission_id = Some(p.active_id);

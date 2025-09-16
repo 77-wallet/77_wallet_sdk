@@ -1,6 +1,7 @@
 use crate::{
-    ApiWalletError, BusinessError, FrontendNotifyEvent, NotifyEvent,
-    messaging::notify::api_wallet::FeeFront, request::api_wallet::trans::ApiTransferFeeReq,
+    error::business::{BusinessError, api_wallet::ApiWalletError},
+    messaging::notify::{FrontendNotifyEvent, api_wallet::FeeFront, event::NotifyEvent},
+    request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
@@ -10,7 +11,9 @@ use wallet_database::{
 pub struct ApiFeeDomain {}
 
 impl ApiFeeDomain {
-    pub(crate) async fn transfer_fee(req: &ApiTransferFeeReq) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn transfer_fee(
+        req: &ApiTransferFeeReq,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 验证金额是否需要输入密码
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 获取钱包
@@ -57,7 +60,9 @@ impl ApiFeeDomain {
         Ok(())
     }
 
-    pub async fn confirm_withdraw_tx(trade_no: &str) -> Result<(), crate::ServiceError> {
+    pub async fn confirm_withdraw_tx(
+        trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::Success).await?;
         let _ = crate::context::CONTEXT

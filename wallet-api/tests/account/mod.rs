@@ -1,5 +1,5 @@
 use std::{env, path::PathBuf};
-use wallet_api::{dirs::Dirs, InitDeviceReq, WalletManager};
+use wallet_api::{dirs::Dirs, manager::WalletManager};
 use wallet_chain_instance::instance::ChainObject;
 use wallet_types::chain::{
     address::r#type::{AddressType, TonAddressType},
@@ -14,7 +14,7 @@ async fn get_manager() -> WalletManager {
         .join("test_data")
         .to_string_lossy()
         .to_string();
-    let config = wallet_api::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+    let config = wallet_api::config::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
     let dirs = Dirs::new(&path).unwrap();
 
     WalletManager::new("guangxiang", "ANDROID", None, config, dirs).await.unwrap()
@@ -24,7 +24,7 @@ async fn get_manager() -> WalletManager {
 async fn create_device() {
     let manager = get_manager().await;
 
-    let req = InitDeviceReq {
+    let req = wallet_api::request::devices::InitDeviceReq {
         device_type: "ios".to_string(),
         sn: "xxx12313000899".to_string(),
         code: "aaaccc".to_string(),
@@ -50,7 +50,7 @@ async fn create_wallet() {
     let wallet_name = "my_wallet";
     let account_name = "账户";
     let password = "123456";
-    let req = wallet_api::CreateWalletReq::new(
+    let req = wallet_api::request::wallet::CreateWalletReq::new(
         1,
         phrase,
         salt,
@@ -84,7 +84,7 @@ async fn create_account() {
     let wallet_name = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
     let account_name = "账户";
     let root_password = "123456";
-    let req = wallet_api::CreateAccountReq::new(
+    let req = wallet_api::request::account::CreateAccountReq::new(
         wallet_name,
         root_password,
         None,

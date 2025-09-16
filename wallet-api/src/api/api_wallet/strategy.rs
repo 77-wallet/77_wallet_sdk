@@ -1,8 +1,8 @@
 use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
 
-use crate::{api::ReturnType, service::api_wallet::strategy::StrategyService};
+use crate::{api::ReturnType, service::api_wallet::strategy::StrategyService, manager::WalletManager};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn update_collect_strategy(
         &self,
         uid: &str,

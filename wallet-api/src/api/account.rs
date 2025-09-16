@@ -1,18 +1,20 @@
 use crate::{
     api::ReturnType,
+    request::account::CreateAccountReq,
     response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
     service::account::AccountService,
+    manager::WalletManager,
 };
 use wallet_database::entities::account::AccountEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn switch_account(&self, wallet_address: &str, account_id: u32) -> ReturnType<()> {
         AccountService::new(self.repo_factory.resource_repo())
             .switch_account(wallet_address, account_id)
             .await
     }
 
-    pub async fn create_account(&self, req: crate::CreateAccountReq) -> ReturnType<()> {
+    pub async fn create_account(&self, req: CreateAccountReq) -> ReturnType<()> {
         AccountService::new(self.repo_factory.resource_repo())
             .create_account(
                 &req.wallet_address,

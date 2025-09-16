@@ -10,7 +10,7 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    FrontendNotifyEvent,
+    messaging::notify::FrontendNotifyEvent,
     domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain},
 };
 pub struct BackendTaskHandle;
@@ -51,7 +51,7 @@ impl BackendTaskHandle {
         body: serde_json::Value,
         backend: Arc<BackendApi>,
         // wallet_type: WalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let handler = Self::get_handler(endpoint);
         handler.handle(endpoint, body, backend.as_ref()).await?;
 
@@ -81,7 +81,7 @@ trait EndpointHandler {
         body: serde_json::Value,
         backend: &BackendApi,
         // wallet_type: WalletType,
-    ) -> Result<(), crate::ServiceError>;
+    ) -> Result<(), crate::error::service::ServiceError>;
 }
 
 /// 默认的处理策略
@@ -95,14 +95,14 @@ impl EndpointHandler for DefaultHandler {
         body: serde_json::Value,
         backend: &BackendApi,
         // _wallet_type: WalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
 
         if device.is_init != 1 {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         }
         // let invite_code = ConfigDomain::get_invite_code().await?;
         // if invite_code.status.is_none() {
@@ -128,7 +128,7 @@ impl EndpointHandler for SpecialHandler {
         backend: &BackendApi,
         // TODO： 完全不需要这个
         // wallet_type: WalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
@@ -153,7 +153,7 @@ impl EndpointHandler for SpecialHandler {
                     && let Some(false) = status.status
                 {
                     return Err(
-                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into()
+                        crate::error::business::BusinessError::Config(crate::error::business::config::ConfigError::KeysNotReset).into()
                     );
                 }
 
@@ -179,13 +179,13 @@ impl EndpointHandler for SpecialHandler {
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 let Some(device) = DeviceRepo::get_device_info(pool).await? else {
                     return Err(
-                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into()
+                        crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into()
                     );
                 };
 
                 if device.is_init != 1 {
                     return Err(
-                        crate::BusinessError::Device(crate::DeviceError::Uninitialized).into()
+                        crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into()
                     );
                 }
 
@@ -212,7 +212,7 @@ impl EndpointHandler for SpecialHandler {
                     && let Some(false) = status.status
                 {
                     return Err(
-                        crate::BusinessError::Config(crate::ConfigError::KeysNotReset).into()
+                        crate::error::business::BusinessError::Config(crate::error::business::config::ConfigError::KeysNotReset).into()
                     );
                 }
 
@@ -229,15 +229,15 @@ impl EndpointHandler for SpecialHandler {
                                 repo.account_init(&address.address, &address.chain_code).await?;
                                 continue;
                             } else {
-                                return Err(crate::BusinessError::Wallet(
-                                    crate::WalletError::NotInit,
+                                return Err(crate::error::business::BusinessError::Wallet(
+                                    crate::error::business::wallet::WalletError::NotInit,
                                 )
                                 .into());
                             }
                         }
                         None => {
                             return Err(
-                                crate::BusinessError::Wallet(crate::WalletError::NotFound).into()
+                                crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound).into()
                             );
                         }
                     }
@@ -337,7 +337,7 @@ impl EndpointHandler for SpecialHandler {
             _ => {
                 // 未知的 endpoint
                 tracing::warn!("unknown endpoint: {}", endpoint);
-                Err(crate::ServiceError::System(crate::SystemError::BackendEndpointNotFound))?;
+                Err(crate::error::service::ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound))?;
             }
         }
 

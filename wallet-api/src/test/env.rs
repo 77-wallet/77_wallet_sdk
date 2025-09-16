@@ -1,9 +1,9 @@
-use crate::{dirs::Dirs, WalletManager};
+use crate::{dirs::Dirs, manager::WalletManager};
 use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;
 
-use crate::{CreateAccountReq, CreateWalletReq, InitDeviceReq};
+use crate::{request::account::CreateAccountReq, request::wallet::CreateWalletReq, request::devices::InitDeviceReq};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]

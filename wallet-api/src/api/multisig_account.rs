@@ -8,10 +8,11 @@ use crate::{
         },
     },
     service::multisig_account::MultisigAccountService,
+    manager::WalletManager,
 };
 use wallet_database::{entities::multisig_member::MemberVo, pagination::Pagination};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn create_multisig_account(
         &self,
         name: String,

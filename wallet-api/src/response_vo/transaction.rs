@@ -129,7 +129,7 @@ impl FeeDetails<EthereumFeeDetails> {
 }
 
 impl TryFrom<(GasOracle, i64)> for FeeDetails<EthereumFeeDetails> {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from((gas_oracle, gas_limit): (GasOracle, i64)) -> Result<Self, Self::Error> {
         let base =
             unit::convert_to_u256(&gas_oracle.suggest_base_fee.unwrap_or("0".to_string()), 9)?;
@@ -188,7 +188,7 @@ impl FeeStructure<EthereumFeeDetails> {
         base_fee: U256,
         mut priority_fee: U256,
         types: &str,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let base_plus_tip = base_fee + priority_fee;
 
         // 1.2 倍
@@ -235,7 +235,7 @@ pub struct EthereumFeeDetails {
 }
 
 impl TryFrom<&str> for EthereumFeeDetails {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let rs: Self = serde_func::serde_from_str(value)?;
         Ok(rs)
@@ -243,7 +243,7 @@ impl TryFrom<&str> for EthereumFeeDetails {
 }
 
 impl TryFrom<EthereumFeeDetails> for wallet_chain_interact::eth::FeeSetting {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: EthereumFeeDetails) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -335,7 +335,7 @@ impl CommonFeeDetails {
         fee: f64,
         token_currency: TokenCurrency,
         currency: &str,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let amount = wallet_utils::conversion::decimal_from_f64(fee).unwrap_or_default();
 
         let unit_pice = token_currency.get_price(currency);
@@ -346,7 +346,7 @@ impl CommonFeeDetails {
         Ok(Self { estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)? })
     }
 
-    pub fn to_json_str(&self) -> Result<String, crate::ServiceError> {
+    pub fn to_json_str(&self) -> Result<String, crate::error::service::ServiceError> {
         Ok(wallet_utils::serde_func::serde_to_string(&self)?)
     }
 }

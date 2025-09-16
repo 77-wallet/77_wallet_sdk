@@ -19,7 +19,7 @@ impl OrderAllConfirmed {
 }
 
 impl OrderAllConfirmed {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,

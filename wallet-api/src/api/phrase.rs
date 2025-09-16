@@ -1,8 +1,8 @@
 use crate::response_vo::wallet::{GeneratePhraseRes, QueryPhraseRes};
 
-use crate::{api::ReturnType, service::wallet::WalletService};
+use crate::{api::ReturnType, service::wallet::WalletService, manager::WalletManager};
 
-impl crate::WalletManager {
+impl WalletManager {
     /// Generates a mnemonic phrase based on the specified language and word count.
     ///
     /// This function calls the `generate_phrase` function from the wallet manager handler

@@ -13,7 +13,7 @@ impl AnnouncementDomain {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
 
         let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;

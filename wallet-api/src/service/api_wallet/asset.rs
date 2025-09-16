@@ -19,7 +19,7 @@ impl ApiAssetsService {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         AssetsDomain::sync_assets_by_addr_chain(addr, chain_code, symbol).await
     }
 
@@ -29,7 +29,7 @@ impl ApiAssetsService {
         addr: String,
         chain_code: Option<String>,
         _symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         AssetsDomain::async_balance_from_backend_addr(addr, chain_code).await
     }
 
@@ -39,7 +39,7 @@ impl ApiAssetsService {
         wallet_address: &str,
         account_id: Option<u32>,
         _symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         ApiAssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
     }
 
@@ -48,7 +48,7 @@ impl ApiAssetsService {
         wallet_address: String,
         account_id: Option<u32>,
         _symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         AssetsDomain::async_balance_from_backend_wallet(wallet_address, account_id).await
     }
 }

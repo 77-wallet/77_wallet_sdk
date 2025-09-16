@@ -11,7 +11,7 @@ impl TaskQueueService {
         Self { repo }
     }
 
-    pub async fn get_task_queue_status(self) -> Result<TaskQueueStatus, crate::ServiceError> {
+    pub async fn get_task_queue_status(self) -> Result<TaskQueueStatus, crate::error::service::ServiceError> {
         let mut repo = self.repo;
         use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
         let all = repo.all_tasks_queue().await?;

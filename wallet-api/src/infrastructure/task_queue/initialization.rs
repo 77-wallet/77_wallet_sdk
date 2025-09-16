@@ -32,11 +32,11 @@ impl TaskTrait for InitializationTask {
     fn get_type(&self) -> TaskType {
         TaskType::Initialization
     }
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+    fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError> {
         Ok(None)
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
+    async fn execute(&self, _id: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             InitializationTask::PullAnnouncement => {

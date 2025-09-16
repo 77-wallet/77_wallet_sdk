@@ -36,9 +36,9 @@ impl TryFrom<(Option<String>, Option<u32>)> for AccountRequest {
                 Ok(AccountRequest::Wallet(WalletReq { address, account_id }))
             }
             (Some(address), None) => Ok(AccountRequest::Account(AccountReq { address })),
-            _ => Err(crate::ServiceError::Parameter("Invalid request: need address".to_string())),
+            _ => Err(crate::error::ServiceError::Parameter("Invalid request: need address".to_string())),
         }
     }
 
-    type Error = crate::ServiceError;
+    type Error = crate::error::ServiceError;
 }

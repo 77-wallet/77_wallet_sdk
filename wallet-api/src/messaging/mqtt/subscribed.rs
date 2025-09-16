@@ -43,7 +43,7 @@ impl Topics {
         &mut self,
         topics: Vec<String>,
         qos: Option<u8>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let qos = match qos {
             Some(0) => rumqttc::v5::mqttbytes::QoS::AtMostOnce,
             Some(1) => rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
@@ -61,7 +61,7 @@ impl Topics {
 
         let mqtt_processor = MQTT_PROCESSOR
             .get()
-            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
+            .ok_or(crate::error::ServiceError::System(crate::error::system::SystemError::MqttClientNotInit))?;
 
         // let filters: Vec<rumqttc::v5::mqttbytes::v5::Filter> = unique_topics
         //     .iter()
@@ -116,7 +116,7 @@ impl Topics {
         Ok(())
     }
 
-    pub async fn unsubscribe(&mut self, topics: Vec<String>) -> Result<(), crate::ServiceError> {
+    pub async fn unsubscribe(&mut self, topics: Vec<String>) -> Result<(), crate::error::ServiceError> {
         // 将已订阅的主题转换为 HashSet，便于查找
         let subscribed_topics: std::collections::HashSet<String> =
             self.data.keys().cloned().collect();
@@ -131,7 +131,7 @@ impl Topics {
 
         let mqtt_processor = MQTT_PROCESSOR
             .get()
-            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
+            .ok_or(crate::error::ServiceError::System(crate::error::system::SystemError::MqttClientNotInit))?;
         tracing::debug!("取消订阅的主题: {}", unique_topics.join(", "));
         for topic in unique_topics.iter() {
             match mqtt_processor.client().try_unsubscribe(topic) {
@@ -155,10 +155,10 @@ impl Topics {
         Ok(())
     }
 
-    pub async fn resubscribe(&self) -> Result<(), crate::ServiceError> {
+    pub async fn resubscribe(&self) -> Result<(), crate::error::ServiceError> {
         let mqtt_processor = MQTT_PROCESSOR
             .get()
-            .ok_or(crate::ServiceError::System(crate::SystemError::MqttClientNotInit))?;
+            .ok_or(crate::error::ServiceError::System(crate::error::system::SystemError::MqttClientNotInit))?;
 
         // 遍历 HashMap 中的所有主题，重新订阅
         for (topic, topic_data) in self.data.iter() {

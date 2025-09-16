@@ -5,10 +5,11 @@ use crate::{
         multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
     },
     service::multisig_transaction::MultisigTransactionService,
+    manager::WalletManager,
 };
 use wallet_database::pagination::Pagination;
 
-impl crate::WalletManager {
+impl WalletManager {
     // only solana has create fee
     pub async fn create_queue_fee(
         &self,

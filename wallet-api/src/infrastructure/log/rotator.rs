@@ -17,7 +17,7 @@ impl SizeRotatingWriter {
     pub const MAX_FILES: usize = 3;
     pub const MAX_SIZE: u64 = 1024 * 1024 * 7;
 
-    pub fn new(base_path: PathBuf) -> Result<Self, crate::SystemError> {
+    pub fn new(base_path: PathBuf) -> Result<Self, crate::error::system::SystemError> {
         let file = Self::create_file(base_path.clone())?;
         Ok(Self { inner: Arc::new(Mutex::new(InnerWriter { base_path, current_file: file })) })
     }

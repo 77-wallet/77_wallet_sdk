@@ -16,7 +16,7 @@ impl WithdrawService {
 
     pub async fn get_withdraw_order_list(
         &self,
-    ) -> Result<Vec<ApiWithdrawEntity>, crate::ServiceError> {
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::list_api_withdraw(&pool).await.map_err(|e| e.into())
     }
@@ -32,7 +32,7 @@ impl WithdrawService {
         trade_no: &str,
         trade_type: u8,
         uid: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let req = ApiWithdrawReq {
             from: from.to_string(),
             to: to.to_string(),
@@ -58,7 +58,7 @@ impl WithdrawService {
         &self,
         order_id: &str,
         status: i8,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = AuditResultReportReq::new();
@@ -71,7 +71,7 @@ impl WithdrawService {
         &self,
         order_id: &str,
         status: i8,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = AuditResultReportReq::new();

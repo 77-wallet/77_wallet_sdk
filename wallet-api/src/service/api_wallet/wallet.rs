@@ -27,7 +27,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -36,7 +36,7 @@ impl ApiWalletService {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
 
         let master_key_start = std::time::Instant::now();
@@ -45,8 +45,8 @@ impl ApiWalletService {
         let address = &address.to_string();
 
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
-            return Err(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
             )
             .into());
         }
@@ -161,7 +161,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -170,7 +170,7 @@ impl ApiWalletService {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -181,8 +181,8 @@ impl ApiWalletService {
         let address = &address.to_string();
 
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
-            return Err(crate::BusinessError::ApiWallet(
-                crate::ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
             )
             .into());
         }
@@ -221,7 +221,7 @@ impl ApiWalletService {
         merchain_id: &str,
         recharge_uid: &str,
         withdrawal_uid: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         ApiWalletDomain::bind_uid(recharge_uid, merchain_id, org_app_id).await?;
         ApiWalletDomain::bind_uid(withdrawal_uid, merchain_id, org_app_id).await?;
 
@@ -239,7 +239,7 @@ impl ApiWalletService {
         self,
         recharge_uid: &str,
         withdrawal_uid: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         ApiWalletDomain::unbind_uid(recharge_uid).await?;
         ApiWalletDomain::unbind_uid(withdrawal_uid).await?;
 
@@ -255,13 +255,13 @@ impl ApiWalletService {
         self,
         address: &str,
         name: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }
 
-    pub async fn set_passwd_cache(self, wallet_password: &str) -> Result<(), crate::ServiceError> {
+    pub async fn set_passwd_cache(self, wallet_password: &str) -> Result<(), crate::error::ServiceError> {
         ApiWalletDomain::set_passwd(wallet_password).await?;
         Ok(())
     }

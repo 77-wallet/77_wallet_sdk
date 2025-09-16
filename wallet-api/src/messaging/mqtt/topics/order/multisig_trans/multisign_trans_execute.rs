@@ -2,7 +2,7 @@ use wallet_database::{
     entities::multisig_queue::MultisigQueueStatus, repositories::multisig_queue::MultisigQueueRepo,
 };
 
-use crate::{FrontendNotifyEvent, NotifyEvent};
+use crate::{messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent};
 
 // 取消多签交易
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -19,7 +19,7 @@ impl MultiSignTransExecute {
 
 // 当某一个参与放执行交易后同步其他参与放交易的状态
 impl MultiSignTransExecute {
-    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 并发可能导致查询不出来结果(事件的先后顺序不一致，导致错误)

@@ -1,7 +1,7 @@
-use crate::{api::ReturnType, service::api_wallet::asset::ApiAssetsService};
+use crate::{api::ReturnType, service::api_wallet::asset::ApiAssetsService, manager::WalletManager};
 use wallet_database::entities::api_assets::ApiAssetsEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_api_assets_list(
         &self,
         wallet_address: &str,

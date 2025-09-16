@@ -1,5 +1,5 @@
 use tokio_stream::StreamExt as _;
-use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
+use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
 
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
@@ -115,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[allow(dead_code)]
-async fn subscribe(wallet_manager: &wallet_api::WalletManager) {
+async fn subscribe(wallet_manager: &wallet_api::manager::WalletManager) {
     let topics = vec![
         "wallet/token/eth/usdc".to_string(),
         "wallet/token/tron/trx".to_string(),

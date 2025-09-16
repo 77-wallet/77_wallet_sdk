@@ -30,7 +30,7 @@ pub struct TransMsg {
 
 // 归集和提币
 impl TransMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
         match self.trade_type {
             1 => self.withdraw().await?,
             2 => self.collect().await?,
@@ -40,7 +40,7 @@ impl TransMsg {
         Ok(())
     }
 
-    pub(crate) async fn transfer_fee(&self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::ServiceError> {
         // 获取密码缓存
         let password = ApiWalletDomain::get_passwd().await?;
 
@@ -73,7 +73,7 @@ impl TransMsg {
         Ok(())
     }
 
-    pub(crate) async fn collect(&self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn collect(&self) -> Result<(), crate::error::ServiceError> {
         let token_address =
             if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
         let req = ApiWithdrawReq {
@@ -90,7 +90,7 @@ impl TransMsg {
         ApiCollectDomain::collect(&req).await
     }
 
-    pub(crate) async fn withdraw(&self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn withdraw(&self) -> Result<(), crate::error::ServiceError> {
         // 验证金额是否需要输入密码
 
         let token_address =

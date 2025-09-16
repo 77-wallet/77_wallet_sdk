@@ -1,6 +1,5 @@
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{entities::api_wallet::ApiWalletType, repositories::chain::ChainRepo};
-use wallet_transport_backend::request::api_wallet::address::{AddressParam, ExpandAddressReq};
 
 use crate::{
     domain::{
@@ -23,7 +22,7 @@ impl ApiAccountService {
         chain_code: &str,
         index: Option<i32>,
         uid: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         ApiWalletDomain::expand_address(&address_allock_type, index, &uid, &chain_code).await?;
 
         Ok(())
@@ -38,7 +37,7 @@ impl ApiAccountService {
         name: &str,
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -64,7 +63,7 @@ impl ApiAccountService {
         address: &str,
         chain_code: &str,
         password: &str,
-    ) -> Result<ChainPrivateKey, crate::ServiceError> {
+    ) -> Result<ChainPrivateKey, crate::error::ServiceError> {
         Ok(ApiAccountDomain::get_private_key(address, chain_code, password).await?)
     }
 
@@ -73,7 +72,7 @@ impl ApiAccountService {
         chain_code: &str,
         index: i32,
         uid: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         Ok(ApiAccountDomain::address_used(chain_code, index, uid).await?)
     }
 }

@@ -1,7 +1,7 @@
 use wallet_database::entities::task_queue::KnownTaskName;
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
-use crate::infrastructure::task_queue::task::{TaskTrait, task_type::TaskType};
+use crate::{error::ServiceError, infrastructure::task_queue::task::{TaskTrait, task_type::TaskType}};
 
 const HISTORICAL_TASK_OFFSET: u8 = 10;
 
@@ -15,7 +15,7 @@ pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
 pub(crate) fn assign_priority(
     task: &dyn TaskTrait,
     is_history: bool,
-) -> Result<u8, crate::ServiceError> {
+) -> Result<u8, ServiceError> {
     let base = get_base_priority(task)?; // 任务类型对应基础优先级，比如 sync=1，其他=3
     Ok(if is_history {
         // 历史任务统一加偏移，确保比新任务优先级低
@@ -26,7 +26,7 @@ pub(crate) fn assign_priority(
 }
 
 /// 动态确定任务优先级（0 = 高，1 = 中，2 = 低）
-fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
+fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
     let name = task.get_name();
 
     let priority = match name {
@@ -73,12 +73,12 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
     Ok(priority)
 }
 
-fn extract_backend_priority(task: &dyn TaskTrait) -> Result<u8, crate::ServiceError> {
+fn extract_backend_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
     // 使用 downcast_ref 获取 BackendApiTask 类型
     let backend_task = task
         .as_any()
         .downcast_ref::<crate::infrastructure::task_queue::BackendApiTask>()
-        .ok_or_else(|| crate::SystemError::Service("BackendApi 类型错误".to_string()))?;
+        .ok_or_else(|| crate::error::system::SystemError::Service("BackendApi 类型错误".to_string()))?;
 
     let priority = match backend_task {
         crate::infrastructure::task_queue::BackendApiTask::BackendApi(backend_api_task_data) => {

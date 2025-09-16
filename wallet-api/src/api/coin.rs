@@ -1,7 +1,12 @@
-use crate::{api::ReturnType, response_vo::coin::TokenPriceChangeRes, service::coin::CoinService};
+use crate::{
+    api::ReturnType,
+    response_vo::coin::TokenPriceChangeRes,
+    service::coin::CoinService,
+    manager::WalletManager,
+};
 use wallet_transport_backend::response_vo::coin::{CoinMarketValue, TokenHistoryPrices};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_hot_coin_list(
         &self,
         wallet_address: &str,

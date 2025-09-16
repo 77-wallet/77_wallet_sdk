@@ -14,7 +14,7 @@ impl StrategyService {
         uid: &str,
         threshold: f64,
         chain_config: Vec<ChainConfig>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = SaveCollectStrategyReq::new(uid, threshold, chain_config);
@@ -23,7 +23,7 @@ impl StrategyService {
         Ok(())
     }
 
-    pub async fn query_collect_strategy(self, uid: &str) -> Result<(), crate::ServiceError> {
+    pub async fn query_collect_strategy(self, uid: &str) -> Result<(), crate::error::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend_api.query_collect_strategy(&uid).await?;
 
@@ -35,7 +35,7 @@ impl StrategyService {
         uid: &str,
         threshold: f64,
         chain_config: Vec<ChainConfig>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = SaveWithdrawStrategyReq::new(uid, threshold, chain_config);
@@ -44,7 +44,7 @@ impl StrategyService {
         Ok(())
     }
 
-    pub async fn query_withdrawal_strategy(self, uid: &str) -> Result<(), crate::ServiceError> {
+    pub async fn query_withdrawal_strategy(self, uid: &str) -> Result<(), crate::error::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend_api.query_withdrawal_strategy(&uid).await?;
 

@@ -7,11 +7,12 @@ use crate::{
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
     },
     service::swap::SwapServer,
+    manager::WalletManager,
 };
 use wallet_database::pagination::Pagination;
 use wallet_transport_backend::api::swap::ChainDex;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn default_quote(
         &self,
         chain_code: String,

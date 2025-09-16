@@ -1,5 +1,5 @@
 use crate::{
-    ServiceError,
+    error::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -69,21 +69,21 @@ impl SolTx {
         balance: U256,
         token: Option<&str>,
         transfer_amount: U256,
-    ) -> Result<U256, crate::ServiceError> {
+    ) -> Result<U256, crate::error::service::ServiceError> {
         let cost_main = match token {
             Some(token) => {
                 let token_balance = self.chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance
             }
             None => {
                 if balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance - transfer_amount
@@ -108,10 +108,10 @@ impl SolTx {
         &self,
         balance: U256,
         fee: u64,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let fee = U256::from(fee);
         if balance < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
         }
         Ok(())
     }
@@ -233,7 +233,7 @@ impl Tx for SolTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(
@@ -242,7 +242,7 @@ impl Tx for SolTx {
         _value: U256,
         _main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(
@@ -251,7 +251,7 @@ impl Tx for SolTx {
         _token: &str,
         _spender: &str,
     ) -> Result<U256, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
@@ -260,7 +260,7 @@ impl Tx for SolTx {
         _quote_resp: &AggQuoteResp,
         _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
@@ -269,7 +269,7 @@ impl Tx for SolTx {
         _fee: String,
         _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
@@ -277,7 +277,7 @@ impl Tx for SolTx {
         _req: DepositReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
@@ -287,7 +287,7 @@ impl Tx for SolTx {
         _key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw_fee(
@@ -295,7 +295,7 @@ impl Tx for SolTx {
         _req: WithdrawReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
@@ -305,7 +305,7 @@ impl Tx for SolTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 }
 
@@ -435,7 +435,7 @@ impl Multisig for SolTx {
         // check multisig account balance
         let multisig_balance = self.chain.balance(&req.from, token.clone()).await?;
         if multisig_balance < value {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
         }
         let base = TransferOpt::new(
             &req.from,
@@ -477,7 +477,7 @@ impl Multisig for SolTx {
         _p: &PermissionEntity,
         _coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::BusinessError::Permission(crate::PermissionError::UnSupportPermissionChain)
+        Err(crate::error::business::BusinessError::Permission(crate::error::business::permission::PermissionError::UnSupportPermissionChain)
             .into())
     }
 

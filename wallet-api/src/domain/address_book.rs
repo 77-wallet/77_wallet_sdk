@@ -4,7 +4,7 @@ impl AddressBookDomain {
     pub async fn check_address(
         address: String,
         chain_code: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code.as_ref())?;

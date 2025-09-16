@@ -186,7 +186,7 @@ impl ChainService {
         // symbol: &str,
         chain_list: HashMap<String, String>,
         is_multisig: Option<bool>,
-    ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
+    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;

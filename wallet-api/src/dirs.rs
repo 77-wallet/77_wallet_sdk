@@ -14,7 +14,7 @@ impl Dirs {
         PathBuf::from(root_dir).join(sub_path)
     }
 
-    pub fn new(root_dir: &str) -> Result<Dirs, crate::ServiceError> {
+    pub fn new(root_dir: &str) -> Result<Dirs, crate::error::ServiceError> {
         let wallet_dir = Self::join_path(root_dir, "wallet_data");
 
         let db_dir = Self::join_path(root_dir, "db");
@@ -46,7 +46,7 @@ impl Dirs {
     pub(crate) fn get_root_dir(
         &self,
         wallet_address: &str,
-    ) -> Result<std::path::PathBuf, crate::ServiceError> {
+    ) -> Result<std::path::PathBuf, crate::error::ServiceError> {
         let root_dir = self.wallet_dir.join(wallet_address).join("root");
 
         wallet_utils::file_func::create_dir_all(&root_dir)?;
@@ -57,7 +57,7 @@ impl Dirs {
     pub(crate) fn get_subs_dir(
         &self,
         wallet_address: &str,
-    ) -> Result<std::path::PathBuf, crate::ServiceError> {
+    ) -> Result<std::path::PathBuf, crate::error::ServiceError> {
         let subs_dir = self.wallet_dir.join(wallet_address).join("subs");
 
         wallet_utils::file_func::create_dir_all(&subs_dir)?;

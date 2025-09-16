@@ -1,5 +1,5 @@
 use crate::{
-    ServiceError,
+    error::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -64,7 +64,7 @@ impl TonTx {
         req: &ApiBaseTransferReq,
         provider: &Provider,
         address_type: TonAddressType,
-    ) -> Result<Cell, crate::ServiceError> {
+    ) -> Result<Cell, crate::error::service::ServiceError> {
         if let Some(token) = req.token_address.clone() {
             let value = unit::convert_to_u256(&req.value, req.decimals)?;
             let arg = TokenTransferOpt::new(&req.from, &req.to, &token, value, req.spend_all)?;
@@ -127,7 +127,7 @@ impl Tx for TonTx {
         let balance =
             self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
         if balance < transfer_amount {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
         }
         tracing::info!("transfer ------------------- 12:");
 
@@ -138,7 +138,7 @@ impl Tx for TonTx {
             &pool,
         )
         .await?
-        .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+        .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
             params.base.from.to_string(),
         )))?;
 
@@ -158,16 +158,16 @@ impl Tx for TonTx {
             if !params.base.spend_all {
                 trans_fee += transfer_amount;
                 if balance < trans_fee {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientFeeBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
                     ))?;
                 }
             }
         } else {
             let balance = self.chain.balance(&params.base.from, None).await?;
             if balance < trans_fee {
-                return Err(crate::BusinessError::Chain(
-                    crate::ChainError::InsufficientFeeBalance,
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
                 ))?;
             }
         }
@@ -194,7 +194,7 @@ impl Tx for TonTx {
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
-                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
                     req.from.to_string(),
                 )))?;
 
@@ -217,7 +217,7 @@ impl Tx for TonTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(
@@ -226,7 +226,7 @@ impl Tx for TonTx {
         _value: U256,
         _main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(
@@ -235,7 +235,7 @@ impl Tx for TonTx {
         _token: &str,
         _spender: &str,
     ) -> Result<U256, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
@@ -244,7 +244,7 @@ impl Tx for TonTx {
         _quote_resp: &AggQuoteResp,
         _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
@@ -253,7 +253,7 @@ impl Tx for TonTx {
         _fee: String,
         _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
@@ -261,7 +261,7 @@ impl Tx for TonTx {
         _req: DepositReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
@@ -271,7 +271,7 @@ impl Tx for TonTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw_fee(
@@ -279,7 +279,7 @@ impl Tx for TonTx {
         _req: WithdrawReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
@@ -289,7 +289,7 @@ impl Tx for TonTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 }
 

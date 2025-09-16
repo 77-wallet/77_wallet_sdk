@@ -19,7 +19,7 @@ pub mod system_notification;
 pub mod transaction;
 pub mod wallet;
 
-pub type ReturnType<T> = Result<T, crate::ServiceError>;
+pub type ReturnType<T> = Result<T, crate::error::ServiceError>;
 
 
 #[cfg(test)]

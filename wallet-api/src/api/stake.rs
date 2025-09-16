@@ -14,11 +14,12 @@ use crate::{
         },
     },
     service::stake::StackService,
+    manager::WalletManager,
 };
 use wallet_database::pagination::Pagination;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;
 
-impl crate::WalletManager {
+impl WalletManager {
     // account resource
     pub async fn resource_info(&self, account: String) -> ReturnType<AccountResource> {
         let service = StackService::new().await?;

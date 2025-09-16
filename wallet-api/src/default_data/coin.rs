@@ -1,3 +1,5 @@
+use crate::error::ServiceError;
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultCoin {
     pub(crate) name: String,
@@ -19,7 +21,7 @@ pub(crate) struct DefaultCoinList {
 static INIT_COINS_INFO: once_cell::sync::Lazy<once_cell::sync::OnceCell<DefaultCoinList>> =
     once_cell::sync::Lazy::new(once_cell::sync::OnceCell::new);
 
-pub(crate) fn init_default_coins_list() -> Result<&'static DefaultCoinList, crate::ServiceError> {
+pub(crate) fn init_default_coins_list() -> Result<&'static DefaultCoinList, ServiceError> {
     INIT_COINS_INFO.get_or_try_init(|| {
         let toml_content = include_str!("../../data/config/coin.toml");
         let toml_data: DefaultCoinList = wallet_utils::serde_func::toml_from_str(toml_content)?;

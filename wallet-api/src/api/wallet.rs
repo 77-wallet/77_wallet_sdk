@@ -1,8 +1,10 @@
 use crate::{
     api::ReturnType, response_vo::wallet::CreateWalletRes, service::wallet::WalletService,
+    manager::WalletManager,
 };
+use crate::request::wallet::CreateWalletReq;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
         WalletService::new(self.repo_factory.resource_repo())
             .encrypt_password(password)
@@ -39,7 +41,7 @@ impl crate::WalletManager {
         WalletService::new(self.repo_factory.resource_repo()).physical_reset().await
     }
 
-    pub async fn create_wallet(&self, req: crate::CreateWalletReq) -> ReturnType<CreateWalletRes> {
+    pub async fn create_wallet(&self, req: CreateWalletReq) -> ReturnType<CreateWalletRes> {
         WalletService::new(self.repo_factory.resource_repo())
             .create_wallet(
                 req.language_code,

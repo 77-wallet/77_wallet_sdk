@@ -1,9 +1,10 @@
 use crate::{
     api::ReturnType, messaging::system_notification::Notification,
     service::system_notification::SystemNotificationService,
+    manager::WalletManager,
 };
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_system_notification(
         &self,
         id: &str,

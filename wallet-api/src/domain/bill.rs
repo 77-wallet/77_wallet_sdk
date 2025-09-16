@@ -18,7 +18,7 @@ pub struct BillDomain;
 impl BillDomain {
     pub async fn create_bill<T>(
         params: entities::bill::NewBillEntity<T>,
-    ) -> Result<(), crate::ServiceError>
+    ) -> Result<(), crate::error::ServiceError>
     where
         T: serde::Serialize,
     {
@@ -30,7 +30,7 @@ impl BillDomain {
     pub async fn create_check_swap<T>(
         tx: entities::bill::NewBillEntity<T>,
         pool: &DbPool,
-    ) -> Result<(), crate::ServiceError>
+    ) -> Result<(), crate::error::ServiceError>
     where
         T: serde::Serialize,
     {
@@ -50,7 +50,7 @@ impl BillDomain {
     pub async fn get_bill_resource_consumer(
         tx_hash: &str,
         chain_code: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::ServiceError> {
         let adapter =
             super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         let res = adapter.query_tx_res(tx_hash).await?;
@@ -63,14 +63,14 @@ impl BillDomain {
     pub async fn get_onchain_bill(
         tx_hash: &str,
         chain_code: &str,
-    ) -> Result<Option<QueryTransactionResult>, crate::ServiceError> {
+    ) -> Result<Option<QueryTransactionResult>, crate::error::ServiceError> {
         let adapter =
             super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
 
-    pub async fn handle_sync_bill(item: SyncBillResp) -> Result<(), crate::ServiceError> {
+    pub async fn handle_sync_bill(item: SyncBillResp) -> Result<(), crate::error::ServiceError> {
         if item.value == 0.0 {
             return Ok(());
         }
@@ -119,7 +119,7 @@ impl BillDomain {
     pub(crate) async fn sync_bills(
         chain_code: &str,
         address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
         // let start_time = None;
 
@@ -151,12 +151,12 @@ impl BillDomain {
     pub(crate) async fn get_last_bill_time(
         chain_code: &str,
         address: &str,
-    ) -> Result<Option<String>, crate::ServiceError> {
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let bill = BillDao::last_bill(chain_code, address, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
         let adjusted_time = |bill: Option<BillEntity>| {
             bill.map(|bill| {
@@ -184,7 +184,7 @@ impl BillDomain {
         let condition = vec![("address", address), ("chain_code", chain_code), ("is_del", "0")];
         let account = MultisigAccountDaoV1::find_by_conditions(condition, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
         if let Some(account) = account {
             if account.owner == MultiAccountOwner::Participant.to_i8() {
@@ -203,6 +203,6 @@ impl BillDomain {
             return Ok(Some(adjusted_time(bill)));
         }
 
-        Err(crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound).into())
+        Err(crate::error::business::BusinessError::MultisigAccount(crate::error::business::multisig_account::MultisigAccountError::NotFound).into())
     }
 }

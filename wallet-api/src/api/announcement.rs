@@ -1,7 +1,10 @@
-use crate::{api::ReturnType, service::announcement::AnnouncementService};
+use crate::{
+    api::ReturnType, service::announcement::AnnouncementService,
+    manager::WalletManager,
+};
 use wallet_database::{entities::announcement::AnnouncementEntity, pagination::Pagination};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_announcement(
         &self,
         input: Vec<wallet_database::entities::announcement::CreateAnnouncementVo>,

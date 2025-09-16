@@ -34,7 +34,7 @@ pub struct DeviceDomain;
 impl DeviceDomain {
     pub fn device_content(
         device: &wallet_database::entities::device::DeviceEntity,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let identifier = DeviceDomain::device_identifier(&device.sn, &device.device_type);
 
         Ok(wallet_utils::ecb::Aes128EcbCryptor::new(APP_ID).unwrap().encrypt(&identifier).unwrap())
@@ -61,7 +61,7 @@ impl DeviceDomain {
 
     pub fn client_id_by_device(
         device: &wallet_database::entities::device::DeviceEntity,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let identifier = DeviceDomain::device_identifier(&device.sn, &device.device_type);
 
         Ok(DeviceDomain::client_id_by_identifier(&identifier))
@@ -80,7 +80,7 @@ impl DeviceDomain {
         accounts: &[wallet_database::entities::account::AccountEntity],
         multisig_accounts: Vec<wallet_database::entities::multisig_account::MultisigAccountEntity>,
         sn: &str,
-    ) -> Result<BackendApiTaskData, crate::ServiceError> {
+    ) -> Result<BackendApiTaskData, crate::error::service::ServiceError> {
         let mut device_unbind_address_req =
             wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
         for account in accounts {
@@ -96,10 +96,10 @@ impl DeviceDomain {
         Ok(device_unbind_address_task)
     }
 
-    pub(crate) async fn check_wallet_password_is_null() -> Result<(), crate::ServiceError> {
+    pub(crate) async fn check_wallet_password_is_null() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
         };
 
         let (keystore_kdf_algorithm, wallet_tree_strategy) = if device.password.is_some() {
@@ -130,7 +130,7 @@ impl DeviceDomain {
     pub(crate) async fn language_init(
         device_info: &DeviceEntity,
         language: &str,
-    ) -> Result<BackendApiTask, crate::ServiceError> {
+    ) -> Result<BackendApiTask, crate::error::service::ServiceError> {
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device_info)?;
         let language_req = wallet_transport_backend::request::LanguageInitReq {
             client_id,

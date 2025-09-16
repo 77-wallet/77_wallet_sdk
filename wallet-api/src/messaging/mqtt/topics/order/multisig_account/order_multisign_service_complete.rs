@@ -33,7 +33,7 @@ impl OrderMultiSignServiceComplete {
 }
 
 impl OrderMultiSignServiceComplete {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(
@@ -52,7 +52,7 @@ impl OrderMultiSignServiceComplete {
         let (status, pay_status) = Self::get_status(*r#type, *status);
         MultisigAccountDaoV1::update_status(&multi_account_id, status, pay_status, pool.as_ref())
             .await
-            .map_err(crate::ServiceError::Database)?;
+            .map_err(crate::error::ServiceError::Database)?;
 
         // 不是发起方更重新上报状态
         if account.owner != MultiAccountOwner::Participant.to_i8() {
@@ -74,7 +74,7 @@ impl OrderMultiSignServiceComplete {
         multisig_account_id: &str,
         pool: &DbPool,
         event_name: &str,
-    ) -> Result<MultisigAccountEntity, crate::ServiceError> {
+    ) -> Result<MultisigAccountEntity, crate::error::ServiceError> {
         // 第一次查询
         let mut account =
             MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref()).await?;
@@ -92,7 +92,7 @@ impl OrderMultiSignServiceComplete {
                 multisig_account_id = %multisig_account_id,
                 "Multisig account not found"
             );
-            let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
+            let err = crate::error::ServiceError::Business(crate::error::business::multisig_account::MultisigAccountError::NotFound.into());
             let data = NotifyEvent::Err(ErrFront {
                 event: event_name.to_string(),
                 message: err.to_string(),

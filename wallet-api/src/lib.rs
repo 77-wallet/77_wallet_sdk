@@ -6,47 +6,26 @@ pub mod app_state;
 pub mod config;
 pub(crate) mod default_data;
 pub mod domain;
-mod error;
-pub(crate) mod infrastructure;
+pub mod error;
+pub mod infrastructure;
 
 mod context;
 mod data;
 pub mod dirs;
-mod manager;
-mod messaging;
+pub mod manager;
+pub mod messaging;
 
 pub mod request;
 pub mod response_vo;
 pub mod service;
 pub mod test;
 
-pub use infrastructure::log::*;
 
-pub use messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
-
-pub use messaging::mqtt::topics::api_wallet::AddressAllockType;
 pub use wallet_database::entities::api_wallet::ApiWalletType;
 
-pub use error::{
-    Errors, ServiceError,
-    business::{
-        BusinessError, account::AccountError, announcement::AnnouncementError,
-        api_wallet::ApiWalletError, assets::AssetsError, bill::BillError, chain::ChainError,
-        chain_node::ChainNodeError, coin::CoinError, config::ConfigError, device::DeviceError,
-        exchange_rate::ExchangeRate, multisig_account::MultisigAccountError,
-        multisig_queue::MultisigQueueError, permission::PermissionError, stake::StakeError,
-        wallet::WalletError,
-    },
-    system::SystemError,
-};
-
-pub use config::*;
-pub use manager::WalletManager;
-pub use request::{
-    account::CreateAccountReq, app::UploadLogFileReq, assets::GetChain, devices::InitDeviceReq,
-    wallet::CreateWalletReq,
-};
 pub use wallet_database::entities::multisig_member::MemberVo;
 pub use wallet_transport_backend::request::{
     TokenQueryHistoryPrice, TokenQueryPopularByPageReq, TokenQueryPrice, TokenQueryPriceReq,
 };
+
+pub use wallet_transport_backend::error::Error;

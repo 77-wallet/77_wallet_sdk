@@ -7,13 +7,14 @@ use crate::{
         transaction::{BillDetailVo, TransactionResult},
     },
     service::{bill::BillService, transaction::TransactionService},
+    manager::WalletManager,
 };
 use wallet_database::{
     entities::bill::{BillEntity, BillKind, RecentBillListVo},
     pagination::Pagination,
 };
 
-impl crate::WalletManager {
+impl WalletManager {
     // 本币的余额
     pub async fn chain_balance(
         &self,

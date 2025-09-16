@@ -12,11 +12,11 @@ use crate::{
 pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
     once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
 
-pub async fn do_some_init<'a>() -> Result<&'a (), crate::ServiceError> {
+pub async fn do_some_init<'a>() -> Result<&'a (), crate::error::ServiceError> {
     INIT_DATA.get_or_try_init(|| async { init_some_data().await }).await
 }
 
-async fn init_some_data() -> Result<(), crate::ServiceError> {
+async fn init_some_data() -> Result<(), crate::error::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;

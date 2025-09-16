@@ -31,7 +31,7 @@ impl ApiWalletDomain {
         phrase: &str,
         seed: &[u8],
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // let phrase = wallet_utils::serde_func::serde_to_vec(&phrase)?;
@@ -78,14 +78,14 @@ impl ApiWalletDomain {
     pub(crate) async fn decrypt_seed(
         password: &str,
         seed: &str,
-    ) -> Result<Vec<u8>, crate::ServiceError> {
+    ) -> Result<Vec<u8>, crate::error::service::ServiceError> {
         let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), seed)?;
         Ok(data)
     }
 
     pub(crate) async fn check_normal_wallet_exist(
         address: &str,
-    ) -> Result<bool, crate::ServiceError> {
+    ) -> Result<bool, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Ok(WalletRepo::detail(&pool, address).await?.is_some())
@@ -95,11 +95,11 @@ impl ApiWalletDomain {
         uid: &str,
         merchain_id: &str,
         org_app_id: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFound))?;
         ApiWalletRepo::update_merchant_id(&pool, &api_wallet.address, merchain_id).await?;
         ApiWalletRepo::update_app_id(&pool, &api_wallet.address, org_app_id).await?;
 
@@ -109,14 +109,14 @@ impl ApiWalletDomain {
     pub(crate) async fn bind_withdraw_and_subaccount_relation(
         subaccount_uid: &str,
         withdraw_uid: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let subaccount_uid = ApiWalletRepo::find_by_uid(&pool, subaccount_uid)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFound))?;
         let withdraw_uid = ApiWalletRepo::find_by_uid(&pool, withdraw_uid)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFound))?;
         ApiWalletRepo::bind_withdraw_and_subaccount_relation(
             pool.clone(),
             &subaccount_uid.address,
@@ -133,11 +133,11 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn unbind_uid(uid: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFound))?;
         ApiWalletRepo::upbind_uid(&pool, &api_wallet.address, ApiWalletType::SubAccount).await?;
 
         Ok(())
@@ -149,7 +149,7 @@ impl ApiWalletDomain {
         chains: Vec<String>,
         account_name: &str,
         is_default_name: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
         let num = 3;
@@ -181,7 +181,7 @@ impl ApiWalletDomain {
         chains: Vec<String>,
         account_name: &str,
         is_default_name: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::create_account(
             wallet_address,
             password,
@@ -200,11 +200,11 @@ impl ApiWalletDomain {
         index: Option<i32>,
         uid: &str,
         chain_code: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, &uid)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFound))?;
 
         let password = ApiWalletDomain::get_passwd().await?;
 
@@ -246,11 +246,11 @@ impl ApiWalletDomain {
         name: &str,
         is_default_name: bool,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address)
             .await?
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFound))?;
         // 获取种子
         let seed = ApiWalletDomain::decrypt_seed(wallet_password, &api_wallet.seed).await?;
 
@@ -336,15 +336,15 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn get_passwd() -> Result<String, crate::ServiceError> {
+    pub(crate) async fn get_passwd() -> Result<String, crate::error::service::ServiceError> {
         let password = crate::infrastructure::GLOBAL_CACHE
             .get::<String>(crate::infrastructure::WALLET_PASSWORD)
             .await
-            .ok_or(crate::BusinessError::ApiWallet(crate::ApiWalletError::PasswordNotCached))?;
+            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::PasswordNotCached))?;
         Ok(password)
     }
 
-    pub(crate) async fn set_passwd(wallet_password: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn set_passwd(wallet_password: &str) -> Result<(), crate::error::service::ServiceError> {
         crate::infrastructure::GLOBAL_CACHE
             .set(crate::infrastructure::WALLET_PASSWORD, wallet_password)
             .await?;

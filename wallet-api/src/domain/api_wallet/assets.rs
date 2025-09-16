@@ -14,7 +14,7 @@ impl ApiAssetsDomain {
         symbol: &str,
         from: &str,
         token_address: Option<String>,
-    ) -> Result<ApiAssetsEntity, crate::ServiceError> {
+    ) -> Result<ApiAssetsEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
@@ -25,7 +25,7 @@ impl ApiAssetsDomain {
         };
         let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id)
             .await?
-            .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
+            .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFound))?;
 
         Ok(assets)
     }
@@ -36,7 +36,7 @@ impl ApiAssetsDomain {
         symbol: &str,
         token_address: Option<String>,
         balance: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
@@ -54,7 +54,7 @@ impl ApiAssetsDomain {
                 // 更新本地余额后在上报后端
                 ApiAssetsRepo::update_balance(&pool, &assets_id, balance)
                     .await
-                    .map_err(crate::ServiceError::Database)?;
+                    .map_err(crate::error::service::ServiceError::Database)?;
 
                 // 上报后端修改余额
                 let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -73,7 +73,7 @@ impl ApiAssetsDomain {
         wallet_address: &str,
         account_id: Option<u32>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let list =
@@ -90,7 +90,7 @@ impl ApiAssetsDomain {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut assets = ApiAssetsRepo::list(
             &pool, // , addr, chain_code, None, None
         )

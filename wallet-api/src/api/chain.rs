@@ -2,9 +2,14 @@ use std::collections::HashMap;
 
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
-use crate::{api::ReturnType, response_vo::chain::ChainAssets, service::chain::ChainService};
+use crate::{
+    api::ReturnType,
+    response_vo::chain::ChainAssets,
+    service::chain::ChainService,
+    manager::WalletManager,
+};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_chain(&self, name: &str, chain_code: &str) -> ReturnType<()> {
         ChainService::new(self.repo_factory.resource_repo())
             .add(name, chain_code, &[], "")

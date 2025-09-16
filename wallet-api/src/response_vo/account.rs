@@ -198,7 +198,7 @@ impl BalanceInfo {
         Self { amount, currency: currency.to_string(), unit_price, fiat_value }
     }
 
-    pub async fn new_without_amount() -> Result<BalanceInfo, crate::ServiceError> {
+    pub async fn new_without_amount() -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let currency = ConfigDomain::get_currency().await?;
 
         Ok(Self {
@@ -257,7 +257,7 @@ impl BalanceNotTruncate {
         amount: Decimal,
         unit_price: Option<Decimal>,
         currency: &str,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let fiat_decimal = unit_price.map(|p| amount * p);
 
         let unit_price_f64 =
@@ -296,7 +296,7 @@ impl BalanceStr {
         unit_price: Option<f64>,
         currency: &str,
         decimals: u8,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let price_precision = 1_000_000_00u64;
 
         let fiat_value = if let Some(price) = unit_price {
@@ -393,7 +393,7 @@ impl QueryAccountDerivationPath {
 }
 
 impl TryFrom<AccountEntity> for QueryAccountDerivationPath {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: AccountEntity) -> Result<Self, Self::Error> {
         let address_type =

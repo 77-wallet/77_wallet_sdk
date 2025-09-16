@@ -5,9 +5,10 @@ use crate::{
         chain::ChainList,
     },
     service::asset::AssetsService,
+    manager::WalletManager,
 };
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_coin(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
         AssetsService::new(self.repo_factory.resource_repo())
             .add_coin_v2(&req.wallet_address, Some(req.account_id), req.chain_list, None)

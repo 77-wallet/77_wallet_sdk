@@ -1,10 +1,11 @@
 use crate::{
     api::ReturnType, response_vo::address_book::AddressBookResp,
     service::address_book::AddressBookService,
+    manager::WalletManager,
 };
 use wallet_database::{entities::address_book::AddressBookEntity, pagination::Pagination};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn create_address_book(
         &self,
         name: String,

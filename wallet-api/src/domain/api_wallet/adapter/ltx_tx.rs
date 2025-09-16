@@ -1,5 +1,5 @@
 use crate::{
-    ServiceError,
+    error::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -53,22 +53,22 @@ impl LtcTx {
         Ok(Self { chin: ltc_chain })
     }
 
-    pub fn handle_ltc_fee_error(&self, err: wallet_chain_interact::Error) -> crate::ServiceError {
+    pub fn handle_ltc_fee_error(&self, err: wallet_chain_interact::Error) -> crate::error::service::ServiceError {
         match err {
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientBalance) => {
-                crate::BusinessError::Chain(crate::ChainError::InsufficientBalance).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientFee(_fee)) => {
-                crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::ExceedsMaximum) => {
-                crate::BusinessError::Chain(crate::ChainError::ExceedsMaximum).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ExceedsMaximum).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::DustTx) => {
-                crate::BusinessError::Chain(crate::ChainError::DustTransaction).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::DustTransaction).into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::ExceedsMaxFeeRate) => {
-                crate::BusinessError::Chain(crate::ChainError::ExceedsMaxFeerate).into()
+                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ExceedsMaxFeerate).into()
             }
             _ => err.into(),
         }
@@ -124,7 +124,7 @@ impl Tx for LtcTx {
             &pool,
         )
         .await?
-        .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+        .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
             params.base.from.to_string(),
         )))?;
 
@@ -163,7 +163,7 @@ impl Tx for LtcTx {
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
-                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
+                .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
                     req.from.to_string(),
                 )))?;
 
@@ -186,7 +186,7 @@ impl Tx for LtcTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn approve_fee(
@@ -195,7 +195,7 @@ impl Tx for LtcTx {
         _value: U256,
         _main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn allowance(
@@ -204,7 +204,7 @@ impl Tx for LtcTx {
         _token: &str,
         _spender: &str,
     ) -> Result<U256, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap_quote(
@@ -213,7 +213,7 @@ impl Tx for LtcTx {
         _quote_resp: &AggQuoteResp,
         _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn swap(
@@ -222,7 +222,7 @@ impl Tx for LtcTx {
         _fee: String,
         _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit_fee(
@@ -230,7 +230,7 @@ impl Tx for LtcTx {
         _req: DepositReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn deposit(
@@ -240,7 +240,7 @@ impl Tx for LtcTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw_fee(
@@ -248,7 +248,7 @@ impl Tx for LtcTx {
         _req: WithdrawReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 
     async fn withdraw(
@@ -258,7 +258,7 @@ impl Tx for LtcTx {
         _key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
     }
 }
 

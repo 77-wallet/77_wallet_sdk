@@ -54,7 +54,7 @@ impl CoinService {
         page_size: i64,
     ) -> Result<
         wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>,
-        crate::ServiceError,
+        crate::error::service::ServiceError,
     > {
         let tx = &mut self.repo;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -142,7 +142,7 @@ impl CoinService {
         Ok(res)
     }
 
-    pub async fn pull_hot_coins(&mut self) -> Result<(), crate::ServiceError> {
+    pub async fn pull_hot_coins(&mut self) -> Result<(), crate::error::service::ServiceError> {
         // 删除掉无效的token
         let tx = &mut self.repo;
 
@@ -174,7 +174,7 @@ impl CoinService {
         Ok(())
     }
 
-    pub async fn init_token_price(mut self) -> Result<(), crate::ServiceError> {
+    pub async fn init_token_price(mut self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
@@ -214,7 +214,7 @@ impl CoinService {
     pub async fn query_token_price(
         mut self,
         req: &TokenQueryPriceReq,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let tx = &mut self.repo;
@@ -246,7 +246,7 @@ impl CoinService {
     pub async fn get_token_price(
         mut self,
         symbols: Vec<String>,
-    ) -> Result<Vec<TokenPriceChangeRes>, crate::ServiceError> {
+    ) -> Result<Vec<TokenPriceChangeRes>, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
@@ -304,7 +304,7 @@ impl CoinService {
         self,
         chain_code: &str,
         mut token_address: String,
-    ) -> Result<crate::response_vo::coin::TokenInfo, crate::ServiceError> {
+    ) -> Result<crate::response_vo::coin::TokenInfo, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
         domain::chain::ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
@@ -329,27 +329,27 @@ impl CoinService {
             let decimals = chain_instance.decimals(&token_address).await.map_err(|e| match e {
                 wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
                 | wallet_chain_interact::Error::RpcError(_) => {
-                    crate::ServiceError::Business(crate::BusinessError::Coin(
-                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                    crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Coin(
+                        crate::error::business::coin::CoinError::InvalidContractAddress(token_address.to_string()),
                     ))
                 }
-                _ => crate::ServiceError::ChainInteract(e),
+                _ => crate::error::service::ServiceError::ChainInteract(e),
             })?;
             if decimals == 0 {
-                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Coin(
+                    crate::error::business::coin::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
             let symbol = chain_instance.token_symbol(&token_address).await?;
             if symbol.is_empty() {
-                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Coin(
+                    crate::error::business::coin::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
             let name = chain_instance.token_name(&token_address).await?;
             if name.is_empty() {
-                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Coin(
+                    crate::error::business::coin::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
 
@@ -368,7 +368,7 @@ impl CoinService {
         mut token_address: String,
         protocol: Option<String>,
         is_multisig: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
         ChainDomain::check_token_address(&mut token_address, chain_code, net)?;
@@ -387,15 +387,15 @@ impl CoinService {
             let decimals = chain_instance.decimals(&token_address).await.map_err(|e| match e {
                 wallet_chain_interact::Error::UtilsError(wallet_utils::Error::Parse(_))
                 | wallet_chain_interact::Error::RpcError(_) => {
-                    crate::ServiceError::Business(crate::BusinessError::Coin(
-                        crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                    crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Coin(
+                        crate::error::business::coin::CoinError::InvalidContractAddress(token_address.to_string()),
                     ))
                 }
-                _ => crate::ServiceError::ChainInteract(e),
+                _ => crate::error::service::ServiceError::ChainInteract(e),
             })?;
             if decimals == 0 {
-                return Err(crate::ServiceError::Business(crate::BusinessError::Coin(
-                    crate::CoinError::InvalidContractAddress(token_address.to_string()),
+                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Coin(
+                    crate::error::business::coin::CoinError::InvalidContractAddress(token_address.to_string()),
                 )));
             }
             let symbol = chain_instance.token_symbol(&token_address).await?;
@@ -432,8 +432,8 @@ impl CoinService {
             .await?;
 
         tracing::debug!("[customize_coin] account_addresses: {:?}", account_addresses);
-        let account_addresses = account_addresses.pop().ok_or(crate::ServiceError::Business(
-            crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())),
+        let account_addresses = account_addresses.pop().ok_or(crate::error::service::ServiceError::Business(
+            crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(address.to_string())),
         ))?;
 
         tracing::debug!("[customize_coin] account_addresses pop: {:?}", account_addresses);
@@ -501,7 +501,7 @@ impl CoinService {
     pub async fn query_history_price(
         self,
         req: wallet_transport_backend::request::TokenQueryHistoryPrice,
-    ) -> Result<TokenHistoryPrices, crate::ServiceError> {
+    ) -> Result<TokenHistoryPrices, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let prices = backend_api.query_history_price(&req).await?;
@@ -513,7 +513,7 @@ impl CoinService {
         &mut self,
         // chain_code: Option<String>,
         req: wallet_transport_backend::request::TokenQueryPopularByPageReq,
-    ) -> Result<wallet_database::pagination::Pagination<TokenPriceChangeRes>, crate::ServiceError>
+    ) -> Result<wallet_database::pagination::Pagination<TokenPriceChangeRes>, crate::error::service::ServiceError>
     {
         let tx = &mut self.repo;
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -559,7 +559,7 @@ impl CoinService {
     pub async fn market_value(
         self,
         coin: std::collections::HashMap<String, String>,
-    ) -> Result<CoinMarketValue, crate::ServiceError> {
+    ) -> Result<CoinMarketValue, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.coin_market_value(coin).await?)
     }

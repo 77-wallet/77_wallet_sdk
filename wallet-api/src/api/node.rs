@@ -1,6 +1,6 @@
-use crate::{api::ReturnType, service::node::NodeService};
+use crate::{api::ReturnType, service::node::NodeService, manager::WalletManager};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_node(
         &self,
         name: &str,

@@ -1,12 +1,12 @@
 use crate::{
-    BusinessError, domain,
+    domain,
     domain::{
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::TokenCurrencyGetter,
         multisig::{MultisigDomain, MultisigQueueDomain},
         stake::{EstimateTxConsumer, StakeArgs, StakeDomain},
     },
-    error::business::stake::StakeError,
+    error::business::{BusinessError, stake::StakeError},
     infrastructure::{
         task_queue,
         task_queue::{BackendApiTaskData, task::Tasks},
@@ -72,7 +72,7 @@ pub struct StackService {
 }
 
 impl StackService {
-    pub async fn new() -> Result<Self, crate::ServiceError> {
+    pub async fn new() -> Result<Self, crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
         Ok(Self { chain })
     }
@@ -83,7 +83,7 @@ impl StackService {
         from: &str,
         signer: &Option<Signer>,
         password: &str,
-    ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::ServiceError> {
+    ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::error::service::ServiceError> {
         ChainTransDomain::get_key(from, chain_code::TRON, password, signer).await
     }
 
@@ -97,7 +97,7 @@ impl StackService {
         signer: &Option<Signer>,
         password: &str,
         extra: Option<E>,
-    ) -> Result<String, crate::ServiceError>
+    ) -> Result<String, crate::error::service::ServiceError>
     where
         E: serde::Serialize,
     {
@@ -117,7 +117,7 @@ impl StackService {
             self.chain.get_provider().transfer_fee(from, None, &resp.raw_data_hex, 1).await?;
 
         if balance.to::<i64>() < consumer.transaction_fee_i64() + value * tron::consts::TRX_VALUE {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance)));
         }
 
         // 广播交易交易事件
@@ -151,9 +151,9 @@ impl StackService {
             let permission =
                 PermissionRepo::permission_with_user(&pool, from, signer.permission_id, false)
                     .await?
-                    .ok_or(crate::BusinessError::Permission(
-                        crate::PermissionError::ActivesPermissionNotFound,
-                    ))?;
+                    .ok_or(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
+                        crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+                    )))?;
 
             let users = permission.users();
             let params = TransPermission {
@@ -190,7 +190,7 @@ impl StackService {
         chain_param: &ChainParameter,
         resource: &AccountResourceDetail,
         resource_type: ops::stake::ResourceType,
-    ) -> Result<Vec<TempBuildTransaction>, crate::ServiceError> {
+    ) -> Result<Vec<TempBuildTransaction>, crate::error::service::ServiceError> {
         let mut result = vec![];
 
         for (i, item) in args.into_iter().enumerate() {
@@ -236,7 +236,7 @@ impl StackService {
         bill_kind: BillKind,
         txs: Vec<TempBuildTransaction>,
         resource_type: ops::stake::ResourceType,
-    ) -> Result<(Vec<BatchRes>, Vec<String>), crate::ServiceError> {
+    ) -> Result<(Vec<BatchRes>, Vec<String>), crate::error::service::ServiceError> {
         let mut exec_res = vec![];
         let mut tx_hash = vec![];
 
@@ -292,7 +292,7 @@ impl StackService {
         owner_address: &str,
         value: i64,
         resource_type: ops::stake::ResourceType,
-    ) -> Result<f64, crate::ServiceError> {
+    ) -> Result<f64, crate::error::service::ServiceError> {
         let resource = ChainTransDomain::account_resource(&self.chain, owner_address).await?;
         Ok(resource.resource_value(resource_type, value)?)
     }
@@ -304,7 +304,7 @@ impl StackService {
         owner_address: &str,
         to: &str,
         resource: &AccountResourceDetail,
-    ) -> Result<Vec<resp::DelegateListResp>, crate::ServiceError> {
+    ) -> Result<Vec<resp::DelegateListResp>, crate::error::service::ServiceError> {
         let mut result = Vec::new();
 
         let res = chain.provider.delegated_resource(owner_address, to).await?;
@@ -423,7 +423,7 @@ impl StackService {
         &self,
         bill_kind: BillKind,
         content: String,
-    ) -> Result<(StakeArgs, String, f64, Option<Signer>), crate::ServiceError> {
+    ) -> Result<(StakeArgs, String, f64, Option<Signer>), crate::error::service::ServiceError> {
         match bill_kind {
             BillKind::FreezeBandwidth | BillKind::FreezeEnergy => {
                 let req = serde_func::serde_from_str::<stake::FreezeBalanceReq>(&content)?;
@@ -556,7 +556,7 @@ impl StackService {
                     req.signer.clone(),
                 ))
             }
-            _ => Err(crate::BusinessError::Stake(crate::StakeError::UnSupportBillKind))?,
+            _ => Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::UnSupportBillKind))),
         }
     }
 }
@@ -566,7 +566,7 @@ impl StackService {
         &self,
         bill_kind: i64,
         content: String,
-    ) -> Result<EstimateFeeResp, crate::ServiceError> {
+    ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
         let bill_kind = BillKind::try_from(bill_kind as i8)?;
 
         let currency = crate::app_state::APP_STATE.read().await;
@@ -589,7 +589,7 @@ impl StackService {
         &self,
         req: stake::FreezeBalanceReq,
         password: &str,
-    ) -> Result<resp::FreezeResp, crate::ServiceError> {
+    ) -> Result<resp::FreezeResp, crate::error::service::ServiceError> {
         let from = req.owner_address.clone();
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
 
@@ -756,7 +756,7 @@ impl StackService {
         &self,
         req: stake::CancelAllUnFreezeReq,
         password: String,
-    ) -> Result<resp::CancelAllUnFreezeResp, crate::ServiceError> {
+    ) -> Result<resp::CancelAllUnFreezeResp, crate::error::service::ServiceError> {
         let account = self.chain.account_info(&req.owner_address).await?;
         let resource = ChainTransDomain::account_resource(&self.chain, &req.owner_address).await?;
 
@@ -804,7 +804,7 @@ impl StackService {
             self.chain.provider.can_withdraw_unfreeze_amount(&req.owner_address).await?;
 
         if can_widthdraw.amount <= 0 {
-            return Err(crate::BusinessError::Stake(crate::StakeError::NoWithdrawableAmount))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::NoWithdrawableAmount)));
         }
 
         let args = ops::stake::WithdrawUnfreezeArgs {
@@ -914,7 +914,7 @@ impl StackService {
     pub async fn account_exists(
         &self,
         accounts: Vec<String>,
-    ) -> Result<Vec<resp::AddressExists>, crate::ServiceError> {
+    ) -> Result<Vec<resp::AddressExists>, crate::error::service::ServiceError> {
         let mut res = vec![];
 
         for account in accounts {
@@ -932,7 +932,7 @@ impl StackService {
         account: String,
         resource_type: String,
         is_multisig: Option<bool>,
-    ) -> Result<resp::ResourceResp, crate::ServiceError> {
+    ) -> Result<resp::ResourceResp, crate::error::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
@@ -964,11 +964,11 @@ impl StackService {
         &self,
         req: stake::DelegateReq,
         password: &str,
-    ) -> Result<resp::DelegateResp, crate::ServiceError> {
+    ) -> Result<resp::DelegateResp, crate::error::service::ServiceError> {
         let from = req.owner_address.clone();
 
         if req.balance <= 0 {
-            return Err(crate::BusinessError::Stake(crate::StakeError::DelegateLessThanMin))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::DelegateLessThanMin)));
         }
 
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
@@ -1001,7 +1001,7 @@ impl StackService {
         from: String,
         to: Vec<String>,
         resource_type: String,
-    ) -> Result<DelegateRemaingTime, crate::ServiceError> {
+    ) -> Result<DelegateRemaingTime, crate::error::service::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
         let now = wallet_utils::time::now().timestamp_millis();
 
@@ -1032,7 +1032,7 @@ impl StackService {
         to: &str,
         resource_type: ops::stake::ResourceType,
         now: i64,
-    ) -> Result<Option<i64>, crate::ServiceError> {
+    ) -> Result<Option<i64>, crate::error::service::ServiceError> {
         let mut res = StakeDomain::get_delegate_info(from, to, &self.chain).await?;
 
         let time = match resource_type {
@@ -1066,7 +1066,7 @@ impl StackService {
         args: Vec<impl ops::TronTxOperation<T>>,
         amount: i64,
         signer: &Option<Signer>,
-    ) -> Result<BatchDelegateResp, crate::ServiceError> {
+    ) -> Result<BatchDelegateResp, crate::error::service::ServiceError> {
         let resource = ChainTransDomain::account_resource(&self.chain, owner_address).await?;
         let chain_param = self.chain.get_provider().chain_params().await?;
 
@@ -1080,7 +1080,7 @@ impl StackService {
         let fee = txs.iter().map(|item| item.consumer.transaction_fee_i64()).sum::<i64>();
 
         if balance.to::<i64>() < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance)));
         }
 
         let key = self.get_key(owner_address, signer, password).await?;
@@ -1096,12 +1096,12 @@ impl StackService {
         &self,
         req: stake::BatchDelegate,
         password: String,
-    ) -> Result<BatchDelegateResp, crate::ServiceError> {
+    ) -> Result<BatchDelegateResp, crate::error::service::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
 
         for list in req.list.iter() {
             if list.value <= 0 {
-                return Err(crate::BusinessError::Stake(crate::StakeError::DelegateLessThanMin))?;
+                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::DelegateLessThanMin)));
             }
         }
 
@@ -1129,12 +1129,12 @@ impl StackService {
         &self,
         req: stake::BatchUnDelegate,
         password: String,
-    ) -> Result<BatchDelegateResp, crate::ServiceError> {
+    ) -> Result<BatchDelegateResp, crate::error::service::ServiceError> {
         let resource_type = ops::stake::ResourceType::try_from(req.resource_type.as_str())?;
 
         for list in req.list.iter() {
             if list.value <= 0 {
-                return Err(crate::BusinessError::Stake(crate::StakeError::UnDelegateLessThanMin))?;
+                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::UnDelegateLessThanMin)));
             }
         }
 
@@ -1167,7 +1167,7 @@ impl StackService {
         let from = req.owner_address.clone();
 
         if req.balance <= 0 {
-            return Err(crate::BusinessError::Stake(crate::StakeError::UnDelegateLessThanMin))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::UnDelegateLessThanMin)));
         }
 
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
@@ -1209,7 +1209,7 @@ impl StackService {
         resource_type: Option<String>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
+    ) -> Result<Pagination<DelegateListResp>, crate::error::service::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
@@ -1255,7 +1255,7 @@ impl StackService {
         resource_type: Option<String>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<DelegateListResp>, crate::ServiceError> {
+    ) -> Result<Pagination<DelegateListResp>, crate::error::service::ServiceError> {
         // 查询所有的代理
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
@@ -1472,7 +1472,7 @@ impl StackService {
 
         args.value = Some(value);
         if value < 0.0 {
-            return Err(crate::BusinessError::Chain(crate::ChainError::NoRewardClaim))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NoRewardClaim)));
         }
 
         let tx_hash = self
@@ -1498,7 +1498,7 @@ impl StackService {
         content: String,
         expiration: i64,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let bill_kind = BillKind::try_from(bill_kind as i8)?;
         // 转换多签的参数
         let (args, address, amount, signer) = self.convert_stake_args(bill_kind, content).await?;
@@ -1523,7 +1523,7 @@ impl StackService {
         expiration: i64,
         password: String,
         signer: Signer,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let to = args.get_to();
 
@@ -1532,9 +1532,9 @@ impl StackService {
                 .await?;
 
         let Some(p) = permission else {
-            return Err(crate::BusinessError::Permission(
-                crate::PermissionError::ActivesPermissionNotFound,
-            ))?;
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
+                crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+            )));
         };
 
         let expiration = MultisigQueueDomain::sub_expiration(expiration);
@@ -1575,7 +1575,7 @@ impl StackService {
         amount: f64,
         expiration: i64,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let to = args.get_to();
 

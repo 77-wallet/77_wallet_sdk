@@ -25,7 +25,7 @@ pub enum AddressAllockType {
 
 // 地址池扩容
 impl AddressAllockMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
         // let data = NotifyEvent::AddressUse(self.to_owned());
         // FrontendNotifyEvent::new(data).send().await?;
 

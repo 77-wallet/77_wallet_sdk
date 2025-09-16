@@ -1,5 +1,5 @@
 use tokio_stream::StreamExt as _;
-use wallet_api::{FrontendNotifyEvent, test::env::get_manager};
+use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
 use wallet_database::entities::api_wallet::ApiWalletType;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 

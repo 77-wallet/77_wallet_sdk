@@ -1,7 +1,7 @@
-use crate::{api::ReturnType, service::api_wallet::withdraw::WithdrawService};
+use crate::{api::ReturnType, service::api_wallet::withdraw::WithdrawService, manager::WalletManager};
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn get_api_withdraw_order_list(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawEntity>> {
         WithdrawService::new().get_withdraw_order_list().await
     }

@@ -11,7 +11,7 @@ pub async fn build_ext_cell(
     req: &transaction::BaseTransferReq,
     provider: &Provider,
     address_type: TonAddressType,
-) -> Result<Cell, crate::ServiceError> {
+) -> Result<Cell, crate::error::service::ServiceError> {
     if let Some(token) = req.token_address.clone() {
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
         let arg = TokenTransferOpt::new(&req.from, &req.to, &token, value, req.spend_all)?;

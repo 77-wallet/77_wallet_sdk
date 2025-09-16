@@ -29,22 +29,24 @@ use super::MultisigQueueDomain;
 pub struct MultisigDomain;
 
 impl MultisigDomain {
-    pub fn validate_queue(account: &MultisigAccountEntity) -> Result<(), crate::ServiceError> {
+    pub fn validate_queue(
+        account: &MultisigAccountEntity,
+    ) -> Result<(), crate::error::service::ServiceError> {
         if account.owner == MultiAccountOwner::Participant.to_i8() {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::OnlyInitiatorCreateTx,
+            return Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::OnlyInitiatorCreateTx,
             ))?;
         }
 
         if account.pay_status != MultisigAccountPayStatus::Paid.to_i8() {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotPay,
+            return Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotPay,
             ))?;
         }
 
         if account.status != MultisigAccountStatus::OnChain.to_i8() {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotOnChain,
+            return Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotOnChain,
             ))?;
         }
 
@@ -53,7 +55,7 @@ impl MultisigDomain {
 
     pub(crate) async fn recover_multisig_account_by_id(
         multisig_account_id: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         Self::recover_multisig_data_by_id(multisig_account_id).await?;
         Ok(())
     }
@@ -62,11 +64,13 @@ impl MultisigDomain {
     pub(crate) async fn _recover_multisig_account_and_queue_data(
         repo: &mut ResourcesRepo,
         wallet_address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let wallet = WalletRepoTrait::detail(repo, wallet_address).await?.ok_or(
-            crate::ServiceError::Business(crate::BusinessError::Wallet(
-                crate::WalletError::NotFound,
-            )),
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Wallet(
+                    crate::error::business::wallet::WalletError::NotFound,
+                ),
+            ),
         )?;
 
         MultisigDomain::recover_uid_multisig_data(&wallet.uid, None).await?;
@@ -77,7 +81,7 @@ impl MultisigDomain {
 
     pub(crate) async fn recover_multisig_data_by_id(
         multisig_account_id: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
@@ -115,7 +119,7 @@ impl MultisigDomain {
     pub(crate) async fn recover_uid_multisig_data(
         uid: &str,
         filter_multisig_account_address: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
@@ -139,7 +143,7 @@ impl MultisigDomain {
         uid_list: &std::collections::HashSet<String>,
         business_id: Option<String>,
         filter_multisig_account_address: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -178,7 +182,7 @@ impl MultisigDomain {
         pool: DbPool,
         uid_list: &std::collections::HashSet<String>,
         filter_multisig_account_address: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut data = MultisigAccountData::from_string(raw_data)?;
         if let Some(multisig_account_address) = filter_multisig_account_address {
             if multisig_account_address != data.account.address {
@@ -218,7 +222,7 @@ impl MultisigDomain {
     pub async fn handel_deploy_status(
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&data.chain_code).await?;
 
         // solana 多签账号来判断是否完成,其余链根据hash来判断
@@ -250,10 +254,12 @@ impl MultisigDomain {
     }
 
     // 同步部署中多签账号的状态
-    pub async fn sync_multisig_status(pool: DbPool) -> Result<(), crate::ServiceError> {
+    pub async fn sync_multisig_status(
+        pool: DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut pending_account = MultisigAccountDaoV1::pending_account(pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
         for account in pending_account.iter_mut() {
             let status_update = account.status;
@@ -292,7 +298,7 @@ impl MultisigDomain {
     pub async fn handle_pay_status(
         data: &mut MultisigAccountEntity,
         check_expiration: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         if data.fee_hash == MultisigAccountEntity::NONE_TRANS_HASH {
             data.pay_status = MultisigAccountPayStatus::Paid.to_i8();
             return Ok(());
@@ -317,7 +323,7 @@ impl MultisigDomain {
         pool: std::sync::Arc<Pool<Sqlite>>,
         data: MultisigAccountData,
         uid_list: &std::collections::HashSet<String>,
-    ) -> Result<MultiAccountOwner, crate::ServiceError> {
+    ) -> Result<MultiAccountOwner, crate::error::service::ServiceError> {
         let MultisigAccountData { account, members } = data;
         let member_list = members.to_member_vo();
 
@@ -403,18 +409,20 @@ impl MultisigDomain {
     pub async fn account_by_id(
         id: &str,
         pool: std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<MultisigAccountEntity, crate::ServiceError> {
+    ) -> Result<MultisigAccountEntity, crate::error::service::ServiceError> {
         let account = MultisigAccountDaoV1::find_by_conditions(vec![("id", id)], pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?
-            .ok_or(crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?
+            .ok_or(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotFound,
+            ))?;
         Ok(account)
     }
     pub async fn account_by_address(
         address: &str,
         exclude_del: bool,
         pool: &std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<MultisigAccountEntity, crate::ServiceError> {
+    ) -> Result<MultisigAccountEntity, crate::error::service::ServiceError> {
         let mut conditions = vec![("address", address)];
         if exclude_del {
             conditions.push(("is_del", "0"));
@@ -422,8 +430,10 @@ impl MultisigDomain {
 
         let account = MultisigAccountDaoV1::find_by_conditions(conditions, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?
-            .ok_or(crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?
+            .ok_or(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotFound,
+            ))?;
         Ok(account)
     }
 
@@ -431,29 +441,31 @@ impl MultisigDomain {
         address: &str,
         chain_code: &str,
         pool: &std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
+    ) -> Result<Option<MultisigAccountEntity>, crate::error::service::ServiceError> {
         MultisigAccountDaoV1::find_done_account(address, chain_code, &**pool)
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))
     }
 
     pub async fn list(
         pool: &std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
+    ) -> Result<Vec<MultisigAccountEntity>, crate::error::service::ServiceError> {
         let accounts = MultisigAccountDaoV1::list(vec![], pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
         Ok(accounts)
     }
 
     pub async fn queue_by_id(
         queue_id: &str,
         pool: &std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<MultisigQueueEntity, crate::ServiceError> {
+    ) -> Result<MultisigQueueEntity, crate::error::ServiceError> {
         let res = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?
-            .ok_or(crate::BusinessError::MultisigQueue(crate::MultisigQueueError::NotFound))?;
+            .map_err(|e| crate::error::ServiceError::Database(e.into()))?
+            .ok_or(crate::error::business::BusinessError::MultisigQueue(
+                crate::error::business::multisig_queue::MultisigQueueError::NotFound,
+            ))?;
 
         Ok(res)
     }
@@ -461,33 +473,33 @@ impl MultisigDomain {
     pub async fn logic_delete_account(
         account_id: &str,
         pool: std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<(), crate::ServiceError> {
-        MultisigAccountDaoV1::logic_del_multisig_account(account_id, &*pool)
-            .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+    ) -> Result<(), crate::error::ServiceError> {
+        MultisigAccountDaoV1::logic_del_multisig_account(account_id, &*pool).await.map_err(
+            |e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)),
+        )?;
 
         wallet_database::dao::multisig_member::MultisigMemberDaoV1::logic_del_multisig_member(
             account_id, &*pool,
         )
         .await
-        .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+        .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
         let queues = MultisigQueueDaoV1::logic_del_multisig_queue(account_id, &*pool)
             .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
+            .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?
             .into_iter()
             .map(|queue| queue.id)
             .collect();
         wallet_database::dao::multisig_signatures::MultisigSignatureDaoV1::logic_del_multi_multisig_signatures(queues, &*pool)
             .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?;
         Ok(())
     }
 
     pub async fn physical_delete_account(
         members: &[wallet_database::entities::multisig_member::MultisigMemberEntity],
         pool: std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
+    ) -> Result<Vec<MultisigAccountEntity>, crate::error::ServiceError> {
         let mut res = Vec::new();
         for member in members {
             let mut multisig_account =
@@ -504,7 +516,7 @@ impl MultisigDomain {
     pub async fn update_raw_data(
         account_id: &str,
         pool: DbPool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let raw_data =
             MultisigAccountRepo::multisig_raw_data(account_id, pool).await?.to_string()?;
 
@@ -516,7 +528,7 @@ impl MultisigDomain {
         members: wallet_database::entities::multisig_member::MultisigMemberEntities,
         uid: &str,
         pool: std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
+    ) -> Result<Vec<MultisigAccountEntity>, crate::error::ServiceError> {
         let mut res = Vec::new();
         for member in members.0 {
             // 如果有多个钱包都参与了多签,那么不删除这个account_id的多签资产
@@ -531,9 +543,9 @@ impl MultisigDomain {
                 .map(|uid| uid.0)
                 .collect::<Vec<String>>();
 
-            let members = MultisigMemberDaoV1::list_by_uids(&uids, &*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            let members = MultisigMemberDaoV1::list_by_uids(&uids, &*pool).await.map_err(|e| {
+                crate::error::ServiceError::Database(wallet_database::Error::Database(e))
+            })?;
             // 如果members中有参与了多签的,那么不删除这个account_id的多签资产
             if members.iter().any(|m| m.account_id == account_id) {
                 continue;
@@ -551,46 +563,47 @@ impl MultisigDomain {
     async fn physical_delete_multisig_data(
         account_id: &str,
         pool: std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
+    ) -> Result<Vec<MultisigAccountEntity>, crate::error::ServiceError> {
         let multisig_account =
-            MultisigAccountDaoV1::physical_del_multisig_account(account_id, &*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            MultisigAccountDaoV1::physical_del_multisig_account(account_id, &*pool).await.map_err(
+                |e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)),
+            )?;
 
         wallet_database::dao::multisig_member::MultisigMemberDaoV1::physical_del_multisig_member(
             account_id, &*pool,
         )
         .await
-        .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+        .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
         let queues = MultisigQueueDaoV1::physical_del_multisig_queue(account_id, &*pool)
             .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
+            .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?
             .into_iter()
             .map(|queue| queue.id)
             .collect();
         wallet_database::dao::multisig_signatures::MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(&*pool,queues, )
     .await
-    .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+    .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?;
         Ok(multisig_account)
     }
 
     pub async fn physical_delete_all_account(
         pool: std::sync::Arc<Pool<Sqlite>>,
-    ) -> Result<Vec<MultisigAccountEntity>, crate::ServiceError> {
-        let accounts = MultisigAccountDaoV1::physical_del_multi_multisig_account(&*pool, &[])
-            .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+    ) -> Result<Vec<MultisigAccountEntity>, crate::error::ServiceError> {
+        let accounts =
+            MultisigAccountDaoV1::physical_del_multi_multisig_account(&*pool, &[]).await.map_err(
+                |e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)),
+            )?;
         wallet_database::dao::multisig_member::MultisigMemberDaoV1::physical_del_multi_multisig_member(&*pool, &[])
         .await
-        .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+        .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
-        MultisigQueueDaoV1::physical_del_multi_multisig_queue(&*pool, &[])
-            .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+        MultisigQueueDaoV1::physical_del_multi_multisig_queue(&*pool, &[]).await.map_err(|e| {
+            crate::error::ServiceError::Database(wallet_database::Error::Database(e))
+        })?;
         wallet_database::dao::multisig_signatures::MultisigSignatureDaoV1::physical_del_multi_multisig_signatures(&*pool,Vec::new() )
             .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?;
         Ok(accounts)
     }
 
@@ -598,7 +611,7 @@ impl MultisigDomain {
     pub(crate) async fn unbind_deleted_account_multisig_relations(
         deleted: &[wallet_database::entities::account::AccountEntity],
         sn: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let addresses = deleted.iter().map(|d| d.address.clone()).collect::<Vec<_>>();
         // 这个被删除的账户所关联的多签账户的成员
@@ -607,7 +620,9 @@ impl MultisigDomain {
                 &addresses, &*pool,
             )
             .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            .map_err(|e| {
+                crate::error::ServiceError::Database(wallet_database::Error::Database(e))
+            })?;
 
         let account_ids = members.0.iter().map(|m| m.account_id.clone()).collect::<Vec<_>>();
 
@@ -615,7 +630,7 @@ impl MultisigDomain {
             &account_ids, &addresses, &*pool,
         )
         .await
-        .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+        .map_err(|e| crate::error::ServiceError::Database(wallet_database::Error::Database(e)))?;
 
         let other_addresses = other_members.iter().map(|m| m.address.clone()).collect::<Vec<_>>();
         let other_accounts = wallet_database::entities::account::AccountEntity::list_in_address(
@@ -653,11 +668,11 @@ impl MultisigDomain {
 
     pub(crate) async fn check_multisig_account_exists(
         multisig_account_id: &str,
-    ) -> Result<Option<MultisigAccountEntity>, crate::ServiceError> {
+    ) -> Result<Option<MultisigAccountEntity>, crate::error::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         if MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
-            .map_err(crate::ServiceError::Database)?
+            .map_err(crate::error::ServiceError::Database)?
             .is_none()
         {
             tracing::warn!(
@@ -669,6 +684,6 @@ impl MultisigDomain {
 
         MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref())
             .await
-            .map_err(crate::ServiceError::Database)
+            .map_err(crate::error::ServiceError::Database)
     }
 }

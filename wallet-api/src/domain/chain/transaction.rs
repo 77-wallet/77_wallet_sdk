@@ -40,7 +40,7 @@ impl ChainTransDomain {
         symbol: &str,
         from: &str,
         token_address: Option<String>,
-    ) -> Result<AssetsEntity, crate::ServiceError> {
+    ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
@@ -49,9 +49,11 @@ impl ChainTransDomain {
             symbol: symbol.to_string(),
             token_address,
         };
-        let assets = AssetsEntity::assets_by_id(&*pool, &assets_id)
-            .await?
-            .ok_or(crate::BusinessError::Assets(crate::AssetsError::NotFound))?;
+        let assets = AssetsEntity::assets_by_id(&*pool, &assets_id).await?.ok_or(
+            crate::error::business::BusinessError::Assets(
+                crate::error::business::assets::AssetsError::NotFound,
+            ),
+        )?;
 
         Ok(assets)
     }
@@ -59,14 +61,14 @@ impl ChainTransDomain {
     pub async fn account(
         chain_code: &str,
         address: &str,
-    ) -> Result<AccountEntity, crate::ServiceError> {
+    ) -> Result<AccountEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account =
             AccountEntity::find_one_by_address_chain_code(address, chain_code, pool.as_ref())
                 .await?
-                .ok_or(crate::BusinessError::Account(crate::AccountError::NotFound(
-                    address.to_string(),
-                )))?;
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(address.to_string()),
+                ))?;
         Ok(account)
     }
 
@@ -76,7 +78,7 @@ impl ChainTransDomain {
         symbol: &str,
         token_address: Option<String>,
         balance: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let assets_id = AssetsId {
@@ -94,7 +96,7 @@ impl ChainTransDomain {
                 // 更新本地余额后在上报后端
                 AssetsEntity::update_balance(&*pool, &assets_id, balance)
                     .await
-                    .map_err(crate::ServiceError::Database)?;
+                    .map_err(crate::error::service::ServiceError::Database)?;
 
                 // 上报后端修改余额
                 let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -108,19 +110,26 @@ impl ChainTransDomain {
         Ok(())
     }
 
-    pub async fn main_coin(chain_code: &str) -> Result<CoinEntity, crate::ServiceError> {
+    pub async fn main_coin(
+        chain_code: &str,
+    ) -> Result<CoinEntity, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let coin = CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(
-            crate::BusinessError::Coin(crate::error::business::coin::CoinError::NotFound(format!(
-                "chain = {}",
-                chain_code
-            ))),
+            crate::error::business::BusinessError::Coin(
+                crate::error::business::coin::CoinError::NotFound(format!(
+                    "chain = {}",
+                    chain_code
+                )),
+            ),
         )?;
         Ok(coin)
     }
 
     // btc 验证是否存在未确认的交易
-    async fn check_ongoing_bill(from: &str, chain_code: &str) -> Result<bool, crate::ServiceError> {
+    async fn check_ongoing_bill(
+        from: &str,
+        chain_code: &str,
+    ) -> Result<bool, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if chain_code == chain_code::BTC {
@@ -136,10 +145,12 @@ impl ChainTransDomain {
         mut params: transaction::TransferReq,
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         //  check ongoing tx
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
-            return Err(crate::BusinessError::Bill(crate::BillError::ExistsUnConfirmationTx))?;
+            return Err(crate::error::business::BusinessError::Bill(
+                crate::error::business::bill::BillError::ExistsUnConfirmationTx,
+            ))?;
         };
 
         let private_key = ChainTransDomain::get_key(
@@ -178,8 +189,8 @@ impl ChainTransDomain {
                 false,
             )
             .await?
-            .ok_or(crate::BusinessError::Permission(
-                crate::PermissionError::ActivesPermissionNotFound,
+            .ok_or(crate::error::business::BusinessError::Permission(
+                crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
             ))?;
 
             let users = permission.users();
@@ -218,7 +229,7 @@ impl ChainTransDomain {
         chain_code: &str,
         provider: &eth::Provider,
         backend: &BackendApi,
-    ) -> Result<GasOracle, crate::ServiceError> {
+    ) -> Result<GasOracle, crate::error::service::ServiceError> {
         let gas_oracle = backend.gas_oracle(chain_code).await;
 
         match gas_oracle {
@@ -246,7 +257,7 @@ impl ChainTransDomain {
 
     pub async fn default_gas_oracle(
         provider: &eth::Provider,
-    ) -> Result<GasOracle, crate::ServiceError> {
+    ) -> Result<GasOracle, crate::error::service::ServiceError> {
         let eth_fee = provider.get_default_fee().await?;
 
         let propose = eth_fee.base_fee + eth_fee.priority_fee_per_gas;
@@ -271,21 +282,21 @@ impl ChainTransDomain {
         token: Option<&str>,
         chain: &eth::EthChain,
         transfer_amount: alloy::primitives::U256,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
+    ) -> Result<alloy::primitives::U256, crate::error::service::ServiceError> {
         let cost_main = match token {
             Some(token) => {
                 let token_balance = chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance
             }
             None => {
                 if balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance - transfer_amount
@@ -310,21 +321,21 @@ impl ChainTransDomain {
         token: Option<&str>,
         chain: &sol::SolanaChain,
         transfer_amount: alloy::primitives::U256,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
+    ) -> Result<alloy::primitives::U256, crate::error::service::ServiceError> {
         let cost_main = match token {
             Some(token) => {
                 let token_balance = chain.balance(from, Some(token.to_string())).await?;
                 if token_balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance
             }
             None => {
                 if balance < transfer_amount {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 balance - transfer_amount
@@ -337,32 +348,51 @@ impl ChainTransDomain {
     pub fn check_sol_transaction_fee(
         balance: alloy::primitives::U256,
         fee: u64,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let fee = alloy::primitives::U256::from(fee);
 
         if balance < fee {
-            return Err(crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+            ))?;
         }
         Ok(())
     }
 
-    pub fn handle_btc_fee_error(err: wallet_chain_interact::Error) -> crate::ServiceError {
+    pub fn handle_btc_fee_error(
+        err: wallet_chain_interact::Error,
+    ) -> crate::error::service::ServiceError {
         match err {
             wallet_chain_interact::Error::UtxoError(
                 wallet_chain_interact::UtxoError::InsufficientBalance,
-            ) => crate::BusinessError::Chain(crate::ChainError::InsufficientBalance).into(),
+            ) => crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance,
+            )
+            .into(),
             wallet_chain_interact::Error::UtxoError(
                 wallet_chain_interact::UtxoError::InsufficientFee(_fee),
-            ) => crate::BusinessError::Chain(crate::ChainError::InsufficientFeeBalance).into(),
+            ) => crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+            )
+            .into(),
             wallet_chain_interact::Error::UtxoError(
                 wallet_chain_interact::UtxoError::ExceedsMaximum,
-            ) => crate::BusinessError::Chain(crate::ChainError::ExceedsMaximum).into(),
+            ) => crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::ExceedsMaximum,
+            )
+            .into(),
             wallet_chain_interact::Error::UtxoError(wallet_chain_interact::UtxoError::DustTx) => {
-                crate::BusinessError::Chain(crate::ChainError::DustTransaction).into()
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::DustTransaction,
+                )
+                .into()
             }
             wallet_chain_interact::Error::UtxoError(
                 wallet_chain_interact::UtxoError::ExceedsMaxFeeRate,
-            ) => crate::BusinessError::Chain(crate::ChainError::ExceedsMaxFeerate).into(),
+            ) => crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::ExceedsMaxFeerate,
+            )
+            .into(),
             _ => err.into(),
         }
     }
@@ -371,12 +401,14 @@ impl ChainTransDomain {
     pub fn check_min_transfer(
         value: &str,
         decimal: u8,
-    ) -> Result<alloy::primitives::U256, crate::ServiceError> {
+    ) -> Result<alloy::primitives::U256, crate::error::service::ServiceError> {
         let min = alloy::primitives::U256::from(1);
         let transfer_amount = unit::convert_to_u256(value, decimal)?;
 
         if transfer_amount < min {
-            return Err(crate::BusinessError::Chain(crate::ChainError::AmountLessThanMin))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::AmountLessThanMin,
+            ))?;
         }
         Ok(transfer_amount)
     }
@@ -387,7 +419,7 @@ impl ChainTransDomain {
         chain_code: &str,
         password: &str,
         signer: &Option<Signer>,
-    ) -> Result<ChainPrivateKey, crate::ServiceError> {
+    ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
         let address =
             if let Some(signer) = signer { signer.address.clone() } else { from.to_string() };
 
@@ -401,7 +433,7 @@ impl ChainTransDomain {
     pub async fn account_resource(
         chain: &TronChain,
         owner_address: &str,
-    ) -> Result<AccountResourceDetail, crate::ServiceError> {
+    ) -> Result<AccountResourceDetail, crate::error::service::ServiceError> {
         let resource = chain.account_resource(owner_address).await?;
         Ok(resource)
     }

@@ -6,9 +6,10 @@ use crate::{
         permission::{AccountPermission, ManagerPermissionResp, PermissionList},
     },
     service::permission::PermissionService,
+    manager::WalletManager,
 };
 
-impl crate::WalletManager {
+impl WalletManager {
     // all permission list
     pub fn permission_list(&self) -> ReturnType<PermissionList> {
         PermissionService::permission_list()
