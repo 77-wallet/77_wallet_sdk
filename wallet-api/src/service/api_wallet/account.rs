@@ -22,7 +22,7 @@ impl ApiAccountService {
         chain_code: &str,
         index: Option<i32>,
         uid: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::expand_address(&address_allock_type, index, &uid, &chain_code).await?;
 
         Ok(())
@@ -63,7 +63,7 @@ impl ApiAccountService {
         address: &str,
         chain_code: &str,
         password: &str,
-    ) -> Result<ChainPrivateKey, crate::error::ServiceError> {
+    ) -> Result<ChainPrivateKey, crate::error::service::ServiceError> {
         Ok(ApiAccountDomain::get_private_key(address, chain_code, password).await?)
     }
 
@@ -72,7 +72,7 @@ impl ApiAccountService {
         chain_code: &str,
         index: i32,
         uid: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         Ok(ApiAccountDomain::address_used(chain_code, index, uid).await?)
     }
 }

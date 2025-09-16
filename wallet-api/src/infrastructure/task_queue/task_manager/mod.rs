@@ -1,7 +1,7 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
 use crate::{
-    error::ServiceError,
+    error::service::ServiceError,
     domain::app::config::ConfigDomain,
     infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
 };

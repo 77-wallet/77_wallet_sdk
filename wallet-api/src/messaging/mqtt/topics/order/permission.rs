@@ -56,7 +56,7 @@ pub struct NewPermissionUser {
 
 // 权限转换为数据库对应的实体
 impl TryFrom<(&Permission, &str)> for NewPermissionUser {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: (&Permission, &str)) -> Result<Self, Self::Error> {
         let permission = value.0;
@@ -100,7 +100,7 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
 }
 
 impl PermissionAccept {
-    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -128,7 +128,7 @@ impl PermissionAccept {
         &self,
         pool: DbPool,
         account: &TronAccount,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 查询原来的数据并发送一个通知
         let old_permission = PermissionRepo::find_by_grantor_and_active(
             &pool,
@@ -163,7 +163,7 @@ impl PermissionAccept {
         &self,
         pool: DbPool,
         permissions: NewPermissionUser,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 查询出原来的权限
         let old_permission = PermissionRepo::permission_with_user(
             &pool,
@@ -203,7 +203,7 @@ impl PermissionAccept {
         pool: &DbPool,
         permissions: &NewPermissionUser,
         old_permission: PermissionWithUserEntity,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 是否成员发生了变化
         if old_permission.user_has_changed(&permissions.users) {
             self.update_user_change(pool.clone(), permissions, &old_permission.permission.id)
@@ -221,7 +221,7 @@ impl PermissionAccept {
         pool: DbPool,
         permissions: &NewPermissionUser,
         id: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut users = permissions.users.clone();
         PermissionDomain::mark_user_is_self(&pool, &mut users).await?;
 
@@ -241,7 +241,7 @@ impl PermissionAccept {
     async fn frontend_event(
         permission: &PermissionEntity,
         types: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 1. system notify
         // let repo = RepositoryFactory::repo(pool.clone());
         // let system_notification_service = SystemNotificationService::new(repo);

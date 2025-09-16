@@ -1,7 +1,7 @@
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use crate::{
-    error::ServiceError,
+    error::service::ServiceError,
     infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
 };
 

@@ -39,7 +39,7 @@ pub struct OrderMultiSignAccept {
 }
 
 impl OrderMultiSignAccept {
-    pub fn to_json_str(&self) -> Result<String, crate::error::ServiceError> {
+    pub fn to_json_str(&self) -> Result<String, crate::error::service::ServiceError> {
         Ok(wallet_utils::serde_func::serde_to_string(self)?)
     }
 
@@ -84,7 +84,7 @@ impl From<&NewMultisigAccountEntity> for OrderMultiSignAccept {
 }
 
 impl OrderMultiSignAccept {
-    async fn check_if_cancelled(id: &str) -> Result<bool, crate::error::ServiceError> {
+    async fn check_if_cancelled(id: &str) -> Result<bool, crate::error::service::ServiceError> {
         tracing::info!("Checking if multisig account {} is cancelled...", id);
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let is_cancel = backend_api.check_multisig_account_is_cancel(id).await?;
@@ -92,7 +92,7 @@ impl OrderMultiSignAccept {
         Ok(is_cancel.status)
     }
 
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,
@@ -139,7 +139,7 @@ impl OrderMultiSignAccept {
                 "Multisig Account {} has been canceled",self.id);
             MultisigAccountDaoV1::delete_in_status(&self.id, &*pool)
                 .await
-                .map_err(|e| crate::error::ServiceError::Database(e.into()))?;
+                .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
         }
 
         tracing::info!(
@@ -154,7 +154,7 @@ impl OrderMultiSignAccept {
     async fn update_member_info(
         repo: &mut ResourcesRepo,
         params: &mut NewMultisigAccountEntity,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut status = MultisigAccountStatus::Confirmed;
         for m in params.member_list.iter_mut() {
             if m.confirmed != 1 {
@@ -178,7 +178,7 @@ impl OrderMultiSignAccept {
         Ok(())
     }
 
-    async fn send_to_frontend(accept: &OrderMultiSignAccept) -> Result<(), crate::error::ServiceError> {
+    async fn send_to_frontend(accept: &OrderMultiSignAccept) -> Result<(), crate::error::service::ServiceError> {
         let data = NotifyEvent::OrderMultiSignAccept(OrderMultiSignAcceptFrontend {
             name: accept.name.to_string(),
             initiator_addr: accept.initiator_addr.to_string(),
@@ -194,7 +194,7 @@ impl OrderMultiSignAccept {
     async fn crate_multisig_account(
         pool: &DbPool,
         params: NewMultisigAccountEntity,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let account = MultisigAccountDaoV1::find_by_id(&params.id, pool.as_ref()).await?;
         if account.is_none() {
             // 创建多签账户以及多签成员
@@ -209,7 +209,7 @@ impl OrderMultiSignAccept {
         account_name: &str,
         account_address: &str,
         multisig_account_id: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = RepositoryFactory::repo(pool);
         let notification = Notification::new_multisig_notification(

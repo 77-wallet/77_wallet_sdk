@@ -1,4 +1,8 @@
-use crate::{messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent, domain::assets::AssetsDomain, error::ServiceError};
+use crate::{
+    domain::assets::AssetsDomain,
+    error::service::ServiceError,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},

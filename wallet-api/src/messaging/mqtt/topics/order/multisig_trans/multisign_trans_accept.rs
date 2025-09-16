@@ -26,8 +26,8 @@ impl MultiSignTransAccept {
 }
 
 impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
-    type Error = crate::error::ServiceError;
-    fn try_from(value: &MultiSignTransAccept) -> Result<Self, crate::error::ServiceError> {
+    type Error = crate::error::service::ServiceError;
+    fn try_from(value: &MultiSignTransAccept) -> Result<Self, crate::error::service::ServiceError> {
         let signatures = value
             .signatures
             .iter()
@@ -65,7 +65,7 @@ impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
 }
 
 impl MultiSignTransAccept {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 

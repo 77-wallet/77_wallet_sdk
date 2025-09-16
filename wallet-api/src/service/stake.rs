@@ -624,7 +624,7 @@ impl StackService {
     pub async fn freeze_list(
         &self,
         owner: &str,
-    ) -> Result<Vec<resp::FreezeListResp>, crate::error::ServiceError> {
+    ) -> Result<Vec<resp::FreezeListResp>, crate::error::service::ServiceError> {
         let account = self.chain.account_info(owner).await?;
         let resource = self.chain.account_resource(owner).await?;
 
@@ -678,7 +678,7 @@ impl StackService {
     pub async fn un_freeze_list(
         &self,
         owner: &str,
-    ) -> Result<Vec<resp::UnfreezeListResp>, crate::error::ServiceError> {
+    ) -> Result<Vec<resp::UnfreezeListResp>, crate::error::service::ServiceError> {
         let account = self.chain.account_info(owner).await?;
 
         let now = wallet_utils::time::now().timestamp_millis();
@@ -711,7 +711,7 @@ impl StackService {
         &self,
         req: stake::UnFreezeBalanceReq,
         password: &str,
-    ) -> Result<resp::FreezeResp, crate::error::ServiceError> {
+    ) -> Result<resp::FreezeResp, crate::error::service::ServiceError> {
         let from = req.owner_address.clone();
 
         // 解质押的时候可能存在待提取的,提示给前端
@@ -799,7 +799,7 @@ impl StackService {
         &self,
         req: stake::WithdrawBalanceReq,
         password: String,
-    ) -> Result<resp::WithdrawUnfreezeResp, crate::error::ServiceError> {
+    ) -> Result<resp::WithdrawUnfreezeResp, crate::error::service::ServiceError> {
         let can_widthdraw =
             self.chain.provider.can_withdraw_unfreeze_amount(&req.owner_address).await?;
 
@@ -835,7 +835,7 @@ impl StackService {
     pub async fn account_resource(
         &self,
         owner: &str,
-    ) -> Result<AccountResource, crate::error::ServiceError> {
+    ) -> Result<AccountResource, crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let resource = chain.account_resource(owner).await?;
@@ -932,7 +932,7 @@ impl StackService {
         account: String,
         resource_type: String,
         is_multisig: Option<bool>,
-    ) -> Result<resp::ResourceResp, crate::error::ServiceError> {
+    ) -> Result<resp::ResourceResp, crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
         let resource_type = ops::stake::ResourceType::try_from(resource_type.as_str())?;
@@ -1163,7 +1163,7 @@ impl StackService {
         &self,
         req: stake::UnDelegateReq,
         password: String,
-    ) -> Result<resp::DelegateResp, crate::error::ServiceError> {
+    ) -> Result<resp::DelegateResp, crate::error::service::ServiceError> {
         let from = req.owner_address.clone();
 
         if req.balance <= 0 {
@@ -1286,7 +1286,7 @@ impl StackService {
     pub async fn system_resource(
         &self,
         address: String,
-    ) -> Result<SystemEnergyResp, crate::error::ServiceError> {
+    ) -> Result<SystemEnergyResp, crate::error::service::ServiceError> {
         let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let req = serde_json::json!({
             "address": address
@@ -1301,7 +1301,7 @@ impl StackService {
         &self,
         account: String,
         energy: i64,
-    ) -> Result<String, crate::error::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // 验证后端的配置(是否开启了能量的补偿)
@@ -1347,7 +1347,7 @@ impl StackService {
     pub async fn vote_list(
         &self,
         owner_address: Option<&str>,
-    ) -> Result<resp::VoteListResp, crate::error::ServiceError> {
+    ) -> Result<resp::VoteListResp, crate::error::service::ServiceError> {
         // 所有的超级节点列表
         // let chain = self.chain.get_provider();
         // let mut res = StakeDomain::vote_list(chain).await?;
@@ -1371,7 +1371,7 @@ impl StackService {
     pub async fn voter_info(
         &self,
         owner: &str,
-    ) -> Result<resp::VoterInfoResp, crate::error::ServiceError> {
+    ) -> Result<resp::VoterInfoResp, crate::error::service::ServiceError> {
         // let chain = self.chain.get_provider();
         // let vote_list = StakeDomain::vote_list(chain).await?;
         let vote_list = StakeDomain::vote_list_from_backend().await?;
@@ -1409,7 +1409,7 @@ impl StackService {
         Ok(res)
     }
 
-    pub async fn top_witness(&self) -> Result<Option<resp::Witness>, crate::error::ServiceError> {
+    pub async fn top_witness(&self) -> Result<Option<resp::Witness>, crate::error::service::ServiceError> {
         // let chain = self.chain.get_provider();
         // let list = StakeDomain::vote_list(chain).await?.data;
         let list = StakeDomain::vote_list_from_backend().await?.data;
@@ -1430,7 +1430,7 @@ impl StackService {
         &self,
         req: stake::VoteWitnessReq,
         password: &str,
-    ) -> Result<String, crate::error::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let mut extra = vec![];
 
         for item in req.votes.iter() {
@@ -1465,7 +1465,7 @@ impl StackService {
         &self,
         req: stake::WithdrawBalanceReq,
         password: &str,
-    ) -> Result<String, crate::error::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let mut args = ops::stake::WithdrawBalanceArgs::try_from(&req)?;
 
         let value = self.chain.get_provider().get_reward(&req.owner_address).await?.to_sun();

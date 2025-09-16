@@ -1,5 +1,5 @@
 use crate::{
-    domain::app::mqtt::MqttDomain, error::ServiceError, messaging::notify::FrontendNotifyEvent,
+    domain::app::mqtt::MqttDomain, error::service::ServiceError, messaging::notify::FrontendNotifyEvent,
 };
 use std::{collections::HashSet, sync::Arc};
 use tokio::time::Instant;
@@ -93,7 +93,7 @@ impl UnconfirmedMsgProcessor {
         Self { client_id: client_id.into(), notify }
     }
 
-    async fn handle_once(client_id: &str) -> Result<(), crate::error::ServiceError> {
+    async fn handle_once(client_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过

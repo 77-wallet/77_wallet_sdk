@@ -1,6 +1,6 @@
 use crate::{
     domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
-    error::ServiceError,
+    error::service::ServiceError,
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use chrono::TimeDelta;
@@ -70,7 +70,7 @@ impl ProcessWithdrawTxHandle {
         }
     }
 
-    pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
         let _ = self.tx_tx.send(ProcessWithdrawTxCommand::Tx(trade_no.to_string()));
         Ok(())
     }
@@ -78,7 +78,7 @@ impl ProcessWithdrawTxHandle {
     pub(crate) async fn submit_confirm_report_tx(
         &self,
         trade_no: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let _ = self
             .confirm_report_tx
             .send(ProcessWithdrawTxConfirmReportCommand::Tx(trade_no.to_string()));
@@ -89,21 +89,21 @@ impl ProcessWithdrawTxHandle {
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.tx_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::ServiceError::System(
+                crate::error::service::ServiceError::System(
                     crate::error::system::SystemError::BackendEndpointNotFound,
                 )
             })??;
         }
         if let Some(handle) = self.tx_report_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::ServiceError::System(
+                crate::error::service::ServiceError::System(
                     crate::error::system::SystemError::BackendEndpointNotFound,
                 )
             })??;
         }
         if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::ServiceError::System(
+                crate::error::service::ServiceError::System(
                     crate::error::system::SystemError::BackendEndpointNotFound,
                 )
             })??;
@@ -127,7 +127,7 @@ impl ProcessWithdrawTx {
         Self { shutdown_rx, tx_rx, report_tx }
     }
 
-    async fn run(&mut self) -> Result<(), crate::error::ServiceError> {
+    async fn run(&mut self) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!("starting process withdraw -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
@@ -169,7 +169,7 @@ impl ProcessWithdrawTx {
         Ok(())
     }
 
-    async fn process_withdraw_tx(&self) -> Result<(), crate::error::ServiceError> {
+    async fn process_withdraw_tx(&self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool.clone(),
@@ -187,7 +187,7 @@ impl ProcessWithdrawTx {
     async fn process_withdraw_single_tx(
         &self,
         req: ApiWithdrawEntity,
-    ) -> Result<i32, crate::error::ServiceError> {
+    ) -> Result<i32, crate::error::service::ServiceError> {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx ---------------------------------4");
 
         let coin =
@@ -224,7 +224,7 @@ impl ProcessWithdrawTx {
         &self,
         trade_no: &str,
         tx: TransferResp,
-    ) -> Result<i32, crate::error::ServiceError> {
+    ) -> Result<i32, crate::error::service::ServiceError> {
         let resource_consume = if tx.consumer.is_none() {
             "0".to_string()
         } else {
@@ -247,7 +247,7 @@ impl ProcessWithdrawTx {
         Ok(1)
     }
 
-    async fn handle_withdraw_tx_failed(&self, trade_no: &str) -> Result<i32, crate::error::ServiceError> {
+    async fn handle_withdraw_tx_failed(&self, trade_no: &str) -> Result<i32, crate::error::service::ServiceError> {
         // 更新交易状态,发送失败
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(
@@ -276,7 +276,7 @@ impl ProcessWithdrawTxReport {
         Self { shutdown_rx, report_rx, failed_count: 0 }
     }
 
-    async fn run(&mut self) -> Result<(), crate::error::ServiceError> {
+    async fn run(&mut self) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!("starting process withdraw tx report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
@@ -314,7 +314,7 @@ impl ProcessWithdrawTxReport {
         Ok(())
     }
 
-    async fn process_withdraw_tx_report(&mut self) -> Result<(), crate::error::ServiceError> {
+    async fn process_withdraw_tx_report(&mut self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool,
@@ -339,7 +339,7 @@ impl ProcessWithdrawTxReport {
     async fn process_withdraw_single_tx_report(
         &self,
         req: ApiWithdrawEntity,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -392,7 +392,7 @@ impl ProcessWithdrawTxReport {
                     ApiWithdrawStatus::SendingTx,
                 )
                 .await?;
-                return Err(crate::error::ServiceError::TransportBackend(err.into()));
+                return Err(crate::error::service::ServiceError::TransportBackend(err.into()));
             }
         }
     }
@@ -412,7 +412,7 @@ impl ProcessWithdrawTxConfirmReport {
         Self { shutdown_rx, report_rx, failed_count: 0 }
     }
 
-    async fn run(&mut self) -> Result<(), crate::error::ServiceError> {
+    async fn run(&mut self) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(
             "starting process withdraw tx confirm report -------------------------------"
         );
@@ -447,7 +447,7 @@ impl ProcessWithdrawTxConfirmReport {
         Ok(())
     }
 
-    async fn process_withdraw_tx_confirm_report(&mut self) -> Result<(), crate::error::ServiceError> {
+    async fn process_withdraw_tx_confirm_report(&mut self) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool,
@@ -472,7 +472,7 @@ impl ProcessWithdrawTxConfirmReport {
     async fn process_withdraw_single_tx_confirm_report(
         &self,
         req: ApiWithdrawEntity,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx_confirm_report ---------------------------------4");
         let now = chrono::Utc::now();
         let timeout = now - req.updated_at.unwrap();
@@ -509,7 +509,7 @@ impl ProcessWithdrawTxConfirmReport {
                     req.status,
                 )
                 .await?;
-                return Err(crate::error::ServiceError::TransportBackend(err.into()));
+                return Err(crate::error::service::ServiceError::TransportBackend(err.into()));
             }
         }
         Ok(())

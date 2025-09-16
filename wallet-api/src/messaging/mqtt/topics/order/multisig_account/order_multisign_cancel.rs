@@ -23,7 +23,10 @@ impl OrderMultiSignCancel {
 }
 
 impl OrderMultiSignCancel {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(
@@ -35,12 +38,14 @@ impl OrderMultiSignCancel {
 
         let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool)
             .await?
-            .ok_or(crate::error::ServiceError::Business(crate::error::business::multisig_account::MultisigAccountError::NotFound.into()))?;
+            .ok_or(crate::error::service::ServiceError::Business(
+                crate::error::business::multisig_account::MultisigAccountError::NotFound.into(),
+            ))?;
 
         // check
         MultisigAccountDaoV1::delete_in_status(multisig_account_id, &*pool)
             .await
-            .map_err(|e| crate::error::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
         let data = NotifyEvent::OrderMultisignCanceled(OrderMultisignCanceledFrontend {
             multisig_account_id: multisig_account.id,

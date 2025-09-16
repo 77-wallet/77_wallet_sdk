@@ -27,7 +27,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -161,7 +161,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -221,7 +221,7 @@ impl ApiWalletService {
         merchain_id: &str,
         recharge_uid: &str,
         withdrawal_uid: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::bind_uid(recharge_uid, merchain_id, org_app_id).await?;
         ApiWalletDomain::bind_uid(withdrawal_uid, merchain_id, org_app_id).await?;
 
@@ -239,7 +239,7 @@ impl ApiWalletService {
         self,
         recharge_uid: &str,
         withdrawal_uid: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::unbind_uid(recharge_uid).await?;
         ApiWalletDomain::unbind_uid(withdrawal_uid).await?;
 
@@ -255,13 +255,13 @@ impl ApiWalletService {
         self,
         address: &str,
         name: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWalletRepo::edit_name(&pool, address, name).await?;
         Ok(())
     }
 
-    pub async fn set_passwd_cache(self, wallet_password: &str) -> Result<(), crate::error::ServiceError> {
+    pub async fn set_passwd_cache(self, wallet_password: &str) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::set_passwd(wallet_password).await?;
         Ok(())
     }

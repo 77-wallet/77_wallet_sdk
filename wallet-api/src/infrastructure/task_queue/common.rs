@@ -10,7 +10,7 @@ use wallet_database::{
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
-    error::ServiceError,
+    error::service::ServiceError,
     messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent,
     domain::{
         multisig::{MultisigDomain, MultisigQueueDomain},

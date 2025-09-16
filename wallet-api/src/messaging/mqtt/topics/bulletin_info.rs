@@ -96,7 +96,7 @@ pub enum Operation {
 }
 
 impl BulletinMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let Self { id, operation, .. } = self;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());

@@ -16,7 +16,7 @@ pub struct RechargeMsg {
 
 // 充值
 impl RechargeMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         // 验证金额是否需要输入密码
 
         // 生成订单

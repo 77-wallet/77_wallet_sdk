@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::error::ServiceError;
+use crate::error::service::ServiceError;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DefaultNode {

@@ -52,7 +52,7 @@ pub struct SwapServer {
 }
 
 impl SwapServer {
-    pub fn new() -> Result<Self, crate::error::ServiceError> {
+    pub fn new() -> Result<Self, crate::error::service::ServiceError> {
         let url = crate::context::CONTEXT.get().unwrap().get_aggregate_api();
         let swap_client = SwapClient::new(&url);
 
@@ -112,7 +112,7 @@ impl SwapServer {
         &self,
         req: &QuoteReq,
         amount_out: U256,
-    ) -> Result<(BalanceStr, BalanceStr), crate::error::ServiceError> {
+    ) -> Result<(BalanceStr, BalanceStr), crate::error::service::ServiceError> {
         // 查询两次后端
         let bal_in = TokenCurrencyGetter::get_bal_by_backend(
             &req.chain_code,
@@ -133,7 +133,7 @@ impl SwapServer {
         Ok((bal_in, bal_out))
     }
 
-    pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::error::ServiceError> {
+    pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
         let chain_code = ChainCode::try_from(req.chain_code.as_str())?;
 
         let swap_inner_type =
@@ -146,7 +146,7 @@ impl SwapServer {
         }
     }
 
-    fn check_bal(&self, val: &str, bal: &str) -> Result<bool, crate::error::ServiceError> {
+    fn check_bal(&self, val: &str, bal: &str) -> Result<bool, crate::error::service::ServiceError> {
         Ok(conversion::decimal_from_str(val)? <= conversion::decimal_from_str(bal)?)
     }
 
@@ -156,7 +156,7 @@ impl SwapServer {
         chain_code: &str,
         token_addr: &str,
         recipient: &str,
-    ) -> Result<AssetsEntity, crate::error::ServiceError> {
+    ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
         Ok(AssetsRepo::get_by_addr_token_opt(&pool, chain_code, token_addr, recipient)
             .await?
             .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFoundAssets))?)

@@ -67,7 +67,7 @@ impl BaseTransferReq {
 }
 
 impl TryFrom<&BaseTransferReq> for eth::operations::TransferOpt {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(req: &BaseTransferReq) -> Result<Self, Self::Error> {
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
@@ -84,7 +84,7 @@ impl TryFrom<&BaseTransferReq> for eth::operations::TransferOpt {
 }
 
 impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(req: &TransferReq) -> Result<Self, Self::Error> {
         let value = wallet_utils::unit::string_to_f64(&req.base.value)?;

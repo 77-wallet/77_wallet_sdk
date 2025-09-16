@@ -1,5 +1,5 @@
 // 先放在这里，不知道最终会不会和后端用一个
-use crate::{request::transaction::DexRoute, error::ServiceError};
+use crate::{error::service::ServiceError, request::transaction::DexRoute};
 use alloy::primitives::U256;
 use wallet_transport::client::HttpClient;
 
@@ -29,7 +29,7 @@ impl SwapClient {
             10200 | 10300 | 10400 | 10500 => 4403,
             _ => -1,
         };
-        crate::error::ServiceError::AggregatorError {
+        crate::error::service::ServiceError::AggregatorError {
             code,
             agg_code: res.code,
             msg: res.msg.unwrap_or_default(),
@@ -47,10 +47,7 @@ impl SwapClient {
         }
     }
 
-    pub async fn get_quote(
-        &self,
-        req: AggQuoteRequest,
-    ) -> Result<AggQuoteResp, ServiceError> {
+    pub async fn get_quote(&self, req: AggQuoteRequest) -> Result<AggQuoteResp, ServiceError> {
         let res = self.client.post_request::<_, AggregatorResp>("quote", req).await?;
 
         self.handle_result::<AggQuoteResp>(res)
@@ -164,7 +161,7 @@ pub struct AggQuoteResp {
     pub default_slippage: u64,
 }
 impl AggQuoteResp {
-    pub fn amount_out_u256(&self) -> Result<U256, crate::error::ServiceError> {
+    pub fn amount_out_u256(&self) -> Result<U256, crate::error::service::ServiceError> {
         Ok(wallet_utils::unit::u256_from_str(&self.amount_out)?)
     }
 

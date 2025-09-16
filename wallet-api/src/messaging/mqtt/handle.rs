@@ -107,7 +107,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
     Ok(())
 }
 
-pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::error::ServiceError> {
+pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::error::service::ServiceError> {
     match payload.biz_type {
         BizType::OrderMultiSignAccept => {
             exec_task::<OrderMultiSignAccept, _>(&payload, MqttTask::OrderMultiSignAccept).await?
@@ -169,7 +169,7 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::error::S
         BizType::Trans => exec_task::<TransMsg, _>(&payload, MqttTask::Trans).await?,
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
-            return Err(crate::error::ServiceError::System(crate::error::system::SystemError::MessageWrong(
+            return Err(crate::error::service::ServiceError::System(crate::error::system::SystemError::MessageWrong(
                 biztype,
                 payload.body,
             )));
@@ -179,7 +179,7 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::error::S
     Ok(())
 }
 
-async fn exec_task<T, F>(payload: &Message, task_ctor: F) -> Result<(), crate::error::ServiceError>
+async fn exec_task<T, F>(payload: &Message, task_ctor: F) -> Result<(), crate::error::service::ServiceError>
 where
     T: serde::de::DeserializeOwned,
     F: FnOnce(T) -> MqttTask,

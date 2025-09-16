@@ -43,7 +43,7 @@ impl AccountService {
         self,
         _wallet_address: &str,
         _account_id: u32,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // let mut tx = self.repo;
         // let accounts = tx
@@ -98,7 +98,7 @@ impl AccountService {
         index: Option<i32>,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -227,7 +227,7 @@ impl AccountService {
         self,
         wallet_address: &str,
         index: u32,
-    ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::ServiceError> {
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let list = tx
             .get_account_list_by_wallet_address_and_account_id(Some(wallet_address), Some(index))
@@ -334,7 +334,7 @@ impl AccountService {
     pub async fn account_details(
         self,
         address: &str,
-    ) -> Result<Option<AccountEntity>, crate::error::ServiceError> {
+    ) -> Result<Option<AccountEntity>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let res = AccountRepoTrait::detail(&mut tx, address).await?;
         Ok(res)
@@ -345,7 +345,7 @@ impl AccountService {
         account_id: u32,
         wallet_address: &str,
         name: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let mut tx = self.repo.begin_transaction().await?;
         let mut tx = self.repo;
         tx.edit_account_name(account_id, wallet_address, name).await?;
@@ -373,7 +373,7 @@ impl AccountService {
         wallet_address: &str,
         account_id: u32,
         password: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -457,7 +457,7 @@ impl AccountService {
         chain_code: &str,
         old_password: &str,
         new_password: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let req = wallet_database::entities::account::QueryReq {
@@ -561,7 +561,7 @@ impl AccountService {
         &mut self,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
-    ) -> Result<Vec<AccountEntity>, crate::error::ServiceError> {
+    ) -> Result<Vec<AccountEntity>, crate::error::service::ServiceError> {
         Ok(self
             .repo
             .get_account_list_by_wallet_address_and_account_id(wallet_address, account_id)
@@ -572,7 +572,7 @@ impl AccountService {
         uid: String,
         account_id: u32,
         chain_code: &str,
-    ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::ServiceError> {
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let res = AccountRepo::current_chain_address(uid, account_id, chain_code, &pool).await?;
@@ -589,7 +589,7 @@ impl AccountService {
         &mut self,
         wallet_address: &str,
         account_id: i32,
-    ) -> Result<Vec<CurrentAccountInfo>, crate::error::ServiceError> {
+    ) -> Result<Vec<CurrentAccountInfo>, crate::error::service::ServiceError> {
         let accounts = self
             .repo
             .get_account_list_by_wallet_address_and_account_id(

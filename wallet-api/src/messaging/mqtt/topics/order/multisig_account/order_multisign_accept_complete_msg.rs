@@ -32,7 +32,7 @@ impl OrderMultiSignAcceptCompleteMsg {
 
 // 参与方同意后、同步数据给其他的成员同步对应的状态数据(多签账号数据状态流转)
 impl OrderMultiSignAcceptCompleteMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,
@@ -52,7 +52,7 @@ impl OrderMultiSignAcceptCompleteMsg {
 
         let Some(account) = account else {
             tracing::error!(event_name = %event_name, multisig_account_id = %multisig_account_id, "multisig account not found");
-            let err = crate::error::ServiceError::Business(crate::error::business::multisig_account::MultisigAccountError::NotFound.into());
+            let err = crate::error::service::ServiceError::Business(crate::error::business::multisig_account::MultisigAccountError::NotFound.into());
 
             let data = NotifyEvent::Err(ErrFront { event: event_name, message: err.to_string() });
             FrontendNotifyEvent::new(data).send().await?;

@@ -69,7 +69,7 @@ impl ApproveReq {
         if self.value == "-1" || self.value == "0" { Self::UN_LIMIT } else { Self::NORMAL }
     }
 
-    pub fn get_value(&self, decimals: u8) -> Result<U256, crate::error::ServiceError> {
+    pub fn get_value(&self, decimals: u8) -> Result<U256, crate::error::service::ServiceError> {
         if self.value == "-1" || self.value == "0" {
             Ok(U256::MAX)
         } else {
@@ -135,7 +135,7 @@ pub struct SwapReq {
 }
 
 impl TryFrom<&SwapReq> for SwapParams {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &SwapReq) -> Result<Self, Self::Error> {
         let amount_in =

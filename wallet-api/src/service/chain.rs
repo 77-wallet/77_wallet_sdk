@@ -34,7 +34,7 @@ impl ChainService {
         chain_code: &str,
         protocols: &[String],
         main_symbol: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let input = ChainCreateVo::new(name, chain_code, protocols, main_symbol);
         let _res = ChainRepo::add(&pool, input).await?;
@@ -46,14 +46,14 @@ impl ChainService {
         self,
         chain_code: &str,
         node_id: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ChainRepo::set_chain_node(&pool, chain_code, node_id).await?;
 
         Ok(())
     }
 
-    pub async fn sync_chains(self) -> Result<bool, crate::error::ServiceError> {
+    pub async fn sync_chains(self) -> Result<bool, crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let app_version = ConfigDomain::get_app_version().await?;
@@ -67,7 +67,7 @@ impl ChainService {
     pub async fn sync_wallet_chain_data(
         self,
         wallet_password: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -141,7 +141,7 @@ impl ChainService {
         Ok(())
     }
 
-    pub async fn get_hot_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::ServiceError> {
+    pub async fn get_hot_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         let res = tx.get_chain_list_v2().await?;
@@ -150,7 +150,7 @@ impl ChainService {
         Ok(res)
     }
 
-    pub async fn get_market_chain_list(self) -> Result<Vec<String>, crate::error::ServiceError> {
+    pub async fn get_market_chain_list(self) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let res = tx.get_market_chain_list().await?;
         Ok(res)
@@ -158,7 +158,7 @@ impl ChainService {
 
     pub async fn get_chain_list_with_node_info(
         self,
-    ) -> Result<Vec<ChainWithNode>, crate::error::ServiceError> {
+    ) -> Result<Vec<ChainWithNode>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         let res = tx.get_chain_node_list().await?;
@@ -170,7 +170,7 @@ impl ChainService {
     pub async fn get_protocol_list(
         self,
         chain_code: &str,
-    ) -> Result<Option<ChainEntity>, crate::error::ServiceError> {
+    ) -> Result<Option<ChainEntity>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         let res = ChainRepoTrait::detail(&mut tx, chain_code).await?;

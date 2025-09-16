@@ -15,7 +15,7 @@ impl CollectService {
 
     pub async fn get_collect_order_list(
         &self,
-    ) -> Result<Vec<ApiCollectEntity>, crate::error::ServiceError> {
+    ) -> Result<Vec<ApiCollectEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiCollectRepo::list_api_collect(&pool).await.map_err(|e| e.into())
     }
@@ -31,7 +31,7 @@ impl CollectService {
         trade_no: &str,
         trade_type: u8,
         uid: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let req = ApiWithdrawReq {
             from: from.to_string(),
             to: to.to_string(),

@@ -3,7 +3,7 @@ use crate::{
     domain::coin::CoinDomain,
     request::transaction::SwapTokenInfo,
     response_vo::{chain::ChainList, coin::CoinInfoList},
-    error::ServiceError,
+    error::service::ServiceError,
 };
 use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};

@@ -68,7 +68,7 @@ pub fn check_address(
     address: &str,
     chain: wallet_types::chain::chain::ChainCode,
     network: network::NetworkKind,
-) -> Result<(), crate::error::ServiceError> {
+) -> Result<(), crate::error::service::ServiceError> {
     match chain {
         wallet_types::chain::chain::ChainCode::Bitcoin => {
             let parse = ParseBtcAddress::new(network);
@@ -256,7 +256,7 @@ impl ChainDomain {
     //     }
     // }
 
-    pub(crate) async fn get_node(chain_code: &str) -> Result<NodeInfo, crate::error::ServiceError> {
+    pub(crate) async fn get_node(chain_code: &str) -> Result<NodeInfo, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let node = match ChainRepo::detail_with_node(&pool, chain_code).await? {
             Some(node) => NodeInfo::new(
@@ -303,7 +303,7 @@ impl ChainDomain {
         wallet_address: &str,
         account_name: &str,
         is_default_name: bool,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         for chain in chain_list.iter() {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
@@ -375,7 +375,7 @@ impl ChainDomain {
         is_default_name: bool,
         wallet_password: &str,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         for chain in chain_list.iter() {
             let index = account_index_map.input_index;
             let mut params = AddressParam::new(index);

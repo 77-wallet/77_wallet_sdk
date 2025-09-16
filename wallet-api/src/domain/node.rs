@@ -42,7 +42,7 @@ impl NodeDomain {
         repo: &mut ResourcesRepo,
         nodes: ChainInfos,
         backend_nodes: &mut Vec<NodeEntity>,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         for node in nodes.list.iter() {
             let network = if node.test { "testnet" } else { "mainnet" };
             let node = NodeCreateVo::new(
@@ -71,7 +71,7 @@ impl NodeDomain {
     // 如果请求失败，将这个链的请求发送到任务队列去重试，任务队列重复执行该请求，直到成功，并更新节点表的节点
     // 2.请求后端获取链列表，同样的，请求成功则更新链表的链数据，请求失败则发送到任务队列去重试，直到成功，并更新链表的信息
     // 请求成功的话，遍历链列表，执行1的操作
-    pub(crate) async fn process_backend_nodes() -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn process_backend_nodes() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
@@ -110,7 +110,7 @@ impl NodeDomain {
         repo: &mut ResourcesRepo,
         chains_set: &mut std::collections::HashSet<(String, String)>,
         is_local: Option<u8>,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let tx = repo;
         let existing_nodes = NodeRepoTrait::list(tx, is_local).await?;
 
@@ -136,7 +136,7 @@ impl NodeDomain {
         repo: &mut ResourcesRepo,
         chain_code: Vec<String>,
         backend_nodes: &[NodeEntity],
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
         let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, &chain_code, Some(0)).await?;
         let backend_node_rpcs: HashSet<String> = backend_nodes
@@ -159,7 +159,7 @@ impl NodeDomain {
 
     pub(crate) async fn assign_missing_nodes_to_chains(
         backend_nodes: &[NodeEntity],
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let chain_list = ChainRepo::get_chain_list(&pool).await?;
 
@@ -184,7 +184,7 @@ impl NodeDomain {
         backend_nodes: &[NodeEntity],
         // default_nodes: &[NodeData],
         chain_code: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let list = NodeRepoTrait::list(repo, Some(1)).await?;
 

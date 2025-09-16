@@ -18,7 +18,7 @@ pub struct BillDomain;
 impl BillDomain {
     pub async fn create_bill<T>(
         params: entities::bill::NewBillEntity<T>,
-    ) -> Result<(), crate::error::ServiceError>
+    ) -> Result<(), crate::error::service::ServiceError>
     where
         T: serde::Serialize,
     {
@@ -30,7 +30,7 @@ impl BillDomain {
     pub async fn create_check_swap<T>(
         tx: entities::bill::NewBillEntity<T>,
         pool: &DbPool,
-    ) -> Result<(), crate::error::ServiceError>
+    ) -> Result<(), crate::error::service::ServiceError>
     where
         T: serde::Serialize,
     {
@@ -50,7 +50,7 @@ impl BillDomain {
     pub async fn get_bill_resource_consumer(
         tx_hash: &str,
         chain_code: &str,
-    ) -> Result<String, crate::error::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let adapter =
             super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
         let res = adapter.query_tx_res(tx_hash).await?;
@@ -63,14 +63,14 @@ impl BillDomain {
     pub async fn get_onchain_bill(
         tx_hash: &str,
         chain_code: &str,
-    ) -> Result<Option<QueryTransactionResult>, crate::error::ServiceError> {
+    ) -> Result<Option<QueryTransactionResult>, crate::error::service::ServiceError> {
         let adapter =
             super::chain::adapter::ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
 
-    pub async fn handle_sync_bill(item: SyncBillResp) -> Result<(), crate::error::ServiceError> {
+    pub async fn handle_sync_bill(item: SyncBillResp) -> Result<(), crate::error::service::ServiceError> {
         if item.value == 0.0 {
             return Ok(());
         }
@@ -119,7 +119,7 @@ impl BillDomain {
     pub(crate) async fn sync_bills(
         chain_code: &str,
         address: &str,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let start_time = BillDomain::get_last_bill_time(chain_code, address).await?;
         // let start_time = None;
 

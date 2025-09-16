@@ -1,5 +1,3 @@
-use wallet_transport_backend::request::api_wallet::address::{AddressParam, ExpandAddressReq};
-
 use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 // biz_type = ADDRESS_ALLOCK
@@ -25,7 +23,10 @@ pub enum AddressAllockType {
 
 // 地址池扩容
 impl AddressAllockMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let data = NotifyEvent::AddressUse(self.to_owned());
         // FrontendNotifyEvent::new(data).send().await?;
 

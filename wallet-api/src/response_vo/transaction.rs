@@ -292,7 +292,7 @@ impl TronFeeDetails {
         consumer: tron::params::ResourceConsumer,
         token_currency: TokenCurrency,
         currency: &str,
-    ) -> Result<Self, crate::error::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let amount = consumer.transaction_fee();
         let amount = unit::string_to_f64(&amount)?;
         let fee = BalanceInfo::new(amount, token_currency.get_price(currency), currency);

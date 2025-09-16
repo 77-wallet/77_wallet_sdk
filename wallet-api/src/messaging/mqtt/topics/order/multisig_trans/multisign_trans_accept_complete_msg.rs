@@ -53,12 +53,12 @@ impl TryFrom<&MultiSignTransAcceptCompleteMsgBody> for NewSignatureEntity {
         })
     }
 
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
 }
 
 // 签名的结果同步给所有人
 impl MultiSignTransAcceptCompleteMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(

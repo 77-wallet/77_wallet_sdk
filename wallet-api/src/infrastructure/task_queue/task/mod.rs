@@ -82,7 +82,7 @@ impl Tasks {
 
     async fn create_task_entities(
         &self,
-    ) -> Result<Vec<CreateTaskQueueEntity>, crate::error::ServiceError> {
+    ) -> Result<Vec<CreateTaskQueueEntity>, crate::error::service::ServiceError> {
         let mut create_entities = Vec::new();
         for task in self.0.iter() {
             let request_body = task.task.get_body()?;
@@ -104,7 +104,7 @@ impl Tasks {
         Ok(create_entities)
     }
 
-    async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::error::ServiceError> {
+    async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::error::service::ServiceError> {
         let task_sender = crate::context::CONTEXT.get().unwrap().get_global_task_manager();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -135,7 +135,7 @@ impl Tasks {
         Ok(())
     }
 
-    pub(crate) async fn send(self) -> Result<(), crate::error::ServiceError> {
+    pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {
         if self.0.is_empty() {
             return Ok(());
         }
@@ -148,7 +148,7 @@ impl Tasks {
     }
 }
 
-type TaskFactoryFn = fn(&str) -> Result<Box<dyn TaskTrait>, crate::error::ServiceError>;
+type TaskFactoryFn = fn(&str) -> Result<Box<dyn TaskTrait>, crate::error::service::ServiceError>;
 
 #[macro_export]
 macro_rules! register_tasks {
@@ -220,7 +220,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
 });
 
 impl TryFrom<&TaskQueueEntity> for Box<dyn TaskTrait> {
-    type Error = crate::error::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &TaskQueueEntity) -> Result<Self, Self::Error> {
         match &value.task_name {

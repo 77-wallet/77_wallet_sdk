@@ -27,9 +27,9 @@ pub(crate) async fn init_context<'a>(
     dirs: Dirs,
     frontend_notify: Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>,
     config: crate::config::Config,
-) -> Result<&'a Context, crate::error::ServiceError> {
+) -> Result<&'a Context, crate::error::service::ServiceError> {
     let context = CONTEXT
-        .get_or_try_init::<crate::error::ServiceError, _, _>(|| async {
+        .get_or_try_init::<crate::error::service::ServiceError, _, _>(|| async {
             let context = Context::new(sn, device_type, dirs, frontend_notify, config).await?;
             Ok(context)
         })
@@ -65,7 +65,7 @@ impl Context {
         dirs: Dirs,
         frontend_notify: FrontendNotifySender,
         config: crate::config::Config,
-    ) -> Result<Context, crate::error::ServiceError> {
+    ) -> Result<Context, crate::error::service::ServiceError> {
         let sqlite_context = SqliteContext::new(&dirs.db_dir.to_string_lossy()).await?;
 
         let client_id = crate::domain::app::DeviceDomain::client_device_by_sn(sn, device_type);
@@ -139,7 +139,7 @@ impl Context {
     pub async fn set_frontend_notify_sender(
         &self,
         frontend_notify: FrontendNotifySender,
-    ) -> Result<(), crate::error::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut lock = self.frontend_notify.write().await;
         *lock = frontend_notify;
         Ok(())
@@ -151,7 +151,7 @@ impl Context {
 
     pub(crate) fn get_global_sqlite_pool(
         &self,
-    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::ServiceError> {
+    ) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::error::service::ServiceError> {
         let pool = self.sqlite_context.get_pool()?;
         Ok(pool)
     }
@@ -192,7 +192,7 @@ impl Context {
 
     pub(crate) async fn get_rpc_header(
         &self,
-    ) -> Result<std::collections::HashMap<String, String>, crate::error::ServiceError> {
+    ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError> {
         let token_expired = {
             let token_guard = self.rpc_token.read().await;
             token_guard.instance < tokio::time::Instant::now()

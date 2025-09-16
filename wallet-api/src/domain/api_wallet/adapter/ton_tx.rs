@@ -1,5 +1,5 @@
 use crate::{
-    error::ServiceError,
+    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
