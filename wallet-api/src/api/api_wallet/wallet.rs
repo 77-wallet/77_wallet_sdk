@@ -82,7 +82,7 @@ impl WalletManager {
     //     chain_code: Option<String>,
     //     account_id: Option<u32>,
     // ) -> ReturnType<Vec<crate::response_vo::wallet::WalletInfo>> {
-    //     WalletService::new(self.repo_factory.resource_repo())
+    //     ApiWalletService::new()
     //         .get_wallet_list(wallet_address, chain_code, account_id)
     //         .await?
     //         .into()
