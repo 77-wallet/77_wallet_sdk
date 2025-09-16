@@ -20,10 +20,3 @@ pub mod response_vo;
 pub mod service;
 pub mod test;
 
-pub use wallet_database::entities::{api_wallet::ApiWalletType, multisig_member::MemberVo};
-pub use wallet_transport_backend::{
-    error::Error,
-    request::{
-        TokenQueryHistoryPrice, TokenQueryPopularByPageReq, TokenQueryPrice, TokenQueryPriceReq,
-    },
-};

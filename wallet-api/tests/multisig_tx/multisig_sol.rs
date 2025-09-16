@@ -1,9 +1,7 @@
 use crate::get_manager;
-use wallet_api::{
-    MemberVo,
-    response_vo::{MultisigQueueFeeParams, transaction::TransferParams},
-};
 use anyhow::Result;
+use wallet_api::response_vo::{MultisigQueueFeeParams, transaction::TransferParams};
+use wallet_database::entities::multisig_member::MemberVo;
 
 #[tokio::test]
 async fn test_create_multisig_account_sol() -> Result<()> {
@@ -177,7 +175,8 @@ async fn test_execute() -> Result<()> {
     let fee_setting = None;
     let request_resource_id = None;
 
-    let result = wallet_manager.exec_transaction(id, pass, fee_setting, request_resource_id).await?;
+    let result =
+        wallet_manager.exec_transaction(id, pass, fee_setting, request_resource_id).await?;
     tracing::info!("execute res = {:?}", serde_json::to_string(&result));
     Ok(())
 }
