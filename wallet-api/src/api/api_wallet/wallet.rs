@@ -3,8 +3,19 @@ use wallet_database::entities::api_wallet::ApiWalletType;
 use crate::{
     api::ReturnType, manager::WalletManager, service::api_wallet::wallet::ApiWalletService,
 };
+use crate::response_vo::api_wallet::wallet::ApiWalletInfo;
 
 impl WalletManager {
+
+    pub async fn get_api_wallet_list(
+        &self,
+        api_wallet_type: ApiWalletType,
+    ) -> ReturnType<Vec<ApiWalletInfo>> {
+        ApiWalletService::new()
+            .get_api_wallet_list(api_wallet_type)
+            .await
+    }
+
     pub async fn create_api_wallet(
         &self,
         language_code: u8,
@@ -78,17 +89,6 @@ impl WalletManager {
     //         .into()
     // }
 
-    // pub async fn get_api_wallet_list(
-    //     &self,
-    //     wallet_address: Option<String>,
-    //     chain_code: Option<String>,
-    //     account_id: Option<u32>,
-    // ) -> ReturnType<Vec<crate::response_vo::wallet::WalletInfo>> {
-    //     ApiWalletService::new()
-    //         .get_wallet_list(wallet_address, chain_code, account_id)
-    //         .await?
-    //         .into()
-    // }
 
     // pub async fn physical_delete_api_wallet(&self, address: &str) -> ReturnType<()> {
     //     WalletService::new(self.repo_factory.resource_repo())

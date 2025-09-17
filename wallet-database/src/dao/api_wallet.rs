@@ -90,7 +90,6 @@ impl ApiWalletDao {
 
     pub async fn list<'a, E>(
         exec: E,
-        address: Option<&str>,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error>
     where
@@ -98,10 +97,6 @@ impl ApiWalletDao {
     {
         let mut sql = "SELECT * FROM api_wallet".to_string();
         let mut conditions = Vec::new();
-
-        if address.is_some() {
-            conditions.push("address = ?".to_string());
-        }
 
         if api_wallet_type.is_some() {
             conditions.push("wallet_type = ?".to_string());
@@ -112,10 +107,7 @@ impl ApiWalletDao {
             sql.push_str(&conditions.join(" AND "));
         }
         let mut query = sqlx::query_as::<_, ApiWalletEntity>(&sql);
-
-        if let Some(address) = address {
-            query = query.bind(address);
-        }
+        
         if let Some(api_wallet_type) = api_wallet_type {
             query = query.bind(api_wallet_type);
         }

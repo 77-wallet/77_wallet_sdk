@@ -2,18 +2,39 @@ use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
+use wallet_transport_backend::request::{api_wallet::wallet::BindAppIdReq, LanguageInitReq};
 
 use crate::{
+    api::ReturnType,
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
 };
+use crate::response_vo::api_wallet::wallet::ApiWalletInfo;
 
 pub struct ApiWalletService {}
 
 impl ApiWalletService {
     pub fn new() -> Self {
         Self {}
+    }
+
+    pub async fn get_api_wallet_list(
+        &self,
+        api_wallet_type: ApiWalletType,
+    ) -> ReturnType<Vec<ApiWalletInfo>> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let li = ApiWalletRepo::list(&pool, Some(api_wallet_type)).await?;
+        let mut  infos : Vec<ApiWalletInfo> = vec![];
+        for e in li {
+            infos.push(ApiWalletInfo{
+                address: e.address.clone(),
+                uid: e.uid.clone(),
+                name: e.name.clone(),
+                created_at: Default::default(),
+                updated_at: None,
+            })
+        }
+        Ok(infos)
     }
 
     pub async fn create_wallet(
@@ -36,7 +57,10 @@ impl ApiWalletService {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         let master_key_start = std::time::Instant::now();
@@ -170,7 +194,10 @@ impl ApiWalletService {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
@@ -261,7 +288,10 @@ impl ApiWalletService {
         Ok(())
     }
 
-    pub async fn set_passwd_cache(self, wallet_password: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn set_passwd_cache(
+        self,
+        wallet_password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::set_passwd(wallet_password).await?;
         Ok(())
     }

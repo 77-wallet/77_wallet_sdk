@@ -15,3 +15,4 @@ pub mod swap;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
+pub mod api_wallet;

@@ -405,8 +405,8 @@ impl WalletDomain {
 
     pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        Ok(!ApiWalletRepo::list(&pool, Some(address), None).await?.is_empty())
+        let res = ApiWalletRepo::find_by_address(&pool, address).await?;
+        Ok(!res.is_none())
     }
 }
 

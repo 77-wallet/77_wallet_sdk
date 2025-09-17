@@ -1,9 +1,12 @@
 use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRepo};
 
 use crate::{
-    context::CONTEXT, domain, infrastructure::task_queue::{
-        task::Tasks, BackendApiTask, BackendApiTaskData, InitializationTask
-    }, service::node::NodeService
+    context::CONTEXT,
+    domain,
+    infrastructure::task_queue::{
+        BackendApiTask, BackendApiTaskData, InitializationTask, task::Tasks,
+    },
+    service::node::NodeService,
 };
 
 /// Marks whether initialization has already been performed to prevent duplication.

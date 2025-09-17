@@ -4,10 +4,7 @@ use crate::{
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
 impl WalletManager {
-    pub async fn list_api_withdraw_order(
-        &self,
-        uid: &str,
-    ) -> ReturnType<Vec<ApiWithdrawEntity>> {
+    pub async fn list_api_withdraw_order(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawEntity>> {
         WithdrawService::new().list_withdraw_order(uid).await
     }
 

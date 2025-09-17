@@ -1,5 +1,4 @@
 use crate::{
-    messaging::notify::FrontendNotifyEvent,
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
     infrastructure::{
@@ -10,7 +9,7 @@ use crate::{
         process_withdraw_tx::ProcessWithdrawTxHandle,
         task_queue::task_manager::TaskManager,
     },
-    messaging::mqtt::subscribed::Topics,
+    messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
@@ -135,7 +134,7 @@ impl Context {
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
         })
     }
-    
+
     pub async fn set_frontend_notify_sender(
         &self,
         frontend_notify: FrontendNotifySender,
@@ -192,7 +191,8 @@ impl Context {
 
     pub(crate) async fn get_rpc_header(
         &self,
-    ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError> {
+    ) -> Result<std::collections::HashMap<String, String>, crate::error::service::ServiceError>
+    {
         let token_expired = {
             let token_guard = self.rpc_token.read().await;
             token_guard.instance < tokio::time::Instant::now()
@@ -224,9 +224,9 @@ impl Context {
                     if !token.is_empty() {
                         Ok(HashMap::from([("token".to_string(), token)]))
                     } else {
-                        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NodeToken(
-                            e.to_string(),
-                        )))?
+                        Err(crate::error::business::BusinessError::Chain(
+                            crate::error::business::chain::ChainError::NodeToken(e.to_string()),
+                        ))?
                     }
                 }
             }
