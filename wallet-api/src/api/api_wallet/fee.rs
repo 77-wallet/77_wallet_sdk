@@ -4,8 +4,11 @@ use crate::{
 use wallet_database::entities::api_fee::ApiFeeEntity;
 
 impl WalletManager {
-    pub async fn get_api_transfer_fee_order_list(&self) -> ReturnType<Vec<ApiFeeEntity>> {
-        TransferFeeService::new().get_transfer_fee_order_list().await
+    pub async fn get_api_transfer_fee_order_list(
+        &self,
+        uid: &str,
+    ) -> ReturnType<Vec<ApiFeeEntity>> {
+        TransferFeeService::new().get_transfer_fee_order_list(uid).await
     }
 
     // 测试

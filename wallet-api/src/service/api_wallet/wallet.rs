@@ -2,18 +2,39 @@ use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
+use wallet_transport_backend::request::{api_wallet::wallet::BindAppIdReq, LanguageInitReq};
 
 use crate::{
+    api::ReturnType,
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
 };
+use crate::response_vo::api_wallet::wallet::ApiWalletInfo;
 
 pub struct ApiWalletService {}
 
 impl ApiWalletService {
     pub fn new() -> Self {
         Self {}
+    }
+
+    pub async fn get_api_wallet_list(
+        &self,
+        api_wallet_type: ApiWalletType,
+    ) -> ReturnType<Vec<ApiWalletInfo>> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let li = ApiWalletRepo::list(&pool, Some(api_wallet_type)).await?;
+        let mut  infos : Vec<ApiWalletInfo> = vec![];
+        for e in li {
+            infos.push(ApiWalletInfo{
+                address: e.address.clone(),
+                uid: e.uid.clone(),
+                name: e.name.clone(),
+                created_at: Default::default(),
+                updated_at: None,
+            })
+        }
+        Ok(infos)
     }
 
     pub async fn create_wallet(
@@ -27,7 +48,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -109,6 +130,7 @@ impl ApiWalletService {
                 )
                 .await?
             }
+            _ => {}
         }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
@@ -150,7 +172,7 @@ impl ApiWalletService {
             .await?;
 
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
-        Ok(())
+        Ok(uid)
     }
 
     pub async fn import_wallet(

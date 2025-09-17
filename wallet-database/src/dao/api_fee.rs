@@ -5,12 +5,13 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct ApiFeeDao;
 
 impl ApiFeeDao {
-    pub async fn all_api_fee<'a, E>(exec: E) -> Result<Vec<ApiFeeEntity>, crate::Error>
+    pub async fn all_api_fee<'a, E>(exec: E, uid: &str) -> Result<Vec<ApiFeeEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"SELECT * FROM api_fee"#;
+        let sql = r#"SELECT * FROM api_fee where uid = ?"#;
         let result = sqlx::query_as::<_, ApiFeeEntity>(sql)
+            .bind(uid)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

@@ -95,10 +95,9 @@ impl ApiWalletRepo {
 
     pub async fn list(
         pool: &DbPool,
-        address: Option<&str>,
         api_wallet_type: Option<ApiWalletType>,
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::list(pool.as_ref(), address, api_wallet_type).await?)
+        Ok(ApiWalletDao::list(pool.as_ref(),  api_wallet_type).await?)
     }
 
     pub async fn find_by_address(

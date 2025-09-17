@@ -4,11 +4,17 @@ use crate::{
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
 
 impl WalletManager {
-    pub async fn get_api_withdraw_order_list(
+    pub async fn list_api_withdraw_order(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawEntity>> {
+        WithdrawService::new().list_withdraw_order(uid).await
+    }
+
+    pub async fn page_api_withdraw_order(
         &self,
         uid: &str,
-    ) -> ReturnType<Vec<ApiWithdrawEntity>> {
-        WithdrawService::new().get_withdraw_order_list().await
+        page: i64,
+        page_size: i64,
+    ) -> ReturnType<(i64, Vec<ApiWithdrawEntity>)> {
+        WithdrawService::new().page_withdraw_order(uid, page, page_size).await
     }
 
     // 测试

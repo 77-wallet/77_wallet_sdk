@@ -5,12 +5,13 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct ApiWithdrawDao;
 
 impl ApiWithdrawDao {
-    pub async fn all_api_withdraw<'a, E>(exec: E) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    pub async fn all_api_withdraw<'a, E>(exec: E, uid: &str) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"SELECT * FROM api_withdraws"#;
+        let sql = r#"SELECT * FROM api_withdraws where uid = ?"#;
         let result = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(uid)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
@@ -19,19 +20,22 @@ impl ApiWithdrawDao {
 
     pub async fn page_api_withdraw<'a, E>(
         exec: E,
+        uid: &str,
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error>
     where
         E: Executor<'a, Database = Sqlite> + Clone,
     {
-        let count_sql = "SELECT count(*) FROM";
+        let count_sql = "SELECT count(*) FROM api_withdraws where uid = ?";
         let count = sqlx::query_scalar::<_, i64>(count_sql)
+            .bind(uid)
             .fetch_one(exec.clone())
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
-        let sql = "SELECT * FROM api_withdraws ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        let sql = "SELECT * FROM api_withdraws where uid = ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
+            .bind(uid)
             .bind(page_size)
             .bind(page)
             .fetch_all(exec)

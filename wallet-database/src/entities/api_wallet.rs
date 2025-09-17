@@ -20,6 +20,17 @@ pub struct ApiWalletEntity {
 )]
 #[repr(u8)]
 pub enum ApiWalletType {
+    InvalidValue = 0,
     SubAccount = 1,
     Withdrawal = 2,
+}
+
+impl From<u8> for ApiWalletType {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => ApiWalletType::SubAccount,
+            2 => ApiWalletType::Withdrawal,
+            _ => ApiWalletType::InvalidValue,
+        }
+    }
 }

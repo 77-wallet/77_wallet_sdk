@@ -11,6 +11,8 @@ pub enum Error {
     Other(String),
     #[error("data Not Found: {0}")]
     NotFound(String),
+    #[error("Invalid value: {0}")]
+    InvalidValue(u8),
 }
 
 impl Error {
