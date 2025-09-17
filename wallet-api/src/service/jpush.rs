@@ -13,8 +13,7 @@ impl JPushService {
         // Self::jpush_multi(vec![message.to_string()], "JG").await?;
         match serde_func::serde_from_str::<Message>(message) {
             Ok(data) => {
-                let backend_api =
-                    crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
                 // 重新查询一次,前端给到的数据不全面
                 let data = backend_api

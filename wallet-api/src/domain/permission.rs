@@ -31,7 +31,9 @@ impl PermissionDomain {
     }
 
     // 恢复权限数据
-    pub async fn recover_permission(addresses: Vec<String>) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn recover_permission(
+        addresses: Vec<String>,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -98,7 +100,9 @@ impl PermissionDomain {
             }
         }
 
-        Err(crate::error::business::BusinessError::Permission(crate::error::business::permission::PermissionError::ActivesPermissionNotFound))?
+        Err(crate::error::business::BusinessError::Permission(
+            crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+        ))?
     }
 
     pub async fn del_add_update(
@@ -123,7 +127,10 @@ impl PermissionDomain {
         Ok(())
     }
 
-    async fn handel_one_item(pool: &DbPool, grantor_addr: &str) -> Result<(), crate::error::service::ServiceError> {
+    async fn handel_one_item(
+        pool: &DbPool,
+        grantor_addr: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
         let account = chain.account_info(grantor_addr).await?;
 

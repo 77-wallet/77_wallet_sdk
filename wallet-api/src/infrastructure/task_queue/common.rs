@@ -10,14 +10,14 @@ use wallet_database::{
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
-    error::service::ServiceError,
-    messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent,
     domain::{
         multisig::{MultisigDomain, MultisigQueueDomain},
         node::NodeDomain,
         permission::PermissionDomain,
     },
+    error::service::ServiceError,
     infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     service::coin::CoinService,
 };
 

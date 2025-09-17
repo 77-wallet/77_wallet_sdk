@@ -1,7 +1,6 @@
 use crate::{
-    api::ReturnType, messaging::system_notification::Notification,
+    api::ReturnType, manager::WalletManager, messaging::system_notification::Notification,
     service::system_notification::SystemNotificationService,
-    manager::WalletManager,
 };
 
 impl WalletManager {

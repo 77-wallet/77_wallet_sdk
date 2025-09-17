@@ -1,5 +1,4 @@
 use crate::{
-    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -8,6 +7,7 @@ use crate::{
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
+    error::service::ServiceError,
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -98,7 +98,9 @@ impl Tx for SuiTx {
         let balance =
             self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
         if balance < transfer_amount {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance,
+            ))?;
         }
 
         tracing::info!("transfer ------------------- 9:");
@@ -172,7 +174,10 @@ impl Tx for SuiTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn approve_fee(
@@ -181,7 +186,10 @@ impl Tx for SuiTx {
         _value: U256,
         _main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn allowance(
@@ -190,7 +198,10 @@ impl Tx for SuiTx {
         _token: &str,
         _spender: &str,
     ) -> Result<U256, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap_quote(
@@ -199,7 +210,10 @@ impl Tx for SuiTx {
         _quote_resp: &AggQuoteResp,
         _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap(
@@ -208,7 +222,10 @@ impl Tx for SuiTx {
         _fee: String,
         _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit_fee(
@@ -216,7 +233,10 @@ impl Tx for SuiTx {
         _req: DepositReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit(
@@ -226,7 +246,10 @@ impl Tx for SuiTx {
         _key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw_fee(
@@ -234,7 +257,10 @@ impl Tx for SuiTx {
         _req: WithdrawReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw(
@@ -244,7 +270,10 @@ impl Tx for SuiTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 }
 

@@ -1,11 +1,11 @@
 use crate::get_manager;
+use anyhow::Result;
 use sqlx::types::chrono::{TimeZone, Utc};
 use wallet_api::request::transaction::ServiceFeePayer;
 use wallet_database::entities::{
     multisig_account::{MultisigAccountData, MultisigAccountEntity},
     multisig_member::{MultisigMemberEntities, MultisigMemberEntity},
 };
-use anyhow::Result;
 
 #[tokio::test]
 async fn test_fetch_deposit_address() -> Result<()> {
@@ -60,8 +60,9 @@ async fn test_deploy_multisig_account() -> Result<()> {
     let deploy_fee = fee_setting;
     let password = "123456".to_string();
 
-    let res =
-        wallet_manager.deploy_multisig_account(account_id, deploy_fee, Some(payer), password).await?;
+    let res = wallet_manager
+        .deploy_multisig_account(account_id, deploy_fee, Some(payer), password)
+        .await?;
     tracing::info!("部署多签合约{:?}", res);
     Ok(())
 }

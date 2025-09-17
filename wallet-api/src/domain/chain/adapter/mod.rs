@@ -38,11 +38,15 @@ macro_rules! dispatch {
 
 pub struct ChainAdapterFactory;
 impl ChainAdapterFactory {
-    async fn get_chain_node(chain_code: &str) -> Result<ChainWithNode, crate::error::service::ServiceError> {
+    async fn get_chain_node(
+        chain_code: &str,
+    ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or(
-            crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotFound(chain_code.to_string())),
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+            ),
         )?;
         Ok(node)
     }

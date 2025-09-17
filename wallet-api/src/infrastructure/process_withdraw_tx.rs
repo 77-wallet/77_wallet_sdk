@@ -70,7 +70,10 @@ impl ProcessWithdrawTxHandle {
         }
     }
 
-    pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn submit_tx(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let _ = self.tx_tx.send(ProcessWithdrawTxCommand::Tx(trade_no.to_string()));
         Ok(())
     }
@@ -247,7 +250,10 @@ impl ProcessWithdrawTx {
         Ok(1)
     }
 
-    async fn handle_withdraw_tx_failed(&self, trade_no: &str) -> Result<i32, crate::error::service::ServiceError> {
+    async fn handle_withdraw_tx_failed(
+        &self,
+        trade_no: &str,
+    ) -> Result<i32, crate::error::service::ServiceError> {
         // 更新交易状态,发送失败
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(
@@ -314,7 +320,9 @@ impl ProcessWithdrawTxReport {
         Ok(())
     }
 
-    async fn process_withdraw_tx_report(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_withdraw_tx_report(
+        &mut self,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool,
@@ -447,7 +455,9 @@ impl ProcessWithdrawTxConfirmReport {
         Ok(())
     }
 
-    async fn process_withdraw_tx_confirm_report(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_withdraw_tx_confirm_report(
+        &mut self,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, withdraws) = ApiWithdrawRepo::page_api_withdraw_with_status(
             &pool,

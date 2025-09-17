@@ -1,6 +1,8 @@
 use wallet_database::entities::api_wallet::ApiWalletType;
 
-use crate::{api::ReturnType, service::api_wallet::wallet::ApiWalletService, manager::WalletManager};
+use crate::{
+    api::ReturnType, manager::WalletManager, service::api_wallet::wallet::ApiWalletService,
+};
 
 impl WalletManager {
     pub async fn create_api_wallet(

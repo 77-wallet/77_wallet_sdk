@@ -33,7 +33,10 @@ impl OrderMultiSignServiceComplete {
 }
 
 impl OrderMultiSignServiceComplete {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(
@@ -92,7 +95,9 @@ impl OrderMultiSignServiceComplete {
                 multisig_account_id = %multisig_account_id,
                 "Multisig account not found"
             );
-            let err = crate::error::service::ServiceError::Business(crate::error::business::multisig_account::MultisigAccountError::NotFound.into());
+            let err = crate::error::service::ServiceError::Business(
+                crate::error::business::multisig_account::MultisigAccountError::NotFound.into(),
+            );
             let data = NotifyEvent::Err(ErrFront {
                 event: event_name.to_string(),
                 message: err.to_string(),

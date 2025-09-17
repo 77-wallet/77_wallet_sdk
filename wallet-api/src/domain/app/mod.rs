@@ -96,10 +96,14 @@ impl DeviceDomain {
         Ok(device_unbind_address_task)
     }
 
-    pub(crate) async fn check_wallet_password_is_null() -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn check_wallet_password_is_null()
+    -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         let (keystore_kdf_algorithm, wallet_tree_strategy) = if device.password.is_some() {

@@ -52,6 +52,10 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::unbind_uid(pool.as_ref(), address, api_wallet_type).await?)
     }
 
+    pub async fn mark_init(pool: &DbPool, uid: &str) -> Result<ApiWalletEntity, crate::Error> {
+        Ok(ApiWalletDao::mark_init(pool.as_ref(), uid).await?)
+    }
+
     // pub async fn update(
     //     &mut self,
     //     id: u32,

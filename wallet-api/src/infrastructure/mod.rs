@@ -24,7 +24,10 @@ pub fn parse_utc_with_error(s: &str) -> Result<DateTime<Utc>, crate::error::serv
     match NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
         Ok(naive) => Ok(DateTime::from_naive_utc_and_offset(naive, Utc)),
         Err(e) => {
-            let e = crate::error::service::ServiceError::Parameter(format!("convert time error: {}", e));
+            let e = crate::error::service::ServiceError::Parameter(format!(
+                "convert time error: {}",
+                e
+            ));
             Err(e)
         }
     }

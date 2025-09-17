@@ -1,10 +1,10 @@
 use crate::get_manager;
+use anyhow::Result;
 use wallet_api::request::{
     stake::{DelegateReq, FreezeBalanceReq, UnDelegateReq, VoteWitnessReq, VotesReq},
     transaction::Signer,
 };
 use wallet_database::entities::bill::BillKind;
-use anyhow::Result;
 
 #[tokio::test]
 async fn test_build_freeze() -> Result<()> {

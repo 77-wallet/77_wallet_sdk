@@ -1,7 +1,4 @@
-use crate::{
-    api::ReturnType, service::announcement::AnnouncementService,
-    manager::WalletManager,
-};
+use crate::{api::ReturnType, manager::WalletManager, service::announcement::AnnouncementService};
 use wallet_database::{entities::announcement::AnnouncementEntity, pagination::Pagination};
 
 impl WalletManager {
@@ -13,9 +10,7 @@ impl WalletManager {
     }
 
     pub async fn pull_announcement(&self) -> ReturnType<()> {
-        AnnouncementService::new(self.repo_factory.resource_repo())
-            .pull_announcement()
-            .await
+        AnnouncementService::new(self.repo_factory.resource_repo()).pull_announcement().await
     }
 
     pub async fn get_announcement_list(
@@ -29,9 +24,7 @@ impl WalletManager {
     }
 
     pub async fn get_announcement_by_id(&self, id: &str) -> ReturnType<Option<AnnouncementEntity>> {
-        AnnouncementService::new(self.repo_factory.resource_repo())
-            .get_announcement_by_id(id)
-            .await
+        AnnouncementService::new(self.repo_factory.resource_repo()).get_announcement_by_id(id).await
     }
 
     pub async fn read_announcement(&self, id: Option<&str>) -> ReturnType<()> {

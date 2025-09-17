@@ -1,9 +1,9 @@
 use crate::{
     api::ReturnType,
+    manager::WalletManager,
     request::account::CreateAccountReq,
     response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
     service::account::AccountService,
-    manager::WalletManager,
 };
 use wallet_database::entities::account::AccountEntity;
 
@@ -78,9 +78,7 @@ impl WalletManager {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        AccountService::new(repo)
-            .list_derived_addresses(wallet_address, index, password, all)
-            .await
+        AccountService::new(repo).list_derived_addresses(wallet_address, index, password, all).await
     }
 
     pub async fn current_chain_address(
@@ -243,7 +241,8 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         // let wallet_address = "0xc6f9823E95782FAff8C78Cd67BD9C03F3A54108d";
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
-        let account = wallet_manager.get_account_derivation_path(wallet_address, 2147483648).await?;
+        let account =
+            wallet_manager.get_account_derivation_path(wallet_address, 2147483648).await?;
         tracing::info!("[get_account_derivation_path] get_account_derivation_path: {account:?}");
         let res = serde_json::to_string(&account).unwrap();
         tracing::info!("[get_account_derivation_path] get_account_derivation_path: {res:?}");
@@ -310,7 +309,8 @@ mod test {
 
         let wallet_address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
         let account_id = 1;
-        let account = wallet_manager.get_account_list(Some(wallet_address), Some(account_id)).await?;
+        let account =
+            wallet_manager.get_account_list(Some(wallet_address), Some(account_id)).await?;
         let res = serde_json::to_string(&account).unwrap();
         tracing::info!("[test_] account: {res:?}");
 

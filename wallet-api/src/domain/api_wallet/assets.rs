@@ -23,9 +23,11 @@ impl ApiAssetsDomain {
             symbol: symbol.to_string(),
             token_address,
         };
-        let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id)
-            .await?
-            .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFound))?;
+        let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?.ok_or(
+            crate::error::business::BusinessError::Assets(
+                crate::error::business::assets::AssetsError::NotFound,
+            ),
+        )?;
 
         Ok(assets)
     }

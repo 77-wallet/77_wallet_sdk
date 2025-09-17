@@ -3,17 +3,13 @@ use std::collections::HashMap;
 use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
 
 use crate::{
-    api::ReturnType,
-    response_vo::chain::ChainAssets,
+    api::ReturnType, manager::WalletManager, response_vo::chain::ChainAssets,
     service::chain::ChainService,
-    manager::WalletManager,
 };
 
 impl WalletManager {
     pub async fn add_chain(&self, name: &str, chain_code: &str) -> ReturnType<()> {
-        ChainService::new(self.repo_factory.resource_repo())
-            .add(name, chain_code, &[], "")
-            .await
+        ChainService::new(self.repo_factory.resource_repo()).add(name, chain_code, &[], "").await
     }
 
     pub async fn set_chain_node(&self, chain_code: &str, node_id: &str) -> ReturnType<()> {
@@ -41,15 +37,11 @@ impl WalletManager {
     }
 
     pub async fn get_setting_chain_list(&self) -> ReturnType<Vec<ChainWithNode>> {
-        ChainService::new(self.repo_factory.resource_repo())
-            .get_chain_list_with_node_info()
-            .await
+        ChainService::new(self.repo_factory.resource_repo()).get_chain_list_with_node_info().await
     }
 
     pub async fn get_protocol_list(&self, chain_code: &str) -> ReturnType<Option<ChainEntity>> {
-        ChainService::new(self.repo_factory.resource_repo())
-            .get_protocol_list(chain_code)
-            .await
+        ChainService::new(self.repo_factory.resource_repo()).get_protocol_list(chain_code).await
     }
 
     pub async fn get_chain_list(

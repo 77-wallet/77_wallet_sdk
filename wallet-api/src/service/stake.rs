@@ -83,7 +83,8 @@ impl StackService {
         from: &str,
         signer: &Option<Signer>,
         password: &str,
-    ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::error::service::ServiceError> {
+    ) -> Result<wallet_chain_interact::types::ChainPrivateKey, crate::error::service::ServiceError>
+    {
         ChainTransDomain::get_key(from, chain_code::TRON, password, signer).await
     }
 
@@ -117,7 +118,11 @@ impl StackService {
             self.chain.get_provider().transfer_fee(from, None, &resp.raw_data_hex, 1).await?;
 
         if balance.to::<i64>() < consumer.transaction_fee_i64() + value * tron::consts::TRX_VALUE {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                ),
+            ));
         }
 
         // 广播交易交易事件
@@ -148,12 +153,18 @@ impl StackService {
         // if use permission upload backend
         if let Some(signer) = signer {
             let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-            let permission =
-                PermissionRepo::permission_with_user(&pool, from, signer.permission_id, false)
-                    .await?
-                    .ok_or(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
-                        crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
-                    )))?;
+            let permission = PermissionRepo::permission_with_user(
+                &pool,
+                from,
+                signer.permission_id,
+                false,
+            )
+            .await?
+            .ok_or(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Permission(
+                    crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+                ),
+            ))?;
 
             let users = permission.users();
             let params = TransPermission {
@@ -556,7 +567,11 @@ impl StackService {
                     req.signer.clone(),
                 ))
             }
-            _ => Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::UnSupportBillKind))),
+            _ => Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Stake(
+                    crate::error::business::stake::StakeError::UnSupportBillKind,
+                ),
+            )),
         }
     }
 }
@@ -804,7 +819,11 @@ impl StackService {
             self.chain.provider.can_withdraw_unfreeze_amount(&req.owner_address).await?;
 
         if can_widthdraw.amount <= 0 {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::NoWithdrawableAmount)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Stake(
+                    crate::error::business::stake::StakeError::NoWithdrawableAmount,
+                ),
+            ));
         }
 
         let args = ops::stake::WithdrawUnfreezeArgs {
@@ -968,7 +987,11 @@ impl StackService {
         let from = req.owner_address.clone();
 
         if req.balance <= 0 {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::DelegateLessThanMin)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Stake(
+                    crate::error::business::stake::StakeError::DelegateLessThanMin,
+                ),
+            ));
         }
 
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
@@ -1080,7 +1103,11 @@ impl StackService {
         let fee = txs.iter().map(|item| item.consumer.transaction_fee_i64()).sum::<i64>();
 
         if balance.to::<i64>() < fee {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                ),
+            ));
         }
 
         let key = self.get_key(owner_address, signer, password).await?;
@@ -1101,7 +1128,11 @@ impl StackService {
 
         for list in req.list.iter() {
             if list.value <= 0 {
-                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::DelegateLessThanMin)));
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Stake(
+                        crate::error::business::stake::StakeError::DelegateLessThanMin,
+                    ),
+                ));
             }
         }
 
@@ -1134,7 +1165,11 @@ impl StackService {
 
         for list in req.list.iter() {
             if list.value <= 0 {
-                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::UnDelegateLessThanMin)));
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Stake(
+                        crate::error::business::stake::StakeError::UnDelegateLessThanMin,
+                    ),
+                ));
             }
         }
 
@@ -1167,7 +1202,11 @@ impl StackService {
         let from = req.owner_address.clone();
 
         if req.balance <= 0 {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Stake(crate::error::business::stake::StakeError::UnDelegateLessThanMin)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Stake(
+                    crate::error::business::stake::StakeError::UnDelegateLessThanMin,
+                ),
+            ));
         }
 
         let resource_type = ops::stake::ResourceType::try_from(req.resource.as_str())?;
@@ -1409,7 +1448,9 @@ impl StackService {
         Ok(res)
     }
 
-    pub async fn top_witness(&self) -> Result<Option<resp::Witness>, crate::error::service::ServiceError> {
+    pub async fn top_witness(
+        &self,
+    ) -> Result<Option<resp::Witness>, crate::error::service::ServiceError> {
         // let chain = self.chain.get_provider();
         // let list = StakeDomain::vote_list(chain).await?.data;
         let list = StakeDomain::vote_list_from_backend().await?.data;
@@ -1472,7 +1513,11 @@ impl StackService {
 
         args.value = Some(value);
         if value < 0.0 {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NoRewardClaim)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NoRewardClaim,
+                ),
+            ));
         }
 
         let tx_hash = self
@@ -1532,9 +1577,11 @@ impl StackService {
                 .await?;
 
         let Some(p) = permission else {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
-                crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
-            )));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Permission(
+                    crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+                ),
+            ));
         };
 
         let expiration = MultisigQueueDomain::sub_expiration(expiration);

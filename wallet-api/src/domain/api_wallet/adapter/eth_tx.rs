@@ -1,5 +1,4 @@
 use crate::{
-    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -15,6 +14,7 @@ use crate::{
         coin::TokenCurrencyGetter,
         multisig::MultisigDomain,
     },
+    error::service::ServiceError,
     infrastructure::swap_client::AggQuoteResp,
     request::transaction::{ApproveReq, DepositReq, QuoteReq, SwapReq, WithdrawReq},
     response_vo::{EthereumFeeDetails, FeeDetails, MultisigQueueFeeParams, TransferParams},
@@ -92,9 +92,11 @@ impl EthTx {
         let result = self.chain.provider.eth_call(tx).await?;
         let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
 
-        let (amount_in, amount_out): (U256, U256) =
-            <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
-                crate::error::service::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
+        let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
+            .map_err(|e| crate::error::service::ServiceError::AggregatorError {
+                code: -1,
+                agg_code: 0,
+                msg: e.to_string(),
             })?;
 
         let resp = EstimateSwapResult { amount_in, amount_out, consumer: fee };
@@ -288,13 +290,17 @@ impl Tx for EthTx {
         let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
         if remain_balance < rc.consume {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+            ))?;
         }
 
         let gas_oracle = self.gas_oracle().await?;
         let propose_gas_price = gas_oracle.propose_gas_price;
         if propose_gas_price.is_none() {
-            return Err(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::GasOracle))?;
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::GasOracle,
+            ))?;
         }
         let price = unit::convert_to_u256(&propose_gas_price.unwrap(), params.base.decimals)?;
         let fee_setting = FeeSetting::new_with_price(price);
@@ -334,7 +340,9 @@ impl Tx for EthTx {
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
         let balance = self.chain.balance(&req.from, req.token_address.clone()).await?;
         if balance < value {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance,
+            ))?;
         }
 
         let gas_oracle = self.gas_oracle().await?;
@@ -593,7 +601,9 @@ impl Multisig for EthTx {
         // check transaction_fee
         let balance = self.chain.balance(&account.initiator_addr, None).await?;
         if balance < fee_setting.transaction_fee() {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+            ))?;
         }
 
         let tx_hash = self.chain.exec_transaction(params, fee_setting, key, None).await?;
@@ -663,8 +673,10 @@ impl Multisig for EthTx {
         _p: &PermissionEntity,
         _coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Permission(crate::error::business::permission::PermissionError::UnSupportPermissionChain)
-            .into())
+        Err(crate::error::business::BusinessError::Permission(
+            crate::error::business::permission::PermissionError::UnSupportPermissionChain,
+        )
+        .into())
     }
 
     async fn sign_fee(

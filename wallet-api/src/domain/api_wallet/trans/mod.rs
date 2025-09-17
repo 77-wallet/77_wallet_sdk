@@ -17,7 +17,9 @@ pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
     /// transfer
-    pub async fn transfer(params: ApiTransferReq) -> Result<TransferResp, crate::error::service::ServiceError> {
+    pub async fn transfer(
+        params: ApiTransferReq,
+    ) -> Result<TransferResp, crate::error::service::ServiceError> {
         tracing::info!("transfer fee ------------------- 7:");
         let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,

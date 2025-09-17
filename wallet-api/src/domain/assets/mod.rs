@@ -1,9 +1,9 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
     domain::coin::CoinDomain,
+    error::service::ServiceError,
     request::transaction::SwapTokenInfo,
     response_vo::{chain::ChainList, coin::CoinInfoList},
-    error::service::ServiceError,
 };
 use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};

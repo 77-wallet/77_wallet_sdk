@@ -94,7 +94,9 @@ impl MultisigAdapter {
                 Ok(MultisigAdapter::Tron(tron_chain))
             }
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(chain_code.to_string()),
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    chain_code.to_string(),
+                ),
             ))?,
         }
     }
@@ -141,7 +143,9 @@ impl MultisigAdapter {
                 salt: "".to_string(),
             }),
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(self.to_string()),
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -235,7 +239,9 @@ impl MultisigAdapter {
                 // Ok(chain.exec_transaction_v1(tx, key).await?)
             }
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(self.to_string()),
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -307,7 +313,9 @@ impl MultisigAdapter {
                 let account_info =
                     chain.get_provider().account_info(&account.initiator_addr).await?;
                 if account_info.address.is_empty() {
-                    return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::AddressNotInit))?;
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::AddressNotInit,
+                    ))?;
                 }
 
                 let params = tron::operations::multisig::MultisigAccountOpt::new(
@@ -332,7 +340,9 @@ impl MultisigAdapter {
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)
             }
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(self.to_string()),
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -345,7 +355,8 @@ impl MultisigAdapter {
         token: Option<String>,
         main_symbol: &str,
     ) -> Result<String, crate::error::service::ServiceError> {
-        let currency: tokio::sync::RwLockReadGuard<'_, crate::app_state::AppState> = crate::app_state::APP_STATE.read().await;
+        let currency: tokio::sync::RwLockReadGuard<'_, crate::app_state::AppState> =
+            crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
         let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
@@ -527,7 +538,9 @@ impl MultisigAdapter {
                     .await
             }
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(self.to_string()),
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -642,7 +655,9 @@ impl MultisigAdapter {
                 Ok(res)
             }
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(self.to_string()),
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -784,7 +799,9 @@ impl MultisigAdapter {
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)
             }
             _ => Err(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(self.to_string()),
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }

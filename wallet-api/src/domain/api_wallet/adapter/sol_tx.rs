@@ -1,5 +1,4 @@
 use crate::{
-    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -11,6 +10,7 @@ use crate::{
         },
         coin::TokenCurrencyGetter,
     },
+    error::service::ServiceError,
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -111,7 +111,9 @@ impl SolTx {
     ) -> Result<(), crate::error::service::ServiceError> {
         let fee = U256::from(fee);
         if balance < fee {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+            ))?;
         }
         Ok(())
     }
@@ -233,7 +235,10 @@ impl Tx for SolTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn approve_fee(
@@ -242,7 +247,10 @@ impl Tx for SolTx {
         _value: U256,
         _main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn allowance(
@@ -251,7 +259,10 @@ impl Tx for SolTx {
         _token: &str,
         _spender: &str,
     ) -> Result<U256, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap_quote(
@@ -260,7 +271,10 @@ impl Tx for SolTx {
         _quote_resp: &AggQuoteResp,
         _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap(
@@ -269,7 +283,10 @@ impl Tx for SolTx {
         _fee: String,
         _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit_fee(
@@ -277,7 +294,10 @@ impl Tx for SolTx {
         _req: DepositReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit(
@@ -287,7 +307,10 @@ impl Tx for SolTx {
         _key: ChainPrivateKey,
         value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw_fee(
@@ -295,7 +318,10 @@ impl Tx for SolTx {
         _req: WithdrawReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw(
@@ -305,7 +331,10 @@ impl Tx for SolTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 }
 
@@ -435,7 +464,9 @@ impl Multisig for SolTx {
         // check multisig account balance
         let multisig_balance = self.chain.balance(&req.from, token.clone()).await?;
         if multisig_balance < value {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance,
+            ))?;
         }
         let base = TransferOpt::new(
             &req.from,
@@ -477,8 +508,10 @@ impl Multisig for SolTx {
         _p: &PermissionEntity,
         _coin: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Permission(crate::error::business::permission::PermissionError::UnSupportPermissionChain)
-            .into())
+        Err(crate::error::business::BusinessError::Permission(
+            crate::error::business::permission::PermissionError::UnSupportPermissionChain,
+        )
+        .into())
     }
 
     async fn sign_fee(

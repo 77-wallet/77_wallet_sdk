@@ -1,6 +1,6 @@
 use crate::get_manager;
-use wallet_api::request::transaction::{self, Signer};
 use anyhow::Result;
+use wallet_api::request::transaction::{self, Signer};
 
 #[tokio::test]
 async fn test_balance() -> Result<()> {

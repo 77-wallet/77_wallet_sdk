@@ -26,10 +26,6 @@ impl TaskTrait for BackendApiTask {
                 BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
                     .await?;
             }
-            BackendApiTask::ApiBackendApi(data) => {
-                BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
-                    .await?;
-            }
         }
         Ok(())
     }
@@ -41,7 +37,6 @@ impl TaskTrait for BackendApiTask {
 
 pub(crate) enum BackendApiTask {
     BackendApi(BackendApiTaskData),
-    ApiBackendApi(BackendApiTaskData),
 }
 
 impl BackendApiTask {
@@ -52,9 +47,6 @@ impl BackendApiTask {
     pub(crate) fn get_body(&self) -> Result<Option<String>, ServiceError> {
         match self {
             BackendApiTask::BackendApi(api_data) => {
-                Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
-            }
-            BackendApiTask::ApiBackendApi(api_data) => {
                 Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
             }
         }

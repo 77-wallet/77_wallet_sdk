@@ -1,10 +1,10 @@
 use crate::get_manager;
+use anyhow::Result;
 use wallet_api::request::{
     stake::{BatchDelegate, BatchList, BatchUnDelegate, DelegateReq, UnDelegateReq},
     transaction::Signer,
 };
 use wallet_database::entities::bill::BillKind;
-use anyhow::Result;
 
 #[tokio::test]
 async fn test_account_exists() -> Result<()> {

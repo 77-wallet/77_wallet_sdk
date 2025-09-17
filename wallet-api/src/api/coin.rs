@@ -1,8 +1,6 @@
 use crate::{
-    api::ReturnType,
-    response_vo::coin::TokenPriceChangeRes,
+    api::ReturnType, manager::WalletManager, response_vo::coin::TokenPriceChangeRes,
     service::coin::CoinService,
-    manager::WalletManager,
 };
 use wallet_transport_backend::response_vo::coin::{CoinMarketValue, TokenHistoryPrices};
 
@@ -155,8 +153,9 @@ mod test {
         let chain_code = Some("sol".to_string());
         // let chain_code = None;
         let wallet_address = "0x868Bd024461e572555c26Ed196FfabAA475BFcCd";
-        let res =
-            wallet_manager.get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000).await?;
+        let res = wallet_manager
+            .get_hot_coin_list(wallet_address, 1, chain_code, keyword, 0, 1000)
+            .await?;
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {}", res);
         Ok(())

@@ -1,11 +1,11 @@
 use crate::{
     api::ReturnType,
+    manager::WalletManager,
     response_vo::{
         self, MultisigQueueFeeParams, account::Balance, multisig_account::QueueInfo,
         multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
     },
     service::multisig_transaction::MultisigTransactionService,
-    manager::WalletManager,
 };
 use wallet_database::pagination::Pagination;
 

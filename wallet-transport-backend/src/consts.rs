@@ -70,6 +70,11 @@ pub mod endpoint {
     pub const SWAP_APPROVE_CANCEL: &str = "swap/approve/cancel";
     pub const SWAP_APPROVE_SAVE: &str = "swap/approve/save";
 
+    pub mod old_wallet {
+        pub const OLD_KEYS_V2_INIT: &str = "owallet/keys/v2/init";
+        pub const OLD_ADDRESS_BATCH_INIT: &str = "owallet/address/batch/init";
+    }
+
     pub mod api_wallet {
         /// 上报打手续费
         pub const TRANS_SERVICE_FEE_TRANS: &str = "awallet/aw/trans/serviceFeeTrans";

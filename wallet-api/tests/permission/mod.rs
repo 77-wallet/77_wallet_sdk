@@ -1,9 +1,9 @@
 use crate::get_manager;
+use anyhow::Result;
 use wallet_api::{
     domain,
     request::permission::{KeysReq, PermissionReq},
 };
-use anyhow::Result;
 
 // 权限列表
 #[tokio::test]

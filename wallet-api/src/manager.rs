@@ -59,9 +59,7 @@ impl WalletManager {
     pub async fn get_task_queue_status(
         &self,
     ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
-        TaskQueueService::new(self.repo_factory.resource_repo())
-            .get_task_queue_status()
-            .await
+        TaskQueueService::new(self.repo_factory.resource_repo()).get_task_queue_status().await
     }
 
     async fn init_data(&self) -> Result<(), crate::error::service::ServiceError> {
@@ -187,7 +185,8 @@ mod tests {
         let dirs = Dirs::new(dir)?;
 
         let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
-        let _manager = crate::manager::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
+        let _manager =
+            crate::manager::WalletManager::new("sn", "ANDROID", None, config, dirs).await?;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         wallet_tree::wallet_hierarchy::v1::LegacyWalletTree::traverse_directory_structure(

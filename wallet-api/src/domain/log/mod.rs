@@ -1,5 +1,3 @@
-
-
 // pub async fn periodic_log_report(interval: Duration) {
 //     tokio::spawn(async move {
 //         let mut interval = time::interval(interval);

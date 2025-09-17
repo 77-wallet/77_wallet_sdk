@@ -546,8 +546,12 @@ impl TransactionAdapter {
                     ))?;
                 }
 
-                let gas_oracle =
-                    ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend.as_ref()).await?;
+                let gas_oracle = ChainTransDomain::gas_oracle(
+                    &req.chain_code,
+                    &chain.provider,
+                    backend.as_ref(),
+                )
+                .await?;
 
                 let params = eth::operations::TransferOpt::new(
                     &req.from,
@@ -758,7 +762,9 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::approve(chain, req, value, key).await?,
             Self::Tron(chain) => tron_tx::approve(chain, req, value, key).await?,
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -805,7 +811,9 @@ impl TransactionAdapter {
                 wallet_utils::serde_func::serde_to_string(&res)?
             }
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -822,7 +830,9 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::allowance(chain, from, token, spender).await?,
             Self::Tron(chain) => tron_tx::allowance(chain, from, token, spender).await?,
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -907,7 +917,9 @@ impl TransactionAdapter {
                 (resp.amount_out, consumer, fee)
             }
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -926,7 +938,9 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
             Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -972,7 +986,9 @@ impl TransactionAdapter {
                 (consumer, fee)
             }
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -990,7 +1006,9 @@ impl TransactionAdapter {
             Self::Tron(chain) => tron_tx::deposit(chain, &req, value, key).await?,
             Self::Ethereum(chain) => eth_tx::deposit(chain, &req, value, fee, key).await?,
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -1037,7 +1055,9 @@ impl TransactionAdapter {
                 (consumer, fee)
             }
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 
@@ -1055,7 +1075,9 @@ impl TransactionAdapter {
             Self::Tron(chain) => tron_tx::withdraw(chain, &req, value, key).await?,
             Self::Ethereum(chain) => eth_tx::withdraw(chain, &req, value, fee, key).await?,
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotSupportChain,
+                ))?;
             }
         };
 

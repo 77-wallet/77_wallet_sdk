@@ -46,7 +46,9 @@ impl MultisigQueueDomain {
         // check queue is expired
         let time = sqlx::types::chrono::Utc::now().timestamp();
         if queue.expiration < time {
-            return Err(crate::error::business::BusinessError::MultisigQueue(crate::error::business::multisig_queue::MultisigQueueError::Expired))?;
+            return Err(crate::error::business::BusinessError::MultisigQueue(
+                crate::error::business::multisig_queue::MultisigQueueError::Expired,
+            ))?;
         }
 
         // check status
@@ -89,7 +91,9 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
-    pub async fn recover_all_queue_data(uid: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn recover_all_queue_data(
+        uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let raw_time = Self::get_raw_time(&[uid.to_string()]).await?;
         Self::recover_queue_data_with_raw_time(uid, raw_time).await?;
         Ok(())
@@ -101,7 +105,9 @@ impl MultisigQueueDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account_ids = MultisigMemberDaoV1::list_by_uids(uid_list, &*pool)
             .await
-            .map_err(|e| crate::error::service::ServiceError::Database(wallet_database::Error::Database(e)))?
+            .map_err(|e| {
+                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
+            })?
             .0
             .into_iter()
             .map(|member| member.account_id)
@@ -110,7 +116,9 @@ impl MultisigQueueDomain {
         let account_ids_vec: Vec<String> = account_ids.into_iter().collect();
         let queue = MultisigQueueDaoV1::list_by_account_ids(&account_ids_vec, &*pool)
             .await
-            .map_err(|e| crate::error::service::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            .map_err(|e| {
+                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
+            })?;
 
         let raw_time = queue.map(|q| {
             let now = q.created_at - Duration::from_secs(86400);
@@ -160,7 +168,10 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
-    pub async fn insert(pool: DbPool, data: MultisigQueueData) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn insert(
+        pool: DbPool,
+        data: MultisigQueueData,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let MultisigQueueData { queue, signatures } = data;
         let id = queue.id.clone();
 
@@ -209,7 +220,9 @@ impl MultisigQueueDomain {
     }
 
     // For transactions in the confirmation queue, periodically query the transaction results.
-    pub async fn sync_queue_status(queue_id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn sync_queue_status(
+        queue_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let queue = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
@@ -245,7 +258,10 @@ impl MultisigQueueDomain {
     }
 
     // Report the successful transaction queue back to the backend to update the raw data.
-    pub async fn update_raw_data(queue_id: &str, pool: DbPool) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn update_raw_data(
+        queue_id: &str,
+        pool: DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
 
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();

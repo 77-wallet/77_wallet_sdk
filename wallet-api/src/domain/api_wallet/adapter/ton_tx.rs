@@ -1,5 +1,4 @@
 use crate::{
-    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -8,6 +7,7 @@ use crate::{
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
+    error::service::ServiceError,
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -127,7 +127,9 @@ impl Tx for TonTx {
         let balance =
             self.chain.balance(&params.base.from, params.base.token_address.clone()).await?;
         if balance < transfer_amount {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::InsufficientBalance,
+            ))?;
         }
         tracing::info!("transfer ------------------- 12:");
 
@@ -138,9 +140,9 @@ impl Tx for TonTx {
             &pool,
         )
         .await?
-        .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
-            params.base.from.to_string(),
-        )))?;
+        .ok_or(crate::error::business::BusinessError::Account(
+            crate::error::business::account::AccountError::NotFound(params.base.from.to_string()),
+        ))?;
 
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
@@ -194,9 +196,9 @@ impl Tx for TonTx {
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
-                .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
-                    req.from.to_string(),
-                )))?;
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
 
         let address_type = TonAddressType::try_from(account.address_type.as_str())?;
 
@@ -217,7 +219,10 @@ impl Tx for TonTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn approve_fee(
@@ -226,7 +231,10 @@ impl Tx for TonTx {
         _value: U256,
         _main_symbol: &str,
     ) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn allowance(
@@ -235,7 +243,10 @@ impl Tx for TonTx {
         _token: &str,
         _spender: &str,
     ) -> Result<U256, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap_quote(
@@ -244,7 +255,10 @@ impl Tx for TonTx {
         _quote_resp: &AggQuoteResp,
         _symbol: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap(
@@ -253,7 +267,10 @@ impl Tx for TonTx {
         _fee: String,
         _key: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit_fee(
@@ -261,7 +278,10 @@ impl Tx for TonTx {
         _req: DepositReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit(
@@ -271,7 +291,10 @@ impl Tx for TonTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw_fee(
@@ -279,7 +302,10 @@ impl Tx for TonTx {
         _req: WithdrawReq,
         _main_coin: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw(
@@ -289,7 +315,10 @@ impl Tx for TonTx {
         _key: ChainPrivateKey,
         _value: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 }
 

@@ -1,8 +1,8 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
 use crate::{
-    error::service::ServiceError,
     domain::app::config::ConfigDomain,
+    error::service::ServiceError,
     infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
 };
 
@@ -158,7 +158,9 @@ impl TaskManager {
                         }
                     }
 
-                    if let Ok(pool) = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool() {
+                    if let Ok(pool) =
+                        crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
+                    {
                         let mut repo =
                             wallet_database::factory::RepositoryFactory::repo(pool.clone());
                         let _ = repo.task_failed(&task_id).await;
@@ -170,7 +172,9 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool() {
+                        if let Ok(pool) =
+                            crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
+                        {
                             let mut repo =
                                 wallet_database::factory::RepositoryFactory::repo(pool.clone());
                             let _ = repo.task_hang_up(&task_id).await;
@@ -216,7 +220,10 @@ impl TaskManager {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
@@ -261,7 +268,9 @@ impl TaskManager {
         Ok(())
     }
 
-    async fn handle_task(task_entity: &TaskQueueEntity) -> Result<(), crate::error::service::ServiceError> {
+    async fn handle_task(
+        task_entity: &TaskQueueEntity,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 

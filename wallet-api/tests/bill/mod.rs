@@ -104,7 +104,7 @@ async fn test_sync_bill_by_address() -> Result<()> {
 }
 
 #[tokio::test]
-async fn recent_bill() ->Result<()> {
+async fn recent_bill() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let symbol = "TON".to_string();

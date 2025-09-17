@@ -25,7 +25,9 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         let mut tx = self.repo;
         let r#type = notification.type_name();
         let content = notification.serialize()?;
-        tx.upsert(id, &r#type, content, status).await.map_err(crate::error::service::ServiceError::Database)?;
+        tx.upsert(id, &r#type, content, status)
+            .await
+            .map_err(crate::error::service::ServiceError::Database)?;
 
         Ok(())
     }
@@ -52,7 +54,9 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         reqs: &[CreateSystemNotificationEntity],
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
-        tx.upsert_multi_with_key_value(reqs).await.map_err(crate::error::service::ServiceError::Database)?;
+        tx.upsert_multi_with_key_value(reqs)
+            .await
+            .map_err(crate::error::service::ServiceError::Database)?;
         Ok(())
     }
 
@@ -62,7 +66,9 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         status: i8,
     ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
-        tx.update_status(id, status).await.map_err(crate::error::service::ServiceError::Database)?;
+        tx.update_status(id, status)
+            .await
+            .map_err(crate::error::service::ServiceError::Database)?;
 
         Ok(())
     }
@@ -71,11 +77,16 @@ impl<T: SystemNotificationRepoTrait> SystemNotificationService<T> {
         self,
         page: i64,
         page_size: i64,
-    ) -> Result<wallet_database::pagination::Pagination<SystemNotification>, crate::error::service::ServiceError>
-    {
+    ) -> Result<
+        wallet_database::pagination::Pagination<SystemNotification>,
+        crate::error::service::ServiceError,
+    > {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let list = tx.list(page, page_size).await.map_err(crate::error::service::ServiceError::Database)?;
+        let list = tx
+            .list(page, page_size)
+            .await
+            .map_err(crate::error::service::ServiceError::Database)?;
 
         let mut res = Vec::new();
         for notify in list.data {

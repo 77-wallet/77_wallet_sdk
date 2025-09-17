@@ -1,13 +1,13 @@
 use crate::{
     api::ReturnType,
     infrastructure::swap_client::DefaultQuoteResp,
+    manager::WalletManager,
     request::transaction::{ApproveReq, QuoteReq, SwapReq, SwapTokenListReq},
     response_vo::{
         EstimateFeeResp,
         swap::{ApiQuoteResp, ApproveList, SwapTokenInfo},
     },
     service::swap::SwapServer,
-    manager::WalletManager,
 };
 use wallet_database::pagination::Pagination;
 use wallet_transport_backend::api::swap::ChainDex;

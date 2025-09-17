@@ -88,7 +88,11 @@ impl PermissionService {
         consumer.set_extra_fee(100 * consts::TRX_VALUE);
 
         if balance.to::<i64>() < consumer.transaction_fee_i64() {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                ),
+            ));
         }
 
         // 广播交易交易事件
@@ -142,7 +146,10 @@ impl PermissionService {
     }
 
     // 上报后端
-    async fn upload_backend(&self, params: PermissionAcceptReq) -> Result<(), crate::error::service::ServiceError> {
+    async fn upload_backend(
+        &self,
+        params: PermissionAcceptReq,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.permission_accept(params).await?)
     }
@@ -311,9 +318,13 @@ impl PermissionService {
                     )));
                 }
             }
-            _ => Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(crate::error::business::permission::PermissionError::UnSupportOpType(
-                types.to_string(),
-            )))),
+            _ => Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Permission(
+                    crate::error::business::permission::PermissionError::UnSupportOpType(
+                        types.to_string(),
+                    ),
+                ),
+            )),
         }
     }
 

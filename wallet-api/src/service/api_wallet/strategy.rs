@@ -23,7 +23,10 @@ impl StrategyService {
         Ok(())
     }
 
-    pub async fn query_collect_strategy(self, uid: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn query_collect_strategy(
+        self,
+        uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend_api.query_collect_strategy(&uid).await?;
 
@@ -44,7 +47,10 @@ impl StrategyService {
         Ok(())
     }
 
-    pub async fn query_withdrawal_strategy(self, uid: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn query_withdrawal_strategy(
+        self,
+        uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend_api.query_withdrawal_strategy(&uid).await?;
 

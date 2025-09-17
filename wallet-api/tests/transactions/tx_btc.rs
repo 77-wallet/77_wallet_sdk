@@ -1,6 +1,6 @@
 use crate::get_manager;
-use wallet_api::request::transaction;
 use anyhow::Result;
+use wallet_api::request::transaction;
 
 // 余额测试
 #[tokio::test]

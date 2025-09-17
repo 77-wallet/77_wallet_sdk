@@ -115,18 +115,19 @@ impl AssetsService {
                     address, account_id, chain_code,
                 )
                 .await?
-                .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
-                    address.to_string(),
-                )))?;
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(address.to_string()),
+                ))?;
             account.address
         } else {
             address.to_string()
         };
         let assets_id = AssetsId::new(&address, chain_code, symbol, token_address);
-        let assets = tx
-            .assets_by_id(&assets_id)
-            .await?
-            .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFound))?;
+        let assets = tx.assets_by_id(&assets_id).await?.ok_or(
+            crate::error::business::BusinessError::Assets(
+                crate::error::business::assets::AssetsError::NotFound,
+            ),
+        )?;
 
         let balance = token_currencies.calculate_assets_entity(&assets).await?;
         let data: CoinAssets = (balance, assets).into();
@@ -333,7 +334,10 @@ impl AssetsService {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
 

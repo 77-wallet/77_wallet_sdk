@@ -1,4 +1,6 @@
-use crate::{api::ReturnType, service::api_wallet::asset::ApiAssetsService, manager::WalletManager};
+use crate::{
+    api::ReturnType, manager::WalletManager, service::api_wallet::asset::ApiAssetsService,
+};
 use wallet_database::entities::api_assets::ApiAssetsEntity;
 
 impl WalletManager {

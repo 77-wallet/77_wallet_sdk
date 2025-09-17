@@ -1,8 +1,6 @@
 use crate::get_manager;
 use anyhow::Result;
-use wallet_api::{
-    response_vo::{MultisigQueueFeeParams, transaction::TransferParams},
-};
+use wallet_api::response_vo::{MultisigQueueFeeParams, transaction::TransferParams};
 use wallet_database::entities::multisig_member::MemberVo;
 
 #[tokio::test]

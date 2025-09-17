@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::{collections::HashSet, sync::Arc};
-use wallet_database::repositories::{device::DeviceRepo, wallet::WalletRepoTrait};
+use wallet_database::repositories::{
+    api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, device::DeviceRepo,
+    wallet::WalletRepoTrait,
+};
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
@@ -10,8 +13,8 @@ use wallet_transport_backend::{
 };
 
 use crate::{
-    messaging::notify::FrontendNotifyEvent,
     domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain},
+    messaging::notify::FrontendNotifyEvent,
 };
 pub struct BackendTaskHandle;
 
@@ -98,11 +101,17 @@ impl EndpointHandler for DefaultHandler {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         if device.is_init != 1 {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         }
         // let invite_code = ConfigDomain::get_invite_code().await?;
         // if invite_code.status.is_none() {
@@ -140,21 +149,14 @@ impl EndpointHandler for SpecialHandler {
                 repo.device_init().await?;
             }
             endpoint::KEYS_V2_INIT => {
-                // let invite_code = ConfigDomain::get_invite_code().await?;
-                // if invite_code.status.is_none() {
-                //     return Err(crate::BusinessError::Device(
-                //         crate::DeviceError::InviteStatusNotConfirmed,
-                //     )
-                //     .into());
-                // }
-
                 let status = ConfigDomain::get_keys_reset_status().await?;
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
-                    return Err(
-                        crate::error::business::BusinessError::Config(crate::error::business::config::ConfigError::KeysNotReset).into()
-                    );
+                    return Err(crate::error::business::BusinessError::Config(
+                        crate::error::business::config::ConfigError::KeysNotReset,
+                    )
+                    .into());
                 }
 
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
@@ -175,18 +177,91 @@ impl EndpointHandler for SpecialHandler {
                 use wallet_database::repositories::wallet::WalletRepoTrait as _;
                 repo.wallet_init(&req.uid).await?;
             }
+            endpoint::old_wallet::OLD_KEYS_V2_INIT => {
+                let status = ConfigDomain::get_keys_reset_status().await?;
+                if let Some(status) = status
+                    && let Some(false) = status.status
+                {
+                    return Err(crate::error::business::BusinessError::Config(
+                        crate::error::business::config::ConfigError::KeysNotReset,
+                    )
+                    .into());
+                }
+
+                let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
+
+                // TODO 先单独在这里发送事件，后期修改为统一处理
+                #[cfg(not(feature = "prod"))]
+                if let Err(ref e) = res {
+                    let message = serde_json::json!({
+                        "event": "keys_init_fail",
+                        "message": e.to_string(),
+                    });
+                    let _r = FrontendNotifyEvent::send_debug(message).await;
+                }
+                res?;
+                let req: wallet_transport_backend::request::KeysInitReq =
+                    wallet_utils::serde_func::serde_from_value(body)?;
+                ApiWalletRepo::mark_init(&pool, &req.uid).await?;
+            }
+
+            endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {
+                let status = ConfigDomain::get_keys_reset_status().await?;
+                if let Some(status) = status
+                    && let Some(false) = status.status
+                {
+                    return Err(crate::error::business::BusinessError::Config(
+                        crate::error::business::config::ConfigError::KeysNotReset,
+                    )
+                    .into());
+                }
+
+                let req: wallet_transport_backend::request::AddressBatchInitReq =
+                    wallet_utils::serde_func::serde_from_value(body.clone())?;
+
+                for address in req.0 {
+                    let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
+
+                    match wallet {
+                        Some(wallet) => {
+                            if wallet.is_init == 1 {
+                                ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
+                                    .await?;
+                                continue;
+                            } else {
+                                return Err(crate::error::business::BusinessError::Wallet(
+                                    crate::error::business::wallet::WalletError::NotInit,
+                                )
+                                .into());
+                            }
+                        }
+                        None => {
+                            return Err(crate::error::business::BusinessError::Wallet(
+                                crate::error::business::wallet::WalletError::NotFound,
+                            )
+                            .into());
+                        }
+                    }
+                }
+
+                let res = backend.post_req_str::<()>(endpoint, &body).await;
+                res?;
+            }
+
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-                    return Err(
-                        crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into()
-                    );
+                    return Err(crate::error::business::BusinessError::Device(
+                        crate::error::business::device::DeviceError::Uninitialized,
+                    )
+                    .into());
                 };
 
                 if device.is_init != 1 {
-                    return Err(
-                        crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into()
-                    );
+                    return Err(crate::error::business::BusinessError::Device(
+                        crate::error::business::device::DeviceError::Uninitialized,
+                    )
+                    .into());
                 }
 
                 let req: wallet_transport_backend::request::SetInviteeStatusReq =
@@ -211,9 +286,10 @@ impl EndpointHandler for SpecialHandler {
                 if let Some(status) = status
                     && let Some(false) = status.status
                 {
-                    return Err(
-                        crate::error::business::BusinessError::Config(crate::error::business::config::ConfigError::KeysNotReset).into()
-                    );
+                    return Err(crate::error::business::BusinessError::Config(
+                        crate::error::business::config::ConfigError::KeysNotReset,
+                    )
+                    .into());
                 }
 
                 let req: wallet_transport_backend::request::AddressBatchInitReq =
@@ -236,9 +312,10 @@ impl EndpointHandler for SpecialHandler {
                             }
                         }
                         None => {
-                            return Err(
-                                crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound).into()
-                            );
+                            return Err(crate::error::business::BusinessError::Wallet(
+                                crate::error::business::wallet::WalletError::NotFound,
+                            )
+                            .into());
                         }
                     }
                 }
@@ -337,7 +414,9 @@ impl EndpointHandler for SpecialHandler {
             _ => {
                 // 未知的 endpoint
                 tracing::warn!("unknown endpoint: {}", endpoint);
-                Err(crate::error::service::ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound))?;
+                Err(crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::BackendEndpointNotFound,
+                ))?;
             }
         }
 

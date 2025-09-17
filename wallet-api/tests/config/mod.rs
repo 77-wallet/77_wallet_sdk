@@ -1,6 +1,6 @@
 use crate::get_manager;
-use wallet_api::domain::app::config::ConfigDomain;
 use anyhow::Result;
+use wallet_api::domain::app::config::ConfigDomain;
 
 #[tokio::test]
 async fn test_config_list() -> Result<()> {

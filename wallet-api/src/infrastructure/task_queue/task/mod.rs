@@ -104,7 +104,9 @@ impl Tasks {
         Ok(create_entities)
     }
 
-    async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::error::service::ServiceError> {
+    async fn dispatch_tasks(
+        entities: Vec<TaskQueueEntity>,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let task_sender = crate::context::CONTEXT.get().unwrap().get_global_task_manager();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -229,12 +231,15 @@ impl TryFrom<&TaskQueueEntity> for Box<dyn TaskTrait> {
                     builder(&value.request_body)
                 } else {
                     Err(crate::error::service::ServiceError::System(
-                        crate::error::system::SystemError::Service(format!("Unknown task: {:?}", name))
+                        crate::error::system::SystemError::Service(format!(
+                            "Unknown task: {:?}",
+                            name
+                        )),
                     ))
                 }
             }
             _ => Err(crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::Service("Unsupported TaskName type".to_string())
+                crate::error::system::SystemError::Service("Unsupported TaskName type".to_string()),
             )),
         }
     }

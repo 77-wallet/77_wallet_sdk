@@ -1,8 +1,8 @@
 use crate::{
     api::ReturnType,
+    manager::WalletManager,
     response_vo::app::{GetConfigRes, GlobalMsg},
     service::app::AppService,
-    manager::WalletManager,
 };
 use wallet_database::entities::config::{ConfigEntity, MinValueSwitchConfig};
 use wallet_transport_backend::response_vo::app::{
@@ -99,16 +99,12 @@ impl WalletManager {
         &self,
         symbol: String,
     ) -> ReturnType<Option<MinValueSwitchConfig>> {
-        AppService::new(self.repo_factory.resource_repo())
-            .get_min_value_config(symbol)
-            .await
+        AppService::new(self.repo_factory.resource_repo()).get_min_value_config(symbol).await
     }
 
     // app 自己请求后端
     pub async fn request(&self, endpoint: String, body: String) -> ReturnType<serde_json::Value> {
-        AppService::new(self.repo_factory.resource_repo())
-            .request_backend(&endpoint, body)
-            .await
+        AppService::new(self.repo_factory.resource_repo()).request_backend(&endpoint, body).await
     }
 
     // 全局的msg
@@ -118,9 +114,7 @@ impl WalletManager {
 
     /// 设置邀请码
     pub async fn set_invite_code(&self, invite_code: Option<String>) -> ReturnType<()> {
-        AppService::new(self.repo_factory.resource_repo())
-            .set_invite_code(invite_code)
-            .await
+        AppService::new(self.repo_factory.resource_repo()).set_invite_code(invite_code).await
     }
 
     pub async fn backend_config(&self) -> ReturnType<std::collections::HashMap<String, String>> {
