@@ -1,14 +1,11 @@
 use crate::{
-    api::ReturnType, response_vo::wallet::CreateWalletRes, service::wallet::WalletService,
-    manager::WalletManager,
+    api::ReturnType, manager::WalletManager, request::wallet::CreateWalletReq,
+    response_vo::wallet::CreateWalletRes, service::wallet::WalletService,
 };
-use crate::request::wallet::CreateWalletReq;
 
 impl WalletManager {
     pub async fn encrypt_password(&self, password: &str) -> ReturnType<String> {
-        WalletService::new(self.repo_factory.resource_repo())
-            .encrypt_password(password)
-            .await
+        WalletService::new(self.repo_factory.resource_repo()).encrypt_password(password).await
     }
 
     pub async fn validate_password(&self, encrypted_password: &str) -> ReturnType<()> {
@@ -18,9 +15,7 @@ impl WalletManager {
     }
 
     pub async fn switch_wallet(&self, wallet_address: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
-            .switch_wallet(wallet_address)
-            .await
+        WalletService::new(self.repo_factory.resource_repo()).switch_wallet(wallet_address).await
     }
 
     pub async fn edit_wallet_name(
@@ -121,9 +116,7 @@ impl WalletManager {
     }
 
     pub async fn upgrade_algorithm(&self, password: &str) -> ReturnType<()> {
-        WalletService::new(self.repo_factory.resource_repo())
-            .upgrade_algorithm(password)
-            .await
+        WalletService::new(self.repo_factory.resource_repo()).upgrade_algorithm(password).await
     }
 }
 

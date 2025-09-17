@@ -1,4 +1,6 @@
-use crate::{api::ReturnType, service::api_wallet::fee::TransferFeeService, manager::WalletManager};
+use crate::{
+    api::ReturnType, manager::WalletManager, service::api_wallet::fee::TransferFeeService,
+};
 use wallet_database::entities::api_fee::ApiFeeEntity;
 
 impl WalletManager {

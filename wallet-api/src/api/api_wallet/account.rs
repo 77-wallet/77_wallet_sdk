@@ -1,8 +1,8 @@
 use crate::{
-    api::ReturnType, messaging::mqtt::topics::api_wallet::AddressAllockType,
+    api::ReturnType, manager::WalletManager,
+    messaging::mqtt::topics::api_wallet::AddressAllockType,
     request::api_wallet::account::CreateApiAccountReq,
     service::api_wallet::account::ApiAccountService,
-    manager::WalletManager,
 };
 use wallet_database::entities::api_account::ApiAccountEntity;
 
@@ -35,9 +35,7 @@ impl WalletManager {
         index: Option<i32>,
         uid: &str,
     ) -> ReturnType<()> {
-        ApiAccountService::new()
-            .expand_address(address_allock_type, chain_code, index, uid)
-            .await
+        ApiAccountService::new().expand_address(address_allock_type, chain_code, index, uid).await
     }
 
     pub async fn get_api_account_private_key(
@@ -46,9 +44,8 @@ impl WalletManager {
         chain_code: &str,
         password: &str,
     ) -> ReturnType<String> {
-        let res = ApiAccountService::new()
-            .get_account_private_key(address, chain_code, password)
-            .await?;
+        let res =
+            ApiAccountService::new().get_account_private_key(address, chain_code, password).await?;
         Ok(res.to_string())
     }
 

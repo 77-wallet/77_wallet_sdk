@@ -1,5 +1,6 @@
 use crate::{
     api::ReturnType,
+    manager::WalletManager,
     request::transaction,
     response_vo::{
         self,
@@ -8,7 +9,6 @@ use crate::{
         },
     },
     service::multisig_account::MultisigAccountService,
-    manager::WalletManager,
 };
 use wallet_database::{entities::multisig_member::MemberVo, pagination::Pagination};
 
@@ -25,9 +25,7 @@ impl WalletManager {
         // tracing::warn!("接收到前端参数{:?}", member_list);
 
         let service = MultisigAccountService::new(self.repo_factory.multisig_account_repo())?;
-        service
-            .crate_account(name, address, chain_code, threshold, member_list, address_type)
-            .await
+        service.crate_account(name, address, chain_code, threshold, member_list, address_type).await
     }
 
     pub async fn multisig_account_by_id(
@@ -127,7 +125,7 @@ impl WalletManager {
     pub async fn fetch_deposit_address(&self, chain_code: String) -> ReturnType<String> {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .fetch_deposit_address(&chain_code)
-            .await  
+            .await
     }
 
     pub async fn whether_multisig_address(

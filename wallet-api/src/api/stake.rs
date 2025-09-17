@@ -1,5 +1,6 @@
 use super::ReturnType;
 use crate::{
+    manager::WalletManager,
     request::stake::{
         BatchDelegate, BatchUnDelegate, CancelAllUnFreezeReq, DelegateReq, FreezeBalanceReq,
         UnDelegateReq, UnFreezeBalanceReq, VoteWitnessReq, WithdrawBalanceReq,
@@ -14,7 +15,6 @@ use crate::{
         },
     },
     service::stake::StackService,
-    manager::WalletManager,
 };
 use wallet_database::pagination::Pagination;
 use wallet_transport_backend::response_vo::stake::SystemEnergyResp;

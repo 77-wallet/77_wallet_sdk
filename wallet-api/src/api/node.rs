@@ -1,4 +1,4 @@
-use crate::{api::ReturnType, service::node::NodeService, manager::WalletManager};
+use crate::{api::ReturnType, manager::WalletManager, service::node::NodeService};
 
 impl WalletManager {
     pub async fn add_node(
@@ -26,9 +26,7 @@ impl WalletManager {
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::chain::NodeDynData>> {
-        NodeService::new(self.repo_factory.resource_repo())
-            .get_node_dynamic_data(chain_code)
-            .await
+        NodeService::new(self.repo_factory.resource_repo()).get_node_dynamic_data(chain_code).await
     }
 }
 
