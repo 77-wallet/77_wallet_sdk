@@ -1,6 +1,8 @@
 use wallet_database::entities::api_collect::ApiCollectEntity;
 
-use crate::{api::ReturnType, service::api_wallet::collect::CollectService, manager::WalletManager};
+use crate::{
+    api::ReturnType, manager::WalletManager, service::api_wallet::collect::CollectService,
+};
 
 impl WalletManager {
     pub async fn get_api_collect_order_list(&self) -> ReturnType<Vec<ApiCollectEntity>> {

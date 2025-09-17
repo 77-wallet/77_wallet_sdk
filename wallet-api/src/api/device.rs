@@ -1,8 +1,6 @@
 use crate::{
-    api::ReturnType,
+    api::ReturnType, manager::WalletManager, request::devices::InitDeviceReq,
     service::device::DeviceService,
-    manager::WalletManager,
-    request::devices::InitDeviceReq,
 };
 
 impl WalletManager {

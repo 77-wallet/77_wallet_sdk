@@ -1,12 +1,12 @@
 use super::ReturnType;
 use crate::{
+    manager::WalletManager,
     request::permission::PermissionReq,
     response_vo::{
         EstimateFeeResp,
         permission::{AccountPermission, ManagerPermissionResp, PermissionList},
     },
     service::permission::PermissionService,
-    manager::WalletManager,
 };
 
 impl WalletManager {

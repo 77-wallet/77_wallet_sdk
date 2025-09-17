@@ -7,16 +7,17 @@ use crate::{
 pub struct ApiWithdrawRepo;
 
 impl ApiWithdrawRepo {
-    pub async fn list_api_withdraw(pool: &DbPool) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
-        ApiWithdrawDao::all_api_withdraw(pool.as_ref()).await
+    pub async fn list_api_withdraw(pool: &DbPool, uid: &str) -> Result<Vec<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::all_api_withdraw(pool.as_ref(), uid).await
     }
 
     pub async fn page_api_withdraw(
         pool: &DbPool,
+        uid: &str,
         page: i64,
         page_size: i64,
     ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error> {
-        ApiWithdrawDao::page_api_withdraw(pool.as_ref(), page, page_size).await
+        ApiWithdrawDao::page_api_withdraw(pool.as_ref(), uid, page, page_size).await
     }
 
     pub async fn page_api_withdraw_with_status(

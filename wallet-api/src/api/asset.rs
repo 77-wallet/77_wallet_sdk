@@ -1,11 +1,11 @@
 use crate::{
     api::ReturnType,
+    manager::WalletManager,
     response_vo::{
         assets::{AccountChainAssetList, GetAccountAssetsRes},
         chain::ChainList,
     },
     service::asset::AssetsService,
-    manager::WalletManager,
 };
 
 impl WalletManager {
@@ -229,8 +229,9 @@ mod test {
         let chain_code = "ton";
         let symbol = "TON";
         let token_address = Some("".to_string());
-        let res =
-            wallet_manager.get_assets(address, account_id, chain_code, symbol, token_address).await?;
+        let res = wallet_manager
+            .get_assets(address, account_id, chain_code, symbol, token_address)
+            .await?;
         tracing::info!("res: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -368,7 +369,8 @@ mod test {
         let account_id = 2147483648;
         // let account_id = 1;
         // let address = "0xA8eEE0468F2D87D7603ec72c988c5f24C11fEd32";
-        let account_asset = wallet_manager.get_all_account_assets(account_id, Some(address)).await?;
+        let account_asset =
+            wallet_manager.get_all_account_assets(account_id, Some(address)).await?;
         tracing::info!("account_asset: {account_asset:?}");
 
         Ok(())

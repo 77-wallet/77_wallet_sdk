@@ -7,8 +7,8 @@ use crate::{
 pub struct ApiFeeRepo;
 
 impl ApiFeeRepo {
-    pub async fn list_api_fee(pool: &DbPool) -> Result<Vec<ApiFeeEntity>, crate::Error> {
-        ApiFeeDao::all_api_fee(pool.as_ref()).await
+    pub async fn list_api_fee(pool: &DbPool, uid: &str) -> Result<Vec<ApiFeeEntity>, crate::Error> {
+        ApiFeeDao::all_api_fee(pool.as_ref(), uid).await
     }
 
     pub async fn page_api_fee(

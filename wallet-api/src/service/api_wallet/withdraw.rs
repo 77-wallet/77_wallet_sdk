@@ -1,6 +1,7 @@
 use crate::{
     domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
     request::api_wallet::trans::ApiWithdrawReq,
+    error::service::ServiceError,
 };
 use wallet_database::{
     entities::api_withdraw::ApiWithdrawEntity, repositories::api_withdraw::ApiWithdrawRepo,
@@ -14,11 +15,22 @@ impl WithdrawService {
         Self {}
     }
 
-    pub async fn get_withdraw_order_list(
+    pub async fn list_withdraw_order(
         &self,
+        uid: &str,
     ) -> Result<Vec<ApiWithdrawEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::list_api_withdraw(&pool).await.map_err(|e| e.into())
+        ApiWithdrawRepo::list_api_withdraw(&pool, uid).await.map_err(|e| e.into())
+    }
+
+    pub async fn page_withdraw_order(
+        &self,
+        uid: &str,
+        page: i64,
+        page_size: i64,
+    ) -> Result<(i64, Vec<ApiWithdrawEntity>), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ApiWithdrawRepo::page_api_withdraw(&pool, uid, page, page_size).await.map_err(|e| e.into())
     }
 
     pub async fn withdrawal_order(
