@@ -366,5 +366,4 @@ impl ApiWalletDomain {
             .await?;
         Ok(())
     }
-    
 }

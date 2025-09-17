@@ -107,7 +107,7 @@ impl ApiWalletDao {
             sql.push_str(&conditions.join(" AND "));
         }
         let mut query = sqlx::query_as::<_, ApiWalletEntity>(&sql);
-        
+
         if let Some(api_wallet_type) = api_wallet_type {
             query = query.bind(api_wallet_type);
         }

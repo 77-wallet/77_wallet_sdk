@@ -2,14 +2,14 @@ use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::{api_wallet::wallet::BindAppIdReq, LanguageInitReq};
+use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
 
 use crate::{
     api::ReturnType,
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    response_vo::api_wallet::wallet::ApiWalletInfo,
 };
-use crate::response_vo::api_wallet::wallet::ApiWalletInfo;
 
 pub struct ApiWalletService {}
 
@@ -24,9 +24,9 @@ impl ApiWalletService {
     ) -> ReturnType<Vec<ApiWalletInfo>> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let li = ApiWalletRepo::list(&pool, Some(api_wallet_type)).await?;
-        let mut  infos : Vec<ApiWalletInfo> = vec![];
+        let mut infos: Vec<ApiWalletInfo> = vec![];
         for e in li {
-            infos.push(ApiWalletInfo{
+            infos.push(ApiWalletInfo {
                 address: e.address.clone(),
                 uid: e.uid.clone(),
                 name: e.name.clone(),

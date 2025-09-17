@@ -5,7 +5,10 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct ApiWithdrawDao;
 
 impl ApiWithdrawDao {
-    pub async fn all_api_withdraw<'a, E>(exec: E, uid: &str) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
+    pub async fn all_api_withdraw<'a, E>(
+        exec: E,
+        uid: &str,
+    ) -> Result<Vec<ApiWithdrawEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -33,7 +36,8 @@ impl ApiWithdrawDao {
             .fetch_one(exec.clone())
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
-        let sql = "SELECT * FROM api_withdraws where uid = ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        let sql =
+            "SELECT * FROM api_withdraws where uid = ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
         let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
             .bind(uid)
             .bind(page_size)
