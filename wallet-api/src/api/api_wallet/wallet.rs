@@ -1,19 +1,16 @@
 use wallet_database::entities::api_wallet::ApiWalletType;
 
 use crate::{
-    api::ReturnType, manager::WalletManager, service::api_wallet::wallet::ApiWalletService,
+    api::ReturnType, manager::WalletManager, response_vo::api_wallet::wallet::ApiWalletInfo,
+    service::api_wallet::wallet::ApiWalletService,
 };
-use crate::response_vo::api_wallet::wallet::ApiWalletInfo;
 
 impl WalletManager {
-
     pub async fn get_api_wallet_list(
         &self,
         api_wallet_type: ApiWalletType,
     ) -> ReturnType<Vec<ApiWalletInfo>> {
-        ApiWalletService::new()
-            .get_api_wallet_list(api_wallet_type)
-            .await
+        ApiWalletService::new().get_api_wallet_list(api_wallet_type).await
     }
 
     pub async fn create_api_wallet(
@@ -88,7 +85,6 @@ impl WalletManager {
     //         .await?
     //         .into()
     // }
-
 
     // pub async fn physical_delete_api_wallet(&self, address: &str) -> ReturnType<()> {
     //     WalletService::new(self.repo_factory.resource_repo())

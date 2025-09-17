@@ -130,6 +130,7 @@ impl ApiWalletService {
                 )
                 .await?
             }
+            _ => {}
         }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
