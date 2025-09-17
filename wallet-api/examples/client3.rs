@@ -25,10 +25,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account_name = "ccccc";
     let is_default_name = true;
     let wallet_password = "q1111111";
-    let invite_code = None;
     // let api_wallet_type = ApiWalletType::SubAccount;
-    let api_wallet_type = ApiWalletType::Withdrawal;
-    let wallet = wallet_manager
+    let withdrawal_uid = wallet_manager
         .create_api_wallet(
             language_code,
             phrase,
@@ -37,20 +35,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             account_name,
             is_default_name,
             wallet_password,
-            invite_code,
-            api_wallet_type,
+            None,
+            ApiWalletType::Withdrawal,
         )
         .await?;
-    tracing::warn!("wallet ------------------------ 1: {wallet:#?}");
+    tracing::warn!("wallet ------------------------ 1: {withdrawal_uid:#?}");
+
+    let wallet_uid = wallet_manager
+        .create_api_wallet(
+            language_code,
+            phrase,
+            salt,
+            wallet_name,
+            account_name,
+            is_default_name,
+            wallet_password,
+            None,
+            ApiWalletType::SubAccount,
+        )
+        .await?;
+
+    let res = wallet_manager
+        .bind_merchant("app_id", "test_merchain", &wallet_uid, &withdrawal_uid)
+        .await?;
+    tracing::info!("bind_merchant ------------------- 3: {res:#?}");
 
     // 获取订单记录
-    let order_list = wallet_manager.get_api_withdraw_order_list("").await?;
+    let order_list = wallet_manager.list_api_withdraw_order(&wallet_uid).await?;
     tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
     // 绑定钱包
     // let key = "app_id";
     // let merchain_id = "test_merchain";
-    let uid = "04de3a5eff89883fecd1469fbc7621f37122c83d6680b95ad5c67cd9a141cd4e";
+
     //
     // let res = wallet_manager.bind_merchant(key, merchain_id, uid).await;
     // tracing::info!("res --------------------- 3: {res:?}");
@@ -78,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let value = "0.000001";
     let trade_no = "0x0000000125";
     let res1 = wallet_manager
-        .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, uid)
+        .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, &wallet_uid)
         .await;
     tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
 

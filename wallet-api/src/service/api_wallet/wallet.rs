@@ -27,7 +27,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
@@ -147,7 +147,7 @@ impl ApiWalletService {
             .await?;
 
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
-        Ok(())
+        Ok(uid)
     }
 
     pub async fn import_wallet(

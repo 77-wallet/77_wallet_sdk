@@ -25,6 +25,7 @@ impl WalletManager {
 
         if let Err(e) = res {
             tracing::error!("sync_assets error: {}", e);
+            return Err(e);
         }
 
         Ok(())

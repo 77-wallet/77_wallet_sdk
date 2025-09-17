@@ -16,7 +16,7 @@ impl WalletManager {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> ReturnType<()> {
+    ) -> ReturnType<String> {
         ApiWalletService::new()
             .create_wallet(
                 language_code,

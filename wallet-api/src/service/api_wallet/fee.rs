@@ -13,9 +13,10 @@ impl TransferFeeService {
 
     pub async fn get_transfer_fee_order_list(
         &self,
+        uid: &str,
     ) -> Result<Vec<ApiFeeEntity>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::list_api_fee(&pool).await.map_err(|e| e.into())
+        ApiFeeRepo::list_api_fee(&pool, uid).await.map_err(|e| e.into())
     }
 
     pub async fn transfer_fee_order(
