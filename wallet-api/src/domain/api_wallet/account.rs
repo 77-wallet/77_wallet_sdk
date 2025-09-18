@@ -1,6 +1,6 @@
 use crate::{
     domain::app::config::ConfigDomain, error::service::ServiceError,
-    response_vo::account::CreateAccountRes,
+    response_vo::account::CreateAccountRes, service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_crypto::{
@@ -293,82 +293,32 @@ impl ApiAccountDomain {
         result
     }
 
-    // pub async fn get_addresses(
-    //     &self,
-    //     repo: &mut ResourcesRepo,
-    //     address: &str,
-    //     account_id: Option<u32>,
-    //     chain_codes: Vec<String>,
-    //     is_multisig: Option<bool>,
-    // ) -> Result<Vec<AddressChainCode>, ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    //     let mut account_addresses = Vec::new();
+    pub async fn get_addresses(
+        address: &str,
+        account_id: Option<u32>,
+        chain_codes: Vec<String>,
+    ) -> Result<Vec<AddressChainCode>, ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let mut account_addresses = Vec::new();
 
-    //     // let chain_codes = if let Some(chain_code) = &chain_code {
-    //     //     vec![chain_code.to_string()]
-    //     // } else {
-    //     //     vec![]
-    //     // };
+        // 获取钱包下的这个账户的所有地址
+        let accounts =
+            ApiAccountRepo::api_account_list(&pool, Some(address), account_id, chain_codes).await?;
 
-    //     if let Some(is_multisig) = is_multisig {
-    //         if is_multisig {
-    //             tracing::debug!("开始查询多签账户 is_multisig: {is_multisig}");
-    //             tracing::debug!("多签账户地址 address: {address}");
+        for account in accounts {
+            if !account_addresses.iter().any(|address: &AddressChainCode| {
+                address.address == account.address && address.chain_code == account.chain_code
+            }) {
+                account_addresses.push(AddressChainCode {
+                    address: account.address,
+                    chain_code: account.chain_code,
+                });
+            }
+        }
 
-    //             // 查询多签账户下的资产
-    //             let account =
-    //                 super::multisig::MultisigDomain::account_by_address(address, true, &pool)
-    //                     .await?;
-    //             tracing::debug!("查询成功 account: {account:?}");
-    //             account_addresses.push(AddressChainCode {
-    //                 address: account.address,
-    //                 chain_code: account.chain_code,
-    //             });
-    //         } else {
-    //             // 获取钱包下的这个账户的所有地址
-    //             let accounts = ApiAccountRepo:: api_account_list(
-    //                 &pool,
-    //                     Some(address),
-    //                     account_id,
-    //                     chain_codes,
-    //                 )
-    //                 .await?;
-
-    //             for account in accounts {
-    //                 if !account_addresses.iter().any(|address| {
-    //                     address.address == account.address
-    //                         && address.chain_code == account.chain_code
-    //                 }) {
-    //                     account_addresses.push(AddressChainCode {
-    //                         address: account.address,
-    //                         chain_code: account.chain_code,
-    //                     });
-    //                 }
-    //             }
-    //         }
-    //     } else {
-    //         // 获取钱包下的这个账户的所有地址
-    //         let accounts = repo
-    //             .account_list_by_wallet_address_and_account_id_and_chain_codes(
-    //                 Some(address),
-    //                 account_id,
-    //                 chain_codes,
-    //             )
-    //             .await?;
-    //         for account in accounts {
-    //             if !account_addresses.iter().any(|address| {
-    //                 address.address == account.address && address.chain_code == account.chain_code
-    //             }) {
-    //                 account_addresses.push(AddressChainCode {
-    //                     address: account.address,
-    //                     chain_code: account.chain_code,
-    //                 });
-    //             }
-    //         }
-    //     }
-    //     tracing::debug!("[get addresses] account_addresses: {account_addresses:?}");
-    //     Ok(account_addresses)
-    // }
+        tracing::debug!("[get addresses] account_addresses: {account_addresses:?}");
+        Ok(account_addresses)
+    }
 }
 
 #[cfg(test)]

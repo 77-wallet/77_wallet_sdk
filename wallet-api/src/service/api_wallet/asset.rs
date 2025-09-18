@@ -1,5 +1,8 @@
 use crate::{
-    domain::{api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain},
+    domain::{
+        api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain},
+        assets::AssetsDomain,
+    },
     response_vo::api_wallet::assets::ApiAccountChainAssetList,
 };
 
@@ -65,10 +68,8 @@ impl ApiAssetsService {
         // let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
-        // let account_addresses = self
-        //     .account_domain
-        //     .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
-        //     .await?;
+        // let account_addresses =
+        //     ApiAccountDomain::get_addresses(wallet_address, account_id, chain_codes).await?;
 
         // let mut res = AccountChainAssetList::default();
         // let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
