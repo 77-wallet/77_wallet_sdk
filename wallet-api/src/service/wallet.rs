@@ -344,7 +344,15 @@ impl WalletService {
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         // uid类型检查
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        backend.keys_uid_check(&uid).await?;
+        let uid_check = backend.keys_uid_check(&uid).await?;
+
+        if uid_check.status
+            == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::ApiWallet
+        {
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
+            )));
+        }
         let seed = seed.clone();
 
         // 检查钱包状态

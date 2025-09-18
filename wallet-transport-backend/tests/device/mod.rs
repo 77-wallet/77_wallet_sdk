@@ -94,11 +94,11 @@ async fn test_keys_init() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?; // Initialize the cryptor and API
 
     let req = KeysInitReq {
-        uid: "dead3430844c05f837d2301d7b3bc2f3".to_string(),
-        sn: "dead3430844c05f837d2301d7b3bc2f3".to_string(),
-        client_id: Some("guanxiang".to_string()),
+        uid: "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c".to_string(),
+        sn: "5a748300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa5949d".to_string(),
+        client_id: Some("df1b2982f3240f55fa8769e38e747010".to_string()),
         device_type: Some("ANDROID".to_string()),
-        name: "asad".to_string(),
+        name: "api_wallet".to_string(),
         invite_code: "".to_string(),
     };
     let res = backend_api.keys_init(&req).await.unwrap();

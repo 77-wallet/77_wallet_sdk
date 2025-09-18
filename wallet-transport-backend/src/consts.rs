@@ -73,6 +73,8 @@ pub mod endpoint {
     pub mod old_wallet {
         pub const OLD_KEYS_V2_INIT: &str = "owallet/keys/v2/init";
         pub const OLD_ADDRESS_BATCH_INIT: &str = "owallet/address/batch/init";
+        /// uid 检查
+        pub const OLD_KEYS_UID_CHECK: &str = "owallet/keys/uidCheck";
     }
 
     pub mod api_wallet {
@@ -90,8 +92,6 @@ pub mod endpoint {
         pub const APP_ID_UNBIND: &str = "awallet/aw/appid/unbind";
         /// 地址池扩容
         pub const ADDRESS_POOL_EXPAND: &str = "awallet/aw/address/expand";
-        /// uid 检查
-        pub const KEYS_UID_CHECK: &str = "awallet/keys/uidCheck";
 
         /// 提币策略保存
         pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "awallet/aw/strategy/withdrawal/save";

@@ -1,5 +1,8 @@
 use crate::{
-    consts::endpoint::api_wallet::{APP_ID_BIND, APP_ID_UNBIND, KEYS_UID_CHECK},
+    consts::endpoint::{
+        api_wallet::{APP_ID_BIND, APP_ID_UNBIND},
+        old_wallet::OLD_KEYS_UID_CHECK,
+    },
     request::api_wallet::wallet::{BindAppIdReq, UnBindAppIdReq},
     response::BackendResponse,
     response_vo::api_wallet::wallet::KeysUidCheckRes,
@@ -12,7 +15,7 @@ impl BackendApi {
     pub async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, crate::Error> {
         let res = self
             .client
-            .post(KEYS_UID_CHECK)
+            .post(OLD_KEYS_UID_CHECK)
             .json(serde_json::json!({
                 "uid": uid
             }))
