@@ -1,7 +1,7 @@
 use wallet_transport_backend::request::api_wallet::strategy::{
     ChainConfig, SaveCollectStrategyReq, SaveWithdrawStrategyReq,
 };
-
+use wallet_transport_backend::response_vo::api_wallet::strategy::WithdrawStrategyResp;
 use crate::context::Context;
 
 pub struct StrategyService {
@@ -54,10 +54,9 @@ impl StrategyService {
     pub async fn query_withdrawal_strategy(
         self,
         uid: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<WithdrawStrategyResp, crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
-        backend_api.query_withdrawal_strategy(&uid).await?;
-
-        Ok(())
+        let res = backend_api.query_withdrawal_strategy(&uid).await?;
+        Ok(res)
     }
 }
