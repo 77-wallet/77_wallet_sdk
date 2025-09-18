@@ -1,7 +1,7 @@
 use wallet_database::entities::device::CreateDeviceEntity;
 use wallet_transport_backend::request::DeviceInitReq;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct InitDeviceReq {
     pub device_type: String,
     pub sn: String,

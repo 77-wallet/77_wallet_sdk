@@ -1,22 +1,12 @@
+use std::error::Error;
 use tokio_stream::StreamExt as _;
 use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
+use wallet_api::manager::WalletManager;
+use wallet_api::test::env::TestParams;
 use wallet_database::entities::api_wallet::ApiWalletType;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    wallet_utils::init_test_log();
-    let (wallet_manager, test_params) = get_manager().await?;
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
-    let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
-    wallet_manager.set_frontend_notify_sender(tx).await?;
-
-    wallet_manager.init(test_params.device_req).await?;
-
-    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
-    let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
-    tracing::info!("set_invite_code ------------------------0: {res:?}");
-
+async fn run(wallet_manager: &WalletManager, test_params : &TestParams)-> Result<(), Box<dyn std::error::Error>> {
     // 创建钱包
     let language_code = 1;
     let phrase = &test_params.create_wallet_req.phrase;
@@ -25,23 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account_name = "ccccc";
     let is_default_name = true;
     let wallet_password = "q1111111";
-    // let api_wallet_type = ApiWalletType::SubAccount;
     let withdrawal_uid = wallet_manager
-        .create_api_wallet(
-            language_code,
-            phrase,
-            salt,
-            wallet_name,
-            account_name,
-            is_default_name,
-            wallet_password,
-            None,
-            ApiWalletType::Withdrawal,
-        )
-        .await?;
-    tracing::warn!("wallet ------------------------ 1: {withdrawal_uid:#?}");
-
-    let wallet_uid = wallet_manager
         .create_api_wallet(
             language_code,
             phrase,
@@ -54,15 +28,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ApiWalletType::SubAccount,
         )
         .await?;
+    tracing::warn!("wallet ------------------------ 1: {withdrawal_uid:#?}");
 
-    let res = wallet_manager
-        .bind_merchant("app_id", "test_merchain", &wallet_uid, &withdrawal_uid)
-        .await?;
-    tracing::info!("bind_merchant ------------------- 3: {res:#?}");
+    // let wallet_uid = wallet_manager
+    //     .create_api_wallet(
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //         wallet_name,
+    //         account_name,
+    //         is_default_name,
+    //         wallet_password,
+    //         None,
+    //         ApiWalletType::Withdrawal,
+    //     )
+    //     .await?;
+
+    // let res = wallet_manager
+    //     .bind_merchant("app_id", "test_merchain", &wallet_uid, &withdrawal_uid)
+    //     .await?;
+    // tracing::info!("bind_merchant ------------------- 3: {res:#?}");
 
     // 获取订单记录
-    let order_list = wallet_manager.list_api_withdraw_order(&wallet_uid).await?;
-    tracing::info!("order_list ------------------- 2: {order_list:#?}");
+    // let order_list = wallet_manager.list_api_withdraw_order(&wallet_uid).await?;
+    // tracing::info!("order_list ------------------- 2: {order_list:#?}");
 
     // 绑定钱包
     // let key = "app_id";
@@ -73,8 +62,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("res --------------------- 3: {res:?}");
 
     // bnb
-    let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
-    let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
+    // let from = "0x4f31D44C05d6fDce4db64da2E9601BeE8ad9EA5e";
+    // let to = "0xF97c59fa5C130007CF51286185089d05FE45B69e";
 
     // tron
     // let from = "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n";
@@ -92,12 +81,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let from = "0xb69713b670ba3bfcfa7ea577005de40bf026e277b574773bc4c6f0adb7e1ced8";
     // let to = "0xd830497ecd7321d4e0e501d3f71689380e8e8883ee5e1597cf06b3b72a95d226";
 
-    let value = "0.000001";
-    let trade_no = "0x0000000125";
-    let res1 = wallet_manager
-        .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, &wallet_uid)
-        .await;
-    tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+    // let value = "0.000001";
+    // let trade_no = "0x0000000125";
+    // let res1 = wallet_manager
+    //     .api_withdrawal_order(from, to, value, "bnb", None, "BNB", trade_no, 1, &wallet_uid)
+    //     .await;
+    // tracing::info!("api_withdrawal_order ------------------- 4: {res1:#?}");
+    Ok(())
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    wallet_utils::init_test_log();
+    let (wallet_manager, test_params) = get_manager().await?;
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
+    let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
+    wallet_manager.set_frontend_notify_sender(tx).await?;
+
+    wallet_manager.init(test_params.device_req.clone()).await?;
+
+    let res = wallet_manager.set_invite_code(Some("I1912683353004912640".to_string())).await?;
+    let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+    tracing::info!("set_invite_code ------------------------0: {res:?}");
+
+
+    let res = run(&wallet_manager, &test_params).await;
+    match res {
+        Ok(_) => {}
+        Err(err) => {
+            tracing::error!(" =========================== run {}", err)
+        }
+    }
+
 
     // let topics = vec![
     //     "wallet/token/eth/usdc".to_string(),
