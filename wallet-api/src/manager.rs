@@ -25,7 +25,7 @@ impl WalletManager {
         config: crate::config::Config,
         dir: Dirs,
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
-        let base_path = infrastructure::log::LogBasePath(dir.get_log_dir());
+        let base_path = infrastructure::log::format::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
         // 以前的上报日志
         // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
@@ -84,11 +84,11 @@ impl WalletManager {
     ) -> Result<(), crate::error::service::ServiceError> {
         // 修改后的版本
         let format =
-            infrastructure::log::CustomEventFormat::new(app_code.to_string(), sn.to_string());
+            infrastructure::log::format::CustomEventFormat::new(app_code.to_string(), sn.to_string());
 
         let level = level.unwrap_or("info");
 
-        let path = infrastructure::log::LogBasePath(dirs.get_log_dir());
+        let path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
         infrastructure::log::init_logger(format, path, level)?;
 
         Ok(())
