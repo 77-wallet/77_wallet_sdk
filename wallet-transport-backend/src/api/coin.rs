@@ -96,7 +96,7 @@ impl BackendApi {
         &self,
         req: AllTokenQueryByPageReq,
     ) -> Result<CoinInfos, crate::Error> {
-        let endpoint = "/token/queryAllExcludeCustomByPage";
+        let endpoint = "token/queryAllExcludeCustomByPage";
 
         Ok(self.post_request::<_, CoinInfos>(endpoint, &req).await?)
     }
@@ -167,7 +167,7 @@ impl BackendApi {
     // 查询支持swap的代币
     pub async fn swappable_coin(&self) -> Result<Vec<CoinSwappable>, crate::Error> {
         let req = json!({});
-        let endpoint = "/token/swappable/list";
+        let endpoint = "token/swappable/list";
         let res = self.post_request::<_, CoinSwappableList>(endpoint, &req).await?;
 
         Ok(res.list)

@@ -202,6 +202,23 @@ impl ApiAccountDao {
             .await
     }
 
+    pub async fn api_account_list<'a, E>(
+        executor: E,
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+        chain_codes: Vec<String>,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_in("chain_code", &chain_codes)
+            .and_where_eq_opt("wallet_address", wallet_address)
+            .and_where_eq_opt("account_id", account_id)
+            .fetch_all(executor)
+            .await
+    }
+
     pub async fn find_all_by_wallet_address_index<'a, E>(
         exec: E,
         wallet_address: &str,

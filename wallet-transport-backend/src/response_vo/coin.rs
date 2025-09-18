@@ -20,8 +20,11 @@ pub struct CoinInfo {
     pub enable: bool,
     pub price: Option<f64>,
     // 币是否支持兑换
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub swappable: bool,
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub default_token: bool,
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub popular_token: bool,
     pub create_time: String,
     pub update_time: String,

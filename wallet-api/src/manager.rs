@@ -83,8 +83,10 @@ impl WalletManager {
         sn: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         // 修改后的版本
-        let format =
-            infrastructure::log::format::CustomEventFormat::new(app_code.to_string(), sn.to_string());
+        let format = infrastructure::log::format::CustomEventFormat::new(
+            app_code.to_string(),
+            sn.to_string(),
+        );
 
         let level = level.unwrap_or("info");
 

@@ -26,7 +26,9 @@ impl WalletManager {
         threshold: f64,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
-        StrategyService::new(self.ctx).update_withdrawal_strategy(uid, threshold, chain_config).await
+        StrategyService::new(self.ctx)
+            .update_withdrawal_strategy(uid, threshold, chain_config)
+            .await
     }
 
     pub async fn get_withdrawal_strategy(&self, uid: &str) -> ReturnType<WithdrawStrategyResp> {

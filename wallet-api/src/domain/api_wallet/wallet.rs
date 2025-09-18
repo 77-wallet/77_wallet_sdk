@@ -16,7 +16,11 @@ use crate::{
     domain::{
         api_wallet::account::ApiAccountDomain, app::config::ConfigDomain, chain::ChainDomain,
     },
-    infrastructure::task_queue::{backend:: {BackendApiTask, BackendApiTaskData}, CommonTask, task::Tasks},
+    infrastructure::task_queue::{
+        CommonTask,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
     messaging::mqtt::topics::api_wallet::AddressAllockType,
 };
 
@@ -326,7 +330,7 @@ impl ApiWalletDomain {
         }
         if created_count > 0 {
             let address_batch_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+                wallet_transport_backend::consts::endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT,
                 &address_batch_init_task_data,
             )?;
 

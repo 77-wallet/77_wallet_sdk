@@ -139,6 +139,16 @@ impl ApiAccountRepo {
     //     Ok(None)
     // }
 
+    pub async fn api_account_list(
+        pool: &DbPool,
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+        chain_codes: Vec<String>,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::api_account_list(pool.as_ref(), wallet_address, account_id, chain_codes)
+            .await?)
+    }
+
     pub async fn find_all_by_wallet_address_index(
         pool: &DbPool,
         wallet_address: &str,

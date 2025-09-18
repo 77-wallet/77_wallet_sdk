@@ -1,5 +1,6 @@
 use crate::{
-    api::ReturnType, manager::WalletManager, service::api_wallet::asset::ApiAssetsService,
+    api::ReturnType, manager::WalletManager, response_vo::api_wallet::assets::ApiAccountChainAsset,
+    service::api_wallet::asset::ApiAssetsService,
 };
 use wallet_database::entities::api_assets::ApiAssetsEntity;
 
@@ -8,7 +9,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
-    ) -> ReturnType<Vec<ApiAssetsEntity>> {
+    ) -> ReturnType<Vec<ApiAccountChainAsset>> {
         Ok(vec![])
     }
 
