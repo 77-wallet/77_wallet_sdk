@@ -8,7 +8,7 @@ use crate::{
     response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
 };
 
-use super::BackendApi;
+use crate::api::BackendApi;
 
 impl BackendApi {
     // 保存&更新归集策略配置

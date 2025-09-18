@@ -5,7 +5,7 @@ use crate::{
     response_vo::api_wallet::wallet::KeysUidCheckRes,
 };
 
-use super::BackendApi;
+use crate::api::BackendApi;
 
 impl BackendApi {
     // uid类型检查
