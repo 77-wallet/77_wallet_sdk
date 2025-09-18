@@ -83,7 +83,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
     ) -> ReturnType<bool> {
-        ApiWalletService::new().check_withdrawal_wallet_activated(wallet_address).await
+        ApiWalletService::new(self.ctx).check_withdrawal_wallet_activated(wallet_address).await
     }
 
     // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
