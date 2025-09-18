@@ -1,6 +1,6 @@
 use crate::{
     consts::endpoint::{
-        api_wallet::{APP_ID_BIND, APP_ID_UNBIND},
+        api_wallet::{APP_ID_BIND, APP_ID_UNBIND, CHECK_WITHDRAWAL_WALLET_ACTIVATED},
         old_wallet::OLD_KEYS_UID_CHECK,
     },
     request::api_wallet::wallet::{BindAppIdReq, UnBindAppIdReq},
@@ -43,6 +43,22 @@ impl BackendApi {
             .client
             .post(APP_ID_UNBIND)
             .json(serde_json::json!(req))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(&self.aes_cbc_cryptor)
+    }
+
+    pub async fn check_withdrawal_wallet_activated(
+        &self,
+        wallet_address: &str,
+    ) -> Result<bool, crate::Error> {
+        let res = self
+            .client
+            .post(CHECK_WITHDRAWAL_WALLET_ACTIVATED)
+            .json(serde_json::json!({
+                "wallet_address": wallet_address
+            }))
             .send::<BackendResponse>()
             .await?;
 

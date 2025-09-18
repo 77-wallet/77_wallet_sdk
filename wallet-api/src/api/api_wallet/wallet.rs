@@ -79,6 +79,13 @@ impl WalletManager {
         ApiWalletService::new(self.ctx).set_passwd_cache(wallet_password).await
     }
 
+    pub async fn check_withdrawal_wallet_activated(
+        &self,
+        wallet_address: &str,
+    ) -> ReturnType<bool> {
+        ApiWalletService::new().check_withdrawal_wallet_activated(wallet_address).await
+    }
+
     // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {
     //     WalletService::new(self.repo_factory.resource_repo())
     //         .physical_reset()

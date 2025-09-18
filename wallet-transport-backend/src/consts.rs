@@ -102,6 +102,9 @@ pub mod endpoint {
         pub const TRANS_STRATEGY_COLLECT_SAVE: &str = "awallet/aw/strategy/collect/save";
         /// 获取归集策略
         pub const TRANS_STRATEGY_GET_COLLECT_CONFIG: &str = "awallet/aw/strategy/getCollectConfig";
+
+        pub const CHECK_WITHDRAWAL_WALLET_ACTIVATED: &str =
+            "awallet/aw/checkWithdrawalWalletActivated";
     }
 }
 

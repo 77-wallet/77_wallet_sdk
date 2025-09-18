@@ -383,6 +383,13 @@ impl ApiWalletService {
         Ok(())
     }
 
+    pub async fn check_withdrawal_wallet_activated(
+        self,
+        wallet_address: &str,
+    ) -> Result<bool, crate::error::service::ServiceError> {
+        ApiWalletDomain::check_withdrawal_wallet_activated(wallet_address).await
+    }
+
     //     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
     //         let mut tx = self.repo;
 

@@ -366,4 +366,11 @@ impl ApiWalletDomain {
             .await?;
         Ok(())
     }
+
+    pub async fn check_withdrawal_wallet_activated(
+        wallet_address: &str,
+    ) -> Result<bool, crate::error::service::ServiceError> {
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        Ok(backend_api.check_withdrawal_wallet_activated(wallet_address).await?)
+    }
 }
