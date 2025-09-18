@@ -14,6 +14,7 @@ use crate::{
     },
     response_vo::api_wallet::wallet::ApiWalletInfo,
 };
+use crate::error::service::ServiceError;
 
 pub struct ApiWalletService {
     ctx: &'static Context,
@@ -54,7 +55,10 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<String, crate::error::service::ServiceError> {
+    ) -> Result<String, ServiceError> {
+        if api_wallet_type == ApiWalletType::InvalidValue {
+            return Err(ServiceError::Database(wallet_database::Error::InvalidValue(api_wallet_type as u8)))
+        }
         let start = std::time::Instant::now();
 
         let password_validation_start = std::time::Instant::now();
