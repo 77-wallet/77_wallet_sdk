@@ -6,7 +6,6 @@ use crate::{
 impl BackendApi {
     pub async fn app_install_save(
         &self,
-
         req: crate::request::AppInstallSaveReq,
     ) -> Result<serde_json::Value, crate::Error> {
         let res = self

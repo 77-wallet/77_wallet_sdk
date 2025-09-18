@@ -1,14 +1,17 @@
 use wallet_database::{entities::api_fee::ApiFeeEntity, repositories::api_fee::ApiFeeRepo};
 
 use crate::{
-    domain::api_wallet::trans::fee::ApiFeeDomain, request::api_wallet::trans::ApiTransferFeeReq,
+    context::Context, domain::api_wallet::trans::fee::ApiFeeDomain,
+    request::api_wallet::trans::ApiTransferFeeReq,
 };
 
-pub struct TransferFeeService {}
+pub struct TransferFeeService {
+    ctx: &'static Context,
+}
 
 impl TransferFeeService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_transfer_fee_order_list(

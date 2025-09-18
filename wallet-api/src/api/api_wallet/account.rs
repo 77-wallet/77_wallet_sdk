@@ -15,7 +15,7 @@ impl WalletManager {
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
-        ApiAccountService::new()
+        ApiAccountService::new(self.ctx)
             .create_account(
                 &req.wallet_address,
                 &req.wallet_password,
@@ -35,7 +35,7 @@ impl WalletManager {
         index: Option<i32>,
         uid: &str,
     ) -> ReturnType<()> {
-        ApiAccountService::new().expand_address(address_allock_type, chain_code, index, uid).await
+        ApiAccountService::new(self.ctx).expand_address(address_allock_type, chain_code, index, uid).await
     }
 
     pub async fn get_api_account_private_key(
@@ -45,12 +45,12 @@ impl WalletManager {
         password: &str,
     ) -> ReturnType<String> {
         let res =
-            ApiAccountService::new().get_account_private_key(address, chain_code, password).await?;
+            ApiAccountService::new(self.ctx).get_account_private_key(address, chain_code, password).await?;
         Ok(res.to_string())
     }
 
     pub async fn address_used(&self, chain_code: &str, index: i32, uid: &str) -> ReturnType<()> {
-        ApiAccountService::new().address_used(chain_code, index, uid).await
+        ApiAccountService::new(self.ctx).address_used(chain_code, index, uid).await
     }
 }
 

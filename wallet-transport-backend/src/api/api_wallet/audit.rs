@@ -1,6 +1,6 @@
 use crate::request::api_wallet::audit::*;
 
-use super::BackendApi;
+use crate::api::BackendApi;
 
 impl BackendApi {
     // 交易记录恢复

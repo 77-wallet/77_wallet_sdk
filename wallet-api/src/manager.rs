@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType,
-    context::init_context,
+    context::{Context, init_context},
     data::do_some_init,
     dirs::Dirs,
     domain,
@@ -13,7 +13,8 @@ use wallet_database::factory::RepositoryFactory;
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
-    pub repo_factory: RepositoryFactory,
+    pub(crate) repo_factory: RepositoryFactory,
+    pub(crate) ctx: &'static Context,
 }
 
 impl WalletManager {
@@ -24,7 +25,7 @@ impl WalletManager {
         config: crate::config::Config,
         dir: Dirs,
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
-        let base_path = infrastructure::log::LogBasePath(dir.get_log_dir());
+        let base_path = infrastructure::log::format::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
         // 以前的上报日志
         // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
@@ -42,7 +43,7 @@ impl WalletManager {
         let pool = context.get_global_sqlite_pool()?;
         let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
 
-        let manager = WalletManager { repo_factory };
+        let manager = WalletManager { repo_factory, ctx: context };
 
         Ok(manager)
     }
@@ -83,11 +84,11 @@ impl WalletManager {
     ) -> Result<(), crate::error::service::ServiceError> {
         // 修改后的版本
         let format =
-            infrastructure::log::CustomEventFormat::new(app_code.to_string(), sn.to_string());
+            infrastructure::log::format::CustomEventFormat::new(app_code.to_string(), sn.to_string());
 
         let level = level.unwrap_or("info");
 
-        let path = infrastructure::log::LogBasePath(dirs.get_log_dir());
+        let path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
         infrastructure::log::init_logger(format, path, level)?;
 
         Ok(())
@@ -109,7 +110,7 @@ impl WalletManager {
         &self,
         sender: UnboundedSender<FrontendNotifyEvent>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        crate::context::CONTEXT.get().unwrap().set_frontend_notify_sender(Some(sender)).await
+        self.ctx.set_frontend_notify_sender(Some(sender)).await
     }
 
     pub async fn close(&self) -> ReturnType<()> {
@@ -117,11 +118,9 @@ impl WalletManager {
     }
 
     async fn close_handles(&self) -> Result<(), crate::error::service::ServiceError> {
-        let withdraw_handle =
-            crate::context::CONTEXT.get().unwrap().get_global_processed_withdraw_tx_handle();
+        let withdraw_handle = self.ctx.get_global_processed_withdraw_tx_handle();
         withdraw_handle.close().await?;
-        let fee_handle =
-            crate::context::CONTEXT.get().unwrap().get_global_processed_fee_tx_handle();
+        let fee_handle = self.ctx.get_global_processed_fee_tx_handle();
         fee_handle.close().await?;
         Ok(())
     }

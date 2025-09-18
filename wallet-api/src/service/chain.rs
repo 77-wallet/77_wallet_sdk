@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
+    infrastructure::task_queue::{backend::{BackendApiTask, BackendApiTaskData}, task::Tasks, CommonTask},
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{

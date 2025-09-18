@@ -5,7 +5,7 @@ use crate::{
     response_vo::api_wallet::address::UsedAddressListResp,
 };
 
-use super::BackendApi;
+use crate::api::BackendApi;
 
 impl BackendApi {
     // 地址池扩容

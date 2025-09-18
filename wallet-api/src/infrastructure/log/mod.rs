@@ -1,7 +1,8 @@
-mod format;
+pub mod format;
 mod offset_tracker;
 mod rotator;
 
+use crate::infrastructure::log::format::{CustomEventFormat, LogBasePath};
 use offset_tracker::OffsetTracker;
 use rotator::SizeRotatingWriter;
 use std::{
@@ -17,8 +18,6 @@ use tokio::{
 };
 use tracing_subscriber::EnvFilter;
 use wallet_oss::oss_client;
-
-pub use format::*;
 
 // 初始化日志。
 pub fn init_logger(

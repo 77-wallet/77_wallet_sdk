@@ -3,7 +3,7 @@ pub(crate) mod scheduler;
 use crate::{
     domain::app::config::ConfigDomain,
     error::service::ServiceError,
-    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
+    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
 };
 
 use dashmap::DashSet;

@@ -1,6 +1,9 @@
 use crate::{
     domain::{self, chain::ChainDomain, node::NodeDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
 };
 use wallet_database::{
     entities::node::NodeCreateVo,

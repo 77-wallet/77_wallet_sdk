@@ -1,7 +1,14 @@
+pub mod adapter;
+pub mod swap;
+pub mod transaction;
+
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
     domain::api_wallet::account::ApiAccountDomain,
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
     response_vo,
 };
 use wallet_chain_interact::{
@@ -26,10 +33,6 @@ use wallet_types::chain::{
     network::{self, NetworkKind},
 };
 use wallet_utils::address;
-
-pub mod adapter;
-pub mod swap;
-pub mod transaction;
 
 pub struct TransferResp {
     pub tx_hash: String,

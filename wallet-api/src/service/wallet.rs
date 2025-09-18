@@ -29,7 +29,9 @@ use crate::{
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, task::Tasks,
+        CommonTask, RecoverDataBody,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
     },
     response_vo::{
         account::BalanceInfo,

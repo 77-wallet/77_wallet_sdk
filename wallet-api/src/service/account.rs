@@ -23,7 +23,9 @@ use crate::{
         permission::PermissionDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, task::Tasks,
+        CommonTask, RecoverDataBody,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
     },
     response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
 };

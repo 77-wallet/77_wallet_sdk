@@ -11,7 +11,7 @@ use wallet_database::{
 };
 
 use crate::{
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::backend::{BackendApiTask, BackendApiTaskData},
     service::device::APP_ID,
 };
 

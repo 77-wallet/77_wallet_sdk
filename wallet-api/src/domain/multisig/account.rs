@@ -1,7 +1,7 @@
 use crate::{
     domain::{self, chain::adapter::ChainAdapterFactory},
     error::service::ServiceError,
-    infrastructure::task_queue::{BackendApiTask, task::Tasks},
+    infrastructure::task_queue::{backend::BackendApiTask, task::Tasks},
 };
 use sqlx::{Pool, Sqlite};
 use wallet_database::{

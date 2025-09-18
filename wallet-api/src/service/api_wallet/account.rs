@@ -2,6 +2,7 @@ use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{entities::api_wallet::ApiWalletType, repositories::chain::ChainRepo};
 
 use crate::{
+    context::Context,
     domain::{
         api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
         wallet::WalletDomain,
@@ -9,11 +10,13 @@ use crate::{
     messaging::mqtt::topics::api_wallet::AddressAllockType,
 };
 
-pub struct ApiAccountService {}
+pub struct ApiAccountService {
+    ctx: &'static Context,
+}
 
 impl ApiAccountService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn expand_address(
@@ -40,7 +43,7 @@ impl ApiAccountService {
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();

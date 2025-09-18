@@ -16,7 +16,7 @@ use crate::{
     domain::{
         api_wallet::account::ApiAccountDomain, app::config::ConfigDomain, chain::ChainDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
+    infrastructure::task_queue::{backend:: {BackendApiTask, BackendApiTaskData}, CommonTask, task::Tasks},
     messaging::mqtt::topics::api_wallet::AddressAllockType,
 };
 

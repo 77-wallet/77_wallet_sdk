@@ -1,15 +1,15 @@
 use crate::{
-    domain,
     domain::{
+        self,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::TokenCurrencyGetter,
         multisig::{MultisigDomain, MultisigQueueDomain},
         stake::{EstimateTxConsumer, StakeArgs, StakeDomain},
     },
     error::business::{BusinessError, stake::StakeError},
-    infrastructure::{
-        task_queue,
-        task_queue::{BackendApiTaskData, task::Tasks},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
     },
     messaging::notify::{
         FrontendNotifyEvent,
@@ -20,10 +20,9 @@ use crate::{
     response_vo::{
         EstimateFeeResp, TronFeeDetails,
         account::{AccountResource, BalanceInfo, Resource, TrxResource},
-        stake as resp,
         stake::{
-            AddressExists, BatchDelegateResp, BatchRes, DelegateListResp, DelegateRemaingTime,
-            ResourceResp,
+            self as resp, AddressExists, BatchDelegateResp, BatchRes, DelegateListResp,
+            DelegateRemaingTime, ResourceResp,
         },
     },
 };
@@ -179,7 +178,7 @@ impl StackService {
             };
 
             let _ = Tasks::new()
-                .push(task_queue::BackendApiTask::BackendApi(BackendApiTaskData::new(
+                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
                     endpoint::UPLOAD_PERMISSION_TRANS,
                     &params,
                 )?))
