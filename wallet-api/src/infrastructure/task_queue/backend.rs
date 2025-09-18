@@ -7,6 +7,28 @@ use crate::{
 
 use super::task_handle::backend_handle::BackendTaskHandle;
 
+pub(crate) enum BackendApiTask {
+    BackendApi(BackendApiTaskData),
+    ApiBackendApi(BackendApiTaskData),
+}
+
+impl BackendApiTask {
+    pub(crate) fn get_name(&self) -> TaskName {
+        TaskName::Known(KnownTaskName::BackendApi)
+    }
+
+    pub(crate) fn get_body(&self) -> Result<Option<String>, ServiceError> {
+        match self {
+            BackendApiTask::BackendApi(api_data) => {
+                Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
+            }
+            BackendApiTask::ApiBackendApi(api_data) => {
+                Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
+            }
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl TaskTrait for BackendApiTask {
     fn get_name(&self) -> TaskName {
@@ -36,28 +58,6 @@ impl TaskTrait for BackendApiTask {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-pub(crate) enum BackendApiTask {
-    BackendApi(BackendApiTaskData),
-    ApiBackendApi(BackendApiTaskData),
-}
-
-impl BackendApiTask {
-    pub(crate) fn get_name(&self) -> TaskName {
-        TaskName::Known(KnownTaskName::BackendApi)
-    }
-
-    pub(crate) fn get_body(&self) -> Result<Option<String>, ServiceError> {
-        match self {
-            BackendApiTask::BackendApi(api_data) => {
-                Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
-            }
-            BackendApiTask::ApiBackendApi(api_data) => {
-                Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
-            }
-        }
     }
 }
 

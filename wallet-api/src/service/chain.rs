@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     domain::{self, app::config::ConfigDomain, chain::ChainDomain, coin::CoinDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, CommonTask, task::Tasks},
+    infrastructure::task_queue::{backend::{BackendApiTask, BackendApiTaskData}, task::Tasks, CommonTask},
     response_vo::chain::ChainAssets,
 };
 use wallet_database::{
@@ -141,7 +141,9 @@ impl ChainService {
         Ok(())
     }
 
-    pub async fn get_hot_chain_list(self) -> Result<Vec<ChainEntity>, crate::error::service::ServiceError> {
+    pub async fn get_hot_chain_list(
+        self,
+    ) -> Result<Vec<ChainEntity>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         let res = tx.get_chain_list_v2().await?;
@@ -150,7 +152,9 @@ impl ChainService {
         Ok(res)
     }
 
-    pub async fn get_market_chain_list(self) -> Result<Vec<String>, crate::error::service::ServiceError> {
+    pub async fn get_market_chain_list(
+        self,
+    ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let res = tx.get_market_chain_list().await?;
         Ok(res)

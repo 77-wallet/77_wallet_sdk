@@ -1,18 +1,23 @@
 use crate::{
-    domain,
     domain::{
+        self,
         assets::AssetsDomain,
         chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
         coin::CoinDomain,
         multisig::MultisigDomain,
         task_queue::TaskQueueDomain,
     },
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
     messaging::mqtt::topics::OrderMultiSignAccept,
     request::transaction,
-    response_vo,
-    response_vo::multisig_account::{
-        AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
+    response_vo::{
+        self,
+        multisig_account::{
+            AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
+        },
     },
 };
 use std::{collections::HashMap, sync::Arc};

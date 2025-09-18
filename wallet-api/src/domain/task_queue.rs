@@ -1,10 +1,15 @@
-use crate::infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks};
+use crate::infrastructure::task_queue::{
+    backend::{BackendApiTask, BackendApiTaskData},
+    task::Tasks,
+};
 use wallet_transport_backend::request::SendMsgConfirm;
 
 pub(crate) struct TaskQueueDomain;
 
 impl TaskQueueDomain {
-    pub async fn send_msg_confirm(ids: Vec<SendMsgConfirm>) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn send_msg_confirm(
+        ids: Vec<SendMsgConfirm>,
+    ) -> Result<(), crate::error::service::ServiceError> {
         if !ids.is_empty() {
             const BATCH_SIZE: usize = 500;
             for chunk in ids.chunks(BATCH_SIZE) {

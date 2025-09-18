@@ -10,7 +10,7 @@ impl WalletManager {
         &self,
         api_wallet_type: ApiWalletType,
     ) -> ReturnType<Vec<ApiWalletInfo>> {
-        ApiWalletService::new().get_api_wallet_list(api_wallet_type).await
+        ApiWalletService::new(self.ctx).get_api_wallet_list(api_wallet_type).await
     }
 
     pub async fn create_api_wallet(
@@ -25,7 +25,7 @@ impl WalletManager {
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
     ) -> ReturnType<String> {
-        ApiWalletService::new()
+        ApiWalletService::new(self.ctx)
             .create_wallet(
                 language_code,
                 phrase,
@@ -54,7 +54,7 @@ impl WalletManager {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> ReturnType<()> {
-        ApiWalletService::new()
+        ApiWalletService::new(self.ctx)
             .bind_merchant(org_app_id, merchain_id, recharge_uid, withdrawal_uid)
             .await
     }
@@ -64,7 +64,7 @@ impl WalletManager {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> ReturnType<()> {
-        ApiWalletService::new().unbind_merchant(recharge_uid, withdrawal_uid).await
+        ApiWalletService::new(self.ctx).unbind_merchant(recharge_uid, withdrawal_uid).await
     }
 
     pub async fn edit_api_wallet_name(
@@ -72,11 +72,11 @@ impl WalletManager {
         wallet_name: &str,
         wallet_address: &str,
     ) -> ReturnType<()> {
-        ApiWalletService::new().edit_wallet_name(wallet_address, wallet_name).await
+        ApiWalletService::new(self.ctx).edit_wallet_name(wallet_address, wallet_name).await
     }
 
     pub async fn set_passwd_cache(&self, wallet_password: &str) -> ReturnType<()> {
-        ApiWalletService::new().set_passwd_cache(wallet_password).await
+        ApiWalletService::new(self.ctx).set_passwd_cache(wallet_password).await
     }
 
     // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {

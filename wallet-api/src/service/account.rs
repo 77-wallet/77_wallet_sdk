@@ -23,7 +23,9 @@ use crate::{
         permission::PermissionDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody, task::Tasks,
+        CommonTask, RecoverDataBody,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
     },
     response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
 };
@@ -105,10 +107,11 @@ impl AccountService {
 
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
-        let wallet = tx
-            .wallet_detail_by_address(wallet_address)
-            .await?
-            .ok_or(crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound))?;
+        let wallet = tx.wallet_detail_by_address(wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::NotFound,
+            ),
+        )?;
 
         // 获取种子
         let seed = WalletDomain::get_seed(dirs.as_ref(), &wallet.address, wallet_password).await?;
@@ -139,9 +142,11 @@ impl AccountService {
         let account_index_map = if let Some(index) = index {
             let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
             if tx.has_account_id(&wallet.address, index.account_id).await? {
-                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Account(
-                    crate::error::business::account::AccountError::AlreadyExist,
-                )));
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Account(
+                        crate::error::business::account::AccountError::AlreadyExist,
+                    ),
+                ));
             };
             index
         } else if let Some(hd_path) = hd_path {
@@ -352,7 +357,10 @@ impl AccountService {
 
         // tx.commit_transaction().await?;
         let Some(wallet) = tx.wallet_detail_by_address(wallet_address).await? else {
-            return Err(crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound).into());
+            return Err(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::NotFound,
+            )
+            .into());
         };
         let account_index_map =
             wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
@@ -378,7 +386,10 @@ impl AccountService {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
         WalletDomain::validate_password(password).await?;
         // Check if this is the last account
@@ -468,7 +479,9 @@ impl AccountService {
             status: Some(1),
         };
         let account = AccountEntity::detail(db.as_ref(), &req).await?.ok_or(
-            crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(address.to_string())),
+            crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::NotFound(address.to_string()),
+            ),
         )?;
 
         // Get the path to the subkeys directory for the given wallet name.
@@ -505,7 +518,10 @@ impl AccountService {
         password: &str,
         wallet_address: &str,
         account_id: u32,
-    ) -> Result<crate::response_vo::account::GetAccountPrivateKeyRes, crate::error::service::ServiceError> {
+    ) -> Result<
+        crate::response_vo::account::GetAccountPrivateKeyRes,
+        crate::error::service::ServiceError,
+    > {
         WalletDomain::validate_password(password).await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx = &mut self.repo;

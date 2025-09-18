@@ -1,6 +1,9 @@
 use crate::{
     domain::{self, chain::ChainDomain, node::NodeDomain},
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData, task::Tasks},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
 };
 use wallet_database::{
     entities::node::NodeCreateVo,
@@ -31,7 +34,9 @@ impl NodeService {
         let tx = &mut self.repo;
         let id = NodeDomain::gen_node_id(name, chain_code);
         let req = NodeCreateVo::new(&id, name, chain_code, rpc_url, http_url);
-        let res = NodeRepoTrait::add(tx, req).await.map_err(crate::error::service::ServiceError::Database)?;
+        let res = NodeRepoTrait::add(tx, req)
+            .await
+            .map_err(crate::error::service::ServiceError::Database)?;
         Ok(res.node_id)
     }
 
@@ -139,13 +144,16 @@ impl NodeService {
     pub async fn get_node_list(
         &mut self,
         chain_code: &str,
-    ) -> Result<Vec<crate::response_vo::chain::NodeListRes>, crate::error::service::ServiceError> {
+    ) -> Result<Vec<crate::response_vo::chain::NodeListRes>, crate::error::service::ServiceError>
+    {
         let tx = &mut self.repo;
 
         let Some(chain) = ChainRepoTrait::detail(tx, chain_code).await? else {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-            )));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+                ),
+            ));
         };
 
         let node_list =
@@ -174,7 +182,8 @@ impl NodeService {
     pub async fn get_node_dynamic_data(
         &mut self,
         chain_code: &str,
-    ) -> Result<Vec<crate::response_vo::chain::NodeDynData>, crate::error::service::ServiceError> {
+    ) -> Result<Vec<crate::response_vo::chain::NodeDynData>, crate::error::service::ServiceError>
+    {
         // let node_list = self.get_node_list(chain_code).await?;
         let tx = &mut self.repo;
         // let list_with_node =

@@ -4,7 +4,9 @@ use crate::{
     context::CONTEXT,
     domain,
     infrastructure::task_queue::{
-        BackendApiTask, BackendApiTaskData, InitializationTask, task::Tasks,
+        backend::{BackendApiTask, BackendApiTaskData},
+        initialization::InitializationTask,
+        task::Tasks,
     },
     service::node::NodeService,
 };

@@ -1,7 +1,13 @@
 use wallet_database::entities::task_queue::KnownTaskName;
 use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
-use crate::{error::service::ServiceError, infrastructure::task_queue::task::{TaskTrait, task_type::TaskType}};
+use crate::{
+    error::service::ServiceError,
+    infrastructure::task_queue::{
+        backend::BackendApiTask,
+        task::{TaskTrait, task_type::TaskType},
+    },
+};
 
 const HISTORICAL_TASK_OFFSET: u8 = 10;
 
@@ -12,10 +18,7 @@ pub const TASK_CATEGORY_LIMIT: &[(TaskType, usize)] = &[
     (TaskType::Common, 2),
 ];
 
-pub(crate) fn assign_priority(
-    task: &dyn TaskTrait,
-    is_history: bool,
-) -> Result<u8, ServiceError> {
+pub(crate) fn assign_priority(task: &dyn TaskTrait, is_history: bool) -> Result<u8, ServiceError> {
     let base = get_base_priority(task)?; // 任务类型对应基础优先级，比如 sync=1，其他=3
     Ok(if is_history {
         // 历史任务统一加偏移，确保比新任务优先级低
@@ -75,65 +78,64 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
 
 fn extract_backend_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
     // 使用 downcast_ref 获取 BackendApiTask 类型
-    let backend_task = task
-        .as_any()
-        .downcast_ref::<crate::infrastructure::task_queue::BackendApiTask>()
-        .ok_or_else(|| crate::error::system::SystemError::Service("BackendApi 类型错误".to_string()))?;
+    let backend_task = task.as_any().downcast_ref::<BackendApiTask>().ok_or_else(|| {
+        crate::error::system::SystemError::Service("BackendApi 类型错误".to_string())
+    })?;
 
     let priority = match backend_task {
-        crate::infrastructure::task_queue::BackendApiTask::BackendApi(backend_api_task_data) => {
-                        match backend_api_task_data.endpoint.as_str() {
-                                DEVICE_INIT
-                                | MQTT_INIT
-                                | KEYS_RESET
-                                | APP_INSTALL_SAVE => 0,
-                                // 确认消息，高优先级
-                                SEND_MSG_CONFIRM  => 1,
-                                // 关键初始化流程，高优先级
-                                KEYS_V2_INIT
-                                | DEVICE_UPDATE_APP_ID
-                                | KEYS_UPDATE_WALLET_NAME
-                                // | ADDRESS_INIT
-                                | ADDRESS_UPDATE_ACCOUNT_NAME
-                                | ADDRESS_BATCH_INIT
-                                | DEVICE_EDIT_DEVICE_INVITEE_STATUS
-                                | LANGUAGE_INIT
-                                | APP_INSTALL_DOWNLOAD
-                                | TOKEN_BALANCE_REFRESH
-                                | CHAIN_LIST
-                                | CHAIN_RPC_LIST => 2,
-                                // 重要功能任务，中优先级
-        
-                                // DEVICE_BIND_ADDRESS
-                                | DEVICE_UNBIND_ADDRESS
-                                | DEVICE_DELETE
-                                | SYS_CONFIG_FIND_CONFIG_BY_KEY
-                                | TOKEN_QUERY_RATES
-                                | TOKEN_CUSTOM_TOKEN_INIT
-                                => 3,
-                                SIGNED_ORDER_ACCEPT
-                                | SIGNED_ORDER_CANCEL
-                                | SIGNED_TRAN_CREATE
-                                | SIGNED_TRAN_ACCEPT
-                                | SIGNED_ORDER_UPDATE_RECHARGE_HASH
-                                | SIGNED_ORDER_UPDATE_SIGNED_HASH
-                                | SIGNED_TRAN_UPDATE_TRANS_HASH
-                                | SIGNED_ORDER_SAVE_RAW_DATA => 4,
-                                PERMISSION_ACCEPT
-                                | UPLOAD_PERMISSION_TRANS => 5,
-        
-        
-                                // 默认 endpoint，次要任务或后台同步任务
-                                _ if crate::infrastructure::task_queue::task_handle::backend_handle::BackendTaskHandle::is_default_endpoint(&backend_api_task_data.endpoint) => 6,
-        
-                                // 其它未知/扩展任务，最低优先级
-                                _ => 7,
-                            }
+        BackendApiTask::BackendApi(backend_api_task_data) => {
+            match backend_api_task_data.endpoint.as_str() {
+                DEVICE_INIT
+                | MQTT_INIT
+                | KEYS_RESET
+                | APP_INSTALL_SAVE => 0,
+                // 确认消息，高优先级
+                SEND_MSG_CONFIRM => 1,
+                // 关键初始化流程，高优先级
+                KEYS_V2_INIT
+                | DEVICE_UPDATE_APP_ID
+                | KEYS_UPDATE_WALLET_NAME
+                // | ADDRESS_INIT
+                | ADDRESS_UPDATE_ACCOUNT_NAME
+                | ADDRESS_BATCH_INIT
+                | DEVICE_EDIT_DEVICE_INVITEE_STATUS
+                | LANGUAGE_INIT
+                | APP_INSTALL_DOWNLOAD
+                | TOKEN_BALANCE_REFRESH
+                | CHAIN_LIST
+                | CHAIN_RPC_LIST => 2,
+                // 重要功能任务，中优先级
+
+                // DEVICE_BIND_ADDRESS
+                | DEVICE_UNBIND_ADDRESS
+                | DEVICE_DELETE
+                | SYS_CONFIG_FIND_CONFIG_BY_KEY
+                | TOKEN_QUERY_RATES
+                | TOKEN_CUSTOM_TOKEN_INIT
+                => 3,
+                SIGNED_ORDER_ACCEPT
+                | SIGNED_ORDER_CANCEL
+                | SIGNED_TRAN_CREATE
+                | SIGNED_TRAN_ACCEPT
+                | SIGNED_ORDER_UPDATE_RECHARGE_HASH
+                | SIGNED_ORDER_UPDATE_SIGNED_HASH
+                | SIGNED_TRAN_UPDATE_TRANS_HASH
+                | SIGNED_ORDER_SAVE_RAW_DATA => 4,
+                PERMISSION_ACCEPT
+                | UPLOAD_PERMISSION_TRANS => 5,
+
+
+                // 默认 endpoint，次要任务或后台同步任务
+                _ if crate::infrastructure::task_queue::task_handle::backend_handle::BackendTaskHandle::is_default_endpoint(&backend_api_task_data.endpoint) => 6,
+
+                // 其它未知/扩展任务，最低优先级
+                _ => 7,
             }
-        crate::infrastructure::task_queue::BackendApiTask::ApiBackendApi(backend_api_task_data) => {
+        }
+        BackendApiTask::ApiBackendApi(backend_api_task_data) => {
             2
-        },
-                };
+        }
+    };
 
     Ok(priority)
 }

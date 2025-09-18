@@ -8,7 +8,7 @@ impl WalletManager {
         &self,
         uid: &str,
     ) -> ReturnType<Vec<ApiFeeEntity>> {
-        TransferFeeService::new().get_transfer_fee_order_list(uid).await
+        TransferFeeService::new(self.ctx).get_transfer_fee_order_list(uid).await
     }
 
     // 测试
@@ -24,7 +24,7 @@ impl WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
-        TransferFeeService::new()
+        TransferFeeService::new(self.ctx)
             .transfer_fee_order(
                 from,
                 to,

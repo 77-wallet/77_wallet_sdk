@@ -2,31 +2,37 @@ use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::{api_wallet::wallet::BindAppIdReq, LanguageInitReq};
+use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
 
 use crate::{
     api::ReturnType,
+    context::Context,
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
-    infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
+    response_vo::api_wallet::wallet::ApiWalletInfo,
 };
-use crate::response_vo::api_wallet::wallet::ApiWalletInfo;
 
-pub struct ApiWalletService {}
+pub struct ApiWalletService {
+    ctx: &'static Context,
+}
 
 impl ApiWalletService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_api_wallet_list(
         &self,
         api_wallet_type: ApiWalletType,
     ) -> ReturnType<Vec<ApiWalletInfo>> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let li = ApiWalletRepo::list(&pool, Some(api_wallet_type)).await?;
-        let mut  infos : Vec<ApiWalletInfo> = vec![];
+        let mut infos: Vec<ApiWalletInfo> = vec![];
         for e in li {
-            infos.push(ApiWalletInfo{
+            infos.push(ApiWalletInfo {
                 address: e.address.clone(),
                 uid: e.uid.clone(),
                 name: e.name.clone(),
@@ -55,7 +61,7 @@ impl ApiWalletService {
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
