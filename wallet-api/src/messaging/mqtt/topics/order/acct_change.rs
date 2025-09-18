@@ -138,7 +138,10 @@ impl From<&AcctChange> for AcctChangeFrontend {
 }
 
 impl AcctChange {
-    pub(crate) async fn exec(&self, msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -177,7 +180,10 @@ impl AcctChange {
         Ok(())
     }
 
-    async fn handle_queue(change: &AcctChange, pool: &DbPool) -> Result<(), crate::error::service::ServiceError> {
+    async fn handle_queue(
+        change: &AcctChange,
+        pool: &DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let status =
             if change.status { MultisigQueueStatus::Success } else { MultisigQueueStatus::Fail };
 
@@ -199,13 +205,16 @@ impl AcctChange {
         Ok(())
     }
 
-    async fn sync_assets(acct_change: &AcctChange) -> Result<(), crate::error::service::ServiceError> {
+    async fn sync_assets(
+        acct_change: &AcctChange,
+    ) -> Result<(), crate::error::service::ServiceError> {
         if !acct_change.status {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
 
-        let inner_event_handle = crate::context::CONTEXT.get().unwrap().get_global_inner_event_handle();
+        let inner_event_handle =
+            crate::context::CONTEXT.get().unwrap().get_global_inner_event_handle();
         inner_event_handle.send(InnerEvent::SyncAssets {
             addr_list: vec![acct_change.from_addr.to_string(), acct_change.to_addr.to_string()],
             chain_code: acct_change.chain_code.to_string(),
@@ -326,7 +335,11 @@ impl AcctChange {
             (0, true) => (TransactionStatus::Received, NotificationType::ReceiveSuccess),
             (1, true) => (TransactionStatus::Sent, NotificationType::TransferSuccess),
             (1, false) => (TransactionStatus::NotSent, NotificationType::TransferFailure),
-            (_, _) => return Err(crate::error::service::ServiceError::Parameter("invaild status".to_string())),
+            (_, _) => {
+                return Err(crate::error::service::ServiceError::Parameter(
+                    "invaild status".to_string(),
+                ));
+            }
         };
 
         Ok((transaction_status, notification_type))

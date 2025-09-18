@@ -1,10 +1,12 @@
-use sqlx::{Executor, Sqlite};
 use crate::entities::api_collect_strategy::ApiCollectStrategyEntity;
+use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiCollectStrategyDao;
 
 impl ApiCollectStrategyDao {
-    pub async fn all_api_collect_strategy<'a, E>(exec: E) -> Result<Vec<ApiCollectStrategyEntity>, crate::Error>
+    pub async fn all_api_collect_strategy<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ApiCollectStrategyEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {

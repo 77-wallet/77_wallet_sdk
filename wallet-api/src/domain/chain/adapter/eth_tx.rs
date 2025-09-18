@@ -53,7 +53,9 @@ pub(super) async fn approve(
     let fee = fee_setting.transaction_fee();
     let balance = chain.balance(&req.from, None).await?;
     if balance < fee {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // exec tx
@@ -99,7 +101,9 @@ pub(super) async fn withdraw(
 
     let balance = chain.balance(&req.from, None).await?;
     if balance < transfer_fee {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // exec tx
@@ -133,7 +137,9 @@ pub(super) async fn deposit(
 
     let balance = chain.balance(&req.from, None).await?;
     if balance < transfer_fee {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // exec tx
@@ -155,7 +161,9 @@ pub(super) async fn allowance(
     Ok(amount)
 }
 
-fn build_base_swap_tx(swap_params: &SwapParams) -> Result<TransactionRequest, crate::error::service::ServiceError> {
+fn build_base_swap_tx(
+    swap_params: &SwapParams,
+) -> Result<TransactionRequest, crate::error::service::ServiceError> {
     let call_value = dexSwap1Call::try_from((swap_params, ChainCode::Ethereum))?;
 
     let tx = TransactionRequest::default()
@@ -179,17 +187,20 @@ pub(super) async fn estimate_swap(
     let gas_limit = chain.provider.estimate_gas(tx.clone()).await?;
     let tx = tx.with_gas_limit(gas_limit.to::<u64>());
 
-    let result =
-        chain.provider.eth_call(tx).await.map_err(|e| crate::error::service::ServiceError::AggregatorError {
+    let result = chain.provider.eth_call(tx).await.map_err(|e| {
+        crate::error::service::ServiceError::AggregatorError {
             code: 10500,
             agg_code: 0,
             msg: format!("eth call error: {}", e),
-        })?;
+        }
+    })?;
     let bytes = wallet_utils::hex_func::hex_decode(&result[2..])?;
 
-    let (amount_in, amount_out): (U256, U256) =
-        <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
-            crate::error::service::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
+    let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
+        .map_err(|e| crate::error::service::ServiceError::AggregatorError {
+            code: -1,
+            agg_code: 0,
+            msg: e.to_string(),
         })?;
 
     let resp = EstimateSwapResult { amount_in, amount_out, consumer: gas_limit };
@@ -212,7 +223,9 @@ pub(super) async fn swap(
         check_bal += swap_params.amount_in;
     }
     if balance < check_bal {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     let tx = build_base_swap_tx(&swap_params)?;

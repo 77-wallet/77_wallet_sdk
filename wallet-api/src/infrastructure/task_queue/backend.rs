@@ -48,10 +48,6 @@ impl TaskTrait for BackendApiTask {
                 BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
                     .await?;
             }
-            BackendApiTask::ApiBackendApi(data) => {
-                BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
-                    .await?;
-            }
         }
         Ok(())
     }

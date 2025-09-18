@@ -80,7 +80,9 @@ pub(super) async fn approve(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if balance < fee {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // get consumer
@@ -146,7 +148,9 @@ pub(super) async fn deposit(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64()) + value;
     if balance < fee {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // get consumer
@@ -217,7 +221,9 @@ pub(super) async fn withdraw(
     let balance = chain.balance(&req.from, None).await?;
     let fee = alloy::primitives::U256::from(consumer.transaction_fee_i64());
     if balance < fee {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // get consumer
@@ -299,9 +305,11 @@ pub(super) async fn estimate_swap(
     let bytes = wallet_utils::hex_func::hex_decode(&constant.constant_result[0])?;
 
     // 模拟的结果k
-    let (amount_in, amount_out): (U256, U256) =
-        <(U256, U256)>::abi_decode_params(&bytes, true).map_err(|e| {
-            crate::error::service::ServiceError::AggregatorError { code: -1, agg_code: 0, msg: e.to_string() }
+    let (amount_in, amount_out): (U256, U256) = <(U256, U256)>::abi_decode_params(&bytes, true)
+        .map_err(|e| crate::error::service::ServiceError::AggregatorError {
+            code: -1,
+            agg_code: 0,
+            msg: e.to_string(),
         })?;
 
     // get fee
@@ -337,7 +345,9 @@ pub(super) async fn swap(
         fee += swap_params.amount_in;
     }
     if balance < fee {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     let bill_consumer = BillResourceConsume::new_tron(

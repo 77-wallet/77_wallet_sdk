@@ -45,7 +45,9 @@ impl WalletDomain {
         Ok(encrypted_password)
     }
 
-    pub(crate) async fn validate_password(password: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn validate_password(
+        password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
@@ -54,7 +56,10 @@ impl WalletDomain {
         };
 
         let Some(device) = DeviceEntity::get_device_info(&*pool).await? else {
-            return Err(crate::error::business::BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized).into());
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         if device.password.is_none() {
@@ -89,7 +94,9 @@ impl WalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn upgrade_algorithm(password: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn upgrade_algorithm(
+        password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let mut tx = self.repo;
         // let wallet = WalletRepoTrait::get_wallet_by_address(&mut tx, wallet_address).await?;
         // if wallet.is_none() {
@@ -403,7 +410,9 @@ impl WalletDomain {
         }
     }
 
-    pub(crate) async fn check_api_wallet_exist(address: &str) -> Result<bool, crate::error::service::ServiceError> {
+    pub(crate) async fn check_api_wallet_exist(
+        address: &str,
+    ) -> Result<bool, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let res = ApiWalletRepo::find_by_address(&pool, address).await?;
         Ok(!res.is_none())

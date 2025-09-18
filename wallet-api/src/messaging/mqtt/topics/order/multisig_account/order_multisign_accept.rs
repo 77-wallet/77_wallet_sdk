@@ -92,7 +92,10 @@ impl OrderMultiSignAccept {
         Ok(is_cancel.status)
     }
 
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
         tracing::info!(
             event_name = %event_name,
@@ -178,7 +181,9 @@ impl OrderMultiSignAccept {
         Ok(())
     }
 
-    async fn send_to_frontend(accept: &OrderMultiSignAccept) -> Result<(), crate::error::service::ServiceError> {
+    async fn send_to_frontend(
+        accept: &OrderMultiSignAccept,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let data = NotifyEvent::OrderMultiSignAccept(OrderMultiSignAcceptFrontend {
             name: accept.name.to_string(),
             initiator_addr: accept.initiator_addr.to_string(),

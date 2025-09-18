@@ -30,7 +30,10 @@ pub struct TransMsg {
 
 // 归集和提币
 impl TransMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         match self.trade_type {
             1 => self.withdraw().await?,
             2 => self.collect().await?,

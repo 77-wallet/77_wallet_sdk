@@ -159,9 +159,11 @@ impl MultisigTransactionService {
                 .await?;
 
         let Some(p) = permission else {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
-                crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
-            )));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Permission(
+                    crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+                ),
+            ));
         };
 
         let adapter = ChainAdapterFactory::get_multisig_adapter(&req.chain_code).await?;
@@ -261,9 +263,13 @@ impl MultisigTransactionService {
     ) -> Result<MultisigQueueInfoVo, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let queue = MultisigQueueRepo::find_by_id_with_extra(queue_id, &pool)
-            .await?
-            .ok_or(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::MultisigQueue(crate::error::business::multisig_queue::MultisigQueueError::NotFound)))?;
+        let queue = MultisigQueueRepo::find_by_id_with_extra(queue_id, &pool).await?.ok_or(
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigQueue(
+                    crate::error::business::multisig_queue::MultisigQueueError::NotFound,
+                ),
+            ),
+        )?;
 
         let signature = MultisigQueueRepo::signed_result(
             &queue.id,
@@ -582,7 +588,9 @@ impl MultisigTransactionService {
                 let fee_setting = if let Some(fee_setting) = fee_setting {
                     crate::domain::chain::pare_fee_setting(&fee_setting)?
                 } else {
-                    return Err(crate::error::service::ServiceError::Parameter("empty fee setting".to_string()));
+                    return Err(crate::error::service::ServiceError::Parameter(
+                        "empty fee setting".to_string(),
+                    ));
                 };
 
                 // check transaction fee
@@ -590,9 +598,11 @@ impl MultisigTransactionService {
 
                 let fee = fee_setting.transaction_fee();
                 if balance < fee {
-                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                    )));
+                    return Err(crate::error::service::ServiceError::Business(
+                        crate::error::business::BusinessError::Chain(
+                            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                        ),
+                    ));
                 }
 
                 let tx_hash = chain.exec_transaction(params, fee_setting, key, None).await?;
@@ -676,9 +686,11 @@ impl MultisigTransactionService {
                     alloy::primitives::U256::ZERO
                 };
                 if transfer_balance < transfer_amount {
-                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
-                        crate::error::business::chain::ChainError::InsufficientBalance,
-                    )));
+                    return Err(crate::error::service::ServiceError::Business(
+                        crate::error::business::BusinessError::Chain(
+                            crate::error::business::chain::ChainError::InsufficientBalance,
+                        ),
+                    ));
                 }
 
                 let account = provider.account_info(&queue.from_addr).await?;
@@ -704,9 +716,11 @@ impl MultisigTransactionService {
                         .await?;
                     // check transaction fee
                     if account.balance < consumer.transaction_fee_i64() {
-                        return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
-                            crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                        )));
+                        return Err(crate::error::service::ServiceError::Business(
+                            crate::error::business::BusinessError::Chain(
+                                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                            ),
+                        ));
                     }
 
                     consumer
@@ -728,9 +742,11 @@ impl MultisigTransactionService {
 
                     let value = transfer_amount.to::<i64>();
                     if account.balance < consumer.transaction_fee_i64() + value {
-                        return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
-                            crate::error::business::chain::ChainError::InsufficientFeeBalance,
-                        )));
+                        return Err(crate::error::service::ServiceError::Business(
+                            crate::error::business::BusinessError::Chain(
+                                crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                            ),
+                        ));
                     }
 
                     consumer
@@ -746,9 +762,13 @@ impl MultisigTransactionService {
                 resp.with_consumer(bill_consumer);
                 resp
             }
-            _ => return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::MultisigAccount(
-                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(instance.to_string()),
-            ))),
+            _ => return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                        instance.to_string(),
+                    ),
+                ),
+            )),
         };
 
         // 创建本地pending 交易
@@ -832,9 +852,11 @@ impl MultisigTransactionService {
 
         // check status
         if !queue.can_cancel() {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::MultisigQueue(
-                crate::error::business::multisig_queue::MultisigQueueError::CannotCancel,
-            )));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigQueue(
+                    crate::error::business::multisig_queue::MultisigQueueError::CannotCancel,
+                ),
+            ));
         };
 
         // update status to fail
@@ -849,7 +871,11 @@ impl MultisigTransactionService {
             tracing::error!("cancel queue[{}] upload fail roolback err:{}", queue_id, e);
             MultisigQueueDaoV1::rollback_update_fail(&queue_id, queue.status, pool.as_ref())
                 .await
-                .map_err(|e| crate::error::service::ServiceError::Database(wallet_database::Error::Database(e)))?;
+                .map_err(|e| {
+                    crate::error::service::ServiceError::Database(wallet_database::Error::Database(
+                        e,
+                    ))
+                })?;
         }
 
         Ok(())

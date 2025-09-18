@@ -1,5 +1,4 @@
 use crate::{
-    error::service::ServiceError,
     domain::{
         api_wallet::adapter::{
             TIME_OUT,
@@ -8,6 +7,7 @@ use crate::{
         chain::TransferResp,
         coin::TokenCurrencyGetter,
     },
+    error::service::ServiceError,
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -56,19 +56,34 @@ impl DogeTx {
     pub fn handle_doge_fee_error(&self, err: wallet_chain_interact::Error) -> ServiceError {
         match err {
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientBalance) => {
-                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance).into()
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientBalance,
+                )
+                .into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::InsufficientFee(_fee)) => {
-                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance).into()
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                )
+                .into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::ExceedsMaximum) => {
-                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ExceedsMaximum).into()
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::ExceedsMaximum,
+                )
+                .into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::DustTx) => {
-                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::DustTransaction).into()
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::DustTransaction,
+                )
+                .into()
             }
             Error::UtxoError(wallet_chain_interact::UtxoError::ExceedsMaxFeeRate) => {
-                crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ExceedsMaxFeerate).into()
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::ExceedsMaxFeerate,
+                )
+                .into()
             }
             _ => err.into(),
         }
@@ -122,9 +137,9 @@ impl Tx for DogeTx {
             &pool,
         )
         .await?
-        .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
-            params.base.from.to_string(),
-        )))?;
+        .ok_or(crate::error::business::BusinessError::Account(
+            crate::error::business::account::AccountError::NotFound(params.base.from.to_string()),
+        ))?;
         let address_type = DogAddressType::try_from(Some(account.address_type))?;
 
         let arg = TransferArg::new(
@@ -160,9 +175,9 @@ impl Tx for DogeTx {
         let account =
             ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
                 .await?
-                .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(
-                    req.from.to_string(),
-                )))?;
+                .ok_or(crate::error::business::BusinessError::Account(
+                    crate::error::business::account::AccountError::NotFound(req.from.to_string()),
+                ))?;
 
         let address_type = DogAddressType::try_from(Some(account.address_type))?;
 
@@ -184,15 +199,24 @@ impl Tx for DogeTx {
         _: ChainPrivateKey,
         _: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn approve_fee(&self, _: &ApproveReq, _: U256, _: &str) -> Result<String, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn allowance(&self, _: &str, _: &str, _: &str) -> Result<U256, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap_quote(
@@ -201,7 +225,10 @@ impl Tx for DogeTx {
         _: &AggQuoteResp,
         _: &str,
     ) -> Result<(U256, String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn swap(
@@ -210,7 +237,10 @@ impl Tx for DogeTx {
         _: String,
         _: ChainPrivateKey,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit_fee(
@@ -218,7 +248,10 @@ impl Tx for DogeTx {
         _: DepositReq,
         _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn deposit(
@@ -228,7 +261,10 @@ impl Tx for DogeTx {
         _: ChainPrivateKey,
         _: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw_fee(
@@ -236,7 +272,10 @@ impl Tx for DogeTx {
         _: WithdrawReq,
         _: &CoinEntity,
     ) -> Result<(String, String), ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 
     async fn withdraw(
@@ -246,7 +285,10 @@ impl Tx for DogeTx {
         _: ChainPrivateKey,
         _: U256,
     ) -> Result<TransferResp, ServiceError> {
-        Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain).into())
+        Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::NotSupportChain,
+        )
+        .into())
     }
 }
 
@@ -258,7 +300,10 @@ impl Multisig for DogeTx {
         _: &MultisigMemberEntities,
     ) -> Result<FetchMultisigAddressResp, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -271,7 +316,10 @@ impl Multisig for DogeTx {
         _: ChainPrivateKey,
     ) -> Result<(String, String), ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -283,7 +331,10 @@ impl Multisig for DogeTx {
         _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -297,7 +348,10 @@ impl Multisig for DogeTx {
         _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -310,7 +364,10 @@ impl Multisig for DogeTx {
         _: ChainPrivateKey,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -322,7 +379,10 @@ impl Multisig for DogeTx {
         _: &CoinEntity,
     ) -> Result<MultisigTxResp, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -335,7 +395,10 @@ impl Multisig for DogeTx {
         _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -348,7 +411,10 @@ impl Multisig for DogeTx {
         _: &str,
     ) -> Result<MultisigSignResp, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }
@@ -362,7 +428,10 @@ impl Multisig for DogeTx {
         _: &str,
     ) -> Result<String, ServiceError> {
         Err(crate::error::business::BusinessError::MultisigAccount(
-            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(ChainCode::Dogcoin.to_string()).into(),
+            crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                ChainCode::Dogcoin.to_string(),
+            )
+            .into(),
         )
         .into())
     }

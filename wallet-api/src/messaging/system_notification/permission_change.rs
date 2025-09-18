@@ -17,7 +17,9 @@ pub struct PermissionChange {
 
 impl TryFrom<(&PermissionEntity, &str)> for PermissionChange {
     type Error = crate::error::service::ServiceError;
-    fn try_from(value: (&PermissionEntity, &str)) -> Result<Self, crate::error::service::ServiceError> {
+    fn try_from(
+        value: (&PermissionEntity, &str),
+    ) -> Result<Self, crate::error::service::ServiceError> {
         Ok(PermissionChange {
             grantor_addr: value.0.grantor_addr.to_owned(),
             types: value.1.to_string(),

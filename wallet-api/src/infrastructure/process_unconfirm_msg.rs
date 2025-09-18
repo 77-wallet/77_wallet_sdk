@@ -1,5 +1,6 @@
 use crate::{
-    domain::app::mqtt::MqttDomain, error::service::ServiceError, messaging::notify::FrontendNotifyEvent,
+    domain::app::mqtt::MqttDomain, error::service::ServiceError,
+    messaging::notify::FrontendNotifyEvent,
 };
 use std::{collections::HashSet, sync::Arc};
 use tokio::time::Instant;
@@ -18,7 +19,9 @@ impl UnconfirmedMsgCollector {
     }
 
     pub fn submit(&self, ids: Vec<String>) -> Result<(), ServiceError> {
-        self.tx.send(ids).map_err(|e| crate::error::system::SystemError::ChannelSendFailed(e.to_string()))?;
+        self.tx
+            .send(ids)
+            .map_err(|e| crate::error::system::SystemError::ChannelSendFailed(e.to_string()))?;
         Ok(())
     }
 

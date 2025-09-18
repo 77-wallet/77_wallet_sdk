@@ -13,7 +13,7 @@ use wallet_types::chain::{
 
 use super::app::config::ConfigDomain;
 use crate::{
-    error::{service::ServiceError, business::BusinessError, system::SystemError},
+    error::{business::BusinessError, service::ServiceError, system::SystemError},
     response_vo::account::CreateAccountRes,
     service::asset::AddressChainCode,
 };
@@ -285,9 +285,9 @@ impl AccountDomain {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(ServiceError::Business(
-                BusinessError::Device(crate::error::business::device::DeviceError::Uninitialized),
-            ));
+            return Err(ServiceError::Business(BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )));
         };
 
         let account = repo
@@ -338,9 +338,11 @@ impl AccountDomain {
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let wallet = WalletEntity::detail(db.as_ref(), wallet_address)
-            .await?
-            .ok_or(crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound))?;
+        let wallet = WalletEntity::detail(db.as_ref(), wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::NotFound,
+            ),
+        )?;
 
         // Get the path to the root directory for the given wallet name.
         let root_dir = dirs.get_root_dir(&wallet.address)?;
@@ -447,9 +449,11 @@ pub async fn open_accounts_pk_with_password(
     for (meta, key) in account_data.into_inner() {
         let chain_code = &meta.chain_code;
         let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), chain_code).await? else {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-            )));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+                ),
+            ));
         };
         let chain_code = chain_code.as_str().try_into()?;
 
@@ -480,17 +484,23 @@ pub async fn open_subpk_with_password(
 
     let req = wallet_database::entities::account::QueryReq::new_address_chain(address, chain_code);
 
-    let account = AccountEntity::detail(db.as_ref(), &req)
-        .await?
-        .ok_or(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::NotFound(address.to_string())))?;
+    let account = AccountEntity::detail(db.as_ref(), &req).await?.ok_or(
+        crate::error::business::BusinessError::Account(
+            crate::error::business::account::AccountError::NotFound(address.to_string()),
+        ),
+    )?;
 
-    let wallet = WalletEntity::detail(db.as_ref(), &account.wallet_address)
-        .await?
-        .ok_or(crate::error::business::BusinessError::Wallet(crate::error::business::wallet::WalletError::NotFound))?;
+    let wallet = WalletEntity::detail(db.as_ref(), &account.wallet_address).await?.ok_or(
+        crate::error::business::BusinessError::Wallet(
+            crate::error::business::wallet::WalletError::NotFound,
+        ),
+    )?;
     let Some(chain) = ChainEntity::chain_node_info(db.as_ref(), chain_code).await? else {
-        return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(
-            crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-        )));
+        return Err(crate::error::service::ServiceError::Business(
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+            ),
+        ));
     };
 
     let chain_code: ChainCode = chain_code.try_into()?;

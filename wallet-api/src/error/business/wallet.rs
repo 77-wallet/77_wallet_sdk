@@ -12,6 +12,10 @@ pub enum WalletError {
     NotInit,
     #[error("This mnemonic phrase has been imported into the api wallet system")]
     MnemonicAlreadyImportedIntoApiWalletSystem,
+    #[error("This mnemonic phrase has been imported into the normal wallet system")]
+    MnemonicAlreadyImportedIntoNormalWalletSystem,
+    #[error("This is not an withdrawal wallet or a sub-account wallet. Import is not allowed")]
+    NotWithdrawalOrSubAccountWallet,
     #[error("Wallet type not set")]
     WalletTypeNotSet,
 }
@@ -25,7 +29,9 @@ impl WalletError {
             WalletError::PasswordNotSet => 3103,
             WalletError::NotInit => 3104,
             WalletError::MnemonicAlreadyImportedIntoApiWalletSystem => 3105,
-            WalletError::WalletTypeNotSet => 3105,
+            WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem => 3106,
+            WalletError::WalletTypeNotSet => 3107,
+            WalletError::NotWithdrawalOrSubAccountWallet => 3108,
         }
     }
 }

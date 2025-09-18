@@ -2,7 +2,7 @@ use wallet_database::{
     entities::multisig_queue::MultisigQueueStatus, repositories::multisig_queue::MultisigQueueRepo,
 };
 
-use crate::{messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent};
+use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 
 // 取消多签交易
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]

@@ -23,11 +23,15 @@ use wallet_utils::{conversion, unit};
 pub struct ApiCollectDomain {}
 
 impl ApiCollectDomain {
-    pub(crate) async fn collect(req: &ApiWithdrawReq) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn collect(
+        req: &ApiWithdrawReq,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid)
-            .await?
-            .ok_or(crate::error::business::BusinessError::ApiWallet(crate::error::business::api_wallet::ApiWalletError::NotFound))?;
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
 
         ApiCollectRepo::upsert_api_collect(
             &pool,
@@ -180,7 +184,9 @@ impl ApiCollectDomain {
             strategy.chain_configs.into_iter().find(|config| config.chain_code == chain_code)
         else {
             return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::ChainConfigNotFound(chain_code.to_owned()),
+                crate::error::business::api_wallet::ApiWalletError::ChainConfigNotFound(
+                    chain_code.to_owned(),
+                ),
             )
             .into());
         };

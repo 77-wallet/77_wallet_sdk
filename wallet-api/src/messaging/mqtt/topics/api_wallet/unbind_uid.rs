@@ -12,7 +12,10 @@ pub struct UnbindUidMsg {
 }
 
 impl UnbindUidMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let Self { uid } = self;
         ApiWalletDomain::unbind_uid(uid).await?;
         let data = NotifyEvent::UnbindUid(self.to_owned());

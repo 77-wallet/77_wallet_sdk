@@ -4,7 +4,9 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct ApiWithdrawStrategyDao;
 
 impl ApiWithdrawStrategyDao {
-    pub async fn all_api_withdraw_strategy<'a, E>(exec: E) -> Result<Vec<ApiWithdrawStrategyEntity>, crate::Error>
+    pub async fn all_api_withdraw_strategy<'a, E>(
+        exec: E,
+    ) -> Result<Vec<ApiWithdrawStrategyEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -39,7 +41,10 @@ impl ApiWithdrawStrategyDao {
         Ok((count, res))
     }
 
-    async fn upsert<'c, E>(executor: E, input: ApiWithdrawStrategyEntity) -> Result<(), crate::Error>
+    async fn upsert<'c, E>(
+        executor: E,
+        input: ApiWithdrawStrategyEntity,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
     {

@@ -1,4 +1,7 @@
-use crate::{dao::api_collect_strategy::ApiCollectStrategyDao, entities::api_collect_strategy::ApiCollectStrategyEntity, DbPool};
+use crate::{
+    DbPool, dao::api_collect_strategy::ApiCollectStrategyDao,
+    entities::api_collect_strategy::ApiCollectStrategyEntity,
+};
 pub struct ApiCollectStrategyRepo;
 
 impl ApiCollectStrategyRepo {

@@ -110,7 +110,9 @@ impl CoinDomain {
         Ok(())
     }
 
-    pub async fn init_coins(repo: &mut ResourcesRepo) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_coins(
+        repo: &mut ResourcesRepo,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = repo.pool();
         // check 本地表是否有数据,有则不进行新增
         let count = CoinRepo::coin_count(&pool).await?;
@@ -129,20 +131,24 @@ impl CoinDomain {
     }
 
     // 供兑换使用的的默认稳定币地址
-    pub fn get_stable_coin(chain_code: ChainCode) -> Result<String, crate::error::service::ServiceError> {
+    pub fn get_stable_coin(
+        chain_code: ChainCode,
+    ) -> Result<String, crate::error::service::ServiceError> {
         match chain_code {
             ChainCode::Ethereum => Ok("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
             ChainCode::BnbSmartChain => {
                 Ok("0x55d398326f99059fF775485246999027B3197955".to_string())
             }
             ChainCode::Tron => Ok("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string()),
-            _ => {
-                Err(crate::error::business::BusinessError::Coin(crate::error::business::coin::CoinError::NotFound(chain_code.to_string())))?
-            }
+            _ => Err(crate::error::business::BusinessError::Coin(
+                crate::error::business::coin::CoinError::NotFound(chain_code.to_string()),
+            ))?,
         }
     }
 
-    pub async fn fetch_all_coin(pool: &DbPool) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
+    pub async fn fetch_all_coin(
+        pool: &DbPool,
+    ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut coins = Vec::new();

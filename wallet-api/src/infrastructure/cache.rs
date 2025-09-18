@@ -184,7 +184,9 @@ impl CacheEntry {
         self.instant.is_some_and(|instant| instant <= Instant::now())
     }
 
-    pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, crate::error::service::ServiceError> {
+    pub fn deserialize<T: DeserializeOwned>(
+        &self,
+    ) -> Result<T, crate::error::service::ServiceError> {
         Ok(wallet_utils::hex_func::bin_decode_bytes(&self.data)?)
     }
 }

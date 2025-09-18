@@ -1,7 +1,7 @@
+use crate::get_manager;
+use anyhow::Result;
 use wallet_api::request::stake::{VoteWitnessReq, VotesReq, WithdrawBalanceReq};
 use wallet_database::entities::bill::BillKind;
-use anyhow::Result;
-use crate::get_manager;
 
 #[tokio::test]
 async fn test_vote() -> Result<()> {

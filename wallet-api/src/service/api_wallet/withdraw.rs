@@ -1,7 +1,6 @@
 use crate::{
-    domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
+    domain::api_wallet::trans::withdraw::ApiWithdrawDomain, error::service::ServiceError,
     request::api_wallet::trans::ApiWithdrawReq,
-    error::service::ServiceError,
 };
 use wallet_database::{
     entities::api_withdraw::ApiWithdrawEntity, repositories::api_withdraw::ApiWithdrawRepo,

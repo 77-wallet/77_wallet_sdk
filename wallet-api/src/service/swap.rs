@@ -1,5 +1,4 @@
 use crate::{
-    messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent,
     domain::{
         assets::AssetsDomain,
         bill::BillDomain,
@@ -8,7 +7,11 @@ use crate::{
         task_queue::TaskQueueDomain,
     },
     infrastructure::swap_client::{AggQuoteRequest, AggQuoteResp, DefaultQuoteResp, SwapClient},
-    messaging::notify::other::{Process, TransactionProcessFrontend},
+    messaging::notify::{
+        FrontendNotifyEvent,
+        event::NotifyEvent,
+        other::{Process, TransactionProcessFrontend},
+    },
     request::transaction::{
         ApproveReq, DepositReq, DexRoute, QuoteReq, SwapInnerType, SwapReq, SwapTokenListReq,
         WithdrawReq,
@@ -133,7 +136,10 @@ impl SwapServer {
         Ok((bal_in, bal_out))
     }
 
-    pub async fn quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
+    pub async fn quote(
+        &self,
+        req: QuoteReq,
+    ) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
         let chain_code = ChainCode::try_from(req.chain_code.as_str())?;
 
         let swap_inner_type =
@@ -159,7 +165,9 @@ impl SwapServer {
     ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
         Ok(AssetsRepo::get_by_addr_token_opt(&pool, chain_code, token_addr, recipient)
             .await?
-            .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFoundAssets))?)
+            .ok_or(crate::error::business::BusinessError::Assets(
+                crate::error::business::assets::AssetsError::NotFoundAssets,
+            ))?)
     }
 
     async fn common_quote(
@@ -253,7 +261,10 @@ impl SwapServer {
         self.check_bal(&req.amount_in, bal_ref)
     }
 
-    async fn swap_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
+    async fn swap_quote(
+        &self,
+        req: QuoteReq,
+    ) -> Result<ApiQuoteResp, crate::error::service::ServiceError> {
         use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
@@ -349,7 +360,10 @@ impl SwapServer {
         Ok(())
     }
 
-    async fn check_allowance(&self, req: &QuoteReq) -> Result<U256, crate::error::service::ServiceError> {
+    async fn check_allowance(
+        &self,
+        req: &QuoteReq,
+    ) -> Result<U256, crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
         adapter.allowance(&req.recipient, &req.token_in.token_addr, &req.aggregator_addr).await
     }
@@ -380,7 +394,11 @@ impl SwapServer {
         )
         .await?;
         if !self.check_bal(&req.amount_in, &token_in.balance)? {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientBalance,
+                ),
+            ));
         }
 
         // 广播事件
@@ -570,7 +588,11 @@ impl SwapServer {
         )
         .await?;
         if last_bill.is_some() {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveRepeated)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::ApproveRepeated,
+                ),
+            ));
         }
 
         let fee = adapter.approve_fee(&req, value, &main_coin.symbol).await?;
@@ -608,19 +630,31 @@ impl SwapServer {
         )
         .await?;
         if last_bill.is_some() {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveRepeated)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::ApproveRepeated,
+                ),
+            ));
         }
 
         // check already approved
         let allowance = adapter.allowance(&req.from, &req.contract, &req.spender).await?;
         if allowance > alloy::primitives::U256::ZERO {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveRepeated)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::ApproveRepeated,
+                ),
+            ));
         }
 
         // check balance
         let token_in = self.token0_assets(&pool, &req.chain_code, &req.contract, &req.from).await?;
         if !self.check_bal(&req.value, &token_in.balance)? {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientBalance)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientBalance,
+                ),
+            ));
         }
 
         let private_key =
@@ -767,7 +801,11 @@ impl SwapServer {
         )
         .await?;
         if last_bill.is_some() {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::ApproveCanceling)));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::ApproveCanceling,
+                ),
+            ));
         }
 
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(

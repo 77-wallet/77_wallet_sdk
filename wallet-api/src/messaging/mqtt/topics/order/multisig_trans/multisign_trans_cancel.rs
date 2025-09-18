@@ -1,4 +1,4 @@
-use crate::{messaging::notify::FrontendNotifyEvent, messaging::notify::event::NotifyEvent};
+use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 use wallet_database::{
     entities::multisig_queue::fail_reason, repositories::multisig_queue::MultisigQueueRepo,
 };
@@ -32,7 +32,9 @@ impl MultiSignTransCancel {
             tracing::error!(
                 event_name = %event_name,
                 "Cancel multisig queue faild affetd :0");
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::multisig_queue::MultisigQueueError::NotFound.into()));
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::multisig_queue::MultisigQueueError::NotFound.into(),
+            ));
         }
 
         MultisigQueueRepo::update_fail(&pool, &self.withdraw_id, fail_reason::CANCEL).await?;

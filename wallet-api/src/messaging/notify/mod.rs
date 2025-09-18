@@ -50,10 +50,14 @@ impl FrontendNotifyEvent {
         let sender = sender.read().await;
         if let Some(sender) = sender.as_ref() {
             sender.send(self).map_err(|e| {
-                crate::error::service::ServiceError::System(crate::error::system::SystemError::ChannelSendFailed(e.to_string()))
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::ChannelSendFailed(e.to_string()),
+                )
             })?;
         } else {
-            return Err(crate::error::service::ServiceError::System(crate::error::system::SystemError::FrontendNotifySenderUnset));
+            return Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::FrontendNotifySenderUnset,
+            ));
         }
         Ok(())
     }

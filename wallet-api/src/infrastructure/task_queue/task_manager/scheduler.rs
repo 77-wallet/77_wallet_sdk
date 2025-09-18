@@ -1,5 +1,5 @@
 use wallet_database::entities::task_queue::KnownTaskName;
-use wallet_transport_backend::consts::endpoint::{multisig::*, *};
+use wallet_transport_backend::consts::endpoint::{multisig::*, old_wallet::*, *};
 
 use crate::{
     error::service::ServiceError,

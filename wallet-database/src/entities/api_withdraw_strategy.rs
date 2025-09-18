@@ -1,4 +1,3 @@
-
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ApiWithdrawStrategyEntity {
     pub id: i64,

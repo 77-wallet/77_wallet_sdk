@@ -1,5 +1,6 @@
 use super::ReturnType;
 use crate::{
+    manager::WalletManager,
     request::transaction::{self},
     response_vo::{
         self, CoinCurrency,
@@ -7,7 +8,6 @@ use crate::{
         transaction::{BillDetailVo, TransactionResult},
     },
     service::{bill::BillService, transaction::TransactionService},
-    manager::WalletManager,
 };
 use wallet_database::{
     entities::bill::{BillEntity, BillKind, RecentBillListVo},

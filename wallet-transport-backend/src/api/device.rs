@@ -71,7 +71,7 @@ impl BackendApi {
     ) -> Result<Option<()>, crate::Error> {
         let res = self
             .client
-            .post("keys/init")
+            .post("owallet/keys/v2/init")
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;

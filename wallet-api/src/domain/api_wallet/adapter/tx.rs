@@ -6,9 +6,7 @@ use wallet_chain_interact::{
 use wallet_utils::unit;
 
 use crate::{
-    domain::
-        chain::TransferResp
-    ,
+    domain::chain::TransferResp,
     infrastructure::swap_client::AggQuoteResp,
     request::{
         api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
@@ -37,12 +35,18 @@ pub trait Oracle {
 
 #[async_trait::async_trait]
 pub trait Tx {
-    fn check_min_transfer(&self, value: &str, decimal: u8) -> Result<U256, crate::error::service::ServiceError> {
+    fn check_min_transfer(
+        &self,
+        value: &str,
+        decimal: u8,
+    ) -> Result<U256, crate::error::service::ServiceError> {
         let min = U256::from(1);
         let transfer_amount = unit::convert_to_u256(value, decimal)?;
 
         if transfer_amount < min {
-            return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::AmountLessThanMin))?;
+            return Err(crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::AmountLessThanMin,
+            ))?;
         }
         Ok(transfer_amount)
     }
@@ -70,7 +74,11 @@ pub trait Tx {
 
     async fn token_name(&self, token: &str) -> Result<String, wallet_chain_interact::Error>;
 
-    async fn black_address(&self, token: &str, owner: &str) -> Result<bool, crate::error::service::ServiceError>;
+    async fn black_address(
+        &self,
+        token: &str,
+        owner: &str,
+    ) -> Result<bool, crate::error::service::ServiceError>;
 
     async fn transfer(
         &self,

@@ -1,8 +1,8 @@
 use crate::get_manager;
+use anyhow::Result;
 use wallet_api::request::transaction::{
     ApproveReq, DexRoute, QuoteReq, RouteInDex, SwapReq, SwapTokenInfo,
 };
-use anyhow::Result;
 
 // Ethereum aggregator address
 const AGGREGATOR: &str = "0xD084CbC32648346DC98BF667B2535d61E4243a95";

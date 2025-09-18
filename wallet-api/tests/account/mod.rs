@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::{env, path::PathBuf};
 use wallet_api::{dirs::Dirs, manager::WalletManager};
 use wallet_chain_instance::instance::ChainObject;
@@ -6,7 +7,6 @@ use wallet_types::chain::{
     chain::ChainCode,
 };
 use wallet_utils::init_test_log;
-use anyhow::Result;
 
 async fn get_manager() -> WalletManager {
     init_test_log();
@@ -14,7 +14,8 @@ async fn get_manager() -> WalletManager {
         .join("test_data")
         .to_string_lossy()
         .to_string();
-    let config = wallet_api::config::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
+    let config =
+        wallet_api::config::Config::new(&wallet_api::test::env::get_config().unwrap()).unwrap();
     let dirs = Dirs::new(&path).unwrap();
 
     WalletManager::new("guangxiang", "ANDROID", None, config, dirs).await.unwrap()
@@ -116,7 +117,7 @@ async fn physical_delete() {
 }
 
 #[tokio::test]
-async fn test_generate_phrase()-> Result<()> {
+async fn test_generate_phrase() -> Result<()> {
     let wallet_manager = get_manager().await;
     let c = wallet_manager.generate_phrase(1, 12)?;
 

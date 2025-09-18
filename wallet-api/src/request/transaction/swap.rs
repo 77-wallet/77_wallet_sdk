@@ -250,16 +250,22 @@ impl QuoteReq {
         Ok(wallet_utils::unit::convert_to_u256(&self.amount_in, self.token_in.decimals as u8)?)
     }
 
-    pub fn recipient_address(&self) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
+    pub fn recipient_address(
+        &self,
+    ) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         Ok(wallet_utils::address::parse_eth_address(&self.recipient)?)
     }
 
-    pub fn aggregator_address(&self) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
+    pub fn aggregator_address(
+        &self,
+    ) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         Ok(wallet_utils::address::parse_eth_address(&self.aggregator_addr)?)
     }
 
     // 波场的地址 转eth alloy Address type
-    pub fn addr_tron_to_eth(addr: &str) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
+    pub fn addr_tron_to_eth(
+        addr: &str,
+    ) -> Result<alloy::primitives::Address, crate::error::service::ServiceError> {
         let hex_addr = wallet_utils::address::bs58_addr_to_hex_bytes(addr)?;
 
         let hex_addr = hex::encode(&hex_addr[1..21]);

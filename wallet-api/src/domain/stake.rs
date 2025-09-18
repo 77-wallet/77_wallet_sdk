@@ -216,8 +216,8 @@ impl StakeDomain {
     }
 
     // 从后端获取代表列表
-    pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::service::ServiceError>
-    {
+    pub(crate) async fn vote_list_from_backend()
+    -> Result<VoteListResp, crate::error::service::ServiceError> {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut list = backend.vote_list().await?;
         // let witness_list = list.node_resp_list;

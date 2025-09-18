@@ -23,7 +23,9 @@ impl AddressBookService {
         let condition = vec![("address", address), ("chain_code", chain_code)];
         let res = self.repo.find_by_conditions(condition).await?;
         if res.is_some() {
-            return Err(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressRepeat))?;
+            return Err(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::AddressRepeat,
+            ))?;
         }
 
         Ok(self.repo.insert(name, address, chain_code).await?)
@@ -40,7 +42,9 @@ impl AddressBookService {
 
         let res = self.repo.check_not_self(id, address, chain_code).await?;
         if res.is_some() {
-            return Err(crate::error::business::BusinessError::Account(crate::error::business::account::AccountError::AddressRepeat))?;
+            return Err(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::AddressRepeat,
+            ))?;
         }
 
         Ok(self.repo.update(id, name, address, chain_code).await?)

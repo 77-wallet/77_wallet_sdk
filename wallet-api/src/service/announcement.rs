@@ -58,7 +58,10 @@ impl AnnouncementService {
         Ok(res)
     }
 
-    pub async fn physical_delete(self, id: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn physical_delete(
+        self,
+        id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         tx.physical_delete(id).await?;

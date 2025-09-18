@@ -86,12 +86,16 @@ impl ApiWalletService {
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let uid_check = backend.keys_uid_check(&uid).await?;
 
-        // uid类型检查
-        // TODO:
-        // let backend = crate::Context::get_global_backend_api()?;
-        // backend.keys_uid_check(&uid).await?;
-
+        if uid_check.status
+            == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::NormalWallet
+        {
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+            )));
+        }
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 
@@ -155,7 +159,7 @@ impl ApiWalletService {
             invite_code,
         );
         let keys_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::KEYS_V2_INIT,
+            wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
             &keys_init_req,
         )?;
 
@@ -192,23 +196,20 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        let start = std::time::Instant::now();
-
+    ) -> Result<String, crate::error::service::ServiceError> {
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
             .into());
         };
 
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
-
+        // 检查是否是api钱包，是就恢复，不是就报错
         let master_key_start = std::time::Instant::now();
         let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
             wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
@@ -227,6 +228,19 @@ impl ApiWalletService {
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let uid_check = backend.keys_uid_check(&uid).await?;
+
+        match uid_check.status {
+            wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::NormalWallet
+            | wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::NotFound => {
+                return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
+                    crate::error::business::wallet::WalletError::NotWithdrawalOrSubAccountWallet,
+                )));
+            }
+            _ => {}
+        }
+
         let seed = seed.clone();
 
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -246,7 +260,73 @@ impl ApiWalletService {
             initialize_root_keystore_start.elapsed()
         );
 
-        Ok(())
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+
+        let chains: Vec<String> =
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+        match api_wallet_type {
+            ApiWalletType::SubAccount => {
+                ApiWalletDomain::create_sub_account(
+                    address,
+                    wallet_password,
+                    chains,
+                    account_name,
+                    is_default_name,
+                )
+                .await?
+            }
+            ApiWalletType::Withdrawal => {
+                ApiWalletDomain::create_withdrawal_account(
+                    address,
+                    wallet_password,
+                    chains,
+                    account_name,
+                    is_default_name,
+                )
+                .await?
+            }
+            _ => {}
+        }
+
+        let client_id = DeviceDomain::client_id_by_device(&device)?;
+
+        let language_req = {
+            let config = crate::app_state::APP_STATE.read().await;
+            LanguageInitReq::new(&client_id, config.language())
+        };
+
+        let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+            &uid,
+            &device.sn,
+            Some(client_id),
+            Some(device.device_type),
+            wallet_name,
+            invite_code,
+        );
+        let keys_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
+            &keys_init_req,
+        )?;
+
+        let language_init_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
+            &language_req,
+        )?;
+
+        // let address_init_task_data = BackendApiTaskData::new(
+        //     wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
+        //     &address_init_task_data,
+        // )?;
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(keys_init_task_data))
+            .push(BackendApiTask::BackendApi(language_init_task_data))
+            //     .push(Task::BackendApi(BackendApiTask::BackendApi(
+            //         address_init_task_data,
+            //     )))
+            .send()
+            .await?;
+
+        Ok(uid)
     }
 
     pub async fn bind_merchant(

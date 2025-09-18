@@ -37,7 +37,8 @@ pub(crate) struct ProcessFeeTxHandle {
     confirm_report_tx: mpsc::Sender<ProcessFeeTxConfirmReportCommand>,
     tx_handle: Mutex<Option<JoinHandle<Result<(), crate::error::service::ServiceError>>>>,
     tx_report_handle: Mutex<Option<JoinHandle<Result<(), crate::error::service::ServiceError>>>>,
-    tx_confirm_report_handle: Mutex<Option<JoinHandle<Result<(), crate::error::service::ServiceError>>>>,
+    tx_confirm_report_handle:
+        Mutex<Option<JoinHandle<Result<(), crate::error::service::ServiceError>>>>,
 }
 
 impl ProcessFeeTxHandle {
@@ -68,7 +69,10 @@ impl ProcessFeeTxHandle {
         }
     }
 
-    pub(crate) async fn submit_tx(&self, trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub(crate) async fn submit_tx(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let _ = self.tx_tx.send(ProcessFeeTxCommand::Tx(trade_no.to_string()));
         Ok(())
     }
@@ -86,17 +90,23 @@ impl ProcessFeeTxHandle {
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.tx_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::service::ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound)
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::BackendEndpointNotFound,
+                )
             })??;
         }
         if let Some(handle) = self.tx_report_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::service::ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound)
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::BackendEndpointNotFound,
+                )
             })??;
         }
         if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::service::ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound)
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::BackendEndpointNotFound,
+                )
             })??;
         }
         Ok(())
@@ -172,7 +182,10 @@ impl ProcessFeeTx {
         Ok(())
     }
 
-    async fn process_fee_single_tx(&self, req: ApiFeeEntity) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_fee_single_tx(
+        &self,
+        req: ApiFeeEntity,
+    ) -> Result<(), crate::error::service::ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process fee tx -------------------------------");
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
@@ -232,7 +245,10 @@ impl ProcessFeeTx {
         Ok(())
     }
 
-    async fn handle_fee_tx_failed(&self, trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
+    async fn handle_fee_tx_failed(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
         // 上报交易不影响交易偏移量计算
@@ -451,7 +467,9 @@ impl ProcessFeeTxConfirmReport {
         Ok(())
     }
 
-    async fn process_fee_tx_confirm_report(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_fee_tx_confirm_report(
+        &mut self,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool,

@@ -1,13 +1,15 @@
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeysUidCheckRes {
-    uid: String,
+    pub uid: String,
     /// NORMAL_WALLET / API_WALLET / NOT_FOUND
-    status: String,
+    pub status: UidStatus,
 }
 
-impl KeysUidCheckRes {
-    pub fn new(uid: &str, status: &str) -> Self {
-        Self { uid: uid.to_string(), status: status.to_string() }
-    }
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum UidStatus {
+    NormalWallet,
+    ApiWallet,
+    NotFound,
 }

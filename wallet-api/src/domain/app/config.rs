@@ -17,7 +17,9 @@ use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 pub struct ConfigDomain;
 
 impl ConfigDomain {
-    pub async fn get_config_min_value(symbol: &str) -> Result<Option<f64>, crate::error::service::ServiceError> {
+    pub async fn get_config_min_value(
+        symbol: &str,
+    ) -> Result<Option<f64>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let cx = crate::context::CONTEXT.get().unwrap();
@@ -57,7 +59,10 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn set_config(key: &str, value: &str) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn set_config(
+        key: &str,
+        value: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         ConfigDao::upsert(key, value, None, pool.as_ref()).await?;
@@ -65,7 +70,9 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn set_official_website(website: Option<String>) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn set_official_website(
+        website: Option<String>,
+    ) -> Result<(), crate::error::service::ServiceError> {
         if let Some(official_website) = website {
             let config = OfficialWebsite { url: official_website.clone() };
             ConfigDomain::set_config(OFFICIAL_WEBSITE, &config.to_json_str()?).await?;
@@ -86,7 +93,9 @@ impl ConfigDomain {
         Ok(())
     }
 
-    pub async fn set_currency(currency: Option<Currency>) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn set_currency(
+        currency: Option<Currency>,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut config = crate::app_state::APP_STATE.write().await;
         let currency = if let Some(currency) = currency
             && currency.currency != config.currency()
@@ -144,7 +153,8 @@ impl ConfigDomain {
     //     Ok(())
     // }
 
-    pub async fn init_app_install_download_url() -> Result<(), crate::error::service::ServiceError> {
+    pub async fn init_app_install_download_url() -> Result<(), crate::error::service::ServiceError>
+    {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let app_install_download_url =
             ConfigDao::find_by_key(APP_DOWNLOAD_QR_CODE_URL, pool.as_ref()).await?;
@@ -223,7 +233,8 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_invite_code() -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
+    pub(crate) async fn get_invite_code()
+    -> Result<Option<InviteCode>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let invite_code = ConfigDao::find_by_key(INVITE_CODE, pool.as_ref()).await?;
 
@@ -244,7 +255,9 @@ impl ConfigDomain {
         // }
     }
 
-    pub async fn set_keys_reset_status(status: Option<bool>) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn set_keys_reset_status(
+        status: Option<bool>,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let config = KeysResetStatus { status };
         ConfigDomain::set_config(KEYS_RESET_STATUS, &config.to_json_str()?).await?;
 
@@ -264,13 +277,16 @@ impl ConfigDomain {
         }
     }
 
-    pub(crate) async fn get_app_version() -> Result<AppVersion, crate::error::service::ServiceError> {
+    pub(crate) async fn get_app_version() -> Result<AppVersion, crate::error::service::ServiceError>
+    {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let app_version = ConfigDao::find_by_key(APP_VERSION, pool.as_ref()).await?.ok_or(
-            crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Config(
-                crate::error::business::config::ConfigError::NotFound(APP_VERSION.to_owned()),
-            )),
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Config(
+                    crate::error::business::config::ConfigError::NotFound(APP_VERSION.to_owned()),
+                ),
+            ),
         )?;
         Ok(AppVersion::try_from(app_version.value)?)
     }
@@ -296,7 +312,8 @@ impl ConfigDomain {
         Ordering::Equal
     }
 
-    pub(crate) async fn get_keystore_kdf_algorithm() -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
+    pub(crate) async fn get_keystore_kdf_algorithm()
+    -> Result<KdfAlgorithm, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let keystore_kdf_algorithm =
             ConfigDao::find_by_key(KEYSTORE_KDF_ALGORITHM, pool.as_ref()).await?;

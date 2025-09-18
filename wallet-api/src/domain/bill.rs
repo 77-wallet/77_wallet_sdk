@@ -70,7 +70,9 @@ impl BillDomain {
         Ok(adapter.query_tx_res(tx_hash).await?)
     }
 
-    pub async fn handle_sync_bill(item: SyncBillResp) -> Result<(), crate::error::service::ServiceError> {
+    pub async fn handle_sync_bill(
+        item: SyncBillResp,
+    ) -> Result<(), crate::error::service::ServiceError> {
         if item.value == 0.0 {
             return Ok(());
         }
@@ -203,6 +205,9 @@ impl BillDomain {
             return Ok(Some(adjusted_time(bill)));
         }
 
-        Err(crate::error::business::BusinessError::MultisigAccount(crate::error::business::multisig_account::MultisigAccountError::NotFound).into())
+        Err(crate::error::business::BusinessError::MultisigAccount(
+            crate::error::business::multisig_account::MultisigAccountError::NotFound,
+        )
+        .into())
     }
 }
