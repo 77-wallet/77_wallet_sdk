@@ -155,7 +155,7 @@ impl ApiAccountDomain {
         // let private_key = keypair.private_key_bytes()?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let account = wallet_database::repositories::api_account::find_one(
+        let account = ApiAccountRepo::find_one(
             pool.clone(),
             &address,
             &chain_code,

@@ -29,6 +29,8 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
+pub mod api_chain;
+pub mod api_coin;
 
 #[async_trait::async_trait]
 pub trait Dao {
