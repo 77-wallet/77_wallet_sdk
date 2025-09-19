@@ -29,6 +29,8 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
+pub mod api_chain;
+pub mod api_coin;
 
 // 是否过期
 fn has_expiration(timestamp: i64, chain_code: wallet_types::chain::chain::ChainCode) -> bool {

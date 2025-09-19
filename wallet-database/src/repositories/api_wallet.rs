@@ -56,36 +56,6 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::mark_init(pool.as_ref(), uid).await?)
     }
 
-    // pub async fn update(
-    //     &mut self,
-    //     id: u32,
-    //     name: &str,
-    //     address: &str,
-    //     chain_code: &str,
-    // ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-    //     let pool = self.repo.pool().clone();
-    //     Ok(ApiWalletEntity::update(pool.as_ref(), id, name, address, chain_code).await?)
-    // }
-
-    // pub async fn find_by_conditions(
-    //     &mut self,
-    //     conditions: Vec<(&str, &str)>,
-    // ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-    //     Ok(ApiWalletEntity::find_condition(self.repo.pool().as_ref(), conditions).await?)
-    // }
-
-    // pub async fn check_not_self(
-    //     &mut self,
-    //     id: u32,
-    //     address: &str,
-    //     chain_code: &str,
-    // ) -> Result<Option<ApiWalletEntity>, crate::Error> {
-    //     Ok(
-    //         ApiWalletEntity::check_not_self(self.repo.pool().as_ref(), id, address, chain_code)
-    //             .await?,
-    //     )
-    // }
-
     pub async fn delete(
         pool: &DbPool,
         wallet_addresses: &[&str],
