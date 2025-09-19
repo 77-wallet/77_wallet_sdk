@@ -102,4 +102,22 @@ impl ApiChainDao {
             .map(|_| ())
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn detail_with_main_symbol<'a, E>(
+        exec: E,
+        main_symbol: &str,
+    ) -> Result<Option<ApiChainEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+                        SELECT *
+                        FROM api_chain
+                        WHERE main_symbol = $1 AND status = 1;"#;
+        sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(sql)
+            .bind(main_symbol)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
 }

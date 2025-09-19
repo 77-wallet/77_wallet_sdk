@@ -45,4 +45,21 @@ impl ApiAssetsRepo {
     pub async fn list(pool: &DbPool) -> Result<Vec<ApiAssetsEntity>, crate::Error> {
         Ok(ApiAssetsDao::list(pool.as_ref()).await?)
     }
+
+    pub async fn get_chain_assets_by_address_chain_code_symbol(
+        pool: &DbPool,
+        address: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Option<&str>,
+        is_multisig: Option<bool>,
+    ) -> Result<Vec<ApiAssetsEntity>, crate::Error> {
+        ApiAssetsDao::get_chain_assets_by_address_chain_code_symbol(
+            pool.as_ref(),
+            address,
+            chain_code,
+            symbol,
+            is_multisig,
+        )
+        .await
+    }
 }

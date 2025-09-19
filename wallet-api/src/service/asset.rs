@@ -43,18 +43,11 @@ pub struct AssetsService {
     pub repo: ResourcesRepo,
     account_domain: AccountDomain,
     assets_domain: AssetsDomain,
-    coin_domain: CoinDomain, // keystore: wallet_crypto::Keystore
-                             // keystore: wallet_crypto::Keystore
 }
 
 impl AssetsService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            account_domain: AccountDomain::new(),
-            assets_domain: AssetsDomain::new(),
-            coin_domain: CoinDomain::new(),
-        }
+        Self { repo, account_domain: AccountDomain::new(), assets_domain: AssetsDomain::new() }
     }
 
     pub async fn get_multisig_account_assets(
@@ -62,7 +55,7 @@ impl AssetsService {
         address: &str,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let multisig = MultisigDomain::account_by_address(address, true, &pool).await?;
@@ -94,7 +87,7 @@ impl AssetsService {
             .assets_domain
             .get_account_assets_entity(tx, account_id, wallet_address, chain_codes, Some(false))
             .await?;
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let account_total_assets =
             token_currencies.calculate_account_total_assets(&mut data).await?;
@@ -112,7 +105,7 @@ impl AssetsService {
     ) -> Result<CoinAssets, crate::error::service::ServiceError> {
         let tx = &mut self.repo;
 
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         let address = if let Some(account_id) = account_id {
             let account = tx
                 .detail_by_wallet_address_and_account_id_and_chain_code(
@@ -148,7 +141,7 @@ impl AssetsService {
         let accounts = tx
             .get_account_list_by_wallet_address_and_account_id(wallet_address, Some(account_id))
             .await?;
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let addresses = accounts.into_iter().map(|info| info.address).collect();
 
@@ -161,7 +154,7 @@ impl AssetsService {
 
     // 指定账户下的链的资产列表，需要去重
     pub async fn get_account_chain_assets_v2(
-        mut self,
+        self,
         address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
@@ -176,7 +169,7 @@ impl AssetsService {
             .await?;
 
         let mut res = AccountChainAssetList::default();
-        let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         // 根据账户地址、网络查询币资产
         for address in account_addresses {

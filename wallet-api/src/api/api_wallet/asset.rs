@@ -1,16 +1,19 @@
 use crate::{
-    api::ReturnType, manager::WalletManager, response_vo::api_wallet::assets::ApiAccountChainAsset,
+    api::ReturnType, manager::WalletManager,
+    response_vo::api_wallet::assets::ApiAccountChainAssetList,
     service::api_wallet::asset::ApiAssetsService,
 };
-use wallet_database::entities::api_assets::ApiAssetsEntity;
 
 impl WalletManager {
     pub async fn get_api_assets_list(
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
-    ) -> ReturnType<Vec<ApiAccountChainAsset>> {
-        Ok(vec![])
+        chain_code: Option<String>,
+    ) -> ReturnType<ApiAccountChainAssetList> {
+        ApiAssetsService::new()
+            .get_api_assets_list(wallet_address, account_id, chain_code, None)
+            .await
     }
 
     // 根据钱包去同步资产
@@ -50,6 +53,25 @@ mod test {
 
         let res = wallet_manager.sync_api_assets_by_wallet(wallet_address, index, vec![]).await;
         tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_assets_list() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
+        let chain_code = None;
+
+        let account_id = Some(1);
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let res = wallet_manager.get_api_assets_list(address, account_id, chain_code).await?;
+        // tracing::info!("get_account_chain_assets: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("get_account_chain_assets: {}", res);
         Ok(())
     }
 }

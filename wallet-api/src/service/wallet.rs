@@ -51,17 +51,11 @@ pub struct WalletService {
     pub repo: ResourcesRepo,
     wallet_domain: WalletDomain,
     assets_domain: AssetsDomain,
-    coin_domain: CoinDomain,
 }
 
 impl WalletService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            wallet_domain: WalletDomain::new(),
-            assets_domain: AssetsDomain::new(),
-            coin_domain: CoinDomain::new(),
-        }
+        Self { repo, wallet_domain: WalletDomain::new(), assets_domain: AssetsDomain::new() }
     }
 
     pub(crate) async fn encrypt_password(
@@ -600,7 +594,7 @@ impl WalletService {
 
         let chains: ChainCodeAndName = chains.into();
 
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         // let service = Service::default();
         let wallet_list = if let Some(wallet_address) = &wallet_address {
             let wallet = tx.wallet_detail_by_address(wallet_address).await?.ok_or(

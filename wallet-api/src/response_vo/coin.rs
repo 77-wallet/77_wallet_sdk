@@ -382,9 +382,67 @@ impl TokenCurrencies {
         Ok(())
     }
 
+    pub async fn calculate_api_assets(
+        &self,
+        data: wallet_database::entities::api_assets::ApiAssetsEntity,
+        existing_asset: &mut super::api_wallet::assets::ApiAccountChainAsset,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let balance = wallet_utils::parse_func::decimal_from_str(&data.balance)?;
+        if balance.is_zero() {
+            return Ok(());
+        }
+        let balance_f = wallet_utils::parse_func::f64_from_str(&data.balance)?;
+
+        let token_currency_id =
+            TokenCurrencyId::new(&data.symbol, &data.chain_code, data.token_address());
+        let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
+            // let config = crate::app_state::APP_STATE.read().await;
+            // let currency = config.currency();
+            // let currency = "USD";
+            let currency = ConfigDomain::get_currency().await?;
+
+            let price = token_currency.get_price(&currency);
+            let fiat_balance = price.map(|p| p * balance_f);
+            (price, fiat_balance)
+        } else {
+            (None, None)
+        };
+
+        // existing_asset
+        //     .chain_list
+        //     .insert(data.chain_code, data.token_address);
+
+        let BalanceInfo { amount, currency: _, unit_price: _, fiat_value } =
+            &mut existing_asset.balance;
+
+        let after_balance = *amount + balance_f;
+        *amount = after_balance;
+        let fiat_balance = price.map(|p| p * after_balance);
+        *fiat_value = fiat_balance;
+
+        // existing_asset.usdt_balance = (after_balance * unit_price).to_string();
+        // FIXME: btc 的资产是 非multisig 的，需要特殊处理
+        // existing_asset.is_multichain = true;
+
+        Ok(())
+    }
+
     pub async fn calculate_assets_entity(
         &self,
         assets: &wallet_database::entities::assets::AssetsEntity,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        self.calculate_to_balance(
+            &assets.balance,
+            &assets.symbol,
+            &assets.chain_code,
+            assets.token_address(),
+        )
+        .await
+    }
+
+    pub async fn calculate_api_assets_entity(
+        &self,
+        assets: &wallet_database::entities::api_assets::ApiAssetsEntity,
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         self.calculate_to_balance(
             &assets.balance,

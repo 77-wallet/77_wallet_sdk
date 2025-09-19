@@ -39,4 +39,11 @@ impl ApiChainRepo {
     ) -> Result<(), crate::Error> {
         Ok(ApiChainDao::set_chain_node(pool.as_ref(), chain_code, node_id).await?)
     }
+
+    pub async fn detail_with_main_symbol(
+        pool: &DbPool,
+        main_symbol: &str,
+    ) -> Result<Option<ApiChainEntity>, crate::Error> {
+        Ok(ApiChainDao::detail_with_main_symbol(pool.as_ref(), main_symbol).await?)
+    }
 }
