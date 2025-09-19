@@ -86,14 +86,22 @@ pub mod endpoint {
         pub const TRANS_EVENT_ACK: &str = "awallet/aw/trans/eventAck";
         /// 查询uid的地址列表
         pub const QUERY_ADDRESS_LIST: &str = "awallet/aw/address/list";
-        /// UID绑定appId
-        pub const APP_ID_BIND: &str = "awallet/aw/appid/bind";
-        /// UID解绑appId
-        pub const APP_ID_UNBIND: &str = "awallet/aw/appid/unbind";
+
         /// 地址池扩容
         pub const ADDRESS_POOL_EXPAND: &str = "awallet/aw/address/expand";
         /// 设置UID为API钱包
         pub const INIT_API_WALLET: &str = "awallet/aw/init/apiWallet";
+
+        /// UID绑定appId
+        pub const APP_ID_BIND: &str = "awallet/aw/appid/bind";
+        /// UID解绑appId
+        pub const APP_ID_UNBIND: &str = "awallet/aw/appid/unbind";
+        /// 保存钱包激活配置
+        pub const SAVE_WALLET_ACTIVATION_CONFIG: &str = "awallet/aw/appid/saveActiveInfo";
+        /// 查询钱包激活信息
+        pub const QUERY_WALLET_ACTIVATION_CONFIG: &str = "awallet/aw/appid/getActiveInfo";
+        /// 查询uid绑定信息
+        pub const QUERY_UID_BIND_INFO: &str = "awallet/aw/appid/bindInfo";
 
         /// 提币策略保存
         pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "awallet/aw/strategy/withdrawal/save";
@@ -104,9 +112,6 @@ pub mod endpoint {
         pub const TRANS_STRATEGY_COLLECT_SAVE: &str = "awallet/aw/strategy/collect/save";
         /// 获取归集策略
         pub const TRANS_STRATEGY_GET_COLLECT_CONFIG: &str = "awallet/aw/strategy/getCollectConfig";
-
-        pub const CHECK_WITHDRAWAL_WALLET_ACTIVATED: &str =
-            "awallet/aw/checkWithdrawalWalletActivated";
     }
 }
 

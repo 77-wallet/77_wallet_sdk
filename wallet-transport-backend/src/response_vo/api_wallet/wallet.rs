@@ -13,3 +13,10 @@ pub enum UidStatus {
     ApiWallet,
     NotFound,
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryWalletActivationInfoResp {
+    pub uid: String,
+    pub status: UidStatus,
+}

@@ -8,8 +8,9 @@ use wallet_database::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, coin::CoinRepo, wallet::WalletRepo,
     },
 };
-use wallet_transport_backend::request::{
-    AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::ExpandAddressReq,
+use wallet_transport_backend::{
+    request::{AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::ExpandAddressReq},
+    response_vo::api_wallet::wallet::QueryWalletActivationInfoResp,
 };
 
 use crate::{
@@ -357,10 +358,16 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub async fn check_withdrawal_wallet_activated(
+    pub async fn query_wallet_activation_info(
         wallet_address: &str,
-    ) -> Result<bool, crate::error::service::ServiceError> {
+    ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        Ok(backend_api.check_withdrawal_wallet_activated(wallet_address).await?)
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+        Ok(backend_api.query_wallet_activation_info(&api_wallet.uid).await?)
     }
 }

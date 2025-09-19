@@ -2,7 +2,10 @@ use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
-use wallet_transport_backend::request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq};
+use wallet_transport_backend::{
+    request::{LanguageInitReq, api_wallet::wallet::BindAppIdReq},
+    response_vo::api_wallet::wallet::QueryWalletActivationInfoResp,
+};
 
 use crate::{
     api::ReturnType,
@@ -404,11 +407,11 @@ impl ApiWalletService {
         Ok(())
     }
 
-    pub async fn check_withdrawal_wallet_activated(
+    pub async fn query_wallet_activation_info(
         self,
         wallet_address: &str,
-    ) -> Result<bool, crate::error::service::ServiceError> {
-        ApiWalletDomain::check_withdrawal_wallet_activated(wallet_address).await
+    ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
+        ApiWalletDomain::query_wallet_activation_info(wallet_address).await
     }
 
     //     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
