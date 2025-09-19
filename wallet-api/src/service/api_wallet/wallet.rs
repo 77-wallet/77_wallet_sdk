@@ -177,15 +177,9 @@ impl ApiWalletService {
             &language_req,
         )?;
 
-        let init_api_wallet_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::api_wallet::INIT_API_WALLET,
-            &language_req,
-        )?;
-
         Tasks::new()
             .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
-            .push(BackendApiTask::BackendApi(init_api_wallet_task_data))
             .send()
             .await?;
 
@@ -321,16 +315,9 @@ impl ApiWalletService {
             &language_req,
         )?;
 
-        // let address_init_task_data = BackendApiTaskData::new(
-        //     wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
-        //     &address_init_task_data,
-        // )?;
         Tasks::new()
             .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
-            //     .push(Task::BackendApi(BackendApiTask::BackendApi(
-            //         address_init_task_data,
-            //     )))
             .send()
             .await?;
 

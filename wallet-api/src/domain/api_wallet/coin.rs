@@ -1,5 +1,3 @@
 pub struct ApiCoinDomain {}
 
-impl ApiCoinDomain {
-
-}
+impl ApiCoinDomain {}

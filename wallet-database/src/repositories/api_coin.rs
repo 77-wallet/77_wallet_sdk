@@ -1,5 +1,3 @@
 pub struct ApiCoinRepo;
 
-impl ApiCoinRepo {
-
-}
+impl ApiCoinRepo {}

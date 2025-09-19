@@ -10,7 +10,6 @@ use crate::{
 pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
-
     pub async fn find_one(
         pool: DbPool,
         address: &str,
@@ -18,8 +17,14 @@ impl ApiAccountRepo {
         address_type: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one(pool.as_ref(), address, chain_code, address_type, api_wallet_type)
-            .await?)
+        Ok(ApiAccountDao::find_one(
+            pool.as_ref(),
+            address,
+            chain_code,
+            address_type,
+            api_wallet_type,
+        )
+        .await?)
         // Ok(None)
     }
 
