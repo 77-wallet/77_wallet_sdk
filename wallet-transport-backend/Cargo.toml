@@ -19,6 +19,7 @@ wallet-types = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_repr = { workspace = true }
 
 rust_decimal = { workspace = true }
 

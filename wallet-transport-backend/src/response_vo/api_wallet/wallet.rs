@@ -16,7 +16,18 @@ pub enum UidStatus {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QueryWalletActivationInfoResp {
-    pub uid: String,
-    pub status: UidStatus,
+pub struct QueryWalletActivationInfoResp(pub Vec<QueryWalletActivationInfoRespItem>);
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryWalletActivationInfoRespItem {
+    pub chain: String,
+    pub active: ActiveStatus,
+}
+
+#[derive(Debug, serde_repr::Deserialize_repr, serde_repr::Serialize_repr)]
+#[repr(u8)]
+pub enum ActiveStatus {
+    Active = 1,
+    Inactive = 0,
 }
