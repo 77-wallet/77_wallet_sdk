@@ -8,13 +8,13 @@ use crate::{
     api::ReturnType,
     context::Context,
     domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
+    error::service::ServiceError,
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
     response_vo::api_wallet::wallet::ApiWalletInfo,
 };
-use crate::error::service::ServiceError;
 
 pub struct ApiWalletService {
     ctx: &'static Context,
@@ -57,7 +57,9 @@ impl ApiWalletService {
         api_wallet_type: ApiWalletType,
     ) -> Result<String, ServiceError> {
         if api_wallet_type == ApiWalletType::InvalidValue {
-            return Err(ServiceError::Database(wallet_database::Error::InvalidValue(api_wallet_type as u8)))
+            return Err(ServiceError::Database(wallet_database::Error::InvalidValue(
+                api_wallet_type as u8,
+            )));
         }
         let start = std::time::Instant::now();
 
@@ -172,16 +174,15 @@ impl ApiWalletService {
             &language_req,
         )?;
 
-        // let address_init_task_data = BackendApiTaskData::new(
-        //     wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
-        //     &address_init_task_data,
-        // )?;
+        let init_api_wallet_task_data = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::api_wallet::INIT_API_WALLET,
+            &language_req,
+        )?;
+
         Tasks::new()
             .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
-            //     .push(Task::BackendApi(BackendApiTask::BackendApi(
-            //         address_init_task_data,
-            //     )))
+            .push(BackendApiTask::BackendApi(init_api_wallet_task_data))
             .send()
             .await?;
 
@@ -340,13 +341,29 @@ impl ApiWalletService {
         recharge_uid: &str,
         withdrawal_uid: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiWalletDomain::bind_uid(recharge_uid, merchain_id, org_app_id).await?;
-        ApiWalletDomain::bind_uid(withdrawal_uid, merchain_id, org_app_id).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+        let withdrawal_wallet = ApiWalletRepo::find_by_uid(&pool, withdrawal_uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
 
-        ApiWalletDomain::bind_withdraw_and_subaccount_relation(recharge_uid, withdrawal_uid)
-            .await?;
+        ApiWalletDomain::bind_uid(&recharge_wallet.address, merchain_id, org_app_id).await?;
+        ApiWalletDomain::bind_uid(&withdrawal_wallet.address, merchain_id, org_app_id).await?;
+
+        ApiWalletDomain::bind_withdraw_and_subaccount_relation(
+            &recharge_wallet.address,
+            &withdrawal_wallet.address,
+        )
+        .await?;
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend.init_api_wallet(recharge_uid, withdrawal_uid).await?;
         backend
             .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
             .await?;

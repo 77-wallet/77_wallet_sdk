@@ -1,12 +1,17 @@
 use std::error::Error;
 use tokio_stream::StreamExt as _;
-use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
-use wallet_api::manager::WalletManager;
-use wallet_api::test::env::TestParams;
+use wallet_api::{
+    manager::WalletManager,
+    messaging::notify::FrontendNotifyEvent,
+    test::env::{TestParams, get_manager},
+};
 use wallet_database::entities::api_wallet::ApiWalletType;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
-async fn run(wallet_manager: &WalletManager, test_params : &TestParams)-> Result<(), Box<dyn std::error::Error>> {
+async fn run(
+    wallet_manager: &WalletManager,
+    test_params: &TestParams,
+) -> Result<(), Box<dyn std::error::Error>> {
     // 创建钱包
     let language_code = 1;
     let phrase = &test_params.create_wallet_req.phrase;
@@ -104,7 +109,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
     tracing::info!("set_invite_code ------------------------0: {res:?}");
 
-
     let res = run(&wallet_manager, &test_params).await;
     match res {
         Ok(_) => {}
@@ -112,7 +116,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::error!(" =========================== run {}", err)
         }
     }
-
 
     // let topics = vec![
     //     "wallet/token/eth/usdc".to_string(),

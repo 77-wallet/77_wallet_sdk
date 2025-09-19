@@ -1,8 +1,8 @@
-use wallet_transport_backend::request::api_wallet::strategy::{
-    ChainConfig, SaveCollectStrategyReq, SaveWithdrawStrategyReq,
-};
-use wallet_transport_backend::response_vo::api_wallet::strategy::WithdrawStrategyResp;
 use crate::context::Context;
+use wallet_transport_backend::{
+    request::api_wallet::strategy::{ChainConfig, SaveCollectStrategyReq, SaveWithdrawStrategyReq},
+    response_vo::api_wallet::strategy::WithdrawStrategyResp,
+};
 
 pub struct StrategyService {
     ctx: &'static Context,

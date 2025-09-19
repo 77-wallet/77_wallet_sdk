@@ -96,48 +96,34 @@ impl ApiWalletDomain {
     }
 
     pub(crate) async fn bind_uid(
-        uid: &str,
+        address: &str,
         merchain_id: &str,
         org_app_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let api_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
-            ),
-        )?;
-        ApiWalletRepo::update_merchant_id(&pool, &api_wallet.address, merchain_id).await?;
-        ApiWalletRepo::update_app_id(&pool, &api_wallet.address, org_app_id).await?;
+        ApiWalletRepo::update_merchant_id(&pool, &address, merchain_id).await?;
+        ApiWalletRepo::update_app_id(&pool, &address, org_app_id).await?;
 
         Ok(())
     }
 
     pub(crate) async fn bind_withdraw_and_subaccount_relation(
-        subaccount_uid: &str,
-        withdraw_uid: &str,
+        subaccount_address: &str,
+        withdraw_address: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let subaccount_uid = ApiWalletRepo::find_by_uid(&pool, subaccount_uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
-            ),
-        )?;
-        let withdraw_uid = ApiWalletRepo::find_by_uid(&pool, withdraw_uid).await?.ok_or(
-            crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::NotFound,
-            ),
-        )?;
+
         ApiWalletRepo::bind_withdraw_and_subaccount_relation(
             pool.clone(),
-            &subaccount_uid.address,
-            &withdraw_uid.address,
+            &subaccount_address,
+            &withdraw_address,
         )
         .await?;
 
         ApiWalletRepo::bind_withdraw_and_subaccount_relation(
             pool,
-            &withdraw_uid.address,
-            &subaccount_uid.address,
+            &withdraw_address,
+            &subaccount_address,
         )
         .await?;
         Ok(())

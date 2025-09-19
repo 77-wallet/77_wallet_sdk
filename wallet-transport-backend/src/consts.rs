@@ -92,6 +92,8 @@ pub mod endpoint {
         pub const APP_ID_UNBIND: &str = "awallet/aw/appid/unbind";
         /// 地址池扩容
         pub const ADDRESS_POOL_EXPAND: &str = "awallet/aw/address/expand";
+        /// 设置UID为API钱包
+        pub const INIT_API_WALLET: &str = "awallet/aw/init/apiWallet";
 
         /// 提币策略保存
         pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "awallet/aw/strategy/withdrawal/save";
