@@ -16,3 +16,11 @@ impl BindAppIdReq {
     }
 }
 pub type UnBindAppIdReq = BindAppIdReq;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveWalletActivationConfigReq {
+    chain_code: String,
+    uid: String,
+    address_list: Vec<String>,
+}

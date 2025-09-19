@@ -1,5 +1,3 @@
 pub(crate) struct ApiCoinDao;
 
-impl ApiCoinDao {
-
-}
+impl ApiCoinDao {}

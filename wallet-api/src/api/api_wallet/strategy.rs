@@ -1,7 +1,9 @@
-use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
-use wallet_transport_backend::response_vo::api_wallet::strategy::WithdrawStrategyResp;
 use crate::{
     api::ReturnType, manager::WalletManager, service::api_wallet::strategy::StrategyService,
+};
+use wallet_transport_backend::{
+    request::api_wallet::strategy::ChainConfig,
+    response_vo::api_wallet::strategy::WithdrawStrategyResp,
 };
 
 impl WalletManager {

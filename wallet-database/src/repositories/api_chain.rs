@@ -1,12 +1,15 @@
-use crate::dao::api_chain::ApiChainDao;
-use crate::DbPool;
-use crate::entities::api_chain::ApiChainEntity;
-use crate::entities::chain::{ChainCreateVo, ChainEntity, ChainWithNode};
+use crate::{
+    DbPool,
+    dao::api_chain::ApiChainDao,
+    entities::{
+        api_chain::ApiChainEntity,
+        chain::{ChainCreateVo, ChainEntity, ChainWithNode},
+    },
+};
 
 pub struct ApiChainRepo;
 
 impl ApiChainRepo {
-
     pub async fn get_chain_list(pool: &DbPool) -> Result<Vec<ChainEntity>, crate::Error> {
         Ok(ChainEntity::list(pool.as_ref(), Some(1)).await?)
     }
@@ -36,8 +39,4 @@ impl ApiChainRepo {
     ) -> Result<(), crate::Error> {
         Ok(ApiChainDao::set_chain_node(pool.as_ref(), chain_code, node_id).await?)
     }
-
-
-
-
 }

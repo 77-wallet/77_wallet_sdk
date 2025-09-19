@@ -1,4 +1,5 @@
 use wallet_database::entities::api_wallet::ApiWalletType;
+use wallet_transport_backend::response_vo::api_wallet::wallet::QueryWalletActivationInfoResp;
 
 use crate::{
     api::ReturnType, manager::WalletManager, response_vo::api_wallet::wallet::ApiWalletInfo,
@@ -79,11 +80,11 @@ impl WalletManager {
         ApiWalletService::new(self.ctx).set_passwd_cache(wallet_password).await
     }
 
-    pub async fn check_withdrawal_wallet_activated(
+    pub async fn query_wallet_activation_info(
         &self,
         wallet_address: &str,
-    ) -> ReturnType<bool> {
-        ApiWalletService::new(self.ctx).check_withdrawal_wallet_activated(wallet_address).await
+    ) -> ReturnType<QueryWalletActivationInfoResp> {
+        ApiWalletService::new(self.ctx).query_wallet_activation_info(wallet_address).await
     }
 
     // pub async fn physical_reset_api_wallet(&self) -> ReturnType<()> {

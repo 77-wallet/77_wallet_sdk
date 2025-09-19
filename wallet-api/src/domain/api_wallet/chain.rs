@@ -1,5 +1,3 @@
 pub struct ApiChainDomain {}
 
-impl ApiChainDomain {
-
-}
+impl ApiChainDomain {}

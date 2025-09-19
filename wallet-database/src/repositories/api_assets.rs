@@ -1,10 +1,10 @@
 use crate::{
+    DbPool,
     dao::api_assets::ApiAssetsDao,
     entities::{
         api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
         assets::AssetsId,
     },
-    DbPool,
 };
 
 pub struct ApiAssetsRepo;
@@ -45,5 +45,4 @@ impl ApiAssetsRepo {
     pub async fn list(pool: &DbPool) -> Result<Vec<ApiAssetsEntity>, crate::Error> {
         Ok(ApiAssetsDao::list(pool.as_ref()).await?)
     }
-
 }

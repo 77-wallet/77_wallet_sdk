@@ -1,11 +1,16 @@
-use crate::entities::api_chain::ApiChainEntity;
+use crate::entities::{
+    api_chain::ApiChainEntity,
+    chain::{ChainCreateVo, ChainEntity},
+};
 use sqlx::{Executor, Sqlite};
-use crate::entities::chain::{ChainCreateVo, ChainEntity};
 
 pub(crate) struct ApiChainDao;
 
 impl ApiChainDao {
-    pub async fn list<'a, E>(exec: E, status: Option<u8>) -> Result<Vec<ApiChainEntity>, crate::Error>
+    pub async fn list<'a, E>(
+        exec: E,
+        status: Option<u8>,
+    ) -> Result<Vec<ApiChainEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -46,10 +51,7 @@ impl ApiChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn upsert<'c, E>(
-        executor: E,
-        input: ChainCreateVo,
-    ) -> Result<(), crate::Error>
+    pub async fn upsert<'c, E>(executor: E, input: ChainCreateVo) -> Result<(), crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
     {

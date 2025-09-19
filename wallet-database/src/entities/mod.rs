@@ -4,6 +4,8 @@ pub mod address_book;
 pub mod announcement;
 pub mod api_account;
 pub mod api_assets;
+pub mod api_chain;
+pub mod api_coin;
 pub mod api_collect;
 pub mod api_collect_strategy;
 pub mod api_fee;
@@ -29,8 +31,6 @@ pub mod stake;
 pub mod system_notification;
 pub mod task_queue;
 pub mod wallet;
-pub mod api_chain;
-pub mod api_coin;
 
 // 是否过期
 fn has_expiration(timestamp: i64, chain_code: wallet_types::chain::chain::ChainCode) -> bool {
