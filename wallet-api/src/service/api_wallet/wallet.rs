@@ -95,16 +95,18 @@ impl ApiWalletService {
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let uid_check = backend.keys_uid_check(&uid).await?;
 
-        if uid_check.status
-            == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::NormalWallet
-        {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
-                crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
-            )));
-        }
+        // TODO：等后端写完再取消注释
+        // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        // let uid_check = backend.keys_uid_check(&uid).await?;
+
+        // if uid_check.status
+        //     == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::NormalWallet
+        // {
+        //     return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
+        //         crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+        //     )));
+        // }
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 
