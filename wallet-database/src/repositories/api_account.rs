@@ -10,9 +10,8 @@ use crate::{
 pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
-
     pub async fn find_one(
-        pool: DbPool,
+        pool: &DbPool,
         address: &str,
         chain_code: &str,
         address_type: &str,
@@ -20,7 +19,6 @@ impl ApiAccountRepo {
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
         Ok(ApiAccountDao::find_one(pool.as_ref(), address, chain_code, address_type, api_wallet_type)
             .await?)
-        // Ok(None)
     }
 
     pub async fn upsert(pool: &DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {
