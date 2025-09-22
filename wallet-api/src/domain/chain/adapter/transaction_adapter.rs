@@ -924,8 +924,19 @@ impl TransactionAdapter {
                 (resp.amount_out, consumer, fee)
             }
             Self::Solana(chain) => {
-                let resp =
+                let mut resp =
                     sol_tx::estimate_swap(&req.recipient, sol_instructions.unwrap(), chain).await?;
+
+                if !req.token_out.token_addr.is_empty() {
+                    let account = chain
+                        .get_provider()
+                        .token_balance(&req.token_out.token_addr, &req.recipient)
+                        .await?;
+
+                    if account.value.is_empty() {
+                        resp.consumer.extra_fee = Some(2500000)
+                    }
+                };
 
                 let fee = resp.consumer.transaction_fee();
                 let consumer = wallet_utils::serde_func::serde_to_string(&resp.consumer)?;

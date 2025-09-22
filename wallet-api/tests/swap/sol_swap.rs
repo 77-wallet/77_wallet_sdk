@@ -8,14 +8,14 @@ const RECIPIENT: &str = "78JSPvcz3CcwaACJsdgW6PSj6Vyu8quPHcNuerJy5DGx";
 
 fn token_in_out() -> (SwapTokenInfo, SwapTokenInfo) {
     let token_in = SwapTokenInfo {
-        token_addr: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(),
-        symbol: "USDT".to_string(),
-        decimals: 6,
+        token_addr: "".to_string(),
+        symbol: "SOL".to_string(),
+        decimals: 9,
     };
     let token_out = SwapTokenInfo {
-        token_addr: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string(),
-        symbol: "USDC".to_string(),
-        decimals: 6,
+        token_addr: "UPTx1d24aBWuRgwxVnFmX4gNraj3QGFzL3QqBgxtWQG".to_string(),
+        symbol: "USDT".to_string(),
+        decimals: 9,
     };
 
     (token_in, token_out)
@@ -33,7 +33,7 @@ async fn test_quote() {
         aggregator_addr: AGGREGATOR.to_string(),
         recipient: RECIPIENT.to_string(),
         chain_code: "sol".to_string(),
-        amount_in: "0.1".to_string(),
+        amount_in: "0.001".to_string(),
         token_in,
         token_out,
         dex_list: vec![3],

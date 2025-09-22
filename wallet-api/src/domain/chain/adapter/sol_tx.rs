@@ -1,4 +1,5 @@
 use crate::{
+    FrontendNotifyEvent,
     domain::chain::{TransferResp, swap::EstimateSwapResult},
     infrastructure::swap_client::SolInstructResp,
     request::transaction::{DepositReq, WithdrawReq},
@@ -28,6 +29,10 @@ pub(super) async fn estimate_swap(
         .await?;
     if res.value.err.is_some() {
         tracing::error!("swap simulate error: {:?}", res);
+        let _res =
+            FrontendNotifyEvent::send_debug(&wallet_utils::serde_func::serde_to_value(&res.value)?)
+                .await;
+
         let log = res.value.logs.join(",");
         return Err(crate::BusinessError::Chain(
             crate::ChainError::SwapSimulate(log),

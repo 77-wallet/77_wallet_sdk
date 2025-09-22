@@ -23,6 +23,7 @@ use crate::{
     },
 };
 use alloy::primitives::U256;
+use rust_decimal::Decimal;
 use std::time::{self};
 use wallet_database::{
     DbPool,
@@ -245,7 +246,7 @@ impl SwapServer {
         req: &QuoteReq,
         pool: &DbPool,
     ) -> Result<bool, crate::ServiceError> {
-        // 尝试获取“需要扣减的金额”（如果条件不满足则为 None）
+        // 尝试获取“需要扣减的金额”（如果条件不满足则为 None） 移除了最后一个交易所交易的钱
         let maybe_deduction = BillRepo::last_swap_bill(&req.recipient, &req.chain_code, pool)
             .await?
             .and_then(|bill| {
@@ -258,25 +259,46 @@ impl SwapServer {
                     .map(|_| bill.value) // 传出需扣减的字符串金额
             });
 
-        // 生成用于校验的余额字符串引用
-        let adjusted;
-        let bal_ref = if let Some(pre) = maybe_deduction {
+        let mut bal_ref = if let Some(pre) = maybe_deduction {
             let pre_amount = conversion::decimal_from_str(&pre)?;
             let bal_dec = conversion::decimal_from_str(bal)? - pre_amount;
-            adjusted = bal_dec.to_string();
-            &adjusted
+            bal_dec
         } else {
-            bal
+            conversion::decimal_from_str(bal)?
         };
 
-        self.check_bal(&req.amount_in, bal_ref)
+        // 如果是sol 需要扣减手续费
+        if req.chain_code == chain_code::SOLANA {
+            let mut fee = Decimal::from_f64_retain(0.000005).unwrap();
+            // 仅当转出的是 SOL（token_addr 为空）才可能需要新建账户的 rent
+            if req.token_out.token_addr.is_empty() {
+                // 需要补 rent 的条件：资产不存在，或者存在但余额为 0
+                let needs_rent = match AssetsRepo::get_by_addr_token_opt(
+                    &pool,
+                    &req.chain_code,
+                    &req.token_out.token_addr,
+                    &req.recipient,
+                )
+                .await?
+                {
+                    Some(assets) => assets.balance == "0",
+                    None => true,
+                };
+
+                if needs_rent {
+                    fee += Decimal::from_f64_retain(0.0025).unwrap();
+                }
+            }
+
+            bal_ref = bal_ref - fee
+        }
+        self.check_bal(&req.amount_in, &bal_ref.to_string())
     }
 
     async fn swap_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
         use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
-        tracing::warn!("quote params: {:#?}", params);
 
         let instance = time::Instant::now();
         let quote_resp = self.client.get_quote(params).await?;
@@ -376,6 +398,7 @@ impl SwapServer {
             //     "get instruction params: {}",
             //     wallet_utils::serde_func::serde_to_string(&req).unwrap()
             // );
+            let _res = FrontendNotifyEvent::send_debug(&req).await;
 
             let instance = time::Instant::now();
             let res = self.client.sol_instructions(req).await?;

@@ -3,7 +3,7 @@ use crate::{
         self,
         account::AccountDomain,
         chain::{ChainDomain, adapter::ChainAdapterFactory},
-        coin::CoinDomain,
+        coin::{CoinDomain, coin_info_to_coin_data},
     },
     infrastructure::{
         parse_utc_with_error,
@@ -17,7 +17,10 @@ use crate::{
 use std::collections::HashMap;
 use wallet_database::{
     dao::assets::CreateAssetsVo,
-    entities::{assets::AssetsId, coin::CoinId},
+    entities::{
+        assets::AssetsId,
+        coin::{BatchCoinSwappable, CoinData, CoinId},
+    },
     repositories::{
         ResourcesRepo,
         assets::AssetsRepoTrait,
@@ -168,26 +171,25 @@ impl CoinService {
         // fs::write("result.json", serde_json::to_string(&result).unwrap()).unwrap();
         // tracing::warn!("count: {}", count);
 
-        // let data = coins
-        //     .into_iter()
-        //     .map(|d| coin_info_to_coin_data(d))
-        //     .collect::<Vec<CoinData>>();
-        // CoinDomain::upsert_hot_coin_list(tx, data).await?;
+        let data = coins
+            .into_iter()
+            .map(|d| coin_info_to_coin_data(d))
+            .collect::<Vec<CoinData>>();
+        CoinDomain::upsert_hot_coin_list(tx, data).await?;
 
-        // // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
-        // let api = crate::Context::get_global_backend_api()?;
-        // let coin = api.swappable_coin().await?;
-
-        // let swap_coins = coin
-        //     .into_iter()
-        //     .map(|c| BatchCoinSwappable {
-        //         symbol: c.symbol,
-        //         chain_code: c.chain_code,
-        //         token_address: c.token_address,
-        //     })
-        //     .collect::<Vec<_>>();
-        // CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
+        let api = crate::Context::get_global_backend_api()?;
+        let coin = api.swappable_coin().await?;
+
+        let swap_coins = coin
+            .into_iter()
+            .map(|c| BatchCoinSwappable {
+                symbol: c.symbol,
+                chain_code: c.chain_code,
+                token_address: c.token_address,
+            })
+            .collect::<Vec<_>>();
+        CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
 
         Ok(())
     }
