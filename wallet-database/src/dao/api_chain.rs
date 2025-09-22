@@ -1,7 +1,5 @@
-use crate::entities::{
-    api_chain::ApiChainEntity,
-    chain::{ChainCreateVo, ChainEntity},
-};
+use crate::entities::api_chain::{ApiChainCreateVo, ApiChainWithNode};
+use crate::entities::api_chain::ApiChainEntity;
 use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiChainDao;
@@ -33,6 +31,25 @@ impl ApiChainDao {
         query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn chain_node_info<'a, E>(
+        exec: E,
+        chain_code: &str,
+    ) -> Result<Option<ApiChainWithNode>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+                            select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
+                            from chain as q
+                            join node a on q.node_id = a.node_id
+                            where q.chain_code = ? and q.status = 1;"#;
+        sqlx::query_as::<sqlx::Sqlite, ApiChainWithNode>(sql)
+            .bind(chain_code)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn detail<'a, E>(
         exec: E,
         chain_code: &str,
@@ -51,7 +68,7 @@ impl ApiChainDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
-    pub async fn upsert<'c, E>(executor: E, input: ChainCreateVo) -> Result<(), crate::Error>
+    pub async fn upsert<'c, E>(executor: E, input: ApiChainCreateVo) -> Result<(), crate::Error>
     where
         E: Executor<'c, Database = Sqlite>,
     {
@@ -66,7 +83,7 @@ impl ApiChainDao {
                     updated_at = excluded.updated_at"#;
         let protocols = wallet_utils::serde_func::serde_to_string(&input.protocols)?;
 
-        let mut rec = sqlx::query_as::<_, ChainEntity>(sql)
+        let mut rec = sqlx::query_as::<_, ApiChainEntity>(sql)
             .bind(&input.name)
             .bind(&input.chain_code)
             .bind(protocols)

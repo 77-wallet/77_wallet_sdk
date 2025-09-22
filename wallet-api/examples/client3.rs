@@ -35,24 +35,25 @@ async fn run(
         .await?;
     tracing::warn!("wallet ------------------------ 1: {withdrawal_uid:#?}");
 
-    // let wallet_uid = wallet_manager
-    //     .create_api_wallet(
-    //         language_code,
-    //         phrase,
-    //         salt,
-    //         wallet_name,
-    //         account_name,
-    //         is_default_name,
-    //         wallet_password,
-    //         None,
-    //         ApiWalletType::Withdrawal,
-    //     )
-    //     .await?;
+    let salt1 = "q1111112";
+    let wallet_uid = wallet_manager
+        .create_api_wallet(
+            language_code,
+            phrase,
+            salt1,
+            wallet_name,
+            account_name,
+            is_default_name,
+            wallet_password,
+            None,
+            ApiWalletType::Withdrawal,
+        )
+        .await?;
 
-    // let res = wallet_manager
-    //     .bind_merchant("app_id", "test_merchain", &wallet_uid, &withdrawal_uid)
-    //     .await?;
-    // tracing::info!("bind_merchant ------------------- 3: {res:#?}");
+    let res = wallet_manager
+        .bind_merchant("app_id", "test_merchain", &wallet_uid, &withdrawal_uid)
+        .await?;
+    tracing::info!("bind_merchant ------------------- 3: {res:#?}");
 
     // 获取订单记录
     // let order_list = wallet_manager.list_api_withdraw_order(&wallet_uid).await?;
