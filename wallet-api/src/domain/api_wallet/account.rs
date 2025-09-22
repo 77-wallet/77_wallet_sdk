@@ -156,7 +156,7 @@ impl ApiAccountDomain {
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account = ApiAccountRepo::find_one(
-            pool.clone(),
+            &pool,
             &address,
             &chain_code,
             &address_type.to_string(),

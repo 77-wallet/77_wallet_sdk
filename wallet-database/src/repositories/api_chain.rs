@@ -1,24 +1,24 @@
+use crate::entities::api_chain::{ApiChainCreateVo, ApiChainWithNode};
 use crate::{
-    DbPool,
     dao::api_chain::ApiChainDao,
     entities::{
         api_chain::ApiChainEntity,
-        chain::{ChainCreateVo, ChainEntity, ChainWithNode},
     },
+    DbPool,
 };
 
 pub struct ApiChainRepo;
 
 impl ApiChainRepo {
-    pub async fn get_chain_list(pool: &DbPool) -> Result<Vec<ChainEntity>, crate::Error> {
-        Ok(ChainEntity::list(pool.as_ref(), Some(1)).await?)
+    pub async fn get_chain_list(pool: &DbPool) -> Result<Vec<ApiChainEntity>, crate::Error> {
+        Ok(ApiChainDao::list(pool.as_ref(), Some(1)).await?)
     }
 
     pub async fn detail_with_node(
         pool: &DbPool,
         chain_code: &str,
-    ) -> Result<Option<ChainWithNode>, crate::Error> {
-        Ok(ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?)
+    ) -> Result<Option<ApiChainWithNode>, crate::Error> {
+        Ok(ApiChainDao::chain_node_info(pool.as_ref(), chain_code).await?)
     }
 
     pub async fn detail(
@@ -28,7 +28,7 @@ impl ApiChainRepo {
         Ok(ApiChainDao::detail(pool.as_ref(), chain_code).await?)
     }
 
-    pub async fn add(pool: &DbPool, input: ChainCreateVo) -> Result<(), crate::Error> {
+    pub async fn add(pool: &DbPool, input: ApiChainCreateVo) -> Result<(), crate::Error> {
         Ok(ApiChainDao::upsert(pool.as_ref(), input).await?)
     }
 

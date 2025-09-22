@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
-pub struct ApiCoin {
+pub struct ApiCoinEntity {
     pub id: i64,
     pub name: Option<String>,
     pub symbol: String,
