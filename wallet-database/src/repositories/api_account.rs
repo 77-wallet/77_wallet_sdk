@@ -11,21 +11,14 @@ pub struct ApiAccountRepo;
 
 impl ApiAccountRepo {
     pub async fn find_one(
-        pool: DbPool,
+        pool: &DbPool,
         address: &str,
         chain_code: &str,
         address_type: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one(
-            pool.as_ref(),
-            address,
-            chain_code,
-            address_type,
-            api_wallet_type,
-        )
-        .await?)
-        // Ok(None)
+        Ok(ApiAccountDao::find_one(pool.as_ref(), address, chain_code, address_type, api_wallet_type)
+            .await?)
     }
 
     pub async fn upsert(pool: &DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {
