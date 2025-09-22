@@ -62,6 +62,7 @@ define_topic_patterns! {
     MerchantTrans => ["wallet", "merchant", "trans"] (with_client_id),
     MerchantAddressBind => ["wallet", "merchant", "address", "bind"] (with_client_id),
     MerchantAddressAllock => ["wallet", "merchant", "address", "allock"] (with_client_id),
+    MerchantCmd => ["wallet", "merchant", "cmd"] (with_client_id),
 }
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -86,6 +87,8 @@ pub(crate) enum Topic {
     MerchantAddressBind,
     #[serde(rename = "wallet/merchant/address/allock")]
     MerchantAddressAllock,
+    #[serde(rename = "wallet/merchant/cmd")]
+    MerchantCmd,
 }
 
 impl Topic {

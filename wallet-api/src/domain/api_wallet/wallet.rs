@@ -236,6 +236,9 @@ impl ApiWalletDomain {
                 }
             }
         }
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend.expand_address_complete(uid, "1").await?;
         Ok(())
     }
 

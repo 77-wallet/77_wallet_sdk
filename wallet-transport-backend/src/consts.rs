@@ -89,6 +89,8 @@ pub mod endpoint {
 
         /// 地址初始化
         pub const ADDRESS_INIT: &str = "awallet/aw/address/init";
+        /// 地址初始化
+        pub const ADDRESS_EXPAND_COMPLETE: &str = "awallet/aw/address/expand/complete";
         /// 设置UID为API钱包
         pub const INIT_API_WALLET: &str = "awallet/aw/init/apiWallet";
 

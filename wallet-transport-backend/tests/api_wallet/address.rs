@@ -23,3 +23,14 @@ async fn test_expand_address() -> Result<(), wallet_transport_backend::Error> {
     println!("[test_chain_default_list] res: {res:?}");
     Ok(())
 }
+
+#[tokio::test]
+async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init()?;
+
+    let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+
+    backend_api.expand_address_complete(uid, "1").await.unwrap();
+
+    Ok(())
+}
