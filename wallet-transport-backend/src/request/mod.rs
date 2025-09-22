@@ -417,6 +417,16 @@ impl AddressInitReq {
 #[serde(rename_all = "camelCase")]
 pub struct AddressBatchInitReq(pub Vec<AddressInitReq>);
 
+impl AddressBatchInitReq {
+    pub fn new() -> Self {
+        Self(vec![])
+    }
+
+    pub fn add_address(&mut self, address_init_req: AddressInitReq) {
+        self.0.push(address_init_req);
+    }
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddressUpdateAccountNameReq {

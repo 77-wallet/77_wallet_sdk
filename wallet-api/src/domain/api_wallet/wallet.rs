@@ -9,7 +9,7 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::{
-    request::{AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::ExpandAddressReq},
+    request::{AddressBatchInitReq, TokenQueryPriceReq},
     response_vo::api_wallet::wallet::QueryWalletActivationInfoResp,
 };
 
@@ -161,7 +161,7 @@ impl ApiWalletDomain {
             );
         }
 
-        ApiWalletDomain::create_account(
+        ApiWalletDomain::create_api_account(
             wallet_address,
             password,
             chains,
@@ -181,7 +181,7 @@ impl ApiWalletDomain {
         account_name: &str,
         is_default_name: bool,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiWalletDomain::create_account(
+        ApiWalletDomain::create_api_account(
             wallet_address,
             password,
             chains,
@@ -223,7 +223,7 @@ impl ApiWalletDomain {
             AddressAllockType::ChaIndex => {
                 // 扩容一个链地址
                 if let Some(index) = index {
-                    ApiWalletDomain::create_account(
+                    ApiWalletDomain::create_api_account(
                         &api_wallet.address,
                         &password,
                         vec![chain_code.to_string()],
@@ -239,7 +239,7 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn create_account(
+    pub(crate) async fn create_api_account(
         wallet_address: &str,
         wallet_password: &str,
         chains: Vec<String>,
@@ -274,7 +274,7 @@ impl ApiWalletDomain {
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
         let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
-        let mut expand_address_req = ExpandAddressReq::new_sdk(&api_wallet.uid);
+        // let mut expand_address_req = AddressInitReq::new_sdk(&api_wallet.uid);
         // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         for input_index in input_indices {
             // 构造 index map
@@ -299,7 +299,7 @@ impl ApiWalletDomain {
                 &mut req,
                 &mut address_batch_init_task_data,
                 // &mut subkeys,
-                &mut expand_address_req,
+                // &mut expand_address_req,
                 &chains,
                 &seed,
                 &account_index_map,
@@ -316,10 +316,10 @@ impl ApiWalletDomain {
             // current_id += 1;
         }
         if created_count > 0 {
-            let address_batch_init_task_data = BackendApiTaskData::new(
-                wallet_transport_backend::consts::endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT,
-                &address_batch_init_task_data,
-            )?;
+            // let address_batch_init_task_data = BackendApiTaskData::new(
+            //     wallet_transport_backend::consts::endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT,
+            //     &address_batch_init_task_data,
+            // )?;
 
             // let backend_api = crate::Context::get_global_backend_api()?;
             // backend_api.expand_address(&expand_address_req).await?;
@@ -327,10 +327,14 @@ impl ApiWalletDomain {
             //     wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_POOL_EXPAND,
             //     &expand_address_req,
             // )?;
+            let api_address_init_task_data = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
+                &address_batch_init_task_data,
+            )?;
 
             Tasks::new()
                 .push(CommonTask::QueryCoinPrice(req))
-                .push(BackendApiTask::BackendApi(address_batch_init_task_data))
+                .push(BackendApiTask::BackendApi(api_address_init_task_data))
                 // .push(BackendApiTask::BackendApi(expand_address_task_data))
                 .send()
                 .await?;

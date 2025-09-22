@@ -1,5 +1,5 @@
 use crate::{
-    consts::endpoint::api_wallet::{ADDRESS_POOL_EXPAND, QUERY_ADDRESS_LIST},
+    consts::endpoint::api_wallet::{ADDRESS_INIT, QUERY_ADDRESS_LIST},
     request::api_wallet::address::*,
     response::BackendResponse,
     response_vo::api_wallet::address::UsedAddressListResp,
@@ -8,12 +8,15 @@ use crate::{
 use crate::api::BackendApi;
 
 impl BackendApi {
-    // 地址池扩容
-    pub async fn expand_address(&self, req: &ExpandAddressReq) -> Result<Option<()>, crate::Error> {
+    // 地址初始化
+    pub async fn expand_address(
+        &self,
+        req: &ApiAddressInitReq,
+    ) -> Result<Option<()>, crate::Error> {
         let req = serde_json::json!(req);
         tracing::info!("req: {}", req.to_string());
 
-        let res = self.client.post(ADDRESS_POOL_EXPAND).json(req).send::<BackendResponse>().await?;
+        let res = self.client.post(ADDRESS_INIT).json(req).send::<BackendResponse>().await?;
         tracing::info!("res: {res:#?}");
         res.process(&self.aes_cbc_cryptor)
     }

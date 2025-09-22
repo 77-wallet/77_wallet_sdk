@@ -87,8 +87,8 @@ pub mod endpoint {
         /// 查询uid的地址列表
         pub const QUERY_ADDRESS_LIST: &str = "awallet/aw/address/list";
 
-        /// 地址池扩容
-        pub const ADDRESS_POOL_EXPAND: &str = "awallet/aw/address/expand";
+        /// 地址初始化
+        pub const ADDRESS_INIT: &str = "awallet/aw/address/init";
         /// 设置UID为API钱包
         pub const INIT_API_WALLET: &str = "awallet/aw/init/apiWallet";
 
