@@ -27,6 +27,7 @@ pub(super) async fn estimate_swap(
         .similar_transaction(&payer, &instructions.ins, Some(instructions.alts.clone()))
         .await?;
     if res.value.err.is_some() {
+        tracing::error!("swap simulate error: {:?}", res);
         let log = res.value.logs.join(",");
         return Err(crate::BusinessError::Chain(
             crate::ChainError::SwapSimulate(log),
@@ -40,8 +41,13 @@ pub(super) async fn estimate_swap(
     let mut amount_out = 0_u64;
     if let Some(return_data) = return_data {
         let bytes = wallet_utils::base64_to_bytes(&return_data.data[0])?;
-        amount_in = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
-        amount_out = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
+        amount_in = u64::from_le_bytes(bytes[0..8].try_into().map_err(|_| {
+            crate::ServiceError::Parameter("sol simultate parse return data error in".to_string())
+        })?);
+
+        amount_out = u64::from_le_bytes(bytes[8..16].try_into().map_err(|_| {
+            crate::ServiceError::Parameter("sol simultate parse return data error out".to_string())
+        })?);
     }
 
     let consumer = res.value.units_consumed;
@@ -183,7 +189,6 @@ pub(super) async fn withdraw(
         .exec_transaction(params, key, None, instructions, 0)
         .await?;
 
-    let fee = fee_setting.transaction_fee().to_string();
     Ok(TransferResp {
         tx_hash,
         fee,

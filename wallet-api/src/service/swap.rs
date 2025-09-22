@@ -372,8 +372,14 @@ impl SwapServer {
                 dex_route_list,
             };
 
-            let res = self.client.sol_instructions(req).await?;
+            // tracing::warn!(
+            //     "get instruction params: {}",
+            //     wallet_utils::serde_func::serde_to_string(&req).unwrap()
+            // );
 
+            let instance = time::Instant::now();
+            let res = self.client.sol_instructions(req).await?;
+            tracing::warn!("get instruction time: {}", instance.elapsed().as_secs_f64());
             Ok(Some(res))
         } else {
             Ok(None)

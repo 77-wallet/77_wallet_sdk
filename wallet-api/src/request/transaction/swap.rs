@@ -123,6 +123,7 @@ impl From<ApproveReq> for NewBillEntity {
     }
 }
 
+#[derive(Debug)]
 pub struct SwapReq {
     pub aggregator_addr: String,
     // 链code
@@ -317,7 +318,7 @@ impl QuoteReq {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SwapTokenInfo {
     pub symbol: String,
     pub decimals: u32,

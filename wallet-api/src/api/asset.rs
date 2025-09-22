@@ -225,7 +225,7 @@ mod test {
             account_id,
             // symbol: "BNB".to_string(),
             // wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
-            wallet_address: "0x67Fd771e4698D04f19ef4b29B8A95d5637f52B7C".to_string(),
+            wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
             chain_list: ChainList(HashMap::from([(
                 "sol".to_string(),
                 "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string(),

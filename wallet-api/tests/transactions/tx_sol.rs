@@ -8,8 +8,8 @@ async fn test_balance() {
 
     let addr = "78JSPvcz3CcwaACJsdgW6PSj6Vyu8quPHcNuerJy5DGx";
     let chain_code = "sol";
-    let symbol = "WSOL";
-    let token_address = Some("So11111111111111111111111111111111111111112".to_string());
+    let symbol = "USDC";
+    let token_address = Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string());
     // let token_address = Nonek
 
     let balance = wallet_manager
