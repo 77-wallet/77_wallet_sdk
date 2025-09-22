@@ -1,6 +1,6 @@
 use crate::request::PermissionData;
 
-use super::BackendApi;
+use crate::api::BackendApi;
 
 // 权限变更请求参数
 #[derive(serde::Serialize, Debug, Default)]

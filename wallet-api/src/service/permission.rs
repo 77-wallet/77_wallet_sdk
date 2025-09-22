@@ -35,7 +35,7 @@ use wallet_database::{
     },
     repositories::{address_book::AddressBookRepo, permission::PermissionRepo},
 };
-use wallet_transport_backend::api::permission::PermissionAcceptReq;
+use wallet_transport_backend::api::wallet::permission::PermissionAcceptReq;
 use wallet_types::constant::chain_code;
 
 pub struct PermissionService {

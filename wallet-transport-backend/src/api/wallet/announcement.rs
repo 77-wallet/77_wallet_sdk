@@ -1,6 +1,6 @@
 use crate::{response::BackendResponse, response_vo::announcement::BulletinInfoList};
 
-use super::BackendApi;
+use crate::api::BackendApi;
 
 impl BackendApi {
     pub async fn announcement_list(

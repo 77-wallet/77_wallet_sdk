@@ -39,7 +39,7 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::{
-    api::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams, ChainDex},
+    api::wallet::swap::{ApproveCancelReq, ApproveInfo, ApproveSaveParams, ChainDex},
     consts::endpoint::{SWAP_APPROVE_CANCEL, SWAP_APPROVE_SAVE},
     request::TokenQueryPriceReq,
 };

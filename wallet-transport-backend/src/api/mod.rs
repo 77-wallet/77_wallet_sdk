@@ -1,20 +1,8 @@
 use crate::response::BackendResponse;
 use std::collections::HashMap;
 
-pub mod address;
-pub mod announcement;
 pub mod api_wallet;
-pub mod app;
-pub mod chain;
-pub mod coin;
-pub mod config;
-pub mod device;
-pub mod mqtt;
-pub mod permission;
-pub mod signed;
-pub mod stake;
-pub mod swap;
-pub mod transaction;
+pub mod wallet;
 
 #[derive(Debug, Clone)]
 pub struct BackendApi {

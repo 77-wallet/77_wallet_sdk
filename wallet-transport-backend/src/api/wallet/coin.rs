@@ -1,6 +1,6 @@
-use super::BackendApi;
 use crate::{
     CoinInfo,
+    api::BackendApi,
     consts::endpoint::TOKEN_CUSTOM_TOKEN_INIT,
     request::{AllTokenQueryByPageReq, SwapTokenQueryReq},
     response_vo::coin::{

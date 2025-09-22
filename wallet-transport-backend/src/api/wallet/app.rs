@@ -1,7 +1,8 @@
-use super::BackendApi;
 use crate::{
     consts::endpoint::CLIENT_TASK_LOG_UPLOAD, request::LanguageInitReq, response::BackendResponse,
 };
+
+use crate::api::BackendApi;
 
 impl BackendApi {
     pub async fn app_install_save(

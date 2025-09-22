@@ -1,10 +1,10 @@
 use serde_json::json;
 
-use super::BackendApi;
 use crate::{
     FindAddressRawDataRes, MultisigAccountIsCancelRes, MultisigServiceFeeInfo,
     SignedCreateOrderReq, SignedOrderAcceptReq, SignedSaveAddressReq, SignedUpdateRechargeHashReq,
     SignedUpdateSignedHashReq, SingedOrderCancelReq,
+    api::BackendApi,
     response::BackendResponse,
     response_vo::{address::AddressUidList, multisig::DepositAddress},
 };

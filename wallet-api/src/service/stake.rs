@@ -52,7 +52,7 @@ use wallet_database::{
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::{
-    api::permission::TransPermission, consts::endpoint, request::PermissionData,
+    api::wallet::permission::TransPermission, consts::endpoint, request::PermissionData,
     response_vo::stake::SystemEnergyResp,
 };
 use wallet_types::constant::chain_code;

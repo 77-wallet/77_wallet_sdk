@@ -1,5 +1,5 @@
-use super::BackendApi;
 use crate::{
+    api::BackendApi,
     response::BackendResponse,
     response_vo::stake::{DelegateOrderArgs, DelegateQueryResp},
 };

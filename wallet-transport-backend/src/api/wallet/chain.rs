@@ -5,7 +5,7 @@ use crate::{
     response_vo::chain::{ChainInfos, ChainList},
 };
 
-use super::BackendApi;
+use crate::api::BackendApi;
 
 impl BackendApi {
     pub async fn chain_default_list(&self) -> Result<serde_json::Value, crate::Error> {

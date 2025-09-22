@@ -1,7 +1,6 @@
 use serde_json::json;
 
-use super::BackendApi;
-use crate::{response::BackendResponse, response_vo::app::MinValueConfigResp};
+use crate::{api::BackendApi, response::BackendResponse, response_vo::app::MinValueConfigResp};
 
 impl BackendApi {
     pub async fn device_init(

@@ -1,16 +1,7 @@
 use wallet_transport_backend::api::BackendApi;
 
-mod address;
-mod announcement;
-mod app;
-mod chain;
-mod coin;
-mod config;
-mod device;
-mod mqtt;
-mod signed;
-mod stake;
-mod transaction;
+mod api_wallet;
+mod wallet;
 
 pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
     wallet_utils::init_test_log();

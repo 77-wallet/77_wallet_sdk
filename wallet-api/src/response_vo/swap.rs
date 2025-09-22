@@ -7,7 +7,7 @@ use crate::{
     request::transaction::{ApproveReq, DexRoute, QuoteReq},
 };
 use alloy::primitives::U256;
-use wallet_transport_backend::api::swap::ApproveInfo;
+use wallet_transport_backend::api::wallet::swap::ApproveInfo;
 
 // 查询报价的响应
 #[derive(serde::Serialize)]

@@ -10,7 +10,7 @@ use wallet_database::{
     },
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
 };
-use wallet_transport_backend::api::permission::GetPermissionBackReq;
+use wallet_transport_backend::api::wallet::permission::GetPermissionBackReq;
 use wallet_types::constant::chain_code;
 
 pub struct PermissionDomain;

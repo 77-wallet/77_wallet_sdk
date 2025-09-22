@@ -1,5 +1,5 @@
-use super::BackendApi;
 use crate::{
+    api::BackendApi,
     request::{SignedTranAcceptReq, SignedTranCreateReq, SignedTranUpdateHashReq, SyncBillReq},
     response::BackendResponse,
     response_vo::{chain::GasOracle, transaction::RecordResp},

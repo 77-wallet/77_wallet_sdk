@@ -1,5 +1,4 @@
-use super::BackendApi;
-use crate::response::BackendResponse;
+use crate::{api::BackendApi, response::BackendResponse};
 
 impl BackendApi {
     pub async fn send_msg_confirm(

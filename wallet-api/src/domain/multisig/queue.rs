@@ -32,7 +32,7 @@ use wallet_database::{
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
 };
 use wallet_transport_backend::{
-    api::permission::PermissionAcceptReq,
+    api::wallet::permission::PermissionAcceptReq,
     consts::endpoint,
     request::{PermissionData, SignedTranAcceptReq, SignedTranCreateReq},
 };

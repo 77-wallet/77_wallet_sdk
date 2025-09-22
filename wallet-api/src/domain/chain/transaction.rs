@@ -24,7 +24,7 @@ use wallet_database::{
     repositories::permission::PermissionRepo,
 };
 use wallet_transport_backend::{
-    api::{BackendApi, permission::TransPermission},
+    api::{BackendApi, wallet::permission::TransPermission},
     consts::endpoint,
     request::PermissionData,
     response_vo::chain::GasOracle,
