@@ -24,12 +24,11 @@ use wallet_tree::api::KeystoreApi;
 
 pub struct ChainService {
     repo: ResourcesRepo,
-    coin_domain: CoinDomain,
 }
 
 impl ChainService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self { repo, coin_domain: CoinDomain::new() }
+        Self { repo }
     }
 
     pub async fn add(
@@ -188,7 +187,7 @@ impl ChainService {
     }
 
     pub async fn get_chain_assets_list(
-        mut self,
+        self,
         address: &str,
         account_id: Option<u32>,
         // symbol: &str,
@@ -197,7 +196,7 @@ impl ChainService {
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let token_currencies = self.coin_domain.get_token_currencies_v2(&mut tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let mut account_addresses = Vec::<String>::new();
 
