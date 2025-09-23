@@ -17,11 +17,20 @@ use wallet_chain_interact::{
 };
 use wallet_utils::serde_func;
 
+// 默认系统账号的租金
+pub const SYSTEM_ACCOUNT_RENT: u64 = 990880;
+
+// 默认token账号的租金
+pub const TOKEN_ACCOUNT_REND: u64 = 2500000;
+
+// 默认的手续费(用于展示)
+pub const DEFAULT_UNITS_FEE: u64 = 5000;
+
 pub(super) async fn estimate_swap(
     payer: &str,
     instructions: SolInstructResp,
     chain: &SolanaChain,
-) -> Result<EstimateSwapResult<SolFeeSetting>, crate::ServiceError> {
+) -> Result<EstimateSwapResult<u64>, crate::ServiceError> {
     let payer = wallet_utils::address::parse_sol_address(payer)?;
 
     let res = chain
@@ -32,7 +41,6 @@ pub(super) async fn estimate_swap(
         let _res =
             FrontendNotifyEvent::send_debug(&wallet_utils::serde_func::serde_to_value(&res.value)?)
                 .await;
-
         let log = res.value.logs.join(",");
         return Err(crate::BusinessError::Chain(
             crate::ChainError::SwapSimulate(log),
@@ -45,6 +53,7 @@ pub(super) async fn estimate_swap(
     let mut amount_in = 0_u64;
     let mut amount_out = 0_u64;
     if let Some(return_data) = return_data {
+        tracing::warn!("data = {}", &return_data.data[0]);
         let bytes = wallet_utils::base64_to_bytes(&return_data.data[0])?;
         amount_in = u64::from_le_bytes(bytes[0..8].try_into().map_err(|_| {
             crate::ServiceError::Parameter("sol simultate parse return data error in".to_string())
@@ -57,17 +66,10 @@ pub(super) async fn estimate_swap(
 
     let consumer = res.value.units_consumed;
 
-    let fee_setting = SolFeeSetting {
-        base_fee: 5000,
-        priority_fee_per_compute_unit: None,
-        compute_units_consumed: consumer,
-        extra_fee: None,
-    };
-
     let res = EstimateSwapResult {
         amount_in: U256::from(amount_in),
         amount_out: U256::from(amount_out),
-        consumer: fee_setting,
+        consumer,
     };
 
     Ok(res)
@@ -83,8 +85,10 @@ pub(super) async fn swap(
     let fee_setting = wallet_utils::serde_func::serde_from_str::<SolFeeSetting>(&fee)?;
     let fee = fee_setting.transaction_fee().to_string();
 
-    // check balance
-    let balance = chain.balance(payer, None).await?;
+    // check balance (sol 减租金)
+    let mut balance = chain.balance(payer, None).await?;
+    balance = balance - U256::from(SYSTEM_ACCOUNT_RENT);
+
     if U256::from(fee_setting.original_fee()) > balance {
         return Err(crate::BusinessError::Chain(
             crate::ChainError::InsufficientFeeBalance,
@@ -137,7 +141,8 @@ pub(super) async fn deposit(
     let instructions = params.instructions().await?;
 
     // check balance
-    let balance = chain.balance(&req.from, None).await?;
+    let mut balance = chain.balance(&req.from, None).await?;
+    balance -= U256::from(SYSTEM_ACCOUNT_RENT);
     if U256::from(fee_setting.original_fee()) > balance {
         return Err(crate::BusinessError::Chain(
             crate::ChainError::InsufficientFeeBalance,
@@ -182,7 +187,8 @@ pub(super) async fn withdraw(
     let instructions = params.instructions().await?;
 
     // check balance
-    let balance = chain.balance(&req.from, None).await?;
+    let mut balance = chain.balance(&req.from, None).await?;
+    balance -= U256::from(SYSTEM_ACCOUNT_RENT);
     if U256::from(fee_setting.original_fee()) > balance {
         return Err(crate::BusinessError::Chain(
             crate::ChainError::InsufficientFeeBalance,

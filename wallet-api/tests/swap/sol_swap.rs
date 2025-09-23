@@ -6,15 +6,18 @@ const AGGREGATOR: &str = "FqhFY3ycmuif2T7YJZDwytyvrxEhnr6MYV4k2qxENkVH";
 
 const RECIPIENT: &str = "78JSPvcz3CcwaACJsdgW6PSj6Vyu8quPHcNuerJy5DGx";
 
+// usdt Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB
+// usdc EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+// wsol So11111111111111111111111111111111111111112
 fn token_in_out() -> (SwapTokenInfo, SwapTokenInfo) {
     let token_in = SwapTokenInfo {
-        token_addr: "".to_string(),
-        symbol: "SOL".to_string(),
-        decimals: 9,
+        token_addr: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string(),
+        symbol: "USDT".to_string(),
+        decimals: 6,
     };
     let token_out = SwapTokenInfo {
-        token_addr: "UPTx1d24aBWuRgwxVnFmX4gNraj3QGFzL3QqBgxtWQG".to_string(),
-        symbol: "USDT".to_string(),
+        token_addr: "".to_string(),
+        symbol: "sol".to_string(),
         decimals: 9,
     };
 
@@ -25,15 +28,13 @@ fn token_in_out() -> (SwapTokenInfo, SwapTokenInfo) {
 async fn test_quote() {
     let wallet_manager = get_manager().await;
 
-    // WSOL  So11111111111111111111111111111111111111112
-
     let (token_in, token_out) = token_in_out();
 
     let req = QuoteReq {
         aggregator_addr: AGGREGATOR.to_string(),
         recipient: RECIPIENT.to_string(),
         chain_code: "sol".to_string(),
-        amount_in: "0.001".to_string(),
+        amount_in: "0.00001".to_string(),
         token_in,
         token_out,
         dex_list: vec![3],

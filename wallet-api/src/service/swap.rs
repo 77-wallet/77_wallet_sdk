@@ -48,7 +48,7 @@ use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 use wallet_utils::{
     address::AccountIndexMap,
     conversion,
-    unit::{self, format_to_string},
+    unit::{self, convert_to_u256, format_to_string},
 };
 
 pub struct SwapServer {
@@ -269,7 +269,9 @@ impl SwapServer {
 
         // 如果是sol 需要扣减手续费
         if req.chain_code == chain_code::SOLANA {
-            let mut fee = Decimal::from_f64_retain(0.000005).unwrap();
+            // 非主币 要验证 主币的手续费是否足够,
+            // 主币 在原来的基础上进行扣减 在加上手续费的费用
+            let mut fee = Decimal::from_f64_retain(0.000005 + 0.00099088).unwrap();
             // 仅当转出的是 SOL（token_addr 为空）才可能需要新建账户的 rent
             if req.token_out.token_addr.is_empty() {
                 // 需要补 rent 的条件：资产不存在，或者存在但余额为 0
@@ -290,13 +292,61 @@ impl SwapServer {
                 }
             }
 
-            bal_ref = bal_ref - fee
+            if req.token_in.token_addr.is_empty() {
+                bal_ref = bal_ref - fee
+            } else {
+                // 验证主币的金额是否足够 支付手续费
+                let assets =
+                    AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient)
+                        .await?;
+                if !self.check_bal(&fee.to_string(), &assets.balance)? {
+                    return Ok(false);
+                }
+            }
         }
         self.check_bal(&req.amount_in, &bal_ref.to_string())
     }
 
+    // 是否进行模拟交易 true 需要进行模拟
+    async fn whether_simulate(
+        &self,
+        req: &QuoteReq,
+        resp: &mut ApiQuoteResp,
+    ) -> Result<bool, crate::ServiceError> {
+        // 非主币 且 不是sol ,优先考虑授权的数量
+        if !req.token_in.token_addr.is_empty() {
+            let allowance = self.check_allowance(&req).await?;
+            let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
+
+            // -1 代表着无线的授权 写入授权的结果
+            if allowance > U256::MAX >> 1 {
+                resp.approve_amount = "-1".to_string();
+            } else {
+                resp.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
+            }
+
+            if amount_in > allowance {
+                let diff = amount_in - allowance;
+                resp.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
+                return Ok(false);
+            }
+        }
+
+        // 判断余额是否足 进行模拟
+        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let assets = AssetsRepo::get_by_addr_token(
+            &pool,
+            &req.chain_code,
+            &req.token_in.token_addr,
+            &req.recipient,
+        )
+        .await?;
+
+        self.check_bal_with_last_swap(&assets.balance, &req, &pool)
+            .await
+    }
+
     async fn swap_quote(&self, req: QuoteReq) -> Result<ApiQuoteResp, crate::ServiceError> {
-        use wallet_utils::unit::{convert_to_u256, format_to_string};
         // 查询后端,获取报价(调用合约查路径)
         let params = AggQuoteRequest::try_from(&req)?;
 
@@ -311,7 +361,7 @@ impl SwapServer {
         let slippage = req.get_slippage(quote_resp.default_slippage);
         let default_slippage = quote_resp.default_slippage as f64 / SLIPPAGE;
 
-        // 构建响应
+        // 初始化响应
         let mut res = ApiQuoteResp::new(
             &req,
             slippage,
@@ -320,59 +370,69 @@ impl SwapServer {
             bal_in,
             bal_out,
         );
+
         // 先使用报价返回的amount_out,如果可以进行模拟，那么后续使用模拟的值覆盖
         res.set_amount_out(amount_out, req.token_out.decimals);
         res.set_dex_amount_out()?;
 
-        // 主币处理
-        if req.token_in.token_addr.is_empty() {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
-            let assets =
-                AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
-            if self
-                .check_bal_with_last_swap(&assets.balance, &req, &pool)
-                .await?
-            {
-                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
-            }
+        // 是否需要进行模拟
+        let whether_simulate = self.whether_simulate(&req, &mut res).await?;
 
-            return Ok(res);
-        }
+        self.simulate_and_fill(&req, &quote_resp, &mut res, whether_simulate)
+            .await?;
 
-        // 代币处理
-        let allowance = self.check_allowance(&req).await?;
-        let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
+        Ok(res)
 
-        if allowance > U256::MAX >> 1 {
-            res.approve_amount = "-1".to_string();
-        } else {
-            res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
-        }
+        // // 主币处理
+        // if req.token_in.token_addr.is_empty() {
+        //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        //     let assets =
+        //         AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
+        //     if self
+        //         .check_bal_with_last_swap(&assets.balance, &req, &pool)
+        //         .await?
+        //     {
+        //         self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+        //     }
 
-        if allowance >= amount_in {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
-            let assets = self
-                .token0_assets(
-                    &pool,
-                    &req.chain_code,
-                    &req.token_in.token_addr,
-                    &req.recipient,
-                )
-                .await?;
-            if self
-                .check_bal_with_last_swap(&assets.balance, &req, &pool)
-                .await?
-            {
-                self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
-            }
+        //     return Ok(res);
+        // }
 
-            return Ok(res);
-        } else {
-            let diff = amount_in - allowance;
-            res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
+        // // 代币处理
+        // let allowance = self.check_allowance(&req).await?;
+        // let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
 
-            return Ok(res);
-        }
+        // if allowance > U256::MAX >> 1 {
+        //     res.approve_amount = "-1".to_string();
+        // } else {
+        //     res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
+        // }
+
+        // if allowance >= amount_in {
+        //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        //     let assets = self
+        //         .token0_assets(
+        //             &pool,
+        //             &req.chain_code,
+        //             &req.token_in.token_addr,
+        //             &req.recipient,
+        //         )
+        //         .await?;
+        //     if self
+        //         .check_bal_with_last_swap(&assets.balance, &req, &pool)
+        //         .await?
+        //     {
+        //         self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
+        //     }
+
+        //     return Ok(res);
+        // } else {
+        //     // 授权不够的情况
+        //     let diff = amount_in - allowance;
+        //     res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
+
+        //     return Ok(res);
+        // }
     }
 
     pub async fn sol_instructions(
@@ -394,10 +454,10 @@ impl SwapServer {
                 dex_route_list,
             };
 
-            // tracing::warn!(
-            //     "get instruction params: {}",
-            //     wallet_utils::serde_func::serde_to_string(&req).unwrap()
-            // );
+            tracing::warn!(
+                "get instruction params: {}",
+                wallet_utils::serde_func::serde_to_string(&req).unwrap()
+            );
             let _res = FrontendNotifyEvent::send_debug(&req).await;
 
             let instance = time::Instant::now();
@@ -409,43 +469,80 @@ impl SwapServer {
         }
     }
 
-    // 模拟交易以及填充响应
+    // 模拟交易结果，并录入手续费
+    // 其他链 手续费和模拟绑定在一起的，sol 目前是独立出来的，sol如果手续费不够，会模拟失败。
     async fn simulate_and_fill(
         &self,
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
         res: &mut ApiQuoteResp,
+        whether_simulate: bool,
     ) -> Result<(), crate::ServiceError> {
-        let instance = time::Instant::now();
-
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
         let adapter = ChainAdapterFactory::get_transaction_adapter(&req.chain_code).await?;
 
-        // 获取交易指令
-        let instructions = self
-            .sol_instructions(
-                &req.recipient,
-                &req.chain_code,
-                req.is_native(),
-                quote_resp.amount_in.clone(),
-                0.to_string(),
-                quote_resp.dex_route_list.clone(),
-            )
-            .await?;
+        // 进行模拟交易
+        if whether_simulate {
+            // sol获取交易指令
+            let instructions = self
+                .sol_instructions(
+                    &req.recipient,
+                    &req.chain_code,
+                    req.is_native(),
+                    quote_resp.amount_in.clone(),
+                    0.to_string(),
+                    quote_resp.dex_route_list.clone(),
+                )
+                .await?;
 
-        // 模拟报价(consumer 资源的消耗，，content 费用的具体内容)
-        let (amount_out, consumer, content) = adapter
-            .swap_quote(req, quote_resp, &main_coin.symbol, instructions)
-            .await?;
+            let instance = time::Instant::now();
 
-        let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
-        res.consumer = consumer;
-        res.fee = fee_resp;
+            // 模拟报价(consumer 资源的消耗，，content 费用的具体内容)
+            let (amount_out, consumer, content) = adapter
+                .swap_quote(req, quote_resp, &main_coin.symbol, instructions)
+                .await?;
 
-        // 重新覆盖amount_out,使用模拟的值
-        res.set_amount_out(amount_out, req.token_out.decimals);
-        tracing::warn!("simulate time: {}", instance.elapsed().as_secs_f64());
+            // 最终模拟交易能够获取多少 amount_out
+            res.set_amount_out(amount_out, req.token_out.decimals);
+
+            // 手续费的设置
+            let fee_resp = EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, content);
+            res.consumer = consumer;
+            res.fee = fee_resp;
+
+            tracing::warn!("simulate time: {}", instance.elapsed().as_secs_f64());
+        } else {
+            // sol 单独处理手续费(特殊处理) 模拟的费用最终会
+            if req.chain_code == chain_code::SOLANA {
+                let currency = {
+                    let currency = crate::app_state::APP_STATE.read().await;
+                    currency.currency().to_string()
+                };
+
+                let token_currency = TokenCurrencyGetter::get_currency(
+                    &currency,
+                    &req.chain_code,
+                    &main_coin.symbol,
+                    None,
+                )
+                .await?;
+                let (consumer, sol_fee) = adapter
+                    .sol_swap_fee(
+                        &req.recipient,
+                        &req.token_out.token_addr,
+                        token_currency,
+                        &currency,
+                        None,
+                    )
+                    .await?;
+
+                let fee_resp =
+                    EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, sol_fee);
+                res.consumer = consumer;
+                res.fee = fee_resp;
+            }
+        }
 
         Ok(())
     }
