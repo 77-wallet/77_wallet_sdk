@@ -38,7 +38,7 @@ async fn test_chain_list() -> Result<(), Error> {
     // init_test_log();
     let backend_api = init()?; // Initialize the cryptor and API
 
-    let req = ChainListReq::new("1.1.1".to_string());
+    let req = ChainListReq::new("1.4.1".to_string());
     let res = backend_api.chain_list(req).await.unwrap();
 
     tracing::info!("[test_chain_list] res: {res:?}");

@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (wallet_manager, test_params) = get_manager().await.unwrap();
     let wallet_password = "q1111111";
 
-    wallet_manager.set_passwd_cache(wallet_password).await;
+    let _ = wallet_manager.set_passwd_cache(wallet_password).await;
     // wallet_api::WalletManager::init_log(Some("info"), "xxxx").await?;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();

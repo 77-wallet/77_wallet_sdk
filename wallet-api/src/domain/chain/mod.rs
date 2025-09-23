@@ -232,11 +232,14 @@ impl ChainDomain {
 
         ChainRepoTrait::upsert_multi_chain(&mut repo, input).await?;
         Self::toggle_chains(&mut repo, &chain_codes).await?;
-        let chain_rpc_list_req = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
-            &ChainRpcListReq::new(chain_codes),
-        )?;
-        Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
+
+        if !chain_codes.is_empty() {
+            let chain_rpc_list_req = BackendApiTaskData::new(
+                wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
+                &ChainRpcListReq::new(chain_codes),
+            )?;
+            Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
+        }
 
         Ok(has_new_chain)
     }

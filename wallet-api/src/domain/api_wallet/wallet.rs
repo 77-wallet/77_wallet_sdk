@@ -3,21 +3,22 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::api_wallet::ApiWalletType,
+    entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
     repositories::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, coin::CoinRepo, wallet::WalletRepo,
     },
 };
-use wallet_database::entities::api_account::ApiAccountEntity;
 use wallet_transport_backend::{
     request::{AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq},
     response_vo::api_wallet::wallet::QueryWalletActivationInfoResp,
 };
 
 use crate::{
+    context::CONTEXT,
     domain::{
         api_wallet::account::ApiAccountDomain, app::config::ConfigDomain, chain::ChainDomain,
     },
+    error::service::ServiceError,
     infrastructure::task_queue::{
         CommonTask,
         backend::{BackendApiTask, BackendApiTaskData},
@@ -25,13 +26,10 @@ use crate::{
     },
     messaging::mqtt::topics::api_wallet::AddressAllockType,
 };
-use crate::context::CONTEXT;
-use crate::error::service::ServiceError;
 
 pub struct ApiWalletDomain {}
 
 impl ApiWalletDomain {
-
     pub(crate) async fn upsert_api_wallet(
         uid: &str,
         wallet_name: &str,
@@ -84,17 +82,12 @@ impl ApiWalletDomain {
         Ok(())
     }
 
-    pub(crate) async fn decrypt_seed(
-        password: &str,
-        seed: &str,
-    ) -> Result<Vec<u8>, ServiceError> {
+    pub(crate) async fn decrypt_seed(password: &str, seed: &str) -> Result<Vec<u8>, ServiceError> {
         let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), seed)?;
         Ok(data)
     }
 
-    pub(crate) async fn check_normal_wallet_exist(
-        address: &str,
-    ) -> Result<bool, ServiceError> {
+    pub(crate) async fn check_normal_wallet_exist(address: &str) -> Result<bool, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Ok(WalletRepo::detail(&pool, address).await?.is_some())
@@ -360,9 +353,7 @@ impl ApiWalletDomain {
         Ok(password)
     }
 
-    pub(crate) async fn set_passwd(
-        wallet_password: &str,
-    ) -> Result<(), ServiceError> {
+    pub(crate) async fn set_passwd(wallet_password: &str) -> Result<(), ServiceError> {
         crate::infrastructure::GLOBAL_CACHE
             .set(crate::infrastructure::WALLET_PASSWORD, wallet_password)
             .await?;

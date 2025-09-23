@@ -27,7 +27,9 @@ impl ApiAccountDomain {
         chain_code: Option<&str>,
     ) -> Result<Vec<ApiAccountEntity>, ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let res = ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, chain_code).await?;
+        let res =
+            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, chain_code)
+                .await?;
         Ok(res)
     }
 

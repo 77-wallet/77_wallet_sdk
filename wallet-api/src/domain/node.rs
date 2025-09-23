@@ -85,6 +85,10 @@ impl NodeDomain {
             .collect::<Vec<String>>();
         let mut backend_nodes = Vec::new();
 
+        if local_chains.is_empty() {
+            return Ok(());
+        }
+
         match backend.chain_rpc_list(ChainRpcListReq::new(local_chains.clone())).await {
             Ok(nodes) => {
                 Self::upsert_chain_rpc(&mut repo, nodes, &mut backend_nodes).await?;
@@ -96,6 +100,9 @@ impl NodeDomain {
             }
             Err(e) => {
                 tracing::error!("backend get chain rpc list error: {:?}", e);
+                if local_chains.is_empty() {
+                    return Ok(());
+                }
                 let chain_rpc_list_req = BackendApiTaskData::new(
                     wallet_transport_backend::consts::endpoint::CHAIN_RPC_LIST,
                     &ChainRpcListReq::new(local_chains),
