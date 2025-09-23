@@ -1,4 +1,3 @@
-use std::error::Error;
 use tokio_stream::StreamExt as _;
 use wallet_api::{
     manager::WalletManager,
@@ -49,9 +48,10 @@ async fn run(
             ApiWalletType::Withdrawal,
         )
         .await?;
+    tracing::warn!("wallet ------------------------ 2: {wallet_uid:#?}");
 
     let res = wallet_manager
-        .bind_merchant("app_id", "test_merchain", &wallet_uid, &withdrawal_uid)
+        .bind_merchant("68c27fb92e52f46cef896318", "68be7271a7307e042404e276", &wallet_uid, &withdrawal_uid)
         .await?;
     tracing::info!("bind_merchant ------------------- 3: {res:#?}");
 

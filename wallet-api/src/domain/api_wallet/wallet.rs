@@ -153,7 +153,7 @@ impl ApiWalletDomain {
         account_name: &str,
         is_default_name: bool,
     ) -> Result<(), ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
         let num = 3;
         let account_indices = ApiAccountRepo::get_all_account_indices(&pool).await?;
