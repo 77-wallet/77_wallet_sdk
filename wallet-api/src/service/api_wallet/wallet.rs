@@ -126,33 +126,33 @@ impl ApiWalletService {
             "Initialize root keystore took: {:?}",
             initialize_root_keystore_start.elapsed()
         );
-        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
 
-        let chains: Vec<String> =
-            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        match api_wallet_type {
-            ApiWalletType::SubAccount => {
-                ApiWalletDomain::create_sub_account(
-                    address,
-                    wallet_password,
-                    chains,
-                    account_name,
-                    is_default_name,
-                )
-                .await?
-            }
-            ApiWalletType::Withdrawal => {
-                ApiWalletDomain::create_withdrawal_account(
-                    address,
-                    wallet_password,
-                    chains,
-                    account_name,
-                    is_default_name,
-                )
-                .await?
-            }
-            _ => {}
-        }
+        // let chains: Vec<String> =
+        //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+        // match api_wallet_type {
+        //     ApiWalletType::SubAccount => {
+        //         ApiWalletDomain::create_sub_account(
+        //             address,
+        //             wallet_password,
+        //             chains,
+        //             account_name,
+        //             is_default_name,
+        //         )
+        //         .await?
+        //     }
+        //     ApiWalletType::Withdrawal => {
+        //         ApiWalletDomain::create_withdrawal_account(
+        //             address,
+        //             wallet_password,
+        //             chains,
+        //             account_name,
+        //             is_default_name,
+        //         )
+        //         .await?
+        //     }
+        //     _ => {}
+        // }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
 
@@ -359,6 +359,30 @@ impl ApiWalletService {
         backend
             .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
             .await?;
+
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+
+        let chains: Vec<String> =
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+        let password = ApiWalletDomain::get_passwd().await?;
+        // ApiWalletDomain::create_sub_account(
+        //     &recharge_wallet.address,
+        //     &password,
+        //     chains.clone(),
+        //     account_name,
+        //     is_default_name,
+        // )
+        // .await?;
+        ApiWalletDomain::create_withdrawal_account(
+            &withdrawal_wallet.address,
+            &password,
+            chains,
+            "账户",
+            true,
+        )
+        .await?;
+
+        tracing::info!("bind merchant success");
         Ok(())
     }
 

@@ -114,6 +114,9 @@ pub mod endpoint {
         pub const TRANS_STRATEGY_COLLECT_SAVE: &str = "awallet/aw/strategy/collect/save";
         /// 获取归集策略
         pub const TRANS_STRATEGY_GET_COLLECT_CONFIG: &str = "awallet/aw/strategy/getCollectConfig";
+
+        /// api钱包查询链列表
+        pub const API_WALLET_CHAIN_LIST: &str = "awallet/aw/chain/list";
     }
 }
 

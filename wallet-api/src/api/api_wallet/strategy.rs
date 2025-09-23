@@ -38,29 +38,69 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
-    // #[tokio::test]
-    // async fn test_create_api_account() -> Result<()> {
-    //     wallet_utils::init_test_log();
-    //     // 修改返回类型为Result<(), anyhow::Error>
-    //     let (wallet_manager, _test_params) = get_manager().await?;
+    use crate::test::env::get_manager;
+    use anyhow::Result;
+    use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
+    use wallet_types::chain::chain::ChainCode;
 
-    //     let wallet_address = "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F";
-    //     let wallet_password = "q1111111";
-    //     let index = None;
-    //     let name = "666";
-    //     let is_default_name = true;
-    //     let api_wallet_type = ApiWalletType::SubAccount;
+    #[tokio::test]
+    async fn test_update_collect_strategy() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
 
-    //     let req = CreateApiAccountReq::new(
-    //         wallet_address,
-    //         wallet_password,
-    //         index,
-    //         name,
-    //         is_default_name,
-    //         api_wallet_type,
-    //     );
-    //     let res = wallet_manager.create_api_account(req).await;
-    //     tracing::info!("res: {res:?}");
-    //     Ok(())
-    // }
+        let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+        let threshold = 1.1;
+        let chain_config = vec![ChainConfig {
+            chain_code: ChainCode::Tron.to_string(),
+            normal_address: IndexAndAddress {
+                index: None,
+                address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
+            },
+            risk_address: IndexAndAddress {
+                index: None,
+                address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
+            },
+        }];
+        let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+
+    async fn test_get_collect_strategy() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
+        let res = wallet_manager.get_collect_strategy(uid).await;
+        // let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_withdrawal_strategy() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let uid = "e6de8afd756e7cb81a3d965f959c896738ed07cebc919c7f96c97fc6069ad44f";
+        let threshold = 1.1;
+        let chain_config = vec![ChainConfig {
+            chain_code: ChainCode::Tron.to_string(),
+            normal_address: IndexAndAddress {
+                index: Some(0),
+                address: "TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB".to_string(),
+            },
+            risk_address: IndexAndAddress {
+                index: Some(1),
+                address: "TFg9AiinBmqLhBDxFUFKchc1AkxFiQRFsx".to_string(),
+            },
+        }];
+        let res = wallet_manager.update_withdrawal_strategy(uid, threshold, chain_config).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
 }

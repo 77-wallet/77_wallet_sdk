@@ -7,6 +7,7 @@ pub struct Strategy {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChainConfig {
     pub chain_code: String,
     pub normal_address: IndexAndAddress,
@@ -15,7 +16,7 @@ pub struct ChainConfig {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct IndexAndAddress {
-    pub index: i32,
+    pub index: Option<i32>,
     pub address: String,
 }
 

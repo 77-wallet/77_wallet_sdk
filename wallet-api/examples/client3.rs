@@ -69,11 +69,11 @@ async fn run(
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 normal_address: IndexAndAddress {
-                    index: 0,
+                    index: Some(0),
                     address: "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n".to_string(),
                 },
                 risk_address: IndexAndAddress {
-                    index: 1,
+                    index: Some(1),
                     address: "TNoacEYG6dCB2z9aWPVYspz1qrxHDoe8Bv".to_string(),
                 },
             }],
