@@ -1,6 +1,6 @@
 use crate::{
     consts::endpoint::api_wallet::{
-        TRANS_SERVICE_FEE_TRANS, TRANS_STRATEGY_GET_COLLECT_CONFIG,
+        TRANS_STRATEGY_COLLECT_SAVE, TRANS_STRATEGY_GET_COLLECT_CONFIG,
         TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG, TRANS_STRATEGY_WITHDRAWAL_SAVE,
     },
     request::api_wallet::strategy::*,
@@ -16,8 +16,12 @@ impl BackendApi {
         &self,
         req: &SaveCollectStrategyReq,
     ) -> Result<Option<()>, crate::Error> {
-        let res =
-            self.client.post(TRANS_SERVICE_FEE_TRANS).json(req).send::<BackendResponse>().await?;
+        let res = self
+            .client
+            .post(TRANS_STRATEGY_COLLECT_SAVE)
+            .json(req)
+            .send::<BackendResponse>()
+            .await?;
 
         res.process(&self.aes_cbc_cryptor)
     }

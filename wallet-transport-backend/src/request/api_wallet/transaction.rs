@@ -79,7 +79,7 @@ pub struct ServiceFeeUploadReq {
     to: String,
     amount: f64,
     chain_code: String,
-    #[serde(rename = "token_code")]
+    #[serde(rename = "tokenCode")]
     symbol: String,
     #[serde(rename = "contractAddress")]
     token_address: String,

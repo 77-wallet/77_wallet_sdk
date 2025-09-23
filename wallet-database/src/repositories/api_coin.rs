@@ -1,8 +1,12 @@
-use crate::dao::api_coin::ApiCoinDao;
-use crate::DbPool;
-use crate::entities::api_coin::ApiCoinEntity;
-use crate::entities::coin::{BatchCoinSwappable, CoinEntity, CoinWithAssets};
-use crate::pagination::Pagination;
+use crate::{
+    DbPool,
+    dao::api_coin::ApiCoinDao,
+    entities::{
+        api_coin::ApiCoinEntity,
+        coin::{BatchCoinSwappable, CoinEntity, CoinWithAssets},
+    },
+    pagination::Pagination,
+};
 
 pub struct ApiCoinRepo;
 
@@ -20,7 +24,10 @@ impl ApiCoinRepo {
         ApiCoinDao::get_coin(chain_code, symbol, token_address, pool.as_ref()).await
     }
 
-    pub async fn main_coin(chain_code: &str, pool: &DbPool) -> Result<Option<ApiCoinEntity>, crate::Error> {
+    pub async fn main_coin(
+        chain_code: &str,
+        pool: &DbPool,
+    ) -> Result<Option<ApiCoinEntity>, crate::Error> {
         ApiCoinDao::main_coin(chain_code, pool.as_ref()).await
     }
 
@@ -89,6 +96,7 @@ impl ApiCoinRepo {
             page,
             page_size,
             pool,
-        ).await
+        )
+        .await
     }
 }

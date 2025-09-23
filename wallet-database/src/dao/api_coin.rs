@@ -1,8 +1,12 @@
+use crate::{
+    DbPool,
+    entities::{
+        api_coin::ApiCoinEntity,
+        coin::{BatchCoinSwappable, CoinEntity, CoinWithAssets},
+    },
+    pagination::Pagination,
+};
 use sqlx::{Executor, QueryBuilder, Sqlite};
-use crate::DbPool;
-use crate::entities::api_coin::ApiCoinEntity;
-use crate::entities::coin::{BatchCoinSwappable, CoinEntity, CoinWithAssets};
-use crate::pagination::Pagination;
 
 pub(crate) struct ApiCoinDao;
 
@@ -76,7 +80,8 @@ impl ApiCoinDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_coin WHERE is_del = 0 AND token_address = '' and chain_code = $1";
+        let sql =
+            "SELECT * FROM api_coin WHERE is_del = 0 AND token_address = '' and chain_code = $1";
 
         let res = sqlx::query_as::<_, ApiCoinEntity>(sql)
             .bind(chain_code)
@@ -145,7 +150,8 @@ impl ApiCoinDao {
     {
         let time = if is_create { "created_at" } else { "updated_at" };
 
-        let sql = format!("select * from api_coin where is_custom = 0 order by {} desc limit 1", time);
+        let sql =
+            format!("select * from api_coin where is_custom = 0 order by {} desc limit 1", time);
 
         let res = sqlx::query_as::<_, ApiCoinEntity>(&sql)
             .fetch_optional(exec)

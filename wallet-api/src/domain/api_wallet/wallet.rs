@@ -10,7 +10,7 @@ use wallet_database::{
 };
 use wallet_database::entities::api_account::ApiAccountEntity;
 use wallet_transport_backend::{
-    request::{AddressBatchInitReq, TokenQueryPriceReq},
+    request::{AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq},
     response_vo::api_wallet::wallet::QueryWalletActivationInfoResp,
 };
 
@@ -280,8 +280,8 @@ impl ApiWalletDomain {
         // };
 
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-        let mut address_batch_init_task_data = AddressBatchInitReq(Vec::new());
-        // let mut expand_address_req = AddressInitReq::new_sdk(&api_wallet.uid);
+        let mut api_address_init_req = ApiAddressInitReq::new();
+        // let mut expand_address_req = ApiAddressInitReq::new_sdk(&api_wallet.uid);
         // let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         for input_index in input_indices {
             // 构造 index map
@@ -304,7 +304,7 @@ impl ApiWalletDomain {
             ChainDomain::init_chains_api_assets(
                 &default_coins_list,
                 &mut req,
-                &mut address_batch_init_task_data,
+                &mut api_address_init_req,
                 // &mut subkeys,
                 // &mut expand_address_req,
                 &chains,
@@ -336,7 +336,7 @@ impl ApiWalletDomain {
             // )?;
             let api_address_init_task_data = BackendApiTaskData::new(
                 wallet_transport_backend::consts::endpoint::api_wallet::ADDRESS_INIT,
-                &address_batch_init_task_data,
+                &api_address_init_req,
             )?;
 
             Tasks::new()

@@ -24,7 +24,10 @@ use wallet_database::{
         node::NodeRepo,
     },
 };
-use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
+use wallet_transport_backend::request::{
+    AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq,
+    api_wallet::address::ApiAddressInitReq,
+};
 use wallet_types::chain::{
     chain::ChainCode,
     network::{self, NetworkKind},
@@ -389,7 +392,7 @@ impl ChainDomain {
     pub(crate) async fn init_chains_api_assets(
         coins: &[CoinEntity],
         req: &mut TokenQueryPriceReq,
-        address_batch_init_task_data: &mut AddressBatchInitReq,
+        api_address_init_req: &mut ApiAddressInitReq,
         // expand_address_req: &mut AddressBatchInitReq,
         // subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
         chain_list: &[String],
@@ -431,7 +434,7 @@ impl ChainDomain {
                 .await?;
 
                 if let Some(address_init_req) = address_init_req {
-                    address_batch_init_task_data.0.push(address_init_req);
+                    api_address_init_req.address_list.add_address(address_init_req);
                     // params.push(&account_address.address);
                 } else {
                     tracing::info!("不上报： {}", account_address.address);
