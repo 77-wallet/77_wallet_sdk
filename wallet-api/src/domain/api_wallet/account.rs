@@ -1,5 +1,5 @@
 use crate::{
-    domain::app::config::ConfigDomain, error::service::ServiceError,
+    context::CONTEXT, domain::app::config::ConfigDomain, error::service::ServiceError,
     response_vo::account::CreateAccountRes, service::api_wallet::asset::AddressChainCode,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
@@ -21,6 +21,16 @@ use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 pub(crate) struct ApiAccountDomain {}
 
 impl ApiAccountDomain {
+    pub(crate) async fn list_api_accounts(
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<Vec<ApiAccountEntity>, ServiceError> {
+        let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res = ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, chain_code).await?;
+        Ok(res)
+    }
+
     pub(crate) async fn create_api_account(
         seed: &[u8],
         instance: &wallet_chain_instance::instance::ChainObject,

@@ -11,7 +11,7 @@ impl WalletManager {
         &self,
         wallet_address: &str,
     ) -> ReturnType<Vec<ApiAccountEntity>> {
-        Ok(vec![])
+        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, None, None).await
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {

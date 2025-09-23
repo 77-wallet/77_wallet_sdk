@@ -1,13 +1,16 @@
-use wallet_chain_interact::types::ChainPrivateKey;
-use wallet_database::{entities::api_wallet::ApiWalletType, repositories::chain::ChainRepo};
-
 use crate::{
     context::Context,
     domain::{
         api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
         wallet::WalletDomain,
     },
+    error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::AddressAllockType,
+};
+use wallet_chain_interact::types::ChainPrivateKey;
+use wallet_database::{
+    entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
+    repositories::chain::ChainRepo,
 };
 
 pub struct ApiAccountService {
@@ -19,20 +22,29 @@ impl ApiAccountService {
         Self { ctx }
     }
 
+    pub async fn list_api_accounts(
+        &self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<&str>,
+    ) -> Result<Vec<ApiAccountEntity>, ServiceError> {
+        ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code).await
+    }
+
     pub async fn expand_address(
-        self,
+        &self,
         address_allock_type: AddressAllockType,
         chain_code: &str,
         index: Option<i32>,
         uid: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         ApiWalletDomain::expand_address(&address_allock_type, index, &uid, &chain_code).await?;
 
         Ok(())
     }
 
     pub async fn create_account(
-        self,
+        &self,
         wallet_address: &str,
         wallet_password: &str,
         // derivation_path: Option<String>,
@@ -62,7 +74,7 @@ impl ApiAccountService {
     }
 
     pub async fn get_account_private_key(
-        self,
+        &self,
         address: &str,
         chain_code: &str,
         password: &str,
@@ -71,11 +83,11 @@ impl ApiAccountService {
     }
 
     pub async fn address_used(
-        self,
+        &self,
         chain_code: &str,
         index: i32,
         uid: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         Ok(ApiAccountDomain::address_used(chain_code, index, uid).await?)
     }
 }
