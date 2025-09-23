@@ -3,7 +3,7 @@ use crate::messaging::mqtt::topics::{
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange,
-    api_wallet::{AddressUseMsg, TransMsg, UnbindUidMsg},
+    api_wallet::{AddressAllockMsg, AddressUseMsg, TransMsg, UnbindUidMsg},
 };
 
 use super::topics::{CleanPermission, multisign_trans_execute::MultiSignTransExecute};
@@ -83,6 +83,8 @@ pub enum BizType {
     UnbindUid,
     // 地址使用
     AddressUse,
+    // 地址扩容
+    AddressAllock,
     // 转账
     Trans,
 }
@@ -116,6 +118,7 @@ pub enum Body {
     CleanPermission(CleanPermission),
     /// api wallet
     UnbindUid(UnbindUidMsg),
+    AddressAllock(AddressAllockMsg),
     AddressUse(AddressUseMsg),
     Trans(TransMsg),
 }

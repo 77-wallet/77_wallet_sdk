@@ -14,7 +14,7 @@ use super::{
     },
 };
 use crate::{
-    infrastructure::task_queue::{MqttTask, task::Tasks},
+    infrastructure::task_queue::{ApiMqttData, ApiMqttStruct, MqttTask, task::Tasks},
     messaging::{
         mqtt::topics::{
             OutgoingPayload,
@@ -112,63 +112,69 @@ pub(crate) async fn exec_payload(
 ) -> Result<(), crate::error::service::ServiceError> {
     match payload.biz_type {
         BizType::OrderMultiSignAccept => {
-            exec_task::<OrderMultiSignAccept, _>(&payload, MqttTask::OrderMultiSignAccept).await?
+            exec_task::<OrderMultiSignAccept, _, _>(&payload, MqttTask::OrderMultiSignAccept)
+                .await?
         }
         BizType::OrderMultiSignAcceptCompleteMsg => {
-            exec_task::<OrderMultiSignAcceptCompleteMsg, _>(
+            exec_task::<OrderMultiSignAcceptCompleteMsg, _, _>(
                 &payload,
                 MqttTask::OrderMultiSignAcceptCompleteMsg,
             )
             .await?
         }
         BizType::OrderMultiSignServiceComplete => {
-            exec_task::<OrderMultiSignServiceComplete, _>(
+            exec_task::<OrderMultiSignServiceComplete, _, _>(
                 &payload,
                 MqttTask::OrderMultiSignServiceComplete,
             )
             .await?
         }
         BizType::OrderMultiSignCancel => {
-            exec_task::<OrderMultiSignCancel, _>(&payload, MqttTask::OrderMultiSignCancel).await?
+            exec_task::<OrderMultiSignCancel, _, _>(&payload, MqttTask::OrderMultiSignCancel)
+                .await?
         }
         BizType::MultiSignTransAccept => {
-            exec_task::<MultiSignTransAccept, _>(&payload, MqttTask::MultiSignTransAccept).await?
+            exec_task::<MultiSignTransAccept, _, _>(&payload, MqttTask::MultiSignTransAccept)
+                .await?
         }
         BizType::MultiSignTransAcceptCompleteMsg => {
-            exec_task::<MultiSignTransAcceptCompleteMsg, _>(
+            exec_task::<MultiSignTransAcceptCompleteMsg, _, _>(
                 &payload,
                 MqttTask::MultiSignTransAcceptCompleteMsg,
             )
             .await?
         }
-        BizType::AcctChange => exec_task::<AcctChange, _>(&payload, MqttTask::AcctChange).await?,
+        BizType::AcctChange => {
+            exec_task::<AcctChange, _, _>(&payload, MqttTask::AcctChange).await?
+        }
         BizType::OrderMultiSignCreated => {
-            exec_task::<OrderMultiSignCreated, _>(&payload, MqttTask::OrderMultiSignCreated).await?
+            exec_task::<OrderMultiSignCreated, _, _>(&payload, MqttTask::OrderMultiSignCreated)
+                .await?
         }
         BizType::BulletinMsg => {
-            exec_task::<BulletinMsg, _>(&payload, MqttTask::BulletinMsg).await?
+            exec_task::<BulletinMsg, _, _>(&payload, MqttTask::BulletinMsg).await?
         }
         BizType::MultiSignTransCancel => {
-            exec_task::<MultiSignTransCancel, _>(&payload, MqttTask::MultiSignTransCancel).await?
+            exec_task::<MultiSignTransCancel, _, _>(&payload, MqttTask::MultiSignTransCancel)
+                .await?
         }
         BizType::PermissionAccept => {
-            exec_task::<PermissionAccept, _>(&payload, MqttTask::PermissionAccept).await?
+            exec_task::<PermissionAccept, _, _>(&payload, MqttTask::PermissionAccept).await?
         }
         BizType::MultiSignTransExecute => {
-            exec_task::<MultiSignTransExecute, _>(&payload, MqttTask::MultiSignTransExecute).await?
+            exec_task::<MultiSignTransExecute, _, _>(&payload, MqttTask::MultiSignTransExecute)
+                .await?
         }
         BizType::OrderMultiSignAllMemberAccepted => {
-            exec_task::<OrderAllConfirmed, _>(&payload, MqttTask::OrderAllConfirmed).await?
+            exec_task::<OrderAllConfirmed, _, _>(&payload, MqttTask::OrderAllConfirmed).await?
         }
         BizType::CleanPermission => {
-            exec_task::<CleanPermission, _>(&payload, MqttTask::CleanPermission).await?
+            exec_task::<CleanPermission, _, _>(&payload, MqttTask::CleanPermission).await?
         }
         // api wallet
-        BizType::UnbindUid => exec_task::<UnbindUidMsg, _>(&payload, MqttTask::UnbindUid).await?,
-        BizType::AddressUse => {
-            exec_task::<AddressUseMsg, _>(&payload, MqttTask::AddressUse).await?
+        BizType::UnbindUid | BizType::AddressAllock | BizType::AddressUse | BizType::Trans => {
+            exec_task::<ApiMqttStruct, _, _>(&payload, MqttTask::ApiMqttStruct).await?
         }
-        BizType::Trans => exec_task::<TransMsg, _>(&payload, MqttTask::Trans).await?,
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
             return Err(crate::error::service::ServiceError::System(
@@ -180,13 +186,14 @@ pub(crate) async fn exec_payload(
     Ok(())
 }
 
-async fn exec_task<T, F>(
+async fn exec_task<T, F, R>(
     payload: &Message,
     task_ctor: F,
 ) -> Result<(), crate::error::service::ServiceError>
 where
     T: serde::de::DeserializeOwned,
-    F: FnOnce(T) -> MqttTask,
+    F: FnOnce(T) -> R,
+    R: crate::infrastructure::task_queue::task::TaskTrait + 'static,
 {
     let data = serde_func::serde_from_value::<T>(payload.body.clone())?;
     Tasks::new()

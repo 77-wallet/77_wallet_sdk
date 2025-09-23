@@ -43,10 +43,7 @@ impl TaskTrait for MqttTask {
             MqttTask::CleanPermission(_) => TaskName::Known(KnownTaskName::CleanPermission),
             MqttTask::OrderAllConfirmed(_) => TaskName::Known(KnownTaskName::OrderAllConfirmed),
             // api wallet
-            MqttTask::UnbindUid(_) => TaskName::Known(KnownTaskName::UnbindUid),
-            MqttTask::AddressUse(_) => TaskName::Known(KnownTaskName::AddressUse),
-            MqttTask::AddressAllock(_) => TaskName::Known(KnownTaskName::AddressAllock),
-            MqttTask::Trans(_) => TaskName::Known(KnownTaskName::Trans),
+            MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.get_name(),
         }
     }
     fn get_type(&self) -> TaskType {
@@ -90,10 +87,7 @@ impl TaskTrait for MqttTask {
                 Some(wallet_utils::serde_func::serde_to_string(req)?)
             }
             MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-            MqttTask::UnbindUid(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-            MqttTask::AddressUse(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-            MqttTask::AddressAllock(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
-            MqttTask::Trans(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
+            MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.get_body()?,
         };
         Ok(res)
     }
@@ -114,10 +108,7 @@ impl TaskTrait for MqttTask {
             MqttTask::MultiSignTransExecute(data) => data.exec(id).await?,
             MqttTask::CleanPermission(data) => data.exec(id).await?,
             MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
-            MqttTask::UnbindUid(data) => data.exec(id).await?,
-            MqttTask::AddressUse(data) => data.exec(id).await?,
-            MqttTask::AddressAllock(data) => data.exec(id).await?,
-            MqttTask::Trans(data) => data.exec(id).await?,
+            MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.execute(id).await?,
         }
         Ok(())
     }
@@ -142,8 +133,74 @@ pub(crate) enum MqttTask {
     BulletinMsg(topics::BulletinMsg),
     PermissionAccept(topics::PermissionAccept),
     CleanPermission(topics::CleanPermission),
+
+    ApiMqttStruct(ApiMqttStruct),
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ApiMqttStruct {
+    pub(crate) event_no: String,
+    pub(crate) event_type: String,
+    pub(crate) data: ApiMqttData,
+    pub(crate) time: String,
+    pub(crate) sign: String,
+    pub(crate) secret: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub(crate) enum ApiMqttData {
     UnbindUid(topics::api_wallet::UnbindUidMsg),
     AddressUse(topics::api_wallet::AddressUseMsg),
     AddressAllock(topics::api_wallet::AddressAllockMsg),
     Trans(topics::api_wallet::TransMsg),
+}
+
+#[async_trait::async_trait]
+impl TaskTrait for ApiMqttStruct {
+    fn get_name(&self) -> TaskName {
+        match self.data {
+            ApiMqttData::UnbindUid(_) => TaskName::Known(KnownTaskName::UnbindUid),
+            ApiMqttData::AddressUse(_) => TaskName::Known(KnownTaskName::AddressUse),
+            ApiMqttData::AddressAllock(_) => TaskName::Known(KnownTaskName::AddressAllock),
+            ApiMqttData::Trans(_) => TaskName::Known(KnownTaskName::Trans),
+        }
+    }
+
+    fn get_type(&self) -> TaskType {
+        TaskType::Mqtt
+    }
+
+    fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError> {
+        let res = match &self.data {
+            ApiMqttData::UnbindUid(unbind_uid_msg) => {
+                Some(wallet_utils::serde_func::serde_to_string(unbind_uid_msg)?)
+            }
+            ApiMqttData::AddressUse(address_use_msg) => {
+                Some(wallet_utils::serde_func::serde_to_string(address_use_msg)?)
+            }
+            ApiMqttData::AddressAllock(address_allock_msg) => {
+                Some(wallet_utils::serde_func::serde_to_string(address_allock_msg)?)
+            }
+            ApiMqttData::Trans(trans_msg) => {
+                Some(wallet_utils::serde_func::serde_to_string(trans_msg)?)
+            }
+        };
+
+        Ok(res)
+    }
+
+    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError> {
+        match &self.data {
+            ApiMqttData::UnbindUid(data) => data.exec(id).await?,
+            ApiMqttData::AddressUse(data) => data.exec(id).await?,
+            ApiMqttData::AddressAllock(data) => data.exec(id).await?,
+            ApiMqttData::Trans(data) => data.exec(id).await?,
+        }
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use super::task_manager::dispatcher::PriorityTask;
 use crate::{
     infrastructure::task_queue::{
-        CommonTask, MqttTask, RecoverDataBody,
+        ApiMqttStruct, CommonTask, MqttTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
         task::task_type::TaskType,
@@ -202,10 +202,10 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::CleanPermission => topics::CleanPermission => |parsed| Box::new(MqttTask::CleanPermission(parsed)),
         KnownTaskName::OrderAllConfirmed => topics::OrderAllConfirmed => |parsed| Box::new(MqttTask::OrderAllConfirmed(parsed)),
 
-        KnownTaskName::UnbindUid => topics::api_wallet::UnbindUidMsg => |parsed| Box::new(MqttTask::UnbindUid(parsed)),
-        KnownTaskName::AddressUse => topics::api_wallet::AddressUseMsg => |parsed| Box::new(MqttTask::AddressUse(parsed)),
-        KnownTaskName::AddressAllock => topics::api_wallet::AddressAllockMsg => |parsed| Box::new(MqttTask::AddressAllock(parsed)),
-        KnownTaskName::Trans => topics::api_wallet::TransMsg => |parsed| Box::new(MqttTask::Trans(parsed)),
+        KnownTaskName::UnbindUid => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AddressUse => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AddressAllock => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::Trans => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
 
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
         KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
