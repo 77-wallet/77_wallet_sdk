@@ -1,10 +1,13 @@
 use tokio_stream::StreamExt as _;
+use wallet_types::chain::chain::ChainCode;
 use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
     test::env::{TestParams, get_manager},
 };
+use wallet_api::api::ReturnType;
 use wallet_database::entities::api_wallet::ApiWalletType;
+use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 async fn run(
@@ -19,7 +22,7 @@ async fn run(
     let account_name = "ccccc";
     let is_default_name = true;
     let wallet_password = "q1111111";
-    let withdrawal_uid = wallet_manager
+    let wallet_uid = wallet_manager
         .create_api_wallet(
             language_code,
             phrase,
@@ -32,10 +35,10 @@ async fn run(
             ApiWalletType::SubAccount,
         )
         .await?;
-    tracing::warn!("wallet ------------------------ 1: {withdrawal_uid:#?}");
+    tracing::warn!("wallet ------------------------ 1: {wallet_uid:#?}");
 
     let salt1 = "q1111112";
-    let wallet_uid = wallet_manager
+    let withdrawal_uid = wallet_manager
         .create_api_wallet(
             language_code,
             phrase,
@@ -48,12 +51,35 @@ async fn run(
             ApiWalletType::Withdrawal,
         )
         .await?;
-    tracing::warn!("wallet ------------------------ 2: {wallet_uid:#?}");
+    tracing::warn!("wallet ------------------------ 2: {withdrawal_uid:#?}");
 
     let res = wallet_manager
         .bind_merchant("68c27fb92e52f46cef896318", "68be7271a7307e042404e276", &wallet_uid, &withdrawal_uid)
         .await?;
     tracing::info!("bind_merchant ------------------- 3: {res:#?}");
+
+    let res = wallet_manager.update_collect_strategy(&wallet_uid, 1.1, vec![
+        ChainConfig{
+            chain_code: ChainCode::Tron.to_string(),
+            normal_address: IndexAndAddress {
+                index: 0,
+                address: "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n".to_string(),
+            },
+            risk_address: IndexAndAddress {
+                index: 1,
+                address: "TNoacEYG6dCB2z9aWPVYspz1qrxHDoe8Bv".to_string(),
+            },
+        }
+    ]).await;
+    match res {
+        Ok(_) => {
+            tracing::info!("wallet --------------------- 4: {res:#?}");
+        }
+
+        _ => {
+            tracing::error!("wallet --------------------- 5: {res:#?}");
+        }
+    }
 
     // 获取订单记录
     // let order_list = wallet_manager.list_api_withdraw_order(&wallet_uid).await?;

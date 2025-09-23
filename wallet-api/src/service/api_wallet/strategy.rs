@@ -20,7 +20,6 @@ impl StrategyService {
         chain_config: Vec<ChainConfig>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
-
         let req = SaveCollectStrategyReq::new(uid, threshold, chain_config);
         backend_api.save_collect_strategy(&req).await?;
 

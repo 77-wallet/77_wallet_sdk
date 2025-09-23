@@ -11,8 +11,6 @@ impl WalletManager {
         &self,
         uid: &str,
         threshold: f64,
-        // normal_index: i32,
-        // risk_index: i32,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
         StrategyService::new(self.ctx).update_collect_strategy(uid, threshold, chain_config).await
