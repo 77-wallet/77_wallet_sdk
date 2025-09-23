@@ -17,8 +17,14 @@ impl ApiAccountRepo {
         address_type: &str,
         api_wallet_type: ApiWalletType,
     ) -> Result<Option<ApiAccountEntity>, crate::Error> {
-        Ok(ApiAccountDao::find_one(pool.as_ref(), address, chain_code, address_type, api_wallet_type)
-            .await?)
+        Ok(ApiAccountDao::find_one(
+            pool.as_ref(),
+            address,
+            chain_code,
+            address_type,
+            api_wallet_type,
+        )
+        .await?)
     }
 
     pub async fn upsert(pool: &DbPool, input: Vec<CreateApiAccountVo>) -> Result<(), crate::Error> {

@@ -1,3 +1,5 @@
+use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
+
 use crate::{
     domain::{
         api_wallet::{
@@ -73,6 +75,18 @@ impl TransMsg {
             self.to,
             self.value
         );
+
+        // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        // let req = ServiceFeeUploadReq::new(
+        //     trade_no,
+        //     &self.chain_code,
+        //     &self.symbol,
+        //     &self.token_address,
+        //     &self.from,
+        //     &self.to,
+        //     wallet_utils::unit::string_to_f64(&self.value)?,
+        // );
+        // backend.upload_service_fee_record(&req).await?;
         Ok(())
     }
 
