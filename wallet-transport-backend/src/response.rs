@@ -1,7 +1,7 @@
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct BackendResponseOk {
     pub code: Option<String>,
-    pub data: Option<String>,
+    pub data: Option<serde_json::Value>,
     pub success: bool,
     pub msg: Option<String>,
 }
@@ -21,11 +21,19 @@ impl BackendResponse {
             BackendResponse::Success(ok) => {
                 if ok.success {
                     let res = match ok.data {
-                        Some(data) => {
-                            aes_cbc_cryptor.decrypt(&data).map_err(crate::Error::Utils)?
+                        Some(serde_json::Value::String(s)) => {
+                            aes_cbc_cryptor.decrypt(&s).map_err(crate::Error::Utils)?
                         }
-                        None => wallet_utils::serde_func::serde_to_value(None::<T>)?,
+                        Some(v) => v,
+                        None => return Err(crate::Error::Backend(ok.msg)),
                     };
+
+                    // let res = match ok.data {
+                    //     Some(data) => {
+                    //         aes_cbc_cryptor.decrypt(&data).map_err(crate::Error::Utils)?
+                    //     }
+                    //     None => wallet_utils::serde_func::serde_to_value(None::<T>)?,
+                    // };
                     tracing::debug!("backend response: {:?}", res);
                     Ok(wallet_utils::serde_func::serde_from_value(res)?)
                 } else {
