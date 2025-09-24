@@ -5,9 +5,9 @@ use crate::{
         self,
         chain::{
             TransferResp,
-            adapter::sol_tx::{self, DEFAULT_UNITS_FEE, TOKEN_ACCOUNT_REND},
+            adapter::sol_tx::{self, DEFAULT_UNITS_FEE, SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_REND},
             pare_fee_setting,
-            swap::evm_swap::SwapParams,
+            swap::{W_SOL, evm_swap::SwapParams},
             transaction::{ChainTransDomain, DEFAULT_UNITS},
         },
         coin::TokenCurrencyGetter,
@@ -35,7 +35,6 @@ use wallet_chain_interact::{
 };
 use wallet_database::entities::coin::CoinEntity;
 use wallet_transport::client::{HttpClient, RpcClient};
-use wallet_transport_backend::response_vo::coin::TokenCurrency;
 use wallet_types::chain::{
     address::r#type::{DogAddressType, LtcAddressType, TonAddressType},
     chain::ChainCode as ChainType,
@@ -856,25 +855,24 @@ impl TransactionAdapter {
 
     pub async fn sol_swap_fee(
         &self,
-        recipient: &str,
-        token_out: &str,
-        token_currency: TokenCurrency,
-        currency: &str,
+        req: &QuoteReq,
         consumer: Option<u64>,
-    ) -> Result<(String, String), crate::ServiceError> {
+    ) -> Result<SolFeeSetting, crate::ServiceError> {
         match self {
             Self::Solana(chain) => {
+                // 需要预留 账号租金
                 let mut fee_setting = SolFeeSetting {
-                    base_fee: DEFAULT_UNITS_FEE,
+                    base_fee: DEFAULT_UNITS_FEE + SYSTEM_ACCOUNT_RENT,
                     priority_fee_per_compute_unit: None,
                     compute_units_consumed: consumer.unwrap_or(0),
                     extra_fee: None,
                 };
 
-                if !token_out.is_empty() {
+                // 没有目标代币,需要一部分的费用
+                if !req.token_out.token_addr.is_empty() {
                     let account = chain
                         .get_provider()
-                        .token_balance(&token_out, recipient)
+                        .token_balance(&req.token_out.token_addr, &req.recipient)
                         .await?;
 
                     if account.value.is_empty() {
@@ -882,13 +880,23 @@ impl TransactionAdapter {
                     }
                 };
 
-                let fee = fee_setting.transaction_fee();
-                let consumer = wallet_utils::serde_func::serde_to_string(&fee_setting)?;
+                // 如果没有中间代币 WSOL,考虑手续费
+                if req.is_native() {
+                    let account = chain
+                        .get_provider()
+                        .token_balance(W_SOL, &req.recipient)
+                        .await?;
 
-                let sol_fee =
-                    CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+                    if account.value.is_empty() {
+                        if let Some(extra_fee) = fee_setting.extra_fee {
+                            fee_setting.extra_fee = Some(extra_fee + TOKEN_ACCOUNT_REND)
+                        } else {
+                            fee_setting.extra_fee = Some(TOKEN_ACCOUNT_REND)
+                        }
+                    }
+                }
 
-                Ok((consumer, sol_fee))
+                Ok(fee_setting)
             }
             _ => {
                 return Err(crate::BusinessError::Chain(
@@ -912,14 +920,8 @@ impl TransactionAdapter {
             let currency = crate::app_state::APP_STATE.read().await;
             currency.currency().to_string()
         };
-
-        let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency(
-            &currency,
-            &req.chain_code,
-            symbol,
-            None,
-        )
-        .await?;
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, symbol, None).await?;
 
         let resp = match self {
             Self::Ethereum(chain) => {
@@ -972,17 +974,14 @@ impl TransactionAdapter {
                 let resp =
                     sol_tx::estimate_swap(&req.recipient, sol_instructions.unwrap(), chain).await?;
 
-                let (consumer, sol_fee) = self
-                    .sol_swap_fee(
-                        &req.recipient,
-                        &req.token_out.token_addr,
-                        token_currency,
-                        &currency,
-                        Some(resp.consumer),
-                    )
-                    .await?;
+                // let fee_setting = self.sol_swap_fee(&req, Some(resp.consumer)).await?;
 
-                (resp.amount_out, consumer, sol_fee)
+                // let fee = fee_setting.transaction_fee();
+                // let consumer = wallet_utils::serde_func::serde_to_string(&fee_setting)?;
+                // let sol_fee =
+                //     CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+
+                (resp.amount_out, "".to_string(), "".to_string())
             }
             _ => {
                 return Err(crate::BusinessError::Chain(

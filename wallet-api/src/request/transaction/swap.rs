@@ -264,6 +264,10 @@ impl QuoteReq {
         }
     }
 
+    pub fn is_sol(&self) -> bool {
+        self.chain_code == chain_code::SOLANA
+    }
+
     pub fn amount_in_u256(&self) -> Result<U256, crate::ServiceError> {
         Ok(wallet_utils::unit::convert_to_u256(
             &self.amount_in,
