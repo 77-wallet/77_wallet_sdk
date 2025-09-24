@@ -131,6 +131,7 @@ pub struct SolInstructionReq {
     pub amount_in: String,
     pub amount_out: String,
     pub dex_route_list: Vec<DexRoute>,
+    pub is_simulate: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

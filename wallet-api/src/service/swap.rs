@@ -443,6 +443,7 @@ impl SwapServer {
         amount_in: String,
         amount_out: String,
         dex_route_list: Vec<DexRoute>,
+        is_simulate: bool,
     ) -> Result<Option<SolInstructResp>, crate::ServiceError> {
         if chain_code == chain_code::SOLANA {
             let req = SolInstructionReq {
@@ -452,6 +453,7 @@ impl SwapServer {
                 amount_in,
                 amount_out,
                 dex_route_list,
+                is_simulate,
             };
 
             tracing::warn!(
@@ -493,6 +495,7 @@ impl SwapServer {
                     quote_resp.amount_in.clone(),
                     0.to_string(),
                     quote_resp.dex_route_list.clone(),
+                    true,
                 )
                 .await?;
 
@@ -653,6 +656,7 @@ impl SwapServer {
                         amount_in,
                         amount_out,
                         req.dex_router.clone(),
+                        false,
                     )
                     .await?;
                 adapter.swap(&req, fee, key, instructions).await?
