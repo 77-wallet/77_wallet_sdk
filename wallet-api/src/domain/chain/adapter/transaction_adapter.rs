@@ -5,7 +5,7 @@ use crate::{
         self,
         chain::{
             TransferResp,
-            adapter::sol_tx::{self, DEFAULT_UNITS_FEE, SYSTEM_ACCOUNT_RENT, TOKEN_ACCOUNT_REND},
+            adapter::sol_tx::{self, DEFAULT_UNITS_FEE, TOKEN_ACCOUNT_REND},
             pare_fee_setting,
             swap::{W_SOL, evm_swap::SwapParams},
             transaction::{ChainTransDomain, DEFAULT_UNITS},
@@ -862,7 +862,7 @@ impl TransactionAdapter {
             Self::Solana(chain) => {
                 // 需要预留 账号租金
                 let mut fee_setting = SolFeeSetting {
-                    base_fee: DEFAULT_UNITS_FEE + SYSTEM_ACCOUNT_RENT,
+                    base_fee: DEFAULT_UNITS_FEE,
                     priority_fee_per_compute_unit: None,
                     compute_units_consumed: consumer.unwrap_or(0),
                     extra_fee: None,

@@ -8,6 +8,7 @@ use alloy::primitives::U256;
 use wallet_chain_interact::{
     sol::{
         SolFeeSetting, SolanaChain,
+        consts::SOL_DECIMAL,
         operations::{
             SolInstructionOperation,
             native_coin::{Deposit, Swap, Withdraw},
@@ -18,7 +19,7 @@ use wallet_chain_interact::{
 use wallet_utils::serde_func;
 
 // 默认系统账号的租金
-pub const SYSTEM_ACCOUNT_RENT: u64 = 990880;
+pub const SYSTEM_ACCOUNT_RENT: f64 = 0.000990880;
 
 // 默认token账号的租金
 pub const TOKEN_ACCOUNT_REND: u64 = 2500000;
@@ -87,7 +88,8 @@ pub(super) async fn swap(
 
     // check balance (sol 减租金)
     let mut balance = chain.balance(payer, None).await?;
-    balance = balance - U256::from(SYSTEM_ACCOUNT_RENT);
+    balance = balance
+        - wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
 
     if U256::from(fee_setting.original_fee()) > balance {
         return Err(crate::BusinessError::Chain(

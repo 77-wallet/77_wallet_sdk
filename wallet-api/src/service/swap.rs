@@ -4,7 +4,7 @@ use crate::{
         assets::AssetsDomain,
         bill::BillDomain,
         chain::{
-            adapter::{ChainAdapterFactory, TransactionAdapter},
+            adapter::{ChainAdapterFactory, TransactionAdapter, sol_tx::SYSTEM_ACCOUNT_RENT},
             swap::SLIPPAGE,
             transaction::ChainTransDomain,
         },
@@ -276,7 +276,8 @@ impl SwapServer {
 
         // 如果是sol 需要扣减手续费
         if req.is_sol() {
-            let fee = Decimal::from_f64_retain(sol_fee.unwrap_or_default()).unwrap();
+            let fee = sol_fee.unwrap_or_default() + SYSTEM_ACCOUNT_RENT;
+            let fee = Decimal::from_f64_retain(fee).unwrap();
 
             if req.token_in.token_addr.is_empty() {
                 bal_ref = bal_ref - fee
