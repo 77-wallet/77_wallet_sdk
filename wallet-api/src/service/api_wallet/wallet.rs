@@ -356,6 +356,7 @@ impl ApiWalletService {
 
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend.init_api_wallet(recharge_uid, withdrawal_uid).await?;
+        tracing::info!("init api wallet success");
         backend
             .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
             .await?;

@@ -48,6 +48,10 @@ impl WalletManager {
     //         .into()
     // }
 
+    pub async fn wallet_list(&self) -> ReturnType<Vec<ApiWalletInfo>> {
+        ApiWalletService::new(self.ctx).get_api_wallet_list(ApiWalletType::Withdrawal).await
+    }
+
     pub async fn bind_merchant(
         &self,
         org_app_id: &str,

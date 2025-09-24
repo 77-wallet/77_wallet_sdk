@@ -25,7 +25,7 @@ impl BackendResponse {
                             aes_cbc_cryptor.decrypt(&s).map_err(crate::Error::Utils)?
                         }
                         Some(v) => v,
-                        None => return Err(crate::Error::Backend(ok.msg)),
+                        None => wallet_utils::serde_func::serde_to_value(None::<T>)?,
                     };
 
                     // let res = match ok.data {

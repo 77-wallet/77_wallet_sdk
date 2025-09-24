@@ -6,7 +6,7 @@ async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_back
 
     let res = backend_api
         .query_wallet_activation_info(
-            "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b",
+            "e6de8afd756e7cb81a3d965f959c896738ed07cebc919c7f96c97fc6069ad44f",
         )
         .await
         .unwrap();
