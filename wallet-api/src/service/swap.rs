@@ -330,13 +330,14 @@ impl SwapServer {
 
         // 判断余额是否足 进行模拟
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let assets = AssetsRepo::get_by_addr_token(
-            &pool,
-            &req.chain_code,
-            &req.token_in.token_addr,
-            &req.recipient,
-        )
-        .await?;
+        let assets = self
+            .token0_assets(
+                &pool,
+                &req.chain_code,
+                &req.token_in.token_addr,
+                &req.recipient,
+            )
+            .await?;
 
         let sol_fee = sol_fee.map(|f| f.transaction_fee());
 

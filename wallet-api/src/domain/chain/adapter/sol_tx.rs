@@ -43,9 +43,15 @@ pub(super) async fn estimate_swap(
             FrontendNotifyEvent::send_debug(&wallet_utils::serde_func::serde_to_value(&res.value)?)
                 .await;
         let log = res.value.logs.join(",");
-        return Err(crate::BusinessError::Chain(
-            crate::ChainError::SwapSimulate(log),
-        ))?;
+
+        // 如果有超时的错误
+        let error = if log.contains("RequireGteViolated") {
+            crate::BusinessError::Chain(crate::ChainError::SolSwapTime(log))
+        } else {
+            crate::BusinessError::Chain(crate::ChainError::SwapSimulate(log))
+        };
+
+        return Err(error)?;
     }
 
     //
