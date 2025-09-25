@@ -682,4 +682,16 @@ impl CoinEntity {
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }
+
+    pub async fn delete_wsol_error<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "delete from coin where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112';";
+        let _r = sqlx::query::<_>(&sql)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
 }

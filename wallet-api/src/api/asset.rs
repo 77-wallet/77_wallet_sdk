@@ -225,10 +225,10 @@ mod test {
             account_id,
             // symbol: "BNB".to_string(),
             // wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
-            wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
+            wallet_address: "0xEB2b4F967D9a6BeA958dDe3e5814BbE33A5CBfE2".to_string(),
             chain_list: ChainList(HashMap::from([(
                 "sol".to_string(),
-                "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB".to_string(),
+                "So11111111111111111111111111111111111111112".to_string(),
             )])), // token_address,
         };
         let res = wallet_manager.add_coin(add_coin_req).await;

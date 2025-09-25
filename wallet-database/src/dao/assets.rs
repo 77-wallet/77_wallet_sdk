@@ -664,6 +664,34 @@ impl AssetsEntity {
             .map(|_| ())
             .map_err(|_e| crate::Error::Database(crate::DatabaseError::UpdateFailed))
     }
+
+    pub async fn error_wsol_assets<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from assets where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112'".to_string();
+
+        let query = sqlx::query_as::<_, AssetsEntity>(&sql);
+        let result = query
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    pub async fn delete_error_wsol_assets<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "delete from assets where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112'".to_string();
+
+        let _c = sqlx::query(&sql)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|_e| crate::Error::Database(crate::DatabaseError::UpdateFailed));
+        Ok(())
+    }
 }
 
 // 创建的账单的类型

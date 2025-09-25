@@ -2,9 +2,9 @@ use alloy::signers::Result;
 use chrono::{DateTime, Utc};
 
 use crate::{
+    DbPool,
     entities::coin::{BatchCoinSwappable, CoinData, CoinEntity, CoinId, CoinWithAssets, SymbolId},
     pagination::Pagination,
-    DbPool,
 };
 
 #[async_trait::async_trait]
@@ -186,6 +186,11 @@ impl CoinRepo {
                 "main coin not found: chain_code: {}",
                 chain_code
             )))
+    }
+
+    // 修复数据用
+    pub async fn delete_wsol_error(pool: &DbPool) -> Result<(), crate::Error> {
+        CoinEntity::delete_wsol_error(pool.as_ref()).await
     }
 
     pub async fn update_price_unit1(

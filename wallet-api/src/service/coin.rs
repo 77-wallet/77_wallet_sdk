@@ -16,14 +16,16 @@ use crate::{
 };
 use std::collections::HashMap;
 use wallet_database::{
+    DbPool,
     dao::assets::CreateAssetsVo,
     entities::{
         assets::AssetsId,
         coin::{BatchCoinSwappable, CoinData, CoinId},
     },
+    factory::RepositoryFactory,
     repositories::{
         ResourcesRepo,
-        assets::AssetsRepoTrait,
+        assets::{AssetsRepo, AssetsRepoTrait},
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
     },
@@ -159,18 +161,6 @@ impl CoinService {
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
 
-        // let mut count = 0;
-        // let mut result = vec![];
-        // for coin in coins {
-        //     if coin.chain_code.clone().unwrap() == "sol" {
-        //         count += 1;
-        //         result.push(coin.clone());
-        //     }
-        // }
-
-        // fs::write("result.json", serde_json::to_string(&result).unwrap()).unwrap();
-        // tracing::warn!("count: {}", count);
-
         let data = coins
             .into_iter()
             .map(|d| coin_info_to_coin_data(d))
@@ -190,6 +180,48 @@ impl CoinService {
             })
             .collect::<Vec<_>>();
         CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
+
+        let _e = self.delete_wsol_error(&pool).await;
+
+        Ok(())
+    }
+
+    // 删除无效的wsol  wSOL 代币 1.7上线，1.8 版本或者后续版本删除
+    pub async fn delete_wsol_error(&mut self, pool: &DbPool) -> Result<(), crate::ServiceError> {
+        let _res = CoinRepo::delete_wsol_error(pool).await;
+
+        // 是否存在wSOL 的资产 ,存在的话,修改名称
+        let assets = AssetsRepo::all_error_wsol(pool).await?;
+        if !assets.is_empty() {
+            // 删除wsol 的资产
+            AssetsRepo::repair_wsol_error(pool).await?;
+
+            // 在新增
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            for asset in assets {
+                let assets_id = AssetsId {
+                    address: asset.address.clone(),
+                    symbol: "WSOL".to_string(),
+                    chain_code: asset.chain_code.clone(),
+                    token_address: if asset.token_address.is_empty() {
+                        None
+                    } else {
+                        Some(asset.token_address.clone())
+                    },
+                };
+
+                let one = CreateAssetsVo {
+                    assets_id,
+                    decimals: asset.decimals,
+                    protocol: None,
+                    status: 1,
+                    is_multisig: 0,
+                    balance: asset.balance.clone(),
+                    name: asset.name.clone(),
+                };
+                let _res = repo.upsert_assets(one).await?;
+            }
+        }
 
         Ok(())
     }
