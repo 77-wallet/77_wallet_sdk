@@ -14,12 +14,9 @@ use super::{
     },
 };
 use crate::{
-    infrastructure::task_queue::{ApiMqttData, ApiMqttStruct, MqttTask, task::Tasks},
+    infrastructure::task_queue::{ApiMqttStruct, MqttTask, task::Tasks},
     messaging::{
-        mqtt::topics::{
-            OutgoingPayload,
-            api_wallet::{AddressUseMsg, TransMsg, UnbindUidMsg},
-        },
+        mqtt::topics::OutgoingPayload,
         notify::{FrontendNotifyEvent, event::NotifyEvent},
     },
     service::{app::AppService, device::DeviceService},
@@ -82,9 +79,10 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
         Topic::Order
         | Topic::Common
         | Topic::BulletinInfo
+        | Topic::WalletMerchantCmd
         | Topic::MerchantTrans
-        | Topic::MerchantAddressBind
-        | Topic::MerchantAddressAllock => {
+        // | Topic::WalletMerchantTrans 
+        => {
             let payload: Message = serde_json::from_slice(&publish.payload)?;
             if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await {
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
@@ -172,7 +170,13 @@ pub(crate) async fn exec_payload(
             exec_task::<CleanPermission, _, _>(&payload, MqttTask::CleanPermission).await?
         }
         // api wallet
-        BizType::UnbindUid | BizType::AddressAllock | BizType::AddressUse | BizType::Trans => {
+        BizType::AwmOrderTrans
+        | BizType::AwmOrderTransRes
+        | BizType::AwmCmdAddrExpand
+        | BizType::AwmCmdFeeRes
+        | BizType::AwmCmdActive
+        | BizType::AwmCmdUidUnbind
+        | BizType::AddressUse => {
             exec_task::<ApiMqttStruct, _, _>(&payload, MqttTask::ApiMqttStruct).await?
         }
         // 如果没有匹配到任何已知的 BizType，则返回错误

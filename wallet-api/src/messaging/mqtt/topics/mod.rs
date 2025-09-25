@@ -59,10 +59,14 @@ define_topic_patterns! {
     Token => ["wallet", "token"],
     RpcChange => ["wallet", "rpc", "change"],
     ChainChange => ["wallet", "chain", "change"],
-    MerchantTrans => ["wallet", "merchant", "trans"] (with_client_id),
-    MerchantAddressBind => ["wallet", "merchant", "address", "bind"] (with_client_id),
-    MerchantAddressAllock => ["wallet", "merchant", "address", "allock"] (with_client_id),
-    MerchantCmd => ["wallet", "merchant", "cmd"] (with_client_id),
+
+
+    MerchantTrans => ["aw",  "merchant", "trans"] (with_client_id),
+    // WalletMerchantTrans => ["aw", "merchant", "trans"] (with_client_id),
+    WalletMerchantCmd => ["aw", "merchant", "cmd"] (with_client_id),
+
+    // MerchantAddressBind => ["wallet", "merchant", "address", "bind"] (with_client_id),
+    // MerchantAddressAllock => ["wallet", "merchant", "address", "allock"] (with_client_id),
 }
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -81,14 +85,20 @@ pub(crate) enum Topic {
     RpcChange,
     #[serde(rename = "wallet/chain/change")]
     ChainChange,
-    #[serde(rename = "wallet/merchant/trans")]
+
+    /// 推送的交易消息
+    #[serde(rename = "aw/merchant/trans")]
     MerchantTrans,
-    #[serde(rename = "wallet/merchant/address/bind")]
-    MerchantAddressBind,
-    #[serde(rename = "wallet/merchant/address/allock")]
-    MerchantAddressAllock,
-    #[serde(rename = "wallet/merchant/cmd")]
-    MerchantCmd,
+    // /// 交易结果通知
+    // #[serde(rename = "aw/merchant/trans")]
+    // WalletMerchantTrans,
+    /// 命令通知    
+    #[serde(rename = "aw/merchant/cmd")]
+    WalletMerchantCmd,
+    // #[serde(rename = "wallet/merchant/address/bind")]
+    // MerchantAddressBind,
+    // #[serde(rename = "wallet/merchant/address/allock")]
+    // MerchantAddressAllock,
 }
 
 impl Topic {
@@ -174,8 +184,10 @@ impl Topic {
 
     pub(crate) fn from_bytes_v3(raw: Vec<u8>) -> Result<TopicClientId, anyhow::Error> {
         let topic_str = String::from_utf8(raw)?;
-        let parts: Vec<&str> = topic_str.split('/').collect();
+        let topic_str = topic_str.trim_start_matches('/');
 
+        let parts: Vec<&str> = topic_str.split('/').collect();
+        tracing::info!("parts: {parts:#?}");
         for pattern in TOPIC_PATTERNS {
             if parts.starts_with(pattern.prefix) {
                 let client_id = if pattern.extract_client_id {
@@ -201,6 +213,62 @@ pub(crate) struct TopicClientId {
     pub(crate) topic: Topic,
     #[allow(dead_code)]
     pub(crate) client_id: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check_topic(input: &str, expected_topic: Topic, expected_client_id: Option<&str>) {
+        let raw = input.as_bytes().to_vec();
+        let parsed = Topic::from_bytes_v3(raw).expect("parse failed");
+
+        assert_eq!(
+            std::mem::discriminant(&parsed.topic),
+            std::mem::discriminant(&expected_topic),
+            "Topic enum not matched for input: {}",
+            input
+        );
+        assert_eq!(
+            parsed.client_id.as_deref(),
+            expected_client_id,
+            "Client id mismatch for input: {}",
+            input
+        );
+    }
+
+    #[test]
+    fn test_wallet_topics() {
+        check_topic("wallet/common", Topic::Common, None);
+        check_topic("wallet/common/abc123", Topic::Common, Some("abc123"));
+        check_topic("wallet/order", Topic::Order, None);
+        check_topic("wallet/order/xyz456", Topic::Order, Some("xyz456"));
+        check_topic("wallet/switch", Topic::Switch, None);
+        check_topic("wallet/bulletin", Topic::BulletinInfo, None);
+        check_topic("wallet/bulletin/notice1", Topic::BulletinInfo, Some("notice1"));
+        check_topic("wallet/token/eth/usdt", Topic::Token, None);
+        check_topic("wallet/rpc/change", Topic::RpcChange, None);
+        check_topic("wallet/chain/change", Topic::ChainChange, None);
+    }
+
+    #[test]
+    fn test_aw_merchant_topics() {
+        // 注意：这里测试带前导斜杠的情况
+        check_topic(
+            "/aw/merchant/cmd/df1b2982f3240f55fa8769e38e747010",
+            Topic::WalletMerchantCmd,
+            Some("df1b2982f3240f55fa8769e38e747010"),
+        );
+
+        check_topic("aw/merchant/trans/abcdef", Topic::MerchantTrans, Some("abcdef"));
+    }
+
+    #[test]
+    fn test_invalid_topic() {
+        let raw = "wallet/unknown/topic".as_bytes().to_vec();
+        let res = Topic::from_bytes_v3(raw);
+        assert!(res.is_err(), "unexpected success for invalid topic");
+    }
 }
 
 // #[cfg(test)]

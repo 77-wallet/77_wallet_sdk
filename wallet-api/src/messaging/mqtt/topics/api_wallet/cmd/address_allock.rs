@@ -3,7 +3,7 @@ use crate::domain::api_wallet::wallet::ApiWalletDomain;
 // biz_type = ADDRESS_ALLOCK
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AddressAllockMsg {
+pub struct AwmCmdAddrExpandMsg {
     /// 扩容类型： CHA_ALL / CHA_INDEX
     #[serde(rename = "type")]
     pub typ: AddressAllockType,
@@ -11,7 +11,10 @@ pub struct AddressAllockMsg {
     pub chain_code: String,
     pub index: Option<i32>,
     pub uid: String,
+    /// 扩容编号  
     pub serial_no: String,
+    /// 扩容数量（可空，CHA_BATCH 类型时有效）
+    pub number: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -22,7 +25,7 @@ pub enum AddressAllockType {
 }
 
 // 地址池扩容
-impl AddressAllockMsg {
+impl AwmCmdAddrExpandMsg {
     pub(crate) async fn exec(
         &self,
         _msg_id: &str,

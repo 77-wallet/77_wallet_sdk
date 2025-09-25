@@ -16,7 +16,9 @@ use super::{
 use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
-        api_wallet::{AddressUseMsg, UnbindUidMsg},
+        api_wallet::{
+            AwmCmdUidUnbindMsg, address_use::AddressUseMsg, wallet_activation::AwmCmdActiveMsg,
+        },
     },
     notify::api_wallet::{CollectFeeNotEnoughFront, FeeFront, WithdrawFront, WithdrawNoPassFront},
 };
@@ -64,7 +66,8 @@ pub enum NotifyEvent {
     SyncAssets,
 
     // API wallet
-    UnbindUid(UnbindUidMsg),
+    AwmCmdActive(AwmCmdActiveMsg),
+    AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
     AddressUse(AddressUseMsg),
     Withdraw(WithdrawFront),
     WithdrawNoPass(WithdrawNoPassFront),
@@ -114,7 +117,10 @@ impl NotifyEvent {
             // 其他
             // 同步资产
             NotifyEvent::SyncAssets => "SYNC_ASSETS".to_string(),
-            NotifyEvent::UnbindUid(_) => "UNBIND_UID".to_string(),
+
+            // api wallet
+            NotifyEvent::AwmCmdActive(_) => "AWM_CMD_ACTIVE".to_string(),
+            NotifyEvent::AwmCmdUidUnbind(_) => "AWM_CMD_UID_UNBIND".to_string(),
             NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
             NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
             NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),

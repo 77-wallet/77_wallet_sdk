@@ -3,7 +3,11 @@ use crate::messaging::mqtt::topics::{
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange,
-    api_wallet::{AddressAllockMsg, AddressUseMsg, TransMsg, UnbindUidMsg},
+    api_wallet::{
+        AwmCmdUidUnbindMsg, AwmOrderTransMsg, AwmOrderTransResMsg,
+        address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg,
+        wallet_activation::AwmCmdActiveMsg,
+    },
 };
 
 use super::topics::{CleanPermission, multisign_trans_execute::MultiSignTransExecute};
@@ -79,14 +83,21 @@ pub enum BizType {
     CleanPermission,
 
     // api wallet
-    // 解绑uid
-    UnbindUid,
     // 地址使用
     AddressUse,
-    // 地址扩容
-    AddressAllock,
-    // 转账
-    Trans,
+
+    // AWM_ORDER_TRANS API钱包的订单消息
+    AwmOrderTrans,
+    /// AWM_ORDER_TRANS_RES API钱包的订单结果消息
+    AwmOrderTransRes,
+    /// AWM_CMD_ADDR_EXPAND API钱包的地址扩容消息
+    AwmCmdAddrExpand,
+    // AWM_CMD_UID_UNBIND API钱包的钱包解绑消息
+    AwmCmdUidUnbind,
+    // AWM_CMD_FEE_RES API手续费结果事件
+    AwmCmdFeeRes,
+    // AWM_CMD_ACTIVE API钱包激活
+    AwmCmdActive,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -116,9 +127,13 @@ pub enum Body {
     OrderMultiSignAllMemberAccepted,
     OrderMultiTransExecute(MultiSignTransExecute),
     CleanPermission(CleanPermission),
+
     /// api wallet
-    UnbindUid(UnbindUidMsg),
-    AddressAllock(AddressAllockMsg),
+    AwmOrderTrans(AwmOrderTransMsg),
+    AwmOrderTransRes(AwmOrderTransResMsg),
+    AwmCmdAddrExpand(AwmCmdAddrExpandMsg),
+    // AwmCmdFeeRes(AwmCmdFeeResMsg),
+    AwmCmdActive(AwmCmdActiveMsg),
+    AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
     AddressUse(AddressUseMsg),
-    Trans(TransMsg),
 }

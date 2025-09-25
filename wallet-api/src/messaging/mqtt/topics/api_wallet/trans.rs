@@ -14,24 +14,27 @@ use crate::{
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct TransMsg {
+pub struct AwmOrderTransMsg {
     from: String,
     to: String,
     value: String,
     #[serde(rename = "chain")]
     chain_code: String,
-    #[serde(rename = "token_addr")]
+    #[serde(rename = "tokenAddr")]
     token_address: String,
-    #[serde(rename = "token_code")]
+    #[serde(rename = "tokenCode")]
     symbol: String,
+    /// 平台交易单号
     trade_no: String,
-    // 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
+    /// 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
     trade_type: u8,
+    /// 是否需要审核（可空）： 1 不需要审核 / 2 需要审核
+    audit: String,
     uid: String,
 }
 
 // 归集和提币
-impl TransMsg {
+impl AwmOrderTransMsg {
     pub(crate) async fn exec(
         &self,
         _msg_id: &str,

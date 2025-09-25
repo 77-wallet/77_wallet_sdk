@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         tokio::select! {
             msg = rx.next() => {
-                tracing::info!("data: {msg:?}");
+                tracing::info!("前端收到数据: {msg:?}");
             }
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("ctrl_c");

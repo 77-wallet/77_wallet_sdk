@@ -176,9 +176,13 @@ pub enum KnownTaskName {
     SyncNodesAndLinkToChains,
     // RecoverPermission,
     OrderAllConfirmed,
+
     /// api wallet
-    UnbindUid,
+    AwmOrderTrans,
+    AwmOrderTransRes,
+    AwmCmdAddrExpand,
+    AwmCmdFeeRes,
+    AwmCmdActive,
+    AwmCmdUidUnbind,
     AddressUse,
-    AddressAllock,
-    Trans,
 }

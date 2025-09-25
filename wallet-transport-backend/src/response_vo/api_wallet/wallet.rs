@@ -25,7 +25,7 @@ pub struct QueryWalletActivationInfoRespItem {
     pub active: ActiveStatus,
 }
 
-#[derive(Debug, serde_repr::Deserialize_repr, serde_repr::Serialize_repr)]
+#[derive(Debug, serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Clone)]
 #[repr(u8)]
 pub enum ActiveStatus {
     Active = 1,

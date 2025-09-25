@@ -202,10 +202,13 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::CleanPermission => topics::CleanPermission => |parsed| Box::new(MqttTask::CleanPermission(parsed)),
         KnownTaskName::OrderAllConfirmed => topics::OrderAllConfirmed => |parsed| Box::new(MqttTask::OrderAllConfirmed(parsed)),
 
-        KnownTaskName::UnbindUid => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmOrderTrans => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmOrderTransRes => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdAddrExpand => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdFeeRes => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdActive => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdUidUnbind => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
         KnownTaskName::AddressUse => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
-        KnownTaskName::AddressAllock => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
-        KnownTaskName::Trans => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
 
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
         KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),

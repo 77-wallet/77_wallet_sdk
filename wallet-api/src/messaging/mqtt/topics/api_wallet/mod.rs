@@ -2,9 +2,11 @@ mod unbind_uid;
 pub use unbind_uid::*;
 mod recharge;
 pub use recharge::*;
-mod address_use;
-pub use address_use::*;
+
 mod trans;
 pub use trans::*;
-mod address_allock;
-pub use address_allock::*;
+
+mod cmd;
+pub use cmd::*;
+mod trans_result;
+pub use trans_result::*;

@@ -3,13 +3,13 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
+    entities::api_wallet::ApiWalletType,
     repositories::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, coin::CoinRepo, wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::{
-    request::{AddressBatchInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq},
+    request::{TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq},
     response_vo::api_wallet::wallet::QueryWalletActivationInfoResp,
 };
 
@@ -24,7 +24,7 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    messaging::mqtt::topics::api_wallet::AddressAllockType,
+    messaging::mqtt::topics::api_wallet::address_allock::AddressAllockType,
 };
 
 pub struct ApiWalletDomain {}

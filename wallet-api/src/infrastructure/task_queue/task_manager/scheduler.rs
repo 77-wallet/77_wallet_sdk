@@ -1,5 +1,5 @@
 use wallet_database::entities::task_queue::KnownTaskName;
-use wallet_transport_backend::consts::endpoint::{multisig::*, old_wallet::*, *};
+use wallet_transport_backend::consts::endpoint::{multisig::*, *};
 
 use crate::{
     error::service::ServiceError,
@@ -64,10 +64,14 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::RecoverMultisigAccountData => 1, // 多签账户恢复，重要流程，高优先级
                 KnownTaskName::SyncNodesAndLinkToChains => 4, // 链接节点的同步任务，后台操作，较低优先级
                 KnownTaskName::OrderAllConfirmed => 1,
-                KnownTaskName::UnbindUid => 2,
+
+                KnownTaskName::AwmCmdFeeRes => 2,
+                KnownTaskName::AwmCmdActive => 2,
+                KnownTaskName::AwmCmdUidUnbind => 2,
                 KnownTaskName::AddressUse => 2,
-                KnownTaskName::AddressAllock => 3,
-                KnownTaskName::Trans => 2,
+                KnownTaskName::AwmCmdAddrExpand => 3,
+                KnownTaskName::AwmOrderTrans => 2,
+                KnownTaskName::AwmOrderTransRes => 2,
             }
         }
         wallet_database::entities::task_queue::TaskName::Unknown(_) => 0,

@@ -62,7 +62,7 @@ pub async fn exec_event(
     while let Some(event) = rx.next().await {
         // #[cfg(not(feature = "prod"))]
         // if filter_log_event(&event) {
-        //     tracing::info!("[mqtt] receive event: {event:?}");
+        tracing::info!("[mqtt] receive event: {event:?}");
         // }
 
         let res = match event {

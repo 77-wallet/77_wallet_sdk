@@ -2,7 +2,7 @@ use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use crate::{
     infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
-    messaging::mqtt::topics,
+    messaging::mqtt::topics::{self, api_wallet::AwmCmdMsg},
 };
 
 #[async_trait::async_trait]
@@ -141,29 +141,38 @@ pub(crate) enum MqttTask {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ApiMqttStruct {
     pub(crate) event_no: String,
+    /// 1交易事件 / 2 交易最终结果 / 3 地址扩容 / 4平台解绑/ 5 激活钱包 / 6 交易手续费结果 /
     pub(crate) event_type: String,
     pub(crate) data: ApiMqttData,
-    pub(crate) time: String,
-    pub(crate) sign: String,
-    pub(crate) secret: String,
+    pub(crate) time: u64,
+    pub(crate) sign: Option<String>,
+    pub(crate) secret: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ApiMqttData {
-    UnbindUid(topics::api_wallet::UnbindUidMsg),
-    AddressUse(topics::api_wallet::AddressUseMsg),
-    AddressAllock(topics::api_wallet::AddressAllockMsg),
-    Trans(topics::api_wallet::TransMsg),
+    /// 推送交易消息
+    AwmOrderTrans(topics::api_wallet::AwmOrderTransMsg),
+    /// 交易结果通知
+    AwmOrderTransRes(topics::api_wallet::AwmOrderTransResMsg),
+    /// 命令
+    AwmCmd(topics::api_wallet::AwmCmdMsg),
+    AddressUse(topics::api_wallet::address_use::AddressUseMsg),
 }
 
 #[async_trait::async_trait]
 impl TaskTrait for ApiMqttStruct {
     fn get_name(&self) -> TaskName {
-        match self.data {
-            ApiMqttData::UnbindUid(_) => TaskName::Known(KnownTaskName::UnbindUid),
+        match &self.data {
+            ApiMqttData::AwmOrderTrans(_) => TaskName::Known(KnownTaskName::AwmOrderTrans),
+            ApiMqttData::AwmOrderTransRes(_) => TaskName::Known(KnownTaskName::AwmOrderTransRes),
+            ApiMqttData::AwmCmd(msg) => match msg {
+                AwmCmdMsg::AwmCmdAddrExpand(_) => TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
+                AwmCmdMsg::AwmCmdActive(_) => TaskName::Known(KnownTaskName::AwmCmdActive),
+                AwmCmdMsg::AwmCmdUidUnbind(_) => TaskName::Known(KnownTaskName::AwmCmdUidUnbind),
+            },
             ApiMqttData::AddressUse(_) => TaskName::Known(KnownTaskName::AddressUse),
-            ApiMqttData::AddressAllock(_) => TaskName::Known(KnownTaskName::AddressAllock),
-            ApiMqttData::Trans(_) => TaskName::Known(KnownTaskName::Trans),
         }
     }
 
@@ -172,30 +181,31 @@ impl TaskTrait for ApiMqttStruct {
     }
 
     fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError> {
-        let res = match &self.data {
-            ApiMqttData::UnbindUid(unbind_uid_msg) => {
-                Some(wallet_utils::serde_func::serde_to_string(unbind_uid_msg)?)
-            }
-            ApiMqttData::AddressUse(address_use_msg) => {
-                Some(wallet_utils::serde_func::serde_to_string(address_use_msg)?)
-            }
-            ApiMqttData::AddressAllock(address_allock_msg) => {
-                Some(wallet_utils::serde_func::serde_to_string(address_allock_msg)?)
-            }
-            ApiMqttData::Trans(trans_msg) => {
-                Some(wallet_utils::serde_func::serde_to_string(trans_msg)?)
-            }
-        };
+        // let res = match &self.data {
+        //     ApiMqttData::AwmOrderTrans(trans_msg) => {
+        //         Some(wallet_utils::serde_func::serde_to_string(trans_msg)?)
+        //     }
+        //     ApiMqttData::AwmOrderTransRes(trans_result_msg) => {
+        //         Some(wallet_utils::serde_func::serde_to_string(trans_result_msg)?)
+        //     }
+        //     ApiMqttData::AwmCmd(msg) => Some(wallet_utils::serde_func::serde_to_string(msg)?),
 
-        Ok(res)
+        //     ApiMqttData::AddressUse(address_use_msg) => {
+        //         Some(wallet_utils::serde_func::serde_to_string(address_use_msg)?)
+        //     }
+        // };
+
+        // Ok(res)
+
+        Ok(Some(wallet_utils::serde_func::serde_to_string(self)?))
     }
 
     async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError> {
         match &self.data {
-            ApiMqttData::UnbindUid(data) => data.exec(id).await?,
+            ApiMqttData::AwmOrderTrans(data) => data.exec(id).await?,
+            ApiMqttData::AwmOrderTransRes(data) => data.exec(id).await?,
+            ApiMqttData::AwmCmd(msg) => msg.exec(id).await?,
             ApiMqttData::AddressUse(data) => data.exec(id).await?,
-            ApiMqttData::AddressAllock(data) => data.exec(id).await?,
-            ApiMqttData::Trans(data) => data.exec(id).await?,
         }
         Ok(())
     }

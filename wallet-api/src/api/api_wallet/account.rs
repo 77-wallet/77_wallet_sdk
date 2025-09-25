@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType, manager::WalletManager,
-    messaging::mqtt::topics::api_wallet::AddressAllockType,
+    messaging::mqtt::topics::api_wallet::address_allock::AddressAllockType,
     request::api_wallet::account::CreateApiAccountReq,
     service::api_wallet::account::ApiAccountService,
 };
