@@ -2,7 +2,7 @@ use crate::{
     FrontendNotifyEvent,
     domain::chain::{TransferResp, swap::EstimateSwapResult},
     infrastructure::swap_client::SolInstructResp,
-    request::transaction::{DepositReq, WithdrawReq},
+    request::transaction::{DepositReq, SwapReq, WithdrawReq},
 };
 use alloy::primitives::U256;
 use wallet_chain_interact::{
@@ -78,7 +78,7 @@ pub(super) async fn estimate_swap(
 
 pub(super) async fn swap(
     chain: &SolanaChain,
-    payer: &str,
+    req: &SwapReq,
     fee: String,
     instructions: SolInstructResp,
     key: ChainPrivateKey,
@@ -87,17 +87,24 @@ pub(super) async fn swap(
     let fee = fee_setting.transaction_fee().to_string();
 
     // check balance (sol 减租金)
-    let mut balance = chain.balance(payer, None).await?;
+    let mut balance = chain.balance(&req.recipient, None).await?;
     balance = balance
         - wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
 
-    if U256::from(fee_setting.original_fee()) > balance {
+    // 如果是主币兑换那么 需要考虑余额的情况
+    let mut origin_fee = U256::from(fee_setting.original_fee());
+    if req.token_in.token_addr.is_empty() {
+        let amount_in =
+            wallet_utils::unit::convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
+        origin_fee += amount_in;
+    }
+    if origin_fee > balance {
         return Err(crate::BusinessError::Chain(
             crate::ChainError::InsufficientFeeBalance,
         ))?;
     }
 
-    let params = Swap::new(payer)?;
+    let params = Swap::new(&req.recipient)?;
 
     let tx_hash = chain
         .exec_v0_transaction(
@@ -145,7 +152,7 @@ pub(super) async fn deposit(
     // check balance
     let mut balance = chain.balance(&req.from, None).await?;
     balance -= U256::from(SYSTEM_ACCOUNT_RENT);
-    if U256::from(fee_setting.original_fee()) > balance {
+    if U256::from(fee_setting.original_fee()) + amount > balance {
         return Err(crate::BusinessError::Chain(
             crate::ChainError::InsufficientFeeBalance,
         ))?;

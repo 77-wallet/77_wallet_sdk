@@ -1006,7 +1006,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
             Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
             Self::Solana(chain) => {
-                sol_tx::swap(chain, &req.recipient, fee, instructions.unwrap(), key).await?
+                sol_tx::swap(chain, &req, fee, instructions.unwrap(), key).await?
             }
             _ => {
                 return Err(crate::BusinessError::Chain(
