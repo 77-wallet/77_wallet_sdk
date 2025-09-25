@@ -117,8 +117,10 @@ impl Tasks {
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
-
+        // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        // let mut req = MsgAckReq::new();
         for task_entity in entities.into_iter() {
+            // req.push(&task_entity.id);
             match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
                 Ok(task) => {
                     let priority = super::task_manager::scheduler::assign_priority(&*task, false)?;
@@ -138,6 +140,7 @@ impl Tasks {
         }
 
         repo.delete_oldest_by_status_when_exceeded(200000, 2).await?;
+        // backend.msg_ack(req).await?;
 
         Ok(())
     }

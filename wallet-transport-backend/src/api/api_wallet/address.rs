@@ -22,17 +22,17 @@ impl BackendApi {
     pub async fn expand_address_complete(
         &self,
         uid: &str,
-        event_no: &str,
+        serial_no: &str,
     ) -> Result<(), crate::Error> {
         let req = serde_json::json!({
             "uid": uid,
-            "eventNo": event_no,
+            "serialNo": serial_no,
         });
-        tracing::info!("req: {}", req.to_string());
+        tracing::info!("[expand_address_complete] req: {}", req.to_string());
 
         let res =
             self.client.post(ADDRESS_EXPAND_COMPLETE).json(req).send::<BackendResponse>().await?;
-        tracing::info!("res: {res:#?}");
+        tracing::info!("[expand_address_complete] res: {res:#?}");
         res.process(&self.aes_cbc_cryptor)
     }
 

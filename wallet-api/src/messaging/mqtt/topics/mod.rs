@@ -187,7 +187,6 @@ impl Topic {
         let topic_str = topic_str.trim_start_matches('/');
 
         let parts: Vec<&str> = topic_str.split('/').collect();
-        tracing::info!("parts: {parts:#?}");
         for pattern in TOPIC_PATTERNS {
             if parts.starts_with(pattern.prefix) {
                 let client_id = if pattern.extract_client_id {

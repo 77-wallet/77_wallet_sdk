@@ -264,33 +264,33 @@ impl ApiWalletService {
             initialize_root_keystore_start.elapsed()
         );
 
-        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        // let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
 
-        let chains: Vec<String> =
-            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        match api_wallet_type {
-            ApiWalletType::SubAccount => {
-                ApiWalletDomain::create_sub_account(
-                    address,
-                    wallet_password,
-                    chains,
-                    account_name,
-                    is_default_name,
-                )
-                .await?
-            }
-            ApiWalletType::Withdrawal => {
-                ApiWalletDomain::create_withdrawal_account(
-                    address,
-                    wallet_password,
-                    chains,
-                    account_name,
-                    is_default_name,
-                )
-                .await?
-            }
-            _ => {}
-        }
+        // let chains: Vec<String> =
+        //     default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+        // match api_wallet_type {
+        //     ApiWalletType::SubAccount => {
+        //         ApiWalletDomain::create_sub_account(
+        //             address,
+        //             wallet_password,
+        //             chains,
+        //             account_name,
+        //             is_default_name,
+        //         )
+        //         .await?
+        //     }
+        //     ApiWalletType::Withdrawal => {
+        //         ApiWalletDomain::create_withdrawal_account(
+        //             address,
+        //             wallet_password,
+        //             chains,
+        //             account_name,
+        //             is_default_name,
+        //         )
+        //         .await?
+        //     }
+        //     _ => {}
+        // }
 
         let client_id = DeviceDomain::client_id_by_device(&device)?;
 

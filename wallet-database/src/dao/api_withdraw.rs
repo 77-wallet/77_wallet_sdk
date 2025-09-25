@@ -72,7 +72,7 @@ impl ApiWithdrawDao {
         let count =
             query.fetch_one(exec.clone()).await.map_err(|e| crate::Error::Database(e.into()))?;
 
-        tracing::info!(status=%vec_status[0], "sql: {}", sql);
+        // tracing::info!(status=%vec_status[0], "sql: {}", sql);
         let mut query = sqlx::query_as::<_, ApiWithdrawEntity>(&sql);
         for status in vec_status {
             query = query.bind(status);

@@ -145,12 +145,13 @@ impl ApiWalletDomain {
         chains: Vec<String>,
         account_name: &str,
         is_default_name: bool,
+        number: u32,
     ) -> Result<(), ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 查询已有的账户
-        let num = 3;
-        let account_indices = ApiAccountRepo::get_all_account_indices(&pool).await?;
-        let account_indices = ApiAccountDomain::next_account_indices(account_indices, num);
+        let account_indices =
+            ApiAccountRepo::get_all_account_indices(&pool, wallet_address).await?;
+        let account_indices = ApiAccountDomain::next_account_indices(account_indices, number);
         let mut input_indices = Vec::new();
         for account_id in account_indices {
             input_indices.push(
@@ -196,6 +197,8 @@ impl ApiWalletDomain {
         index: Option<i32>,
         uid: &str,
         chain_code: &str,
+        number: u32,
+        serial_no: &str,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let api_wallet = ApiWalletRepo::find_by_uid(&pool, &uid).await?.ok_or(
@@ -214,6 +217,7 @@ impl ApiWalletDomain {
                     vec![chain_code.to_string()],
                     "name",
                     true,
+                    number,
                 )
                 .await?; // 查询已有的账户
             }
@@ -235,7 +239,7 @@ impl ApiWalletDomain {
         }
 
         let backend = CONTEXT.get().unwrap().get_global_backend_api();
-        backend.expand_address_complete(uid, "1").await?;
+        backend.expand_address_complete(uid, serial_no).await?;
         Ok(())
     }
 

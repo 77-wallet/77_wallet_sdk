@@ -84,6 +84,8 @@ pub mod endpoint {
         pub const TRANS_EXECUTE_COMPLETE: &str = "awallet/aw/trans/executeComplete";
         /// 收到交易事件确认
         pub const TRANS_EVENT_ACK: &str = "awallet/aw/trans/eventAck";
+        /// API钱包消息确认
+        pub const MSG_ACK: &str = "awallet/aw/msg/ack";
         /// 查询uid的地址列表
         pub const QUERY_ADDRESS_LIST: &str = "awallet/aw/address/list";
 

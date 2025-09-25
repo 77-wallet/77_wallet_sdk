@@ -4,8 +4,8 @@ use crate::messaging::mqtt::topics::{
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange,
     api_wallet::{
-        AwmCmdUidUnbindMsg, AwmOrderTransMsg, AwmOrderTransResMsg,
-        address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg,
+        AwmOrderTransMsg, AwmOrderTransResMsg, address_allock::AwmCmdAddrExpandMsg,
+        address_use::AddressUseMsg, unbind_uid::AwmCmdUidUnbindMsg,
         wallet_activation::AwmCmdActiveMsg,
     },
 };

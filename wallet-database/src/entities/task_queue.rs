@@ -75,7 +75,7 @@ impl CreateTaskQueueEntity {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum TaskName {
     Known(KnownTaskName),

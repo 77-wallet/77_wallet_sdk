@@ -288,14 +288,14 @@ impl ApiAccountDomain {
         Ok(account)
     }
 
-    pub fn next_account_indices(mut existing: Vec<u32>, count: usize) -> Vec<u32> {
+    pub fn next_account_indices(mut existing: Vec<u32>, count: u32) -> Vec<u32> {
         existing.sort();
         let set: std::collections::HashSet<u32> = existing.into_iter().collect();
 
         let mut result = Vec::new();
         let mut candidate = 1;
 
-        while result.len() < count {
+        while result.len() < count as usize {
             if !set.contains(&candidate) {
                 result.push(candidate);
             }

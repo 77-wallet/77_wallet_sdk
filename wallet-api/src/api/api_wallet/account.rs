@@ -34,9 +34,11 @@ impl WalletManager {
         chain_code: &str,
         index: Option<i32>,
         uid: &str,
+        number: u32,
+        serial_no: &str,
     ) -> ReturnType<()> {
         ApiAccountService::new(self.ctx)
-            .expand_address(address_allock_type, chain_code, index, uid)
+            .expand_address(address_allock_type, chain_code, index, uid, number, serial_no)
             .await
     }
 

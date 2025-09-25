@@ -37,8 +37,18 @@ impl ApiAccountService {
         chain_code: &str,
         index: Option<i32>,
         uid: &str,
+        number: u32,
+        serial_no: &str,
     ) -> Result<(), ServiceError> {
-        ApiWalletDomain::expand_address(&address_allock_type, index, &uid, &chain_code).await?;
+        ApiWalletDomain::expand_address(
+            &address_allock_type,
+            index,
+            &uid,
+            &chain_code,
+            number,
+            serial_no,
+        )
+        .await?;
 
         Ok(())
     }
