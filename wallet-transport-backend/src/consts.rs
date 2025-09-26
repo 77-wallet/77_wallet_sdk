@@ -106,6 +106,8 @@ pub mod endpoint {
         pub const QUERY_WALLET_ACTIVATION_CONFIG: &str = "awallet/aw/appid/getActiveInfo";
         /// 查询uid绑定信息
         pub const QUERY_UID_BIND_INFO: &str = "awallet/aw/appid/bindInfo";
+        /// Uid与Appid的绑定
+        pub const APPID_WITHDRAWAL_WALLET_CHANGE: &str = "awallet/aw/appid/wdWallet/change";
 
         /// 提币策略保存
         pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "awallet/aw/strategy/withdrawal/save";

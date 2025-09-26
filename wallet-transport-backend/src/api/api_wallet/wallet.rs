@@ -1,8 +1,8 @@
 use crate::{
     consts::endpoint::{
         api_wallet::{
-            APP_ID_BIND, APP_ID_UNBIND, INIT_API_WALLET, QUERY_UID_BIND_INFO,
-            QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
+            APP_ID_BIND, APP_ID_UNBIND, APPID_WITHDRAWAL_WALLET_CHANGE, INIT_API_WALLET,
+            QUERY_UID_BIND_INFO, QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
         },
         old_wallet::OLD_KEYS_UID_CHECK,
     },
@@ -112,6 +112,25 @@ impl BackendApi {
             .post(QUERY_UID_BIND_INFO)
             .json(serde_json::json!({
                 "uid": uid
+            }))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(&self.aes_cbc_cryptor)
+    }
+
+    /// uid与appid的绑定
+    pub async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), crate::Error> {
+        let res = self
+            .client
+            .post(APPID_WITHDRAWAL_WALLET_CHANGE)
+            .json(serde_json::json!({
+                "withdrawalUid": withdrawal_uid,
+                "orgAppId": org_app_id
             }))
             .send::<BackendResponse>()
             .await?;

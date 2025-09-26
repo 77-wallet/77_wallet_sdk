@@ -441,6 +441,16 @@ impl ApiWalletService {
         ApiWalletDomain::query_wallet_activation_info(wallet_address).await
     }
 
+    pub async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        backend.appid_withdrawal_wallet_change(withdrawal_uid, org_app_id).await?;
+        Ok(())
+    }
+
     //     pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
     //         let mut tx = self.repo;
 

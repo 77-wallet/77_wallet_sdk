@@ -104,6 +104,16 @@ impl WalletManager {
     //         .await?
     //         .into()
     // }
+
+    pub async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> ReturnType<()> {
+        ApiWalletService::new(self.ctx)
+            .appid_withdrawal_wallet_change(withdrawal_uid, org_app_id)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -179,6 +189,21 @@ mod test {
 
         let res =
             wallet_manager.bind_merchant(key, merchain_id, subaccount_uid, withdrawal_uid).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_appid_withdrawal_wallet_change() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let _ = wallet_manager.set_passwd_cache("q1111111").await;
+
+        let key = "68c27dfaa06b0c05e37c5e86";
+        let withdrawal_uid = "e6de8afd756e7cb81a3d965f959c896738ed07cebc919c7f96c97fc6069ad44f";
+
+        let res = wallet_manager.appid_withdrawal_wallet_change(withdrawal_uid, key).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
