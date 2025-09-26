@@ -55,6 +55,7 @@ impl BackendApi {
     /// 设置UID为API钱包
     pub async fn init_api_wallet(
         &self,
+        sn: &str,
         recharge_uid: &str,
         withdraw_uid: &str,
     ) -> Result<(), crate::Error> {
@@ -62,6 +63,7 @@ impl BackendApi {
             .client
             .post(INIT_API_WALLET)
             .json(serde_json::json!({
+                "sn": sn,
                 "rechargeUid": recharge_uid,
                 "withdrawUid": withdraw_uid
             }))

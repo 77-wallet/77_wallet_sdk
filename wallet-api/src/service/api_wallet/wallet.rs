@@ -354,8 +354,16 @@ impl ApiWalletService {
         )
         .await?;
 
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                )
+                .into(),
+            ));
+        };
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        backend.init_api_wallet(recharge_uid, withdrawal_uid).await?;
+        backend.init_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
         tracing::info!("init api wallet success");
         backend
             .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
