@@ -10,14 +10,14 @@ use wallet_database::{
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
+    FrontendNotifyEvent, NotifyEvent,
     domain::{
         multisig::{MultisigDomain, MultisigQueueDomain},
         node::NodeDomain,
         permission::PermissionDomain,
     },
-    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
     service::coin::CoinService,
-    FrontendNotifyEvent, NotifyEvent,
 };
 
 #[async_trait::async_trait]
@@ -86,7 +86,7 @@ impl TaskTrait for CommonTask {
                     .into_iter()
                     .map(|chain| chain.chain_code)
                     .collect();
-                NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &data).await?;
+                NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, data).await?;
             }
         }
         Ok(())

@@ -219,7 +219,7 @@ impl CoinService {
                     balance: asset.balance.clone(),
                     name: asset.name.clone(),
                 };
-                let _res = repo.upsert_assets(one).await?;
+                repo.upsert_assets(one).await?;
             }
         }
 
@@ -273,7 +273,7 @@ impl CoinService {
 
         let tx = &mut self.repo;
 
-        let tokens = backend_api.token_query_price(&req).await?.list;
+        let tokens = backend_api.token_query_price(req).await?.list;
 
         for token in tokens {
             let coin_id = CoinId {

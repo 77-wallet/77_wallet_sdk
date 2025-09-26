@@ -81,7 +81,7 @@ impl SwapServer {
         let token_addr = CoinDomain::get_stable_coin(code)?;
 
         let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let stable_coin = CoinRepo::coin_by_chain_address(&chain_code, &token_addr, &pool).await?;
+        let stable_coin = CoinRepo::coin_by_chain_address(&chain_code, token_addr, &pool).await?;
 
         let (from_token, out_token) = if token_in.is_empty() {
             let token = CoinRepo::main_coin(&chain_code, &pool).await?;
@@ -172,7 +172,7 @@ impl SwapServer {
         recipient: &str,
     ) -> Result<AssetsEntity, crate::ServiceError> {
         Ok(
-            AssetsRepo::get_by_addr_token_opt(&pool, chain_code, token_addr, recipient)
+            AssetsRepo::get_by_addr_token_opt(pool, chain_code, token_addr, recipient)
                 .await?
                 .ok_or(crate::BusinessError::Assets(
                     crate::AssetsError::NotFoundAssets,
@@ -268,8 +268,7 @@ impl SwapServer {
 
         let mut bal_ref = if let Some(pre) = maybe_deduction {
             let pre_amount = conversion::decimal_from_str(&pre)?;
-            let bal_dec = conversion::decimal_from_str(bal)? - pre_amount;
-            bal_dec
+            conversion::decimal_from_str(bal)? - pre_amount
         } else {
             conversion::decimal_from_str(bal)?
         };
@@ -280,11 +279,11 @@ impl SwapServer {
             let fee = Decimal::from_f64_retain(fee).unwrap();
 
             if req.token_in.token_addr.is_empty() {
-                bal_ref = bal_ref - fee
+                bal_ref -= fee
             } else {
                 // 验证主币的金额是否足够 支付手续费
                 let assets =
-                    AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient)
+                    AssetsRepo::get_by_addr_token(pool, &req.chain_code, "", &req.recipient)
                         .await?;
                 if !self.check_bal(&fee.to_string(), &assets.balance)? {
                     return Ok(false);
@@ -341,7 +340,7 @@ impl SwapServer {
 
         let sol_fee = sol_fee.map(|f| f.transaction_fee());
 
-        self.check_bal_with_last_swap(&assets.balance, &req, &pool, sol_fee)
+        self.check_bal_with_last_swap(&assets.balance, req, &pool, sol_fee)
             .await
     }
 
@@ -701,7 +700,7 @@ impl SwapServer {
 
             let token_info = SwapTokenInfo {
                 symbol: coin.symbol,
-                decimals: coin.decimals as u32,
+                decimals: coin.decimals,
                 token_addr: coin.token_address,
                 name: coin.name,
                 chain_code: coin.chain_code,
@@ -848,8 +847,8 @@ impl SwapServer {
             &req.from,
             &req.contract,
             req.value.clone(),
-            &&resp.tx_hash.clone(),
-            &req.get_approve_type(),
+            &resp.tx_hash.clone(),
+            req.get_approve_type(),
         );
         TaskQueueDomain::send_or_to_queue(backend_req, SWAP_APPROVE_SAVE).await?;
 
@@ -928,7 +927,7 @@ impl SwapServer {
         }
 
         // 4) 组装显示数据
-        let unit = coin.decimals as u8;
+        let unit = coin.decimals;
         let origin_allowance = wallet_utils::unit::convert_to_u256(&item.value, unit)?;
 
         let mut approve_info = ApproveList::from(item);

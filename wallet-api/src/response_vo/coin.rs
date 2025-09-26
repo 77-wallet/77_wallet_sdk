@@ -263,7 +263,7 @@ impl TokenCurrencies {
         chain_code: &str,
         token_address: Option<String>,
     ) -> Result<BalanceInfo, crate::ServiceError> {
-        let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
+        let balance = wallet_utils::parse_func::decimal_from_str(balance)?;
 
         let currency = ConfigDomain::get_currency().await?;
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);

@@ -1,4 +1,5 @@
 use wallet_database::{
+    DbPool,
     dao::bill::BillDao,
     entities::{
         bill::{BillExtraSwap, BillKind, NewBillEntity},
@@ -8,7 +9,6 @@ use wallet_database::{
     repositories::{
         multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
     },
-    DbPool,
 };
 use wallet_types::constant::chain_code;
 
@@ -16,7 +16,7 @@ use crate::{
     domain::{bill::BillDomain, multisig::MultisigQueueDomain},
     infrastructure::inner_event::InnerEvent,
     messaging::{
-        notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
+        notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
         system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
     },
     service::system_notification::SystemNotificationService,
@@ -167,7 +167,7 @@ impl AcctChange {
             && !self.to_addr.is_empty()
             && !self.from_addr.is_empty()
         {
-            Self::system_notification(msg_id, &self, &pool).await?;
+            Self::system_notification(msg_id, self, &pool).await?;
         }
 
         // send acct_change to frontend

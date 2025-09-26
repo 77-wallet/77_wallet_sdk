@@ -148,11 +148,7 @@ pub struct SwapReq {
 
 impl SwapReq {
     pub fn is_native_token(&self) -> bool {
-        if self.token_in.token_addr.is_empty() || self.token_out.token_addr.is_empty() {
-            true
-        } else {
-            false
-        }
+        self.token_in.token_addr.is_empty() || self.token_out.token_addr.is_empty()
     }
 }
 

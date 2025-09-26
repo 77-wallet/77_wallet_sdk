@@ -1,11 +1,11 @@
 use crate::{
     domain::{
         chain::{
-            swap::{
-                evm_swap::{dexSwap1Call, SwapParams},
-                EstimateSwapResult,
-            },
             TransferResp,
+            swap::{
+                EstimateSwapResult,
+                evm_swap::{SwapParams, dexSwap1Call},
+            },
         },
         multisig::MultisigQueueDomain,
     },
@@ -15,19 +15,18 @@ use crate::{
 use alloy::sol_types::SolValue;
 use alloy::{primitives::U256, sol_types::SolCall};
 use wallet_chain_interact::{
-    abi_encode_u256,
+    BillResourceConsume, abi_encode_u256,
     tron::{
+        TronChain,
         operations::{
+            TronConstantOperation as _,
             contract::{TriggerContractParameter, WarpContract},
             transfer::{ContractTransferOpt, TransferOpt},
             trc::{Allowance, Approve, Deposit},
-            TronConstantOperation as _,
         },
         params::ResourceConsumer,
-        TronChain,
     },
     types::{ChainPrivateKey, MultisigTxResp},
-    BillResourceConsume,
 };
 use wallet_types::chain::chain::ChainCode;
 
@@ -192,7 +191,7 @@ fn build_base_withdraw(
     let value = TriggerContractParameter::new(
         &contract_address,
         &owner_address,
-        &function_selector,
+        function_selector,
         parameter,
     );
 
@@ -289,7 +288,7 @@ fn build_base_swap(
     let mut value = TriggerContractParameter::new(
         &contract_address,
         &owner_address,
-        &function_selector,
+        function_selector,
         parameter,
     );
 
@@ -346,7 +345,7 @@ pub(super) async fn swap(
     swap_params: &SwapParams,
     key: ChainPrivateKey,
 ) -> Result<TransferResp, crate::ServiceError> {
-    let (params, owner_address) = build_base_swap(&swap_params)?;
+    let (params, owner_address) = build_base_swap(swap_params)?;
 
     let mut wrap = WarpContract { params };
     let constant = wrap.trigger_constant_contract(&chain.provider).await?;

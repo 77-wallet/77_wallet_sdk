@@ -1,6 +1,6 @@
-use super::account::default_unit_price_as_zero;
 use super::account::BalanceInfo;
 use super::account::BalanceNotTruncate;
+use super::account::default_unit_price_as_zero;
 use crate::request::transaction::Signer;
 use alloy::primitives::U256;
 use wallet_chain_interact::eth::FeeSetting;
@@ -361,7 +361,7 @@ impl CommonFeeDetails {
         let unit_pice = token_currency.get_price(currency);
 
         let unit_price = unit_pice
-            .map(|p| wallet_utils::conversion::decimal_from_f64(p))
+            .map(wallet_utils::conversion::decimal_from_f64)
             .transpose()?;
 
         Ok(Self {

@@ -250,7 +250,7 @@ pub(super) async fn swap(
         ))?;
     }
 
-    let tx = build_base_swap_tx(&swap_params)?;
+    let tx = build_base_swap_tx(swap_params)?;
     let tx = chain
         .provider
         .set_transaction_fee(tx, fee_setting, chain.chain_code)

@@ -1006,7 +1006,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
             Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
             Self::Solana(chain) => {
-                sol_tx::swap(chain, &req, fee, instructions.unwrap(), key).await?
+                sol_tx::swap(chain, req, fee, instructions.unwrap(), key).await?
             }
             _ => {
                 return Err(crate::BusinessError::Chain(
@@ -1084,8 +1084,8 @@ impl TransactionAdapter {
         value: U256,
     ) -> Result<TransferResp, crate::ServiceError> {
         let resp = match self {
-            Self::Tron(chain) => tron_tx::deposit(chain, &req, value, key).await?,
-            Self::Ethereum(chain) => eth_tx::deposit(chain, &req, value, fee, key).await?,
+            Self::Tron(chain) => tron_tx::deposit(chain, req, value, key).await?,
+            Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, fee, key).await?,
             Self::Solana(chain) => sol_tx::deposit(chain, req, value, fee, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
@@ -1163,9 +1163,9 @@ impl TransactionAdapter {
         value: U256,
     ) -> Result<TransferResp, crate::ServiceError> {
         let resp = match self {
-            Self::Tron(chain) => tron_tx::withdraw(chain, &req, value, key).await?,
-            Self::Ethereum(chain) => eth_tx::withdraw(chain, &req, value, fee, key).await?,
-            Self::Solana(chain) => sol_tx::withdraw(chain, &req, value, fee, key).await?,
+            Self::Tron(chain) => tron_tx::withdraw(chain, req, value, key).await?,
+            Self::Ethereum(chain) => eth_tx::withdraw(chain, req, value, fee, key).await?,
+            Self::Solana(chain) => sol_tx::withdraw(chain, req, value, fee, key).await?,
             _ => {
                 return Err(crate::BusinessError::Chain(
                     crate::ChainError::NotSupportChain,

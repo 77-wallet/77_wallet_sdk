@@ -62,7 +62,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             return Err(err);
         };
 
-        Self::all_members_confirmed(&address_list, &account.id, account.status).await?;
+        Self::all_members_confirmed(address_list, &account.id, account.status).await?;
         tracing::info!(
             event_name = %event_name,
             multisig_account_id = %account.id,

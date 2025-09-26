@@ -94,8 +94,7 @@ pub(super) async fn swap(
 
     // check balance (sol 减租金)
     let mut balance = chain.balance(&req.recipient, None).await?;
-    balance = balance
-        - wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
+    balance -= wallet_utils::unit::convert_to_u256(&SYSTEM_ACCOUNT_RENT.to_string(), SOL_DECIMAL)?;
 
     // 如果是主币兑换那么 需要考虑余额的情况
     let mut origin_fee = U256::from(fee_setting.original_fee());
@@ -135,7 +134,7 @@ pub(super) async fn deposit_fee(
     req: &DepositReq,
     amount: alloy::primitives::U256,
 ) -> Result<SolFeeSetting, crate::ServiceError> {
-    let params = Deposit::new_wsol(&req.from, amount, &chain.get_provider())?;
+    let params = Deposit::new_wsol(&req.from, amount, chain.get_provider())?;
 
     let instructions = params.instructions().await?;
 
@@ -151,7 +150,7 @@ pub(super) async fn deposit(
 ) -> Result<TransferResp, crate::ServiceError> {
     let fee_setting = serde_func::serde_from_str::<SolFeeSetting>(&fee)?;
     let fee = fee_setting.transaction_fee().to_string();
-    let params = Deposit::new_wsol(&req.from, amount, &chain.get_provider())?;
+    let params = Deposit::new_wsol(&req.from, amount, chain.get_provider())?;
 
     let instructions = params.instructions().await?;
 
@@ -181,7 +180,7 @@ pub(super) async fn withdraw_fee(
     req: &WithdrawReq,
     amount: alloy::primitives::U256,
 ) -> Result<SolFeeSetting, crate::ServiceError> {
-    let params = Withdraw::new_wsol(&req.from, amount, &chain.get_provider())?;
+    let params = Withdraw::new_wsol(&req.from, amount, chain.get_provider())?;
 
     let instructions = params.instructions().await?;
 
@@ -196,9 +195,9 @@ pub(super) async fn withdraw(
     key: ChainPrivateKey,
 ) -> Result<TransferResp, crate::ServiceError> {
     let fee_setting = serde_func::serde_from_str::<SolFeeSetting>(&fee)?;
+    let fee = fee_setting.transaction_fee().to_string();
 
-    let params = Withdraw::new_wsol(&req.from, amount, &chain.get_provider())?;
-
+    let params = Withdraw::new_wsol(&req.from, amount, chain.get_provider())?;
     let instructions = params.instructions().await?;
 
     // check balance
