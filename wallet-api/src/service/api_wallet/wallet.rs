@@ -366,7 +366,12 @@ impl ApiWalletService {
         backend.init_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
         tracing::info!("init api wallet success");
         backend
-            .wallet_bind_appid(&BindAppIdReq::new(recharge_uid, withdrawal_uid, org_app_id))
+            .wallet_bind_appid(&BindAppIdReq::new(
+                recharge_uid,
+                withdrawal_uid,
+                org_app_id,
+                &device.sn,
+            ))
             .await?;
 
         let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
