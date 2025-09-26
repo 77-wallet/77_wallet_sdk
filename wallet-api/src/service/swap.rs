@@ -448,11 +448,11 @@ impl SwapServer {
                 is_simulate,
             };
 
-            tracing::warn!(
-                "get instruction params: {}",
-                wallet_utils::serde_func::serde_to_string(&req).unwrap()
-            );
-            let _res = FrontendNotifyEvent::send_debug(&req).await;
+            // tracing::warn!(
+            //     "get instruction params: {}",
+            //     wallet_utils::serde_func::serde_to_string(&req).unwrap()
+            // );
+            // let _res = FrontendNotifyEvent::send_debug(&req).await;
 
             let instance = time::Instant::now();
             let res = self.client.sol_instructions(req).await?;

@@ -1,5 +1,4 @@
 use crate::{
-    FrontendNotifyEvent,
     domain::chain::{TransferResp, swap::EstimateSwapResult},
     infrastructure::swap_client::SolInstructResp,
     request::transaction::{DepositReq, SwapReq, WithdrawReq},
@@ -38,10 +37,10 @@ pub(super) async fn estimate_swap(
         .similar_transaction(&payer, &instructions.ins, Some(instructions.alts.clone()))
         .await?;
     if res.value.err.is_some() {
-        tracing::error!("swap simulate error: {:?}", res);
-        let _res =
-            FrontendNotifyEvent::send_debug(&wallet_utils::serde_func::serde_to_value(&res.value)?)
-                .await;
+        // tracing::error!("swap simulate error: {:?}", res);
+        // let _res =
+        //     FrontendNotifyEvent::send_debug(&wallet_utils::serde_func::serde_to_value(&res.value)?)
+        //         .await;
         let log = res.value.logs.join(",");
 
         // 如果有超时的错误
@@ -60,7 +59,6 @@ pub(super) async fn estimate_swap(
     let mut amount_in = 0_u64;
     let mut amount_out = 0_u64;
     if let Some(return_data) = return_data {
-        tracing::warn!("data = {}", &return_data.data[0]);
         let bytes = wallet_utils::base64_to_bytes(&return_data.data[0])?;
         amount_in = u64::from_le_bytes(bytes[0..8].try_into().map_err(|_| {
             crate::ServiceError::Parameter("sol simultate parse return data error in".to_string())
