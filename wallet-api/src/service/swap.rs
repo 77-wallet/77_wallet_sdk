@@ -1,6 +1,7 @@
 use crate::{
     FrontendNotifyEvent, NotifyEvent,
     domain::{
+        app::config::ConfigDomain,
         assets::AssetsDomain,
         bill::BillDomain,
         chain::{
@@ -726,7 +727,8 @@ impl SwapServer {
 
     pub async fn chain_list(&self) -> Result<Vec<ChainDex>, crate::ServiceError> {
         let backend_api = crate::Context::get_global_backend_api()?;
-        let result = backend_api.support_chain_list().await?;
+        let version = ConfigDomain::get_app_version().await?.app_version;
+        let result = backend_api.support_chain_list_v2(version).await?;
 
         Ok(result.support_chain)
     }
