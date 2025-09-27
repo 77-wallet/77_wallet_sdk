@@ -42,7 +42,7 @@ impl CoinEntity {
         swappable: Option<bool>,
         time: Option<DateTime<Utc>>,
         symbol: Option<String>,
-    ) -> Result<Vec<Self>, crate::Error>
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -57,7 +57,7 @@ impl CoinEntity {
             sql.push_str(", status = ?");
         }
 
-        if time.is_some() {
+        if swappable.is_some() {
             sql.push_str(", swappable = ?");
         }
 
@@ -65,15 +65,14 @@ impl CoinEntity {
             sql.push_str(", updated_at = ?");
         }
 
-        if time.is_some() {
+        if symbol.is_some() {
             sql.push_str(", symbol = ?");
         }
 
-        sql.push_str(
-            " WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ? RETURNING *",
-        );
+        sql.push_str(" WHERE token_address = ?  AND chain_code = ?");
 
-        let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql).bind(price); // 绑定 price 参数
+        // let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql).bind(price); // 绑定 price 参数
+        let mut query = sqlx::query(&sql).bind(price); // 绑定 price 参数
 
         if let Some(unit_val) = unit {
             query = query.bind(unit_val);
@@ -94,19 +93,18 @@ impl CoinEntity {
 
         // 处理 token_address，如果为空，设置为空字符串
         let token_address = coin_id.token_address.clone().unwrap_or_default();
-
         // 绑定 WHERE 子句的参数
         query = query
             .bind(token_address)
-            .bind(&coin_id.symbol)
+            // .bind(&coin_id.symbol)
             .bind(&coin_id.chain_code);
 
-        // 执行查询
-        query
-            .fetch_all(exec)
-            // .execute(exec)
+        let _res = query
+            .execute(exec)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
     // only update price
