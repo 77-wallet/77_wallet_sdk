@@ -53,7 +53,7 @@ async fn run(
     tracing::warn!("wallet ------------------------ 2: {withdrawal_uid:#?}");
 
     let res = wallet_manager
-        .bind_merchant(
+        .scan_bind(
             "68c27fb92e52f46cef896318",
             "68be7271a7307e042404e276",
             &wallet_uid,

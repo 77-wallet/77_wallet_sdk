@@ -20,6 +20,7 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
+        api_wallet::wallet::ApiWalletDomain,
         app::{DeviceDomain, config::ConfigDomain},
         assets::AssetsDomain,
         chain::ChainDomain,
@@ -338,19 +339,14 @@ impl WalletService {
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
-        // uid类型检查
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-        let uid_check = backend.keys_uid_check(&uid).await?;
 
-        if uid_check.status
-            == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::ApiRAW
-            || uid_check.status
-                == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::ApiWAW
-        {
+        // 检查是否是api钱包
+        if ApiWalletDomain::is_api_wallet(&uid).await? {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
             )));
         }
+
         let seed = seed.clone();
 
         // 检查钱包状态

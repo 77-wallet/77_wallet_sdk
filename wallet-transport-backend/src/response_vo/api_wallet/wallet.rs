@@ -36,3 +36,13 @@ pub enum ActiveStatus {
     Active = 1,
     Inactive = 0,
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryUidBindInfoRes {
+    pub sn: String,
+    pub app_id: String,
+    /// 商户id
+    pub org_id: String,
+    pub bind_status: bool,
+}

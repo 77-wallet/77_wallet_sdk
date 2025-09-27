@@ -24,8 +24,9 @@ use wallet_database::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, coin::CoinRepo, device::DeviceRepo,
     },
 };
-use wallet_transport_backend::request::{
-    AddressInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq,
+use wallet_transport_backend::{
+    request::{AddressInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq},
+    response_vo::api_wallet::wallet::QueryUidBindInfoRes,
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 

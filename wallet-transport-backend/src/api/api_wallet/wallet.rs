@@ -1,15 +1,18 @@
 use crate::{
     consts::endpoint::{
         api_wallet::{
-            APP_ID_BIND, APP_ID_UNBIND, APPID_IMPORT_SUB_ACCOUNT, APPID_SUB_ACCOUNT_BIND,
-            APPID_WITHDRAWAL_WALLET_CHANGE, INIT_API_WALLET, QUERY_UID_BIND_INFO,
+            APP_ID_BIND, APP_ID_UNBIND, APPID_IMPORT_WALLET, INIT_API_WALLET, QUERY_UID_BIND_INFO,
             QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
         },
         old_wallet::OLD_KEYS_UID_CHECK,
     },
-    request::api_wallet::wallet::{BindAppIdReq, SaveWalletActivationConfigReq, UnBindAppIdReq},
+    request::api_wallet::wallet::{
+        AppIdImportReq, BindAppIdReq, SaveWalletActivationConfigReq, UnBindAppIdReq,
+    },
     response::BackendResponse,
-    response_vo::api_wallet::wallet::{KeysUidCheckRes, QueryWalletActivationInfoResp},
+    response_vo::api_wallet::wallet::{
+        KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
+    },
 };
 
 use crate::api::BackendApi;
@@ -29,7 +32,7 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
-    // 钱包与 appId 绑定
+    /// 钱包与 appId 绑定
     pub async fn wallet_bind_appid(&self, req: &BindAppIdReq) -> Result<(), crate::Error> {
         let res = self
             .client
@@ -107,7 +110,10 @@ impl BackendApi {
     }
 
     /// 查询uid 绑定信息
-    pub async fn query_uid_bind_info(&self, uid: &str) -> Result<KeysUidCheckRes, crate::Error> {
+    pub async fn query_uid_bind_info(
+        &self,
+        uid: &str,
+    ) -> Result<QueryUidBindInfoRes, crate::Error> {
         let res = self
             .client
             .post(QUERY_UID_BIND_INFO)
@@ -120,61 +126,66 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
-    /// uid与appid的绑定
-    pub async fn appid_withdrawal_wallet_change(
-        &self,
-        withdrawal_uid: &str,
-        org_app_id: &str,
-    ) -> Result<(), crate::Error> {
-        let res = self
-            .client
-            .post(APPID_WITHDRAWAL_WALLET_CHANGE)
-            .json(serde_json::json!({
-                "withdrawalUid": withdrawal_uid,
-                "orgAppId": org_app_id
-            }))
-            .send::<BackendResponse>()
-            .await?;
+    // /// uid与appid的绑定
+    // pub async fn appid_withdrawal_wallet_change(
+    //     &self,
+    //     withdrawal_uid: &str,
+    //     org_app_id: &str,
+    // ) -> Result<(), crate::Error> {
+    //     let res = self
+    //         .client
+    //         .post(APPID_WITHDRAWAL_WALLET_CHANGE)
+    //         .json(serde_json::json!({
+    //             "withdrawalUid": withdrawal_uid,
+    //             "orgAppId": org_app_id
+    //         }))
+    //         .send::<BackendResponse>()
+    //         .await?;
 
+    //     res.process(&self.aes_cbc_cryptor)
+    // }
+
+    pub async fn appid_import(&self, req: AppIdImportReq) -> Result<(), crate::Error> {
+        let res = self.client.post(APPID_IMPORT_WALLET).json(req).send::<BackendResponse>().await?;
         res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn appid_sub_account_import(
-        &self,
-        sn: &str,
-        recharge_uid: &str,
-    ) -> Result<(), crate::Error> {
-        let res = self
-            .client
-            .post(APPID_IMPORT_SUB_ACCOUNT)
-            .json(serde_json::json!({
-                "sn": sn,
-                "rechargeUid": recharge_uid
-            }))
-            .send::<BackendResponse>()
-            .await?;
+    // pub async fn appid_sub_account_import(
+    //     &self,
+    //     sn: &str,
+    //     recharge_uid: &str,
+    // ) -> Result<(), crate::Error> {
+    //     let res = self
+    //         .client
+    //         .post(APPID_IMPORT_SUB_ACCOUNT)
+    //         .json(serde_json::json!({
+    //             "sn": sn,
+    //             "rechargeUid": recharge_uid
+    //         }))
+    //         .send::<BackendResponse>()
+    //         .await?;
 
-        res.process(&self.aes_cbc_cryptor)
-    }
+    //     res.process(&self.aes_cbc_cryptor)
+    // }
 
-    // 绑定子账户钱包
-    pub async fn appid_sub_account_bind(
-        &self,
-        sn: &str,
-        recharge_uid: &str,
-        org_app_id: &str,
-    ) -> Result<(), crate::Error> {
-        let res = self
-            .client
-            .post(APPID_SUB_ACCOUNT_BIND)
-            .json(serde_json::json!({
-                "sn": sn,
-                "rechargeUid": recharge_uid,
-                "orgAppId": org_app_id
-            }))
-            .send::<BackendResponse>()
-            .await?;
+    // // 绑定子账户钱包
+    // pub async fn appid_sub_account_bind(
+    //     &self,
+    //     sn: &str,
+    //     recharge_uid: &str,
+    //     org_app_id: &str,
+    // ) -> Result<(), crate::Error> {
+    //     let res = self
+    //         .client
+    //         .post(APPID_SUB_ACCOUNT_BIND)
+    //         .json(serde_json::json!({
+    //             "sn": sn,
+    //             "rechargeUid": recharge_uid,
+    //             "orgAppId": org_app_id
+    //         }))
+    //         .send::<BackendResponse>()
+    //         .await?;
 
-        res.process(&self.aes_cbc_cryptor)
-    }
+    //     res.process(&self.aes_cbc_cryptor)
+    // }
 }
