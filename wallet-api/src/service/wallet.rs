@@ -343,7 +343,9 @@ impl WalletService {
         let uid_check = backend.keys_uid_check(&uid).await?;
 
         if uid_check.status
-            == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::ApiWallet
+            == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::ApiRAW
+            || uid_check.status
+                == wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus::ApiWAW
         {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,

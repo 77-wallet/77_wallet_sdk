@@ -69,7 +69,7 @@ impl ApiAccountService {
         let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
-        ApiWalletDomain::create_api_account(
+        ApiAccountDomain::create_api_account(
             wallet_address,
             wallet_password,
             chains,

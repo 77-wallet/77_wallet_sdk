@@ -10,7 +10,11 @@ use wallet_transport_backend::{
 use crate::{
     api::ReturnType,
     context::Context,
-    domain::{api_wallet::wallet::ApiWalletDomain, app::DeviceDomain, wallet::WalletDomain},
+    domain::{
+        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        app::DeviceDomain,
+        wallet::WalletDomain,
+    },
     error::service::ServiceError,
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
@@ -387,7 +391,7 @@ impl ApiWalletService {
         //     is_default_name,
         // )
         // .await?;
-        ApiWalletDomain::create_withdrawal_account(
+        ApiAccountDomain::create_withdrawal_account(
             &withdrawal_wallet.address,
             &password,
             chains,

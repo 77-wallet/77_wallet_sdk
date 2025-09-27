@@ -1,8 +1,9 @@
 use crate::{
     consts::endpoint::{
         api_wallet::{
-            APP_ID_BIND, APP_ID_UNBIND, APPID_WITHDRAWAL_WALLET_CHANGE, INIT_API_WALLET,
-            QUERY_UID_BIND_INFO, QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
+            APP_ID_BIND, APP_ID_UNBIND, APPID_IMPORT_SUB_ACCOUNT, APPID_SUB_ACCOUNT_BIND,
+            APPID_WITHDRAWAL_WALLET_CHANGE, INIT_API_WALLET, QUERY_UID_BIND_INFO,
+            QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
         },
         old_wallet::OLD_KEYS_UID_CHECK,
     },
@@ -130,6 +131,45 @@ impl BackendApi {
             .post(APPID_WITHDRAWAL_WALLET_CHANGE)
             .json(serde_json::json!({
                 "withdrawalUid": withdrawal_uid,
+                "orgAppId": org_app_id
+            }))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(&self.aes_cbc_cryptor)
+    }
+
+    pub async fn appid_sub_account_import(
+        &self,
+        sn: &str,
+        recharge_uid: &str,
+    ) -> Result<(), crate::Error> {
+        let res = self
+            .client
+            .post(APPID_IMPORT_SUB_ACCOUNT)
+            .json(serde_json::json!({
+                "sn": sn,
+                "rechargeUid": recharge_uid
+            }))
+            .send::<BackendResponse>()
+            .await?;
+
+        res.process(&self.aes_cbc_cryptor)
+    }
+
+    // 绑定子账户钱包
+    pub async fn appid_sub_account_bind(
+        &self,
+        sn: &str,
+        recharge_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), crate::Error> {
+        let res = self
+            .client
+            .post(APPID_SUB_ACCOUNT_BIND)
+            .json(serde_json::json!({
+                "sn": sn,
+                "rechargeUid": recharge_uid,
                 "orgAppId": org_app_id
             }))
             .send::<BackendResponse>()

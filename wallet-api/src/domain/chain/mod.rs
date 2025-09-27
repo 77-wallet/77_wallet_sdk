@@ -423,12 +423,12 @@ impl ChainDomain {
                 let instance: wallet_chain_instance::instance::ChainObject =
                     (&code, &address_type, node.network.as_str().into()).try_into()?;
                 // (&code, &address_type, "mainnet".into()).try_into()?;
-                let (account_address, address_init_req) = ApiAccountDomain::create_api_account(
-                    seed,
-                    &instance,
-                    account_index_map,
+                let (account_address, address_init_req) = ApiAccountDomain::derive_subkey(
                     uid,
+                    seed,
                     wallet_address,
+                    account_index_map,
+                    &instance,
                     account_name,
                     is_default_name,
                     wallet_password,
@@ -440,7 +440,7 @@ impl ChainDomain {
                     api_address_init_req.address_list.add_address(address_init_req);
                     // params.push(&account_address.address);
                 } else {
-                    tracing::info!("不上报： {}", account_address.address);
+                    tracing::info!("不上报： {}", account_address);
                 };
 
                 // subkeys.push(
@@ -457,7 +457,7 @@ impl ChainDomain {
 
                 AssetsDomain::init_default_api_assets(
                     coins,
-                    &account_address.address,
+                    &account_address,
                     &code.to_string(),
                     req,
                 )
