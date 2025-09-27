@@ -245,6 +245,15 @@ impl CoinService {
             let status = token.get_status();
             let time = parse_utc_with_error(&token.update_time).ok();
 
+            // 修复数据
+            let sol_symbol = if token.token_address
+                == Some("So11111111111111111111111111111111111111112".to_string())
+            {
+                token.symbol.clone()
+            } else {
+                None
+            };
+
             let coin_id = CoinId {
                 chain_code: token.chain_code.unwrap_or_default(),
                 symbol: token.symbol.unwrap_or_default(),
@@ -258,6 +267,7 @@ impl CoinService {
                 status,
                 Some(token.swappable),
                 time,
+                sol_symbol,
             )
             .await?;
         }
@@ -290,6 +300,7 @@ impl CoinService {
                 status,
                 token.swappable,
                 time,
+                None,
             )
             .await?;
         }
@@ -341,6 +352,7 @@ impl CoinService {
                         token.unit,
                         status,
                         token.swappable,
+                        None,
                         None,
                     )
                     .await?;

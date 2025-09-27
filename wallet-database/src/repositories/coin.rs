@@ -123,6 +123,7 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         status: Option<i32>,
         swappable: Option<bool>,
         time: Option<DateTime<Utc>>,
+        symbols: Option<String>,
     ) -> Result<Vec<CoinEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
@@ -133,7 +134,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             unit,
             status,
             swappable,
-            time
+            time,
+            symbols
         )
     }
 

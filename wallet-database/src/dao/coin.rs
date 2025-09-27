@@ -41,6 +41,7 @@ impl CoinEntity {
         status: Option<i32>,
         swappable: Option<bool>,
         time: Option<DateTime<Utc>>,
+        symbol: Option<String>,
     ) -> Result<Vec<Self>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -64,6 +65,10 @@ impl CoinEntity {
             sql.push_str(", updated_at = ?");
         }
 
+        if time.is_some() {
+            sql.push_str(", symbol = ?");
+        }
+
         sql.push_str(
             " WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ? RETURNING *",
         );
@@ -82,6 +87,9 @@ impl CoinEntity {
         }
         if let Some(time_val) = time {
             query = query.bind(time_val.to_rfc3339_opts(SecondsFormat::Secs, true));
+        }
+        if let Some(symbol_val) = symbol {
+            query = query.bind(symbol_val);
         }
 
         // 处理 token_address，如果为空，设置为空字符串
