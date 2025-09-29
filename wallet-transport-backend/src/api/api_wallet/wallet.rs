@@ -7,7 +7,8 @@ use crate::{
         old_wallet::OLD_KEYS_UID_CHECK,
     },
     request::api_wallet::wallet::{
-        AppIdImportReq, BindAppIdReq, SaveWalletActivationConfigReq, UnBindAppIdReq,
+        AppIdImportReq, BindAppIdReq, InitApiWalletReq, SaveWalletActivationConfigReq,
+        UnBindAppIdReq,
     },
     response::BackendResponse,
     response_vo::api_wallet::wallet::{
@@ -57,22 +58,8 @@ impl BackendApi {
     }
 
     /// 设置UID为API钱包
-    pub async fn init_api_wallet(
-        &self,
-        sn: &str,
-        recharge_uid: &str,
-        withdraw_uid: &str,
-    ) -> Result<(), crate::Error> {
-        let res = self
-            .client
-            .post(INIT_API_WALLET)
-            .json(serde_json::json!({
-                "sn": sn,
-                "rechargeUid": recharge_uid,
-                "withdrawUid": withdraw_uid
-            }))
-            .send::<BackendResponse>()
-            .await?;
+    pub async fn init_api_wallet(&self, req: InitApiWalletReq) -> Result<(), crate::Error> {
+        let res = self.client.post(INIT_API_WALLET).json(req).send::<BackendResponse>().await?;
 
         res.process(&self.aes_cbc_cryptor)
     }

@@ -49,3 +49,5 @@ impl AppIdImportReq {
         self.withdrawal_uid = Some(withdrawal_uid.to_string());
     }
 }
+
+pub type InitApiWalletReq = AppIdImportReq;

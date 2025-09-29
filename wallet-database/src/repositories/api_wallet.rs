@@ -15,9 +15,20 @@ impl ApiWalletRepo {
         phrase: &str,
         seed: &str,
         wallet_type: ApiWalletType,
+        binding_address: Option<&str>,
     ) -> Result<ApiWalletEntity, crate::Error> {
-        Ok(ApiWalletDao::upsert(pool.as_ref(), address, uid, name, phrase, seed, 1, wallet_type)
-            .await?)
+        Ok(ApiWalletDao::upsert(
+            pool.as_ref(),
+            address,
+            uid,
+            name,
+            phrase,
+            seed,
+            1,
+            wallet_type,
+            binding_address,
+        )
+        .await?)
     }
 
     pub async fn edit_name(

@@ -19,6 +19,7 @@ impl ApiWalletDao {
         seed: &str,
         status: u8,
         wallet_type: ApiWalletType,
+        binding_address: Option<&str>,
         // merchant_id: &str,
         // app_id: &str,
     ) -> Result<ApiWalletEntity, crate::Error>
@@ -40,6 +41,7 @@ impl ApiWalletDao {
                 seed = excluded.seed,
                 status = excluded.status,
                 wallet_type = excluded.wallet_type,
+                binding_address = excluded.binding_address,
                 updated_at = excluded.updated_at
             RETURNING *;
         "#;
@@ -52,6 +54,7 @@ impl ApiWalletDao {
             .bind(seed)
             .bind(status)
             .bind(wallet_type)
+            .bind(binding_address)
             .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

@@ -1,3 +1,5 @@
+use wallet_transport_backend::request::api_wallet::wallet::InitApiWalletReq;
+
 use crate::init;
 
 #[tokio::test]
@@ -12,5 +14,32 @@ async fn test_query_wallet_activation_info() -> Result<(), wallet_transport_back
         .unwrap();
 
     println!("[test_query_wallet_activation_info] res: {res:#?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init()?;
+
+    let res = backend_api
+        .keys_uid_check("cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce")
+        .await
+        .unwrap();
+
+    println!("[test_query_wallet_activation_info] res: {res:#?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_init_api_wallet() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init()?;
+
+    let mut req =
+        InitApiWalletReq::new("5a748300e76e023cea05523c103763a7976bdfb085c24f9713646ae2faa5949d");
+
+    req.set_recharge_uid("cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce");
+    let res = backend_api.init_api_wallet(req).await.unwrap();
+
+    println!("[test_init_api_wallet] res: {res:#?}");
     Ok(())
 }

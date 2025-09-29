@@ -341,7 +341,7 @@ impl WalletService {
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
 
         // 检查是否是api钱包
-        if ApiWalletDomain::is_api_wallet(&uid).await? {
+        if ApiWalletDomain::check_keys_uid(&uid).await?.is_api_wallet() {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
             )));

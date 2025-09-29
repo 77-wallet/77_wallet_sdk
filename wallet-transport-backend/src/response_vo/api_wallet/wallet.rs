@@ -5,18 +5,37 @@ pub struct KeysUidCheckRes {
     pub status: UidStatus,
 }
 
-#[derive(Debug, serde_repr::Deserialize_repr, serde_repr::Serialize_repr, PartialEq, Eq)]
+impl KeysUidCheckRes {
+    pub fn is_normal_wallet(&self) -> bool {
+        self.status == UidStatus::NormalWallet
+    }
+
+    pub fn is_api_wallet(&self) -> bool {
+        self.status == UidStatus::ApiRAW || self.status == UidStatus::ApiWAW
+    }
+
+    pub fn is_sub_account_wallet(&self) -> bool {
+        self.status == UidStatus::ApiRAW
+    }
+
+    pub fn is_withdrawal_wallet(&self) -> bool {
+        self.status == UidStatus::ApiWAW
+    }
+}
+
+// #[derive(Debug, serde_repr::Deserialize_repr, serde_repr::Serialize_repr, PartialEq, Eq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-#[repr(u8)]
+// #[repr(u8)]
 pub enum UidStatus {
-    /// 1 普通钱包
-    NormalWallet = 1,
-    /// 2 API钱包-收款钱包
-    ApiRAW = 2,
-    /// 3 API钱包-出款钱包
-    ApiWAW = 3,
+    /// 普通钱包
+    NormalWallet,
+    /// API钱包-收款钱包
+    ApiRAW,
+    /// API钱包-出款钱包
+    ApiWAW,
     /// 4 UID不存在
-    NotFound = 4,
+    NotFound,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

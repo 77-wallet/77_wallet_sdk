@@ -62,6 +62,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
+        binding_address: Option<&str>,
     ) -> Result<String, ServiceError> {
         if api_wallet_type == ApiWalletType::InvalidValue {
             return Err(ServiceError::Database(wallet_database::Error::InvalidValue(
@@ -101,7 +102,7 @@ impl ApiWalletService {
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
 
         // 检查是否是普通钱包
-        if ApiWalletDomain::is_normal_wallet(&uid).await? {
+        if ApiWalletDomain::check_keys_uid(&uid).await?.is_normal_wallet() {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
             )));
@@ -111,6 +112,14 @@ impl ApiWalletService {
 
         let initialize_root_keystore_start = std::time::Instant::now();
 
+        let (recharge_uid, withdrawal_uid) = match api_wallet_type {
+            ApiWalletType::SubAccount => (Some(uid.as_str()), None),
+            ApiWalletType::Withdrawal => (None, Some(uid.as_str())),
+            _ => (None, None),
+        };
+        ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
+        tracing::info!("init api wallet success");
+
         ApiWalletDomain::upsert_api_wallet(
             &uid,
             wallet_name,
@@ -119,6 +128,7 @@ impl ApiWalletService {
             &phrase,
             &seed,
             api_wallet_type,
+            binding_address,
         )
         .await?;
         tracing::debug!(
@@ -199,6 +209,7 @@ impl ApiWalletService {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
+        binding_address: Option<&str>,
     ) -> Result<String, crate::error::service::ServiceError> {
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
@@ -234,17 +245,19 @@ impl ApiWalletService {
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
 
         // 检查钱包类型和后端是否一致，不一致就报错
+        let status = ApiWalletDomain::check_keys_uid(&uid).await?;
+        tracing::info!("status: {status:?}");
         match api_wallet_type {
             ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
-                if !ApiWalletDomain::is_sub_account_wallet(&uid).await? {
+                if !status.is_sub_account_wallet() {
                     return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
                             )));
                 }
             }
             ApiWalletType::Withdrawal => {
-                if !ApiWalletDomain::is_withdrawal_wallet(&uid).await? {
+                if !status.is_withdrawal_wallet() {
                     return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
                             )));
@@ -256,6 +269,14 @@ impl ApiWalletService {
 
         let initialize_root_keystore_start = std::time::Instant::now();
 
+        let (recharge_uid, withdrawal_uid) = match api_wallet_type {
+            ApiWalletType::SubAccount => (Some(uid.as_str()), None),
+            ApiWalletType::Withdrawal => (None, Some(uid.as_str())),
+            _ => (None, None),
+        };
+        ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
+        tracing::info!("init api wallet success");
+
         ApiWalletDomain::upsert_api_wallet(
             &uid,
             wallet_name,
@@ -264,6 +285,7 @@ impl ApiWalletService {
             &phrase,
             &seed,
             api_wallet_type,
+            binding_address,
         )
         .await?;
         tracing::debug!(
@@ -368,8 +390,9 @@ impl ApiWalletService {
             ));
         };
 
-        ApiWalletDomain::set_api_wallet(&device.sn, recharge_uid, withdrawal_uid).await?;
-        tracing::info!("init api wallet success");
+        // ApiWalletDomain::set_api_wallet(&device.sn, Some(recharge_uid), Some(withdrawal_uid))
+        //     .await?;
+        // tracing::info!("init api wallet success");
 
         ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, &device.sn).await?;
 

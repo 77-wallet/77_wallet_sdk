@@ -21,6 +21,7 @@ async fn run(
     let account_name = "ccccc";
     let is_default_name = true;
     let wallet_password = "q1111111";
+    let binding_address = None;
     let wallet_uid = wallet_manager
         .create_api_wallet(
             language_code,
@@ -32,11 +33,13 @@ async fn run(
             wallet_password,
             None,
             ApiWalletType::SubAccount,
+            binding_address,
         )
         .await?;
     tracing::warn!("wallet ------------------------ 1: {wallet_uid:#?}");
 
     let salt1 = "q1111112";
+    let binding_address = None;
     let withdrawal_uid = wallet_manager
         .create_api_wallet(
             language_code,
@@ -48,6 +51,7 @@ async fn run(
             wallet_password,
             None,
             ApiWalletType::Withdrawal,
+            binding_address,
         )
         .await?;
     tracing::warn!("wallet ------------------------ 2: {withdrawal_uid:#?}");

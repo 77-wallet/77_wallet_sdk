@@ -27,6 +27,7 @@ impl WalletManager {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
+        binding_address: Option<&str>,
     ) -> ReturnType<String> {
         ApiWalletService::new(self.ctx)
             .create_wallet(
@@ -39,6 +40,7 @@ impl WalletManager {
                 wallet_password,
                 invite_code,
                 api_wallet_type,
+                binding_address,
             )
             .await
     }
@@ -54,6 +56,7 @@ impl WalletManager {
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
+        binding_address: Option<&str>,
     ) -> ReturnType<String> {
         ApiWalletService::new(self.ctx)
             .import_wallet(
@@ -66,6 +69,7 @@ impl WalletManager {
                 wallet_password,
                 invite_code,
                 api_wallet_type,
+                binding_address,
             )
             .await
     }
@@ -179,13 +183,14 @@ mod test {
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
-        let salt = "";
+        let salt = "1";
         let wallet_name = "api_wallet";
         let account_name = "ccccc";
         let is_default_name = true;
         let wallet_password = "q1111111";
         let invite_code = None;
         let api_wallet_type = ApiWalletType::SubAccount;
+        let binding_address = None;
         // let api_wallet_type = ApiWalletType::Withdrawal;
         let res = wallet_manager
             .create_api_wallet(
@@ -198,13 +203,16 @@ mod test {
                 wallet_password,
                 invite_code,
                 api_wallet_type,
+                binding_address,
             )
             .await;
         tracing::info!("create sub wallet res: {res:?}");
 
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
-        let salt = "qwer1234";
+        let salt = "2";
+        // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
+        let binding_address = None;
         let res = wallet_manager
             .create_api_wallet(
                 language_code,
@@ -216,6 +224,7 @@ mod test {
                 wallet_password,
                 invite_code,
                 api_wallet_type,
+                binding_address,
             )
             .await;
         tracing::info!("create withdrawal wallet res: {res:?}");
@@ -230,13 +239,14 @@ mod test {
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
-        let salt = "";
+        let salt = "1";
         let wallet_name = "api_wallet";
         let account_name = "ccccc";
         let is_default_name = true;
         let wallet_password = "q1111111";
         let invite_code = None;
         let api_wallet_type = ApiWalletType::SubAccount;
+        let binding_address = None;
         // let api_wallet_type = ApiWalletType::Withdrawal;
         let res = wallet_manager
             .import_api_wallet(
@@ -249,6 +259,7 @@ mod test {
                 wallet_password,
                 invite_code,
                 api_wallet_type,
+                binding_address,
             )
             .await;
         tracing::info!("create sub wallet res: {res:?}");
@@ -272,6 +283,7 @@ mod test {
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
         let salt = "qwer1234";
+        let binding_address = Some("0xdfdD0ada5312DD44c212Ba30c867412BbC7B6A2e");
         let res = wallet_manager
             .import_api_wallet(
                 language_code,
@@ -283,6 +295,7 @@ mod test {
                 wallet_password,
                 invite_code,
                 api_wallet_type,
+                binding_address,
             )
             .await;
         tracing::info!("create withdrawal wallet res: {res:?}");
