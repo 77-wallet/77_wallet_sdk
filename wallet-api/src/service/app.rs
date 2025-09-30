@@ -1,6 +1,7 @@
 use wallet_database::{
     dao::config::ConfigDao,
     entities::{
+        api_wallet::ApiWalletType,
         config::{ConfigEntity, MinValueSwitchConfig, config_key::LANGUAGE},
         multisig_account::{MultiAccountOwner, MultisigAccountStatus},
         multisig_queue::MultisigQueueStatus,
@@ -458,5 +459,16 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
     {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.all_config().await?.configs)
+    }
+
+    pub async fn set_wallet_type(
+        self,
+        wallet_type: ApiWalletType,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        crate::context::CONTEXT.get().unwrap().set_current_wallet_type(wallet_type).await
+    }
+
+    pub async fn get_current_wallet_type(&self) -> ApiWalletType {
+        crate::context::CONTEXT.get().unwrap().get_current_wallet_type().await
     }
 }

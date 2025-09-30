@@ -4,7 +4,10 @@ use crate::{
     response_vo::app::{GetConfigRes, GlobalMsg},
     service::app::AppService,
 };
-use wallet_database::entities::config::{ConfigEntity, MinValueSwitchConfig};
+use wallet_database::entities::{
+    api_wallet::ApiWalletType,
+    config::{ConfigEntity, MinValueSwitchConfig},
+};
 use wallet_transport_backend::response_vo::app::{
     AppVersionRes, GetFiatRes, GetOfficialWebsiteRes,
 };
@@ -119,6 +122,14 @@ impl WalletManager {
 
     pub async fn backend_config(&self) -> ReturnType<std::collections::HashMap<String, String>> {
         AppService::new(self.repo_factory.resource_repo()).backend_config().await
+    }
+
+    pub async fn set_wallet_type(&self, wallet_type: ApiWalletType) -> ReturnType<()> {
+        AppService::new(self.repo_factory.resource_repo()).set_wallet_type(wallet_type).await
+    }
+
+    pub async fn get_current_wallet_type(&self) -> ApiWalletType {
+        AppService::new(self.repo_factory.resource_repo()).get_current_wallet_type().await
     }
 }
 

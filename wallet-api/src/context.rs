@@ -13,7 +13,7 @@ use crate::{
 };
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
-use wallet_database::SqliteContext;
+use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
@@ -50,6 +50,7 @@ pub struct Context {
     rpc_token: Arc<RwLock<RpcToken>>,
     device: Arc<DeviceInfo>,
     cache: Arc<SharedCache>,
+    current_wallet_type: Arc<RwLock<ApiWalletType>>,
     inner_event_handle: Arc<InnerEventHandle>,
     unconfirmed_msg_collector: Arc<UnconfirmedMsgCollector>,
     unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessor>,
@@ -127,6 +128,7 @@ impl Context {
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
+            current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
             inner_event_handle: Arc::new(inner_event_handle),
             unconfirmed_msg_collector: Arc::new(unconfirmed_msg_collector),
             unconfirmed_msg_processor: Arc::new(unconfirmed_msg_processor),
@@ -142,6 +144,20 @@ impl Context {
         let mut lock = self.frontend_notify.write().await;
         *lock = frontend_notify;
         Ok(())
+    }
+
+    pub async fn set_current_wallet_type(
+        &self,
+        wallet_type: ApiWalletType,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let mut lock = self.current_wallet_type.write().await;
+        *lock = wallet_type;
+        Ok(())
+    }
+
+    pub async fn get_current_wallet_type(&self) -> ApiWalletType {
+        let lock = self.current_wallet_type.read().await;
+        *lock
     }
 
     pub(crate) fn get_global_device(&self) -> Arc<DeviceInfo> {

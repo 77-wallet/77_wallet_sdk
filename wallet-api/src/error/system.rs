@@ -22,4 +22,6 @@ pub enum SystemError {
     BackendEndpointNotFound,
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("Wallet type not set")]
+    WalletTypeNotSet,
 }
