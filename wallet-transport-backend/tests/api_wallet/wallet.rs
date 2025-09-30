@@ -22,7 +22,7 @@ async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
 
     let res = backend_api
-        .keys_uid_check("cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce")
+        .keys_uid_check("3d6a999086a9c44b1a950bcdc0574dc9b0e30301bc1ad016e65475fe94566cd9")
         .await
         .unwrap();
 

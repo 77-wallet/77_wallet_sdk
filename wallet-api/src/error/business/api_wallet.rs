@@ -14,6 +14,10 @@ pub enum ApiWalletError {
     GasOracle,
     #[error("Password not cached")]
     PasswordNotCached,
+    #[error("Import is not supported for this account type")]
+    ImportNotSupportedForThisAccountType,
+    #[error("The wallet does not exist, please confirm that the input is correct")]
+    WalletDoesNotExist,
 }
 
 impl ApiWalletError {
@@ -26,6 +30,8 @@ impl ApiWalletError {
             ApiWalletError::NotFoundAccount => 4403,
             ApiWalletError::GasOracle => 4404,
             ApiWalletError::PasswordNotCached => 4405,
+            ApiWalletError::ImportNotSupportedForThisAccountType => 4406,
+            ApiWalletError::WalletDoesNotExist => 4407,
         }
     }
 }

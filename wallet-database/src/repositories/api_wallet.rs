@@ -101,6 +101,12 @@ impl ApiWalletRepo {
     ) -> Result<(), crate::Error> {
         ApiWalletDao::bind_withdraw_and_subaccount_relation(
             pool.as_ref(),
+            binding_address,
+            wallet_address,
+        )
+        .await?;
+        ApiWalletDao::bind_withdraw_and_subaccount_relation(
+            pool.as_ref(),
             wallet_address,
             binding_address,
         )

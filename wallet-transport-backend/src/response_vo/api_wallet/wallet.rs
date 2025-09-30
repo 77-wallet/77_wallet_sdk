@@ -11,15 +11,19 @@ impl KeysUidCheckRes {
     }
 
     pub fn is_api_wallet(&self) -> bool {
-        self.status == UidStatus::ApiRAW || self.status == UidStatus::ApiWAW
+        self.status == UidStatus::ApiRaw || self.status == UidStatus::ApiWaw
     }
 
     pub fn is_sub_account_wallet(&self) -> bool {
-        self.status == UidStatus::ApiRAW
+        self.status == UidStatus::ApiRaw
     }
 
     pub fn is_withdrawal_wallet(&self) -> bool {
-        self.status == UidStatus::ApiWAW
+        self.status == UidStatus::ApiWaw
+    }
+
+    pub fn is_not_found(&self) -> bool {
+        self.status == UidStatus::NotFound
     }
 }
 
@@ -31,9 +35,9 @@ pub enum UidStatus {
     /// 普通钱包
     NormalWallet,
     /// API钱包-收款钱包
-    ApiRAW,
+    ApiRaw,
     /// API钱包-出款钱包
-    ApiWAW,
+    ApiWaw,
     /// 4 UID不存在
     NotFound,
 }

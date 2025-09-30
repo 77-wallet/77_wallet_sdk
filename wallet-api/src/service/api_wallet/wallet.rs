@@ -102,11 +102,13 @@ impl ApiWalletService {
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
 
         // 检查是否是普通钱包
-        if ApiWalletDomain::check_keys_uid(&uid).await?.is_normal_wallet() {
+        let status = ApiWalletDomain::check_keys_uid(&uid).await?;
+        if status.is_normal_wallet() {
             return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
             )));
         }
+        tracing::info!("status: {:?}", status);
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
         let seed = seed.clone();
 
@@ -170,26 +172,28 @@ impl ApiWalletService {
             LanguageInitReq::new(&client_id, config.language())
         };
 
-        let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-            &uid,
-            &device.sn,
-            Some(client_id),
-            Some(device.device_type),
-            wallet_name,
-            invite_code,
-        );
-        let keys_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
-            &keys_init_req,
-        )?;
+        // let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+        //     &uid,
+        //     &device.sn,
+        //     Some(client_id),
+        //     Some(device.device_type),
+        //     wallet_name,
+        //     invite_code,
+        // );
+        // let keys_init_task_data = BackendApiTaskData::new(
+        //     wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
+        //     &keys_init_req,
+        // )?;
 
         let language_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
             &language_req,
         )?;
 
+        ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
+        tracing::info!("[create wallet] keys init");
         Tasks::new()
-            .push(BackendApiTask::BackendApi(keys_init_task_data))
+            // .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
             .send()
             .await?;
@@ -232,7 +236,7 @@ impl ApiWalletService {
         // 1.校验uid，是否本地已有普通钱包
         if ApiWalletDomain::check_normal_wallet_exist(address).await? {
             return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+                crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
             )
             .into());
         }
@@ -246,20 +250,29 @@ impl ApiWalletService {
 
         // 检查钱包类型和后端是否一致，不一致就报错
         let status = ApiWalletDomain::check_keys_uid(&uid).await?;
+
+        if status.is_not_found() {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::ApiWalletError::WalletDoesNotExist,
+                ),
+            ));
+        }
+
         tracing::info!("status: {status:?}");
         match api_wallet_type {
             ApiWalletType::InvalidValue => todo!(),
             ApiWalletType::SubAccount => {
                 if !status.is_sub_account_wallet() {
-                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
-                                crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
                             )));
                 }
             }
             ApiWalletType::Withdrawal => {
                 if !status.is_withdrawal_wallet() {
-                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
-                                crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
+                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                        crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
                             )));
                 }
             }
@@ -328,26 +341,27 @@ impl ApiWalletService {
             LanguageInitReq::new(&client_id, config.language())
         };
 
-        let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
-            &uid,
-            &device.sn,
-            Some(client_id),
-            Some(device.device_type),
-            wallet_name,
-            invite_code,
-        );
-        let keys_init_task_data = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
-            &keys_init_req,
-        )?;
+        // let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+        //     &uid,
+        //     &device.sn,
+        //     Some(client_id),
+        //     Some(device.device_type),
+        //     wallet_name,
+        //     invite_code,
+        // );
+        // let keys_init_task_data = BackendApiTaskData::new(
+        //     wallet_transport_backend::consts::endpoint::old_wallet::OLD_KEYS_V2_INIT,
+        //     &keys_init_req,
+        // )?;
 
         let language_init_task_data = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
             &language_req,
         )?;
 
+        ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
         Tasks::new()
-            .push(BackendApiTask::BackendApi(keys_init_task_data))
+            // .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
             .send()
             .await?;

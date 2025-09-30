@@ -3,7 +3,7 @@ use wallet_crypto::{
     KeystoreJsonGenerator,
 };
 use wallet_database::{
-    entities::api_wallet::ApiWalletType,
+    entities::{api_wallet::ApiWalletType, device::DeviceEntity},
     repositories::{api_wallet::ApiWalletRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::{
@@ -15,7 +15,10 @@ use wallet_transport_backend::{
 
 use crate::{
     context::CONTEXT,
-    domain::{api_wallet::account::ApiAccountDomain, app::config::ConfigDomain},
+    domain::{
+        api_wallet::account::ApiAccountDomain,
+        app::{DeviceDomain, config::ConfigDomain},
+    },
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::address_allock::AddressAllockType,
 };
@@ -241,6 +244,39 @@ impl ApiWalletDomain {
             req.set_withdrawal_uid(withdrawal_uid);
         }
         backend.init_api_wallet(req).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn keys_init(
+        uid: &str,
+        device: &DeviceEntity,
+        wallet_name: &str,
+        invite_code: Option<String>,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let status = ConfigDomain::get_keys_reset_status().await?;
+        if let Some(status) = status
+            && let Some(false) = status.status
+        {
+            return Err(crate::error::business::BusinessError::Config(
+                crate::error::business::config::ConfigError::KeysNotReset,
+            )
+            .into());
+        }
+
+        let client_id = DeviceDomain::client_id_by_device(&device)?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let keys_init_req = wallet_transport_backend::request::KeysInitReq::new(
+            &uid,
+            &device.sn,
+            Some(client_id),
+            Some(device.device_type.clone()),
+            wallet_name,
+            invite_code,
+        );
+
+        backend.old_keys_init(&keys_init_req).await?;
+        ApiWalletRepo::mark_init(&pool, uid).await?;
         Ok(())
     }
 

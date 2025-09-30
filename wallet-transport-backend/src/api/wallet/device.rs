@@ -5,7 +5,6 @@ use crate::{api::BackendApi, response::BackendResponse, response_vo::app::MinVal
 impl BackendApi {
     pub async fn device_init(
         &self,
-
         req: &crate::request::DeviceInitReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -20,7 +19,6 @@ impl BackendApi {
 
     pub async fn device_delete(
         &self,
-
         req: &crate::request::DeviceDeleteReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -35,7 +33,6 @@ impl BackendApi {
 
     pub async fn device_bind_address(
         &self,
-
         req: &crate::request::DeviceBindAddressReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -50,7 +47,6 @@ impl BackendApi {
 
     pub async fn device_unbind_address(
         &self,
-
         req: &crate::request::DeviceBindAddressReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -63,9 +59,8 @@ impl BackendApi {
         res.process(&self.aes_cbc_cryptor)
     }
 
-    pub async fn keys_init(
+    pub async fn old_keys_init(
         &self,
-
         req: &crate::request::KeysInitReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -79,7 +74,6 @@ impl BackendApi {
 
     pub async fn keys_v2_init(
         &self,
-
         req: &crate::request::KeysInitReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -93,7 +87,6 @@ impl BackendApi {
 
     pub async fn keys_update_wallet_name(
         &self,
-
         req: &crate::request::KeysUpdateWalletNameReq,
     ) -> Result<Option<()>, crate::Error> {
         let res = self
@@ -120,7 +113,6 @@ impl BackendApi {
     // report filter min value config
     pub async fn save_send_msg_account(
         &self,
-
         req: Vec<crate::response_vo::app::SaveSendMsgAccount>,
     ) -> Result<(), crate::Error> {
         let req = json!({
@@ -151,7 +143,6 @@ impl BackendApi {
 
     pub async fn update_app_id(
         &self,
-
         req: &crate::request::UpdateAppIdReq,
     ) -> Result<(), crate::Error> {
         let res =

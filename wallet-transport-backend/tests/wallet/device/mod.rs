@@ -101,7 +101,7 @@ async fn test_keys_init() -> Result<(), wallet_transport_backend::Error> {
         name: "api_wallet".to_string(),
         invite_code: "".to_string(),
     };
-    let res = backend_api.keys_init(&req).await.unwrap();
+    let res = backend_api.old_keys_init(&req).await.unwrap();
 
     println!("[test_keys_init] res: {res:?}");
 
