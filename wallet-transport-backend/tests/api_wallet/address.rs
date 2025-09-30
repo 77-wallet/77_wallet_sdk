@@ -1,5 +1,8 @@
 use crate::init;
-use wallet_transport_backend::request::{AddressInitReq, api_wallet::address::ApiAddressInitReq};
+use wallet_transport_backend::request::{
+    AddressInitReq,
+    api_wallet::address::{AddressListReq, ApiAddressInitReq},
+};
 
 #[tokio::test]
 async fn test_expand_address() -> Result<(), wallet_transport_backend::Error> {
@@ -32,5 +35,19 @@ async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::
 
     backend_api.expand_address_complete(uid, "1").await.unwrap();
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init()?;
+
+    let uid = "bf6e56761f4a838bd7bdbef5ba3071bf36d3a588a5176fb58e3225f2758ce805";
+    let chain_code = "tron";
+    let page_num = 0;
+    let page_size = 50;
+    let req = AddressListReq::new(uid, chain_code, page_num, page_size);
+    let res = backend_api.query_used_address_list(&req).await.unwrap();
+    println!("{res:#?}");
     Ok(())
 }

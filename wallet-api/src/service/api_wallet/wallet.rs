@@ -208,13 +208,18 @@ impl ApiWalletService {
         phrase: &str,
         salt: &str,
         wallet_name: &str,
-        account_name: &str,
-        is_default_name: bool,
+        // account_name: &str,
+        // is_default_name: bool,
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
     ) -> Result<String, crate::error::service::ServiceError> {
+        if api_wallet_type == ApiWalletType::InvalidValue {
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::ImportNotSupportedForThisAccountType,
+                    )));
+        }
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());

@@ -19,7 +19,7 @@ use wallet_database::{
     entities::{api_wallet::ApiWalletType, coin::CoinEntity},
     repositories::{
         ResourcesRepo,
-        account::AccountRepoTrait,
+        account::{AccountRepo, AccountRepoTrait},
         chain::{ChainRepo, ChainRepoTrait},
         node::NodeRepo,
     },
@@ -162,7 +162,7 @@ impl ChainDomain {
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
         let mut has_new_chain = false;
-        let account_list = AccountRepoTrait::list(&mut repo).await?;
+        let account_list = AccountRepo::list(&pool).await?;
         let app_version = super::app::config::ConfigDomain::get_app_version().await?.app_version;
         for chain in chains.list {
             let Some(master_token_code) = chain.master_token_code else {
@@ -230,8 +230,8 @@ impl ChainDomain {
             }
         }
 
-        ChainRepoTrait::upsert_multi_chain(&mut repo, input).await?;
-        Self::toggle_chains(&mut repo, &chain_codes).await?;
+        ChainRepo::upsert_multi_chain(&pool, input).await?;
+        Self::toggle_chains(&chain_codes).await?;
 
         if !chain_codes.is_empty() {
             let chain_rpc_list_req = BackendApiTaskData::new(
@@ -245,14 +245,10 @@ impl ChainDomain {
     }
 
     pub(crate) async fn toggle_chains(
-        repo: &mut wallet_database::repositories::ResourcesRepo,
         chain_codes: &[String],
     ) -> Result<(), crate::error::service::ServiceError> {
-        wallet_database::repositories::chain::ChainRepoTrait::toggle_chains_status(
-            repo,
-            chain_codes,
-        )
-        .await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ChainRepo::toggle_chains_status(&pool, chain_codes).await?;
         Ok(())
     }
 

@@ -27,6 +27,12 @@ impl std::ops::DerefMut for AccountRepo {
 
 // crate::delegate_transaction_trait!(AccountRepo, self.repo);
 
+impl AccountRepo {
+    pub async fn list(pool: &DbPool) -> Result<Vec<AccountEntity>, crate::Error> {
+        AccountEntity::account_list_v2(pool.as_ref(), None, None, None, vec![], None).await
+    }
+}
+
 #[async_trait::async_trait]
 pub trait AccountRepoTrait: super::TransactionTrait {
     async fn upsert_multi_account(
@@ -148,19 +154,6 @@ pub trait AccountRepoTrait: super::TransactionTrait {
             status: Some(1),
         };
         crate::execute_with_executor!(executor, AccountEntity::detail, &req)
-    }
-
-    async fn list(&mut self) -> Result<Vec<AccountEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            AccountEntity::account_list_v2,
-            None,
-            None,
-            None,
-            vec![],
-            None
-        )
     }
 
     async fn get_all_account_indices(&mut self) -> Result<Vec<u32>, crate::Error> {

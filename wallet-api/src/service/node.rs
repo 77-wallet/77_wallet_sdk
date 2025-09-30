@@ -114,7 +114,7 @@ impl NodeService {
         }
         let app_version = domain::app::config::ConfigDomain::get_app_version().await?;
 
-        ChainDomain::toggle_chains(tx, &chain_codes).await?;
+        ChainDomain::toggle_chains(&chain_codes).await?;
         let chain_list_req = BackendApiTaskData::new(
             wallet_transport_backend::consts::endpoint::CHAIN_LIST,
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
