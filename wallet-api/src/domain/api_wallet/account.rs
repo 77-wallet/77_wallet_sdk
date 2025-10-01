@@ -1,6 +1,9 @@
 use crate::{
     context::CONTEXT,
-    domain::{api_wallet::wallet::ApiWalletDomain, app::config::ConfigDomain, chain::ChainDomain},
+    domain::{
+        api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
+        app::config::ConfigDomain,
+    },
     error::service::ServiceError,
     infrastructure::task_queue::{
         CommonTask,
@@ -24,9 +27,8 @@ use wallet_database::{
         api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, coin::CoinRepo, device::DeviceRepo,
     },
 };
-use wallet_transport_backend::{
-    request::{AddressInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq},
-    response_vo::api_wallet::wallet::QueryUidBindInfoRes,
+use wallet_transport_backend::request::{
+    AddressInitReq, TokenQueryPriceReq, api_wallet::address::ApiAddressInitReq,
 };
 use wallet_types::chain::{address::r#type::AddressType, chain::ChainCode};
 
@@ -414,7 +416,7 @@ impl ApiAccountDomain {
                 continue;
             }
 
-            ChainDomain::init_chains_api_assets(
+            ApiChainDomain::init_chains_api_assets(
                 &default_coins_list,
                 &mut req,
                 &mut api_address_init_req,

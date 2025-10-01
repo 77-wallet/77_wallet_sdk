@@ -1,17 +1,7 @@
-use crate::{
-    domain::{self, chain::ChainDomain, node::NodeDomain},
-    infrastructure::task_queue::{
-        backend::{BackendApiTask, BackendApiTaskData},
-        task::Tasks,
-    },
-};
+use crate::domain::{self, node::NodeDomain};
 use wallet_database::{
     entities::node::NodeCreateVo,
-    repositories::{
-        ResourcesRepo,
-        chain::{ChainRepo, ChainRepoTrait},
-        node::NodeRepoTrait,
-    },
+    repositories::{ResourcesRepo, chain::ChainRepoTrait, node::NodeRepoTrait},
 };
 pub struct NodeService {
     pub repo: ResourcesRepo,
@@ -81,45 +71,6 @@ impl NodeService {
                 // ));
             }
         }
-        Ok(())
-    }
-
-    pub async fn init_chain_info(&mut self) -> Result<(), crate::error::service::ServiceError> {
-        let tx = &mut self.repo;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let list = crate::default_data::chain::get_default_chains_list()?;
-
-        // tracing::warn!("list {:#?}", list);
-
-        let mut chain_codes = Vec::new();
-        for (chain_code, default_chain) in &list.chains {
-            let status = if default_chain.active { 1 } else { 0 };
-            // let node_id =
-            //     NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
-            let req = wallet_database::entities::chain::ChainCreateVo::new(
-                &default_chain.name,
-                &default_chain.chain_code,
-                &default_chain.protocols,
-                &default_chain.main_symbol,
-            )
-            .with_status(status);
-
-            if let Err(e) = ChainRepo::add(&pool, req).await {
-                tracing::error!("Failed to create default chain: {:?}", e);
-                continue;
-            }
-            if status == 1 {
-                chain_codes.push(chain_code.to_string());
-            }
-        }
-        let app_version = domain::app::config::ConfigDomain::get_app_version().await?;
-
-        ChainDomain::toggle_chains(&chain_codes).await?;
-        let chain_list_req = BackendApiTaskData::new(
-            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
-            &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
-        )?;
-        Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send().await?;
         Ok(())
     }
 

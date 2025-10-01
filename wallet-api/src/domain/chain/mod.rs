@@ -4,7 +4,7 @@ pub mod transaction;
 
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
-    domain::api_wallet::account::ApiAccountDomain,
+    domain::app::config::ConfigDomain,
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
@@ -16,18 +16,10 @@ use wallet_chain_interact::{
     ltc::ParseLtcAddress, ton::address::parse_addr_from_bs64_url,
 };
 use wallet_database::{
-    entities::{api_wallet::ApiWalletType, coin::CoinEntity},
-    repositories::{
-        ResourcesRepo,
-        account::{AccountRepo, AccountRepoTrait},
-        chain::{ChainRepo, ChainRepoTrait},
-        node::NodeRepo,
-    },
+    entities::coin::CoinEntity,
+    repositories::{ResourcesRepo, account::AccountRepo, chain::ChainRepo, node::NodeRepo},
 };
-use wallet_transport_backend::request::{
-    AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq,
-    api_wallet::address::ApiAddressInitReq,
-};
+use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{
     chain::ChainCode,
     network::{self, NetworkKind},
@@ -149,7 +141,7 @@ impl ChainDomain {
     ) -> Result<bool, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        // let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         // // 本地后端节点
         // let local_backend_nodes =
@@ -388,86 +380,6 @@ impl ChainDomain {
         Ok(())
     }
 
-    pub(crate) async fn init_chains_api_assets(
-        coins: &[CoinEntity],
-        req: &mut TokenQueryPriceReq,
-        api_address_init_req: &mut ApiAddressInitReq,
-        // expand_address_req: &mut AddressBatchInitReq,
-        // subkeys: &mut Vec<wallet_tree::file_ops::BulkSubkey>,
-        chain_list: &[String],
-        seed: &[u8],
-        account_index_map: &wallet_utils::address::AccountIndexMap,
-        uid: &str,
-        wallet_address: &str,
-        account_name: &str,
-        is_default_name: bool,
-        wallet_password: &str,
-        api_wallet_type: ApiWalletType,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        for chain in chain_list.iter() {
-            let index = account_index_map.input_index;
-            // let mut params = AddressParam::new(index);
-
-            let code: ChainCode = chain.as_str().try_into()?;
-            let address_types = WalletDomain::address_type_by_chain(code);
-
-            let Ok(node) = Self::get_node(chain).await else {
-                continue;
-            };
-
-            for address_type in address_types {
-                let instance: wallet_chain_instance::instance::ChainObject =
-                    (&code, &address_type, node.network.as_str().into()).try_into()?;
-                // (&code, &address_type, "mainnet".into()).try_into()?;
-                let (account_address, address_init_req) = ApiAccountDomain::derive_subkey(
-                    uid,
-                    seed,
-                    wallet_address,
-                    account_index_map,
-                    &instance,
-                    account_name,
-                    is_default_name,
-                    wallet_password,
-                    api_wallet_type,
-                )
-                .await?;
-
-                if let Some(address_init_req) = address_init_req {
-                    api_address_init_req.address_list.add_address(address_init_req);
-                    // params.push(&account_address.address);
-                } else {
-                    tracing::info!("不上报： {}", account_address);
-                };
-
-                // subkeys.push(
-                //     AccountDomain::generate_subkey(
-                //         &instance,
-                //         seed,
-                //         &account_address.address,
-                //         &code.to_string(),
-                //         account_index_map,
-                //         derivation_path.as_str(),
-                //     )
-                //     .await?,
-                // );
-
-                AssetsDomain::init_default_api_assets(
-                    coins,
-                    &account_address,
-                    &code.to_string(),
-                    req,
-                )
-                .await?;
-            }
-
-            // if !params.address_list.is_empty() {
-            //     expand_address_req.add_chain_code(chain, params);
-            // }
-        }
-
-        Ok(())
-    }
-
     pub(crate) fn check_token_address(
         token_address: &mut String,
         chain_code: &str,
@@ -493,6 +405,44 @@ impl ChainDomain {
             }
             _ => check_address(token_address, chain, net)?,
         }
+        Ok(())
+    }
+
+    pub async fn init_chain_info() -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let list = crate::default_data::chain::get_default_chains_list()?;
+
+        // tracing::warn!("list {:#?}", list);
+
+        let mut chain_codes = Vec::new();
+        for (chain_code, default_chain) in &list.chains {
+            let status = if default_chain.active { 1 } else { 0 };
+            // let node_id =
+            //     NodeDomain::gen_node_id(&default_chain.node_name, &default_chain.chain_code);
+            let req = wallet_database::entities::chain::ChainCreateVo::new(
+                &default_chain.name,
+                &default_chain.chain_code,
+                &default_chain.protocols,
+                &default_chain.main_symbol,
+            )
+            .with_status(status);
+
+            if let Err(e) = ChainRepo::add(&pool, req).await {
+                tracing::error!("Failed to create default chain: {:?}", e);
+                continue;
+            }
+            if status == 1 {
+                chain_codes.push(chain_code.to_string());
+            }
+        }
+        let app_version = ConfigDomain::get_app_version().await?;
+
+        ChainDomain::toggle_chains(&chain_codes).await?;
+        let chain_list_req = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::CHAIN_LIST,
+            &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
+        )?;
+        Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send().await?;
         Ok(())
     }
 }

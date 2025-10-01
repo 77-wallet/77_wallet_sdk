@@ -2,7 +2,7 @@ use wallet_database::{factory::RepositoryFactory, repositories::device::DeviceRe
 
 use crate::{
     context::CONTEXT,
-    domain,
+    domain::{self, chain::ChainDomain},
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
@@ -25,9 +25,7 @@ async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    let repo = RepositoryFactory::repo(pool.clone());
-    let mut node_service = NodeService::new(repo);
-    node_service.init_chain_info().await?;
+    ChainDomain::init_chain_info().await?;
     let repo = RepositoryFactory::repo(pool.clone());
     let mut node_service = NodeService::new(repo);
     node_service.init_node_info().await?;
