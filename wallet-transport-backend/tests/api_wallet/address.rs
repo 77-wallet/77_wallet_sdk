@@ -42,7 +42,7 @@ async fn test_expand_address_complete() -> Result<(), wallet_transport_backend::
 async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
 
-    let uid = "bf6e56761f4a838bd7bdbef5ba3071bf36d3a588a5176fb58e3225f2758ce805";
+    let uid = "2b607a707cc4f0b4191bce26149e0310302905a59aed4c27b35d6429bfacd5d9";
     let chain_code = "tron";
     let page_num = 0;
     let page_size = 5;

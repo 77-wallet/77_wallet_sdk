@@ -256,7 +256,7 @@ mod test {
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
-        let salt = "3";
+        let salt = "7";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -295,8 +295,8 @@ mod test {
 
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
-        let salt = "8";
-        let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
+        let salt = "10";
+        let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
         let res = wallet_manager
             .import_api_wallet(
                 language_code,
@@ -318,7 +318,7 @@ mod test {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let uid = "2b607a707cc4f0b4191bce26149e0310302905a59aed4c27b35d6429bfacd5d9";
+        let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
         let res = wallet_manager.query_uid_bind_info(uid).await;
         tracing::info!("res: {res:?}");
         Ok(())
