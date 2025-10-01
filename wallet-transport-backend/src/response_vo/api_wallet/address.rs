@@ -8,7 +8,7 @@ pub struct UsedAddressListResp {
     pub first: bool,
     pub last: bool,
     pub size: i64,
-    pub number: i64,
+    pub number: i32,
     pub sort: Sort,
     pub pageable: Pageable,
     pub number_of_elements: i64,
@@ -20,9 +20,9 @@ pub struct UsedAddressListResp {
 #[serde(rename_all = "camelCase")]
 pub struct Item {
     /// 下标
-    pub index: i64,
+    pub index: i32,
     /// 地址绑定状态： 0 未绑定 / 1 已绑定
-    pub bind_status: i64,
+    pub bind_status: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

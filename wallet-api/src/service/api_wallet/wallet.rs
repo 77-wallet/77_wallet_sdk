@@ -3,7 +3,7 @@ use wallet_database::{
     repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::{
-    request::LanguageInitReq,
+    request::{LanguageInitReq, api_wallet::address::AddressListReq},
     response_vo::api_wallet::wallet::{QueryUidBindInfoRes, QueryWalletActivationInfoResp},
 };
 
@@ -365,7 +365,25 @@ impl ApiWalletService {
         )?;
 
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
-        Tasks::new()
+
+        let mut tasks = Tasks::new();
+        if api_wallet_type == ApiWalletType::SubAccount {
+            let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+            let chains: Vec<String> =
+                default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+
+            for chain_code in chains {
+                let query_address_list_req = AddressListReq::new(&uid, &chain_code, 0, 1000);
+
+                let query_address_list_task_data = BackendApiTaskData::new(
+                    wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
+                    &query_address_list_req,
+                )?;
+                tasks = tasks.push(BackendApiTask::BackendApi(query_address_list_task_data));
+            }
+        }
+
+        tasks
             // .push(BackendApiTask::BackendApi(keys_init_task_data))
             .push(BackendApiTask::BackendApi(language_init_task_data))
             .send()

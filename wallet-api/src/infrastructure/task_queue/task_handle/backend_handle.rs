@@ -1,19 +1,31 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::{collections::HashSet, sync::Arc};
-use wallet_database::repositories::{
-    api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, device::DeviceRepo,
-    wallet::WalletRepoTrait,
+use wallet_database::{
+    entities::api_wallet::ApiWalletType,
+    repositories::{
+        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, chain::ChainRepo,
+        device::DeviceRepo, wallet::WalletRepoTrait,
+    },
 };
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
-    request::{ChainRpcListReq, FindConfigByKey},
+    request::{ChainRpcListReq, FindConfigByKey, api_wallet::address::AddressListReq},
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
 
 use crate::{
-    domain::{app::config::ConfigDomain, chain::ChainDomain, node::NodeDomain},
+    domain::{
+        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        app::config::ConfigDomain,
+        chain::ChainDomain,
+        node::NodeDomain,
+    },
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
     messaging::notify::FrontendNotifyEvent,
 };
 pub struct BackendTaskHandle;
@@ -410,6 +422,53 @@ impl EndpointHandler for SpecialHandler {
                     }
                 };
                 ConfigDomain::set_keys_reset_status(Some(true)).await?;
+            }
+            endpoint::api_wallet::QUERY_ADDRESS_LIST => {
+                let req =
+                    wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
+                let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
+
+                if !status.bind_status {
+                    tracing::info!("this wallet was not binded");
+                    return Ok(());
+                }
+                let res = backend
+                .post_req_str::<wallet_transport_backend::response_vo::api_wallet::address::UsedAddressListResp>(
+                    endpoint, &body,
+                )
+                .await?;
+
+                let list = res.content;
+                let mut input_indices = Vec::new();
+                for address in list {
+                    input_indices.push(address.index);
+                }
+
+                let password = ApiWalletDomain::get_passwd().await?;
+                if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
+                    ApiAccountDomain::create_api_account(
+                        &wallet.address,
+                        &password,
+                        vec![req.chain_code.clone()],
+                        input_indices,
+                        "name",
+                        true,
+                        ApiWalletType::SubAccount,
+                    )
+                    .await?;
+                }
+
+                if res.last {
+                    let page = res.number + 1;
+                    let query_address_list_req =
+                        AddressListReq::new(&req.uid, &req.chain_code, page, 1000);
+
+                    let query_address_list_task_data = BackendApiTaskData::new(
+                        wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
+                        &query_address_list_req,
+                    )?;
+                    Tasks::new().push(BackendApiTask::BackendApi(query_address_list_task_data));
+                }
             }
             _ => {
                 // 未知的 endpoint
