@@ -13,6 +13,7 @@ use crate::{
 };
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
+use tracing::log;
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
@@ -85,6 +86,7 @@ impl Context {
         #[cfg(feature = "prod")]
         let aggregate_api = config.aggregate_api.prod_url;
 
+        log::info!("api_url: {}", api_url);
         let headers_opt = Some(HashMap::from([("clientId".to_string(), client_id.clone())]));
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
