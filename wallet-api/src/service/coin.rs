@@ -20,14 +20,16 @@ use crate::{
 };
 use std::collections::HashMap;
 use wallet_database::{
+    DbPool,
     dao::assets::CreateAssetsVo,
     entities::{
         assets::AssetsId,
         coin::{BatchCoinSwappable, CoinData, CoinId},
     },
+    factory::RepositoryFactory,
     repositories::{
         ResourcesRepo,
-        assets::AssetsRepoTrait,
+        assets::{AssetsRepo, AssetsRepoTrait},
         coin::{CoinRepo, CoinRepoTrait},
         exchange_rate::ExchangeRateRepoTrait,
     },
@@ -173,7 +175,51 @@ impl CoinService {
             })
             .collect::<Vec<_>>();
         CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
-        // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
+
+        let _e = self.delete_wsol_error(&pool).await;
+
+        Ok(())
+    }
+
+    // 删除无效的wsol  wSOL 代币 1.7上线，1.8 版本或者后续版本删除
+    pub async fn delete_wsol_error(
+        &mut self,
+        pool: &DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let _res = CoinRepo::delete_wsol_error(pool).await;
+
+        // 是否存在wSOL 的资产 ,存在的话,修改名称
+        let assets = AssetsRepo::all_error_wsol(pool).await?;
+        if !assets.is_empty() {
+            // 删除wsol 的资产
+            AssetsRepo::repair_wsol_error(pool).await?;
+
+            // 在新增
+            let mut repo = RepositoryFactory::repo(pool.clone());
+            for asset in assets {
+                let assets_id = AssetsId {
+                    address: asset.address.clone(),
+                    symbol: "WSOL".to_string(),
+                    chain_code: asset.chain_code.clone(),
+                    token_address: if asset.token_address.is_empty() {
+                        None
+                    } else {
+                        Some(asset.token_address.clone())
+                    },
+                };
+
+                let one = CreateAssetsVo {
+                    assets_id,
+                    decimals: asset.decimals,
+                    protocol: None,
+                    status: 1,
+                    is_multisig: 0,
+                    balance: asset.balance.clone(),
+                    name: asset.name.clone(),
+                };
+                repo.upsert_assets(one).await?;
+            }
+        }
 
         Ok(())
     }
@@ -195,6 +241,15 @@ impl CoinService {
             let status = token.get_status();
             let time = parse_utc_with_error(&token.update_time).ok();
 
+            // 修复数据
+            let sol_symbol = if token.token_address
+                == Some("So11111111111111111111111111111111111111112".to_string())
+            {
+                token.symbol.clone()
+            } else {
+                None
+            };
+
             let coin_id = CoinId {
                 chain_code: token.chain_code.unwrap_or_default(),
                 symbol: token.symbol.unwrap_or_default(),
@@ -208,6 +263,7 @@ impl CoinService {
                 status,
                 Some(token.swappable),
                 time,
+                sol_symbol,
             )
             .await?;
         }
@@ -223,7 +279,7 @@ impl CoinService {
 
         let tx = &mut self.repo;
 
-        let tokens = backend_api.token_query_price(&req).await?.list;
+        let tokens = backend_api.token_query_price(req).await?.list;
 
         for token in tokens {
             let coin_id = CoinId {
@@ -240,6 +296,7 @@ impl CoinService {
                 status,
                 token.swappable,
                 time,
+                None,
             )
             .await?;
         }
@@ -290,6 +347,7 @@ impl CoinService {
                         token.unit,
                         status,
                         token.swappable,
+                        None,
                         None,
                     )
                     .await?;

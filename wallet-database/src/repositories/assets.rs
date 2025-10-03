@@ -168,4 +168,13 @@ impl AssetsRepo {
     ) -> Result<Option<AssetsEntity>, crate::Error> {
         AssetsEntity::get_by_addr_token(pool.as_ref(), chain_code, token_address, address).await
     }
+
+    // repair
+    pub async fn all_error_wsol(pool: &DbPool) -> Result<Vec<AssetsEntity>, crate::Error> {
+        AssetsEntity::error_wsol_assets(pool.as_ref()).await
+    }
+
+    pub async fn repair_wsol_error(pool: &DbPool) -> Result<(), crate::Error> {
+        AssetsEntity::delete_error_wsol_assets(pool.as_ref()).await
+    }
 }

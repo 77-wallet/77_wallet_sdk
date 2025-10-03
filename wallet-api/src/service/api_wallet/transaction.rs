@@ -6,10 +6,7 @@ use crate::{
         coin::CoinDomain,
     },
     request::transaction::{self},
-    response_vo::{
-        self,
-        transaction::{BillDetailVo, TransactionResult},
-    },
+    response_vo::transaction::{BillDetailVo, TransactionResult},
 };
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
@@ -28,7 +25,7 @@ use wallet_database::{
     },
     pagination::Pagination,
     repositories::{
-        account::AccountRepo, address_book::AddressBookRepo, bill::BillRepo, coin::CoinRepo,
+        account::AccountRepo, address_book::AddressBookRepo, bill::BillRepo,
         multisig_queue::MultisigQueueRepo,
     },
 };
@@ -37,29 +34,6 @@ use wallet_utils::unit;
 pub struct ApiTransService;
 
 impl ApiTransService {
-    /// 计算交易的手续费
-    pub async fn transaction_fee(
-        mut params: transaction::BaseTransferReq,
-    ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-
-        let token_address = params.token_address.clone().unwrap_or_default();
-
-        let coin =
-            CoinRepo::coin_by_chain_address(&params.chain_code, &token_address, &pool).await?;
-        params.with_decimals(coin.decimals);
-        params.with_token(coin.token_address());
-
-        let main_coin = CoinRepo::main_coin(&params.chain_code, &pool).await?;
-
-        let adapter = ChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
-        let fee = adapter.estimate_fee(params, main_coin.symbol.as_str()).await?;
-
-        let fee_resp =
-            response_vo::EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code.clone(), fee);
-        Ok(fee_resp)
-    }
-
     pub async fn transfer(
         params: transaction::TransferReq,
         bill_kind: BillKind,

@@ -106,10 +106,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         page_size: i64,
     ) -> Result<crate::pagination::Pagination<CoinEntity>, crate::Error> {
         let executor = self.get_db_pool();
-        CoinEntity::coin_list_symbol_not_in(
-            &executor, exclude, chain_code, keyword, page, page_size,
-        )
-        .await
+        CoinEntity::coin_list_symbol_not_in(executor, exclude, chain_code, keyword, page, page_size)
+            .await
     }
 
     async fn update_price_unit(
@@ -120,7 +118,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         status: Option<i32>,
         swappable: Option<bool>,
         time: Option<DateTime<Utc>>,
-    ) -> Result<Vec<CoinEntity>, crate::Error> {
+        symbols: Option<String>,
+    ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
             executor,
@@ -130,7 +129,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             unit,
             status,
             swappable,
-            time
+            time,
+            symbols
         )
     }
 
@@ -182,6 +182,11 @@ impl CoinRepo {
         CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(crate::Error::NotFound(
             format!("main coin not found: chain_code: {}", chain_code),
         ))
+    }
+
+    // 修复数据用
+    pub async fn delete_wsol_error(pool: &DbPool) -> Result<(), crate::Error> {
+        CoinEntity::delete_wsol_error(pool.as_ref()).await
     }
 
     pub async fn update_price_unit1(

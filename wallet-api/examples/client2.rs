@@ -1,7 +1,6 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{
-    dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent,
-    test::env::get_manager,
+    WalletManager, dirs::Dirs, messaging::notify::FrontendNotifyEvent, test::env::get_manager,
 };
 
 // create wallet
@@ -10,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wallet_utils::init_test_log();
 
     let (wallet_manager, test_params) = get_manager().await.unwrap();
-    wallet_manager.set_invite_code(None).await;
+    let _c = wallet_manager.set_invite_code(None).await;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
@@ -20,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 创建钱包
     if true {
-        let _wallet = wallet_manager.create_wallet(test_params.create_wallet_req).await?;
+        let _wallet = wallet_manager.create_wallet(test_params.create_wallet_req).await.unwrap();
     }
 
     while let Some(_data) = rx.next().await {

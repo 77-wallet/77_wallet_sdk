@@ -158,7 +158,7 @@ where
         let formatted = format!("{:.8}", x);
         // 去除多余的尾部 0
         let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
-        s.serialize_str(&trimmed)
+        s.serialize_str(trimmed)
     }
 }
 

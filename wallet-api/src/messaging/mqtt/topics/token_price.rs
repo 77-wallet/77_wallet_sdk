@@ -31,8 +31,16 @@ impl TokenPriceChange {
         let repo = RepositoryFactory::repo(pool.clone());
         let coin_service = CoinService::new(repo);
         let mut tx = coin_service.repo;
-        tx.update_price_unit(&coin_id, &price.to_string(), unit, None, self.body.swappable, None)
-            .await?;
+        tx.update_price_unit(
+            &coin_id,
+            &price.to_string(),
+            unit,
+            None,
+            self.body.swappable,
+            None,
+            None,
+        )
+        .await?;
 
         let app_state = crate::app_state::APP_STATE.read().await;
         let currency = app_state.currency();
