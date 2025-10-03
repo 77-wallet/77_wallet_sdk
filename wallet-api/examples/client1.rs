@@ -88,7 +88,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // subscribe(&wallet_manager).await;
 
     let sync_res = wallet_manager
-        .sync_api_assets_by_wallet("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b", None, vec![])
+        .sync_api_assets_by_wallet(
+            "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b".to_string(),
+            None,
+            vec![],
+        )
         .await;
     tracing::info!("sync res: {sync_res:#?}");
     // let wallet = wallet.unwrap();

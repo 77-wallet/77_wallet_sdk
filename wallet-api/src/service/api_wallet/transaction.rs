@@ -8,7 +8,6 @@ use crate::{
     request::transaction::{self},
     response_vo::{
         self,
-        account::Balance,
         transaction::{BillDetailVo, TransactionResult},
     },
 };
@@ -17,8 +16,8 @@ use std::sync::Arc;
 use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
-    entities,
     entities::{
+        self,
         assets::{AssetsEntity, AssetsId},
         bill::{
             BillEntity, BillKind, BillStatus, BillUpdateEntity, RecentBillListVo, SyncBillEntity,
@@ -35,43 +34,9 @@ use wallet_database::{
 };
 use wallet_utils::unit;
 
-pub struct TransactionService;
+pub struct ApiTransService;
 
-impl TransactionService {
-    // 本币的余额
-    pub async fn chain_balance(
-        address: &str,
-        chain_code: &str,
-        symbol: &str,
-        token_address: Option<String>,
-    ) -> Result<Balance, crate::error::service::ServiceError> {
-        let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
-
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address.clone(), &pool)
-            .await?;
-
-        let balance = adapter.balance(address, token_address).await?;
-        let format_balance = unit::format_to_string(balance, coin.decimals)?;
-
-        let balance = Balance {
-            balance: format_balance.clone(),
-            decimals: coin.decimals,
-            original_balance: balance.to_string(),
-        };
-
-        ChainTransDomain::update_balance(
-            address,
-            chain_code,
-            symbol,
-            coin.token_address,
-            &format_balance,
-        )
-        .await?;
-
-        Ok(balance)
-    }
-
+impl ApiTransService {
     /// 计算交易的手续费
     pub async fn transaction_fee(
         mut params: transaction::BaseTransferReq,
@@ -79,9 +44,9 @@ impl TransactionService {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let token_address = params.token_address.clone().unwrap_or_default();
+
         let coin =
             CoinRepo::coin_by_chain_address(&params.chain_code, &token_address, &pool).await?;
-
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address());
 

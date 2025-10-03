@@ -640,7 +640,16 @@ impl MultisigAccountService {
                 signer: None,
             };
 
-            ChainTransDomain::transfer(params, BillKind::ServiceCharge, &adapter).await?
+            let private_key = ChainTransDomain::get_key(
+                &params.base.from,
+                &params.base.chain_code,
+                &params.password,
+                &params.signer,
+            )
+            .await?;
+
+            ChainTransDomain::transfer(params, BillKind::ServiceCharge, &adapter, private_key)
+                .await?
         } else {
             // 服务费为0的传入固定的hash
             MultisigAccountEntity::NONE_TRANS_HASH.to_string()

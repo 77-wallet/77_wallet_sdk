@@ -3,7 +3,7 @@ use crate::{
     dao::api_assets::ApiAssetsDao,
     entities::{
         api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
-        assets::AssetsId,
+        assets::AssetsIdVo,
     },
 };
 
@@ -19,10 +19,13 @@ impl ApiAssetsRepo {
 
     pub async fn update_balance(
         pool: &DbPool,
-        id: &AssetsId,
+        address: &str,
+        chain_code: &str,
+        token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::Error> {
-        ApiAssetsDao::update_balance(pool.as_ref(), id, balance).await
+        ApiAssetsDao::update_balance(pool.as_ref(), address, chain_code, token_address, balance)
+            .await
     }
 
     pub async fn update_status(
@@ -37,7 +40,7 @@ impl ApiAssetsRepo {
 
     pub async fn find_by_id(
         pool: &DbPool,
-        id: &AssetsId,
+        id: &AssetsIdVo<'_>,
     ) -> Result<Option<ApiAssetsEntity>, crate::Error> {
         Ok(ApiAssetsDao::assets_by_id(pool.as_ref(), id).await?)
     }

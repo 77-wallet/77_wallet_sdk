@@ -172,10 +172,9 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
     use crate::{response_vo::chain::ChainList, test::env::get_manager};
     use anyhow::Result;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_add_assets() -> Result<()> {

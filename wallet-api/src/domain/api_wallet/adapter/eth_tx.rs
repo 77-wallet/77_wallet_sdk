@@ -289,11 +289,11 @@ impl Tx for EthTx {
         tracing::info!(eth_balance=%eth_balance, "transfer ------------------- 15");
         let rc = self.chain.estimate_gas(transfer_opt).await?;
         // check transaction_fee
-        if remain_balance < rc.consume {
-            return Err(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::InsufficientFeeBalance,
-            ))?;
-        }
+        // if remain_balance < rc.consume {
+        //     return Err(crate::error::business::BusinessError::Chain(
+        //         crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        //     ))?;
+        // }
 
         let gas_oracle = self.gas_oracle().await?;
         let propose_gas_price = gas_oracle.propose_gas_price;
