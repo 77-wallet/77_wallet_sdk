@@ -1,10 +1,3 @@
-use std::collections::HashMap;
-
-use wallet_database::repositories::{
-    api_assets::ApiAssetsRepo, api_chain::ApiChainRepo, coin::CoinRepo,
-};
-use wallet_utils::unit;
-
 use crate::{
     domain::{
         api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain},
@@ -18,6 +11,15 @@ use crate::{
         chain::ChainList,
     },
 };
+use std::collections::HashMap;
+use wallet_database::{
+    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
+    repositories::{
+        api_account::ApiAccountRepo, api_assets::ApiAssetsRepo, api_chain::ApiChainRepo,
+        coin::CoinRepo,
+    },
+};
+use wallet_utils::unit;
 
 #[derive(Debug, Clone)]
 pub struct AddressChainCode {
@@ -32,36 +34,64 @@ impl ApiAssetsService {
         Self {}
     }
 
-    // // 根据地址来同步余额(链)
-    // pub async fn sync_assets_by_addr(
-    //     self,
-    //     addr: Vec<String>,
-    //     chain_code: Option<String>,
-    //     symbol: Vec<String>,
-    // ) -> Result<(), crate::error::service::ServiceError> {
-    //     AssetsDomain::sync_assets_by_addr_chain(addr, chain_code, symbol).await
-    // }
+    pub async fn add_assets(
+        self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_list: ChainList,
+        _is_multisig: Option<bool>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-    // // 从后端同步余额(后端)
-    // pub async fn sync_assets_from_backend(
-    //     self,
-    //     addr: String,
-    //     chain_code: Option<String>,
-    //     _symbol: Vec<String>,
-    // ) -> Result<(), crate::error::service::ServiceError> {
-    //     AssetsDomain::async_balance_from_backend_addr(addr, chain_code).await
-    // }
+        // 钱包下的账号
+        let accounts =
+            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
 
-    // 根据钱包地址来同步资产余额
-    // pub async fn sync_assets_by_wallet_chain(
-    //     self,
-    //     wallet_address: &str,
-    //     account_id: Option<u32>,
-    //     _symbol: Vec<String>,
-    // ) -> Result<(), crate::error::service::ServiceError> {
-    //     ApiAssetsDomain::sync_assets_by_wallet(wallet_address, account_id, _symbol).await
-    // }
+        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&pool, &chain_list).await?;
+        for coin in coins {
+            if let Some(account) =
+                accounts.iter().find(|account| account.chain_code == coin.chain_code)
+            {
+                let chain_code = account.chain_code.as_str();
 
+                let assets_id =
+                    AssetsId::new(&account.address, chain_code, &coin.symbol, coin.token_address());
+
+                let assets =
+                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
+                        .with_name(&coin.name);
+
+                ApiAssetsRepo::upsert_assets(&pool, assets).await?
+            };
+        }
+
+        Ok(())
+    }
+
+    pub async fn remove_assets(
+        &mut self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_list: ChainList,
+        _is_multisig: Option<bool>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let accounts =
+            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
+
+        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&pool, &chain_list).await?;
+
+        // let mut assets_ids = Vec::new();
+        // let mut coin_ids = std::collections::HashSet::new();
+
+        // 地址，链，token地址
+
+        // ApiAssetsRepo::
+        Ok(())
+    }
+
+    // 根据后端同步余额
     pub async fn sync_assets_by_wallet_backend(
         self,
         wallet_address: String,

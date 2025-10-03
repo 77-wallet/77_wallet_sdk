@@ -454,8 +454,6 @@ impl SwapServer {
         res: &mut ApiQuoteResp,
         adapter: &TransactionAdapter,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let instance = time::Instant::now();
-
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let main_coin = CoinRepo::main_coin(&req.chain_code, &pool).await?;
 
@@ -985,54 +983,3 @@ impl SwapServer {
         Ok(resp.tx_hash)
     }
 }
-
-// // 主币处理
-// if req.token_in.token_addr.is_empty() {
-//     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-//     let assets =
-//         AssetsRepo::get_by_addr_token(&pool, &req.chain_code, "", &req.recipient).await?;
-//     if self
-//         .check_bal_with_last_swap(&assets.balance, &req, &pool)
-//         .await?
-//     {
-//         self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
-//     }
-
-//     return Ok(res);
-// }
-
-// // 代币处理
-// let allowance = self.check_allowance(&req).await?;
-// let amount_in = convert_to_u256(&req.amount_in, req.token_in.decimals as u8)?;
-
-// if allowance > U256::MAX >> 1 {
-//     res.approve_amount = "-1".to_string();
-// } else {
-//     res.approve_amount = format_to_string(allowance, req.token_in.decimals as u8)?;
-// }
-
-// if allowance >= amount_in {
-//     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-//     let assets = self
-//         .token0_assets(
-//             &pool,
-//             &req.chain_code,
-//             &req.token_in.token_addr,
-//             &req.recipient,
-//         )
-//         .await?;
-//     if self
-//         .check_bal_with_last_swap(&assets.balance, &req, &pool)
-//         .await?
-//     {
-//         self.simulate_and_fill(&req, &quote_resp, &mut res).await?;
-//     }
-
-//     return Ok(res);
-// } else {
-//     // 授权不够的情况
-//     let diff = amount_in - allowance;
-//     res.need_approve_amount = format_to_string(diff, req.token_in.decimals as u8)?;
-
-//     return Ok(res);
-// }

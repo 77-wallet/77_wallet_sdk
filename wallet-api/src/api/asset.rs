@@ -380,7 +380,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
-        wallet_manager.set_currency("USD").await;
+        wallet_manager.set_currency("USD").await?;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
@@ -423,7 +423,7 @@ mod test {
 
         let account_id = Some(1);
 
-        wallet_manager.set_currency("USD").await;
+        wallet_manager.set_currency("USD").await?;
         let res =
             wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await?;
         // tracing::info!("get_account_chain_assets: {res:?}");

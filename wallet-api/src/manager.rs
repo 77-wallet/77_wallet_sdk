@@ -27,9 +27,6 @@ impl WalletManager {
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
         let base_path = infrastructure::log::format::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
-        // 以前的上报日志
-        // crate::domain::log::periodic_log_report(std::time::Duration::from_secs(60 * 60)).await;
-
         // 现在的上报日志
         infrastructure::log::start_upload_scheduler(
             base_path,
@@ -94,18 +91,6 @@ impl WalletManager {
         infrastructure::log::init_logger(format, path, level)?;
 
         Ok(())
-
-        // 以前的版本,
-
-        // wallet_utils::log::set_app_code(app_code);
-        // let log_dir = dirs.get_log_dir();
-
-        // wallet_utils::log::set_sn_code(sn);
-
-        // Ok(wallet_utils::log::file::init_log(
-        //     log_dir.to_string_lossy().as_ref(),
-        //     level,
-        // )?)
     }
 
     pub async fn set_frontend_notify_sender(

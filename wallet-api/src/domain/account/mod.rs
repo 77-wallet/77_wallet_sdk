@@ -70,12 +70,6 @@ impl AccountDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut account_addresses = Vec::new();
 
-        // let chain_codes = if let Some(chain_code) = &chain_code {
-        //     vec![chain_code.to_string()]
-        // } else {
-        //     vec![]
-        // };
-
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
                 tracing::debug!("开始查询多签账户 is_multisig: {is_multisig}");
@@ -136,44 +130,6 @@ impl AccountDomain {
         Ok(account_addresses)
     }
 
-    // pub(crate) async fn create_account(
-    //     repo: &mut ResourcesRepo,
-    //     seed: &[u8],
-    //     instance: &wallet_chain_instance::instance::ChainObject,
-    //     derivation_path: Option<&str>,
-    //     account_index_map: &wallet_utils::address::AccountIndexMap,
-    //     uid: &str,
-    //     wallet_address: &str,
-    //     name: &str,
-    //     is_default_name: bool,
-    // ) -> Result<(CreateAccountRes, String, BackendApiTaskData), crate::ServiceError> {
-    //     let (address, name, derivation_path) = Self::derive_subkey(
-    //         repo,
-    //         seed,
-    //         account_index_map,
-    //         instance,
-    //         derivation_path,
-    //         wallet_address,
-    //         name,
-    //         is_default_name,
-    //     )
-    //     .await?;
-    //     let res = CreateAccountRes {
-    //         address: address.to_string(),
-    //     };
-    //     let task_data = Self::address_init(
-    //         repo,
-    //         uid,
-    //         &address,
-    //         account_index_map.input_index,
-    //         &instance.chain_code().to_string(),
-    //         &name,
-    //     )
-    //     .await?;
-
-    //     Ok((res, derivation_path, task_data))
-    // }
-
     pub(crate) async fn create_account_v2(
         repo: &mut ResourcesRepo,
         seed: &[u8],
@@ -198,46 +154,9 @@ impl AccountDomain {
         )
         .await?;
         let res = CreateAccountRes { address: address.to_string() };
-        // let task_data = Self::address_init(
-        //     repo,
-        //     uid,
-        //     &address,
-        //     account_index_map.input_index,
-        //     &instance.chain_code().to_string(),
-        //     &name,
-        // )
-        // .await?;
 
         Ok((res, derivation_path, address_init_req))
     }
-
-    // pub(crate) async fn address_init(
-    //     repo: &mut ResourcesRepo,
-    //     uid: &str,
-    //     address: &str,
-    //     index: i32,
-    //     chain_code: &str,
-    //     name: &str,
-    // ) -> Result<BackendApiTaskData, crate::ServiceError> {
-    //     let Some(device) = DeviceRepoTrait::get_device_info(repo).await? else {
-    //         return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
-    //     };
-    //     let address_init_req = wallet_transport_backend::request::AddressInitReq::new(
-    //         uid,
-    //         address,
-    //         index,
-    //         chain_code,
-    //         &device.sn,
-    //         vec!["".to_string()],
-    //         name,
-    //     );
-    //     let address_init_task_data = BackendApiTaskData::new(
-    //         wallet_transport_backend::consts::endpoint::ADDRESS_INIT,
-    //         &address_init_req,
-    //     )?;
-
-    //     Ok(address_init_task_data)
-    // }
 
     pub(crate) async fn derive_subkey(
         repo: &mut ResourcesRepo,
