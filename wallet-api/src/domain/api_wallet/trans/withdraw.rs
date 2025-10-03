@@ -61,12 +61,10 @@ impl ApiWithdrawDomain {
 
         // 可能发交易
 
-        crate::context::CONTEXT
-            .get()
-            .unwrap()
-            .get_global_processed_withdraw_tx_handle()
-            .submit_tx(&req.trade_no)
-            .await?;
+        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+        {
+            handles.get_global_processed_withdraw_tx_handle().submit_tx(&req.trade_no).await?;
+        }
         Ok(())
     }
 
@@ -99,12 +97,13 @@ impl ApiWithdrawDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, status).await?;
 
-        crate::context::CONTEXT
-            .get()
-            .unwrap()
-            .get_global_processed_withdraw_tx_handle()
-            .submit_confirm_report_tx(trade_no)
-            .await?;
+        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+        {
+            handles
+                .get_global_processed_withdraw_tx_handle()
+                .submit_confirm_report_tx(trade_no)
+                .await?;
+        }
         Ok(())
     }
 }

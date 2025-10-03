@@ -1,17 +1,20 @@
 use crate::{
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
+    handles::Handles,
     infrastructure::{
         SharedCache,
         inner_event::InnerEventHandle,
         process_fee_tx::ProcessFeeTxHandle,
         process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
-        process_withdraw_tx::ProcessWithdrawTxHandle,
         task_queue::task_manager::TaskManager,
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Weak, Mutex},
+};
 use tokio::sync::RwLock;
 use tracing::log;
 use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
@@ -38,7 +41,7 @@ pub(crate) async fn init_context<'a>(
     Ok(context)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Context {
     dirs: Arc<Dirs>,
     aggregate_api: String,
@@ -55,8 +58,8 @@ pub struct Context {
     inner_event_handle: Arc<InnerEventHandle>,
     unconfirmed_msg_collector: Arc<UnconfirmedMsgCollector>,
     unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessor>,
-    process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
+    handles: Mutex<Weak<Handles>>,
 }
 
 impl Context {
@@ -114,8 +117,6 @@ impl Context {
 
         let inner_event_handle = InnerEventHandle::new();
 
-        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
-
         let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
 
         Ok(Context {
@@ -134,8 +135,8 @@ impl Context {
             inner_event_handle: Arc::new(inner_event_handle),
             unconfirmed_msg_collector: Arc::new(unconfirmed_msg_collector),
             unconfirmed_msg_processor: Arc::new(unconfirmed_msg_processor),
-            process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
+            handles: Mutex::new(Weak::new()),
         })
     }
 
@@ -273,11 +274,16 @@ impl Context {
         self.unconfirmed_msg_processor.clone()
     }
 
-    pub(crate) fn get_global_processed_withdraw_tx_handle(&self) -> Arc<ProcessWithdrawTxHandle> {
-        self.process_withdraw_tx_handle.clone()
-    }
-
     pub(crate) fn get_global_processed_fee_tx_handle(&self) -> Arc<ProcessFeeTxHandle> {
         self.process_fee_tx_handle.clone()
+    }
+
+    pub(crate) fn get_global_handles(&self) -> Weak<Handles> {
+        self.handles.lock().unwrap().clone()
+    }
+
+    pub(crate) fn set_global_handles(&self, handles: Weak<Handles>) {
+        let mut lock = self.handles.lock().unwrap();
+        *lock = handles;
     }
 }

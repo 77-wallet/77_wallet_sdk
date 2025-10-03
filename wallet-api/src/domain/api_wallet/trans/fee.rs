@@ -68,7 +68,7 @@ impl ApiFeeDomain {
         let _ = crate::context::CONTEXT
             .get()
             .unwrap()
-            .get_global_processed_withdraw_tx_handle()
+            .get_global_processed_fee_tx_handle()
             .submit_confirm_report_tx(trade_no)
             .await;
         Ok(())
