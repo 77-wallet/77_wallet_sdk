@@ -1,9 +1,10 @@
 use crate::{
     api::ReturnType,
-    context::{Context, init_context},
+    context::{init_context, Context},
     data::do_some_init,
     dirs::Dirs,
     domain,
+    handles::Handles,
     infrastructure::{self},
     messaging::notify::FrontendNotifyEvent,
     service::{device::DeviceService, task_queue::TaskQueueService},
@@ -15,6 +16,7 @@ use wallet_database::factory::RepositoryFactory;
 pub struct WalletManager {
     pub(crate) repo_factory: RepositoryFactory,
     pub(crate) ctx: &'static Context,
+    pub(crate) handles: Handles,
 }
 
 impl WalletManager {
@@ -38,6 +40,7 @@ impl WalletManager {
         )
         .await?;
 
+        let handles = Handles::new(context.g)
         context.get_global_unconfirmed_msg_processor().start().await;
         context.get_global_task_manager().start_task_check().await?;
         let pool = context.get_global_sqlite_pool()?;
