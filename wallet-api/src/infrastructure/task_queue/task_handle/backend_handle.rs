@@ -4,8 +4,8 @@ use std::{collections::HashSet, sync::Arc};
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, chain::ChainRepo,
-        device::DeviceRepo, wallet::WalletRepoTrait,
+        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, device::DeviceRepo,
+        wallet::WalletRepoTrait,
     },
 };
 use wallet_transport_backend::{
@@ -17,7 +17,7 @@ use wallet_transport_backend::{
 
 use crate::{
     domain::{
-        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        api_wallet::{account::ApiAccountDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
         chain::ChainDomain,
         node::NodeDomain,
@@ -389,7 +389,16 @@ impl EndpointHandler for SpecialHandler {
                 //先插入再过滤
                 ChainDomain::upsert_multi_chain_than_toggle(input).await?;
             }
-
+            endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
+                let input = backend
+                    .post_req_str::<wallet_transport_backend::response_vo::api_wallet::chain::ApiChainListResp>(
+                        endpoint, &body,
+                    )
+                    .await?;
+                tracing::info!("API_WALLET_CHAIN_LIST ------------- 1");
+                //先插入再过滤
+                ApiChainDomain::upsert_multi_api_chain_than_toggle(input).await?;
+            }
             endpoint::CHAIN_RPC_LIST => {
                 let input = backend
                     .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
@@ -399,9 +408,25 @@ impl EndpointHandler for SpecialHandler {
                 let req = wallet_utils::serde_func::serde_from_value::<ChainRpcListReq>(body)?;
                 let mut backend_nodes = Vec::new();
                 NodeDomain::upsert_chain_rpc(&mut repo, input, &mut backend_nodes).await?;
-                NodeDomain::sync_nodes_and_link_to_chains(
+                ChainDomain::sync_nodes_and_link_to_chains(
                     &mut repo,
-                    req.chain_code,
+                    &req.chain_code,
+                    &backend_nodes,
+                )
+                .await?;
+            }
+            endpoint::old_wallet::OLD_CHAIN_RPC_LIST => {
+                let input = backend
+                    .post_req_str::<wallet_transport_backend::response_vo::chain::ChainInfos>(
+                        endpoint, &body,
+                    )
+                    .await?;
+                let req = wallet_utils::serde_func::serde_from_value::<ChainRpcListReq>(body)?;
+                let mut backend_nodes = Vec::new();
+                NodeDomain::upsert_chain_rpc(&mut repo, input, &mut backend_nodes).await?;
+                ApiChainDomain::sync_nodes_and_link_to_api_chains(
+                    &mut repo,
+                    &req.chain_code,
                     &backend_nodes,
                 )
                 .await?;

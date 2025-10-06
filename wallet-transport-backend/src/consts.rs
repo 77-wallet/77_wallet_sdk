@@ -75,6 +75,8 @@ pub mod endpoint {
         pub const OLD_ADDRESS_BATCH_INIT: &str = "owallet/address/batch/init";
         /// uid 检查
         pub const OLD_KEYS_UID_CHECK: &str = "owallet/keys/uidCheck";
+
+        pub const OLD_CHAIN_RPC_LIST: &str = "owallet/chain/rpcList";
     }
 
     pub mod api_wallet {

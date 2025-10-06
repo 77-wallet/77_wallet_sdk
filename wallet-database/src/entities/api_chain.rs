@@ -1,4 +1,4 @@
-use crate::entities::chain::{ChainCreateVo, StringList};
+use crate::entities::chain::StringList;
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]

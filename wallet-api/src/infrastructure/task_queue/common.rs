@@ -11,8 +11,9 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
     domain::{
+        api_wallet::chain::ApiChainDomain,
+        chain::ChainDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
-        node::NodeDomain,
         permission::PermissionDomain,
     },
     error::service::ServiceError,
@@ -86,8 +87,10 @@ impl TaskTrait for CommonTask {
                     .await?
                     .into_iter()
                     .map(|chain| chain.chain_code)
-                    .collect();
-                NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &data).await?;
+                    .collect::<Vec<String>>();
+                ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &data).await?;
+                ApiChainDomain::sync_nodes_and_link_to_api_chains(&mut repo, &chain_codes, &data)
+                    .await?;
             }
         }
         Ok(())
