@@ -22,8 +22,8 @@ impl WalletManager {
         phrase: &str,
         salt: &str,
         wallet_name: &str,
-        account_name: &str,
-        is_default_name: bool,
+        // account_name: &str,
+        // is_default_name: bool,
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
@@ -35,8 +35,6 @@ impl WalletManager {
                 phrase,
                 salt,
                 wallet_name,
-                account_name,
-                is_default_name,
                 wallet_password,
                 invite_code,
                 api_wallet_type,
@@ -185,8 +183,7 @@ mod test {
         let phrase = &test_params.create_wallet_req.phrase;
         let salt = "7";
         let wallet_name = "api_wallet";
-        let account_name = "ccccc";
-        let is_default_name = true;
+
         let wallet_password = "q1111111";
         let api_wallet_type = ApiWalletType::SubAccount;
         let binding_address = None;
@@ -197,8 +194,6 @@ mod test {
                 phrase,
                 salt,
                 wallet_name,
-                account_name,
-                is_default_name,
                 wallet_password,
                 invite_code,
                 api_wallet_type,
@@ -219,8 +214,7 @@ mod test {
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         let wallet_name = "api_wallet";
-        let account_name = "ccccc";
-        let is_default_name = true;
+
         let wallet_password = "q1111111";
 
         let api_wallet_type = ApiWalletType::Withdrawal;
@@ -236,8 +230,6 @@ mod test {
                 phrase,
                 salt,
                 wallet_name,
-                account_name,
-                is_default_name,
                 wallet_password,
                 invite_code,
                 api_wallet_type,
