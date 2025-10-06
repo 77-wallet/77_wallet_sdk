@@ -1,6 +1,6 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
-    repositories::{api_wallet::ApiWalletRepo, chain::ChainRepo, device::DeviceRepo},
+    repositories::{api_chain::ApiChainRepo, api_wallet::ApiWalletRepo, device::DeviceRepo},
 };
 use wallet_transport_backend::{
     request::{LanguageInitReq, api_wallet::address::AddressListReq},
@@ -367,7 +367,7 @@ impl ApiWalletService {
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
 
         let mut tasks = Tasks::new();
-        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
 
@@ -431,7 +431,7 @@ impl ApiWalletService {
 
         ApiWalletDomain::scan_bind(recharge_uid, withdrawal_uid, app_id, &device.sn).await?;
 
-        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
@@ -486,7 +486,7 @@ impl ApiWalletService {
 
         ApiWalletDomain::appid_import(sn, Some(recharge_uid), Some(withdrawal_uid)).await?;
 
-        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
 
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();

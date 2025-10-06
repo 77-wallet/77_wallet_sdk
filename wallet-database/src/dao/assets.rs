@@ -641,10 +641,7 @@ impl AssetsEntity {
         let sql = "select * from assets where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112'".to_string();
 
         let query = sqlx::query_as::<_, AssetsEntity>(&sql);
-        let result = query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        let result = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(result)
     }
 

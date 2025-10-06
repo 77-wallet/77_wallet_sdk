@@ -137,10 +137,8 @@ mod tests {
     fn sign_download_url_test() {
         init_log();
         let oss = Oss::from_env();
-        let build = RequestBuilder::new()
-            .with_cdn("")
-            .with_expire(60)
-            .oss_download_allow_ip("", 32);
+        let build =
+            RequestBuilder::new().with_cdn("").with_expire(60).oss_download_allow_ip("", 32);
         // .oss_download_speed_limit(30);
         oss.sign_download_url(
             "hello.txt",
@@ -153,10 +151,8 @@ mod tests {
     fn sign_upload_url_test() {
         init_log();
         let oss = Oss::from_env();
-        let build = RequestBuilder::new()
-            .with_cdn("")
-            .with_content_type("text/plain")
-            .with_expire(600);
+        let build =
+            RequestBuilder::new().with_cdn("").with_content_type("text/plain").with_expire(600);
         oss.sign_upload_url("tmp.txt", &build);
     }
 }

@@ -10,7 +10,7 @@ use crate::{
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
-    repositories::chain::ChainRepo,
+    repositories::api_chain::ApiChainRepo,
 };
 
 pub struct ApiAccountService {
@@ -66,7 +66,7 @@ impl ApiAccountService {
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
         ApiAccountDomain::create_api_account(
