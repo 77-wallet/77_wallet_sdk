@@ -111,22 +111,6 @@ impl ConfigDomain {
         Ok(())
     }
 
-    // pub async fn set_mqtt_url(mqtt_url: Option<String>) -> Result<(), crate::ServiceError> {
-    //     if let Some(mqtt_url) = mqtt_url {
-    //         let config = MqttUrl {
-    //             url: mqtt_url.clone(),
-    //         };
-
-    //         tracing::info!("set mqtt url: {}", mqtt_url);
-    //         ConfigDomain::set_config(MQTT_URL, &config.to_json_str()?).await?;
-    //         crate::Context::set_global_mqtt_url(&mqtt_url).await?;
-    //         let mut config = crate::app_state::APP_STATE.write().await;
-    //         config.set_mqtt_url(Some(mqtt_url));
-    //     }
-
-    //     Ok(())
-    // }
-
     pub async fn set_app_download_qr_code_url(
         app_download_qr_code_url: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
@@ -139,19 +123,6 @@ impl ConfigDomain {
         config.set_app_download_qr_code_url(Some(app_download_qr_code_url.to_string()));
         Ok(())
     }
-
-    // pub async fn set_version_download_url(
-    //     app_install_download_url: &str,
-    // ) -> Result<(), crate::ServiceError> {
-    //     // let tx = &mut self.repo;
-    //     let encoded_url = urlencoding::encode(app_install_download_url);
-    //     let url = format!("{}/{}/{}", BASE_URL, VERSION_DOWNLOAD, encoded_url);
-    //     let config = wallet_database::entities::config::VersionDownloadUrl::new(&url);
-    //     ConfigDomain::set_config(APP_DOWNLOAD_URL, &config.to_json_str()?).await?;
-    //     let mut config = crate::app_state::APP_STATE.write().await;
-    //     config.set_app_download_url(Some(url));
-    //     Ok(())
-    // }
 
     pub async fn init_app_install_download_url() -> Result<(), crate::error::service::ServiceError>
     {
@@ -167,18 +138,6 @@ impl ConfigDomain {
         }
         Ok(())
     }
-
-    // pub(crate) async fn init_mqtt_url() -> Result<(), crate::ServiceError> {
-    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    //     let config = ConfigDao::find_by_key(MQTT_URL, pool.as_ref()).await?;
-    //     if let Some(config) = config {
-    //         let mqtt_url = MqttUrl::try_from(config.value)?;
-    //         crate::Context::set_global_mqtt_url(&mqtt_url.url).await?;
-    //         let mut config = crate::app_state::APP_STATE.write().await;
-    //         config.set_mqtt_url(Some(mqtt_url.url));
-    //     }
-    //     Ok(())
-    // }
 
     pub async fn init_official_website() -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -245,14 +204,6 @@ impl ConfigDomain {
                 Ok(invite_code)
             })
             .transpose()
-
-        // if let Some(invite_code) = invite_code {
-        //     let invite_code =
-        //         wallet_database::entities::config::InviteCode::try_from(invite_code.value)?;
-        //     Ok(invite_code)
-        // } else {
-        //     Err(crate::BusinessError::Device(crate::DeviceError::InviteStatusNotConfirmed).into())
-        // }
     }
 
     pub async fn set_keys_reset_status(

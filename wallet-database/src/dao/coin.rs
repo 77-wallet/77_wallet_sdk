@@ -38,7 +38,8 @@ impl CoinEntity {
         status: Option<i32>,
         swappable: Option<bool>,
         time: Option<DateTime<Utc>>,
-    ) -> Result<Vec<Self>, crate::Error>
+        symbol: Option<String>,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
@@ -53,7 +54,7 @@ impl CoinEntity {
             sql.push_str(", status = ?");
         }
 
-        if time.is_some() {
+        if swappable.is_some() {
             sql.push_str(", swappable = ?");
         }
 
@@ -61,11 +62,14 @@ impl CoinEntity {
             sql.push_str(", updated_at = ?");
         }
 
-        sql.push_str(
-            " WHERE token_address = ? AND LOWER(symbol) = LOWER(?) AND chain_code = ? RETURNING *",
-        );
+        if symbol.is_some() {
+            sql.push_str(", symbol = ?");
+        }
 
-        let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql).bind(price); // 绑定 price 参数
+        sql.push_str(" WHERE token_address = ?  AND chain_code = ?");
+
+        // let mut query = sqlx::query_as::<sqlx::Sqlite, Self>(&sql).bind(price); // 绑定 price 参数
+        let mut query = sqlx::query(&sql).bind(price); // 绑定 price 参数
 
         if let Some(unit_val) = unit {
             query = query.bind(unit_val);
@@ -80,19 +84,21 @@ impl CoinEntity {
         if let Some(time_val) = time {
             query = query.bind(time_val.to_rfc3339_opts(SecondsFormat::Secs, true));
         }
+        if let Some(symbol_val) = symbol {
+            query = query.bind(symbol_val);
+        }
 
         // 处理 token_address，如果为空，设置为空字符串
         let token_address = coin_id.token_address.clone().unwrap_or_default();
-
         // 绑定 WHERE 子句的参数
-        query = query.bind(token_address).bind(&coin_id.symbol).bind(&coin_id.chain_code);
+        query = query
+            .bind(token_address)
+            // .bind(&coin_id.symbol)
+            .bind(&coin_id.chain_code);
 
-        // 执行查询
-        query
-            .fetch_all(exec)
-            // .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        let _res = query.execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
     }
 
     // only update price
@@ -612,7 +618,7 @@ impl CoinEntity {
             sql.push_str(&format!(" AND coin.chain_code = '{}'", chain_code));
         } else {
             // TODO: 优化目前只查询这些链的数据,后续支持了更多的链进行删除
-            sql.push_str(" AND coin.chain_code in ('tron','bnb','eth')");
+            sql.push_str(" AND coin.chain_code in ('tron','bnb','eth','sol')");
         }
 
         if !exclude_token.is_empty() {
@@ -653,5 +659,17 @@ impl CoinEntity {
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn delete_wsol_error<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "delete from coin where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112';";
+        let _r = sqlx::query::<_>(&sql)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
     }
 }

@@ -1,4 +1,4 @@
-use crate::entities::assets::AssetsId;
+use crate::entities::{assets::AssetsId, coin::CoinEntity};
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 pub struct ApiAssetsEntity {

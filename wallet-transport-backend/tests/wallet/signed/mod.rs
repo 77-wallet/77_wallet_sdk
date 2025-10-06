@@ -66,19 +66,6 @@ async fn test_signed_find_address() -> Result<(), wallet_transport_backend::Erro
 
 #[tokio::test]
 async fn signed_order_update_signed_hash() -> Result<(), wallet_transport_backend::Error> {
-    // let backend_api = init()?; // Initialize the cryptor and API
-
-    // let req = SignedUpdateSignedHashReq::new(
-    //     "66ac4377c44f4c2b76932a1f",
-    //     "e0cbbf993ccdf05a1f3f620b245673f63407ec6b94447e6b489cbeeb686730ec",
-    //     "TL5YGitvEyqUakseGRED2jDUJ8sv6qpLaR",
-    // );
-    // let res = backend_api.signed_order_update_signed_hash(req)
-    //     .await
-    //     .unwrap();
-
-    // println!("[signed_order_update_signed_hash] res: {res:?}");
-
     Ok(())
 }
 

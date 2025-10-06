@@ -1,7 +1,8 @@
 use crate::get_manager;
-
 pub mod eth_swap;
 use anyhow::Result;
+pub mod sol_swap;
+
 use wallet_api::request::transaction::{
     ApproveReq, DexRoute, QuoteReq, RouteInDex, SwapReq, SwapTokenInfo, SwapTokenListReq,
 };
@@ -10,7 +11,7 @@ use wallet_api::request::transaction::{
 async fn test_default_quote() -> Result<()> {
     let wallet_manager = get_manager().await;
 
-    let chain_code = "tron".to_string();
+    let chain_code = "sol".to_string();
     let token_in = "".to_string();
     // let token_out = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string();
 
@@ -33,9 +34,9 @@ async fn test_token_list() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let req = SwapTokenListReq {
-        chain_code: "".to_string(),
+        chain_code: "sol".to_string(),
         search: "".to_string(),
-        wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
+        wallet_address: "0x67Fd771e4698D04f19ef4b29B8A95d5637f52B7C".to_string(),
         account_id: 1,
         exclude_token: vec![],
         page_num: 0,

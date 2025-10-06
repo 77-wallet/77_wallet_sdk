@@ -14,7 +14,6 @@ use crate::{
 };
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
-use wallet_chain_interact::BillResourceConsume;
 use wallet_database::{
     dao::{multisig_account::MultisigAccountDaoV1, multisig_queue::MultisigQueueDaoV1},
     entities,
@@ -23,7 +22,6 @@ use wallet_database::{
         bill::{
             BillEntity, BillKind, BillStatus, BillUpdateEntity, RecentBillListVo, SyncBillEntity,
         },
-        coin::CoinEntity,
         multisig_account::{MultisigAccountPayStatus, MultisigAccountStatus},
         multisig_queue::{MemberSignedResult, MultisigQueueStatus},
     },
@@ -76,14 +74,16 @@ impl TransactionService {
     pub async fn transaction_fee(
         mut params: transaction::BaseTransferReq,
     ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let token_address = params.token_address.clone().unwrap_or_default();
         let coin =
-            CoinDomain::get_coin(&params.chain_code, &params.symbol, params.token_address.clone())
-                .await?;
+            CoinRepo::coin_by_chain_address(&params.chain_code, &token_address, &pool).await?;
 
         params.with_decimals(coin.decimals);
         params.with_token(coin.token_address());
 
-        let main_coin = ChainTransDomain::main_coin(&params.chain_code).await?;
+        let main_coin = CoinRepo::main_coin(&params.chain_code, &pool).await?;
 
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.chain_code).await?;
         let fee = adapter.estimate_fee(params, main_coin.symbol.as_str()).await?;
@@ -99,7 +99,15 @@ impl TransactionService {
     ) -> Result<TransactionResult, crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&params.base.chain_code).await?;
 
-        let tx_hash = ChainTransDomain::transfer(params, bill_kind, &adapter).await?;
+        let private_key = ChainTransDomain::get_key(
+            &params.base.from,
+            &params.base.chain_code,
+            &params.password,
+            &params.signer,
+        )
+        .await?;
+
+        let tx_hash = ChainTransDomain::transfer(params, bill_kind, &adapter, private_key).await?;
         Ok(TransactionResult { tx_hash })
     }
 
@@ -156,36 +164,14 @@ impl TransactionService {
         let mut bill = BillRepo::get_by_hash_and_owner(&tx_hash, owner, &pool).await?;
         bill.truncate_to_8_decimals();
 
-        let sign = Self::handle_queue_member(&bill, pool.clone()).await;
+        let signature = Self::handle_queue_member(&bill, pool.clone()).await;
 
-        let main_coin = CoinEntity::main_coin(&bill.chain_code, pool.as_ref()).await?.ok_or(
-            crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::Coin(
-                    crate::error::business::coin::CoinError::NotFound(format!(
-                        "chain = {}",
-                        bill.chain_code
-                    )),
-                ),
-            ),
-        )?;
+        let main_coin = CoinRepo::main_coin(&bill.chain_code, &pool).await?;
 
-        let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
-        {
-            Some(BillResourceConsume::from_json_str(&bill.resource_consume)?)
-        } else {
-            None
-        };
+        let mut res = BillDetailVo::new(bill, main_coin.symbol, signature)?;
 
-        let mut res = BillDetailVo {
-            bill,
-            resource_consume,
-            signature: sign,
-            fee_symbol: main_coin.symbol,
-            wallet_name: "".to_string(),
-            account_name: "".to_string(),
-        };
+        // 根据地址和链获取钱包名称
         if !res.bill.to_addr.is_empty() {
-            // 根据地址和链获取钱包名称
             let account =
                 AccountRepo::account_with_wallet(&res.bill.to_addr, &res.bill.chain_code, &pool)
                     .await;

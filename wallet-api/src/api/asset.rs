@@ -172,10 +172,9 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
     use crate::{response_vo::chain::ChainList, test::env::get_manager};
     use anyhow::Result;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_add_assets() -> Result<()> {
@@ -188,10 +187,10 @@ mod test {
             account_id,
             // symbol: "BNB".to_string(),
             // wallet_address: "0x57CF28DD99cc444A9EEEEe86214892ec9F295480".to_string(),
-            wallet_address: "0x868Bd024461e572555c26Ed196FfabAA475BFcCd".to_string(),
+            wallet_address: "0xEB2b4F967D9a6BeA958dDe3e5814BbE33A5CBfE2".to_string(),
             chain_list: ChainList(HashMap::from([(
-                "eth".to_string(),
-                "0x111111111117dC0aa78b770fA6A738034120C302".to_string(),
+                "sol".to_string(),
+                "So11111111111111111111111111111111111111112".to_string(),
             )])), // token_address,
         };
         let res = wallet_manager.add_coin(add_coin_req).await?;
@@ -381,7 +380,7 @@ mod test {
         wallet_utils::init_test_log();
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
-        wallet_manager.set_currency("USD").await;
+        wallet_manager.set_currency("USD").await?;
         // let address = "TCWBCCuapMcnrSxhudiNshq1UK4nCvZren";
         // let address = "0x9e2BEf062f301C85589E342d569058Fd4a1334d7";
         let address = "0x57CF28DD99cc444A9EEEEe86214892ec9F295480";
@@ -424,7 +423,7 @@ mod test {
 
         let account_id = Some(1);
 
-        wallet_manager.set_currency("USD").await;
+        wallet_manager.set_currency("USD").await?;
         let res =
             wallet_manager.get_assets_list_v2(address, account_id, chain_code, is_multisig).await?;
         // tracing::info!("get_account_chain_assets: {res:?}");

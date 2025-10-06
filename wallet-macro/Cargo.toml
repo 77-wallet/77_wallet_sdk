@@ -18,4 +18,4 @@ sqlx = { version = "0.7", features = [
     "sqlite",
 ] }
 
-macros = { version = "0.1.0", path = "macros"}
+macros = { version = "0.1.0", path = "macros" }

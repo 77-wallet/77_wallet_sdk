@@ -4,15 +4,17 @@ use crate::{
     domain::{
         self,
         chain::{
-            TransferResp, pare_fee_setting,
-            swap::evm_swap::SwapParams,
+            TransferResp,
+            adapter::sol_tx::{self, DEFAULT_UNITS_FEE, TOKEN_ACCOUNT_REND},
+            pare_fee_setting,
+            swap::{W_SOL, evm_swap::SwapParams},
             transaction::{ChainTransDomain, DEFAULT_UNITS},
         },
         coin::TokenCurrencyGetter,
     },
-    infrastructure::swap_client::AggQuoteResp,
+    infrastructure::swap_client::{AggQuoteResp, SolInstructResp},
     request::transaction::{self, DepositReq, QuoteReq, SwapReq, WithdrawReq},
-    response_vo::{self, FeeDetails, TronFeeDetails},
+    response_vo::{self, CommonFeeDetails, FeeDetails, TronFeeDetails},
 };
 use alloy::primitives::U256;
 use std::collections::HashMap;
@@ -22,7 +24,7 @@ use wallet_chain_interact::{
     dog,
     eth::{self},
     ltc,
-    sol::{self, operations::SolInstructionOperation},
+    sol::{self, SolFeeSetting, operations::SolInstructionOperation},
     sui,
     ton::{self},
     tron::{
@@ -829,6 +831,7 @@ impl TransactionAdapter {
         let resp = match self {
             Self::Ethereum(chain) => eth_tx::allowance(chain, from, token, spender).await?,
             Self::Tron(chain) => tron_tx::allowance(chain, from, token, spender).await?,
+            Self::Solana(_chain) => U256::MAX,
             _ => {
                 return Err(crate::error::business::BusinessError::Chain(
                     crate::error::business::chain::ChainError::NotSupportChain,
@@ -839,14 +842,61 @@ impl TransactionAdapter {
         Ok(resp)
     }
 
+    pub async fn sol_swap_fee(
+        &self,
+        req: &QuoteReq,
+        consumer: Option<u64>,
+    ) -> Result<SolFeeSetting, crate::error::service::ServiceError> {
+        match self {
+            Self::Solana(chain) => {
+                // 需要预留 账号租金
+                let mut fee_setting = SolFeeSetting {
+                    base_fee: DEFAULT_UNITS_FEE,
+                    priority_fee_per_compute_unit: None,
+                    compute_units_consumed: consumer.unwrap_or(0),
+                    extra_fee: None,
+                };
+
+                // 没有目标代币,需要一部分的费用
+                if !req.token_out.token_addr.is_empty() {
+                    let account = chain
+                        .get_provider()
+                        .token_balance(&req.token_out.token_addr, &req.recipient)
+                        .await?;
+
+                    if account.value.is_empty() {
+                        fee_setting.extra_fee = Some(TOKEN_ACCOUNT_REND)
+                    }
+                };
+
+                // 如果没有中间代币 WSOL,考虑手续费
+                if req.is_native() {
+                    let account = chain.get_provider().token_balance(W_SOL, &req.recipient).await?;
+
+                    if account.value.is_empty() {
+                        if let Some(extra_fee) = fee_setting.extra_fee {
+                            fee_setting.extra_fee = Some(extra_fee + TOKEN_ACCOUNT_REND)
+                        } else {
+                            fee_setting.extra_fee = Some(TOKEN_ACCOUNT_REND)
+                        }
+                    }
+                }
+
+                Ok(fee_setting)
+            }
+            _ => {
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
+            }
+        }
+    }
+
     pub async fn swap_quote(
         &self,
         req: &QuoteReq,
         quote_resp: &AggQuoteResp,
         symbol: &str,
+        sol_instructions: Option<SolInstructResp>,
     ) -> Result<(U256, String, String), crate::error::service::ServiceError> {
-        // let amount_out = quote_resp.amount_out_u256()?;
-
         // 考虑滑点计算最小金额
         let min_amount_out = U256::from(1);
 
@@ -854,14 +904,8 @@ impl TransactionAdapter {
             let currency = crate::app_state::APP_STATE.read().await;
             currency.currency().to_string()
         };
-
-        let token_currency = domain::coin::token_price::TokenCurrencyGetter::get_currency(
-            &currency,
-            &req.chain_code,
-            symbol,
-            None,
-        )
-        .await?;
+        let token_currency =
+            TokenCurrencyGetter::get_currency(&currency, &req.chain_code, symbol, None).await?;
 
         let resp = match self {
             Self::Ethereum(chain) => {
@@ -878,13 +922,7 @@ impl TransactionAdapter {
 
                 let resp = eth_tx::estimate_swap(swap_params, chain).await?;
 
-                // let instance = std::time::Instant::now();
-                // let backend_api = crate::Context::get_global_backend_api()?;
-                // let gas_oracle =
-                //     ChainTransDomain::gas_oracle(&req.chain_code, &chain.provider, backend_api)
-                //         .await?;
                 let gas_oracle = ChainTransDomain::default_gas_oracle(&chain.provider).await?;
-                // tracing::warn!("gas oracle time: {}", instance.elapsed().as_secs_f64());
                 let fee = FeeDetails::try_from((gas_oracle, resp.consumer.to::<i64>()))?
                     .to_resp(token_currency, &currency);
 
@@ -916,6 +954,19 @@ impl TransactionAdapter {
 
                 (resp.amount_out, consumer, fee)
             }
+            Self::Solana(chain) => {
+                let resp =
+                    sol_tx::estimate_swap(&req.recipient, sol_instructions.unwrap(), chain).await?;
+
+                // let fee_setting = self.sol_swap_fee(&req, Some(resp.consumer)).await?;
+
+                // let fee = fee_setting.transaction_fee();
+                // let consumer = wallet_utils::serde_func::serde_to_string(&fee_setting)?;
+                // let sol_fee =
+                //     CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+
+                (resp.amount_out, "".to_string(), "".to_string())
+            }
             _ => {
                 return Err(crate::error::business::BusinessError::Chain(
                     crate::error::business::chain::ChainError::NotSupportChain,
@@ -931,16 +982,18 @@ impl TransactionAdapter {
         req: &SwapReq,
         fee: String,
         key: ChainPrivateKey,
+        instructions: Option<SolInstructResp>,
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
         let swap_params = SwapParams::try_from(req)?;
 
         let resp = match self {
             Self::Ethereum(chain) => eth_tx::swap(chain, &swap_params, fee, key).await?,
             Self::Tron(chain) => tron_tx::swap(chain, &swap_params, key).await?,
+            Self::Solana(chain) => {
+                sol_tx::swap(chain, req, fee, instructions.unwrap(), key).await?
+            }
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -961,7 +1014,7 @@ impl TransactionAdapter {
             TokenCurrencyGetter::get_currency(&currency, &req.chain_code, &main_coin.symbol, None)
                 .await?;
         let value = wallet_utils::unit::convert_to_u256(&req.amount, main_coin.decimals)?;
-
+        // 返回具体消耗了多少资源以及费用的包装结构
         let resp = match self {
             Self::Tron(chain) => {
                 let resource = tron_tx::deposit_fee(chain, &req, value).await?;
@@ -985,10 +1038,18 @@ impl TransactionAdapter {
 
                 (consumer, fee)
             }
+            Self::Solana(chain) => {
+                let resource = sol_tx::deposit_fee(chain, &req, value).await?;
+                let fee = resource.transaction_fee();
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
+
+                let fee = CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+
+                (consumer, fee)
+            }
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1003,12 +1064,11 @@ impl TransactionAdapter {
         value: U256,
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
         let resp = match self {
-            Self::Tron(chain) => tron_tx::deposit(chain, &req, value, key).await?,
-            Self::Ethereum(chain) => eth_tx::deposit(chain, &req, value, fee, key).await?,
+            Self::Tron(chain) => tron_tx::deposit(chain, req, value, key).await?,
+            Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, fee, key).await?,
+            Self::Solana(chain) => sol_tx::deposit(chain, req, value, fee, key).await?,
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1054,10 +1114,17 @@ impl TransactionAdapter {
 
                 (consumer, fee)
             }
+            Self::Solana(chain) => {
+                let resource = sol_tx::withdraw_fee(chain, &req, value).await?;
+                let fee = resource.transaction_fee();
+
+                let consumer = wallet_utils::serde_func::serde_to_string(&resource)?;
+                let fee = CommonFeeDetails::new(fee, token_currency, &currency)?.to_json_str()?;
+
+                (consumer, fee)
+            }
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1072,131 +1139,14 @@ impl TransactionAdapter {
         value: U256,
     ) -> Result<TransferResp, crate::error::service::ServiceError> {
         let resp = match self {
-            Self::Tron(chain) => tron_tx::withdraw(chain, &req, value, key).await?,
-            Self::Ethereum(chain) => eth_tx::withdraw(chain, &req, value, fee, key).await?,
+            Self::Tron(chain) => tron_tx::withdraw(chain, req, value, key).await?,
+            Self::Ethereum(chain) => eth_tx::withdraw(chain, req, value, fee, key).await?,
+            Self::Solana(chain) => sol_tx::withdraw(chain, req, value, fee, key).await?,
             _ => {
-                return Err(crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotSupportChain,
-                ))?;
+                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
             }
         };
 
         Ok(resp)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        domain::chain::adapter::ChainAdapterFactory,
-        infrastructure::swap_client::AggQuoteResp,
-        request::transaction::{DexRoute, QuoteReq, RouteInDex, SwapTokenInfo},
-    };
-    use wallet_utils::{init_test_log, unit};
-
-    #[tokio::test]
-    async fn test_estimate_swap() {
-        init_test_log();
-
-        let chain_code = "tron";
-        // let rpc_url = "http://127.0.0.1:8545";
-        let rpc_url = "http://100.78.188.103:8090";
-        // let rpc_url = "https://api.nileex.io";
-
-        let adapter =
-            ChainAdapterFactory::get_node_transaction_adapter(chain_code, rpc_url).await.unwrap();
-
-        let amount_in = unit::convert_to_u256("0.1", 6).unwrap();
-
-        // TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf
-
-        // 模拟聚合器的响应
-        let resp = AggQuoteResp {
-            chain_code: "tron".to_string(),
-            amount_in: amount_in.to_string(),
-            amount_out: "0".to_string(),
-            dex_route_list: vec![DexRoute {
-                percentage: "100".to_string(),
-                amount_in: amount_in.to_string(),
-                amount_out: "0".to_string(),
-                route_in_dex: vec![
-                    RouteInDex {
-                        dex_id: 3,
-                        pool_id: "TSUUVjysXV8YqHytSNjfkNXnnB49QDvZpx".to_string(),
-                        zero_for_one: true,
-                        amount_in: amount_in.to_string(),
-                        min_amount_out: "0".to_string(),
-                        in_token_symbol: "TUSD".to_string(),
-                        in_token_addr: "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR".to_string(),
-                        out_token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-                        out_token_symbol: "USDT".to_string(),
-                        fee: "0".to_string(),
-                    },
-                    // RouteInDex {
-                    //     dex_id: 2,
-                    //     pool_id: "0x3041CbD36888bECc7bbCBc0045E3B1f144466f5f".to_string(),
-                    //     zero_for_one: true,
-                    //     amount_in: "0".to_string(),
-                    //     min_amount_out: "0".to_string(),
-                    //     in_token_addr: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string(),
-                    //     out_token_addr: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-                    //     fee: "0".to_string(),
-                    // },
-                ],
-            }],
-            default_slippage: 2,
-        };
-
-        let token_in =
-            SwapTokenInfo { token_addr: "".to_string(), symbol: "WTRX".to_string(), decimals: 6 };
-
-        let token_out = SwapTokenInfo {
-            token_addr: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
-            symbol: "USDT".to_string(),
-            decimals: 6,
-        };
-
-        let req = QuoteReq {
-            aggregator_addr: "TRNawqG4rNmbLr3Z7qXzpbbxHqciy9BVDC".to_string(),
-            recipient: "TMrVocuPpNqf3fpPSSWy7V8kyAers3p1Jc".to_string(),
-            chain_code: "tron".to_string(),
-            amount_in: "0.1".to_string(),
-            token_in,
-            token_out,
-            dex_list: vec![3],
-            slippage: Some(0.2),
-            allow_partial_fill: true,
-        };
-
-        let result = adapter.swap_quote(&req, &resp, "usdt").await.unwrap();
-
-        // tracing::warn!(
-        //     "amount_in {}",
-        //     unit::format_to_f64(result.amount_in, req.token_in.decimals as u8).unwrap(),
-        // );
-
-        tracing::warn!(
-            "amount_out {}",
-            unit::format_to_f64(result.0, req.token_out.decimals as u8).unwrap(),
-        );
-    }
-}
-// pub async fn deposit(
-//     &self,
-//     req: &transaction::DepositParams,
-//     decimals: u8,
-//     key: ChainPrivateKey,
-// ) -> Result<String, crate::ServiceError> {
-//     let value = wallet_utils::unit::convert_to_u256(&req.value, decimals)?;
-
-//     let hash = match self {
-//         Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, key).await?,
-//         _ => {
-//             return Err(crate::BusinessError::Chain(
-//                 crate::ChainError::NotSupportChain,
-//             ))?
-//         }
-//     };
-
-//     Ok(hash)
-// }

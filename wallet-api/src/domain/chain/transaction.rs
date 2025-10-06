@@ -35,6 +35,8 @@ use wallet_utils::unit;
 // sol 默认计算单元
 pub const DEFAULT_UNITS: u64 = 100_000;
 
+// 链的交易要单独出来
+
 pub struct ChainTransDomain;
 
 impl ChainTransDomain {
@@ -148,6 +150,7 @@ impl ChainTransDomain {
         mut params: transaction::TransferReq,
         bill_kind: BillKind,
         adapter: &TransactionAdapter,
+        private_key: ChainPrivateKey,
     ) -> Result<String, crate::error::service::ServiceError> {
         //  check ongoing tx
         if Self::check_ongoing_bill(&params.base.from, &params.base.chain_code).await? {
@@ -155,14 +158,6 @@ impl ChainTransDomain {
                 crate::error::business::bill::BillError::ExistsUnConfirmationTx,
             ))?;
         };
-
-        let private_key = ChainTransDomain::get_key(
-            &params.base.from,
-            &params.base.chain_code,
-            &params.password,
-            &params.signer,
-        )
-        .await?;
 
         let coin = CoinDomain::get_coin(
             &params.base.chain_code,

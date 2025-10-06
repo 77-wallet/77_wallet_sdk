@@ -170,7 +170,7 @@ impl AcctChange {
             && !self.to_addr.is_empty()
             && !self.from_addr.is_empty()
         {
-            Self::system_notification(msg_id, &self, &pool).await?;
+            Self::system_notification(msg_id, self, &pool).await?;
         }
 
         // send acct_change to frontend

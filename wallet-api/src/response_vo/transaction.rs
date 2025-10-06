@@ -1,7 +1,11 @@
 use super::account::{BalanceInfo, BalanceNotTruncate, default_unit_price_as_zero};
 use crate::request::transaction::Signer;
 use alloy::primitives::U256;
-use wallet_chain_interact::{eth, eth::FeeSetting, tron};
+use wallet_chain_interact::{
+    BillResourceConsume,
+    eth::{self, FeeSetting},
+    tron,
+};
 use wallet_database::entities::{
     bill::{BillEntity, BillKind},
     multisig_queue::{MemberSignedResult, MultisigQueueStatus, NewMultisigQueueEntity},
@@ -75,11 +79,35 @@ impl From<&TransferParams> for NewMultisigQueueEntity {
 pub struct BillDetailVo {
     #[serde(flatten)]
     pub bill: BillEntity,
-    pub resource_consume: Option<wallet_chain_interact::BillResourceConsume>,
+    pub resource_consume: Option<BillResourceConsume>,
     pub fee_symbol: String,
     pub signature: Option<Vec<MemberSignedResult>>,
     pub wallet_name: String,
     pub account_name: String,
+}
+
+impl BillDetailVo {
+    pub fn new(
+        bill: BillEntity,
+        fee_symbol: String,
+        signature: Option<Vec<MemberSignedResult>>,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
+        {
+            Some(BillResourceConsume::from_json_str(&bill.resource_consume)?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            bill,
+            resource_consume,
+            fee_symbol,
+            signature,
+            wallet_name: "".to_string(),
+            account_name: "".to_string(),
+        })
+    }
 }
 
 // about fee estimate fee

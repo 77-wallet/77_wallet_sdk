@@ -1,6 +1,7 @@
 use crate::{
-    api::ReturnType, manager::WalletManager,
-    response_vo::api_wallet::assets::ApiAccountChainAssetList,
+    api::ReturnType,
+    manager::WalletManager,
+    response_vo::{account::Balance, api_wallet::assets::ApiAccountChainAssetList},
     service::api_wallet::asset::ApiAssetsService,
 };
 
@@ -19,12 +20,12 @@ impl WalletManager {
     // 根据钱包去同步资产
     pub async fn sync_api_assets_by_wallet(
         &self,
-        wallet_address: &str,
+        wallet_address: String,
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
         let res = ApiAssetsService::new()
-            .sync_assets_by_wallet_chain(wallet_address, account_id, symbol)
+            .sync_assets_by_wallet_backend(wallet_address, account_id, symbol)
             .await;
 
         if let Err(e) = res {
@@ -34,12 +35,21 @@ impl WalletManager {
 
         Ok(())
     }
+
+    // 查询链上的余额，并更新本地表
+    pub async fn api_chain_balance(
+        &self,
+        address: String,
+        chain_code: String,
+        token_address: String,
+    ) -> ReturnType<Balance> {
+        ApiAssetsService::new().chain_balance(&address, &chain_code, &token_address).await
+    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::test::env::get_manager;
-
     use anyhow::Result;
 
     #[tokio::test]
@@ -48,7 +58,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
+        let wallet_address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b".to_string();
         let index = None;
 
         let res = wallet_manager.sync_api_assets_by_wallet(wallet_address, index, vec![]).await;

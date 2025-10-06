@@ -127,4 +127,15 @@ impl BackendApi {
         let req = json!({});
         self.post_request::<_, SupportChain>(endpoint, &req).await
     }
+
+    pub async fn support_chain_list_v2(
+        &self,
+        app_version: String,
+    ) -> Result<SupportChain, crate::Error> {
+        let endpoint = "chain/swapSupportChain/v2/list";
+        let req = json!({
+            "appVersionCode": app_version
+        });
+        self.post_request::<_, SupportChain>(endpoint, &req).await
+    }
 }
