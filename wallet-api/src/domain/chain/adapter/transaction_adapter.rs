@@ -885,7 +885,7 @@ impl TransactionAdapter {
                 Ok(fee_setting)
             }
             _ => {
-                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
             }
         }
     }
@@ -993,7 +993,7 @@ impl TransactionAdapter {
                 sol_tx::swap(chain, req, fee, instructions.unwrap(), key).await?
             }
             _ => {
-                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1049,7 +1049,7 @@ impl TransactionAdapter {
                 (consumer, fee)
             }
             _ => {
-                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1068,7 +1068,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::deposit(chain, req, value, fee, key).await?,
             Self::Solana(chain) => sol_tx::deposit(chain, req, value, fee, key).await?,
             _ => {
-                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1124,7 +1124,7 @@ impl TransactionAdapter {
                 (consumer, fee)
             }
             _ => {
-                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
             }
         };
 
@@ -1143,7 +1143,7 @@ impl TransactionAdapter {
             Self::Ethereum(chain) => eth_tx::withdraw(chain, req, value, fee, key).await?,
             Self::Solana(chain) => sol_tx::withdraw(chain, req, value, fee, key).await?,
             _ => {
-                return Err(crate::BusinessError::Chain(crate::ChainError::NotSupportChain))?;
+                return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::NotSupportChain))?;
             }
         };
 

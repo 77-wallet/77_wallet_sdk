@@ -148,7 +148,7 @@ impl CoinDomain {
             ChainCode::Tron => Ok(chain_stable_coin::TRON),
             ChainCode::Solana => Ok(chain_stable_coin::SOLANA),
             _ => {
-                Err(crate::BusinessError::Coin(crate::CoinError::NotFound(chain_code.to_string())))?
+                Err(crate::error::business::BusinessError::Coin(crate::error::business::coin::CoinError::NotFound(chain_code.to_string())))?
             }
         }
     }

@@ -38,6 +38,9 @@ async fn run(
         .await?;
     tracing::warn!("wallet ------------------------ 1: {wallet_uid:#?}");
 
+    let res = wallet_manager.get_api_wallet_list(   ApiWalletType::SubAccount).await?;
+    tracing::warn!("get withdraw wallet list ------------------------ 2: {res:#?}");
+
     let salt1 = "q1111112";
     let binding_address = None;
     let withdrawal_uid = wallet_manager
@@ -54,7 +57,7 @@ async fn run(
             binding_address,
         )
         .await?;
-    tracing::warn!("wallet ------------------------ 2: {withdrawal_uid:#?}");
+    tracing::warn!("withdraw wallet ------------------------ 2: {withdrawal_uid:#?}");
 
     let res = wallet_manager
         .scan_bind(
