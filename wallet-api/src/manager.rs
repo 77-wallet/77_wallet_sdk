@@ -39,14 +39,12 @@ impl WalletManager {
         .await?;
 
         let handles = Arc::new(Handles::new("").await);
+        handles.get_global_unconfirmed_msg_processor().start().await;
+        handles.get_global_task_manager().start_task_check().await?;
         context.set_global_handles(Arc::downgrade(&handles));
-        context.get_global_unconfirmed_msg_processor().start().await;
-        context.get_global_task_manager().start_task_check().await?;
         let pool = context.get_global_sqlite_pool()?;
-        let repo_factory = wallet_database::factory::RepositoryFactory::new(pool);
-
+        let repo_factory = RepositoryFactory::new(pool);
         let manager = WalletManager { repo_factory, ctx: context, handles };
-
         Ok(manager)
     }
 
@@ -112,7 +110,7 @@ impl WalletManager {
     async fn close_handles(&self) -> Result<(), crate::error::service::ServiceError> {
         let withdraw_handle = self.handles.get_global_processed_withdraw_tx_handle();
         withdraw_handle.close().await?;
-        let fee_handle = self.ctx.get_global_processed_fee_tx_handle();
+        let fee_handle = self.handles.get_global_processed_fee_tx_handle();
         fee_handle.close().await?;
         Ok(())
     }

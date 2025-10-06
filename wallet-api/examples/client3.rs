@@ -7,6 +7,7 @@ use wallet_api::{
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
+use wallet_api::request::api_wallet::account::CreateApiAccountReq;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 async fn run(
@@ -21,78 +22,109 @@ async fn run(
     let account_name = "ccccc";
     let is_default_name = true;
     let wallet_password = "q1111111";
-    let binding_address = None;
-    let wallet_uid = wallet_manager
-        .create_api_wallet(
-            language_code,
-            phrase,
-            salt,
-            wallet_name,
-            account_name,
-            is_default_name,
-            wallet_password,
-            None,
-            ApiWalletType::SubAccount,
-            binding_address,
-        )
-        .await?;
-    tracing::warn!("wallet ------------------------ 1: {wallet_uid:#?}");
+    // let binding_address = None;
+    // let wallet_uid = wallet_manager
+    //     .create_api_wallet(
+    //         language_code,
+    //         phrase,
+    //         salt,
+    //         wallet_name,
+    //         account_name,
+    //         is_default_name,
+    //         wallet_password,
+    //         None,
+    //         ApiWalletType::SubAccount,
+    //         binding_address,
+    //     )
+    //     .await?;
+    // tracing::info!("子wallet创建成功 ------------------------ 1: {wallet_uid:#?}");
 
     let res = wallet_manager.get_api_wallet_list(   ApiWalletType::SubAccount).await?;
-    tracing::warn!("get withdraw wallet list ------------------------ 2: {res:#?}");
+    tracing::info!("get withdraw wallet list ------------------------ 2: {res:#?}");
 
     let salt1 = "q1111112";
-    let binding_address = None;
-    let withdrawal_uid = wallet_manager
-        .create_api_wallet(
-            language_code,
-            phrase,
-            salt1,
-            wallet_name,
-            account_name,
-            is_default_name,
-            wallet_password,
-            None,
-            ApiWalletType::Withdrawal,
-            binding_address,
-        )
-        .await?;
-    tracing::warn!("withdraw wallet ------------------------ 2: {withdrawal_uid:#?}");
+    // let binding_address = None;
+    // let withdrawal_uid = wallet_manager
+    //     .create_api_wallet(
+    //         language_code,
+    //         phrase,
+    //         salt1,
+    //         wallet_name,
+    //         account_name,
+    //         is_default_name,
+    //         wallet_password,
+    //         None,
+    //         ApiWalletType::Withdrawal,
+    //         binding_address,
+    //     )
+    //     .await?;
+    // tracing::info!("withdraw wallet 创建成功 ------------------------ 2: {withdrawal_uid:#?}");
 
-    let res = wallet_manager
-        .scan_bind(
-            "68c27fb92e52f46cef896318",
-            "68be7271a7307e042404e276",
-            &wallet_uid,
-            &withdrawal_uid,
-        )
-        .await?;
-    tracing::info!("bind_merchant ------------------- 3: {res:#?}");
 
+    wallet_manager.set_passwd_cache(wallet_password).await?;
+    tracing::info!("绑定钱包之前必须设置密码成功 ------------------------ ");
+
+    // let res = wallet_manager
+    //     .scan_bind(
+    //         "L1971511236021600267",
+    //         "68be7271a7307e042404e276",
+    //         &wallet_uid,
+    //         &withdrawal_uid,
+    //     )
+    //     .await?;
+    // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
+
+    // let res = wallet_manager
+    //     .update_collect_strategy(
+    //         &wallet_uid,
+    //         1.1,
+    //         vec![ChainConfig {
+    //             chain_code: ChainCode::Tron.to_string(),
+    //             normal_address: IndexAndAddress {
+    //                 index: Some(0),
+    //                 address: "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n".to_string(),
+    //             },
+    //             risk_address: IndexAndAddress {
+    //                 index: Some(1),
+    //                 address: "TNoacEYG6dCB2z9aWPVYspz1qrxHDoe8Bv".to_string(),
+    //             },
+    //         }],
+    //     )
+    //     .await;
+    // match res {
+    //     Ok(reason) => {
+    //         tracing::info!("更新归集策略成功 --------------------- ");
+    //     }
+    //
+    //     Err(err) => {
+    //         tracing::error!("更新归集策略失败 --------------------- 5: {err:#?}");
+    //     }
+    // }
+
+    let wallet_uid = "04b003d17f8a5bb2a1ce7591701a954c15d856ca0e30213b75a1ad8bdeaac339";
     let res = wallet_manager
-        .update_collect_strategy(
+        .update_withdrawal_strategy(
             &wallet_uid,
             1.1,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n".to_string(),
+                    address: "TKZfm5WcgdC4H1kUapwP1qPxcUcrabJ9sf".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TNoacEYG6dCB2z9aWPVYspz1qrxHDoe8Bv".to_string(),
+                    address: "TBVj8FQT5zcYCkTRiv6Ri62J9KkwJR6Y2D".to_string(),
                 },
             }],
         )
         .await;
     match res {
-        Ok(_) => {
-            tracing::info!("wallet --------------------- 4: {res:#?}");
+        Ok(reason) => {
+            tracing::info!("更新提币策略成功 --------------------- ");
         }
-
-        _ => {
-            tracing::error!("wallet --------------------- 5: {res:#?}");
+        Err(err) => {
+            tracing::error!("更新提币策略失败 --------------------- 5: {err:#?}");
         }
     }
 

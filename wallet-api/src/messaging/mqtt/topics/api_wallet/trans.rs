@@ -1,3 +1,4 @@
+use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 
 use crate::{
@@ -27,7 +28,8 @@ pub struct AwmOrderTransMsg {
     /// 平台交易单号
     trade_no: String,
     /// 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
-    trade_type: u8,
+    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
+    trade_type: u32,
     /// 是否需要审核（可空）： 1 不需要审核 / 2 需要审核
     audit: String,
     uid: String,
@@ -45,6 +47,10 @@ impl AwmOrderTransMsg {
             3 => self.transfer_fee().await?,
             _ => {}
         }
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        backend.msg_ack(msg_ack_req).await?;
         Ok(())
     }
 
@@ -105,7 +111,7 @@ impl AwmOrderTransMsg {
             token_address,
             symbol: self.symbol.to_string(),
             trade_no: self.trade_no.to_string(),
-            trade_type: self.trade_type,
+            trade_type: self.trade_type as u8,
         };
         ApiCollectDomain::collect(&req).await
     }
@@ -124,7 +130,7 @@ impl AwmOrderTransMsg {
             token_address,
             symbol: self.symbol.to_string(),
             trade_no: self.trade_no.to_string(),
-            trade_type: self.trade_type,
+            trade_type: self.trade_type as u8,
         };
         ApiWithdrawDomain::withdraw(&req).await
     }

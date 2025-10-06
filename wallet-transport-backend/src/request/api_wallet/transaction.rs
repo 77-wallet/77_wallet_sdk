@@ -42,7 +42,7 @@ pub enum TransType {
     /// Withdraw
     Wd,
     /// Fee
-    Fee,
+    ColFee,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

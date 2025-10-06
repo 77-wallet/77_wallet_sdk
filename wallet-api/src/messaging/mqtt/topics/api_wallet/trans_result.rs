@@ -1,3 +1,5 @@
+use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
+
 // biz_type = TRANS_RESULT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +18,13 @@ impl AwmOrderTransResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+
+
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        backend.msg_ack(msg_ack_req).await?;
         Ok(())
     }
 }
