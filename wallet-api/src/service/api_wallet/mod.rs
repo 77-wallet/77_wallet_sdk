@@ -1,5 +1,6 @@
 pub(crate) mod account;
 pub(crate) mod asset;
+pub(crate) mod coin;
 pub(crate) mod collect;
 pub(crate) mod fee;
 pub(crate) mod strategy;

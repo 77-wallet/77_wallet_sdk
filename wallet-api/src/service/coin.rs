@@ -13,12 +13,8 @@ use crate::{
             task::Tasks,
         },
     },
-    response_vo::{
-        chain::ChainList,
-        coin::{CoinInfoList, TokenCurrencies, TokenPriceChangeRes},
-    },
+    response_vo::coin::{TokenCurrencies, TokenPriceChangeRes},
 };
-use std::collections::HashMap;
 use wallet_database::{
     DbPool,
     dao::assets::CreateAssetsVo,
@@ -107,36 +103,12 @@ impl CoinService {
             .collect::<Vec<CoinId>>();
 
         tracing::debug!("[get_hot_coin_list] hot_coin_list_symbol_not_in start");
-        let list =
-            tx.hot_coin_list_symbol_not_in(&exclude, chain_code, keyword, page, page_size).await?;
+        let list = CoinRepo::hot_coin_list_symbol_not_in(
+            &pool, &exclude, chain_code, keyword, page, page_size,
+        )
+        .await?;
 
-        let show_contract = keyword.is_some();
-        let mut data = CoinInfoList::default();
-        for coin in list.data {
-            if let Some(d) = data
-                .iter_mut()
-                .find(|info| info.symbol == coin.symbol && info.is_default && coin.is_default == 1)
-            {
-                d.chain_list
-                    .entry(coin.chain_code.clone())
-                    .or_insert(coin.token_address.unwrap_or_default());
-            } else {
-                data.push(crate::response_vo::coin::CoinInfo {
-                    symbol: coin.symbol.clone(),
-                    name: Some(coin.name.clone()),
-                    chain_list: ChainList(HashMap::from([(
-                        coin.chain_code.clone(),
-                        coin.token_address.unwrap_or_default(),
-                    )])),
-                    is_default: coin.is_default == 1,
-                    hot_coin: coin.status == 1,
-                    show_contract,
-                })
-            }
-        }
-
-        // let pool = tx.pool();
-        // AssetsDomain::show_contract(&pool, keyword, &mut data).await?;
+        let data = CoinDomain::merge_coin_to_list(list.data, keyword.is_some())?;
 
         let res = wallet_database::pagination::Pagination {
             page,

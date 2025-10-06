@@ -4,8 +4,6 @@ use crate::response_vo::chain::ChainList;
 pub struct AddCoinReq {
     pub wallet_address: String,
     pub account_id: u32,
-    // pub symbol: String,
-    // pub chain_code: Option<String>,
     pub chain_list: ChainList,
 }
 #[derive(Debug)]

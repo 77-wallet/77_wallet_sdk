@@ -1,8 +1,5 @@
 use crate::{
-    entities::{
-        api_assets::ApiAssetsEntity,
-        assets::{AssetsId, AssetsIdVo},
-    },
+    entities::{api_assets::ApiAssetsEntity, assets::AssetsIdVo},
     error::DatabaseError,
     sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
@@ -109,35 +106,24 @@ impl ApiAssetsDao {
             .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
-    pub async fn delete_assets<'a, E>(exec: E, assets_id: &AssetsId) -> Result<(), crate::Error>
+    pub async fn delete_assets<'a, E>(
+        exec: E,
+        address: &str,
+        chain_code: &str,
+        token_address: &str,
+    ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
         UPDATE api_assets 
-        SET status = $5, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE address = $1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
-            AND EXISTS (
-                SELECT 1
-                FROM chain
-                WHERE chain.chain_code = api_assets.chain_code
-                AND chain.status = 1
-            )
-            AND EXISTS (
-                SELECT 1
-                FROM coin
-                WHERE coin.chain_code = api_assets.chain_code
-                AND coin.token_address = api_assets.token_address
-                AND coin.symbol = api_assets.symbol
-                AND coin.status = 1
-            );
-    "#;
+            SET status = $4, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE address = $1 AND chain_code = $2 AND token_address = $3"#;
 
         sqlx::query(sql)
-            .bind(assets_id.address.to_string())
-            .bind(assets_id.symbol.to_string())
-            .bind(assets_id.chain_code.to_string())
-            .bind(assets_id.token_address.clone())
+            .bind(address)
+            .bind(chain_code)
+            .bind(token_address)
             .bind(0) // Assuming 0 is the status for deletion
             .execute(exec)
             .await
@@ -145,42 +131,42 @@ impl ApiAssetsDao {
             .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
-    pub async fn delete_multi_assets<'a, E>(
-        exec: E,
-        assets_ids: Vec<AssetsId>,
-    ) -> Result<(), crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        if assets_ids.is_empty() {
-            return Ok(());
-        }
-        let placeholders = assets_ids.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
+    // pub async fn delete_multi_assets<'a, E>(
+    //     exec: E,
+    //     assets_ids: Vec<AssetsId>,
+    // ) -> Result<(), crate::Error>
+    // where
+    //     E: Executor<'a, Database = Sqlite>,
+    // {
+    //     if assets_ids.is_empty() {
+    //         return Ok(());
+    //     }
+    //     let placeholders = assets_ids.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
 
-        // 构建 SQL 查询
-        let sql = format!(
-            "UPDATE api_assets SET status = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE (address, symbol, chain_code, token_address) IN ({})",
-            placeholders
-        );
+    //     // 构建 SQL 查询
+    //     let sql = format!(
+    //         "UPDATE api_assets SET status = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE (address, symbol, chain_code, token_address) IN ({})",
+    //         placeholders
+    //     );
 
-        let mut query = sqlx::query(&sql);
+    //     let mut query = sqlx::query(&sql);
 
-        // 绑定参数
-        for assets_id in &assets_ids {
-            let token_address = match &assets_id.token_address {
-                Some(token_address) => token_address.to_string(),
-                None => String::new(),
-            };
-            query = query
-                .bind(&assets_id.address)
-                .bind(&assets_id.symbol)
-                .bind(&assets_id.chain_code)
-                .bind(token_address);
-        }
+    //     // 绑定参数
+    //     for assets_id in &assets_ids {
+    //         let token_address = match &assets_id.token_address {
+    //             Some(token_address) => token_address.to_string(),
+    //             None => String::new(),
+    //         };
+    //         query = query
+    //             .bind(&assets_id.address)
+    //             .bind(&assets_id.symbol)
+    //             .bind(&assets_id.chain_code)
+    //             .bind(token_address);
+    //     }
 
-        // 执行查询
-        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
-    }
+    //     // 执行查询
+    //     query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
+    // }
 
     pub async fn update_status<'a, E>(
         exec: E,

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod asset;
+pub mod coin;
 pub mod collect;
 pub mod fee;
 pub mod strategy;

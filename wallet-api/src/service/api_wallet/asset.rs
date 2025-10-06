@@ -35,19 +35,20 @@ impl ApiAssetsService {
     }
 
     pub async fn add_assets(
-        self,
-        wallet_address: &str,
-        account_id: Option<u32>,
-        chain_list: ChainList,
-        _is_multisig: Option<bool>,
+        req: crate::request::coin::AddCoinReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 钱包下的账号
-        let accounts =
-            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
+        let accounts = ApiAccountRepo::list_by_wallet_address(
+            &pool,
+            &req.wallet_address,
+            Some(req.account_id),
+            None,
+        )
+        .await?;
 
-        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&pool, &chain_list).await?;
+        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&pool, &req.chain_list).await?;
         for coin in coins {
             if let Some(account) =
                 accounts.iter().find(|account| account.chain_code == coin.chain_code)
@@ -69,7 +70,6 @@ impl ApiAssetsService {
     }
 
     pub async fn remove_assets(
-        &mut self,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_list: ChainList,
@@ -80,14 +80,16 @@ impl ApiAssetsService {
         let accounts =
             ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
 
-        let coins = CoinRepo::coin_list_by_chain_token_map_batch(&pool, &chain_list).await?;
+        for (chain_code, token_address) in chain_list.iter() {
+            // 找到对应链的地址
+            let account = accounts.iter().find(|account| account.chain_code == *chain_code);
 
-        // let mut assets_ids = Vec::new();
-        // let mut coin_ids = std::collections::HashSet::new();
+            if let Some(account) = account {
+                ApiAssetsRepo::delete_assets(&pool, &account.address, chain_code, token_address)
+                    .await?;
+            };
+        }
 
-        // 地址，链，token地址
-
-        // ApiAssetsRepo::
         Ok(())
     }
 
@@ -209,6 +211,56 @@ impl ApiAssetsService {
         }
         // res.mark_multichain_assets();
         res.sort_account_chain_assets();
+        Ok(res)
+    }
+
+    // 已添加的资产
+    pub async fn get_added_coin_list(
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        keyword: Option<&str>,
+        _is_multisig: Option<bool>,
+    ) -> Result<crate::response_vo::coin::CoinInfoList, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
+        let account_addresses =
+            ApiAccountDomain::get_addresses(wallet_address, account_id, chain_codes).await?;
+
+        let address = account_addresses.into_iter().map(|a| a.address).collect::<Vec<_>>();
+
+        let assets = ApiAssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+            &pool, address, None, None, None,
+        )
+        .await?;
+
+        let show_contract = keyword.is_some();
+        let mut res = crate::response_vo::coin::CoinInfoList::default();
+        for assets in assets {
+            let coin =
+                CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
+                    .await?;
+            if let Some(info) =
+                res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
+            {
+                info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
+            } else {
+                res.push(crate::response_vo::coin::CoinInfo {
+                    symbol: assets.symbol,
+                    name: Some(assets.name),
+
+                    chain_list: ChainList(HashMap::from([(
+                        assets.chain_code.clone(),
+                        assets.token_address,
+                    )])),
+                    is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
+                    show_contract,
+                });
+            }
+        }
+
         Ok(res)
     }
 }
