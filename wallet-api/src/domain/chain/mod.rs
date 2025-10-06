@@ -2,6 +2,8 @@ pub mod adapter;
 pub mod swap;
 pub mod transaction;
 
+use std::collections::HashSet;
+
 use super::{account::AccountDomain, assets::AssetsDomain, wallet::WalletDomain};
 use crate::{
     domain::app::config::ConfigDomain,
@@ -16,8 +18,13 @@ use wallet_chain_interact::{
     ltc::ParseLtcAddress, ton::address::parse_addr_from_bs64_url,
 };
 use wallet_database::{
-    entities::coin::CoinEntity,
-    repositories::{ResourcesRepo, account::AccountRepo, chain::ChainRepo, node::NodeRepo},
+    entities::{coin::CoinEntity, node::NodeEntity},
+    repositories::{
+        ResourcesRepo, TransactionTrait as _,
+        account::AccountRepo,
+        chain::ChainRepo,
+        node::{NodeRepo, NodeRepoTrait},
+    },
 };
 use wallet_transport_backend::request::{AddressBatchInitReq, ChainRpcListReq, TokenQueryPriceReq};
 use wallet_types::chain::{
@@ -443,6 +450,90 @@ impl ChainDomain {
             &wallet_transport_backend::request::ChainListReq::new(app_version.app_version),
         )?;
         Tasks::new().push(BackendApiTask::BackendApi(chain_list_req)).send().await?;
+        Ok(())
+    }
+
+    // 为缺少节点的链分配节点，同时也包含了同步和过滤节点的操作
+    pub(crate) async fn sync_nodes_and_link_to_chains(
+        repo: &mut ResourcesRepo,
+        chain_code: &[String],
+        backend_nodes: &[NodeEntity],
+    ) -> Result<(), crate::error::service::ServiceError> {
+        // 本地的backend_nodes 和 backend_nodes 比较，把backend_nodes中没有，local_backend_nodes有的节点，删除
+        let local_backend_nodes = NodeRepoTrait::list_by_chain(repo, &chain_code, Some(0)).await?;
+        let backend_node_rpcs: HashSet<String> = backend_nodes
+            .iter()
+            .filter(|node| chain_code.contains(&node.chain_code))
+            .map(|n| n.node_id.clone())
+            .collect();
+
+        for node in local_backend_nodes {
+            if !backend_node_rpcs.contains(&node.node_id) {
+                if let Err(e) = NodeRepoTrait::delete(repo, &node.node_id).await {
+                    tracing::error!("Failed to remove filtered node {}: {:?}", node.node_id, e);
+                }
+                Self::set_chain_node(repo, backend_nodes, &node.chain_code).await?;
+            }
+        }
+        Self::assign_missing_nodes_to_chains(backend_nodes).await?;
+        Ok(())
+    }
+
+    /// 设置链使用的节点
+    pub(crate) async fn set_chain_node(
+        repo: &mut ResourcesRepo,
+        backend_nodes: &[NodeEntity],
+        // default_nodes: &[NodeData],
+        chain_code: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let list = NodeRepoTrait::list(repo, Some(1)).await?;
+
+        let mut default_nodes = Vec::new();
+        for default_node in list.iter() {
+            // let node_id = NodeDomain::gen_node_id(&default_node.name, &default_node.chain_code);
+            default_nodes.push(wallet_types::valueobject::NodeData::new(
+                &default_node.node_id,
+                &default_node.rpc_url,
+                &default_node.chain_code,
+            ));
+        }
+
+        repo.begin_transaction().await?;
+        if let Some(backend_nodes) = backend_nodes.iter().find(|node| node.chain_code == chain_code)
+        {
+            if let Err(e) =
+                ChainRepo::set_chain_node(&pool, chain_code, &backend_nodes.node_id).await
+            {
+                tracing::error!("set_chain_node error: {:?}", e);
+            }
+        } else if let Some(node) = default_nodes.iter().find(|node| node.chain_code == chain_code) {
+            if let Err(e) = ChainRepo::set_chain_node(&pool, chain_code, &node.node_id).await {
+                tracing::error!("set_chain_node error: {:?}", e);
+            }
+        }
+        repo.commit_transaction().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn assign_missing_nodes_to_chains(
+        backend_nodes: &[NodeEntity],
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let chain_list = ChainRepo::get_chain_list(&pool).await?;
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+        for chain in chain_list {
+            if chain.node_id.is_none() {
+                tracing::debug!(
+                    "[assign_missing_nodes_to_chains] set chain node: {}",
+                    chain.chain_code
+                );
+                Self::set_chain_node(&mut repo, backend_nodes, &chain.chain_code).await?;
+            }
+        }
+        tracing::debug!("[assign_missing_nodes_to_chains] end");
         Ok(())
     }
 }

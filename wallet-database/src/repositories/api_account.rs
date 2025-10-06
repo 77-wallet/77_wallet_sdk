@@ -154,4 +154,8 @@ impl ApiAccountRepo {
         )
         .await?)
     }
+
+    pub async fn list(pool: &DbPool) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        ApiAccountDao::account_list(pool.as_ref(), None, None, None, vec![], None).await
+    }
 }

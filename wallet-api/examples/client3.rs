@@ -18,8 +18,6 @@ async fn run(
     let phrase = &test_params.create_wallet_req.phrase;
     let salt = "q1111111";
     let wallet_name = "api_wallet";
-    let account_name = "ccccc";
-    let is_default_name = true;
     let wallet_password = "q1111111";
     let binding_address = None;
     let wallet_uid = wallet_manager
@@ -28,8 +26,6 @@ async fn run(
             phrase,
             salt,
             wallet_name,
-            account_name,
-            is_default_name,
             wallet_password,
             None,
             ApiWalletType::SubAccount,
@@ -46,8 +42,6 @@ async fn run(
             phrase,
             salt1,
             wallet_name,
-            account_name,
-            is_default_name,
             wallet_password,
             None,
             ApiWalletType::Withdrawal,

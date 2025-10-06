@@ -66,33 +66,6 @@ impl ChainCreateVo {
 }
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
-pub struct ChainCreateV2 {
-    pub name: String,
-    pub chain_code: String,
-    pub node_id: String,
-    pub protocols: Vec<String>,
-    pub main_symbol: String,
-}
-
-impl ChainCreateV2 {
-    pub fn new(
-        name: &str,
-        chain_code: &str,
-        node_id: &str,
-        protocols: &[String],
-        main_symbol: &str,
-    ) -> ChainCreateV2 {
-        Self {
-            name: name.to_string(),
-            chain_code: chain_code.to_string(),
-            node_id: node_id.to_string(),
-            protocols: protocols.to_vec(),
-            main_symbol: main_symbol.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainWithNode {
     pub name: String,
