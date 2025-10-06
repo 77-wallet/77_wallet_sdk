@@ -183,7 +183,7 @@ fn build_base_withdraw(
     let value = TriggerContractParameter::new(
         &contract_address,
         &owner_address,
-        &function_selector,
+        function_selector,
         parameter,
     );
 
@@ -278,7 +278,7 @@ fn build_base_swap(
     let mut value = TriggerContractParameter::new(
         &contract_address,
         &owner_address,
-        &function_selector,
+        function_selector,
         parameter,
     );
 

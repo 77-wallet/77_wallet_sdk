@@ -64,7 +64,7 @@ impl BillRepo {
         hashs: Vec<String>,
         pool: &DbPool,
     ) -> Result<Vec<BillEntity>, crate::Error> {
-        Ok(BillDao::lists_by_hashs(pool.as_ref(), owner, hashs).await?)
+        BillDao::lists_by_hashs(pool.as_ref(), owner, hashs).await
     }
 
     pub async fn recent_bill(
@@ -89,7 +89,7 @@ impl BillRepo {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        Ok(BillDao::update(transaction, tx).await?)
+        BillDao::update(transaction, tx).await
     }
 
     pub async fn update_fail(tx_hash: &str, exec: &DbPool) -> Result<(), crate::Error> {

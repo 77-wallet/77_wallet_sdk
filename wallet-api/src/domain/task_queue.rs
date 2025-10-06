@@ -54,12 +54,4 @@ impl TaskQueueDomain {
 
         Ok(())
     }
-
-    // pub async fn get_task_queue_status() -> Result<(), crate::ServiceError> {
-    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    //     let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-    //     use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
-    //     let task_queue = repo.task_running(&repo, 0).await?;
-    //     Ok(())
-    // }
 }

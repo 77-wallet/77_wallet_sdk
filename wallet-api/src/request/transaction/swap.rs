@@ -7,6 +7,13 @@ use rand::Rng as _;
 use wallet_database::entities::bill::{BillExtraSwap, NewBillEntity};
 use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
+pub fn request_identity(user: &str) -> String {
+    let mut rng = rand::thread_rng();
+    let n: u32 = rng.gen_range(0..1000);
+
+    format!("{}_{}_{}", user, wallet_utils::time::now().timestamp(), n)
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct SwapTokenListReq {
     pub chain_code: String,
@@ -112,6 +119,7 @@ impl From<ApproveReq> for NewBillEntity {
     }
 }
 
+#[derive(Debug)]
 pub struct SwapReq {
     pub aggregator_addr: String,
     // 链code
@@ -132,6 +140,12 @@ pub struct SwapReq {
     pub dex_router: Vec<DexRoute>,
     // 允许部分兑换
     pub allow_partial_fill: bool,
+}
+
+impl SwapReq {
+    pub fn is_native_token(&self) -> bool {
+        self.token_in.token_addr.is_empty() || self.token_out.token_addr.is_empty()
+    }
 }
 
 impl TryFrom<&SwapReq> for SwapParams {
@@ -231,19 +245,19 @@ pub struct QuoteReq {
     pub allow_partial_fill: bool,
 }
 impl QuoteReq {
-    pub fn token_in_or_warp(&self, chain_code: ChainCode) -> String {
-        if self.token_in.token_addr.is_empty() {
-            get_warp_address(chain_code).unwrap().to_string()
+    pub fn eth_or_weth(
+        address: &str,
+        chain_code: ChainCode,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        if address.is_empty() {
+            get_warp_address(chain_code).map(|x| x.to_string())
         } else {
-            self.token_in.token_addr.clone()
+            Ok(address.to_string())
         }
     }
-    pub fn eth_or_weth(address: &str, chain_code: ChainCode) -> String {
-        if address.is_empty() {
-            get_warp_address(chain_code).unwrap().to_string()
-        } else {
-            address.to_string()
-        }
+
+    pub fn is_sol(&self) -> bool {
+        self.chain_code == chain_code::SOLANA
     }
 
     pub fn amount_in_u256(&self) -> Result<U256, crate::error::service::ServiceError> {
@@ -274,15 +288,19 @@ impl QuoteReq {
     }
 
     // 根据token地址判断是 进行那种swap交易
-    pub fn swap_type(chain_code: ChainCode, token_in: &str, token_out: &str) -> SwapInnerType {
-        let warp_coin = get_warp_address(chain_code).unwrap();
+    pub fn swap_type(
+        chain_code: ChainCode,
+        token_in: &str,
+        token_out: &str,
+    ) -> Result<SwapInnerType, crate::error::service::ServiceError> {
+        let warp_coin = get_warp_address(chain_code)?;
 
         if token_in.is_empty() && token_out == warp_coin {
-            SwapInnerType::Deposit
+            Ok(SwapInnerType::Deposit)
         } else if token_in == warp_coin && token_out.is_empty() {
-            SwapInnerType::Withdraw
+            Ok(SwapInnerType::Withdraw)
         } else {
-            SwapInnerType::Swap
+            Ok(SwapInnerType::Swap)
         }
     }
 
@@ -290,9 +308,14 @@ impl QuoteReq {
     pub fn get_slippage(&self, default_slippage: u64) -> f64 {
         self.slippage.unwrap_or(default_slippage as f64 / SLIPPAGE)
     }
+
+    // 是否是进行主币之间的兑换
+    pub fn is_native(&self) -> bool {
+        self.token_in.token_addr.is_empty() || self.token_out.token_addr.is_empty()
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SwapTokenInfo {
     pub symbol: String,
     pub decimals: u32,
@@ -307,19 +330,16 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
         let amount =
             wallet_utils::unit::convert_to_u256(&value.amount_in, value.token_in.decimals as u8)?;
 
-        let mut rng = rand::thread_rng();
-        let n: u32 = rng.gen_range(0..1000);
+        let unique = request_identity(value.recipient.as_str());
 
-        let unique =
-            format!("{}_{}_{}", value.recipient, wallet_utils::time::now().timestamp(), n,);
         let dex_ids = value.dex_list.iter().map(|dex_id| DexId { dex_id: *dex_id }).collect();
 
         Ok(Self {
             chain_code: chain_code.to_string(),
             amount: amount.to_string(),
             unique,
-            in_token_addr: QuoteReq::eth_or_weth(&value.token_in.token_addr, chain_code),
-            out_token_addr: QuoteReq::eth_or_weth(&value.token_out.token_addr, chain_code),
+            in_token_addr: QuoteReq::eth_or_weth(&value.token_in.token_addr, chain_code)?,
+            out_token_addr: QuoteReq::eth_or_weth(&value.token_out.token_addr, chain_code)?,
             dex_ids,
         })
     }
@@ -327,14 +347,11 @@ impl TryFrom<&QuoteReq> for AggQuoteRequest {
 
 // 路由
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-// #[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct DexRoute {
-    #[serde(rename = "amountIn", alias = "amount_in")]
     pub amount_in: String,
-    #[serde(rename = "amountOut", alias = "amount_out")]
     pub amount_out: String,
     pub percentage: String,
-    #[serde(rename = "routeInDex", alias = "route_in_dex")]
     pub route_in_dex: Vec<RouteInDex>,
 }
 
@@ -365,25 +382,25 @@ impl DexRoute {
 
 // 子路由
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
-// #[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct RouteInDex {
-    #[serde(rename = "dexId", alias = "dex_id")]
+    // #[serde(rename = "dexId", alias = "dex_id")]
     pub dex_id: u16,
-    #[serde(rename = "poolId", alias = "pool_id")]
+    // #[serde(rename = "poolId", alias = "pool_id")]
     pub pool_id: String,
-    #[serde(rename = "inTokenSymbol", alias = "in_token_symbol")]
+    // #[serde(rename = "inTokenSymbol", alias = "in_token_symbol")]
     pub in_token_symbol: String,
-    #[serde(rename = "inTokenAddr", alias = "in_token_addr")]
+    // #[serde(rename = "inTokenAddr", alias = "in_token_addr")]
     pub in_token_addr: String,
-    #[serde(rename = "outTokenSymbol", alias = "out_token_symbol")]
+    // #[serde(rename = "outTokenSymbol", alias = "out_token_symbol")]
     pub out_token_symbol: String,
-    #[serde(rename = "outTokenAddr", alias = "out_token_addr")]
+    // #[serde(rename = "outTokenAddr", alias = "out_token_addr")]
     pub out_token_addr: String,
-    #[serde(rename = "zeroForOne", alias = "zero_for_one")]
+    // #[serde(rename = "zeroForOne", alias = "zero_for_one")]
     pub zero_for_one: bool,
     pub fee: String,
-    #[serde(rename = "amountIn", alias = "amount_in")]
+    // #[serde(rename = "amountIn", alias = "amount_in")]
     pub amount_in: String,
-    #[serde(rename = "minAmountOut", alias = "min_amount_out")]
+    // #[serde(rename = "minAmountOut", alias = "min_amount_out")]
     pub min_amount_out: String,
 }

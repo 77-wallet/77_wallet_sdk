@@ -45,14 +45,14 @@ impl OrderMultiSignServiceComplete {
             "Starting to process OrderMultiSignServiceComplete"
         );
 
-        let OrderMultiSignServiceComplete { multisig_account_id, status, r#type } = self;
+        let &OrderMultiSignServiceComplete { ref multisig_account_id, status, r#type } = self;
 
         let account = Self::get_account_or_recover(multisig_account_id, &pool, &event_name).await?;
 
         let multi_account_id = account.id;
 
         // 更新多签账户手续费状态
-        let (status, pay_status) = Self::get_status(*r#type, *status);
+        let (status, pay_status) = Self::get_status(r#type, status);
         MultisigAccountDaoV1::update_status(&multi_account_id, status, pay_status, pool.as_ref())
             .await
             .map_err(crate::error::service::ServiceError::Database)?;
@@ -66,7 +66,7 @@ impl OrderMultiSignServiceComplete {
             NotifyEvent::OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend {
                 multisign_address: account.address,
                 status: self.status,
-                r#type: *r#type,
+                r#type: r#type,
             });
         FrontendNotifyEvent::new(data).send().await?;
 

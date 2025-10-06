@@ -224,8 +224,8 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, test_params) = get_manager().await?;
 
-        let address = test_params.create_account_req.wallet_address.clone();
-        let account = wallet_manager.create_account(test_params.create_account_req).await?;
+        let _address = test_params.create_account_req.wallet_address.clone();
+        let _account = wallet_manager.create_account(test_params.create_account_req).await?;
         // let account = account.unwrap();
         // tracing::info!("[test_] account: {account:?}");
         // let list = wallet_manager.get_account_list(Some(&address), None).await.result;

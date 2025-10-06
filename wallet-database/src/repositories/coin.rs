@@ -53,14 +53,6 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, CoinEntity::list_v2, symbol, chain_code, None)
     }
 
-    async fn coin_list_by_chain_token_map_batch(
-        &mut self,
-        pool: &DbPool,
-        chain_list: &std::collections::HashMap<String, String>,
-    ) -> Result<Vec<CoinEntity>, crate::Error> {
-        CoinEntity::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
-    }
-
     async fn get_coin_by_chain_code_token_address(
         &mut self,
         chain_code: &str,
@@ -106,10 +98,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         page_size: i64,
     ) -> Result<crate::pagination::Pagination<CoinEntity>, crate::Error> {
         let executor = self.get_db_pool();
-        CoinEntity::coin_list_symbol_not_in(
-            &executor, exclude, chain_code, keyword, page, page_size,
-        )
-        .await
+        CoinEntity::coin_list_symbol_not_in(executor, exclude, chain_code, keyword, page, page_size)
+            .await
     }
 
     async fn update_price_unit(
@@ -120,7 +110,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
         status: Option<i32>,
         swappable: Option<bool>,
         time: Option<DateTime<Utc>>,
-    ) -> Result<Vec<CoinEntity>, crate::Error> {
+        symbols: Option<String>,
+    ) -> Result<(), crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(
             executor,
@@ -130,7 +121,8 @@ pub trait CoinRepoTrait: super::TransactionTrait {
             unit,
             status,
             swappable,
-            time
+            time,
+            symbols
         )
     }
 
@@ -160,6 +152,13 @@ pub trait CoinRepoTrait: super::TransactionTrait {
 
 pub struct CoinRepo;
 impl CoinRepo {
+    pub async fn coin_list_by_chain_token_map_batch(
+        pool: &DbPool,
+        chain_list: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<CoinEntity>, crate::Error> {
+        CoinEntity::list_by_chain_token_map_batch(pool.as_ref(), chain_list).await
+    }
+
     pub async fn default_coin_list(pool: &DbPool) -> Result<Vec<CoinEntity>, crate::Error> {
         CoinEntity::list_v2(pool.as_ref(), None, None, Some(1)).await
     }
@@ -182,6 +181,11 @@ impl CoinRepo {
         CoinEntity::main_coin(chain_code, pool.as_ref()).await?.ok_or(crate::Error::NotFound(
             format!("main coin not found: chain_code: {}", chain_code),
         ))
+    }
+
+    // 修复数据用
+    pub async fn delete_wsol_error(pool: &DbPool) -> Result<(), crate::Error> {
+        CoinEntity::delete_wsol_error(pool.as_ref()).await
     }
 
     pub async fn update_price_unit1(

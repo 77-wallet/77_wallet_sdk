@@ -1,5 +1,8 @@
 use crate::{
-    entities::{api_assets::ApiAssetsEntity, assets::AssetsId},
+    entities::{
+        api_assets::ApiAssetsEntity,
+        assets::{AssetsId, AssetsIdVo},
+    },
     error::DatabaseError,
     sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
@@ -46,7 +49,9 @@ impl ApiAssetsDao {
 
     pub async fn update_balance<'a, E>(
         exec: E,
-        assets_id: &AssetsId,
+        address: &str,
+        chain_code: &str,
+        token_address: Option<String>,
         balance: &str,
     ) -> Result<(), crate::Error>
     where
@@ -55,37 +60,10 @@ impl ApiAssetsDao {
         let builder = DynamicUpdateBuilder::new("api_assets")
             .set("balance", balance)
             .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
-            .and_where_eq("address", &assets_id.address)
-            .and_where_eq("symbol", &assets_id.symbol)
-            .and_where_eq("chain_code", &assets_id.chain_code)
-            .and_where_eq("token_address", assets_id.token_address.clone().unwrap_or_default());
+            .and_where_eq("address", &address)
+            .and_where_eq("chain_code", chain_code)
+            .and_where_eq("token_address", token_address.unwrap_or_default());
         SqlExecutableNoReturn::execute(&builder, exec).await
-
-        // let sql = String::from(
-        //     r#"
-        //     UPDATE assets SET
-        //         balance = ?,
-        //         updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        //     WHERE address = ?
-        //     AND symbol = ?
-        //     AND chain_code = ?
-        //     AND token_address IS ?
-        // "#,
-        // );
-
-        // let token_address = assets_id.token_address.clone().unwrap_or_default();
-        // let query = sqlx::query(&sql)
-        //     .bind(balance)
-        //     .bind(assets_id.address.to_string())
-        //     .bind(assets_id.symbol.to_string())
-        //     .bind(assets_id.chain_code.to_string())
-        //     .bind(token_address);
-
-        // query
-        //     .execute(exec)
-        //     .await
-        //     .map(|_| ())
-        //     .map_err(|_| crate::Error::Database(DatabaseError::UpdateFailed))
     }
 
     pub async fn upsert_assets<'a, E>(
@@ -247,9 +225,9 @@ impl ApiAssetsDao {
         Ok(())
     }
 
-    pub async fn assets_by_id<'a, E>(
+    pub async fn assets_by_id<'a, 'b, E>(
         exec: E,
-        assets_id: &AssetsId,
+        assets_id: &AssetsIdVo<'b>,
     ) -> Result<Option<ApiAssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -275,7 +253,6 @@ impl ApiAssetsDao {
 
         let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
             .bind(assets_id.address.clone())
-            .bind(assets_id.symbol.clone())
             .bind(assets_id.chain_code.clone())
             .bind(assets_id.token_address.clone().unwrap_or_default())
             .fetch_optional(exec)

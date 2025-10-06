@@ -87,7 +87,7 @@ impl TaskTrait for CommonTask {
                     .into_iter()
                     .map(|chain| chain.chain_code)
                     .collect();
-                NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &data).await?;
+                NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, data).await?;
             }
         }
         Ok(())

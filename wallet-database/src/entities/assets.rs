@@ -22,6 +22,18 @@ impl AssetsId {
     }
 }
 
+pub struct AssetsIdVo<'a> {
+    pub address: &'a str,
+    pub chain_code: &'a str,
+    pub token_address: Option<String>,
+}
+
+impl<'a> AssetsIdVo<'a> {
+    pub fn new(address: &'a str, chain_code: &'a str, token_address: Option<String>) -> Self {
+        Self { address, chain_code, token_address }
+    }
+}
+
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow)]
 pub struct AssetsEntity {
     pub name: String,

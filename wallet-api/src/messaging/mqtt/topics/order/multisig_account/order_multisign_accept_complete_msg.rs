@@ -49,7 +49,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             accept_address_list: _,
             address_list,
             accept_status,
-        } = self;
+        } = &self;
 
         let account = MultisigDomain::check_multisig_account_exists(multisig_account_id).await?;
 
@@ -64,7 +64,7 @@ impl OrderMultiSignAcceptCompleteMsg {
             return Err(err);
         };
 
-        Self::all_members_confirmed(&address_list, &account.id, account.status).await?;
+        Self::all_members_confirmed(address_list, &account.id, account.status).await?;
         tracing::info!(
             event_name = %event_name,
             multisig_account_id = %account.id,
