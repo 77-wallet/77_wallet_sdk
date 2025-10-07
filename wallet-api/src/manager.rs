@@ -152,6 +152,8 @@ impl Context {
         let api_url = config.backend_api.prod_url;
 
         // 聚合器api
+        #[cfg(feature = "dev")]
+        let aggregate_api = config.aggregate_api.test_url;
         #[cfg(feature = "test")]
         let aggregate_api = config.aggregate_api.test_url;
         #[cfg(feature = "prod")]
