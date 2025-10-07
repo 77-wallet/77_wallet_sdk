@@ -124,4 +124,17 @@ mod test {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_get_api_account_list() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let chain_code = "tron";
+
+        let res =
+            wallet_manager.get_api_account_list("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24").await;
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
 }
