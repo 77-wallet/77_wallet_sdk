@@ -50,7 +50,8 @@ impl AwmOrderTransMsg {
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
-        backend.msg_ack(msg_ack_req).await?;
+        let res = backend.msg_ack(msg_ack_req).await;
+        tracing::info!("withdraw wallet transfer from {} to {} value {:?}", self.from, self.to, res);
         Ok(())
     }
 
@@ -132,6 +133,8 @@ impl AwmOrderTransMsg {
             trade_no: self.trade_no.to_string(),
             trade_type: self.trade_type as u8,
         };
-        ApiWithdrawDomain::withdraw(&req).await
+        let res = ApiWithdrawDomain::withdraw(&req).await;
+        tracing::info!("withdraw wallet transfer fee {} to {} value {:?}", self.from, self.to, res);
+        Ok(())
     }
 }

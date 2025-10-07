@@ -509,14 +509,13 @@ impl ProcessWithdrawTxConfirmReport {
             Ok(_) => {
                 tracing::info!("process_withdraw_single_tx_confirm_report success");
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                let res = ApiWithdrawRepo::update_api_withdraw_next_status(
+               ApiWithdrawRepo::update_api_withdraw_next_status(
                     &pool,
                     &req.trade_no,
                     req.status,
                     ApiWithdrawStatus::ReceivedConfirmReport,
                 )
-                .await;
-                tracing::warn!("upload tx exec receipt success --- {:?}", res);
+                .await?;
                 return Ok(());
             }
             Err(err) => {
