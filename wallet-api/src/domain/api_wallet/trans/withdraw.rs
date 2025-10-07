@@ -11,7 +11,7 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::request::api_wallet::msg::{MsgAckItem, MsgAckReq};
-use wallet_transport_backend::request::api_wallet::transaction::{TransEventAckReq, TransType};
+use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq, TransType};
 
 pub struct ApiWithdrawDomain {}
 
@@ -57,7 +57,7 @@ impl ApiWithdrawDomain {
             tracing::info!("upsert_api_withdraw  ------------------- 5:");
 
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::Wd, "TX");
+            let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::Wd, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
 
             let data = NotifyEvent::Withdraw(WithdrawFront {
@@ -82,7 +82,7 @@ impl ApiWithdrawDomain {
         trade_no: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass)
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, ApiWithdrawStatus::AuditPass, "OK")
             .await?;
         Ok(())
     }
@@ -95,6 +95,7 @@ impl ApiWithdrawDomain {
             &pool,
             trade_no,
             ApiWithdrawStatus::AuditReject,
+            "rejected",
         )
         .await?;
         Ok(())
@@ -105,7 +106,7 @@ impl ApiWithdrawDomain {
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, status).await?;
+        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, status, "confirm").await?;
 
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {

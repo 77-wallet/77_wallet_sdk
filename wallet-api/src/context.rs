@@ -204,12 +204,10 @@ impl Context {
                         instance: tokio::time::Instant::now()
                             + tokio::time::Duration::from_secs(30 * 60),
                     };
-
                     {
                         let mut token_guard = self.rpc_token.write().await;
                         *token_guard = new_token.clone();
                     }
-
                     Ok(HashMap::from([("token".to_string(), new_token.token)]))
                 }
                 Err(e) => {
@@ -220,9 +218,11 @@ impl Context {
                     if !token.is_empty() {
                         Ok(HashMap::from([("token".to_string(), token)]))
                     } else {
-                        Err(crate::error::business::BusinessError::Chain(
-                            crate::error::business::chain::ChainError::NodeToken(e.to_string()),
-                        ))?
+                        tracing::error!("get_rpc_header failed to get token, error: {:?}", e);
+                        Ok(HashMap::new())
+                        // Err(crate::error::business::BusinessError::Chain(
+                        //     crate::error::business::chain::ChainError::NodeToken(e.to_string()),
+                        // ))?
                     }
                 }
             }

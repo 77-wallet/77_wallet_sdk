@@ -41,9 +41,11 @@ impl ApiTransDomain {
         tracing::info!("transfer ------------------- 9: {}", chain_code);
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
 
+        tracing::info!("transfer ------------------- 10:");
+
         let resp = adapter.transfer(&params, private_key).await?;
 
-        tracing::info!("transfer ------------------- 10:");
+        tracing::info!("transfer ------------------- 11:");
 
         if let Some(request_id) = params.base.request_resource_id {
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();

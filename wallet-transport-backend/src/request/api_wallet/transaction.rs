@@ -14,12 +14,12 @@ pub struct TransEventAckReq {
     pub trade_no: String,
     #[serde(rename = "type")]
     typ: TransType,
-    pub ack_type: String,
+    pub ack_type: TransAckType,
 }
 
 impl TransEventAckReq {
-    pub fn new(trade_no: &str, typ: TransType, ack_type: &str) -> Self {
-        Self { trade_no: trade_no.to_string(), typ: typ, ack_type: ack_type.to_string() }
+    pub fn new(trade_no: &str, typ: TransType, ack_type: TransAckType) -> Self {
+        Self { trade_no: trade_no.to_string(), typ: typ, ack_type }
     }
 }
 
@@ -42,7 +42,24 @@ pub enum TransType {
     /// Withdraw
     Wd,
     /// Fee
+    #[serde(rename = "COL_FEE")]
     ColFee,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TransAckType {
+    Tx,
+    #[serde(rename = "TX_RES")]
+    TxRes,
+    #[serde(rename = "CMD_ADDRESS_EXPAND")]
+    CmdAddressExpand,
+    #[serde(rename = "CMD_PLT_UID_UNBIND")]
+    CmdPltUidUnbind,
+    #[serde(rename = "CMD_WALLET_ACTIVE")]
+    CmdWalletActive,
+    #[serde(rename = "TX_FEE_RES")]
+    TxFeeRes,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

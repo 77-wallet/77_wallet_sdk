@@ -104,8 +104,9 @@ impl ApiWithdrawRepo {
         pool: &DbPool,
         trade_no: &str,
         status: ApiWithdrawStatus,
+        notes: &str,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_status(pool.as_ref(), trade_no, status).await
+        ApiWithdrawDao::update_status(pool.as_ref(), trade_no, status, notes).await
     }
 
     pub async fn update_api_withdraw_next_status(
