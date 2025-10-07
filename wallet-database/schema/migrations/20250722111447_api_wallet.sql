@@ -10,7 +10,7 @@ CREATE TABLE api_wallet (
     -- 助记词可能会超过 64 字符
     seed TEXT,
     -- 同上，长度可能更长
-    wallet_type INTEGER NOT NULL,
+    api_wallet_type INTEGER NOT NULL,
     binding_address VARCHAR(64),
     merchant_id TEXT,
     app_id TEXT,

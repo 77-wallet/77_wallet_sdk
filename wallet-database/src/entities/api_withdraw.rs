@@ -1,6 +1,7 @@
 use std::fmt::Display;
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ApiWithdrawEntity {
+    #[serde(skip_serializing)]
     pub id: i64,
     pub name: String,
     pub uid: String,
@@ -22,7 +23,9 @@ pub struct ApiWithdrawEntity {
     pub notes: String,
     pub post_tx_count: u32,
     pub post_confirm_tx_count: u32,
+    #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 

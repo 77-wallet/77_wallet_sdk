@@ -288,7 +288,8 @@ mod test {
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
         let salt = "10";
-        let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
+        // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
+        let binding_address = None;
         let res = wallet_manager
             .import_api_wallet(
                 language_code,
@@ -311,7 +312,8 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
-        let res = wallet_manager.query_uid_bind_info(uid).await;
+        let res = wallet_manager.query_uid_bind_info(uid).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
     }

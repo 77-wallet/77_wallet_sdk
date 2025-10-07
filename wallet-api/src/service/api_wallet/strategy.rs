@@ -31,7 +31,7 @@ impl StrategyService {
         uid: &str,
     ) -> Result<CollectionStrategyResp, crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
-        let res =  backend_api.query_collect_strategy(&uid).await?;
+        let res = backend_api.query_collect_strategy(&uid).await?;
 
         Ok(res)
     }

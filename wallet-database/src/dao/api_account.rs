@@ -29,7 +29,7 @@ impl ApiAccountDao {
             "INSERT INTO api_account (
                 account_id, name, address, pubkey, private_key, address_type,
                 wallet_address, derivation_path, derivation_path_index,
-                chain_code, wallet_type, status, is_init, is_used, created_at, updated_at
+                chain_code, api_wallet_type, status, is_init, is_used, created_at, updated_at
             ) ",
         );
 
@@ -197,7 +197,7 @@ impl ApiAccountDao {
             .and_where_eq("address", address)
             .and_where_eq("chain_code", chain_code)
             .and_where_eq("address_type", address_type)
-            .and_where_eq("wallet_type", api_wallet_type)
+            .and_where_eq("api_wallet_type", api_wallet_type)
             .fetch_optional(exec)
             .await
     }
@@ -270,7 +270,7 @@ impl ApiAccountDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = r#"
-            SELECT * FROM api_account WHERE wallet_address = $1 AND account_id = $2 AND wallet_type = $3
+            SELECT * FROM api_account WHERE wallet_address = $1 AND account_id = $2 AND api_wallet_type = $3
             "#;
 
         sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
@@ -292,7 +292,7 @@ impl ApiAccountDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "SELECT * FROM api_account where wallet_address = $1
-            AND wallet_type = $2
+            AND api_wallet_type = $2
                    ORDER BY account_id DESC
                    LIMIT 1;";
 
@@ -327,7 +327,7 @@ impl ApiAccountDao {
         E: Executor<'a, Database = Sqlite>,
     {
         DynamicQueryBuilder::new("SELECT DISTINCT account_id FROM api_account")
-            .and_where_eq("wallet_type", ApiWalletType::SubAccount)
+            .and_where_eq("api_wallet_type", ApiWalletType::SubAccount)
             .and_where_eq("wallet_address", wallet_address)
             .order_by("account_id")
             .fetch_all(exec)
