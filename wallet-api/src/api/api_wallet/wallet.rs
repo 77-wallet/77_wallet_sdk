@@ -375,7 +375,8 @@ mod test {
 
         let wallet_address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
 
-        let res = wallet_manager.query_wallet_activation_info(wallet_address).await;
+        let res = wallet_manager.query_wallet_activation_info(wallet_address).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
     }

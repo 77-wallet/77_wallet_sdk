@@ -44,7 +44,7 @@ impl ApiAccountDao {
                 .push_bind(item.derivation_path)
                 .push_bind(item.derivation_path_index)
                 .push_bind(item.chain_code)
-                .push_bind(item.wallet_type)
+                .push_bind(item.api_wallet_type)
                 .push_bind(1)
                 .push_bind(0)
                 .push_bind(false)

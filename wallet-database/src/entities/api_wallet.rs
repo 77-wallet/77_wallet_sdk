@@ -4,9 +4,11 @@ pub struct ApiWalletEntity {
     pub name: String,
     pub uid: String,
     pub address: String,
+    #[serde(skip_serializing)]
     pub phrase: String,
+    #[serde(skip_serializing)]
     pub seed: String,
-    pub wallet_type: ApiWalletType,
+    pub api_wallet_type: ApiWalletType,
     pub merchant_id: String,
     pub app_id: String,
     pub status: u8,
