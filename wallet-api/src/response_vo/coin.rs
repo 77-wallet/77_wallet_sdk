@@ -292,23 +292,12 @@ impl TokenCurrencies {
     ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
-        // let config = crate::app_state::APP_STATE.read().await;
-        // let currency = config.currency();
-        // let currency = "USD";
+
         let currency = ConfigDomain::get_currency().await?;
+
         for assets in data.iter_mut() {
             let token_currency_id =
                 TokenCurrencyId::new(&assets.symbol, &assets.chain_code, assets.token_address());
-            // let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            //     let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
-
-            //     let price =
-            //         wallet_types::Decimal::from_f64_retain(token_currency.get_price(currency))
-            //             .unwrap_or_default();
-            //     price * balance
-            // } else {
-            //     wallet_types::Decimal::default()
-            // };
 
             let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
                 let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
@@ -327,6 +316,7 @@ impl TokenCurrencies {
             account_total_assets =
                 account_total_assets.map(|total| total + value.unwrap_or_default());
         }
+
         Ok(BalanceInfo {
             amount: wallet_utils::conversion::decimal_to_f64(&amount)?,
             currency: currency.to_string(),

@@ -1,14 +1,17 @@
 use crate::{
     domain::{
         api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain},
+        app::config::ConfigDomain,
         assets::AssetsDomain,
         chain::adapter::ChainAdapterFactory,
         coin::CoinDomain,
     },
     response_vo::{
-        account::Balance,
+        account::{Balance, BalanceInfo},
         api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
+        assets::GetAccountAssetsRes,
         chain::ChainList,
+        coin::TokenCurrencyId,
     },
 };
 use std::collections::HashMap;
@@ -261,6 +264,139 @@ impl ApiAssetsService {
             }
         }
 
+        Ok(res)
+    }
+
+    // 单个索引下的所有资产总和
+    pub async fn get_account_assets(
+        account_id: u32,
+        wallet_address: &str,
+        chain_code: Option<String>,
+    ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let account = ApiAccountRepo::list_by_wallet_address(
+            &pool,
+            wallet_address,
+            Some(account_id),
+            chain_code.as_deref(),
+        )
+        .await?;
+        let address = account.iter().map(|a| a.address.clone()).collect::<Vec<_>>();
+
+        let mut assets = ApiAssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+            &pool, address, chain_code, None, None,
+        )
+        .await?;
+
+        // 币符号
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+
+        let mut account_total_assets = Some(wallet_types::Decimal::default());
+        let mut amount = wallet_types::Decimal::default();
+
+        let currency = ConfigDomain::get_currency().await?;
+
+        for assets in assets.iter_mut() {
+            let token_currency_id =
+                TokenCurrencyId::new(&assets.symbol, &assets.chain_code, assets.token_address());
+
+            let value = if let Some(token_currency) = token_currencies.get(&token_currency_id) {
+                let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
+                let price = token_currency.get_price(&currency);
+                if let Some(price) = price {
+                    let price = wallet_types::Decimal::from_f64_retain(price).unwrap_or_default();
+                    Some(price * balance)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            amount += wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
+            account_total_assets =
+                account_total_assets.map(|total| total + value.unwrap_or_default());
+        }
+
+        let bal = BalanceInfo {
+            amount: wallet_utils::conversion::decimal_to_f64(&amount)?,
+            currency: currency.to_string(),
+            unit_price: Default::default(),
+            fiat_value: account_total_assets
+                .map(|total| wallet_utils::conversion::decimal_to_f64(&total))
+                .transpose()?,
+        };
+
+        Ok(GetAccountAssetsRes { account_total_assets: bal })
+    }
+
+    // 资产列表
+    pub async fn get_account_chain_assets(
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        _is_multisig: Option<bool>,
+    ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let accounts = ApiAccountRepo::list_by_wallet_address(
+            &pool,
+            wallet_address,
+            account_id,
+            chain_code.as_deref(),
+        )
+        .await?;
+
+        let mut res = ApiAccountChainAssetList::default();
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+
+        // 根据账户地址、网络查询币资产
+        for address in accounts {
+            let assets_list = ApiAssetsRepo::get_chain_assets_by_address_chain_code_symbol(
+                &pool,
+                vec![address.address],
+                Some(address.chain_code),
+                None,
+                None,
+            )
+            .await?;
+            for assets in assets_list {
+                let coin = CoinDomain::get_coin(
+                    &assets.chain_code,
+                    &assets.symbol,
+                    assets.token_address(),
+                )
+                .await?;
+                if let Some(existing_asset) = res
+                    .iter_mut()
+                    .find(|a| a.symbol == assets.symbol && a.is_default && coin.is_default == 1)
+                {
+                    token_currencies.calculate_api_assets(assets, existing_asset).await?;
+                    existing_asset
+                        .chain_list
+                        .entry(coin.chain_code.clone())
+                        .or_insert(coin.token_address.unwrap_or_default());
+                } else {
+                    let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
+
+                    res.push(ApiAccountChainAsset {
+                        chain_code: assets.chain_code.clone(),
+                        symbol: assets.symbol,
+                        name: assets.name,
+                        chain_list: ChainList(HashMap::from([(
+                            assets.chain_code,
+                            assets.token_address,
+                        )])),
+                        balance,
+                        is_multisig: assets.is_multisig,
+                        is_default: coin.is_default == 1,
+                    })
+                }
+            }
+        }
+
+        res.sort_account_chain_assets();
         Ok(res)
     }
 }

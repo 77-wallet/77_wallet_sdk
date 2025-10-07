@@ -1,7 +1,10 @@
 use crate::{
     api::ReturnType,
     manager::WalletManager,
-    response_vo::{self, account::Balance, api_wallet::assets::ApiAccountChainAssetList},
+    response_vo::{
+        self, account::Balance, api_wallet::assets::ApiAccountChainAssetList,
+        assets::GetAccountAssetsRes,
+    },
     service::api_wallet::asset::ApiAssetsService,
 };
 
@@ -71,6 +74,28 @@ impl WalletManager {
         token_address: String,
     ) -> ReturnType<Balance> {
         ApiAssetsService::new().chain_balance(&address, &chain_code, &token_address).await
+    }
+
+    // 资产列表
+    pub async fn get_assets_list(
+        &self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        is_multisig: Option<bool>,
+    ) -> ReturnType<ApiAccountChainAssetList> {
+        ApiAssetsService::get_account_chain_assets(address, account_id, chain_code, is_multisig)
+            .await
+    }
+
+    // 账户的总资产
+    pub async fn get_api_account_assets(
+        &self,
+        account_id: u32,
+        wallet_address: &str,
+        chain_code: Option<String>,
+    ) -> ReturnType<GetAccountAssetsRes> {
+        ApiAssetsService::get_account_assets(account_id, wallet_address, chain_code).await
     }
 }
 
