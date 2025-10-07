@@ -1,5 +1,3 @@
-use wallet_types::constant::chain_code;
-
 use crate::{
     DbPool,
     dao::api_assets::ApiAssetsDao,
