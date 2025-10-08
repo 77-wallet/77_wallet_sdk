@@ -247,8 +247,8 @@ impl ProcessCollectTx {
                 &req.chain_code,
                 &main_symbol,
                  "",
+                &chain_config.normal_address.address,
                 &req.from_addr,
-                &req.to_addr,
                 unit::string_to_f64(&fee)?,
             );
 

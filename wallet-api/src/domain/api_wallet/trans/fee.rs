@@ -8,6 +8,8 @@ use wallet_database::{
     repositories::{api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
 };
 use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
+use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
+use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq, TransType};
 
 pub struct ApiFeeDomain {}
 
@@ -28,33 +30,39 @@ impl ApiFeeDomain {
         //         .await?
         //         .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
 
-        ApiFeeRepo::upsert_api_fee(
-            &pool,
-            &req.uid,
-            &wallet.name,
-            &req.from,
-            &req.to,
-            &req.value,
-            &req.chain_code,
-            req.token_address.clone(),
-            &req.symbol,
-            &req.trade_no,
-            req.trade_type,
-        )
-        .await?;
-        tracing::info!("upsert_api_fee ------------------- 5:");
+        let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &req.trade_no).await;
+        if res.is_err() {
+            ApiFeeRepo::upsert_api_fee(
+                &pool,
+                &req.uid,
+                &wallet.name,
+                &req.from,
+                &req.to,
+                &req.value,
+                &req.chain_code,
+                req.token_address.clone(),
+                &req.symbol,
+                &req.trade_no,
+                req.trade_type,
+            ).await?;
+            tracing::info!("upsert_api_fee ------------------- 5:");
 
-        let data = NotifyEvent::Fee(FeeFront {
-            uid: req.uid.to_string(),
-            from_addr: req.from.to_string(),
-            to_addr: req.to.to_string(),
-            value: req.value.to_string(),
-        });
-        FrontendNotifyEvent::new(data).send().await?;
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
+            backend.trans_event_ack(&trans_event_req).await?;
 
-        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
-        {
-            handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;
+            let data = NotifyEvent::Fee(FeeFront {
+                uid: req.uid.to_string(),
+                from_addr: req.from.to_string(),
+                to_addr: req.to.to_string(),
+                value: req.value.to_string(),
+            });
+            FrontendNotifyEvent::new(data).send().await?;
+
+            if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+            {
+                handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;
+            }
         }
         Ok(())
     }
