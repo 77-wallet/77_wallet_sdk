@@ -22,8 +22,8 @@ impl WalletManager {
         phrase: &str,
         salt: &str,
         wallet_name: &str,
-        account_name: &str,
-        is_default_name: bool,
+        // account_name: &str,
+        // is_default_name: bool,
         wallet_password: &str,
         invite_code: Option<String>,
         api_wallet_type: ApiWalletType,
@@ -35,8 +35,6 @@ impl WalletManager {
                 phrase,
                 salt,
                 wallet_name,
-                account_name,
-                is_default_name,
                 wallet_password,
                 invite_code,
                 api_wallet_type,
@@ -185,8 +183,7 @@ mod test {
         let phrase = &test_params.create_wallet_req.phrase;
         let salt = "7";
         let wallet_name = "api_wallet";
-        let account_name = "ccccc";
-        let is_default_name = true;
+
         let wallet_password = "q1111111";
         let api_wallet_type = ApiWalletType::SubAccount;
         let binding_address = None;
@@ -197,8 +194,6 @@ mod test {
                 phrase,
                 salt,
                 wallet_name,
-                account_name,
-                is_default_name,
                 wallet_password,
                 invite_code,
                 api_wallet_type,
@@ -219,8 +214,7 @@ mod test {
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
         let wallet_name = "api_wallet";
-        let account_name = "ccccc";
-        let is_default_name = true;
+
         let wallet_password = "q1111111";
 
         let api_wallet_type = ApiWalletType::Withdrawal;
@@ -236,8 +230,6 @@ mod test {
                 phrase,
                 salt,
                 wallet_name,
-                account_name,
-                is_default_name,
                 wallet_password,
                 invite_code,
                 api_wallet_type,
@@ -296,7 +288,8 @@ mod test {
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
         let salt = "10";
-        let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
+        // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
+        let binding_address = None;
         let res = wallet_manager
             .import_api_wallet(
                 language_code,
@@ -319,7 +312,8 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
-        let res = wallet_manager.query_uid_bind_info(uid).await;
+        let res = wallet_manager.query_uid_bind_info(uid).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -383,7 +377,8 @@ mod test {
 
         let wallet_address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
 
-        let res = wallet_manager.query_wallet_activation_info(wallet_address).await;
+        let res = wallet_manager.query_wallet_activation_info(wallet_address).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())
     }

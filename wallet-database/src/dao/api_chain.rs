@@ -82,7 +82,7 @@ impl ApiChainDao {
                     updated_at = excluded.updated_at"#;
         let protocols = wallet_utils::serde_func::serde_to_string(&input.protocols)?;
 
-        let mut rec = sqlx::query_as::<_, ApiChainEntity>(sql)
+        let rec = sqlx::query_as::<_, ApiChainEntity>(sql)
             .bind(&input.name)
             .bind(&input.chain_code)
             .bind(protocols)
@@ -133,6 +133,120 @@ impl ApiChainDao {
         sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(sql)
             .bind(main_symbol)
             .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn upsert_multi_chain<'a, E>(
+        executor: E,
+        input: Vec<ApiChainCreateVo>,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        if input.is_empty() {
+            return Ok(());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+            "INSERT INTO api_chain (name, chain_code, protocols, status, main_symbol, created_at, updated_at) ",
+        );
+
+        query_builder.push_values(input, |mut b, chain| {
+            let protocols =
+                wallet_utils::serde_func::serde_to_string(&chain.protocols).unwrap_or_default();
+            b.push_bind(chain.name.clone())
+                .push_bind(chain.chain_code)
+                .push_bind(protocols)
+                .push_bind(chain.status)
+                .push_bind(chain.main_symbol)
+                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+                .push("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+        });
+
+        query_builder.push(
+            " ON CONFLICT (chain_code)
+              DO UPDATE SET
+                  name = excluded.name,
+                  status = excluded.status,
+                  main_symbol = excluded.main_symbol,
+                  updated_at = excluded.updated_at",
+        );
+        let query = query_builder.build();
+        query.execute(executor).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(())
+    }
+
+    pub async fn toggle_chains_status<'a, E>(
+        executor: E,
+        chain_codes: &[String],
+    ) -> Result<Vec<ApiChainEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let chain_codes = crate::any_in_collection(chain_codes, "','");
+        // 用逗号分隔的列表，用于 IN 查询
+        let sql = format!(
+            "UPDATE api_chain
+            SET 
+                status = CASE 
+                            WHEN chain_code IN ('{}') THEN 1 
+                            ELSE 0 
+                        END,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            RETURNING *",
+            chain_codes
+        );
+
+        // 为 `IN` 子句绑定参数，确保 chain_codes 被正确处理
+        sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(&sql)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn set_chain_node_id_empty<'a, E>(
+        executor: E,
+        node_id: &str,
+    ) -> Result<Vec<ApiChainEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            update api_chain set 
+                node_id = null,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            where node_id = $1
+            RETURNING *
+            "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(sql)
+            .bind(node_id)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn set_api_chain_node<'a, E>(
+        executor: E,
+        chain_code: &str,
+        node_id: &str,
+    ) -> Result<Vec<ApiChainEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            update api_chain set 
+                node_id = $2,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            where chain_code = $1
+            RETURNING *
+            "#;
+
+        sqlx::query_as::<sqlx::Sqlite, ApiChainEntity>(sql)
+            .bind(chain_code)
+            .bind(node_id)
+            .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }

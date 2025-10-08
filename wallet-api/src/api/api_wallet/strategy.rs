@@ -3,7 +3,7 @@ use crate::{
 };
 use wallet_transport_backend::{
     request::api_wallet::strategy::ChainConfig,
-    response_vo::api_wallet::strategy::WithdrawStrategyResp,
+    response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
 };
 
 impl WalletManager {
@@ -16,7 +16,7 @@ impl WalletManager {
         StrategyService::new(self.ctx).update_collect_strategy(uid, threshold, chain_config).await
     }
 
-    pub async fn get_collect_strategy(&self, uid: &str) -> ReturnType<()> {
+    pub async fn get_collect_strategy(&self, uid: &str) -> ReturnType<CollectionStrategyResp> {
         StrategyService::new(self.ctx).query_collect_strategy(uid).await
     }
 
@@ -49,7 +49,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let uid = "bf6e56761f4a838bd7bdbef5ba3071bf36d3a588a5176fb58e3225f2758ce805";
+        let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
         let threshold = 1.1;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
@@ -68,13 +68,12 @@ mod test {
     }
 
     #[tokio::test]
-
     async fn test_get_collect_strategy() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
         let uid = "eb7a5f6ce1234b0d9de0d63750d6aa2c1661e89a3cc9c1beb23aad3bd324071c";
-        let res = wallet_manager.get_collect_strategy(uid).await;
-        // let res = serde_json::to_string(&res).unwrap();
+        let res = wallet_manager.get_collect_strategy(uid).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
 
         Ok(())
@@ -101,6 +100,18 @@ mod test {
         }];
         let res = wallet_manager.update_withdrawal_strategy(uid, threshold, chain_config).await;
         tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_withdrawal_strategy() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let uid = "2b607a707cc4f0b4191bce26149e0310302905a59aed4c27b35d6429bfacd5d9";
+        let res = wallet_manager.get_withdrawal_strategy(uid).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+
         Ok(())
     }
 }

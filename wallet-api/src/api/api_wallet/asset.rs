@@ -1,7 +1,10 @@
 use crate::{
     api::ReturnType,
     manager::WalletManager,
-    response_vo::{account::Balance, api_wallet::assets::ApiAccountChainAssetList},
+    response_vo::{
+        self, account::Balance, api_wallet::assets::ApiAccountChainAssetList,
+        assets::GetAccountAssetsRes,
+    },
     service::api_wallet::asset::ApiAssetsService,
 };
 
@@ -14,6 +17,33 @@ impl WalletManager {
     ) -> ReturnType<ApiAccountChainAssetList> {
         ApiAssetsService::new()
             .get_api_assets_list(wallet_address, account_id, chain_code, None)
+            .await
+    }
+
+    // api钱包添加资产
+    pub async fn api_add_assets(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
+        ApiAssetsService::add_assets(req).await
+    }
+
+    pub async fn api_remove_assets(
+        &self,
+        wallet_address: &str,
+        account_id: Option<u32>,
+        chain_list: response_vo::chain::ChainList,
+    ) -> ReturnType<()> {
+        ApiAssetsService::remove_assets(wallet_address, account_id, chain_list, None).await
+    }
+
+    // 已添加的币种列表
+    pub async fn api_added_coin_list(
+        &self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        keyword: Option<&str>,
+        is_multisig: Option<bool>,
+    ) -> ReturnType<crate::response_vo::coin::CoinInfoList> {
+        ApiAssetsService::get_added_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await
     }
 
@@ -44,6 +74,28 @@ impl WalletManager {
         token_address: String,
     ) -> ReturnType<Balance> {
         ApiAssetsService::new().chain_balance(&address, &chain_code, &token_address).await
+    }
+
+    // 资产列表
+    pub async fn get_assets_list(
+        &self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_code: Option<String>,
+        is_multisig: Option<bool>,
+    ) -> ReturnType<ApiAccountChainAssetList> {
+        ApiAssetsService::get_account_chain_assets(address, account_id, chain_code, is_multisig)
+            .await
+    }
+
+    // 账户的总资产
+    pub async fn get_api_account_assets(
+        &self,
+        account_id: u32,
+        wallet_address: &str,
+        chain_code: Option<String>,
+    ) -> ReturnType<GetAccountAssetsRes> {
+        ApiAssetsService::get_account_assets(account_id, wallet_address, chain_code).await
     }
 }
 

@@ -6,7 +6,7 @@ use crate::{
         },
         chain::rpc_need_header,
     },
-    error::{business::BusinessError, service::ServiceError},
+    error::service::ServiceError,
 };
 use dashmap::DashMap;
 use std::sync::Arc;

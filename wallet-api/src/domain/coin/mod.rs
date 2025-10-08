@@ -1,8 +1,13 @@
 pub mod token_price;
+use std::collections::HashMap;
+
 use super::app::config::ConfigDomain;
 use crate::{
     infrastructure::parse_utc_datetime,
-    response_vo::coin::{TokenCurrencies, TokenCurrencyId},
+    response_vo::{
+        chain::ChainList,
+        coin::{CoinInfoList, TokenCurrencies, TokenCurrencyId},
+    },
 };
 use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
@@ -94,6 +99,37 @@ impl CoinDomain {
         Ok(TokenCurrencies(map))
     }
 
+    pub(crate) fn merge_coin_to_list(
+        coins: Vec<CoinEntity>,
+        show_contract: bool,
+    ) -> Result<CoinInfoList, crate::error::service::ServiceError> {
+        let mut data = CoinInfoList::default();
+
+        for coin in coins.into_iter() {
+            if let Some(d) = data
+                .iter_mut()
+                .find(|info| info.symbol == coin.symbol && info.is_default && coin.is_default == 1)
+            {
+                d.chain_list
+                    .entry(coin.chain_code.clone())
+                    .or_insert(coin.token_address.unwrap_or_default());
+            } else {
+                data.push(crate::response_vo::coin::CoinInfo {
+                    symbol: coin.symbol.clone(),
+                    name: Some(coin.name.clone()),
+                    chain_list: ChainList(HashMap::from([(
+                        coin.chain_code.clone(),
+                        coin.token_address.unwrap_or_default(),
+                    )])),
+                    is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
+                    show_contract,
+                })
+            }
+        }
+        Ok(data)
+    }
+
     pub(crate) async fn upsert_hot_coin_list(
         repo: &mut ResourcesRepo,
         coins: Vec<CoinData>,
@@ -173,7 +209,6 @@ impl CoinDomain {
         } else {
             None
         };
-        // let create_at = None;
 
         coins.append(&mut backend_api.fetch_all_tokens(create_at.clone(), None).await?);
 
@@ -221,65 +256,3 @@ pub fn coin_info_to_coin_data(coin: CoinInfo) -> CoinData {
         updated_at: parse_utc_datetime(&coin.update_time),
     }
 }
-
-// pub(crate) struct UpsertCoinVo {
-//     chain_code: Option<String>,
-//     symbol: Option<String>,
-//     name: Option<String>,
-//     token_address: Option<String>,
-//     decimals: Option<u8>,
-//     protocol: Option<String>,
-//     is_default: u8,
-//     is_popular: u8,
-//     status: u8,
-// }
-
-// impl From<wallet_transport_backend::CoinInfo> for CoinData {
-//     fn from(coin: wallet_transport_backend::CoinInfo) -> Self {
-//         Self {
-//             chain_code: coin.chain_code.unwrap_or_default(),
-//             symbol: coin.symbol.unwrap_or_default(),
-//             name: coin.name,
-//             token_address: coin.token_address,
-//             decimals: coin.decimals.unwrap_or_default(),
-//             protocol: coin.protocol,
-//             is_default: if coin.default_token { 1 } else { 0 },
-//             is_popular: if coin.popular_token { 1 } else { 0 },
-//             status: if coin.popular_token { 1 } else { 0 },
-//             is_custom: 0,
-//             price: Some("0".to_string()),
-//         }
-//     }
-// }
-
-// impl UpsertCoinVo {
-//     pub(crate) fn token_address(&self) -> Option<String> {
-//         match &self.token_address {
-//             Some(token_address) => {
-//                 if token_address.is_empty() {
-//                     None
-//                 } else {
-//                     Some(token_address.clone())
-//                 }
-//             }
-//             None => None,
-//         }
-//     }
-// }
-
-// impl From<wallet_transport_backend::CoinInfo> for UpsertCoinVo {
-//     fn from(coin: wallet_transport_backend::CoinInfo) -> Self {
-//         Self {
-//             chain_code: coin.chain_code,
-//             symbol: coin.symbol,
-//             name: coin.name,
-//             token_address: coin.token_address,
-//             decimals: coin.decimals,
-//             protocol: coin.protocol,
-//             is_default: if coin.default_token { 1 } else { 0 },
-//             is_popular: if coin.popular_token { 1 } else { 0 },
-//             // status: if coin.enable { 1 } else { 0 },
-//             status: 1,
-//         }
-//     }
-// }

@@ -18,7 +18,7 @@ impl ApiWalletDao {
         phrase: &str,
         seed: &str,
         status: u8,
-        wallet_type: ApiWalletType,
+        api_wallet_type: ApiWalletType,
         binding_address: Option<&str>,
         // merchant_id: &str,
         // app_id: &str,
@@ -29,7 +29,7 @@ impl ApiWalletDao {
         let sql = r#"
             INSERT INTO api_wallet (
                 address, uid, name, phrase, seed,
-                status, is_init, wallet_type,
+                status, is_init, api_wallet_type,
                 created_at, updated_at
             )
             VALUES (?, ?, ?, ?, ?, ?, 0, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -40,7 +40,7 @@ impl ApiWalletDao {
                 phrase = excluded.phrase,
                 seed = excluded.seed,
                 status = excluded.status,
-                wallet_type = excluded.wallet_type,
+                api_wallet_type = excluded.api_wallet_type,
                 binding_address = excluded.binding_address,
                 updated_at = excluded.updated_at
             RETURNING *;
@@ -53,7 +53,7 @@ impl ApiWalletDao {
             .bind(phrase)
             .bind(seed)
             .bind(status)
-            .bind(wallet_type)
+            .bind(api_wallet_type)
             .bind(binding_address)
             .fetch_all(exec)
             .await
@@ -102,7 +102,7 @@ impl ApiWalletDao {
         let mut conditions = Vec::new();
 
         if api_wallet_type.is_some() {
-            conditions.push("wallet_type = ?".to_string());
+            conditions.push("api_wallet_type = ?".to_string());
         }
 
         if !conditions.is_empty() {
@@ -199,7 +199,7 @@ impl ApiWalletDao {
                 app_id = null,
                 merchant_id = null,
                 updated_at = $1
-            WHERE address = $2  AND wallet_type = $3 AND status = 1
+            WHERE address = $2  AND api_wallet_type = $3 AND status = 1
             RETURNING *;
         "#;
 

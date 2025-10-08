@@ -286,93 +286,11 @@ impl AssetsService {
         Ok(())
     }
 
-    // pub async fn add_coin(
-    //     self,
-    //     address: &str,
-    //     account_id: Option<u32>,
-    //     symbol: &str,
-    //     chain_code: Option<String>,
-    //     // token_address: Option<String>,
-    //     is_multisig: Option<bool>,
-    // ) -> Result<(), crate::error::service::ServiceError> {
-    //     let mut tx = self.repo;
-    //     let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
-    //     let accounts = self
-    //         .account_domain
-    //         .get_addresses(&mut tx, address, account_id, chain_codes, is_multisig)
-    //         .await?;
-    //     let coins = tx.coin_list_v2(Some(symbol.to_string()), chain_code.clone()).await?;
-
-    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    //     let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-    //         return Err(crate::error::business::BusinessError::Device(
-    //             crate::error::business::device::DeviceError::Uninitialized,
-    //         )
-    //         .into());
-    //     };
-    //     let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
-
-    //     let mut token_balance_refresh_req: TokenBalanceRefreshReq =
-    //         TokenBalanceRefreshReq(Vec::new());
-    //     for account in accounts {
-    //         if let Some(coin) = coins.iter().find(|coin| {
-    //             coin.chain_code == account.chain_code && coin.symbol == symbol
-    //             // && coin.is_default == 1
-    //         }) {
-    //             let chain_code = account.chain_code.as_str();
-    //             // let code: ChainCode = chain_code.try_into()?;
-
-    //             let is_multisig = if let Some(is_multisig) = is_multisig
-    //                 && is_multisig
-    //             {
-    //                 1
-    //             } else {
-    //                 0
-    //             };
-
-    //             let assets_id =
-    //                 AssetsId::new(&account.address, chain_code, symbol, coin.token_address());
-    //             let assets = CreateAssetsVo::new(
-    //                 assets_id,
-    //                 coin.decimals,
-    //                 coin.protocol.clone(),
-    //                 is_multisig,
-    //             )
-    //             .with_name(&coin.name)
-    //             .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
-
-    //             if coin.price.is_empty() {
-    //                 req.insert(
-    //                     chain_code,
-    //                     &assets.assets_id.token_address.clone().unwrap_or_default(),
-    //                 );
-    //             }
-    //             tx.upsert_assets(assets).await?;
-    //             token_balance_refresh_req
-    //                 .push(TokenBalanceRefresh::new(address, chain_code, &device.sn));
-    //         }
-    //     }
-
-    //     let task_data = BackendApiTaskData::new(
-    //         wallet_transport_backend::consts::endpoint::TOKEN_BALANCE_REFRESH,
-    //         &token_balance_refresh_req,
-    //     )?;
-
-    //     Tasks::new()
-    //         .push(CommonTask::QueryCoinPrice(req))
-    //         .push(BackendApiTask::BackendApi(task_data))
-    //         .send()
-    //         .await?;
-    //     Ok(())
-    // }
-
     pub async fn remove_coin_v2(
         &mut self,
         address: &str,
         account_id: Option<u32>,
         chain_list: ChainList,
-        // symbol: &str,
-        // token_address: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let tx = &mut self.repo;
@@ -500,13 +418,11 @@ impl AssetsService {
             .await?;
         let account_addresses =
             account_addresses.into_iter().map(|address| address.address).collect::<Vec<String>>();
+
         let res = self
             .assets_domain
             .get_local_coin_list(&mut tx, account_addresses, chain_code, keyword, is_multisig)
             .await?;
-
-        // let pool = tx.pool();
-        // AssetsDomain::show_contract(&pool, keyword, &mut res).await?;
 
         Ok(res)
     }

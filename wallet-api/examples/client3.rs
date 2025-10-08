@@ -19,8 +19,6 @@ async fn run(
     let phrase = &test_params.create_wallet_req.phrase;
     let salt = "q1111111";
     let wallet_name = "api_wallet";
-    let account_name = "ccccc";
-    let is_default_name = true;
     let wallet_password = "q1111111";
     // let binding_address = None;
     // let wallet_uid = wallet_manager
@@ -59,8 +57,7 @@ async fn run(
     //     )
     //     .await?;
     // tracing::info!("withdraw wallet 创建成功 ------------------------ 2: {withdrawal_uid:#?}");
-
-
+    
     wallet_manager.set_passwd_cache(wallet_password).await?;
     tracing::info!("绑定钱包之前必须设置密码成功 ------------------------ ");
 

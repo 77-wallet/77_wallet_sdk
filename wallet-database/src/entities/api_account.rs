@@ -13,7 +13,7 @@ pub struct ApiAccountEntity {
     pub derivation_path: Option<String>,
     pub derivation_path_index: Option<String>,
     pub chain_code: String,
-    pub wallet_type: ApiWalletType,
+    pub api_wallet_type: ApiWalletType,
     pub status: i32,
     pub is_init: i32,
     pub is_expand: i32,
@@ -27,6 +27,7 @@ pub struct CreateApiAccountVo {
     pub account_id: u32,
     pub address: String,
     pub pubkey: String,
+    #[serde(skip_serializing)]
     pub private_key: String,
     pub address_type: String,
     pub wallet_address: String,
@@ -34,7 +35,7 @@ pub struct CreateApiAccountVo {
     pub derivation_path_index: Option<String>,
     pub chain_code: String,
     pub name: String,
-    pub wallet_type: ApiWalletType,
+    pub api_wallet_type: ApiWalletType,
 }
 
 impl CreateApiAccountVo {
@@ -61,7 +62,7 @@ impl CreateApiAccountVo {
             derivation_path_index: Some(derivation_path_index.to_string()),
             chain_code: chain_code.to_string(),
             name: name.to_string(),
-            wallet_type: api_wallet_type,
+            api_wallet_type,
         }
     }
 

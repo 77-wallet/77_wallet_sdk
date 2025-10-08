@@ -1,13 +1,10 @@
+use super::account::BalanceInfo;
+use crate::response_vo::chain::ChainList;
 use std::{
     cmp::Ordering,
     ops::{Deref, DerefMut},
 };
-
 use wallet_database::entities::assets::AssetsEntity;
-
-use crate::response_vo::chain::ChainList;
-
-use super::account::BalanceInfo;
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

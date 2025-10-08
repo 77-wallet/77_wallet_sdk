@@ -65,4 +65,13 @@ impl ApiAssetsRepo {
         )
         .await
     }
+
+    pub async fn delete_assets(
+        pool: &DbPool,
+        address: &str,
+        chain_code: &str,
+        token_address: &str,
+    ) -> Result<(), crate::Error> {
+        ApiAssetsDao::delete_assets(pool.as_ref(), address, chain_code, token_address).await
+    }
 }
