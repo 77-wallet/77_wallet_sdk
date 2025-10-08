@@ -1,5 +1,6 @@
 use crate::infrastructure::{
     inner_event::InnerEventHandle,
+    process_collect_tx::ProcessCollectTxHandle,
     process_fee_tx::ProcessFeeTxHandle,
     process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
     process_withdraw_tx::ProcessWithdrawTxHandle,
@@ -15,6 +16,7 @@ pub struct Handles {
     unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessor>,
     process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
+    process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
 }
 
 impl Handles {
@@ -30,6 +32,7 @@ impl Handles {
 
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
         let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
+        let process_collect_tx_handle = ProcessCollectTxHandle::new().await;
         Self {
             task_manager: Arc::new(task_manager),
             inner_event_handle: Arc::new(inner_event_handle),
@@ -37,12 +40,14 @@ impl Handles {
             unconfirmed_msg_processor: Arc::new(unconfirmed_msg_processor),
             process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
+            process_collect_tx_handle: Arc::new(process_collect_tx_handle),
         }
     }
 
     pub(crate) async fn close(&self) -> Result<(), crate::error::service::ServiceError> {
         self.process_withdraw_tx_handle.close().await?;
         self.process_fee_tx_handle.close().await?;
+        self.process_collect_tx_handle.close().await?;
         Ok(())
     }
 
@@ -52,6 +57,10 @@ impl Handles {
 
     pub(crate) fn get_global_processed_fee_tx_handle(&self) -> Arc<ProcessFeeTxHandle> {
         self.process_fee_tx_handle.clone()
+    }
+
+    pub(crate) fn get_global_processed_collect_tx_handle(&self) ->Arc<ProcessCollectTxHandle> {
+        self.process_collect_tx_handle.clone()
     }
 
     pub(crate) fn get_global_task_manager(&self) -> Arc<TaskManager> {

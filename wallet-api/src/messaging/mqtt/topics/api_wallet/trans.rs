@@ -11,6 +11,8 @@ use crate::{
     },
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
 };
+use crate::domain::api_wallet::trans::fee::ApiFeeDomain;
+use crate::request::api_wallet::trans::ApiTransferFeeReq;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -116,7 +118,26 @@ impl AwmOrderTransMsg {
             trade_type: self.trade_type as u8,
             audit: self.audit,
         };
-        ApiCollectDomain::collect(&req).await
+        ApiCollectDomain::collect_v2(&req).await
+    }
+
+    pub(crate) async fn transfer_fee_v2(&self) -> Result<(), crate::error::service::ServiceError> {
+        let token_address =
+            if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) };
+        let req = ApiTransferFeeReq {
+            uid: self.uid.to_string(),
+            from: self.from.to_string(),
+            to: self.to.to_string(),
+            value: self.value.to_string(),
+            chain_code: self.chain_code.to_string(),
+            token_address,
+            symbol: self.symbol.to_string(),
+            trade_no: self.trade_no.to_string(),
+            trade_type: self.trade_type as u8,
+        };
+        let res = ApiFeeDomain::transfer_fee(&req).await;
+        tracing::info!("transfer fee wallet transfer fee {} to {} value {:?}", self.from, self.to, res);
+        Ok(())
     }
 
     pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {

@@ -45,6 +45,7 @@ impl ApiCollectDomain {
             &req.symbol,
             &req.trade_no,
             req.trade_type,
+            ApiCollectStatus::Init,
         )
         .await?;
 
@@ -101,7 +102,8 @@ impl ApiCollectDomain {
                 ApiCollectRepo::update_api_collect_status(
                     &pool,
                     &req.trade_no,
-                    ApiCollectStatus::WithdrawInsufficientBalance,
+                    ApiCollectStatus::InsufficientBalance,
+                    "insufficient balance"
                 )
                 .await?;
 
@@ -165,11 +167,109 @@ impl ApiCollectDomain {
             .await?;
         }
 
-        // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
+        Ok(())
+    }
 
-        // let data = NotifyEvent::AddressUse(self.to_owned());
-        // FrontendNotifyEvent::new(data).send().await?;
+    pub(crate) async fn collect_v2(
+        req: &ApiWithdrawReq,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
 
+        // 查询手续费
+        let main_coin = ChainTransDomain::main_coin(&req.chain_code).await?;
+        tracing::info!("主币： {}", main_coin.symbol);
+        let main_symbol = main_coin.symbol;
+        let fee = Self::estimate_fee(
+            &req.from,
+            &req.to,
+            &req.value,
+            &req.chain_code,
+            &req.symbol,
+            &main_symbol,
+            req.token_address.clone(),
+            main_coin.decimals,
+        )
+            .await?;
+        tracing::info!("估算手续费: {}", fee);
+
+        // 查询策略
+        let chain_config = Self::get_collect_config(&req.uid, &req.chain_code).await?;
+
+        // 查询资产主币余额
+        let balance =
+            Self::query_balance(&req.from, &req.chain_code, None, main_coin.decimals).await?;
+
+        tracing::info!("from: {}, to: {}", req.from, req.to);
+        tracing::info!("资产主币余额: {balance}, 手续费: {fee}");
+
+        let balance = conversion::decimal_from_str(&balance)?;
+        let value = conversion::decimal_from_str(&req.value)?;
+        let fee_decimal = conversion::decimal_from_str(&fee.to_string())?;
+        let need = if req.token_address.is_some() { fee_decimal } else { fee_decimal + value };
+        tracing::info!("need: {need}");
+        // 如果手续费不足，则从其他地址转入手续费费用
+        if balance < need {
+            ApiCollectRepo::upsert_api_collect(
+                &pool,
+                &req.uid,
+                &wallet.name,
+                &req.from,
+                &req.to,
+                &req.value,
+                &req.chain_code,
+                req.token_address.clone(),
+                &req.symbol,
+                &req.trade_no,
+                req.trade_type,
+                ApiCollectStatus::InsufficientBalance,
+            ).await?;
+
+            ApiCollectRepo::update_api_collect_status(
+                &pool,
+                &req.trade_no,
+                ApiCollectStatus::InsufficientBalance,
+                "insufficient balance",
+            ).await?;
+            tracing::info!("need transfer withdraw fee");
+            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let req = ServiceFeeUploadReq::new(
+                &req.trade_no,
+                &req.chain_code,
+                &main_symbol,
+                "",
+                &req.to,
+                &req.from,
+                unit::string_to_f64(&fee)?,
+            );
+
+            backend_api.upload_service_fee_record(&req).await?;
+        } else {
+            ApiCollectRepo::upsert_api_collect(
+                &pool,
+                &req.uid,
+                &wallet.name,
+                &req.from,
+                &req.to,
+                &req.value,
+                &req.chain_code,
+                req.token_address.clone(),
+                &req.symbol,
+                &req.trade_no,
+                req.trade_type,
+                ApiCollectStatus::SufficientBalance,
+            ).await?;
+
+            // 可能发交易
+            if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+            {
+                handles.get_global_processed_collect_tx_handle().submit_tx(&req.trade_no).await?;
+            }
+        }
         Ok(())
     }
 
@@ -244,5 +344,22 @@ impl ApiCollectDomain {
         };
         // let amount = unit::convert_to_u256(&amount, decimals)?;
         Ok(amount)
+    }
+
+    pub async fn confirm_tx(
+        trade_no: &str,
+        status: ApiCollectStatus,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ApiCollectRepo::update_api_collect_status(&pool, trade_no, status, "confirm").await?;
+
+        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+        {
+            handles
+                .get_global_processed_collect_tx_handle()
+                .submit_confirm_report_tx(trade_no)
+                .await?;
+        }
+        Ok(())
     }
 }
