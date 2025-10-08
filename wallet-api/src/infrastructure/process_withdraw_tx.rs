@@ -10,7 +10,7 @@ use tokio::{
 };
 use wallet_database::{
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-    repositories::api_withdraw::ApiWithdrawRepo,
+    repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,

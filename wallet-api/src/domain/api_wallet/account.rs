@@ -1,14 +1,21 @@
 use crate::{
     context::CONTEXT,
     domain::{
+        account::AccountDomain,
         api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
+        coin::CoinDomain,
     },
     error::service::ServiceError,
     infrastructure::task_queue::{
         CommonTask,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
+    },
+    response_vo::{
+        account::BalanceInfo,
+        api_wallet::account::{ApiAccountInfo, ApiAccountInfos},
+        chain::ChainCodeAndName,
     },
     service::api_wallet::asset::AddressChainCode,
 };
@@ -24,7 +31,9 @@ use wallet_database::{
         chain::ChainEntity,
     },
     repositories::{
-        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, coin::CoinRepo, device::DeviceRepo,
+        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
+        coin::CoinRepo,
+        device::DeviceRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -38,12 +47,71 @@ impl ApiAccountDomain {
     pub(crate) async fn list_api_accounts(
         wallet_address: &str,
         account_id: Option<u32>,
-        chain_code: Option<&str>,
-    ) -> Result<Vec<ApiAccountEntity>, ServiceError> {
+        chain_code: Option<String>,
+    ) -> Result<ApiAccountInfos, ServiceError> {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let res =
-            ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, chain_code)
+
+        let chains = ApiChainRepo::get_chain_list(&pool).await?;
+        let chain_codes = if let Some(chain_code) = chain_code {
+            vec![chain_code]
+        } else {
+            chains.iter().map(|chain| chain.chain_code.clone()).collect()
+        };
+
+        let chains: ChainCodeAndName = chains.into();
+
+        let mut res = ApiAccountInfos::new();
+        let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::ApiWallet(
+                    crate::error::business::api_wallet::ApiWalletError::NotFound,
+                ),
+            ),
+        )?;
+
+        let account_list =
+            ApiAccountRepo::api_account_list(&pool, Some(wallet.address), account_id, chain_codes)
                 .await?;
+        for account in account_list {
+            let address_type =
+                AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
+
+            let name = chains.get(&account.chain_code);
+            if let Some(info) = res.iter_mut().find(|info| info.account_id == account.account_id) {
+                info.chain.push(crate::response_vo::wallet::ChainInfo {
+                    address: account.address,
+                    wallet_address: account.wallet_address,
+                    derivation_path: account.derivation_path,
+                    chain_code: account.chain_code,
+                    name: name.cloned(),
+                    address_type,
+                    created_at: account.created_at,
+                    updated_at: account.updated_at,
+                });
+            } else {
+                let account_index_map =
+                    wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
+                let balance = BalanceInfo::new_without_amount().await?;
+                res.push(ApiAccountInfo {
+                    account_id: account.account_id,
+                    account_index_map,
+                    name: account.name,
+                    balance,
+                    chain: vec![crate::response_vo::wallet::ChainInfo {
+                        address: account.address,
+                        wallet_address: account.wallet_address,
+                        derivation_path: account.derivation_path,
+                        chain_code: account.chain_code,
+                        name: name.cloned(),
+                        address_type,
+                        created_at: account.created_at,
+                        updated_at: account.updated_at,
+                    }],
+                    api_wallet_type: account.api_wallet_type,
+                });
+            }
+        }
+
         Ok(res)
     }
 
@@ -290,8 +358,13 @@ impl ApiAccountDomain {
         let mut account_addresses = Vec::new();
 
         // 获取钱包下的这个账户的所有地址
-        let accounts =
-            ApiAccountRepo::api_account_list(&pool, Some(address), account_id, chain_codes).await?;
+        let accounts = ApiAccountRepo::api_account_list(
+            &pool,
+            Some(address.to_string()),
+            account_id,
+            chain_codes,
+        )
+        .await?;
 
         for account in accounts {
             if !account_addresses.iter().any(|address: &AddressChainCode| {

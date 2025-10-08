@@ -46,7 +46,7 @@ use wallet_database::{
         multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
         permission::PermissionEntity,
     },
-    repositories::api_nonce::ApiNonceRepo,
+    repositories::api_wallet::nonce::ApiNonceRepo,
 };
 use wallet_transport::client::RpcClient;
 use wallet_transport_backend::{api::BackendApi, response_vo::chain::GasOracle};

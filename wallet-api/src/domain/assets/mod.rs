@@ -19,7 +19,7 @@ use wallet_database::{
         wallet::WalletEntity,
     },
     repositories::{
-        ResourcesRepo, account::AccountRepoTrait, api_assets::ApiAssetsRepo,
+        ResourcesRepo, account::AccountRepoTrait, api_wallet::assets::ApiAssetsRepo,
         assets::AssetsRepoTrait, coin::CoinRepo,
     },
 };

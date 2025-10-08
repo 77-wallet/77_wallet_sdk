@@ -204,7 +204,7 @@ impl ApiAccountDao {
 
     pub async fn api_account_list<'a, E>(
         executor: E,
-        wallet_address: Option<&str>,
+        wallet_address: Option<String>,
         account_id: Option<u32>,
         chain_codes: Vec<String>,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error>

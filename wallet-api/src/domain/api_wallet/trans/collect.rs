@@ -12,7 +12,7 @@ use crate::{
 };
 use wallet_database::{
     entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
-    repositories::{api_collect::ApiCollectRepo, api_wallet::ApiWalletRepo},
+    repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
 };
 use wallet_transport_backend::request::api_wallet::{
     strategy::ChainConfig, transaction::ServiceFeeUploadReq,

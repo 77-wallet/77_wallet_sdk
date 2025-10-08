@@ -5,7 +5,7 @@ use crate::{
 };
 use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType, api_withdraw::ApiWithdrawStatus},
-    repositories::{api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
+    repositories::api_wallet::{fee::ApiFeeRepo, wallet::ApiWalletRepo},
 };
 
 pub struct ApiFeeDomain {}

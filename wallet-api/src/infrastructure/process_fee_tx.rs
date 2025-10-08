@@ -10,7 +10,7 @@ use tokio::{
 };
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
-    repositories::api_fee::ApiFeeRepo,
+    repositories::api_wallet::fee::ApiFeeRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransStatus, TransType, TxExecReceiptUploadReq,

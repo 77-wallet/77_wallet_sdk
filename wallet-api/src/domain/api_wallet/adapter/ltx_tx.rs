@@ -29,7 +29,7 @@ use wallet_database::{
         multisig_member::MultisigMemberEntities, multisig_queue::MultisigQueueEntity,
         permission::PermissionEntity,
     },
-    repositories::api_account::ApiAccountRepo,
+    repositories::api_wallet::account::ApiAccountRepo,
 };
 use wallet_transport_backend::api::BackendApi;
 use wallet_types::chain::address::r#type::LtcAddressType;

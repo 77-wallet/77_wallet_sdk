@@ -1,4 +1,6 @@
-use wallet_database::{entities::assets::AssetsIdVo, repositories::api_assets::ApiAssetsRepo};
+use wallet_database::{
+    entities::assets::AssetsIdVo, repositories::api_wallet::assets::ApiAssetsRepo,
+};
 
 pub(crate) struct ApiAssetsDomain;
 

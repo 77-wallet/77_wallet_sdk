@@ -1,7 +1,7 @@
 use wallet_database::{
     entities::node::{NodeCreateVo, NodeEntity},
     repositories::{
-        ResourcesRepo, api_chain::ApiChainRepo, chain::ChainRepoTrait, node::NodeRepoTrait,
+        ResourcesRepo, api_wallet::chain::ApiChainRepo, chain::ChainRepoTrait, node::NodeRepoTrait,
     },
 };
 use wallet_transport_backend::{request::ChainRpcListReq, response_vo::chain::ChainInfos};

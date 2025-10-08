@@ -6,8 +6,8 @@ use crate::{
 use tracing::event;
 use wallet_database::{
     entities::api_withdraw::ApiWithdrawStatus,
-    repositories::{
-        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
+    repositories::api_wallet::{
+        account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::{

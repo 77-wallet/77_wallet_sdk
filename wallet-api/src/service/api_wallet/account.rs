@@ -6,11 +6,11 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::address_allock::AddressAllockType,
+    response_vo::api_wallet::account::ApiAccountInfos,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
-    entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
-    repositories::api_chain::ApiChainRepo,
+    entities::api_wallet::ApiWalletType, repositories::api_wallet::chain::ApiChainRepo,
 };
 
 pub struct ApiAccountService {
@@ -25,10 +25,16 @@ impl ApiAccountService {
     pub async fn list_api_accounts(
         &self,
         wallet_address: &str,
-        account_id: Option<u32>,
-        chain_code: Option<&str>,
-    ) -> Result<Vec<ApiAccountEntity>, ServiceError> {
-        ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code).await
+        index: i32,
+        chain_code: Option<String>,
+    ) -> Result<ApiAccountInfos, ServiceError> {
+        let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
+        ApiAccountDomain::list_api_accounts(
+            wallet_address,
+            Some(account_index_map.account_id),
+            chain_code,
+        )
+        .await
     }
 
     pub async fn expand_address(

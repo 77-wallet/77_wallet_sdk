@@ -1,7 +1,10 @@
 use crate::domain::coin::CoinDomain;
 use wallet_database::{
     entities::coin::CoinId,
-    repositories::{api_account::ApiAccountRepo, api_assets::ApiAssetsRepo, coin::CoinRepo},
+    repositories::{
+        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
+        coin::CoinRepo,
+    },
 };
 
 pub struct ApiCoinService;

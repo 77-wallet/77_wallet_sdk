@@ -1,6 +1,9 @@
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
-    repositories::{api_chain::ApiChainRepo, api_wallet::ApiWalletRepo, device::DeviceRepo},
+    repositories::{
+        api_wallet::{chain::ApiChainRepo, wallet::ApiWalletRepo},
+        device::DeviceRepo,
+    },
 };
 use wallet_transport_backend::{
     request::{LanguageInitReq, api_wallet::address::AddressListReq},

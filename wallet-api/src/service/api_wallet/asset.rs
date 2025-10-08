@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use wallet_database::{
     entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
     repositories::{
-        api_account::ApiAccountRepo, api_assets::ApiAssetsRepo, api_chain::ApiChainRepo,
+        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo},
         coin::CoinRepo,
     },
 };

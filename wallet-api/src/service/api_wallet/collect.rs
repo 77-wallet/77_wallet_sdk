@@ -3,7 +3,7 @@ use crate::{
     request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_collect::ApiCollectEntity, repositories::api_collect::ApiCollectRepo,
+    entities::api_collect::ApiCollectEntity, repositories::api_wallet::collect::ApiCollectRepo,
 };
 
 pub struct CollectService {}
