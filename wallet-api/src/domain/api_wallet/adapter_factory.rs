@@ -6,7 +6,7 @@ use crate::{
         },
         chain::rpc_need_header,
     },
-    error::service::ServiceError,
+    error::{business::BusinessError, service::ServiceError},
 };
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -72,7 +72,8 @@ impl ApiChainAdapterFactory {
             tracing::error!("No node found in database: {}", chain_code);
             return Err(BusinessError::Chain(crate::error::business::chain::ChainError::NotFound(
                 chain_code.to_string(),
-            )).into());
+            ))
+            .into());
         }
         Ok(node.unwrap())
     }

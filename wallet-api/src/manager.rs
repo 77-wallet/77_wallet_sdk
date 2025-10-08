@@ -9,9 +9,9 @@ use crate::{
     messaging::notify::FrontendNotifyEvent,
     service::{device::DeviceService, task_queue::TaskQueueService},
 };
+use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::factory::RepositoryFactory;
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
@@ -104,15 +104,7 @@ impl WalletManager {
     }
 
     pub async fn close(&self) -> ReturnType<()> {
-        self.close_handles().await.into()
-    }
-
-    async fn close_handles(&self) -> Result<(), crate::error::service::ServiceError> {
-        let withdraw_handle = self.handles.get_global_processed_withdraw_tx_handle();
-        withdraw_handle.close().await?;
-        let fee_handle = self.handles.get_global_processed_fee_tx_handle();
-        fee_handle.close().await?;
-        Ok(())
+        self.handles.close().await.into()
     }
 }
 
