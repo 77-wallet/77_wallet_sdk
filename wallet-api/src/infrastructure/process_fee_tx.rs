@@ -356,7 +356,7 @@ impl ProcessFeeTxReport {
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,
-                TransType::Fee,
+                TransType::ColFee,
                 &req.tx_hash,
                 status,
                 &req.notes,

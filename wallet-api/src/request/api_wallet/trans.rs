@@ -14,6 +14,7 @@ pub struct ApiWithdrawReq {
     pub trade_no: String,
     // 交易类型： 1 提币 / 2 归集
     pub trade_type: u8,
+    pub audit: u32,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]

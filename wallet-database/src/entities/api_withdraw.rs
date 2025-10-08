@@ -41,16 +41,16 @@ pub struct ApiWithdrawEntity {
 )]
 #[repr(u8)]
 pub enum ApiWithdrawStatus {
-    Init,
-    AuditPass,
-    AuditReject,
-    SendingTx,
-    SendingTxFailed,
-    ReceivedTxReport,
-    ReceivedTxFailedReport, // 结束
-    Success,
-    Failure,
-    ReceivedConfirmReport, // 结束
+    Init, // 0
+    AuditPass, // 1
+    AuditReject, // 2
+    SendingTx, // 3
+    SendingTxFailed, // 4
+    SendingTxReport, // 5, 发送交易报告给服务器
+    SendingTxFailedReport, // 6,发送交易失败报告给服务器，结束
+    Success, // 7，收到成功确认
+    Failure, // 8，收到失败确认
+    ReceivedConfirmReport, // 9, 结束
 }
 
 impl Display for ApiWithdrawStatus {

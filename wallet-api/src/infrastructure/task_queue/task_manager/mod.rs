@@ -79,37 +79,41 @@ impl TaskManager {
         mut repo: wallet_database::repositories::ResourcesRepo,
         running_tasks: &RunningTasks,
     ) -> Result<(), ServiceError> {
-        let manager = crate::context::CONTEXT.get().unwrap().get_global_task_manager();
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let manager = handles.get_global_task_manager();
 
-        repo.delete_old(15).await?;
+            repo.delete_old(15).await?;
 
-        let mut failed_queue = repo.failed_task_queue().await?;
-        let pending_queue = repo.pending_task_queue().await?;
-        let running_queue = repo.running_task_queue().await?;
-        failed_queue.extend(running_queue);
-        failed_queue.extend(pending_queue);
+            let mut failed_queue = repo.failed_task_queue().await?;
+            let pending_queue = repo.pending_task_queue().await?;
+            let running_queue = repo.running_task_queue().await?;
+            failed_queue.extend(running_queue);
+            failed_queue.extend(pending_queue);
 
-        let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
+            let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 
-        // tracing::info!("failed_queue: {:#?}", failed_queue);
-        for task_entity in failed_queue.into_iter() {
-            if !running_tasks.contains(&task_entity.id) {
-                let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {
-                    tracing::error!("task queue entity convert to task error: {}", task_entity.id);
-                    repo.delete_task(&task_entity.id).await?;
-                    continue;
-                };
+            // tracing::info!("failed_queue: {:#?}", failed_queue);
+            for task_entity in failed_queue.into_iter() {
+                if !running_tasks.contains(&task_entity.id) {
+                    let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {
+                        tracing::error!("task queue entity convert to task error: {}", task_entity.id);
+                        repo.delete_task(&task_entity.id).await?;
+                        continue;
+                    };
 
-                let priority = scheduler::assign_priority(&*task, true)?;
-                grouped_tasks.entry(priority).or_default().push(task_entity);
+                    let priority = scheduler::assign_priority(&*task, true)?;
+                    grouped_tasks.entry(priority).or_default().push(task_entity);
+                }
+            }
+
+            for (priority, tasks) in grouped_tasks {
+                if let Err(e) = manager.get_task_sender().send(PriorityTask { priority, tasks }) {
+                    tracing::error!("send task queue error: {}", e);
+                }
             }
         }
 
-        for (priority, tasks) in grouped_tasks {
-            if let Err(e) = manager.get_task_sender().send(PriorityTask { priority, tasks }) {
-                tracing::error!("send task queue error: {}", e);
-            }
-        }
         Ok(())
     }
 
@@ -245,12 +249,13 @@ impl TaskManager {
 
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
-            let unconfirmed_msg_collector =
-                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector();
-            tracing::info!("mqtt submit unconfirmed msg collector: {}", task_entity.id);
-            unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+            if let Some(handles) = handles.upgrade() {
+                let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
+                tracing::info!("mqtt submit unconfirmed msg collector: {}", task_entity.id);
+                unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
+            }
         }
-
         Ok(())
     }
 
@@ -285,10 +290,13 @@ impl TaskManager {
         repo.task_done(&id).await?;
 
         if task_type == TaskType::Mqtt {
-            let unconfirmed_msg_collector =
-                crate::context::CONTEXT.get().unwrap().get_global_unconfirmed_msg_collector();
-            tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
-            unconfirmed_msg_collector.submit(vec![id])?;
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+            if let Some(handles) = handles.upgrade() {
+                let unconfirmed_msg_collector =
+                    handles.get_global_unconfirmed_msg_collector();
+                tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
+                unconfirmed_msg_collector.submit(vec![id])?;
+            }
         }
 
         Ok(())

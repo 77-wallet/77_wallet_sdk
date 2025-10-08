@@ -1,20 +1,23 @@
 use crate::{
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
+    handles::Handles,
     infrastructure::{
-        SharedCache,
         inner_event::InnerEventHandle,
         process_fee_tx::ProcessFeeTxHandle,
         process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
-        process_withdraw_tx::ProcessWithdrawTxHandle,
         task_queue::task_manager::TaskManager,
+        SharedCache,
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, Weak},
+};
 use tokio::sync::RwLock;
 use tracing::log;
-use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
+use wallet_database::{entities::api_wallet::ApiWalletType, SqliteContext};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
@@ -38,7 +41,7 @@ pub(crate) async fn init_context<'a>(
     Ok(context)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Context {
     dirs: Arc<Dirs>,
     aggregate_api: String,
@@ -46,17 +49,12 @@ pub struct Context {
     sqlite_context: Arc<wallet_database::SqliteContext>,
     oss_client: Arc<wallet_oss::oss_client::OssClient>,
     frontend_notify: Arc<RwLock<FrontendNotifySender>>,
-    task_manager: Arc<TaskManager>,
     mqtt_topics: Arc<RwLock<Topics>>,
     rpc_token: Arc<RwLock<RpcToken>>,
     device: Arc<DeviceInfo>,
     cache: Arc<SharedCache>,
     current_wallet_type: Arc<RwLock<ApiWalletType>>,
-    inner_event_handle: Arc<InnerEventHandle>,
-    unconfirmed_msg_collector: Arc<UnconfirmedMsgCollector>,
-    unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessor>,
-    process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
-    process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
+    handles: Mutex<Weak<Handles>>,
 }
 
 impl Context {
@@ -105,19 +103,6 @@ impl Context {
 
         let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
-        let unconfirmed_msg_collector = UnconfirmedMsgCollector::new();
-        // 创建 TaskManager 实例
-        let notify = Arc::new(tokio::sync::Notify::new());
-        let task_manager = TaskManager::new(notify.clone());
-
-        let unconfirmed_msg_processor = UnconfirmedMsgProcessor::new(&client_id, notify);
-
-        let inner_event_handle = InnerEventHandle::new();
-
-        let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
-
-        let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
-
         Ok(Context {
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
@@ -125,17 +110,12 @@ impl Context {
             sqlite_context: Arc::new(sqlite_context),
             frontend_notify,
             oss_client: Arc::new(oss_client),
-            task_manager: Arc::new(task_manager),
             mqtt_topics: Arc::new(RwLock::new(Topics::new())),
             rpc_token: Arc::new(RwLock::new(RpcToken::default())),
             device: Arc::new(DeviceInfo::new(sn, &client_id)),
             cache: Arc::new(SharedCache::new()),
             current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
-            inner_event_handle: Arc::new(inner_event_handle),
-            unconfirmed_msg_collector: Arc::new(unconfirmed_msg_collector),
-            unconfirmed_msg_processor: Arc::new(unconfirmed_msg_processor),
-            process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
-            process_fee_tx_handle: Arc::new(process_fee_tx_handle),
+            handles: Mutex::new(Weak::new()),
         })
     }
 
@@ -189,9 +169,7 @@ impl Context {
         self.oss_client.clone()
     }
 
-    pub(crate) fn get_global_task_manager(&self) -> Arc<TaskManager> {
-        self.task_manager.clone()
-    }
+
 
     pub(crate) fn get_global_cache(&self) -> Arc<SharedCache> {
         self.cache.clone()
@@ -226,12 +204,10 @@ impl Context {
                         instance: tokio::time::Instant::now()
                             + tokio::time::Duration::from_secs(30 * 60),
                     };
-
                     {
                         let mut token_guard = self.rpc_token.write().await;
                         *token_guard = new_token.clone();
                     }
-
                     Ok(HashMap::from([("token".to_string(), new_token.token)]))
                 }
                 Err(e) => {
@@ -242,9 +218,11 @@ impl Context {
                     if !token.is_empty() {
                         Ok(HashMap::from([("token".to_string(), token)]))
                     } else {
-                        Err(crate::error::business::BusinessError::Chain(
-                            crate::error::business::chain::ChainError::NodeToken(e.to_string()),
-                        ))?
+                        tracing::error!("get_rpc_header failed to get token, error: {:?}", e);
+                        Ok(HashMap::new())
+                        // Err(crate::error::business::BusinessError::Chain(
+                        //     crate::error::business::chain::ChainError::NodeToken(e.to_string()),
+                        // ))?
                     }
                 }
             }
@@ -257,27 +235,12 @@ impl Context {
         }
     }
 
-    pub(crate) fn get_global_inner_event_handle(&self) -> Arc<InnerEventHandle> {
-        self.inner_event_handle.clone()
+    pub(crate) fn get_global_handles(&self) -> Weak<Handles> {
+        self.handles.lock().unwrap().clone()
     }
 
-    pub(crate) fn get_global_notify(&self) -> Arc<tokio::sync::Notify> {
-        self.task_manager.notify.clone()
-    }
-
-    pub(crate) fn get_global_unconfirmed_msg_collector(&self) -> Arc<UnconfirmedMsgCollector> {
-        self.unconfirmed_msg_collector.clone()
-    }
-
-    pub(crate) fn get_global_unconfirmed_msg_processor(&self) -> Arc<UnconfirmedMsgProcessor> {
-        self.unconfirmed_msg_processor.clone()
-    }
-
-    pub(crate) fn get_global_processed_withdraw_tx_handle(&self) -> Arc<ProcessWithdrawTxHandle> {
-        self.process_withdraw_tx_handle.clone()
-    }
-
-    pub(crate) fn get_global_processed_fee_tx_handle(&self) -> Arc<ProcessFeeTxHandle> {
-        self.process_fee_tx_handle.clone()
+    pub(crate) fn set_global_handles(&self, handles: Weak<Handles>) {
+        let mut lock = self.handles.lock().unwrap();
+        *lock = handles;
     }
 }

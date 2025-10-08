@@ -212,14 +212,17 @@ impl AcctChange {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
-
-        let inner_event_handle =
-            crate::context::CONTEXT.get().unwrap().get_global_inner_event_handle();
-        inner_event_handle.send(InnerEvent::SyncAssets {
-            addr_list: vec![acct_change.from_addr.to_string(), acct_change.to_addr.to_string()],
-            chain_code: acct_change.chain_code.to_string(),
-            symbol: acct_change.get_sync_assets_symbol(),
-        })?;
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let inner_event_handle = handles.get_global_inner_event_handle();
+            inner_event_handle.send(InnerEvent::SyncAssets {
+                addr_list: vec![acct_change.from_addr.to_string(), acct_change.to_addr.to_string()],
+                chain_code: acct_change.chain_code.to_string(),
+                symbol: acct_change.get_sync_assets_symbol(),
+            })?;
+        } else {
+            tracing::warn!("acct_change status is false, skip sync assets");
+        }
         // tracing::info!("发送同步资产事件");
         Ok(())
     }

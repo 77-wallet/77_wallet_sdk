@@ -396,7 +396,7 @@ impl ApiWalletService {
         org_id: &str,
         recharge_uid: &str,
         withdrawal_uid: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, recharge_uid).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(
@@ -417,7 +417,7 @@ impl ApiWalletService {
         .await?;
 
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
-            return Err(crate::error::service::ServiceError::Business(
+            return Err(ServiceError::Business(
                 crate::error::business::BusinessError::Device(
                     crate::error::business::device::DeviceError::Uninitialized,
                 )

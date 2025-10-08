@@ -32,6 +32,7 @@ impl WalletManager {
                 trade_no,
                 trade_type,
                 uid,
+                1,
             )
             .await
     }

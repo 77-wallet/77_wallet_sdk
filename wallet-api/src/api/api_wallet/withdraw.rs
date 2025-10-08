@@ -41,16 +41,17 @@ impl WalletManager {
                 trade_no,
                 trade_type,
                 uid,
+                1,
             )
             .await
     }
 
     pub async fn sign_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().sign_withdrawal_order(order_id, 1).await
+        WithdrawService::new().sign_withdrawal_order(order_id).await
     }
 
     pub async fn reject_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().reject_withdrawal_order(order_id, 2).await
+        WithdrawService::new().reject_withdrawal_order(order_id).await
     }
 }
 

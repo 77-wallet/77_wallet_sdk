@@ -64,21 +64,22 @@ impl ApiChainAdapterFactory {
         Ok(ApiChainAdapterFactory { transaction_adapter: adapter })
     }
 
-    async fn get_chain_node(
-        chain_code: ChainCode,
-    ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
+    async fn get_chain_node(chain_code: ChainCode) -> Result<ChainWithNode, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code.to_string().as_str())
-            .await?
-            .ok_or(crate::error::business::BusinessError::Chain(
-                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
-            ))?;
-        Ok(node)
+        let node =
+            ChainEntity::chain_node_info(pool.as_ref(), chain_code.to_string().as_str()).await?;
+        if node.is_none() {
+            tracing::error!("No node found in database: {}", chain_code);
+            return Err(BusinessError::Chain(crate::error::business::chain::ChainError::NotFound(
+                chain_code.to_string(),
+            )).into());
+        }
+        Ok(node.unwrap())
     }
 
-    async fn new_transaction_adapter(
+    pub async fn new_transaction_adapter(
         chain_code: ChainCode,
-    ) -> Result<Arc<dyn Tx + Send + Sync>, crate::error::service::ServiceError> {
+    ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
         let node = Self::get_chain_node(chain_code).await?;
         tracing::info!(rpc_url=%node.rpc_url, "new_transaction_adapter");
         let header_opt = if rpc_need_header(&node.rpc_url)? {
@@ -112,15 +113,13 @@ impl ApiChainAdapterFactory {
     pub async fn get_transaction_adapter(
         &self,
         chain_code: &str,
-    ) -> Result<Arc<dyn Tx + Send + Sync>, crate::error::service::ServiceError> {
+    ) -> Result<Arc<dyn Tx + Send + Sync>, ServiceError> {
         let res = self.transaction_adapter.get(chain_code);
         match res {
             Some(kv) => Ok(kv.value().clone()),
-            _ => Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::Chain(
-                    crate::error::business::chain::ChainError::NotFound(chain_code.to_owned()),
-                ),
-            )),
+            _ => Err(ServiceError::Business(BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_owned()),
+            ))),
         }
     }
 }
