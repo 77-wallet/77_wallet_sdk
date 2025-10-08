@@ -31,7 +31,8 @@ pub struct AwmOrderTransMsg {
     #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
     trade_type: u32,
     /// 是否需要审核（可空）： 1 不需要审核 / 2 需要审核
-    audit: String,
+    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
+    audit: u32,
     uid: String,
 }
 
@@ -113,6 +114,7 @@ impl AwmOrderTransMsg {
             symbol: self.symbol.to_string(),
             trade_no: self.trade_no.to_string(),
             trade_type: self.trade_type as u8,
+            audit: self.audit,
         };
         ApiCollectDomain::collect(&req).await
     }
@@ -132,6 +134,7 @@ impl AwmOrderTransMsg {
             symbol: self.symbol.to_string(),
             trade_no: self.trade_no.to_string(),
             trade_type: self.trade_type as u8,
+            audit: self.audit,
         };
         let res = ApiWithdrawDomain::withdraw(&req).await;
         tracing::info!("withdraw wallet transfer fee {} to {} value {:?}", self.from, self.to, res);

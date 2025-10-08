@@ -32,7 +32,7 @@ impl ApiWithdrawDomain {
                 .await?
                 .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
 
-        let status = if req.trade_type == 1 {
+        let status = if req.audit == 1 {
             ApiWithdrawStatus::AuditPass
         } else {
             ApiWithdrawStatus::Init
@@ -52,9 +52,8 @@ impl ApiWithdrawDomain {
                 &req.trade_no,
                 req.trade_type,
                 status,
-            )
-                .await?;
-            tracing::info!("upsert_api_withdraw  ------------------- 5:");
+            ).await?;
+            tracing::info!("upsert_api_withdraw  ------------------- 5: {}", status);
 
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::Wd, TransAckType::Tx);

@@ -31,6 +31,7 @@ impl CollectService {
         trade_no: &str,
         trade_type: u8,
         uid: &str,
+        audit: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let req = ApiWithdrawReq {
             from: from.to_string(),
@@ -42,6 +43,7 @@ impl CollectService {
             trade_no: trade_no.to_string(),
             trade_type,
             uid: uid.to_string(),
+            audit: audit,
         };
         ApiCollectDomain::collect(&req).await?;
         Ok(())

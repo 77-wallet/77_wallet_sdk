@@ -74,7 +74,7 @@ impl ApiWithdrawRepo {
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
-            status: status,
+            status,
             tx_hash: "".to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),

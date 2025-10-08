@@ -5,6 +5,7 @@ use crate::{
 use wallet_database::{
     entities::api_withdraw::ApiWithdrawEntity, repositories::api_withdraw::ApiWithdrawRepo,
 };
+use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 
 pub struct WithdrawService {}
@@ -43,6 +44,7 @@ impl WithdrawService {
         trade_no: &str,
         trade_type: u8,
         uid: &str,
+        audit: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
         let req = ApiWithdrawReq {
             from: from.to_string(),
@@ -54,6 +56,7 @@ impl WithdrawService {
             trade_no: trade_no.to_string(),
             trade_type,
             uid: uid.to_string(),
+            audit: audit,
         };
         let res = ApiWithdrawDomain::withdraw(&req).await;
         match res {
@@ -68,11 +71,10 @@ impl WithdrawService {
     pub async fn sign_withdrawal_order(
         &self,
         order_id: &str,
-        status: i8,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
-        let req = AuditResultReportReq::new();
+        let req = AuditResultReportReq::new(order_id.to_string(), true, "OK");
         backend_api.report_audit_result(&req).await?;
 
         ApiWithdrawDomain::sign_withdrawal_order(order_id).await
@@ -81,11 +83,10 @@ impl WithdrawService {
     pub async fn reject_withdrawal_order(
         &self,
         order_id: &str,
-        status: i8,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
-        let req = AuditResultReportReq::new();
+        let req = AuditResultReportReq::new(order_id.to_string(), false, "user rejected");
         backend_api.report_audit_result(&req).await?;
 
         ApiWithdrawDomain::reject_withdrawal_order(order_id).await
