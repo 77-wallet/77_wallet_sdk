@@ -1,10 +1,11 @@
 use crate::{
     domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
+    error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use chrono::TimeDelta;
 use tokio::{
-    sync::{Mutex, broadcast, mpsc},
+    sync::{broadcast, mpsc, Mutex},
     task::JoinHandle,
 };
 use wallet_database::{
@@ -80,7 +81,7 @@ impl ProcessFeeTxHandle {
     pub(crate) async fn submit_confirm_report_tx(
         &self,
         trade_no: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let _ =
             self.confirm_report_tx.send(ProcessFeeTxConfirmReportCommand::Tx(trade_no.to_string()));
         Ok(())
@@ -90,23 +91,17 @@ impl ProcessFeeTxHandle {
         let _ = self.shutdown_tx.send(());
         if let Some(handle) = self.tx_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::service::ServiceError::System(
-                    crate::error::system::SystemError::BackendEndpointNotFound,
-                )
+                ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound)
             })??;
         }
         if let Some(handle) = self.tx_report_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::service::ServiceError::System(
-                    crate::error::system::SystemError::BackendEndpointNotFound,
-                )
+                ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound)
             })??;
         }
         if let Some(handle) = self.tx_confirm_report_handle.lock().await.take() {
             handle.await.map_err(|_| {
-                crate::error::service::ServiceError::System(
-                    crate::error::system::SystemError::BackendEndpointNotFound,
-                )
+                ServiceError::System(crate::error::system::SystemError::BackendEndpointNotFound)
             })??;
         }
         Ok(())
@@ -141,17 +136,13 @@ impl ProcessFeeTx {
                     if let Some(cmd) = msg {
                         match cmd {
                             ProcessFeeTxCommand::Tx(trade_no) => {
-                                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                                let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
-                                if res.is_ok() {
-                                    match self.process_fee_single_tx(res.unwrap()).await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            tracing::error!("failed to process fee tx: {}", err);
-                                        }
+                                match self.process_fee_single_tx_by_trade_no(&trade_no).await {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        tracing::error!("failed to process fee tx: {}", err);
                                     }
-                                    iv.reset();
                                 }
+                                iv.reset();
                             }
                         }
                     }
@@ -170,7 +161,19 @@ impl ProcessFeeTx {
         Ok(())
     }
 
-    async fn process_fee_tx(&self) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_fee_single_tx_by_trade_no(&self, trade_no: &str) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res =
+            ApiFeeRepo::get_api_fee_by_trade_no_status(&pool, &trade_no, &[ApiFeeStatus::Init])
+                .await;
+        if res.is_ok() {
+            self.process_fee_single_tx(res.unwrap()).await
+        } else {
+            Err(ServiceError::Business(ApiWalletError::OrderNotFound(trade_no.to_string()).into()))
+        }
+    }
+
+    async fn process_fee_tx(&self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // 获取交易这里有问题
         let (_, transfer_fees) =
@@ -182,10 +185,7 @@ impl ProcessFeeTx {
         Ok(())
     }
 
-    async fn process_fee_single_tx(
-        &self,
-        req: ApiFeeEntity,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_fee_single_tx(&self, req: ApiFeeEntity) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process fee tx -------------------------------");
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
@@ -222,7 +222,7 @@ impl ProcessFeeTx {
         &self,
         trade_no: &str,
         tx: TransferResp,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let resource_consume = if tx.consumer.is_none() {
             "0".to_string()
         } else {
@@ -271,7 +271,7 @@ impl ProcessFeeTxReport {
         Self { shutdown_rx, report_rx, failed_count: 0 }
     }
 
-    async fn run(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    async fn run(&mut self) -> Result<(), ServiceError> {
         tracing::info!("starting process fee tx report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
@@ -284,14 +284,10 @@ impl ProcessFeeTxReport {
                     if let Some(cmd) = report_msg {
                         match cmd {
                             ProcessFeeTxReportCommand::Tx(trade_no) => {
-                                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                                let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
-                                if res.is_ok() {
-                                    match self.process_fee_single_tx_report(res.unwrap()).await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            tracing::error!("failed to process fee tx report: {}", err);
-                                        }
+                                match self.process_fee_single_tx_report_by_trade_no(&trade_no).await {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        tracing::error!("failed to process fee tx report: {}", err);
                                     }
                                 }
                             }
@@ -313,7 +309,26 @@ impl ProcessFeeTxReport {
         Ok(())
     }
 
-    async fn process_fee_tx_report(&mut self) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_fee_single_tx_report_by_trade_no(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res = ApiFeeRepo::get_api_fee_by_trade_no_status(
+            &pool,
+            &trade_no,
+            &[ApiFeeStatus::SendingTx, ApiFeeStatus::SendingTxFailed],
+        )
+        .await;
+        if res.is_ok() {
+            self.process_fee_single_tx_report(res.unwrap()).await?;
+            Ok(())
+        } else {
+            Err(ServiceError::Business(ApiWalletError::OrderNotFound(trade_no.to_string()).into()))
+        }
+    }
+
+    async fn process_fee_tx_report(&mut self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool,
@@ -383,7 +398,7 @@ impl ProcessFeeTxReport {
                     .await?;
                 }
                 tracing::info!("upload tx exec receipt success ---");
-                return Ok(1);
+                Ok(1)
             }
             Err(err) => {
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -402,7 +417,7 @@ impl ProcessFeeTxReport {
                     )
                     .await?;
                 }
-                return Err(crate::error::service::ServiceError::TransportBackend(err));
+                Err(ServiceError::TransportBackend(err))
             }
         }
     }
@@ -436,14 +451,10 @@ impl ProcessFeeTxConfirmReport {
                         Some(cmd) => {
                             match cmd {
                                 ProcessFeeTxConfirmReportCommand::Tx(trade_no) => {
-                                    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                                    let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
-                                    if res.is_ok() {
-                                        match self.process_fee_single_tx_confirm_report(res.unwrap()).await {
-                                            Ok(_) => {}
-                                            Err(err) => {
-                                                tracing::error!("failed to process fee tx confirm report: {}", err);
-                                            }
+                                    match self.process_fee_single_tx_confirm_report_by_trade_no(&trade_no).await {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            tracing::error!("failed to process fee tx confirm report: {}", err);
                                         }
                                     }
                                     iv.reset();
@@ -467,9 +478,21 @@ impl ProcessFeeTxConfirmReport {
         Ok(())
     }
 
-    async fn process_fee_tx_confirm_report(
-        &mut self,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    async fn process_fee_single_tx_confirm_report_by_trade_no(
+        &self,
+        trade_no: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &trade_no).await;
+        if res.is_ok() {
+            self.process_fee_single_tx_confirm_report(res.unwrap()).await?;
+            Ok(())
+        } else {
+            Err(ServiceError::Business(ApiWalletError::OrderNotFound(trade_no.to_string()).into()))
+        }
+    }
+
+    async fn process_fee_tx_confirm_report(&mut self) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let (_, transfer_fees) = ApiFeeRepo::page_api_fee_with_status(
             &pool,
@@ -494,7 +517,7 @@ impl ProcessFeeTxConfirmReport {
     async fn process_fee_single_tx_confirm_report(
         &self,
         req: ApiFeeEntity,
-    ) -> Result<(), crate::error::service::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, &req.trade_no, ApiFeeStatus::Success).await?;
         tracing::info!("confirm fee tx success ---");

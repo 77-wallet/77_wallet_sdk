@@ -7,6 +7,7 @@ use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
     repositories::{api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
 };
+use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
 
 pub struct ApiFeeDomain {}
 
@@ -58,11 +59,12 @@ impl ApiFeeDomain {
         Ok(())
     }
 
-    pub async fn confirm_withdraw_tx(
+    pub async fn confirm_tx(
         trade_no: &str,
+        status: ApiFeeStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::Success).await?;
+        ApiFeeRepo::update_api_fee_status(&pool, trade_no, status).await?;
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {
             handles.get_global_processed_fee_tx_handle().submit_confirm_report_tx(trade_no).await?;

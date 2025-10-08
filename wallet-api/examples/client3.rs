@@ -57,7 +57,7 @@ async fn run(
     //     )
     //     .await?;
     // tracing::info!("withdraw wallet 创建成功 ------------------------ 2: {withdrawal_uid:#?}");
-    
+
     wallet_manager.set_passwd_cache(wallet_password).await?;
     tracing::info!("绑定钱包之前必须设置密码成功 ------------------------ ");
 
@@ -125,16 +125,16 @@ async fn run(
         }
     }
 
-    let trade_no = "265dc633-6285-4810-8554-638d2d82c98f";
-    wallet_manager.reject_api_withdrawal_order(trade_no).await?;
-    tracing::info!("拒绝提币策略成功 --------------------- ");
+    // let trade_no = "265dc633-6285-4810-8554-638d2d82c98f";
+    // wallet_manager.reject_api_withdrawal_order(trade_no).await?;
+    // tracing::info!("拒绝提币策略成功 --------------------- ");
 
-    let uid = "04b003d17f8a5bb2a1ce7591701a954c15d856ca0e30213b75a1ad8bdeaac339";
-    let res = wallet_manager.page_api_withdraw_order(uid, 1, 1).await?;
-    for e in res.1 {
-        let res = serde_json::to_string(&e).unwrap();
-        tracing::info!("-------- {:?}", res);
-    }
+    // let uid = "04b003d17f8a5bb2a1ce7591701a954c15d856ca0e30213b75a1ad8bdeaac339";
+    // let res = wallet_manager.page_api_withdraw_order(uid, 1, 1).await?;
+    // for e in res.1 {
+    //     let res = serde_json::to_string(&e).unwrap();
+    //     tracing::info!("-------- {:?}", res);
+    // }
 
 
     // 获取订单记录

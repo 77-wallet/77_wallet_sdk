@@ -35,6 +35,14 @@ impl ApiFeeRepo {
         ApiFeeDao::get_api_fee_by_trade_no(pool.as_ref(), trade_no).await
     }
 
+    pub async fn get_api_fee_by_trade_no_status(
+        pool: &DbPool,
+        trade_no: &str,
+        vec_status: &[ApiFeeStatus],
+    ) -> Result<ApiFeeEntity, crate::Error> {
+        ApiFeeDao::get_api_fee_by_trade_no_status(pool.as_ref(), trade_no, vec_status).await
+    }
+
     pub async fn upsert_api_fee(
         pool: &DbPool,
         uid: &str,
