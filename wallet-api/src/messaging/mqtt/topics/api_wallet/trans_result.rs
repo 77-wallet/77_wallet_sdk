@@ -1,6 +1,6 @@
-use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
+use crate::domain::api_wallet::trans::{fee::ApiFeeDomain, withdraw::ApiWithdrawDomain};
+use wallet_database::entities::{api_fee::ApiFeeStatus, api_withdraw::ApiWithdrawStatus};
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
-use crate::domain::api_wallet::trans::withdraw::ApiWithdrawDomain;
 
 // biz_type = TRANS_RESULT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -21,7 +21,6 @@ impl AwmOrderTransResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-
         match self.trade_type {
             1 => self.withdraw().await?,
             2 => self.collect().await?,
@@ -37,6 +36,9 @@ impl AwmOrderTransResMsg {
     }
 
     pub(crate) async fn transfer_fee(&self) -> Result<(), crate::error::service::ServiceError> {
+        let status: ApiFeeStatus =
+            if self.status { ApiFeeStatus::Success } else { ApiFeeStatus::Failure };
+        ApiFeeDomain::confirm_tx(&self.trade_no, status).await?;
         Ok(())
     }
 
@@ -45,12 +47,9 @@ impl AwmOrderTransResMsg {
     }
 
     pub(crate) async fn withdraw(&self) -> Result<(), crate::error::service::ServiceError> {
-        let status: ApiWithdrawStatus = if self.status {
-            ApiWithdrawStatus::Success
-        } else {
-            ApiWithdrawStatus::Failure
-        };
-        ApiWithdrawDomain::confirm_withdraw_tx(&self.trade_no, status).await?;
+        let status: ApiWithdrawStatus =
+            if self.status { ApiWithdrawStatus::Success } else { ApiWithdrawStatus::Failure };
+        ApiWithdrawDomain::confirm_tx(&self.trade_no, status).await?;
         Ok(())
     }
 }

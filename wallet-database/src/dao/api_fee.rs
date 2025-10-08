@@ -1,6 +1,7 @@
 use crate::entities::api_fee::{ApiFeeEntity, ApiFeeStatus};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
+use crate::entities::api_withdraw::ApiWithdrawEntity;
 
 pub(crate) struct ApiFeeDao;
 
@@ -87,6 +88,29 @@ impl ApiFeeDao {
         let sql = "SELECT * FROM api_fee WHERE trade_no = ?";
         let res = sqlx::query_as::<_, ApiFeeEntity>(sql)
             .bind(trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
+    pub async fn get_api_fee_by_trade_no_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        vec_status: &[ApiFeeStatus],
+    ) -> Result<ApiFeeEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql =
+            format!("SELECT * FROM api_fee where trade_no = ? AND status in ({})", placeholders);
+        let mut query = sqlx::query_as::<_, ApiFeeEntity>(&sql)
+            .bind(trade_no);
+        for status in vec_status {
+            query = query.bind(status);
+        }
+        let res= query
             .fetch_one(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

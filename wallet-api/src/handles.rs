@@ -1,10 +1,11 @@
 use crate::infrastructure::{
-    process_fee_tx::ProcessFeeTxHandle, process_withdraw_tx::ProcessWithdrawTxHandle,
+    inner_event::InnerEventHandle,
+    process_fee_tx::ProcessFeeTxHandle,
+    process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
+    process_withdraw_tx::ProcessWithdrawTxHandle,
+    task_queue::task_manager::TaskManager,
 };
 use std::sync::Arc;
-use crate::infrastructure::inner_event::InnerEventHandle;
-use crate::infrastructure::process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor};
-use crate::infrastructure::task_queue::task_manager::TaskManager;
 
 #[derive(Debug, Clone)]
 pub struct Handles {
@@ -37,6 +38,12 @@ impl Handles {
             process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
         }
+    }
+
+    pub(crate) async fn close(&self) -> Result<(), crate::error::service::ServiceError> {
+        self.process_withdraw_tx_handle.close().await?;
+        self.process_fee_tx_handle.close().await?;
+        Ok(())
     }
 
     pub(crate) fn get_global_processed_withdraw_tx_handle(&self) -> Arc<ProcessWithdrawTxHandle> {

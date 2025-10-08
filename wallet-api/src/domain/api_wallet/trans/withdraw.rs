@@ -100,7 +100,7 @@ impl ApiWithdrawDomain {
         Ok(())
     }
 
-    pub async fn confirm_withdraw_tx(
+    pub async fn confirm_tx(
         trade_no: &str,
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
