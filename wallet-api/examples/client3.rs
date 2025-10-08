@@ -67,7 +67,12 @@ async fn run(
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
+
     let wallet_uid = "1ba52d3833f4e609760000bb1f06de3b3bb401a2cda2ca3b0696cb9e84e37c72";
+
+    let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
+    tracing::info!("get collect strategy -------------------- {:?}", res);
+
     let res = wallet_manager
         .update_collect_strategy(
             &wallet_uid,
@@ -89,7 +94,6 @@ async fn run(
         Ok(reason) => {
             tracing::info!("更新归集策略成功 --------------------- ");
         }
-
         Err(err) => {
             tracing::error!("更新归集策略失败 --------------------- 5: {err:#?}");
         }

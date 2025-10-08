@@ -8,13 +8,16 @@ use tokio::{
     sync::{broadcast, mpsc, Mutex},
     task::JoinHandle,
 };
+use wallet_types::chain::chain::ChainCode;
+use wallet_utils::{conversion, unit};
 use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_collect::ApiCollectRepo,
 };
-use wallet_transport_backend::request::api_wallet::transaction::{
-    TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
-};
+use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
+use wallet_transport_backend::request::api_wallet::transaction::{ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq};
+use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
+use crate::domain::chain::transaction::ChainTransDomain;
 
 #[derive(Clone)]
 pub(crate) enum ProcessCollectTxCommand {
@@ -167,7 +170,7 @@ impl ProcessCollectTx {
         let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
             &pool,
             &trade_no,
-            &[ApiCollectStatus::SufficientBalance],
+            &[ApiCollectStatus::Init],
         )
         .await;
         if res.is_ok() {
@@ -184,7 +187,7 @@ impl ProcessCollectTx {
             &pool.clone(),
             0,
             1000,
-            &[ApiCollectStatus::SufficientBalance],
+            &[ApiCollectStatus::Init],
         )
         .await?;
         for req in transfer_fees {
@@ -193,8 +196,141 @@ impl ProcessCollectTx {
         Ok(())
     }
 
+    async fn check_fee(&self,req: &ApiCollectEntity) -> Result<bool, ServiceError> {
+        // 查询手续费
+        let chain_code : ChainCode = req.chain_code.as_str().try_into()?;
+        let main_coin = ChainTransDomain::main_coin(&req.chain_code).await?;
+        tracing::info!("主币： {}", main_coin.symbol);
+        let main_symbol = main_coin.symbol;
+        let fee = self.estimate_fee(
+            &req.from_addr,
+            &req.to_addr,
+            &req.value,
+            chain_code,
+            &req.symbol,
+            &main_symbol,
+            req.token_addr.clone(),
+            main_coin.decimals,
+        ).await?;
+        tracing::info!("估算手续费: {}", fee);
+
+        // 查询策略
+        let chain_config = self.get_collect_config(&req.uid, &req.chain_code).await?;
+
+        // 查询资产主币余额
+
+        let balance =
+            self.query_balance(&req.from_addr, chain_code, None, main_coin.decimals).await?;
+
+        tracing::info!("from: {}, to: {}", req.from_addr, req.to_addr);
+        tracing::info!("资产主币余额: {balance}, 手续费: {fee}");
+
+        let balance = conversion::decimal_from_str(&balance)?;
+        let value = conversion::decimal_from_str(&req.value)?;
+        let fee_decimal = conversion::decimal_from_str(&fee.to_string())?;
+        let need = if req.token_addr.is_some() { fee_decimal } else { fee_decimal + value };
+        tracing::info!("need: {need}");
+        // 如果手续费不足，则从其他地址转入手续费费用
+        if balance < need {
+            tracing::info!("need collect fee");
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            ApiCollectRepo::update_api_collect_status(
+                &pool,
+                &req.trade_no,
+                ApiCollectStatus::InsufficientBalance,
+                "insufficient balance",
+            ).await?;
+
+            let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let req = ServiceFeeUploadReq::new(
+                &req.trade_no,
+                &req.chain_code,
+                &main_symbol,
+                 "",
+                &req.from_addr,
+                &req.to_addr,
+                unit::string_to_f64(&fee)?,
+            );
+
+            backend_api.upload_service_fee_record(&req).await?;
+            Ok(false)
+        } else {
+            Ok(true)
+        }
+    }
+
+    async fn query_balance(
+        &self,
+        owner_address: &str,
+        chain_code: ChainCode,
+        token_address: Option<String>,
+        decimals: u8,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        let account = adapter.balance(&owner_address, token_address).await?;
+        let ammount = unit::format_to_string(account, decimals)?;
+        Ok(ammount)
+    }
+
+    async fn estimate_fee(
+        &self,
+        from: &str,
+        to: &str,
+        value: &str,
+        chain_code: ChainCode,
+        symbol: &str,
+        main_symbol: &str,
+        token_address: Option<String>,
+        decimals: u8,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
+        let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
+        params.with_token(token_address, decimals, symbol);
+        let fee = adapter.estimate_fee(params, main_symbol).await?;
+
+        let amount = match chain_code {
+            ChainCode::Tron => fee,
+            ChainCode::Bitcoin => todo!(),
+            ChainCode::Solana => todo!(),
+            ChainCode::Ethereum => todo!(),
+            ChainCode::BnbSmartChain => todo!(),
+            ChainCode::Litecoin => todo!(),
+            ChainCode::Dogcoin => todo!(),
+            ChainCode::Sui => todo!(),
+            ChainCode::Ton => todo!(),
+        };
+        // let amount = unit::convert_to_u256(&amount, decimals)?;
+        Ok(amount)
+    }
+
+    async fn get_collect_config(
+        &self,
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<ChainConfig, crate::error::service::ServiceError> {
+        // 查询策略
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let strategy = backend_api.query_collect_strategy(uid).await?;
+        let Some(chain_config) =
+            strategy.chain_configs.into_iter().find(|config| config.chain_code == chain_code)
+        else {
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::ChainConfigNotFound(
+                    chain_code.to_owned(),
+                ),
+            )
+                .into());
+        };
+
+        Ok(chain_config)
+    }
+
     async fn process_collect_single_tx(&self, req: ApiCollectEntity) -> Result<(), ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process collect tx -------------------------------");
+        let pass = self.check_fee(&req).await?;
+        if !pass {
+            return Ok(())
+        }
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
         let mut params = ApiBaseTransferReq::new(
