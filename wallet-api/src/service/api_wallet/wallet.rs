@@ -20,7 +20,7 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    response_vo::api_wallet::wallet::ApiWalletInfo,
+    response_vo::api_wallet::wallet::{ApiWalletInfo, ApiWalletItem, ApiWalletList},
 };
 
 pub struct ApiWalletService {
@@ -32,23 +32,51 @@ impl ApiWalletService {
         Self { ctx }
     }
 
-    pub async fn get_api_wallet_list(
-        &self,
-        api_wallet_type: ApiWalletType,
-    ) -> ReturnType<Vec<ApiWalletInfo>> {
+    pub async fn get_api_wallet_list(&self) -> ReturnType<ApiWalletList> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let li = ApiWalletRepo::list(&pool, Some(api_wallet_type)).await?;
-        let mut infos: Vec<ApiWalletInfo> = vec![];
-        for e in li {
-            infos.push(ApiWalletInfo {
-                address: e.address.clone(),
-                uid: e.uid.clone(),
-                name: e.name.clone(),
-                created_at: Default::default(),
-                updated_at: None,
-            })
+        let li = ApiWalletRepo::list(&pool, None).await?;
+        let mut list = ApiWalletList::new();
+        for e in &li {
+            match e.api_wallet_type {
+                ApiWalletType::InvalidValue => todo!(),
+                ApiWalletType::SubAccount => {
+                    // 如果是收款钱包，看list有没有绑定地址，有就修改，没有就不管
+                    if let Some(binding_address) = &e.binding_address
+                        && let Some(item) = list.iter_mut().find(|item| {
+                            item.withdraw_wallet
+                                .as_ref()
+                                .map(|w| &w.address == binding_address)
+                                .unwrap_or(false)
+                        })
+                    {
+                        item.recharge_wallet = Some(e.into());
+                    } else {
+                        list.push(ApiWalletItem {
+                            recharge_wallet: Some(e.into()),
+                            withdraw_wallet: None,
+                        });
+                    }
+                }
+                ApiWalletType::Withdrawal => {
+                    if let Some(binding_address) = &e.binding_address
+                        && let Some(item) = list.iter_mut().find(|item| {
+                            item.recharge_wallet
+                                .as_ref()
+                                .map(|r| &r.address == binding_address)
+                                .unwrap_or(false)
+                        })
+                    {
+                        item.withdraw_wallet = Some(e.into());
+                    } else {
+                        list.push(ApiWalletItem {
+                            recharge_wallet: None,
+                            withdraw_wallet: Some(e.into()),
+                        });
+                    }
+                }
+            }
         }
-        Ok(infos)
+        Ok(list)
     }
 
     pub async fn create_wallet(

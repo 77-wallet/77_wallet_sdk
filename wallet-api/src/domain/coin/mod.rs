@@ -183,9 +183,9 @@ impl CoinDomain {
             ChainCode::BnbSmartChain => Ok(chain_stable_coin::BNB_SMART_CHAIN),
             ChainCode::Tron => Ok(chain_stable_coin::TRON),
             ChainCode::Solana => Ok(chain_stable_coin::SOLANA),
-            _ => {
-                Err(crate::error::business::BusinessError::Coin(crate::error::business::coin::CoinError::NotFound(chain_code.to_string())))?
-            }
+            _ => Err(crate::error::business::BusinessError::Coin(
+                crate::error::business::coin::CoinError::NotFound(chain_code.to_string()),
+            ))?,
         }
     }
 

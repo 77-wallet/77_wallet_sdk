@@ -1,5 +1,6 @@
-use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
-use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
+use wallet_transport_backend::request::api_wallet::{
+    msg::MsgAckReq, transaction::ServiceFeeUploadReq,
+};
 
 use crate::{
     domain::{
@@ -52,7 +53,12 @@ impl AwmOrderTransMsg {
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         let res = backend.msg_ack(msg_ack_req).await;
-        tracing::info!("withdraw wallet transfer from {} to {} value {:?}", self.from, self.to, res);
+        tracing::info!(
+            "withdraw wallet transfer from {} to {} value {:?}",
+            self.from,
+            self.to,
+            res
+        );
         Ok(())
     }
 

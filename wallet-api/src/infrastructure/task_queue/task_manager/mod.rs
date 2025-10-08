@@ -97,7 +97,10 @@ impl TaskManager {
             for task_entity in failed_queue.into_iter() {
                 if !running_tasks.contains(&task_entity.id) {
                     let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {
-                        tracing::error!("task queue entity convert to task error: {}", task_entity.id);
+                        tracing::error!(
+                            "task queue entity convert to task error: {}",
+                            task_entity.id
+                        );
                         repo.delete_task(&task_entity.id).await?;
                         continue;
                     };
@@ -292,8 +295,7 @@ impl TaskManager {
         if task_type == TaskType::Mqtt {
             let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
             if let Some(handles) = handles.upgrade() {
-                let unconfirmed_msg_collector =
-                    handles.get_global_unconfirmed_msg_collector();
+                let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
                 tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
                 unconfirmed_msg_collector.submit(vec![id])?;
             }

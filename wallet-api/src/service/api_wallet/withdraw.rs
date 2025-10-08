@@ -3,9 +3,9 @@ use crate::{
     request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_withdraw::ApiWithdrawEntity, repositories::api_withdraw::ApiWithdrawRepo,
+    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    repositories::api_withdraw::ApiWithdrawRepo,
 };
-use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 
 pub struct WithdrawService {}
@@ -68,10 +68,7 @@ impl WithdrawService {
         }
     }
 
-    pub async fn sign_withdrawal_order(
-        &self,
-        order_id: &str,
-    ) -> Result<(), ServiceError> {
+    pub async fn sign_withdrawal_order(&self, order_id: &str) -> Result<(), ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = AuditResultReportReq::new(order_id.to_string(), true, "OK");
@@ -80,10 +77,7 @@ impl WithdrawService {
         ApiWithdrawDomain::sign_withdrawal_order(order_id).await
     }
 
-    pub async fn reject_withdrawal_order(
-        &self,
-        order_id: &str,
-    ) -> Result<(), ServiceError> {
+    pub async fn reject_withdrawal_order(&self, order_id: &str) -> Result<(), ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let req = AuditResultReportReq::new(order_id.to_string(), false, "user rejected");

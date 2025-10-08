@@ -1,8 +1,8 @@
 use crate::request::api_wallet::audit::*;
 
-use crate::api::BackendApi;
-use crate::consts::endpoint::api_wallet::TRANS_AUDIT;
-use crate::response::BackendResponse;
+use crate::{
+    api::BackendApi, consts::endpoint::api_wallet::TRANS_AUDIT, response::BackendResponse,
+};
 
 impl BackendApi {
     // 交易记录恢复

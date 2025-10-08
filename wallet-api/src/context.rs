@@ -3,11 +3,11 @@ use crate::{
     dirs::Dirs,
     handles::Handles,
     infrastructure::{
+        SharedCache,
         inner_event::InnerEventHandle,
         process_fee_tx::ProcessFeeTxHandle,
         process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
         task_queue::task_manager::TaskManager,
-        SharedCache,
     },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
@@ -17,7 +17,7 @@ use std::{
 };
 use tokio::sync::RwLock;
 use tracing::log;
-use wallet_database::{entities::api_wallet::ApiWalletType, SqliteContext};
+use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
@@ -168,8 +168,6 @@ impl Context {
     pub(crate) fn get_global_oss_client(&self) -> Arc<wallet_oss::oss_client::OssClient> {
         self.oss_client.clone()
     }
-
-
 
     pub(crate) fn get_global_cache(&self) -> Arc<SharedCache> {
         self.cache.clone()

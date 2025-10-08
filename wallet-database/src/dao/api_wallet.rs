@@ -29,10 +29,10 @@ impl ApiWalletDao {
         let sql = r#"
             INSERT INTO api_wallet (
                 address, uid, name, phrase, seed,
-                status, is_init, api_wallet_type,
+                status, is_init, api_wallet_type, binding_address,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(address)
             DO UPDATE SET
                 uid = excluded.uid,

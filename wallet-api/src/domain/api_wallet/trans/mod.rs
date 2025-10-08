@@ -1,4 +1,3 @@
-use wallet_types::chain::chain::ChainCode;
 use crate::{
     domain::{
         api_wallet::{
@@ -7,9 +6,10 @@ use crate::{
         },
         chain::TransferResp,
     },
+    error::service::ServiceError,
     request::api_wallet::trans::ApiTransferReq,
 };
-use crate::error::service::ServiceError;
+use wallet_types::chain::chain::ChainCode;
 
 pub(crate) mod collect;
 pub(crate) mod fee;
@@ -19,9 +19,7 @@ pub(crate) struct ApiTransDomain {}
 
 impl ApiTransDomain {
     /// transfer
-    pub async fn transfer(
-        params: ApiTransferReq,
-    ) -> Result<TransferResp, ServiceError> {
+    pub async fn transfer(params: ApiTransferReq) -> Result<TransferResp, ServiceError> {
         tracing::info!("transfer ------------------- 7:");
         let private_key = ApiAccountDomain::get_private_key(
             &params.base.from,
@@ -37,7 +35,7 @@ impl ApiTransDomain {
         //     .await
         //     .get_transaction_adapter(params.base.chain_code.as_str())
         //     .await?;
-        let chain_code : ChainCode = params.base.chain_code.as_str().try_into()?;
+        let chain_code: ChainCode = params.base.chain_code.as_str().try_into()?;
         tracing::info!("transfer ------------------- 9: {}", chain_code);
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
 

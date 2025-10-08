@@ -8,6 +8,7 @@ pub struct ApiWalletEntity {
     pub phrase: String,
     #[serde(skip_serializing)]
     pub seed: String,
+    pub binding_address: Option<String>,
     pub api_wallet_type: ApiWalletType,
     pub merchant_id: String,
     pub app_id: String,

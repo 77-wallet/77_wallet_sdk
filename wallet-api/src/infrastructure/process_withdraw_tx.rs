@@ -5,7 +5,7 @@ use crate::{
 };
 use chrono::TimeDelta;
 use tokio::{
-    sync::{broadcast, mpsc, Mutex},
+    sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
 };
 use wallet_database::{

@@ -87,7 +87,7 @@ impl JPushService {
 
 #[cfg(test)]
 mod test {
-    use crate::messaging::mqtt::{topics::OrderMultiSignAcceptCompleteMsg, Message};
+    use crate::messaging::mqtt::{Message, topics::OrderMultiSignAcceptCompleteMsg};
 
     #[test]
     fn test_() {

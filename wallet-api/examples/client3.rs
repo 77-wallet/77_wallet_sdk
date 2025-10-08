@@ -2,12 +2,12 @@ use tokio_stream::StreamExt as _;
 use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
+    request::api_wallet::account::CreateApiAccountReq,
     test::env::{TestParams, get_manager},
 };
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
-use wallet_api::request::api_wallet::account::CreateApiAccountReq;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 async fn run(
@@ -37,7 +37,7 @@ async fn run(
     //     .await?;
     // tracing::info!("子wallet创建成功 ------------------------ 1: {wallet_uid:#?}");
 
-    let res = wallet_manager.get_api_wallet_list(   ApiWalletType::SubAccount).await?;
+    let res = wallet_manager.get_api_wallet_list().await?;
     tracing::info!("get withdraw wallet list ------------------------ 2: {res:#?}");
 
     let salt1 = "q1111112";
@@ -135,7 +135,6 @@ async fn run(
     //     let res = serde_json::to_string(&e).unwrap();
     //     tracing::info!("-------- {:?}", res);
     // }
-
 
     // 获取订单记录
     // let order_list = wallet_manager.list_api_withdraw_order(&wallet_uid).await?;

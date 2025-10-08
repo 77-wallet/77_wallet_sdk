@@ -45,9 +45,13 @@ pub(super) async fn estimate_swap(
 
         // 如果有超时的错误
         let error = if log.contains("RequireGteViolated") {
-            crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::SolSwapTime(log))
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::SolSwapTime(log),
+            )
         } else {
-            crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::SwapSimulate(log))
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::SwapSimulate(log),
+            )
         };
 
         return Err(error)?;
@@ -106,7 +110,9 @@ pub(super) async fn swap(
         origin_fee += amount_in;
     }
     if origin_fee > balance {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     let params = Swap::new(&req.recipient)?;
@@ -148,7 +154,9 @@ pub(super) async fn deposit(
     let mut balance = chain.balance(&req.from, None).await?;
     balance -= U256::from(SYSTEM_ACCOUNT_RENT);
     if U256::from(fee_setting.original_fee()) + amount > balance {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // 验证手续费,进行拦截
@@ -186,7 +194,9 @@ pub(super) async fn withdraw(
     let mut balance = chain.balance(&req.from, None).await?;
     balance -= U256::from(SYSTEM_ACCOUNT_RENT);
     if U256::from(fee_setting.original_fee()) > balance {
-        return Err(crate::error::business::BusinessError::Chain(crate::error::business::chain::ChainError::InsufficientFeeBalance))?;
+        return Err(crate::error::business::BusinessError::Chain(
+            crate::error::business::chain::ChainError::InsufficientFeeBalance,
+        ))?;
     }
 
     // 验证手续费,进行拦截

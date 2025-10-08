@@ -1,6 +1,7 @@
 use tokio_stream::StreamExt as _;
 use wallet_api::{
-    WalletManager, dirs::Dirs, messaging::notify::FrontendNotifyEvent, test::env::get_manager,
+    dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent,
+    test::env::get_manager,
 };
 
 // create wallet
