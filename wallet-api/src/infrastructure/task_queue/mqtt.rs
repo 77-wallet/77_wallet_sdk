@@ -11,6 +11,7 @@ use crate::{
     },
 };
 use crate::messaging::mqtt::topics::api_wallet::cmd::address_use::AddressUseMsg;
+use crate::messaging::mqtt::topics::api_wallet::trans_fee_result::AwmOrderTransFeeResMsg;
 
 #[async_trait::async_trait]
 impl TaskTrait for MqttTask {
@@ -193,7 +194,7 @@ impl TaskTrait for ApiMqttStruct {
             EventType::AwmOrderTransRes => TaskName::Known(KnownTaskName::AwmOrderTransRes),
             EventType::AwmCmdAddrExpand => TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
             EventType::AwmCmdUidUnbind => TaskName::Known(KnownTaskName::AwmCmdUidUnbind),
-            EventType::AwmCmdFeeRes => todo!(),
+            EventType::AwmCmdFeeRes => TaskName::Known(KnownTaskName::AwmCmdFeeRes),
             EventType::AwmCmdActive => TaskName::Known(KnownTaskName::AwmCmdActive),
         }
     }
@@ -244,7 +245,11 @@ impl TaskTrait for ApiMqttStruct {
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
                 data.exec(id).await?
             }
-            EventType::AwmCmdFeeRes => todo!(),
+            EventType::AwmCmdFeeRes => {
+                let data: AwmOrderTransFeeResMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec(id).await?
+            },
             EventType::AwmCmdActive => {
                 let data: AwmCmdActiveMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;

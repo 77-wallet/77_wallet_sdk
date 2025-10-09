@@ -82,6 +82,12 @@ impl ApiCollectDomain {
             "recover",
         )
         .await?;
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req =
+            TransEventAckReq::new(trade_no, TransType::Col, TransAckType::TxFeeRes);
+        backend.trans_event_ack(&trans_event_req).await?;
+
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {
             handles.get_global_processed_collect_tx_handle().submit_tx(trade_no).await?;

@@ -20,8 +20,10 @@ impl AwmOrderTransFeeResMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiCollectDomain::recover(&self.trade_no).await?;
-
+        if self.status {
+            ApiCollectDomain::recover(&self.trade_no).await?;
+        }
+        
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
