@@ -14,7 +14,7 @@ use crate::{
 use wallet_database::{
     entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
     repositories::{
-        api_collect::ApiCollectRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
+        api_wallet::collect::ApiCollectRepo, api_wallet::wallet::ApiWalletRepo, api_wallet::withdraw::ApiWithdrawRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::{

@@ -1,3 +1,4 @@
+use crate::response_vo::api_wallet::account::ApiAccountInfos;
 use crate::{
     context::Context,
     domain::{
@@ -9,8 +10,8 @@ use crate::{
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
-    entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
-    repositories::api_chain::ApiChainRepo,
+    entities::api_wallet::ApiWalletType,
+    repositories::api_wallet::chain::ApiChainRepo,
 };
 
 pub struct ApiAccountService {
@@ -26,8 +27,8 @@ impl ApiAccountService {
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
-        chain_code: Option<&str>,
-    ) -> Result<Vec<ApiAccountEntity>, ServiceError> {
+        chain_code: Option<String>,
+    ) -> Result<ApiAccountInfos, ServiceError> {
         ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code).await
     }
 

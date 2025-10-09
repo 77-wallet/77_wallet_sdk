@@ -16,7 +16,7 @@ use tokio::{
 };
 use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
-    repositories::api_collect::ApiCollectRepo,
+    repositories::api_wallet::collect::ApiCollectRepo,
 };
 use wallet_transport_backend::request::api_wallet::{
     strategy::ChainConfig,

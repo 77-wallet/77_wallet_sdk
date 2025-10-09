@@ -5,10 +5,8 @@ use crate::{
 };
 use wallet_database::{
     entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
-    repositories::{api_fee::ApiFeeRepo, api_wallet::ApiWalletRepo},
+    repositories::{api_wallet::fee::ApiFeeRepo, api_wallet::wallet::ApiWalletRepo},
 };
-use wallet_database::entities::api_withdraw::ApiWithdrawStatus;
-use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
 use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq, TransType};
 
 pub struct ApiFeeDomain {}
