@@ -15,6 +15,7 @@ use wallet_database::{
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
+use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 #[derive(Clone)]
 pub(crate) enum ProcessWithdrawTxCommand {
@@ -213,7 +214,8 @@ impl ProcessWithdrawTx {
         };
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
-        let transfer_req = ApiTransferReq { base: params, password: "q1111111".to_string() };
+        let passwd = ApiWalletDomain::get_passwd().await?;
+        let transfer_req = ApiTransferReq { base: params, password: passwd };
 
         // 发交易
         let tx_resp = ApiTransDomain::transfer(transfer_req).await;

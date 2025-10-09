@@ -13,7 +13,9 @@ use crate::{
 };
 use wallet_database::{
     entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
-    repositories::{api_collect::ApiCollectRepo, api_wallet::ApiWalletRepo},
+    repositories::{
+        api_collect::ApiCollectRepo, api_wallet::ApiWalletRepo, api_withdraw::ApiWithdrawRepo,
+    },
 };
 use wallet_transport_backend::request::api_wallet::{
     strategy::ChainConfig,
@@ -21,7 +23,6 @@ use wallet_transport_backend::request::api_wallet::{
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
-use wallet_database::repositories::api_withdraw::ApiWithdrawRepo;
 
 pub struct ApiCollectDomain {}
 
@@ -52,7 +53,7 @@ impl ApiCollectDomain {
                 req.trade_type,
                 ApiCollectStatus::Init,
             )
-                .await?;
+            .await?;
 
             tracing::info!("upsert_api_collect  ------------------- 5: ",);
 
@@ -61,20 +62,30 @@ impl ApiCollectDomain {
                 TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
 
-            let data = NotifyEvent::Withdraw(WithdrawFront {
-                uid: req.uid.to_string(),
-                from_addr: req.from.to_string(),
-                to_addr: req.to.to_string(),
-                value: req.value.to_string(),
-            });
-            FrontendNotifyEvent::new(data).send().await?;
-
             // 可能发交易
-            if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+            if let Some(handles) =
+                crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
             {
                 handles.get_global_processed_collect_tx_handle().submit_tx(&req.trade_no).await?;
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ApiCollectRepo::update_api_collect_status(
+            &pool,
+            trade_no,
+            ApiCollectStatus::Init,
+            "recover",
+        )
+        .await?;
+        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+        {
+            handles.get_global_processed_collect_tx_handle().submit_tx(trade_no).await?;
+        };
 
         Ok(())
     }

@@ -37,14 +37,14 @@ pub struct ApiFeeEntity {
 )]
 #[repr(u8)]
 pub enum ApiFeeStatus {
-    Init,
-    SendingTx,
-    SendingTxFailed,
-    ReceivedTxReport,
-    ReceivedTxFailedReport, // 结束
-    Success,
-    Failure,
-    ReceivedConfirmReport, // 结束
+    Init, // 0
+    SendingTx, // 1
+    SendingTxFailed, // 2
+    SendingTxReport, // 3
+    SendingTxFailedReport, //3, 结束
+    Success, // 4,
+    Failure, // 5
+    ReceivedConfirmReport, // 6, 结束
 }
 
 impl Display for ApiFeeStatus {

@@ -4,7 +4,7 @@ use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUpload
 use crate::{
     domain::{
         api_wallet::{
-            trans::{ApiTransDomain, collect::ApiCollectDomain, withdraw::ApiWithdrawDomain},
+            trans::{collect::ApiCollectDomain, withdraw::ApiWithdrawDomain},
             wallet::ApiWalletDomain,
         },
         coin::CoinDomain,

@@ -1,5 +1,11 @@
 use crate::{
-    domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
+    domain::{
+        api_wallet::{
+            adapter_factory::ApiChainAdapterFactory, trans::ApiTransDomain, wallet::ApiWalletDomain,
+        },
+        chain::{transaction::ChainTransDomain, TransferResp},
+        coin::CoinDomain,
+    },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -8,16 +14,19 @@ use tokio::{
     sync::{broadcast, mpsc, Mutex},
     task::JoinHandle,
 };
-use wallet_types::chain::chain::ChainCode;
-use wallet_utils::{conversion, unit};
 use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_collect::ApiCollectRepo,
 };
-use wallet_transport_backend::request::api_wallet::strategy::ChainConfig;
-use wallet_transport_backend::request::api_wallet::transaction::{ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq};
-use crate::domain::api_wallet::adapter_factory::ApiChainAdapterFactory;
-use crate::domain::chain::transaction::ChainTransDomain;
+use wallet_transport_backend::request::api_wallet::{
+    strategy::ChainConfig,
+    transaction::{
+        ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransStatus, TransType,
+        TxExecReceiptUploadReq,
+    },
+};
+use wallet_types::chain::chain::ChainCode;
+use wallet_utils::{conversion, unit};
 
 #[derive(Clone)]
 pub(crate) enum ProcessCollectTxCommand {
@@ -196,22 +205,24 @@ impl ProcessCollectTx {
         Ok(())
     }
 
-    async fn check_fee(&self,req: &ApiCollectEntity) -> Result<bool, ServiceError> {
+    async fn check_fee(&self, req: &ApiCollectEntity) -> Result<bool, ServiceError> {
         // 查询手续费
-        let chain_code : ChainCode = req.chain_code.as_str().try_into()?;
+        let chain_code: ChainCode = req.chain_code.as_str().try_into()?;
         let main_coin = ChainTransDomain::main_coin(&req.chain_code).await?;
         tracing::info!("主币： {}", main_coin.symbol);
         let main_symbol = main_coin.symbol;
-        let fee = self.estimate_fee(
-            &req.from_addr,
-            &req.to_addr,
-            &req.value,
-            chain_code,
-            &req.symbol,
-            &main_symbol,
-            req.token_addr.clone(),
-            main_coin.decimals,
-        ).await?;
+        let fee = self
+            .estimate_fee(
+                &req.from_addr,
+                &req.to_addr,
+                &req.value,
+                chain_code,
+                &req.symbol,
+                &main_symbol,
+                req.token_addr.clone(),
+                main_coin.decimals,
+            )
+            .await?;
         tracing::info!("估算手续费: {}", fee);
 
         // 查询策略
@@ -239,14 +250,15 @@ impl ProcessCollectTx {
                 &req.trade_no,
                 ApiCollectStatus::InsufficientBalance,
                 "insufficient balance",
-            ).await?;
+            )
+            .await?;
 
             let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let req = ServiceFeeUploadReq::new(
                 &req.trade_no,
                 &req.chain_code,
                 &main_symbol,
-                 "",
+                "",
                 &chain_config.normal_address.address,
                 &req.from_addr,
                 unit::string_to_f64(&fee)?,
@@ -315,13 +327,10 @@ impl ProcessCollectTx {
             strategy.chain_configs.into_iter().find(|config| config.chain_code == chain_code)
         else {
             return Err(crate::error::business::BusinessError::ApiWallet(
-                crate::error::business::api_wallet::ApiWalletError::ChainConfigNotFound(
-                    chain_code.to_owned(),
-                ),
+                ApiWalletError::ChainConfigNotFound(chain_code.to_owned()),
             )
-                .into());
+            .into());
         };
-
         Ok(chain_config)
     }
 
@@ -329,7 +338,7 @@ impl ProcessCollectTx {
         tracing::info!(trade_no=%req.trade_no, "process collect tx -------------------------------");
         let pass = self.check_fee(&req).await?;
         if !pass {
-            return Ok(())
+            return Ok(());
         }
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
@@ -347,8 +356,8 @@ impl ProcessCollectTx {
         };
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
-        let transfer_req =
-            ApiTransferReq { base: params, password: "[REDACTED:password]".to_string() };
+        let passwd = ApiWalletDomain::get_passwd().await?;
+        let transfer_req = ApiTransferReq { base: params, password: passwd };
 
         // 发交易
         let tx_resp = ApiTransDomain::transfer(transfer_req).await;
@@ -521,7 +530,7 @@ impl ProcessCollectTxReport {
         match backend_api
             .upload_tx_exec_receipt(&TxExecReceiptUploadReq::new(
                 &req.trade_no,
-                TransType::ColFee,
+                TransType::Col,
                 &req.tx_hash,
                 status,
                 &req.notes,
@@ -637,7 +646,12 @@ impl ProcessFeeTxConfirmReport {
         trade_no: &str,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let res = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &trade_no).await;
+        let res = ApiCollectRepo::get_api_collect_by_trade_no_status(
+            &pool,
+            &trade_no,
+            &[ApiCollectStatus::Failure, ApiCollectStatus::Success],
+        )
+        .await;
         if res.is_ok() {
             self.process_collect_single_tx_confirm_report(res.unwrap()).await?;
             Ok(())
@@ -696,7 +710,7 @@ impl ProcessFeeTxConfirmReport {
         match backend_api
             .trans_event_ack(&TransEventAckReq::new(
                 &req.trade_no,
-                TransType::Wd,
+                TransType::Col,
                 TransAckType::TxRes,
             ))
             .await
