@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use crate::entities::api_withdraw::ApiWithdrawStatus;
+use std::fmt::Display;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct ApiCollectEntity {
@@ -39,10 +39,11 @@ pub struct ApiCollectEntity {
 )]
 #[repr(u8)]
 pub enum ApiCollectStatus {
-    Init, // 0, 初始化
+    Init,                // 0, 初始化
     InsufficientBalance, // 1
-    SufficientBalance, // 2
-    SendingTx, /// 3, 出款地址余额不足
+    SufficientBalance,   // 2
+    SendingTx,
+    /// 3, 出款地址余额不足
     SendingTxFailed, // 4, 发送交易
     SendingTxReport,       // 5, 发送交易报告给服务器
     SendingTxFailedReport, // 6,发送交易失败报告给服务器，结束

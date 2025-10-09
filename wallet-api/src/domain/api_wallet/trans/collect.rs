@@ -8,13 +8,13 @@ use crate::{
         chain::transaction::ChainTransDomain,
         coin::CoinDomain,
     },
-    messaging::notify::{api_wallet::WithdrawFront, event::NotifyEvent, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
 };
 use wallet_database::{
     entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
-    repositories::{
-        api_wallet::collect::ApiCollectRepo, api_wallet::wallet::ApiWalletRepo, api_wallet::withdraw::ApiWithdrawRepo,
+    repositories::api_wallet::{
+        collect::ApiCollectRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
 use wallet_transport_backend::request::api_wallet::{

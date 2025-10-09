@@ -1,5 +1,9 @@
 use crate::{
-    domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
+    domain::{
+        api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
+        chain::TransferResp,
+        coin::CoinDomain,
+    },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -15,7 +19,6 @@ use wallet_database::{
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
-use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 #[derive(Clone)]
 pub(crate) enum ProcessFeeTxCommand {
@@ -202,8 +205,7 @@ impl ProcessFeeTx {
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
         let passwd = ApiWalletDomain::get_passwd().await?;
-        let transfer_req =
-            ApiTransferReq { base: params, password: passwd };
+        let transfer_req = ApiTransferReq { base: params, password: passwd };
 
         // 发交易
         let tx_resp = ApiTransDomain::transfer(transfer_req).await;
@@ -244,10 +246,7 @@ impl ProcessFeeTx {
         Ok(())
     }
 
-    async fn handle_fee_tx_failed(
-        &self,
-        trade_no: &str,
-    ) -> Result<(), ServiceError> {
+    async fn handle_fee_tx_failed(&self, trade_no: &str) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
         // 上报交易不影响交易偏移量计算
@@ -349,10 +348,7 @@ impl ProcessFeeTxReport {
         Ok(())
     }
 
-    async fn process_fee_single_tx_report(
-        &self,
-        req: ApiFeeEntity,
-    ) -> Result<i32, ServiceError> {
+    async fn process_fee_single_tx_report(&self, req: ApiFeeEntity) -> Result<i32, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process fee tx report -------------------------------");
         // 判断超时时间
         let now = chrono::Utc::now();

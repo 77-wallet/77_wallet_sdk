@@ -1,5 +1,5 @@
-use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 use crate::domain::api_wallet::trans::collect::ApiCollectDomain;
+use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 // biz_type = TRANS_RESULT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -23,12 +23,11 @@ impl AwmOrderTransFeeResMsg {
         if self.status {
             ApiCollectDomain::recover(&self.trade_no).await?;
         }
-        
+
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
         Ok(())
     }
-
 }

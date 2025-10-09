@@ -1,5 +1,9 @@
 use crate::{
-    domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
+    domain::{
+        api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
+        chain::TransferResp,
+        coin::CoinDomain,
+    },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -15,7 +19,6 @@ use wallet_database::{
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
-use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 #[derive(Clone)]
 pub(crate) enum ProcessWithdrawTxCommand {

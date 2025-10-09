@@ -105,7 +105,7 @@ impl Context {
         let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
         Ok(Context {
-            client_id : client_id.clone(),
+            client_id: client_id.clone(),
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
             aggregate_api,
@@ -120,7 +120,6 @@ impl Context {
             handles: Mutex::new(Weak::new()),
         })
     }
-
 
     pub fn get_client_id(&self) -> &str {
         &self.client_id

@@ -1,6 +1,5 @@
 use crate::{
-    api::ReturnType,
-    manager::WalletManager,
+    api::ReturnType, manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::CreateApiAccountReq,
     response_vo::api_wallet::account::ApiAccountInfos,
@@ -11,10 +10,10 @@ impl WalletManager {
     pub async fn get_api_account_list(
         &self,
         wallet_address: &str,
-        index: i32,
+        account_id: u32,
     ) -> ReturnType<ApiAccountInfos> {
         ApiAccountService::new(self.ctx)
-            .list_api_accounts(wallet_address, Some(index as u32), None)
+            .list_api_accounts(wallet_address, Some(account_id), None)
             .await
     }
 

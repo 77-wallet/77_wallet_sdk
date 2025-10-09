@@ -1,18 +1,19 @@
-use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
-use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
+use wallet_transport_backend::request::api_wallet::{
+    msg::MsgAckReq, transaction::ServiceFeeUploadReq,
+};
 
 use crate::{
     domain::{
         api_wallet::{
-            trans::{collect::ApiCollectDomain, withdraw::ApiWithdrawDomain},
+            trans::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
             wallet::ApiWalletDomain,
         },
         coin::CoinDomain,
     },
-    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
+    request::api_wallet::trans::{
+        ApiBaseTransferReq, ApiTransferFeeReq, ApiTransferReq, ApiWithdrawReq,
+    },
 };
-use crate::domain::api_wallet::trans::fee::ApiFeeDomain;
-use crate::request::api_wallet::trans::ApiTransferFeeReq;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -108,7 +109,12 @@ impl AwmOrderTransMsg {
             trade_type: self.trade_type as u8,
         };
         let res = ApiFeeDomain::transfer_fee(&req).await;
-        tracing::info!("transfer fee wallet transfer fee {} to {} value {:?}", self.from, self.to, res);
+        tracing::info!(
+            "transfer fee wallet transfer fee {} to {} value {:?}",
+            self.from,
+            self.to,
+            res
+        );
         Ok(())
     }
 

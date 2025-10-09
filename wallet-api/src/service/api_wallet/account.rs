@@ -1,4 +1,3 @@
-use crate::response_vo::api_wallet::account::ApiAccountInfos;
 use crate::{
     context::Context,
     domain::{
@@ -7,11 +6,11 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
+    response_vo::api_wallet::account::ApiAccountInfos,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
-    entities::api_wallet::ApiWalletType,
-    repositories::api_wallet::chain::ApiChainRepo,
+    entities::api_wallet::ApiWalletType, repositories::api_wallet::chain::ApiChainRepo,
 };
 
 pub struct ApiAccountService {

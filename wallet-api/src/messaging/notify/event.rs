@@ -16,9 +16,9 @@ use super::{
 use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
-        api_wallet::{
-            cmd::address_allock::AwmCmdAddrExpandMsg, cmd::address_use::AddressUseMsg,
-            cmd::unbind_uid::AwmCmdUidUnbindMsg, cmd::wallet_activation::AwmCmdActiveMsg,
+        api_wallet::cmd::{
+            address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg,
+            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
         },
     },
     notify::api_wallet::{CollectFeeNotEnoughFront, FeeFront, WithdrawFront, WithdrawNoPassFront},
