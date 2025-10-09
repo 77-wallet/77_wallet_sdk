@@ -27,8 +27,6 @@ async fn run(
     //         phrase,
     //         salt,
     //         wallet_name,
-    //         account_name,
-    //         is_default_name,
     //         wallet_password,
     //         None,
     //         ApiWalletType::SubAccount,
@@ -48,8 +46,6 @@ async fn run(
     //         phrase,
     //         salt1,
     //         wallet_name,
-    //         account_name,
-    //         is_default_name,
     //         wallet_password,
     //         None,
     //         ApiWalletType::Withdrawal,
@@ -71,59 +67,64 @@ async fn run(
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
-    // let res = wallet_manager
-    //     .update_collect_strategy(
-    //         &wallet_uid,
-    //         1.1,
-    //         vec![ChainConfig {
-    //             chain_code: ChainCode::Tron.to_string(),
-    //             normal_address: IndexAndAddress {
-    //                 index: Some(0),
-    //                 address: "TLAedgzGJWA9seJYbBTTMWNtxoKooapq6n".to_string(),
-    //             },
-    //             risk_address: IndexAndAddress {
-    //                 index: Some(1),
-    //                 address: "TNoacEYG6dCB2z9aWPVYspz1qrxHDoe8Bv".to_string(),
-    //             },
-    //         }],
-    //     )
-    //     .await;
-    // match res {
-    //     Ok(reason) => {
-    //         tracing::info!("更新归集策略成功 --------------------- ");
-    //     }
-    //
-    //     Err(err) => {
-    //         tracing::error!("更新归集策略失败 --------------------- 5: {err:#?}");
-    //     }
-    // }
 
-    let wallet_uid = "04b003d17f8a5bb2a1ce7591701a954c15d856ca0e30213b75a1ad8bdeaac339";
+    let wallet_uid = "1ba52d3833f4e609760000bb1f06de3b3bb401a2cda2ca3b0696cb9e84e37c72";
+
+    let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
+    tracing::info!("get collect strategy -------------------- {:?}", res);
+
     let res = wallet_manager
-        .update_withdrawal_strategy(
+        .update_collect_strategy(
             &wallet_uid,
             1.1,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TKZfm5WcgdC4H1kUapwP1qPxcUcrabJ9sf".to_string(),
+                    address: "TDiPH4z5x3kiPRFCBiw7pStpXb4GPFNohA".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TBVj8FQT5zcYCkTRiv6Ri62J9KkwJR6Y2D".to_string(),
+                    address: "TBEDk4ie1aSi46r3QeZLtMvkEFfEVDFpd1".to_string(),
                 },
             }],
         )
         .await;
     match res {
         Ok(reason) => {
-            tracing::info!("更新提币策略成功 --------------------- ");
+            tracing::info!("更新归集策略成功 --------------------- ");
         }
         Err(err) => {
-            tracing::error!("更新提币策略失败 --------------------- 5: {err:#?}");
+            tracing::error!("更新归集策略失败 --------------------- 5: {err:#?}");
         }
     }
+
+    // let wallet_uid = "276260e79095bdabe7c087af1a103b080573b8c4d5e0f9f7d9efd54ade63d1a3";
+    // let res = wallet_manager
+    //     .update_withdrawal_strategy(
+    //         &wallet_uid,
+    //         1.1,
+    //         vec![ChainConfig {
+    //             chain_code: ChainCode::Tron.to_string(),
+    //             normal_address: IndexAndAddress {
+    //                 index: Some(0),
+    //                 address: "TBEDk4ie1aSi46r3QeZLtMvkEFfEVDFpd1".to_string(),
+    //             },
+    //             risk_address: IndexAndAddress {
+    //                 index: Some(1),
+    //                 address: "TDiPH4z5x3kiPRFCBiw7pStpXb4GPFNohA".to_string(),
+    //             },
+    //         }],
+    //     )
+    //     .await;
+    // match res {
+    //     Ok(reason) => {
+    //         tracing::info!("更新提币策略成功 --------------------- ");
+    //     }
+    //     Err(err) => {
+    //         tracing::error!("更新提币策略失败 --------------------- 5: {err:#?}");
+    //     }
+    // }
 
     // let trade_no = "265dc633-6285-4810-8554-638d2d82c98f";
     // wallet_manager.reject_api_withdrawal_order(trade_no).await?;

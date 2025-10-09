@@ -45,7 +45,7 @@ impl CollectService {
             uid: uid.to_string(),
             audit: audit,
         };
-        ApiCollectDomain::collect(&req).await?;
+        ApiCollectDomain::collect_v2(&req).await?;
         Ok(())
     }
 }

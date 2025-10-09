@@ -4,9 +4,9 @@ use crate::messaging::mqtt::topics::{
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange,
     api_wallet::{
-        AwmOrderTransMsg, AwmOrderTransResMsg, address_allock::AwmCmdAddrExpandMsg,
-        address_use::AddressUseMsg, unbind_uid::AwmCmdUidUnbindMsg,
-        wallet_activation::AwmCmdActiveMsg,
+        trans::AwmOrderTransMsg, trans_result::AwmOrderTransResMsg, trans_fee_result::AwmOrderTransFeeResMsg, cmd::address_allock::AwmCmdAddrExpandMsg,
+        cmd::address_use::AddressUseMsg, cmd::unbind_uid::AwmCmdUidUnbindMsg,
+        cmd::wallet_activation::AwmCmdActiveMsg,
     },
 };
 
@@ -136,4 +136,5 @@ pub enum Body {
     AwmCmdActive(AwmCmdActiveMsg),
     AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
     AddressUse(AddressUseMsg),
+    AwmCmdOrderTransFeeRes(AwmOrderTransFeeResMsg)
 }

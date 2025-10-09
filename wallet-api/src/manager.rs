@@ -38,7 +38,7 @@ impl WalletManager {
         )
         .await?;
 
-        let handles = Arc::new(Handles::new("").await);
+        let handles = Arc::new(Handles::new(context.get_client_id()).await);
         handles.get_global_unconfirmed_msg_processor().start().await;
         handles.get_global_task_manager().start_task_check().await?;
         context.set_global_handles(Arc::downgrade(&handles));

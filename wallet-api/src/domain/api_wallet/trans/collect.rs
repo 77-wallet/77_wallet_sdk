@@ -8,14 +8,18 @@ use crate::{
         chain::transaction::ChainTransDomain,
         coin::CoinDomain,
     },
+    messaging::notify::{api_wallet::WithdrawFront, event::NotifyEvent, FrontendNotifyEvent},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
 };
 use wallet_database::{
     entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
-    repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
+    repositories::{
+        api_wallet::collect::ApiCollectRepo, api_wallet::wallet::ApiWalletRepo, api_wallet::withdraw::ApiWithdrawRepo,
+    },
 };
 use wallet_transport_backend::request::api_wallet::{
-    strategy::ChainConfig, transaction::ServiceFeeUploadReq,
+    strategy::ChainConfig,
+    transaction::{ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType},
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
@@ -23,7 +27,7 @@ use wallet_utils::{conversion, unit};
 pub struct ApiCollectDomain {}
 
 impl ApiCollectDomain {
-    pub(crate) async fn collect(
+    pub(crate) async fn collect_v2(
         req: &ApiWithdrawReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -33,136 +37,78 @@ impl ApiCollectDomain {
             ),
         )?;
 
-        ApiCollectRepo::upsert_api_collect(
-            &pool,
-            &req.uid,
-            &wallet.name,
-            &req.from,
-            &req.to,
-            &req.value,
-            &req.chain_code,
-            req.token_address.clone(),
-            &req.symbol,
-            &req.trade_no,
-            req.trade_type,
-        )
-        .await?;
-
-        // 查询手续费
-        let main_coin = ChainTransDomain::main_coin(&req.chain_code).await?;
-        tracing::info!("主币： {}", main_coin.symbol);
-        let main_symbol = main_coin.symbol;
-        let fee = Self::estimate_fee(
-            &req.from,
-            &req.to,
-            &req.value,
-            &req.chain_code,
-            &req.symbol,
-            &main_symbol,
-            req.token_address.clone(),
-            main_coin.decimals,
-        )
-        .await?;
-        tracing::info!("估算手续费: {}", fee);
-
-        // 查询策略
-        let chain_config = Self::get_collect_config(&req.uid, &req.chain_code).await?;
-
-        // 查询资产主币余额
-        let balance =
-            Self::query_balance(&req.from, &req.chain_code, None, main_coin.decimals).await?;
-
-        tracing::info!("from: {}, to: {}", req.from, req.to);
-        tracing::info!("资产主币余额: {balance}, 手续费: {fee}");
-
-        let balance = conversion::decimal_from_str(&balance)?;
-        let value = conversion::decimal_from_str(&req.value)?;
-        let fee_decimal = conversion::decimal_from_str(&fee.to_string())?;
-        let need = if req.token_address.is_some() { fee_decimal } else { fee_decimal + value };
-        tracing::info!("need: {need}");
-        // 如果手续费不足，则从其他地址转入手续费费用
-        if balance < need {
-            // 查询出款地址余额主币余额
-            let withdraw_address = &chain_config.normal_address.address;
-            // let withdraw_address = "TBQSs8KG82iQnLUZj5nygJzSUwwhQJcxHF";
-            // let withdraw_address = "TMao3zPmTqNJWg3ZvQtXQxyW1MuYevTMHt";
-
-            let withdraw_balance =
-                Self::query_balance(withdraw_address, &req.chain_code, None, main_coin.decimals)
-                    .await?;
-
-            tracing::info!(
-                "subaccount wallet balance not enough，subaccount balance: {withdraw_balance}"
-            );
-            // 出款地址余额够不够
-            // if 不够 -> 出款地址余额 -> 不够 -> 通知后端：失败原因
-            let withdraw_balance = conversion::decimal_from_str(&withdraw_balance)?;
-            if withdraw_balance < fee_decimal {
-                ApiCollectRepo::update_api_collect_status(
-                    &pool,
-                    &req.trade_no,
-                    ApiCollectStatus::WithdrawInsufficientBalance,
-                )
-                .await?;
-
-                tracing::info!("withdraw wallet balance not enough");
-                // todo!();
-            }
-            // else 够 -> 转账手续费 -> 通知后端手续费转账
-            else {
-                // let coin = CoinDomain::get_coin(&req.chain_code, &main_symbol, None).await?;
-                // let fee = unit::format_to_string(fee, coin.decimals)?;
-                tracing::info!("need transfer withdraw fee");
-                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-                let req = ServiceFeeUploadReq::new(
-                    &req.trade_no,
-                    &req.chain_code,
-                    &main_symbol,
-                    "",
-                    &withdraw_address,
-                    &req.from,
-                    unit::string_to_f64(&fee)?,
-                );
-
-                backend_api.upload_service_fee_record(&req).await?;
-            }
-        }
-        // 执行归集
-        else {
-            tracing::info!("执行归集");
-            let coin =
-                CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_address.clone())
-                    .await?;
-            let mut params = ApiBaseTransferReq::new(
-                &req.from,
-                &req.to.to_string(),
-                &req.value.to_string(),
-                &req.chain_code.to_string(),
-            );
-            params.with_token(coin.token_address(), coin.decimals, &coin.symbol);
-
-            let password = ApiWalletDomain::get_passwd().await?;
-
-            // todo!();
-
-            let transfer_req = ApiTransferReq { base: params, password };
-            // 上链
-            // 发交易
-            let tx_resp = ApiTransDomain::transfer(transfer_req).await?;
-            let resource_consume = if tx_resp.consumer.is_none() {
-                "0".to_string()
-            } else {
-                tx_resp.consumer.unwrap().energy_used.to_string()
-            };
-            ApiCollectRepo::update_api_collect_tx_status(
+        let res = ApiCollectRepo::get_api_collect_by_trade_no(&pool, &req.trade_no).await;
+        if res.is_err() {
+            ApiCollectRepo::upsert_api_collect(
                 &pool,
+                &req.uid,
+                &wallet.name,
+                &req.from,
+                &req.to,
+                &req.value,
+                &req.chain_code,
+                req.token_address.clone(),
+                &req.symbol,
                 &req.trade_no,
-                &tx_resp.tx_hash,
-                &resource_consume,
-                &tx_resp.fee,
-                ApiCollectStatus::SendingTx,
+                req.trade_type,
+                ApiCollectStatus::Init,
             )
             .await?;
+
+            tracing::info!("upsert_api_collect  ------------------- 5: ",);
+
+            let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            let trans_event_req =
+                TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
+            backend.trans_event_ack(&trans_event_req).await?;
+
+            // 可能发交易
+            if let Some(handles) =
+                crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+            {
+                handles.get_global_processed_collect_tx_handle().submit_tx(&req.trade_no).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ApiCollectRepo::update_api_collect_status(
+            &pool,
+            trade_no,
+            ApiCollectStatus::Init,
+            "recover",
+        )
+        .await?;
+
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let trans_event_req =
+            TransEventAckReq::new(trade_no, TransType::Col, TransAckType::TxFeeRes);
+        backend.trans_event_ack(&trans_event_req).await?;
+
+        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+        {
+            handles.get_global_processed_collect_tx_handle().submit_tx(trade_no).await?;
+        };
+
+        Ok(())
+    }
+
+    pub async fn confirm_tx(
+        trade_no: &str,
+        status: ApiCollectStatus,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        ApiCollectRepo::update_api_collect_status(&pool, trade_no, status, "confirm").await?;
+
+        if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+        {
+            handles
+                .get_global_processed_collect_tx_handle()
+                .submit_confirm_report_tx(trade_no)
+                .await?;
         }
 
         // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;

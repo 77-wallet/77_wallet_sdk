@@ -19,6 +19,31 @@ impl ApiCollectRepo {
         ApiCollectDao::all_api_collect(pool.as_ref()).await
     }
 
+    pub async fn page_api_collect_with_status(
+        pool: &DbPool,
+        page: i64,
+        page_size: i64,
+        vec_status: &[ApiCollectStatus],
+    ) -> Result<(i64, Vec<ApiCollectEntity>), crate::Error> {
+        ApiCollectDao::page_api_collect_with_status(pool.as_ref(), page, page_size, vec_status)
+            .await
+    }
+
+    pub async fn get_api_collect_by_trade_no(
+        pool: &DbPool,
+        trade_no: &str,
+    ) -> Result<ApiCollectEntity, crate::Error> {
+        ApiCollectDao::get_api_collect_by_trade_no(pool.as_ref(), trade_no).await
+    }
+
+    pub async fn get_api_collect_by_trade_no_status(
+        pool: &DbPool,
+        trade_no: &str,
+        vec_status: &[ApiCollectStatus],
+    ) -> Result<ApiCollectEntity, crate::Error> {
+        ApiCollectDao::get_api_collect_by_trade_no_status(pool.as_ref(), trade_no, vec_status).await
+    }
+
     pub async fn upsert_api_collect(
         pool: &DbPool,
         uid: &str,
@@ -31,6 +56,7 @@ impl ApiCollectRepo {
         symbol: &str,
         trade_no: &str,
         trade_type: u8,
+        status: ApiCollectStatus,
     ) -> Result<(), crate::Error> {
         let collect_req = ApiCollectEntity {
             id: 0,
@@ -44,13 +70,15 @@ impl ApiCollectRepo {
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
-            status: ApiCollectStatus::Init,
+            status,
             tx_hash: "".to_string(),
             resource_consume: "".to_string(),
             transaction_fee: "".to_string(),
             transaction_time: None,
             block_height: "".to_string(),
             notes: "".to_string(),
+            post_tx_count: 0,
+            post_confirm_tx_count: 0,
             created_at: Default::default(),
             updated_at: None,
         };
@@ -80,7 +108,33 @@ impl ApiCollectRepo {
         pool: &DbPool,
         trade_no: &str,
         status: ApiCollectStatus,
+        notes: &str,
     ) -> Result<(), crate::Error> {
-        ApiCollectDao::update_status(pool.as_ref(), trade_no, status).await
+        ApiCollectDao::update_status(pool.as_ref(), trade_no, status, notes).await
+    }
+
+    pub async fn update_api_collect_next_status(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiCollectStatus,
+        next_status: ApiCollectStatus,
+    ) -> Result<(), crate::Error> {
+        ApiCollectDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+    }
+
+    pub async fn update_api_collect_post_tx_count(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiCollectStatus,
+    ) -> Result<(), crate::Error> {
+        ApiCollectDao::update_post_tx_count(pool.as_ref(), trade_no, status).await
+    }
+
+    pub async fn update_api_collect_post_confirm_tx_count(
+        pool: &DbPool,
+        trade_no: &str,
+        status: ApiCollectStatus,
+    ) -> Result<(), crate::Error> {
+        ApiCollectDao::update_post_confirm_tx_count(pool.as_ref(), trade_no, status).await
     }
 }

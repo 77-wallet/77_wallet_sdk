@@ -1,3 +1,4 @@
+use crate::response_vo::api_wallet::account::ApiAccountInfos;
 use crate::{
     context::Context,
     domain::{
@@ -5,12 +6,12 @@ use crate::{
         wallet::WalletDomain,
     },
     error::service::ServiceError,
-    messaging::mqtt::topics::api_wallet::address_allock::AddressAllockType,
-    response_vo::api_wallet::account::ApiAccountInfos,
+    messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
-    entities::api_wallet::ApiWalletType, repositories::api_wallet::chain::ApiChainRepo,
+    entities::api_wallet::ApiWalletType,
+    repositories::api_wallet::chain::ApiChainRepo,
 };
 
 pub struct ApiAccountService {
@@ -25,16 +26,10 @@ impl ApiAccountService {
     pub async fn list_api_accounts(
         &self,
         wallet_address: &str,
-        index: i32,
+        account_id: Option<u32>,
         chain_code: Option<String>,
     ) -> Result<ApiAccountInfos, ServiceError> {
-        let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-        ApiAccountDomain::list_api_accounts(
-            wallet_address,
-            Some(account_index_map.account_id),
-            chain_code,
-        )
-        .await
+        ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code).await
     }
 
     pub async fn expand_address(

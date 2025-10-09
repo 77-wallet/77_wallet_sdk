@@ -1,6 +1,8 @@
 use crate::domain::api_wallet::trans::{fee::ApiFeeDomain, withdraw::ApiWithdrawDomain};
 use wallet_database::entities::{api_fee::ApiFeeStatus, api_withdraw::ApiWithdrawStatus};
+use wallet_database::entities::api_collect::ApiCollectStatus;
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
+use crate::domain::api_wallet::trans::collect::ApiCollectDomain;
 
 // biz_type = TRANS_RESULT
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -43,6 +45,9 @@ impl AwmOrderTransResMsg {
     }
 
     pub(crate) async fn collect(&self) -> Result<(), crate::error::service::ServiceError> {
+        let status: ApiCollectStatus =
+            if self.status { ApiCollectStatus::Success } else { ApiCollectStatus::Failure };
+        ApiCollectDomain::confirm_tx(&self.trade_no, status).await?;
         Ok(())
     }
 

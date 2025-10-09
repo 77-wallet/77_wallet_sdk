@@ -18,7 +18,6 @@ impl BackendApi {
 
     pub async fn query_unconfirm_msg(
         &self,
-
         req: &crate::request::QueryUnconfirmMsgReq,
     ) -> Result<crate::response_vo::mqtt::UnconfirmMsgRes, crate::Error> {
         let res = self
@@ -27,7 +26,6 @@ impl BackendApi {
             .json(serde_json::json!(req))
             .send::<BackendResponse>()
             .await?;
-
         res.process(&self.aes_cbc_cryptor)
     }
 

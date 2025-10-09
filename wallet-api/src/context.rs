@@ -43,6 +43,7 @@ pub(crate) async fn init_context<'a>(
 
 #[derive(Debug)]
 pub struct Context {
+    client_id: String,
     dirs: Arc<Dirs>,
     aggregate_api: String,
     backend_api: Arc<wallet_transport_backend::api::BackendApi>,
@@ -104,6 +105,7 @@ impl Context {
         let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
         Ok(Context {
+            client_id : client_id.clone(),
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
             aggregate_api,
@@ -117,6 +119,11 @@ impl Context {
             current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
             handles: Mutex::new(Weak::new()),
         })
+    }
+
+
+    pub fn get_client_id(&self) -> &str {
+        &self.client_id
     }
 
     pub async fn set_frontend_notify_sender(

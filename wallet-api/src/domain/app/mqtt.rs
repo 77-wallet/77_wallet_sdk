@@ -37,12 +37,12 @@ impl MqttDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
+        let req = wallet_transport_backend::request::QueryUnconfirmMsgReq {
+            client_id: client_id.to_string(),
+        };
         let data = backend_api
-            .query_unconfirm_msg(&wallet_transport_backend::request::QueryUnconfirmMsgReq {
-                client_id: client_id.to_string(),
-            })
-            .await?
-            .list;
+            .query_unconfirm_msg(&req)
+            .await?.list;
         tracing::debug!("query_unconfirm_msg: {}", data.len());
         crate::service::jpush::JPushService::jpush_multi(
             data,

@@ -5,11 +5,13 @@ use crate::{
     messaging::mqtt::topics::{
         self,
         api_wallet::{
-            AwmCmdMsg, AwmOrderTransMsg, AwmOrderTransResMsg, address_allock::AwmCmdAddrExpandMsg,
-            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
+            cmd::AwmCmdMsg, trans::AwmOrderTransMsg, trans_result::AwmOrderTransResMsg, cmd::address_allock::AwmCmdAddrExpandMsg,
+            cmd::unbind_uid::AwmCmdUidUnbindMsg, cmd::wallet_activation::AwmCmdActiveMsg,
         },
     },
 };
+use crate::messaging::mqtt::topics::api_wallet::cmd::address_use::AddressUseMsg;
+use crate::messaging::mqtt::topics::api_wallet::trans_fee_result::AwmOrderTransFeeResMsg;
 
 #[async_trait::async_trait]
 impl TaskTrait for MqttTask {
@@ -176,12 +178,12 @@ pub(crate) enum EventType {
 #[serde(untagged)]
 pub(crate) enum ApiMqttData {
     /// 推送交易消息
-    AwmOrderTrans(topics::api_wallet::AwmOrderTransMsg),
+    AwmOrderTrans(AwmOrderTransMsg),
     /// 交易结果通知
-    AwmOrderTransRes(topics::api_wallet::AwmOrderTransResMsg),
+    AwmOrderTransRes(AwmOrderTransResMsg),
     /// 命令
-    AwmCmd(topics::api_wallet::AwmCmdMsg),
-    AddressUse(topics::api_wallet::address_use::AddressUseMsg),
+    AwmCmd(AwmCmdMsg),
+    AddressUse(AddressUseMsg),
 }
 
 #[async_trait::async_trait]
@@ -192,7 +194,7 @@ impl TaskTrait for ApiMqttStruct {
             EventType::AwmOrderTransRes => TaskName::Known(KnownTaskName::AwmOrderTransRes),
             EventType::AwmCmdAddrExpand => TaskName::Known(KnownTaskName::AwmCmdAddrExpand),
             EventType::AwmCmdUidUnbind => TaskName::Known(KnownTaskName::AwmCmdUidUnbind),
-            EventType::AwmCmdFeeRes => todo!(),
+            EventType::AwmCmdFeeRes => TaskName::Known(KnownTaskName::AwmCmdFeeRes),
             EventType::AwmCmdActive => TaskName::Known(KnownTaskName::AwmCmdActive),
         }
     }
@@ -243,7 +245,11 @@ impl TaskTrait for ApiMqttStruct {
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
                 data.exec(id).await?
             }
-            EventType::AwmCmdFeeRes => todo!(),
+            EventType::AwmCmdFeeRes => {
+                let data: AwmOrderTransFeeResMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec(id).await?
+            },
             EventType::AwmCmdActive => {
                 let data: AwmCmdActiveMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
