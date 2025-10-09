@@ -125,7 +125,8 @@ impl Tasks {
                 // req.push(&task_entity.id);
                 match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
                     Ok(task) => {
-                        let priority = super::task_manager::scheduler::assign_priority(&*task, false)?;
+                        let priority =
+                            super::task_manager::scheduler::assign_priority(&*task, false)?;
                         grouped_tasks.entry(priority).or_default().push(task_entity);
                     }
                     Err(e) => {
@@ -136,7 +137,8 @@ impl Tasks {
             }
 
             for (priority, tasks) in grouped_tasks {
-                if let Err(e) = task_sender.get_task_sender().send(PriorityTask { priority, tasks }) {
+                if let Err(e) = task_sender.get_task_sender().send(PriorityTask { priority, tasks })
+                {
                     tracing::error!("send task queue error: {}", e);
                 }
             }

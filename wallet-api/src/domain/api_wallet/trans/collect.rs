@@ -1,7 +1,7 @@
 use crate::{
     domain::{
         api_wallet::{
-            adapter_factory::{ApiChainAdapterFactory, API_ADAPTER_FACTORY},
+            adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
             trans::ApiTransDomain,
             wallet::ApiWalletDomain,
         },
@@ -110,6 +110,85 @@ impl ApiCollectDomain {
                 .submit_confirm_report_tx(trade_no)
                 .await?;
         }
+
+        // ApiAccountDomain::address_used(&self.chain_code, self.index, &self.uid, None).await?;
+
+        // let data = NotifyEvent::AddressUse(self.to_owned());
+        // FrontendNotifyEvent::new(data).send().await?;
+
         Ok(())
+    }
+
+    async fn get_collect_config(
+        uid: &str,
+        chain_code: &str,
+    ) -> Result<ChainConfig, crate::error::service::ServiceError> {
+        // 查询策略
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let strategy = backend_api.query_collect_strategy(uid).await?;
+        let Some(chain_config) =
+            strategy.chain_configs.into_iter().find(|config| config.chain_code == chain_code)
+        else {
+            return Err(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::ChainConfigNotFound(
+                    chain_code.to_owned(),
+                ),
+            )
+            .into());
+        };
+
+        Ok(chain_config)
+    }
+
+    async fn query_balance(
+        owner_address: &str,
+        chain_code: &str,
+        token_address: Option<String>,
+        decimals: u8,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let adapter = API_ADAPTER_FACTORY
+            .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
+            .await
+            .get_transaction_adapter(chain_code)
+            .await?;
+        let account = adapter.balance(&owner_address, token_address).await?;
+        let ammount = unit::format_to_string(account, decimals)?;
+        Ok(ammount)
+    }
+
+    async fn estimate_fee(
+        from: &str,
+        to: &str,
+        value: &str,
+        chain_code: &str,
+        symbol: &str,
+        main_symbol: &str,
+        token_address: Option<String>,
+        decimals: u8,
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let adapter = API_ADAPTER_FACTORY
+            .get_or_init(|| async { ApiChainAdapterFactory::new().await.unwrap() })
+            .await
+            .get_transaction_adapter(chain_code)
+            .await?;
+
+        let mut params = ApiBaseTransferReq::new(from, to, value, chain_code);
+        params.with_token(token_address, decimals, symbol);
+        let fee = adapter.estimate_fee(params, main_symbol).await?;
+
+        let chain_code: ChainCode = chain_code.try_into()?;
+        let amount = match chain_code {
+            ChainCode::Tron => fee,
+            ChainCode::Bitcoin => todo!(),
+            ChainCode::Solana => todo!(),
+            ChainCode::Ethereum => todo!(),
+            ChainCode::BnbSmartChain => todo!(),
+            ChainCode::Litecoin => todo!(),
+            ChainCode::Dogcoin => todo!(),
+            ChainCode::Sui => todo!(),
+            ChainCode::Ton => todo!(),
+        };
+        // let amount = unit::convert_to_u256(&amount, decimals)?;
+        Ok(amount)
     }
 }

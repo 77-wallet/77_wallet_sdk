@@ -80,7 +80,7 @@ impl ApiAccountRepo {
 
     pub async fn api_account_list(
         pool: &DbPool,
-        wallet_address: Option<&str>,
+        wallet_address: Option<String>,
         account_id: Option<u32>,
         chain_codes: Vec<String>,
     ) -> Result<Vec<ApiAccountEntity>, crate::Error> {

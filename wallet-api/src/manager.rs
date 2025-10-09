@@ -1,6 +1,6 @@
 use crate::{
     api::ReturnType,
-    context::{init_context, Context},
+    context::{Context, init_context},
     data::do_some_init,
     dirs::Dirs,
     domain,

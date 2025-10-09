@@ -4,16 +4,13 @@ use wallet_transport_backend::response_vo::api_wallet::wallet::{
 };
 
 use crate::{
-    api::ReturnType, manager::WalletManager, response_vo::api_wallet::wallet::ApiWalletInfo,
+    api::ReturnType, manager::WalletManager, response_vo::api_wallet::wallet::ApiWalletList,
     service::api_wallet::wallet::ApiWalletService,
 };
 
 impl WalletManager {
-    pub async fn get_api_wallet_list(
-        &self,
-        api_wallet_type: ApiWalletType,
-    ) -> ReturnType<Vec<ApiWalletInfo>> {
-        ApiWalletService::new(self.ctx).get_api_wallet_list(api_wallet_type).await
+    pub async fn get_api_wallet_list(&self) -> ReturnType<ApiWalletList> {
+        ApiWalletService::new(self.ctx).get_api_wallet_list().await
     }
 
     pub async fn create_api_wallet(
@@ -83,10 +80,6 @@ impl WalletManager {
     //         .await?
     //         .into()
     // }
-
-    pub async fn wallet_list(&self) -> ReturnType<Vec<ApiWalletInfo>> {
-        ApiWalletService::new(self.ctx).get_api_wallet_list(ApiWalletType::Withdrawal).await
-    }
 
     pub async fn scan_bind(
         &self,
@@ -378,6 +371,19 @@ mod test {
         let wallet_address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
 
         let res = wallet_manager.query_wallet_activation_info(wallet_address).await.unwrap();
+        let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_wallet_list() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let _ = wallet_manager.set_passwd_cache("q1111111").await;
+
+        let res = wallet_manager.get_api_wallet_list().await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())

@@ -50,7 +50,7 @@ impl ApiFeeDomain {
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
             let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
-            
+
             if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
             {
                 handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;

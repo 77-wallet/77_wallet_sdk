@@ -8,10 +8,6 @@ pub struct AuditResultReportReq {
 
 impl AuditResultReportReq {
     pub fn new(trade_no: String, result: bool, remark: &str) -> Self {
-        Self {
-            trade_no,
-            result,
-            remark: remark.to_owned(),
-        }
+        Self { trade_no, result, remark: remark.to_owned() }
     }
 }

@@ -1,7 +1,9 @@
-use crate::entities::api_fee::{ApiFeeEntity, ApiFeeStatus};
+use crate::entities::{
+    api_fee::{ApiFeeEntity, ApiFeeStatus},
+    api_withdraw::ApiWithdrawEntity,
+};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
-use crate::entities::api_withdraw::ApiWithdrawEntity;
 
 pub(crate) struct ApiFeeDao;
 
@@ -105,15 +107,11 @@ impl ApiFeeDao {
         let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql =
             format!("SELECT * FROM api_fee where trade_no = ? AND status in ({})", placeholders);
-        let mut query = sqlx::query_as::<_, ApiFeeEntity>(&sql)
-            .bind(trade_no);
+        let mut query = sqlx::query_as::<_, ApiFeeEntity>(&sql).bind(trade_no);
         for status in vec_status {
             query = query.bind(status);
         }
-        let res= query
-            .fetch_one(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        let res = query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
     }
 

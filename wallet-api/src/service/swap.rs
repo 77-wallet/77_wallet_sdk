@@ -175,7 +175,9 @@ impl SwapServer {
     ) -> Result<AssetsEntity, crate::error::service::ServiceError> {
         Ok(AssetsRepo::get_by_addr_token_opt(pool, chain_code, token_addr, recipient)
             .await?
-            .ok_or(crate::error::business::BusinessError::Assets(crate::error::business::assets::AssetsError::NotFoundAssets))?)
+            .ok_or(crate::error::business::BusinessError::Assets(
+                crate::error::business::assets::AssetsError::NotFoundAssets,
+            ))?)
     }
 
     async fn common_quote(

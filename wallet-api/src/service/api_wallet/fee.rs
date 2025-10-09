@@ -1,4 +1,4 @@
-use wallet_database::{entities::api_fee::ApiFeeEntity, repositories::api_fee::ApiFeeRepo};
+use wallet_database::{entities::api_fee::ApiFeeEntity, repositories::api_wallet::fee::ApiFeeRepo};
 
 use crate::{
     context::Context, domain::api_wallet::trans::fee::ApiFeeDomain,

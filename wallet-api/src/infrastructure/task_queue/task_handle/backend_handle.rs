@@ -4,7 +4,8 @@ use std::{collections::HashSet, sync::Arc};
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
-        api_account::ApiAccountRepo, api_wallet::ApiWalletRepo, device::DeviceRepo,
+        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
+        device::DeviceRepo,
         wallet::WalletRepoTrait,
     },
 };

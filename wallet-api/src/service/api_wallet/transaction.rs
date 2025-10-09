@@ -14,7 +14,9 @@ use wallet_database::{
     entities::bill::{BillEntity, BillKind, BillUpdateEntity, SyncBillEntity},
     pagination::Pagination,
     repositories::{
-        api_account::ApiAccountRepo, api_assets::ApiAssetsRepo, bill::BillRepo, coin::CoinRepo,
+        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
+        bill::BillRepo,
+        coin::CoinRepo,
     },
 };
 use wallet_utils::unit;
@@ -78,13 +80,8 @@ impl ApiTransService {
             } else {
                 vec![]
             };
-            let account = ApiAccountRepo::api_account_list(
-                &pool,
-                root_addr.as_deref(),
-                account_id,
-                chain_codes,
-            )
-            .await?;
+            let account =
+                ApiAccountRepo::api_account_list(&pool, root_addr, account_id, chain_codes).await?;
 
             account.iter().map(|item| item.address.clone()).collect::<Vec<String>>()
         };

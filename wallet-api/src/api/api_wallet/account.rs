@@ -2,16 +2,17 @@ use crate::{
     api::ReturnType, manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::CreateApiAccountReq,
+    response_vo::api_wallet::account::ApiAccountInfos,
     service::api_wallet::account::ApiAccountService,
 };
-use wallet_database::entities::api_account::ApiAccountEntity;
 
 impl WalletManager {
     pub async fn get_api_account_list(
         &self,
         wallet_address: &str,
-    ) -> ReturnType<Vec<ApiAccountEntity>> {
-        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, None, None).await
+        index: i32,
+    ) -> ReturnType<ApiAccountInfos> {
+        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, index, None).await
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
@@ -129,10 +130,13 @@ mod test {
     async fn test_get_api_account_list() -> Result<()> {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
-        let chain_code = "tron";
+        // let chain_code = "tron";
 
-        let res =
-            wallet_manager.get_api_account_list("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24").await;
+        let res = wallet_manager
+            .get_api_account_list("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", 0)
+            .await
+            .unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
 
         Ok(())

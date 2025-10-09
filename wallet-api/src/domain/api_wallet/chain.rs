@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, coin::CoinEntity, node::NodeEntity},
     repositories::{
-        ResourcesRepo, TransactionTrait as _, api_account::ApiAccountRepo, api_chain::ApiChainRepo,
+        ResourcesRepo, TransactionTrait as _,
+        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo},
         node::NodeRepoTrait,
     },
 };

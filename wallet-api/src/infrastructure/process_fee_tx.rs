@@ -5,12 +5,12 @@ use crate::{
 };
 use chrono::TimeDelta;
 use tokio::{
-    sync::{broadcast, mpsc, Mutex},
+    sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
 };
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
-    repositories::api_fee::ApiFeeRepo,
+    repositories::api_wallet::fee::ApiFeeRepo,
 };
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,

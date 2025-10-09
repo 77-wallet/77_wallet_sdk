@@ -10,7 +10,7 @@ pub struct ApiAccountEntity {
     pub private_key: String,
     pub address_type: String,
     pub wallet_address: String,
-    pub derivation_path: Option<String>,
+    pub derivation_path: String,
     pub derivation_path_index: Option<String>,
     pub chain_code: String,
     pub api_wallet_type: ApiWalletType,
@@ -20,6 +20,12 @@ pub struct ApiAccountEntity {
     pub is_used: bool,
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}
+
+impl ApiAccountEntity {
+    pub fn address_type(&self) -> Option<String> {
+        (!self.address_type.is_empty()).then(|| self.address_type.clone())
+    }
 }
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]

@@ -4,7 +4,7 @@ use wallet_crypto::{
 };
 use wallet_database::{
     entities::{api_wallet::ApiWalletType, device::DeviceEntity},
-    repositories::{api_wallet::ApiWalletRepo, wallet::WalletRepo},
+    repositories::{api_wallet::wallet::ApiWalletRepo, wallet::WalletRepo},
 };
 use wallet_transport_backend::{
     request::api_wallet::wallet::{AppIdImportReq, BindAppIdReq},

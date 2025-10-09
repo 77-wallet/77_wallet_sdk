@@ -5,7 +5,7 @@ use wallet_database::{
         wallet::WalletEntity,
     },
     repositories::{
-        ResourcesRepo, account::AccountRepoTrait, api_wallet::ApiWalletRepo,
+        ResourcesRepo, account::AccountRepoTrait, api_wallet::wallet::ApiWalletRepo,
         wallet::WalletRepoTrait,
     },
 };

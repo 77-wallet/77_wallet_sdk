@@ -93,7 +93,7 @@ pub mod endpoint {
         pub const MSG_ACK: &str = "awallet/aw/msg/ack";
         /// 查询uid的地址列表
         pub const QUERY_ADDRESS_LIST: &str = "awallet/aw/address/list";
-        
+
         /// 地址初始化
         pub const ADDRESS_INIT: &str = "awallet/aw/address/init";
         /// 地址初始化

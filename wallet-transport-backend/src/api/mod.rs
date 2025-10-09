@@ -1,6 +1,5 @@
 use crate::response::BackendResponse;
-use std::collections::HashMap;
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 pub mod api_wallet;
 pub mod wallet;
