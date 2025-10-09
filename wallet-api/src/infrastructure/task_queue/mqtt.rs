@@ -5,11 +5,12 @@ use crate::{
     messaging::mqtt::topics::{
         self,
         api_wallet::{
-            AwmCmdMsg, AwmOrderTransMsg, AwmOrderTransResMsg, address_allock::AwmCmdAddrExpandMsg,
-            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
+            cmd::AwmCmdMsg, trans::AwmOrderTransMsg, trans_result::AwmOrderTransResMsg, cmd::address_allock::AwmCmdAddrExpandMsg,
+            cmd::unbind_uid::AwmCmdUidUnbindMsg, cmd::wallet_activation::AwmCmdActiveMsg,
         },
     },
 };
+use crate::messaging::mqtt::topics::api_wallet::cmd::address_use::AddressUseMsg;
 
 #[async_trait::async_trait]
 impl TaskTrait for MqttTask {
@@ -176,12 +177,12 @@ pub(crate) enum EventType {
 #[serde(untagged)]
 pub(crate) enum ApiMqttData {
     /// 推送交易消息
-    AwmOrderTrans(topics::api_wallet::AwmOrderTransMsg),
+    AwmOrderTrans(AwmOrderTransMsg),
     /// 交易结果通知
-    AwmOrderTransRes(topics::api_wallet::AwmOrderTransResMsg),
+    AwmOrderTransRes(AwmOrderTransResMsg),
     /// 命令
-    AwmCmd(topics::api_wallet::AwmCmdMsg),
-    AddressUse(topics::api_wallet::address_use::AddressUseMsg),
+    AwmCmd(AwmCmdMsg),
+    AddressUse(AddressUseMsg),
 }
 
 #[async_trait::async_trait]

@@ -20,7 +20,7 @@ use crate::{
         app::{DeviceDomain, config::ConfigDomain},
     },
     error::service::ServiceError,
-    messaging::mqtt::topics::api_wallet::address_allock::AddressAllockType,
+    messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
 };
 
 pub struct ApiWalletDomain {}

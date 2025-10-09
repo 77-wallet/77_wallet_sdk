@@ -5,7 +5,7 @@ use crate::{
         wallet::WalletDomain,
     },
     error::service::ServiceError,
-    messaging::mqtt::topics::api_wallet::address_allock::AddressAllockType,
+    messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
