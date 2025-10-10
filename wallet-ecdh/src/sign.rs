@@ -5,6 +5,7 @@ use k256::{
     PublicKey,
     SecretKey,
 };
+use crate::error::EncryptionError;
 
 // 从 ECDH 共享密钥派生 ECDSA 密钥对
 fn derive_ecdsa_from_shared_secret(
@@ -30,7 +31,7 @@ pub(crate) fn sign_with_derived_ecdsa(
     message: &[u8],
     shared_secret: &SharedSecret,
     key: &[u8],
-) -> anyhow::Result<Signature> {
+) -> Result<Signature, EncryptionError> {
     let (secret_key, _) = derive_ecdsa_from_shared_secret(shared_secret, key);
     // 创建 SigningKey
     let signing_key = SigningKey::from_bytes(&secret_key.to_bytes())?;

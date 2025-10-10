@@ -2,11 +2,13 @@ use crate::{
     consts::endpoint::api_wallet::{
         TRANS_EVENT_ACK, TRANS_EXECUTE_COMPLETE, TRANS_SERVICE_FEE_TRANS,
     },
-    request::api_wallet::transaction::*,
-    response::BackendResponse,
+    request::api_wallet::transaction::*
+    ,
 };
 
 use crate::api::BackendApi;
+use crate::api_request::ApiBackendRequest;
+use crate::api_response::ApiBackendResponse;
 
 impl BackendApi {
     // 归集打手续费记录上传
@@ -14,14 +16,15 @@ impl BackendApi {
         &self,
         req: &ServiceFeeUploadReq,
     ) -> Result<Option<()>, crate::Error> {
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(TRANS_SERVICE_FEE_TRANS)
-            .json(serde_json::json!(req))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     // 交易执行回执上传
@@ -29,14 +32,15 @@ impl BackendApi {
         &self,
         req: &TxExecReceiptUploadReq,
     ) -> Result<Option<()>, crate::Error> {
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(TRANS_EXECUTE_COMPLETE)
             .json(serde_json::json!(req))
-            .send::<BackendResponse>()
+            .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     // 交易记录恢复
@@ -52,12 +56,13 @@ impl BackendApi {
         &self,
         req: &TransEventAckReq,
     ) -> Result<Option<()>, crate::Error> {
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(TRANS_EVENT_ACK)
-            .json(serde_json::json!(req))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 }

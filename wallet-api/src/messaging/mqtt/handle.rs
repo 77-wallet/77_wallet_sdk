@@ -14,13 +14,14 @@ use super::{
     },
 };
 use crate::{
-    infrastructure::task_queue::{ApiMqttStruct, MqttTask, task::Tasks},
+    infrastructure::task_queue::{ MqttTask, task::Tasks},
     messaging::{
         mqtt::topics::OutgoingPayload,
         notify::{FrontendNotifyEvent, event::NotifyEvent},
     },
     service::{app::AppService, device::DeviceService},
 };
+use crate::infrastructure::task_queue::mqtt_api::ApiMqttStruct;
 
 pub(crate) async fn exec_incoming(
     client: &rumqttc::v5::AsyncClient,

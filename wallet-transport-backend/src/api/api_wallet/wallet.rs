@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::{
     consts::endpoint::{
         api_wallet::{
@@ -17,51 +18,57 @@ use crate::{
 };
 
 use crate::api::BackendApi;
+use crate::api_request::ApiBackendRequest;
+use crate::api_response::ApiBackendResponse;
 
 impl BackendApi {
     // uid类型检查
     pub async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, crate::Error> {
+        let mut req = HashMap::new();
+        req.insert("uid", uid);
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(OLD_KEYS_UID_CHECK)
-            .json(serde_json::json!({
-                "uid": uid
-            }))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     /// 钱包与 appId 绑定
     pub async fn wallet_bind_appid(&self, req: &BindAppIdReq) -> Result<(), crate::Error> {
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(APP_ID_BIND)
-            .json(serde_json::json!(req))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     // 钱包与 appId 解绑
     pub async fn wallet_unbind_appid(&self, req: &UnBindAppIdReq) -> Result<(), crate::Error> {
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(APP_ID_UNBIND)
-            .json(serde_json::json!(req))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     /// 设置UID为API钱包
     pub async fn init_api_wallet(&self, req: InitApiWalletReq) -> Result<(), crate::Error> {
-        let res = self.client.post(INIT_API_WALLET).json(req).send::<BackendResponse>().await?;
+        let api_req = ApiBackendRequest::new(req)?;
+        let res = self.client.post(INIT_API_WALLET).json(api_req).send::<ApiBackendResponse>().await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     /// 保存钱包激活配置
@@ -69,14 +76,15 @@ impl BackendApi {
         &self,
         req: SaveWalletActivationConfigReq,
     ) -> Result<(), crate::Error> {
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(SAVE_WALLET_ACTIVATION_CONFIG)
-            .json(serde_json::json!(req))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     /// 查询钱包激活信息
@@ -84,16 +92,17 @@ impl BackendApi {
         &self,
         uid: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::Error> {
+        let mut req = HashMap::new();
+        req.insert("uid", uid);
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(QUERY_WALLET_ACTIVATION_CONFIG)
-            .json(serde_json::json!({
-                "uid": uid
-            }))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
 
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     /// 查询uid 绑定信息
@@ -101,16 +110,16 @@ impl BackendApi {
         &self,
         uid: &str,
     ) -> Result<QueryUidBindInfoRes, crate::Error> {
+        let mut req = HashMap::new();
+        req.insert("uid", uid);
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(QUERY_UID_BIND_INFO)
-            .json(serde_json::json!({
-                "uid": uid
-            }))
-            .send::<BackendResponse>()
+            .json(api_req)
+            .send::<ApiBackendResponse>()
             .await?;
-
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 
     // /// uid与appid的绑定

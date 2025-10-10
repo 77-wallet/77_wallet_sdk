@@ -1,3 +1,4 @@
+use k256::ecdsa::Error;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12,4 +13,6 @@ pub enum EncryptionError {
     KeyDerivationFailed(String),
     #[error("invalid encryption key")]
     InvalidEncryptedData,
+    #[error("signature err")]
+    SignatureError(#[from] Error),
 }

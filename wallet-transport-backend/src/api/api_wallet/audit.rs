@@ -3,6 +3,8 @@ use crate::request::api_wallet::audit::*;
 use crate::{
     api::BackendApi, consts::endpoint::api_wallet::TRANS_AUDIT, response::BackendResponse,
 };
+use crate::api_request::ApiBackendRequest;
+use crate::api_response::ApiBackendResponse;
 
 impl BackendApi {
     // 交易记录恢复
@@ -10,11 +12,10 @@ impl BackendApi {
         &self,
         req: &AuditResultReportReq,
     ) -> Result<Option<()>, crate::Error> {
-        let req = serde_json::json!(req);
-        tracing::info!("req: {}", req.to_string());
+        let api_req = ApiBackendRequest::new( req)?;
 
-        let res = self.client.post(TRANS_AUDIT).json(req).send::<BackendResponse>().await?;
+        let res = self.client.post(TRANS_AUDIT).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
-        res.process(&self.aes_cbc_cryptor)
+        res.process()
     }
 }

@@ -53,7 +53,8 @@ impl AwmCmdAddrExpandMsg {
 #[cfg(test)]
 mod test {
 
-    use crate::{infrastructure::task_queue::ApiMqttStruct, messaging::mqtt::Message};
+    use crate::{ messaging::mqtt::Message};
+    use crate::infrastructure::task_queue::mqtt_api::ApiMqttStruct;
 
     #[test]
     fn deserialize() {

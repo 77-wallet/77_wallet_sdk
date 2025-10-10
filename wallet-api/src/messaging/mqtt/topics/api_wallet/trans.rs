@@ -1,5 +1,4 @@
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
-use wallet_transport_backend::request::api_wallet::transaction::ServiceFeeUploadReq;
 
 use crate::{
     domain::{

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use super::task_manager::dispatcher::PriorityTask;
 use crate::{
     infrastructure::task_queue::{
-        ApiMqttStruct, CommonTask, MqttTask, RecoverDataBody,
+        CommonTask, MqttTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
         task::task_type::TaskType,
@@ -21,6 +21,8 @@ use wallet_database::{
     repositories::task_queue::TaskQueueRepoTrait as _,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
+use crate::infrastructure::task_queue::mqtt_api::ApiMqttStruct;
+
 #[async_trait::async_trait]
 pub(crate) trait TaskTrait: Send + Sync {
     fn get_name(&self) -> TaskName;
