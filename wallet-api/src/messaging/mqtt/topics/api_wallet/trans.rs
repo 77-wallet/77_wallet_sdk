@@ -1,42 +1,35 @@
-use wallet_transport_backend::request::api_wallet::{
-    msg::MsgAckReq, transaction::ServiceFeeUploadReq,
-};
+use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
-    domain::{
-        api_wallet::{
-            trans::{collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain},
-            wallet::ApiWalletDomain,
-        },
-        coin::CoinDomain,
+    domain::api_wallet::trans::{
+        collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
-    request::api_wallet::trans::{
-        ApiBaseTransferReq, ApiTransferFeeReq, ApiTransferReq, ApiWithdrawReq,
-    },
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
+    request::api_wallet::trans::{ApiTransferFeeReq, ApiWithdrawReq},
 };
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmOrderTransMsg {
-    from: String,
-    to: String,
-    value: String,
+    pub(crate) from: String,
+    pub(crate) to: String,
+    pub(crate) value: String,
     #[serde(rename = "chain")]
-    chain_code: String,
+    pub(crate) chain_code: String,
     #[serde(rename = "tokenAddr")]
-    token_address: String,
+    pub(crate) token_address: String,
     #[serde(rename = "tokenCode")]
-    symbol: String,
+    pub(crate) symbol: String,
     /// 平台交易单号
-    trade_no: String,
+    pub(crate) trade_no: String,
     /// 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
     #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
-    trade_type: u32,
+    pub(crate) trade_type: u32,
     /// 是否需要审核（可空）： 1 不需要审核 / 2 需要审核
     #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
-    audit: u32,
-    uid: String,
+    pub(crate) audit: u32,
+    pub(crate) uid: String,
 }
 
 // 归集和提币
@@ -56,6 +49,9 @@ impl AwmOrderTransMsg {
         msg_ack_req.push(_msg_id);
         let res = backend.msg_ack(msg_ack_req).await;
         tracing::info!("transfer from {} to {} value {:?}", self.from, self.to, res);
+
+        let data = NotifyEvent::AwmOrderTrans(self.into());
+        FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
 

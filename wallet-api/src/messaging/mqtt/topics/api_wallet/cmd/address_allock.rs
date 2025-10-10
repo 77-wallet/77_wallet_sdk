@@ -44,7 +44,7 @@ impl AwmCmdAddrExpandMsg {
         )
         .await?;
 
-        let data = NotifyEvent::AwmCmdAddrExpand(self.to_owned());
+        let data = NotifyEvent::AwmCmdAddrExpand(self.into());
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }

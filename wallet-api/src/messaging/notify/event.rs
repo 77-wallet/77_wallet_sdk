@@ -16,12 +16,12 @@ use super::{
 use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
-        api_wallet::cmd::{
-            address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg,
-            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
-        },
+        api_wallet::cmd::{address_use::AddressUseMsg, unbind_uid::AwmCmdUidUnbindMsg},
     },
-    notify::api_wallet::{CollectFeeNotEnoughFront, FeeFront, WithdrawFront, WithdrawNoPassFront},
+    notify::api_wallet::{
+        AwmCmdActiveMsgFront, AwmCmdAddrExpandMsgFront, AwmOrderTransMsgFront,
+        CollectFeeNotEnoughFront, FeeFront, WithdrawFront, WithdrawNoPassFront,
+    },
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -67,9 +67,10 @@ pub enum NotifyEvent {
     SyncAssets,
 
     // API wallet
-    AwmCmdActive(AwmCmdActiveMsg),
+    AwmCmdActive(AwmCmdActiveMsgFront),
     AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
-    AwmCmdAddrExpand(AwmCmdAddrExpandMsg),
+    AwmCmdAddrExpand(AwmCmdAddrExpandMsgFront),
+    AwmOrderTrans(AwmOrderTransMsgFront),
     AddressUse(AddressUseMsg),
     Withdraw(WithdrawFront),
     WithdrawNoPass(WithdrawNoPassFront),
@@ -124,6 +125,7 @@ impl NotifyEvent {
             NotifyEvent::AwmCmdActive(_) => "AWM_CMD_ACTIVE".to_string(),
             NotifyEvent::AwmCmdUidUnbind(_) => "AWM_CMD_UID_UNBIND".to_string(),
             NotifyEvent::AwmCmdAddrExpand(_) => "AWM_CMD_ADDR_EXPAND".to_string(),
+            NotifyEvent::AwmOrderTrans(_) => "AWM_ORDER_TRANS".to_string(),
             NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
             NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
             NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),

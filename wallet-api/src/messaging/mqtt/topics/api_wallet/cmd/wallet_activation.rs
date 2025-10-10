@@ -18,7 +18,7 @@ impl AwmCmdActiveMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let data = NotifyEvent::AwmCmdActive(self.to_owned());
+        let data = NotifyEvent::AwmCmdActive(self.into());
         FrontendNotifyEvent::new(data).send().await?;
 
         // ApiWalletDomain::expand_address(&self.typ, self.index, &self.uid, &self.chain_code).await?;
