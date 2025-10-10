@@ -10,10 +10,10 @@ impl WalletManager {
     pub async fn get_api_account_list(
         &self,
         wallet_address: &str,
-        account_id: u32,
+        account_id: Option<u32>,
     ) -> ReturnType<ApiAccountInfos> {
         ApiAccountService::new(self.ctx)
-            .list_api_accounts(wallet_address, Some(account_id), None)
+            .list_api_accounts(wallet_address, account_id, None)
             .await
     }
 
