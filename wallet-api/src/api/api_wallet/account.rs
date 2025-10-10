@@ -12,9 +12,7 @@ impl WalletManager {
         wallet_address: &str,
         account_id: Option<u32>,
     ) -> ReturnType<ApiAccountInfos> {
-        ApiAccountService::new(self.ctx)
-            .list_api_accounts(wallet_address, account_id, None)
-            .await
+        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, account_id, None).await
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {

@@ -6,10 +6,10 @@ use crate::messaging::mqtt::topics::{
     api_wallet::{
         cmd::{
             address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg,
-            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
+            fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
+            wallet_activation::AwmCmdActiveMsg,
         },
         trans::AwmOrderTransMsg,
-        trans_fee_result::AwmOrderTransFeeResMsg,
         trans_result::AwmOrderTransResMsg,
     },
 };
@@ -140,5 +140,5 @@ pub enum Body {
     AwmCmdActive(AwmCmdActiveMsg),
     AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
     AddressUse(AddressUseMsg),
-    AwmCmdOrderTransFeeRes(AwmOrderTransFeeResMsg),
+    AwmCmdOrderTransFeeRes(AwmCmdFeeResMsg),
 }

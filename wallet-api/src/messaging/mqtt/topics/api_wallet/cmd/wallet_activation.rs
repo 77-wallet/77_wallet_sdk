@@ -2,7 +2,7 @@ use wallet_transport_backend::response_vo::api_wallet::wallet::ActiveStatus;
 
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 
-// biz_type = WALLET_ACTIVATION
+// biz_type = AWM_CMD_ACTIVE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmCmdActiveMsg {

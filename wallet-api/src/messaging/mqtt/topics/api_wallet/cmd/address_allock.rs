@@ -3,7 +3,7 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 
-// biz_type = ADDRESS_ALLOCK
+// biz_type = AWM_CMD_ADDR_EXPAND
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmCmdAddrExpandMsg {

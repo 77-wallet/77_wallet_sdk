@@ -3,7 +3,7 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 
-// biz_type = UNBIND_UID
+// biz_type = AWM_CMD_UID_UNBIND
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmCmdUidUnbindMsg {

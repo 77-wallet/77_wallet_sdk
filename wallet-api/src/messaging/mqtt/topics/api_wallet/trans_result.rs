@@ -1,12 +1,15 @@
-use crate::domain::api_wallet::trans::{
-    collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
+use crate::{
+    domain::api_wallet::trans::{
+        collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
+    },
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 use wallet_database::entities::{
     api_collect::ApiCollectStatus, api_fee::ApiFeeStatus, api_withdraw::ApiWithdrawStatus,
 };
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
-// biz_type = TRANS_RESULT
+// biz_type = AWM_ORDER_TRANS_RES
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmOrderTransResMsg {
@@ -19,7 +22,7 @@ pub struct AwmOrderTransResMsg {
     uid: String,
 }
 
-// 归集和提币
+// API钱包的订单结果消息
 impl AwmOrderTransResMsg {
     pub(crate) async fn exec(
         &self,
@@ -36,6 +39,8 @@ impl AwmOrderTransResMsg {
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
+        let data = NotifyEvent::AwmOrderTransRes(self.to_owned());
+        FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }
 

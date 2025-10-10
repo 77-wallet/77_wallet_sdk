@@ -8,7 +8,7 @@ use crate::{
     request::api_wallet::trans::{ApiTransferFeeReq, ApiWithdrawReq},
 };
 
-// biz_type = RECHARGE
+// biz_type = AWM_ORDER_TRANS
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmOrderTransMsg {
