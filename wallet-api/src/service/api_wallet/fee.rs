@@ -18,7 +18,7 @@ impl TransferFeeService {
         &self,
         uid: &str,
     ) -> Result<Vec<ApiFeeEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         ApiFeeRepo::list_api_fee(&pool, uid).await.map_err(|e| e.into())
     }
 

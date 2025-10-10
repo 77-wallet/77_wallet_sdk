@@ -11,17 +11,7 @@ use crate::{
     service::node::NodeService,
 };
 
-/// Marks whether initialization has already been performed to prevent duplication.
-/// - `OnceCell<()>` stores no real data, only acts as a flag.
-/// - Combined with `Lazy` to ensure the cell itself is created only once.
-pub(crate) static INIT_DATA: once_cell::sync::Lazy<tokio::sync::OnceCell<()>> =
-    once_cell::sync::Lazy::new(tokio::sync::OnceCell::new);
-
-pub async fn do_some_init<'a>() -> Result<&'a (), crate::error::service::ServiceError> {
-    INIT_DATA.get_or_try_init(|| async { init_some_data().await }).await
-}
-
-async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
+pub(crate) async fn init_some_data() -> Result<(), crate::error::service::ServiceError> {
     crate::domain::app::config::ConfigDomain::init_url().await?;
 
     let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;

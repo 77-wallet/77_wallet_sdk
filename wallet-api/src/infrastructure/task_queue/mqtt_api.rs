@@ -1,9 +1,10 @@
 use crate::{
+    error::service::ServiceError,
     infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
     messaging::mqtt::topics::api_wallet::{
         cmd::{
-            address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg, unbind_uid::AwmCmdUidUnbindMsg,
-            wallet_activation::AwmCmdActiveMsg, AwmCmdMsg,
+            address_allock::AwmCmdAddrExpandMsg,
+            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
         },
         trans::AwmOrderTransMsg,
         trans_fee_result::AwmOrderTransFeeResMsg,
@@ -11,6 +12,9 @@ use crate::{
     },
 };
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
+use wallet_transport_backend::api_response::{
+    ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
+};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub(crate) enum EventType {
@@ -27,18 +31,6 @@ pub(crate) enum EventType {
     #[serde(rename = "6")]
     AwmCmdFeeRes,
     // AddressUse,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(untagged)]
-pub(crate) enum ApiMqttData {
-    /// 推送交易消息
-    AwmOrderTrans(AwmOrderTransMsg),
-    /// 交易结果通知
-    AwmOrderTransRes(AwmOrderTransResMsg),
-    /// 命令
-    AwmCmd(AwmCmdMsg),
-    AddressUse(AddressUseMsg),
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -70,58 +62,54 @@ impl TaskTrait for ApiMqttStruct {
         TaskType::Mqtt
     }
 
-    fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError> {
-        // let res = match &self.data {
-        //     ApiMqttData::AwmOrderTrans(trans_msg) => {
-        //         Some(wallet_utils::serde_func::serde_to_string(trans_msg)?)
-        //     }
-        //     ApiMqttData::AwmOrderTransRes(trans_result_msg) => {
-        //         Some(wallet_utils::serde_func::serde_to_string(trans_result_msg)?)
-        //     }
-        //     ApiMqttData::AwmCmd(msg) => Some(wallet_utils::serde_func::serde_to_string(msg)?),
-
-        //     ApiMqttData::AddressUse(address_use_msg) => {
-        //         Some(wallet_utils::serde_func::serde_to_string(address_use_msg)?)
-        //     }
-        // };
-
-        // Ok(res)
-
+    fn get_body(&self) -> Result<Option<String>, ServiceError> {
         Ok(Some(wallet_utils::serde_func::serde_to_string(self)?))
     }
 
-    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError> {
+    async fn execute(&self, id: &str) -> Result<(), ServiceError> {
+        if self.sign.is_none() {
+            return Err(ServiceError::Parameter("missing sign".to_string()));
+        }
+        if self.secret.is_none() {
+            return Err(ServiceError::Parameter("missing secret".to_string()));
+        }
         // 验签
-        
+        let res = ApiBackendResponse {
+            success: false,
+            code: None,
+            msg: None,
+            data: Some(ApiBackendData {
+                sign: self.sign.clone().unwrap(),
+                body: ApiBackendDataBody {
+                    key: self.secret.clone().unwrap(),
+                    data: self.data.clone().to_string(),
+                },
+            }),
+        };
+
         match &self.event_type {
             EventType::AwmOrderTrans => {
-                let data: AwmOrderTransMsg =
-                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                let data: AwmOrderTransMsg = res.process()?;
                 data.exec(id).await?
             }
             EventType::AwmOrderTransRes => {
-                let data: AwmOrderTransResMsg =
-                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                let data: AwmOrderTransResMsg = res.process()?;
                 data.exec(id).await?
             }
             EventType::AwmCmdAddrExpand => {
-                let data: AwmCmdAddrExpandMsg =
-                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                let data: AwmCmdAddrExpandMsg = res.process()?;
                 data.exec(id).await?
             }
             EventType::AwmCmdUidUnbind => {
-                let data: AwmCmdUidUnbindMsg =
-                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                let data: AwmCmdUidUnbindMsg = res.process()?;
                 data.exec(id).await?
             }
             EventType::AwmCmdFeeRes => {
-                let data: AwmOrderTransFeeResMsg =
-                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                let data: AwmOrderTransFeeResMsg = res.process()?;
                 data.exec(id).await?
             }
             EventType::AwmCmdActive => {
-                let data: AwmCmdActiveMsg =
-                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                let data: AwmCmdActiveMsg = res.process()?;
                 data.exec(id).await?
             }
         }

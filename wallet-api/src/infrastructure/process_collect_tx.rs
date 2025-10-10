@@ -294,7 +294,7 @@ impl ProcessCollectTx {
         main_symbol: &str,
         token_address: Option<String>,
         decimals: u8,
-    ) -> Result<String, crate::error::service::ServiceError> {
+    ) -> Result<String, ServiceError> {
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
         params.with_token(token_address, decimals, symbol);
@@ -319,7 +319,7 @@ impl ProcessCollectTx {
         &self,
         uid: &str,
         chain_code: &str,
-    ) -> Result<ChainConfig, crate::error::service::ServiceError> {
+    ) -> Result<ChainConfig, ServiceError> {
         // 查询策略
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let strategy = backend_api.query_collect_strategy(uid).await?;

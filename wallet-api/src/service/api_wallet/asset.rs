@@ -23,6 +23,7 @@ use wallet_database::{
     },
 };
 use wallet_utils::unit;
+use crate::context::Context;
 
 #[derive(Debug, Clone)]
 pub struct AddressChainCode {
@@ -30,17 +31,22 @@ pub struct AddressChainCode {
     pub chain_code: String,
 }
 
-pub struct ApiAssetsService;
+pub struct ApiAssetsService{
+    ctx: &'static Context,
+}
 
 impl ApiAssetsService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ctx: &'static Context) -> Self {
+        Self {
+            ctx
+        }
     }
 
     pub async fn add_assets(
+        &self,
         req: crate::request::coin::AddCoinReq,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         // 钱包下的账号
         let accounts = ApiAccountRepo::list_by_wallet_address(
@@ -73,12 +79,13 @@ impl ApiAssetsService {
     }
 
     pub async fn remove_assets(
+        &self,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_list: ChainList,
         _is_multisig: Option<bool>,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         let accounts =
             ApiAccountRepo::list_by_wallet_address(&pool, wallet_address, account_id, None).await?;
@@ -98,7 +105,7 @@ impl ApiAssetsService {
 
     // 根据后端同步余额
     pub async fn sync_assets_by_wallet_backend(
-        self,
+        &self,
         wallet_address: String,
         account_id: Option<u32>,
         _symbol: Vec<String>,
@@ -114,7 +121,7 @@ impl ApiAssetsService {
     ) -> Result<Balance, crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(chain_code).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let coin = CoinRepo::coin_by_chain_address(chain_code, token_address, &pool).await?;
 
         let token_address = (!token_address.is_empty()).then_some(token_address.to_string());
@@ -136,13 +143,13 @@ impl ApiAssetsService {
     }
 
     pub async fn get_api_assets_list(
-        self,
+        &self,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses =
@@ -184,7 +191,7 @@ impl ApiAssetsService {
                         && let Some(chain) =
                             ApiChainRepo::detail_with_main_symbol(&pool, &assets.symbol).await?
                     {
-                        chain.chain_code
+                        chain.chain_code.clone()
                     } else {
                         assets.chain_code
                     };
@@ -219,13 +226,14 @@ impl ApiAssetsService {
 
     // 已添加的资产
     pub async fn get_added_coin_list(
+        &self,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
         keyword: Option<&str>,
         _is_multisig: Option<bool>,
     ) -> Result<crate::response_vo::coin::CoinInfoList, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         let chain_codes = chain_code.clone().map(|c| vec![c]).unwrap_or_default();
         let account_addresses =
@@ -269,11 +277,12 @@ impl ApiAssetsService {
 
     // 单个索引下的所有资产总和
     pub async fn get_account_assets(
+        &self,
         account_id: u32,
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         let account = ApiAccountRepo::list_by_wallet_address(
             &pool,
@@ -333,12 +342,13 @@ impl ApiAssetsService {
 
     // 资产列表
     pub async fn get_account_chain_assets(
+        &self,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
         _is_multisig: Option<bool>,
     ) -> Result<ApiAccountChainAssetList, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         let accounts = ApiAccountRepo::list_by_wallet_address(
             &pool,
