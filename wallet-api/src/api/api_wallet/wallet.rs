@@ -336,12 +336,12 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
-        let key = "7b7f00f56f6e42a4baa6ce6e33712336";
-        let merchain_id = "68e8917f12229349ced16862";
+        let app_id = "7b7f00f56f6e42a4baa6ce6e33712336";
+        let org_id = "68e8917f12229349ced16862";
         let subaccount_uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
         let withdrawal_uid = "2b607a707cc4f0b4191bce26149e0310302905a59aed4c27b35d6429bfacd5d9";
 
-        let res = wallet_manager.scan_bind(key, merchain_id, subaccount_uid, withdrawal_uid).await;
+        let res = wallet_manager.scan_bind(app_id, org_id, subaccount_uid, withdrawal_uid).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
