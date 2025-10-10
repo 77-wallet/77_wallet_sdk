@@ -1,4 +1,5 @@
 use wallet_transport::errors::TransportError;
+use wallet_ecdh::error::EncryptionError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -10,6 +11,8 @@ pub enum Error {
     Utils(#[from] wallet_utils::error::Error),
     #[error("backend service error")]
     BackendServiceError(#[from] BackendServiceError),
+    #[error("enc/decrypt error")]
+    EncryptionError(#[from] EncryptionError),
 }
 impl Error {
     pub fn is_network_error(&self) -> bool {

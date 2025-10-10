@@ -11,8 +11,13 @@ hex = "0.4"
 aes-gcm = {version = "0.10.3", features = ["aes"]}
 # HKDF 和哈希函数
 hkdf = "0.12"
+md5 = "0.7"
+uuid = "1.18.1"
 
 anyhow = {workspace = true}
 thiserror = {workspace = true}
+once_cell = { workspace = true }
+wallet-utils = { workspace = true }
+
 
 [dev-dependencies]

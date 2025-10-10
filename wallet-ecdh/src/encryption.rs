@@ -2,36 +2,43 @@ use crate::data::EncryptedData;
 use crate::error::EncryptionError;
 use aes_gcm::aead::{Aead, OsRng};
 use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm, Key, KeyInit, Nonce};
+use aes_gcm::aead::generic_array::GenericArray;
 use hkdf::Hkdf;
 use k256::ecdh::SharedSecret;
 use k256::sha2::Sha256;
 
 /// 从共享密钥派生 AES 加密密钥
-pub fn derive_aes_key_from_shared_secret(
+pub(crate) fn derive_aes_key_from_shared_secret(
     shared_secret: &SharedSecret,
+    key: &[u8],
 ) -> Result<[u8; 32], EncryptionError> {
     let shared_bytes = shared_secret.raw_secret_bytes();
     let hkdf = Hkdf::<Sha256>::new(None, shared_bytes);
 
     let mut aes_key = [0u8; 32];
-    hkdf.expand(b"aes_encryption_key", &mut aes_key)
+    hkdf.expand(key, &mut aes_key)
         .map_err(|e| EncryptionError::KeyDerivationFailed(e.to_string()))?;
 
     Ok(aes_key)
 }
 
 /// 使用共享密钥加密数据
-pub fn encrypt_with_shared_secret(
+pub(crate) fn encrypt_with_shared_secret(
     plaintext: &[u8],
     shared_secret: &SharedSecret,
+    key: &[u8],
 ) -> Result<EncryptedData, EncryptionError> {
     // 1. 从共享密钥派生 AES 密钥
-    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret, key)?;
     let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
     let cipher = Aes256Gcm::new(key);
 
     // 2. 生成随机 nonce
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let head = &aes_key_bytes[0..4];
+    let nonce_bytes = [aes_key_bytes.as_slice(), head].concat();
+    let nonce_md5 = md5::compute(nonce_bytes).to_vec();
+    let nonce_md5_head = &nonce_md5[0..12];
+    let nonce = GenericArray::from_slice(nonce_md5_head);
 
     // 3. 加密数据
     let ciphertext = cipher
@@ -39,40 +46,47 @@ pub fn encrypt_with_shared_secret(
         .map_err(|e| EncryptionError::EncryptionFailed(e.to_string()))?;
 
     Ok(EncryptedData {
+        key: key.to_vec(),
         nonce: nonce.to_vec(),
         ciphertext,
     })
 }
 
 /// 使用共享密钥解密数据
-pub fn decrypt_with_shared_secret(
-    encrypted_data: &EncryptedData,
+pub(crate) fn decrypt_with_shared_secret(
+    encrypted_data: &[u8],
     shared_secret: &SharedSecret,
+    key: &[u8],
 ) -> Result<Vec<u8>, EncryptionError> {
     // 1. 从共享密钥派生 AES 密钥
-    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret, key)?;
     let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
     let cipher = Aes256Gcm::new(key);
 
     // 2. 从字节数组重建 nonce
-    let nonce = Nonce::from_slice(&encrypted_data.nonce);
+    let head = &aes_key_bytes[0..4];
+    let nonce_bytes = [aes_key_bytes.as_slice(), head].concat();
+    let nonce_md5 = md5::compute(nonce_bytes).to_vec();
+    let nonce_md5_head = &nonce_md5[0..12];
+    let nonce = GenericArray::from_slice(nonce_md5_head);
 
     // 3. 解密数据
     let plaintext = cipher
-        .decrypt(nonce, encrypted_data.ciphertext.as_slice())
+        .decrypt(nonce, encrypted_data)
         .map_err(|e| EncryptionError::DecryptionFailed(e.to_string()))?;
 
     Ok(plaintext)
 }
 
 /// 带认证的加密（包含额外数据）
-pub fn encrypt_with_aad(
+pub(crate) fn encrypt_with_aad(
     plaintext: &mut [u8],
     additional_data: &[u8],
     shared_secret: &SharedSecret,
+    key: &[u8],
 ) -> Result<EncryptedData, EncryptionError> {
     // 1. 从共享密钥派生 AES 密钥
-    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret, key)?;
     let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
     let cipher = Aes256Gcm::new(key);
 
@@ -89,19 +103,21 @@ pub fn encrypt_with_aad(
     combined_ciphertext.extend_from_slice(&tag);
 
     Ok(EncryptedData {
+        key: key.to_vec(),
         nonce: nonce.to_vec(),
         ciphertext: combined_ciphertext,
     })
 }
 
 /// 带认证的解密（包含额外数据）
-pub fn decrypt_with_aad(
+pub(crate) fn decrypt_with_aad(
     encrypted_data: &mut EncryptedData,
     additional_data: &[u8],
     shared_secret: &SharedSecret,
+    key: &[u8],
 ) -> Result<Vec<u8>, EncryptionError> {
     // 1. 从共享密钥派生 AES 密钥
-    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret)?;
+    let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret, key)?;
     let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
     let cipher = Aes256Gcm::new(key);
 
@@ -132,12 +148,13 @@ mod tests {
 
         // 测试数据
         let plaintext = b"Hello, AES encryption!";
+        let key = b"aes_encryption_key";
 
         // 加密
-        let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1).unwrap();
+        let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1, key).unwrap();
 
         // 解密
-        let decrypted = decrypt_with_shared_secret(&encrypted, &shared_secret2).unwrap();
+        let decrypted = decrypt_with_shared_secret(&encrypted.ciphertext, &shared_secret2, key).unwrap();
 
         // 验证
         assert_eq!(plaintext, decrypted.as_slice());
@@ -154,9 +171,10 @@ mod tests {
 
         // 测试数据
         let plaintext = b"Test serialization and deserialization";
+        let key = b"aes_encryption_key";
 
         // 加密
-        let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1).unwrap();
+        let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1, key).unwrap();
 
         // 序列化
         let serialized = encrypted.to_bytes();
@@ -167,7 +185,7 @@ mod tests {
         let deserialized = EncryptedData::from_bytes(&serialized).unwrap();
 
         // 解密
-        let decrypted = decrypt_with_shared_secret(&deserialized, &shared_secret2).unwrap();
+        let decrypted = decrypt_with_shared_secret(&deserialized.ciphertext, &shared_secret2, key).unwrap();
 
         // 验证
         assert_eq!(plaintext, decrypted.as_slice());
@@ -185,12 +203,13 @@ mod tests {
         // 测试数据
         let mut  plaintext = b"Sensitive data".to_vec();
         let additional_data = b"Header information";
+        let key = b"aes_encryption_key";
 
         // 加密（带额外认证数据）
-        let mut encrypted = encrypt_with_aad(&mut plaintext, additional_data, &shared_secret1).unwrap();
+        let mut encrypted = encrypt_with_aad(&mut plaintext, additional_data, &shared_secret1, key).unwrap();
 
         // 解密（带额外认证数据）
-        let decrypted = decrypt_with_aad(&mut encrypted, additional_data, &shared_secret2).unwrap();
+        let decrypted = decrypt_with_aad(&mut encrypted, additional_data, &shared_secret2, key).unwrap();
 
         // 验证
         assert_eq!(plaintext, decrypted.as_slice());
