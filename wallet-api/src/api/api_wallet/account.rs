@@ -135,7 +135,7 @@ mod test {
         // let chain_code = "tron";
 
         let res = wallet_manager
-            .get_api_account_list("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", 0)
+            .get_api_account_list("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", None)
             .await
             .unwrap();
         let res = serde_json::to_string(&res).unwrap();
