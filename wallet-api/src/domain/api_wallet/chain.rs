@@ -4,7 +4,7 @@ use wallet_database::{
     entities::{api_wallet::ApiWalletType, coin::CoinEntity, node::NodeEntity},
     repositories::{
         ResourcesRepo, TransactionTrait as _,
-        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo},
+        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         node::NodeRepoTrait,
     },
 };
@@ -15,8 +15,11 @@ use wallet_types::chain::chain::ChainCode;
 
 use crate::{
     domain::{
-        api_wallet::account::ApiAccountDomain, app::config::ConfigDomain, assets::AssetsDomain,
-        chain::ChainDomain, wallet::WalletDomain,
+        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        app::config::ConfigDomain,
+        assets::AssetsDomain,
+        chain::ChainDomain,
+        wallet::WalletDomain,
     },
     infrastructure::task_queue::{
         backend::{BackendApiTask, BackendApiTaskData},
@@ -109,7 +112,7 @@ impl ApiChainDomain {
 
     pub(crate) async fn upsert_multi_api_chain_than_toggle(
         chains: wallet_transport_backend::response_vo::api_wallet::chain::ApiChainListResp,
-    ) -> Result<bool, crate::error::service::ServiceError> {
+    ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         // tracing::warn!("upsert_multi_chain_than_toggle, chains: {:#?}", chains);
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
@@ -124,8 +127,10 @@ impl ApiChainDomain {
 
         let mut input = Vec::new();
         let mut chain_codes = Vec::new();
-        let mut has_new_chain = false;
+        // let mut has_new_chain = false;
         let account_list = ApiAccountRepo::list(&pool).await?;
+
+        let mut new_chains = Vec::new();
         let app_version = ConfigDomain::get_app_version().await?.app_version;
         for chain in chains.0 {
             let Some(master_token_code) = chain.master_token_code else {
@@ -145,7 +150,8 @@ impl ApiChainDomain {
                 .iter()
                 .all(|acc_chain| acc_chain.chain_code != chain.chain_code && chain.enable)
             {
-                has_new_chain = true;
+                // has_new_chain = true;
+                new_chains.push(chain.chain_code.clone());
             }
 
             // if local_backend_nodes
@@ -201,7 +207,7 @@ impl ApiChainDomain {
             Tasks::new().push(BackendApiTask::BackendApi(chain_rpc_list_req)).send().await?;
         }
 
-        Ok(has_new_chain)
+        Ok(new_chains)
     }
 
     pub async fn toggle_api_chains(
@@ -330,6 +336,34 @@ impl ApiChainDomain {
             }
         }
         tracing::debug!("[assign_missing_nodes_to_chains] end");
+        Ok(())
+    }
+
+    pub async fn sync_withdrawal_wallet_chain_data()
+    -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let password = ApiWalletDomain::get_passwd().await?;
+
+        let chain_list: Vec<String> = ApiChainRepo::get_chain_list(&pool)
+            .await?
+            .into_iter()
+            .map(|chain| chain.chain_code)
+            .collect();
+
+        let withdrawal_wallet_list =
+            ApiWalletRepo::list(&pool, Some(ApiWalletType::Withdrawal)).await?;
+
+        for wallet in withdrawal_wallet_list {
+            ApiAccountDomain::create_withdrawal_account(
+                &wallet.address,
+                &password,
+                chain_list.clone(),
+                "账户",
+                true,
+            )
+            .await?;
+        }
+
         Ok(())
     }
 }

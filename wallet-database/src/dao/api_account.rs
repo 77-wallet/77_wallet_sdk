@@ -1,5 +1,6 @@
 use crate::{
     entities::{
+        account::AccountWalletMapping,
         api_account::{ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
@@ -388,5 +389,30 @@ impl ApiAccountDao {
             .and_where_eq_opt("account_id", account_id)
             .fetch_all(executor)
             .await
+    }
+
+    pub async fn account_wallet_mapping<'a, E>(
+        executor: E,
+    ) -> Result<Vec<AccountWalletMapping>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT DISTINCT 
+                api_account.account_id,
+                api_account.name,
+                api_account.wallet_address,
+                api_wallet.uid
+            FROM 
+                api_account
+            LEFT JOIN 
+                api_wallet
+            ON 
+                api_account.wallet_address = api_wallet.address;
+            "#;
+        sqlx::query_as::<sqlx::Sqlite, AccountWalletMapping>(sql)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 }

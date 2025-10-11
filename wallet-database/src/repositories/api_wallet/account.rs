@@ -2,6 +2,7 @@ use crate::{
     DbPool,
     dao::api_account::ApiAccountDao,
     entities::{
+        account::AccountWalletMapping,
         api_account::{ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
@@ -157,5 +158,11 @@ impl ApiAccountRepo {
 
     pub async fn list(pool: &DbPool) -> Result<Vec<ApiAccountEntity>, crate::Error> {
         ApiAccountDao::account_list(pool.as_ref(), None, None, None, vec![], None).await
+    }
+
+    pub async fn account_wallet_mapping(
+        pool: &DbPool,
+    ) -> Result<Vec<AccountWalletMapping>, crate::Error> {
+        ApiAccountDao::account_wallet_mapping(pool.as_ref()).await
     }
 }

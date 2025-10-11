@@ -396,9 +396,9 @@ impl EndpointHandler for SpecialHandler {
                         endpoint, &body,
                     )
                     .await?;
-                tracing::info!("API_WALLET_CHAIN_LIST ------------- 1");
                 //先插入再过滤
                 ApiChainDomain::upsert_multi_api_chain_than_toggle(input).await?;
+                ApiChainDomain::sync_withdrawal_wallet_chain_data().await?;
             }
             endpoint::CHAIN_RPC_LIST => {
                 let input = backend
