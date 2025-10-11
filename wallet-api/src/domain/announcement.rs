@@ -18,6 +18,7 @@ impl AnnouncementDomain {
         };
 
         let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;
+        tracing::info!("client id: {} --------------", client_id);
         let req = wallet_transport_backend::request::AnnouncementListReq::new(client_id, 0, 50);
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let res = backend.announcement_list(req).await?;

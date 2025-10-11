@@ -60,10 +60,11 @@ pub(crate) fn verify_derived_ecdsa_signature(
     signature: &Signature,
     shared_secret: &SharedSecret,
     key: &[u8],
-) -> Result<bool, EncryptionError> {
+) -> Result<(), EncryptionError> {
     let (_, public_key) = derive_ecdsa_from_shared_secret(shared_secret, key)?;
     let verifying_key = k256::ecdsa::VerifyingKey::from(public_key);
-    Ok(verifying_key.verify(message, signature).is_ok())
+    let ok = verifying_key.verify(message, signature)?;
+    Ok(ok)
 }
 
 #[cfg(test)]

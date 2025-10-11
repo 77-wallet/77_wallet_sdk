@@ -17,6 +17,6 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new( req)?;
         let res = self.client.post(TRANS_AUDIT).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
-        res.process()
+        res.process(TRANS_AUDIT)
     }
 }

@@ -12,6 +12,7 @@ use wallet_ecdh::GLOBAL_KEY;
 use crate::api::BackendApi;
 use crate::api_request::ApiBackendRequest;
 use crate::api_response::ApiBackendResponse;
+use crate::Error::Backend;
 
 impl BackendApi {
     // 保存&更新归集策略配置
@@ -28,7 +29,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        res.process()
+        res.process(TRANS_STRATEGY_COLLECT_SAVE)
     }
 
     // 保存&更新出款策略配置
@@ -43,7 +44,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        res.process()
+        res.process(TRANS_STRATEGY_WITHDRAWAL_SAVE)
     }
 
     // 查询归集策略配置
@@ -60,7 +61,8 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        res.process()
+        let opt = res.process(TRANS_STRATEGY_GET_COLLECT_CONFIG)?;
+        opt.ok_or(Backend(Some("no found list".to_string())))
     }
 
     // 查询出款策略配置
@@ -78,6 +80,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        res.process()
+        let opt = res.process(TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG)?;
+        opt.ok_or(Backend(Some("no fond list".to_string())))
     }
 }

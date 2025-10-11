@@ -9,6 +9,7 @@ use crate::{
 use crate::api::BackendApi;
 use crate::api_request::{ApiBackendRequest};
 use crate::api_response::ApiBackendResponse;
+use crate::Error::Backend;
 
 impl BackendApi {
     // 地址初始化
@@ -21,7 +22,8 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
-        res.process()
+        let opt: Option<()>  = res.process(ADDRESS_INIT)?;
+        Ok(())
     }
 
     // 扩容完成上报
@@ -38,7 +40,8 @@ impl BackendApi {
         let res =
             self.client.post(ADDRESS_EXPAND_COMPLETE).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("[expand_address_complete] res: {res:#?}");
-        res.process()
+        let opt: Option<()>  = res.process(ADDRESS_EXPAND_COMPLETE)?;
+        Ok(())
     }
 
     // 查询已使用的地址列表
@@ -54,6 +57,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        res.process()
+        let opt: Option<UsedAddressListResp>  = res.process(QUERY_ADDRESS_LIST)?;
+        opt.ok_or(Backend(Some("no address list".to_string())))
     }
 }

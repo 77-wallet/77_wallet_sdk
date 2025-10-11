@@ -135,7 +135,7 @@ impl ApiWalletService {
         // 检查是否是普通钱包
         let status = ApiWalletDomain::check_keys_uid(&uid).await?;
         if status.is_normal_wallet() {
-            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
+            return Err(ServiceError::Business(crate::error::business::BusinessError::Wallet(
                 crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoNormalWalletSystem,
             )));
         }

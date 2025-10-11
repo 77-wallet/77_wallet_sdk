@@ -8,6 +8,8 @@ use crate::{
 use crate::api::BackendApi;
 use crate::api_request::ApiBackendRequest;
 use crate::api_response::ApiBackendResponse;
+use crate::Error::Backend;
+use crate::response_vo::api_wallet::address::UsedAddressListResp;
 
 impl BackendApi {
     // api钱包查询链列表
@@ -24,6 +26,7 @@ impl BackendApi {
         let res =
             self.client.post(API_WALLET_CHAIN_LIST).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
-        res.process()
+        let opt = res.process(API_WALLET_CHAIN_LIST)?;
+        opt.ok_or(Backend(Some("no address list".to_string())))
     }
 }

@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-use wallet_ecdh::GLOBAL_KEY;
 use crate::{
     consts::endpoint::{
         api_wallet::{
-            APP_ID_BIND, APP_ID_UNBIND, APPID_IMPORT_WALLET, INIT_API_WALLET, QUERY_UID_BIND_INFO,
+            APPID_IMPORT_WALLET, APP_ID_BIND, APP_ID_UNBIND, INIT_API_WALLET, QUERY_UID_BIND_INFO,
             QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
         },
         old_wallet::OLD_KEYS_UID_CHECK,
@@ -17,63 +15,58 @@ use crate::{
         KeysUidCheckRes, QueryUidBindInfoRes, QueryWalletActivationInfoResp,
     },
 };
+use std::collections::HashMap;
+use wallet_ecdh::GLOBAL_KEY;
 
-use crate::api::BackendApi;
-use crate::api_request::ApiBackendRequest;
-use crate::api_response::ApiBackendResponse;
+use crate::{
+    api::BackendApi, api_request::ApiBackendRequest, api_response::ApiBackendResponse,
+    Error::Backend,
+};
 
 impl BackendApi {
     // uid类型检查
     pub async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
-        let mut req = HashMap::new();
-        req.insert("uid", uid);
-        let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
             .post(OLD_KEYS_UID_CHECK)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
+            .json(serde_json::json!({
+                "uid": uid
+            }))
+            .send::<BackendResponse>()
             .await?;
 
-        res.process()
+        res.process(&self.aes_cbc_cryptor)
     }
 
     /// 钱包与 appId 绑定
     pub async fn wallet_bind_appid(&self, req: &BindAppIdReq) -> Result<(), crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self
-            .client
-            .post(APP_ID_BIND)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
-
-        res.process()
+        let res = self.client.post(APP_ID_BIND).json(api_req).send::<ApiBackendResponse>().await?;
+        let opt : Option<()> = res.process(APP_ID_BIND)?;
+        Ok(())
     }
 
     // 钱包与 appId 解绑
     pub async fn wallet_unbind_appid(&self, req: &UnBindAppIdReq) -> Result<(), crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self
-            .client
-            .post(APP_ID_UNBIND)
-            .json(api_req)
-            .send::<ApiBackendResponse>()
-            .await?;
+        let res =
+            self.client.post(APP_ID_UNBIND).json(api_req).send::<ApiBackendResponse>().await?;
 
-        res.process()
+        let opt : Option<()> = res.process(APP_ID_UNBIND)?;
+        Ok(())
     }
 
     /// 设置UID为API钱包
     pub async fn init_api_wallet(&self, req: InitApiWalletReq) -> Result<(), crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.client.post(INIT_API_WALLET).json(api_req).send::<ApiBackendResponse>().await?;
+        let res =
+            self.client.post(INIT_API_WALLET).json(api_req).send::<ApiBackendResponse>().await?;
 
-        res.process()
+        let opt : Option<()> = res.process(INIT_API_WALLET)?;
+        Ok(())
     }
 
     /// 保存钱包激活配置
@@ -81,7 +74,7 @@ impl BackendApi {
         &self,
         req: SaveWalletActivationConfigReq,
     ) -> Result<(), crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
@@ -90,7 +83,8 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        res.process()
+        let opt: Option<()> = res.process(SAVE_WALLET_ACTIVATION_CONFIG)?;
+        Ok(())
     }
 
     /// 查询钱包激活信息
@@ -98,7 +92,7 @@ impl BackendApi {
         &self,
         uid: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let mut req = HashMap::new();
         req.insert("uid", uid);
         let api_req = ApiBackendRequest::new(req)?;
@@ -109,7 +103,8 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        res.process()
+        let opt = res.process(QUERY_WALLET_ACTIVATION_CONFIG)?;
+        opt.ok_or(Backend(Some("no found list".to_string())))
     }
 
     /// 查询uid 绑定信息
@@ -117,7 +112,7 @@ impl BackendApi {
         &self,
         uid: &str,
     ) -> Result<QueryUidBindInfoRes, crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let mut req = HashMap::new();
         req.insert("uid", uid);
         let api_req = ApiBackendRequest::new(req)?;
@@ -127,7 +122,8 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        res.process()
+        let opt = res.process(QUERY_UID_BIND_INFO)?;
+        opt.ok_or(Backend(Some("no found list".to_string())))
     }
 
     // /// uid与appid的绑定
@@ -150,9 +146,16 @@ impl BackendApi {
     // }
 
     pub async fn appid_import(&self, req: AppIdImportReq) -> Result<(), crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
-        let res = self.client.post(APPID_IMPORT_WALLET).json(req).send::<BackendResponse>().await?;
-        res.process(&self.aes_cbc_cryptor)
+        GLOBAL_KEY.is_exchange_shared_secret()?;
+        let api_req = ApiBackendRequest::new(req)?;
+        let res = self
+            .client
+            .post(APPID_IMPORT_WALLET)
+            .json(api_req)
+            .send::<ApiBackendResponse>()
+            .await?;
+        let opt: Option<()> = res.process(APPID_IMPORT_WALLET)?;
+        Ok(())
     }
 
     // pub async fn appid_sub_account_import(

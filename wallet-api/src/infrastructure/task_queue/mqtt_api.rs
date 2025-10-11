@@ -75,9 +75,9 @@ impl TaskTrait for ApiMqttStruct {
         }
         // 验签
         let res = ApiBackendResponse {
-            success: false,
+            success: true,
             code: None,
-            msg: None,
+            msg: Some("mqtt".to_string()),
             data: Some(ApiBackendData {
                 sign: self.sign.clone().unwrap(),
                 body: ApiBackendDataBody {
@@ -89,28 +89,40 @@ impl TaskTrait for ApiMqttStruct {
 
         match &self.event_type {
             EventType::AwmOrderTrans => {
-                let data: AwmOrderTransMsg = res.process()?;
-                data.exec(id).await?
+                let data: Option<AwmOrderTransMsg>= res.process("AwmOrderTrans")?;
+                if let Some(data) = data {
+                    data.exec(id).await?
+                }
             }
             EventType::AwmOrderTransRes => {
-                let data: AwmOrderTransResMsg = res.process()?;
-                data.exec(id).await?
+                let data: Option<AwmOrderTransResMsg> = res.process("AwmOrderTransRes")?;
+                if let Some(data) = data {
+                    data.exec(id).await?
+                }
             }
             EventType::AwmCmdAddrExpand => {
-                let data: AwmCmdAddrExpandMsg = res.process()?;
-                data.exec(id).await?
+                let data: Option<AwmCmdAddrExpandMsg> = res.process("AwmCmdAddrExpand")?;
+                if let Some(data) = data {
+                    data.exec(id).await?
+                }
             }
             EventType::AwmCmdUidUnbind => {
-                let data: AwmCmdUidUnbindMsg = res.process()?;
-                data.exec(id).await?
+                let data: Option<AwmCmdUidUnbindMsg> = res.process("AwmCmdUidUnbind")?;
+                if let Some(data) = data {
+                    data.exec(id).await?
+                }
             }
             EventType::AwmCmdFeeRes => {
-                let data: AwmOrderTransFeeResMsg = res.process()?;
-                data.exec(id).await?
+                let data: Option<AwmOrderTransFeeResMsg> = res.process("AwmCmdFeeRes")?;
+                if let Some(data) = data {
+                    data.exec(id).await?
+                }
             }
             EventType::AwmCmdActive => {
-                let data: AwmCmdActiveMsg = res.process()?;
-                data.exec(id).await?
+                let data: Option<AwmCmdActiveMsg> = res.process("AwmCmdActive")?;
+                if let Some(data) = data {
+                    data.exec(id).await?
+                }
             }
         }
 

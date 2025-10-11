@@ -14,6 +14,6 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(MSG_ACK).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
-        res.process()
+        res.process(MSG_ACK)
     }
 }
