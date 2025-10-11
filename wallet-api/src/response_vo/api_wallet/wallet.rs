@@ -2,20 +2,20 @@ use wallet_database::entities::api_wallet::ApiWalletEntity;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ApiWalletInfo {
+pub struct WalletInfo {
     pub address: String,
     pub uid: String,
     pub name: String,
-    pub app_id: String,
+    pub app_id: Option<String>,
 }
 
-impl From<&ApiWalletEntity> for ApiWalletInfo {
+impl From<&ApiWalletEntity> for WalletInfo {
     fn from(e: &ApiWalletEntity) -> Self {
         Self {
             address: e.address.clone(),
             uid: e.uid.clone(),
             name: e.name.clone(),
-            app_id: e.app_id.clone(),
+            app_id: Some(e.app_id.clone()),
         }
     }
 }
@@ -50,6 +50,6 @@ impl ApiWalletList {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletItem {
-    pub recharge_wallet: Option<ApiWalletInfo>,
-    pub withdraw_wallet: Option<ApiWalletInfo>,
+    pub recharge_wallet: Option<WalletInfo>,
+    pub withdraw_wallet: Option<WalletInfo>,
 }
