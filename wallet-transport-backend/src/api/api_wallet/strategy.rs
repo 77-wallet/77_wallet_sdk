@@ -8,7 +8,7 @@ use crate::{
     response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
 };
 use std::collections::HashMap;
-
+use wallet_ecdh::GLOBAL_KEY;
 use crate::api::BackendApi;
 use crate::api_request::ApiBackendRequest;
 use crate::api_response::ApiBackendResponse;
@@ -19,6 +19,7 @@ impl BackendApi {
         &self,
         req: &SaveCollectStrategyReq,
     ) -> Result<Option<()>, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client

@@ -1,3 +1,4 @@
+use wallet_ecdh::GLOBAL_KEY;
 use crate::request::api_wallet::audit::*;
 
 use crate::{
@@ -12,8 +13,8 @@ impl BackendApi {
         &self,
         req: &AuditResultReportReq,
     ) -> Result<Option<()>, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new( req)?;
-
         let res = self.client.post(TRANS_AUDIT).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
         res.process()

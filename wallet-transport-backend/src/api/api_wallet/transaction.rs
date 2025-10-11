@@ -1,3 +1,4 @@
+use wallet_ecdh::GLOBAL_KEY;
 use crate::{
     consts::endpoint::api_wallet::{
         TRANS_EVENT_ACK, TRANS_EXECUTE_COMPLETE, TRANS_SERVICE_FEE_TRANS,
@@ -16,6 +17,7 @@ impl BackendApi {
         &self,
         req: &ServiceFeeUploadReq,
     ) -> Result<Option<()>, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client

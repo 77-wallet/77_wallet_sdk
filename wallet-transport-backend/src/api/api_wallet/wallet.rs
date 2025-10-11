@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use wallet_ecdh::GLOBAL_KEY;
 use crate::{
     consts::endpoint::{
         api_wallet::{
@@ -24,6 +25,7 @@ use crate::api_response::ApiBackendResponse;
 impl BackendApi {
     // uid类型检查
     pub async fn keys_uid_check(&self, uid: &str) -> Result<KeysUidCheckRes, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let mut req = HashMap::new();
         req.insert("uid", uid);
         let api_req = ApiBackendRequest::new(req)?;
@@ -39,6 +41,7 @@ impl BackendApi {
 
     /// 钱包与 appId 绑定
     pub async fn wallet_bind_appid(&self, req: &BindAppIdReq) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
@@ -52,6 +55,7 @@ impl BackendApi {
 
     // 钱包与 appId 解绑
     pub async fn wallet_unbind_appid(&self, req: &UnBindAppIdReq) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
@@ -65,6 +69,7 @@ impl BackendApi {
 
     /// 设置UID为API钱包
     pub async fn init_api_wallet(&self, req: InitApiWalletReq) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(INIT_API_WALLET).json(api_req).send::<ApiBackendResponse>().await?;
 
@@ -76,6 +81,7 @@ impl BackendApi {
         &self,
         req: SaveWalletActivationConfigReq,
     ) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
@@ -92,6 +98,7 @@ impl BackendApi {
         &self,
         uid: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let mut req = HashMap::new();
         req.insert("uid", uid);
         let api_req = ApiBackendRequest::new(req)?;
@@ -110,6 +117,7 @@ impl BackendApi {
         &self,
         uid: &str,
     ) -> Result<QueryUidBindInfoRes, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let mut req = HashMap::new();
         req.insert("uid", uid);
         let api_req = ApiBackendRequest::new(req)?;
@@ -142,6 +150,7 @@ impl BackendApi {
     // }
 
     pub async fn appid_import(&self, req: AppIdImportReq) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let res = self.client.post(APPID_IMPORT_WALLET).json(req).send::<BackendResponse>().await?;
         res.process(&self.aes_cbc_cryptor)
     }

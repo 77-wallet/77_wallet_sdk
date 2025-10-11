@@ -11,7 +11,7 @@ pub enum Error {
     Utils(#[from] wallet_utils::error::Error),
     #[error("backend service error")]
     BackendServiceError(#[from] BackendServiceError),
-    #[error("enc/decrypt error")]
+    #[error("encryption error: `{0}`")]
     EncryptionError(#[from] EncryptionError),
 }
 impl Error {

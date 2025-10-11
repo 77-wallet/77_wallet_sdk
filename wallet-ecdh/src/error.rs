@@ -6,8 +6,12 @@ use thiserror::Error;
 pub enum EncryptionError {
     #[error("lock key")]
     LockPoisoned,
-    #[error("invalid key")]
-    InvalidKey,
+    #[error("invalid shared key")]
+    InvalidSharedKey,
+    #[error("invalid pub key")]
+    InvalidPubKey,
+    #[error("invalid signature")]
+    InvalidSignature,
     #[error("encryption failed: {0}")]
     EncryptionFailed(String),
     #[error("decryption failed: {0}")]

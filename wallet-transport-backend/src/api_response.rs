@@ -23,21 +23,23 @@ impl ApiBackendResponse {
     where
         T: serde::de::DeserializeOwned,
     {
+        tracing::info!("Received response: {:?} -------------------------------------", self);
         // 验证签名
         if self.success {
             if let Some(data) = &self.data {
-                let body_data = serde_json::json!(data.body);
-                // 签名
-                let pass =
-                    GLOBAL_KEY.verify(body_data.to_string().as_bytes(), data.sign.as_bytes())?;
+                let body_data = data.body.key.clone() + data.body.data.as_str();
+                // 验签
+                let s = wallet_utils::base64_to_bytes(data.sign.as_str())?;
+                let pass = GLOBAL_KEY.verify(body_data.as_bytes(), &s)?;
                 if pass {
                     // 解密
-                    let t =
-                        GLOBAL_KEY.decrypt(data.body.data.as_bytes(), data.body.key.as_bytes())?;
+                    let key = wallet_utils::base64_to_bytes(data.body.key.as_str())?;
+                    let data = wallet_utils::base64_to_bytes(data.body.data.as_str())?;
+                    let t = GLOBAL_KEY.decrypt(&data, &key)?;
                     let res = wallet_utils::serde_func::serde_from_slice(&t)?;
                     Ok(res)
                 } else {
-                    Err(crate::error::Error::Backend(Some("verify falied".to_string())))
+                    Err(crate::error::Error::Backend(Some("verify failed".to_string())))
                 }
             } else {
                 Err(crate::Error::Backend(Some("data is empty".to_string())))

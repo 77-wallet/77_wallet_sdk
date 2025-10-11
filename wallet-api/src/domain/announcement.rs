@@ -7,8 +7,6 @@ impl AnnouncementDomain {
     pub async fn pull_announcement(
         repo: &mut wallet_database::repositories::ResourcesRepo,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-
         let list = AnnouncementRepoTrait::list(repo).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
@@ -21,6 +19,7 @@ impl AnnouncementDomain {
 
         let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;
         let req = wallet_transport_backend::request::AnnouncementListReq::new(client_id, 0, 50);
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let res = backend.announcement_list(req).await?;
 
         let res_ids: std::collections::HashSet<_> =

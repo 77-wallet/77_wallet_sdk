@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use wallet_ecdh::GLOBAL_KEY;
 use crate::{
     consts::endpoint::api_wallet::{ADDRESS_EXPAND_COMPLETE, ADDRESS_INIT, QUERY_ADDRESS_LIST},
     request::api_wallet::address::*,
@@ -12,6 +13,7 @@ use crate::api_response::ApiBackendResponse;
 impl BackendApi {
     // 地址初始化
     pub async fn expand_address(&self, req: &ApiAddressInitReq) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         // 1. 加密
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client
@@ -28,6 +30,7 @@ impl BackendApi {
         uid: &str,
         serial_no: &str,
     ) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let mut req = HashMap::new();
         req.insert("uid", uid);
         req.insert("serial_no", serial_no);
@@ -43,6 +46,7 @@ impl BackendApi {
         &self,
         req: &AddressListReq,
     ) -> Result<UsedAddressListResp, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret() ?;
         let api_req = ApiBackendRequest::new( req)?;
         let res = self
             .client
