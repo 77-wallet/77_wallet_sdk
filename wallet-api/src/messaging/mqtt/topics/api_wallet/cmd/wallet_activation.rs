@@ -1,4 +1,6 @@
-use wallet_transport_backend::response_vo::api_wallet::wallet::ActiveStatus;
+use wallet_transport_backend::{
+    request::api_wallet::msg::MsgAckReq, response_vo::api_wallet::wallet::ActiveStatus,
+};
 
 use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 
@@ -18,6 +20,10 @@ impl AwmCmdActiveMsg {
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        backend.msg_ack(msg_ack_req).await?;
         let data = NotifyEvent::AwmCmdActive(self.into());
         FrontendNotifyEvent::new(data).send().await?;
 

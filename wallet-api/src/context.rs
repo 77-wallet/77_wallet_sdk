@@ -2,13 +2,7 @@ use crate::{
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
     handles::Handles,
-    infrastructure::{
-        SharedCache,
-        inner_event::InnerEventHandle,
-        process_fee_tx::ProcessFeeTxHandle,
-        process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
-        task_queue::task_manager::TaskManager,
-    },
+    infrastructure::SharedCache,
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use std::{

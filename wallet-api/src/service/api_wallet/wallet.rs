@@ -23,7 +23,7 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList, WalletInfo},
+    response_vo::api_wallet::wallet::ApiWalletList,
 };
 
 pub struct ApiWalletService {

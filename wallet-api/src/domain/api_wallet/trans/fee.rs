@@ -1,10 +1,9 @@
 use crate::{
     error::business::{BusinessError, api_wallet::ApiWalletError},
-    messaging::notify::{FrontendNotifyEvent, api_wallet::FeeFront, event::NotifyEvent},
     request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
-    entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
+    entities::api_fee::ApiFeeStatus,
     repositories::api_wallet::{fee::ApiFeeRepo, wallet::ApiWalletRepo},
 };
 use wallet_transport_backend::request::api_wallet::transaction::{

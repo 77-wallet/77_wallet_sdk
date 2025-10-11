@@ -3,16 +3,14 @@ use crate::{
     messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
     request::api_wallet::trans::ApiWithdrawReq,
 };
-use tracing::event;
 use wallet_database::{
     entities::api_withdraw::ApiWithdrawStatus,
     repositories::api_wallet::{
         account::ApiAccountRepo, wallet::ApiWalletRepo, withdraw::ApiWithdrawRepo,
     },
 };
-use wallet_transport_backend::request::api_wallet::{
-    msg::{MsgAckItem, MsgAckReq},
-    transaction::{TransAckType, TransEventAckReq, TransType},
+use wallet_transport_backend::request::api_wallet::transaction::{
+    TransAckType, TransEventAckReq, TransType,
 };
 
 pub struct ApiWithdrawDomain {}

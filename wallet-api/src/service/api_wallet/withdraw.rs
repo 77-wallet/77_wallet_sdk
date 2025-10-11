@@ -3,8 +3,7 @@ use crate::{
     request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-    repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    entities::api_withdraw::ApiWithdrawEntity, repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 
