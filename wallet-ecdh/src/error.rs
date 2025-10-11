@@ -4,6 +4,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum EncryptionError {
+    #[error("lock key")]
+    LockPoisoned,
     #[error("invalid key")]
     InvalidKey,
     #[error("encryption failed: {0}")]

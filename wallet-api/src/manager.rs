@@ -32,6 +32,7 @@ impl WalletManager {
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
         let base_path = infrastructure::log::format::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
+        GLOBAL_KEY.set_sn(sn);
         // 现在的上报日志
         infrastructure::log::start_upload_scheduler(
             base_path,
@@ -60,8 +61,11 @@ impl WalletManager {
             sn: self.ctx.get_sn().to_string(),
             client_pub_key: GLOBAL_KEY.secret_pub_key(),
         };
-        // let res = backend.init_swap(&req)?;
-        // GLOBAL_KEY.se
+        let res = backend.init_swap(&req).await?;
+        if let  Some(data) = res.data {
+            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+        }
+
 
         tokio::spawn(async move {
             if let Err(e) = init_some_data().await {

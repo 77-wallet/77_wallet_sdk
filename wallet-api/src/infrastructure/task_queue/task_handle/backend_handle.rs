@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use std::{collections::HashSet, sync::Arc};
+use std::collections::HashMap;
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
@@ -391,11 +392,9 @@ impl EndpointHandler for SpecialHandler {
                 ChainDomain::upsert_multi_chain_than_toggle(input).await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
-                let input = backend
-                    .post_req_str::<wallet_transport_backend::response_vo::api_wallet::chain::ApiChainListResp>(
-                        endpoint, &body,
-                    )
-                    .await?;
+                let body : HashMap<String, String> = wallet_utils::serde_func::serde_from_value(body)?;
+                let app_version_code = body.get("appVersionCode");
+                let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
                 tracing::info!("API_WALLET_CHAIN_LIST ------------- 1");
                 //先插入再过滤
                 ApiChainDomain::upsert_multi_api_chain_than_toggle(input).await?;
@@ -458,12 +457,7 @@ impl EndpointHandler for SpecialHandler {
                     tracing::info!("this wallet was not binded");
                     return Ok(());
                 }
-                let res = backend
-                .post_req_str::<wallet_transport_backend::response_vo::api_wallet::address::UsedAddressListResp>(
-                    endpoint, &body,
-                )
-                .await?;
-
+                let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
                 let mut input_indices = Vec::new();
                 for address in list {

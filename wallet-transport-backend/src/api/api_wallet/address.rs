@@ -14,7 +14,10 @@ impl BackendApi {
     pub async fn expand_address(&self, req: &ApiAddressInitReq) -> Result<(), crate::Error> {
         // 1. 加密
         let api_req = ApiBackendRequest::new(req)?;
-        let res = self.client.post(ADDRESS_INIT).json(api_req).send::<ApiBackendResponse>().await?;
+        let res = self.client
+            .post(ADDRESS_INIT)
+            .json(api_req)
+            .send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
         res.process()
     }

@@ -19,6 +19,7 @@ pub(crate) fn derive_aes_key_from_shared_secret(
     hkdf.expand(key, &mut aes_key)
         .map_err(|e| EncryptionError::KeyDerivationFailed(e.to_string()))?;
 
+    tracing::info!("Got aes secret key: {:?}, {:?}", hex::encode(aes_key), hex::encode(key));
     Ok(aes_key)
 }
 
@@ -30,8 +31,9 @@ pub(crate) fn encrypt_with_shared_secret(
 ) -> Result<EncryptedData, EncryptionError> {
     // 1. 从共享密钥派生 AES 密钥
     let aes_key_bytes = derive_aes_key_from_shared_secret(shared_secret, key)?;
-    let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
-    let cipher = Aes256Gcm::new(key);
+    let aes_key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
+    let cipher = Aes256Gcm::new(aes_key);
+    tracing::info!("Encrypting with shared secret: {}", hex::encode(aes_key_bytes));
 
     // 2. 生成随机 nonce
     let head = &aes_key_bytes[0..4];

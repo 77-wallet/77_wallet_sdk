@@ -14,6 +14,7 @@ impl BackendApi {
         &self,
         app_version_code: &str,
     ) -> Result<ApiChainListResp, crate::Error> {
+        tracing::info!("api_wallet_chain_list ------------------------");
         let mut req = HashMap::new();
         req.insert("appVersionCode", app_version_code);
         let api_req = ApiBackendRequest::new( req)?;

@@ -28,6 +28,8 @@ pub enum ServiceError {
     System(#[from] crate::error::system::SystemError),
     #[error("Database error: {0}")]
     Database(#[from] wallet_database::Error),
+    #[error("ecdh error: {0}")]
+    EncryptionError(#[from] wallet_ecdh::error::EncryptionError),
     // 业务错误
     #[error("Business error: {0}")]
     Business(#[from] super::business::BusinessError),
@@ -80,6 +82,7 @@ impl From<ServiceError> for (i64, String) {
                 let error = if code != -1 { code } else { 670 };
                 (error as i64, err.to_string())
             }
+            ServiceError::EncryptionError(_) => (670, err.to_string()),
         };
         (code, message)
     }

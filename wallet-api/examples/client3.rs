@@ -20,52 +20,52 @@ async fn run(
     let salt = "q1111111";
     let wallet_name = "api_wallet";
     let wallet_password = "q1111111";
-    // let binding_address = None;
-    // let wallet_uid = wallet_manager
-    //     .create_api_wallet(
-    //         language_code,
-    //         phrase,
-    //         salt,
-    //         wallet_name,
-    //         wallet_password,
-    //         None,
-    //         ApiWalletType::SubAccount,
-    //         binding_address,
-    //     )
-    //     .await?;
-    // tracing::info!("子wallet创建成功 ------------------------ 1: {wallet_uid:#?}");
+    let binding_address = None;
+    let wallet_uid = wallet_manager
+        .create_api_wallet(
+            language_code,
+            phrase,
+            salt,
+            wallet_name,
+            wallet_password,
+            None,
+            ApiWalletType::SubAccount,
+            binding_address,
+        )
+        .await?;
+    tracing::info!("子wallet创建成功 ------------------------ 1: {wallet_uid:#?}");
 
     let res = wallet_manager.get_api_wallet_list().await?;
     tracing::info!("get withdraw wallet list ------------------------ 2: {res:#?}");
 
     let salt1 = "q1111112";
-    // let binding_address = None;
-    // let withdrawal_uid = wallet_manager
-    //     .create_api_wallet(
-    //         language_code,
-    //         phrase,
-    //         salt1,
-    //         wallet_name,
-    //         wallet_password,
-    //         None,
-    //         ApiWalletType::Withdrawal,
-    //         binding_address,
-    //     )
-    //     .await?;
-    // tracing::info!("withdraw wallet 创建成功 ------------------------ 2: {withdrawal_uid:#?}");
+    let binding_address = None;
+    let withdrawal_uid = wallet_manager
+        .create_api_wallet(
+            language_code,
+            phrase,
+            salt1,
+            wallet_name,
+            wallet_password,
+            None,
+            ApiWalletType::Withdrawal,
+            binding_address,
+        )
+        .await?;
+    tracing::info!("withdraw wallet 创建成功 ------------------------ 2: {withdrawal_uid:#?}");
 
     wallet_manager.set_passwd_cache(wallet_password).await?;
     tracing::info!("绑定钱包之前必须设置密码成功 ------------------------ ");
 
-    // let res = wallet_manager
-    //     .scan_bind(
-    //         "L1971511236021600267",
-    //         "68be7271a7307e042404e276",
-    //         &wallet_uid,
-    //         &withdrawal_uid,
-    //     )
-    //     .await?;
-    // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
+    let res = wallet_manager
+        .scan_bind(
+            "L1971511236021600267",
+            "68be7271a7307e042404e276",
+            &wallet_uid,
+            &withdrawal_uid,
+        )
+        .await?;
+    tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
 
     let wallet_uid = "1ba52d3833f4e609760000bb1f06de3b3bb401a2cda2ca3b0696cb9e84e37c72";
