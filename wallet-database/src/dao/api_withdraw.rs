@@ -42,7 +42,7 @@ impl ApiWithdrawDao {
         }
         conditions.push(format!("uid = '{uid}'"));
         if !conditions.is_empty() {
-            sql.push_str(" AND ");
+            sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
         sql.push_str(" ORDER BY updated_at DESC, created_at DESC");

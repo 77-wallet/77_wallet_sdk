@@ -58,30 +58,48 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
+    use anyhow::Result;
 
-    // #[tokio::test]
-    // async fn test_create_api_account() -> Result<()> {
-    //     wallet_utils::init_test_log();
-    //     // 修改返回类型为Result<(), anyhow::Error>
-    //     let (wallet_manager, _test_params) = get_manager().await?;
+    use crate::test::env::get_manager;
 
-    //     let wallet_address = "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F";
-    //     let wallet_password = "q1111111";
-    //     let index = None;
-    //     let name = "666";
-    //     let is_default_name = true;
-    //     let api_wallet_type = ApiWalletType::SubAccount;
+    #[tokio::test]
+    async fn test_api_withdrawal_order() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
 
-    //     let req = CreateApiAccountReq::new(
-    //         wallet_address,
-    //         wallet_password,
-    //         index,
-    //         name,
-    //         is_default_name,
-    //         api_wallet_type,
-    //     );
-    //     let res = wallet_manager.create_api_account(req).await;
-    //     tracing::info!("res: {res:?}");
-    //     Ok(())
-    // }
+        wallet_manager
+            .api_withdrawal_order(
+                "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F",
+                "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F",
+                "10000000000000000000000000000000000000000000000000000000000000000",
+                "ETH",
+                None,
+                "ETH",
+                "1234567890",
+                1,
+                "cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce",
+            )
+            .await?;
+
+        tracing::info!("test_api_withdrawal_order success");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_page_api_withdrawal_order() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let res = wallet_manager
+            .page_api_withdraw_order(
+                "cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce",
+                None,
+                0,
+                10,
+            )
+            .await;
+
+        tracing::info!("test_page_api_withdrawal_order success: {:?}", res);
+        Ok(())
+    }
 }
