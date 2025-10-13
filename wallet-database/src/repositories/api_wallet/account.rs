@@ -160,6 +160,15 @@ impl ApiAccountRepo {
         ApiAccountDao::account_list(pool.as_ref(), None, None, None, vec![], None).await
     }
 
+    pub async fn list_by_wallet_address_account_id(
+        pool: &DbPool,
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        ApiAccountDao::account_list(pool.as_ref(), wallet_address, None, None, vec![], account_id)
+            .await
+    }
+
     pub async fn account_wallet_mapping(
         pool: &DbPool,
     ) -> Result<Vec<AccountWalletMapping>, crate::Error> {
