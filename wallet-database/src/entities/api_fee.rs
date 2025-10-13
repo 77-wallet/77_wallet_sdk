@@ -1,5 +1,6 @@
 use std::fmt::Display;
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiFeeEntity {
     pub id: i64,
     pub name: String,

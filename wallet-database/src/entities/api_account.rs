@@ -1,6 +1,7 @@
 use crate::entities::api_wallet::ApiWalletType;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiAccountEntity {
     pub id: i64,
     pub account_id: u32,

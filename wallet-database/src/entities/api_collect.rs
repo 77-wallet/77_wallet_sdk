@@ -1,7 +1,7 @@
-use crate::entities::api_withdraw::ApiWithdrawStatus;
 use std::fmt::Display;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiCollectEntity {
     pub id: i64,
     pub name: String,
