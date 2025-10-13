@@ -2,7 +2,7 @@ use std::fmt::Display;
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWithdrawEntity {
-    #[serde(skip_serializing)]
+    // #[serde(skip_serializing)]
     pub id: i64,
     pub name: String,
     pub uid: String,
