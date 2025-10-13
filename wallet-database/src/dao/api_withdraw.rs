@@ -1,4 +1,7 @@
-use crate::entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus};
+use crate::{
+    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    pagination::Pagination,
+};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
 
@@ -22,30 +25,29 @@ impl ApiWithdrawDao {
     }
 
     pub async fn page_api_withdraw<'a, E>(
-        exec: E,
+        pool: &E,
         uid: &str,
+        status: Option<u8>,
         page: i64,
         page_size: i64,
-    ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error>
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite> + Clone,
+        for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
-        let count_sql = "SELECT count(*) FROM api_withdraws where uid = ?";
-        let count = sqlx::query_scalar::<_, i64>(count_sql)
-            .bind(uid)
-            .fetch_one(exec.clone())
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-        let sql =
-            "SELECT * FROM api_withdraws where uid = ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
-        let res = sqlx::query_as::<_, ApiWithdrawEntity>(sql)
-            .bind(uid)
-            .bind(page_size)
-            .bind(page)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
-        Ok((count, res))
+        let mut sql = "SELECT * FROM api_withdraws".to_string();
+        let mut conditions = Vec::new();
+
+        if let Some(status) = status {
+            conditions.push(format!("status = '{status}'"));
+        }
+        conditions.push(format!("uid = '{uid}'"));
+        if !conditions.is_empty() {
+            sql.push_str(" AND ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
+        let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
+        Ok(paginate.page(pool, &sql).await?)
     }
 
     pub async fn page_api_withdraw_with_status<'a, E>(

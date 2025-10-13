@@ -58,3 +58,26 @@ impl Display for ApiWithdrawStatus {
         write!(f, "{}", *self as u8)
     }
 }
+
+impl TryFrom<u8> for ApiWithdrawStatus {
+    type Error = std::io::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ApiWithdrawStatus::Init),
+            1 => Ok(ApiWithdrawStatus::AuditPass),
+            2 => Ok(ApiWithdrawStatus::AuditReject),
+            3 => Ok(ApiWithdrawStatus::SendingTx),
+            4 => Ok(ApiWithdrawStatus::SendingTxFailed),
+            5 => Ok(ApiWithdrawStatus::SendingTxReport),
+            6 => Ok(ApiWithdrawStatus::SendingTxFailedReport),
+            7 => Ok(ApiWithdrawStatus::Success),
+            8 => Ok(ApiWithdrawStatus::Failure),
+            9 => Ok(ApiWithdrawStatus::ReceivedConfirmReport),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid ApiWithdrawStatus",
+            )),
+        }
+    }
+}

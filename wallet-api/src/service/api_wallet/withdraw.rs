@@ -3,7 +3,9 @@ use crate::{
     request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_withdraw::ApiWithdrawEntity, repositories::api_wallet::withdraw::ApiWithdrawRepo,
+    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    pagination::Pagination,
+    repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 
@@ -25,11 +27,14 @@ impl WithdrawService {
     pub async fn page_withdraw_order(
         &self,
         uid: &str,
+        status: Option<u8>,
         page: i64,
         page_size: i64,
-    ) -> Result<(i64, Vec<ApiWithdrawEntity>), ServiceError> {
+    ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::page_api_withdraw(&pool, uid, page, page_size).await.map_err(|e| e.into())
+        ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size)
+            .await
+            .map_err(|e| e.into())
     }
 
     pub async fn withdrawal_order(
