@@ -335,6 +335,23 @@ impl ApiAccountDao {
             .await
     }
 
+    pub async fn find_one_by_wallet_address_account_id_chain_code<'a, E>(
+        wallet_address: &str,
+        account_id: u32,
+        chain_code: &str,
+        exec: E,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
+            .and_where_eq("chain_code", chain_code)
+            .fetch_optional(exec)
+            .await
+    }
+
     pub async fn get_all_account_indices<'a, E>(
         exec: E,
         wallet_address: &str,

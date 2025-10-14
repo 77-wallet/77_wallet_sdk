@@ -9,14 +9,17 @@ use crate::{
     response_vo::{
         account::{Balance, BalanceInfo},
         api_wallet::assets::{ApiAccountChainAsset, ApiAccountChainAssetList},
-        assets::GetAccountAssetsRes,
+        assets::{CoinAssets, GetAccountAssetsRes},
         chain::ChainList,
         coin::TokenCurrencyId,
     },
 };
 use std::collections::HashMap;
 use wallet_database::{
-    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
+    entities::{
+        api_assets::ApiCreateAssetsVo,
+        assets::{AssetsId, AssetsIdVo},
+    },
     repositories::{
         api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo},
         coin::CoinRepo,
@@ -398,5 +401,39 @@ impl ApiAssetsService {
 
         res.sort_account_chain_assets();
         Ok(res)
+    }
+
+    pub async fn detail(
+        &mut self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_code: &str,
+        token_address: Option<String>,
+    ) -> Result<CoinAssets, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+        let address = if let Some(account_id) = account_id {
+            let account = ApiAccountRepo::find_one_by_wallet_address_account_id_chain_code(
+                &pool, address, account_id, chain_code,
+            )
+            .await?
+            .ok_or(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::NotFound(address.to_string()),
+            ))?;
+            account.address
+        } else {
+            address.to_string()
+        };
+        let assets_id = AssetsIdVo::new(&address, chain_code, token_address);
+        let assets = ApiAssetsRepo::find_by_id(&pool, &assets_id).await?.ok_or(
+            crate::error::business::BusinessError::Assets(
+                crate::error::business::assets::AssetsError::NotFound,
+            ),
+        )?;
+
+        let balance = token_currencies.calculate_api_assets_entity(&assets).await?;
+        let data: CoinAssets = (balance, assets).into();
+
+        Ok(data)
     }
 }

@@ -304,7 +304,7 @@ mod test {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
+        let uid = "d6fbab8189a1258696b716f20c6feb0165d03d0cd9512d338cd383f756938f8f";
         let res = wallet_manager.query_uid_bind_info(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

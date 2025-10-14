@@ -224,12 +224,12 @@ impl ApiAssetsDao {
         let sql = r#"
             SELECT * FROM 
                 api_assets
-            WHERE status = 1 AND address =$1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
+            WHERE status = 1 AND address =$1 AND chain_code = $2 AND token_address = $3
                 AND EXISTS (
                     SELECT 1
-                    FROM chain
-                    WHERE chain.chain_code = api_assets.chain_code
-                    AND chain.status = 1
+                    FROM api_chain
+                    WHERE api_chain.chain_code = api_assets.chain_code
+                    AND api_chain.status = 1
                 )
                 AND EXISTS (
                     SELECT 1
