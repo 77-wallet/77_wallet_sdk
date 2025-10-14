@@ -8,10 +8,12 @@ use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
 };
+use tokio::time::sleep;
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::fee::ApiFeeRepo,
 };
+use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
@@ -125,6 +127,11 @@ impl ProcessFeeTx {
         tracing::info!("starting process fee -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process fee tx -------------------------------");
@@ -274,6 +281,11 @@ impl ProcessFeeTxReport {
         tracing::info!("starting process fee tx report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process fee tx report -------------------------------");
@@ -440,6 +452,11 @@ impl ProcessFeeTxConfirmReport {
         tracing::info!("starting process fee tx confirm report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process fee tx confirm report -------------------------------");

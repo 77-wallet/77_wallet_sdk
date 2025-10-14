@@ -4,7 +4,6 @@ use crate::{
     domain::{
         api_wallet::{
             trans::{collect::ApiCollectDomain, withdraw::ApiWithdrawDomain},
-            wallet::ApiWalletDomain,
         },
         coin::CoinDomain,
     },
@@ -29,10 +28,10 @@ pub struct AwmOrderTransMsg {
     /// 平台交易单号
     trade_no: String,
     /// 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
-    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
+    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32", serialize_with = "wallet_utils::serde_func::u32_to_string")]
     trade_type: u32,
     /// 是否需要审核（可空）： 1 不需要审核 / 2 需要审核
-    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
+    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32", serialize_with = "wallet_utils::serde_func::u32_to_string")]
     audit: u32,
     uid: String,
 }

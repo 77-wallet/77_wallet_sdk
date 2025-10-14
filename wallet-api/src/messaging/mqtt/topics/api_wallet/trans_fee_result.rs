@@ -7,7 +7,7 @@ use crate::domain::api_wallet::trans::collect::ApiCollectDomain;
 pub struct AwmOrderTransFeeResMsg {
     trade_no: String,
     /// 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
-    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
+    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32", serialize_with = "wallet_utils::serde_func::u32_to_string")]
     trade_type: u32,
     /// 交易结果： true 成功 /false 失败
     status: bool,

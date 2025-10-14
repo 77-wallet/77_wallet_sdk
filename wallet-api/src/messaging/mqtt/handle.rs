@@ -1,9 +1,4 @@
-use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
-use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
-use wallet_utils::serde_func;
-
 use super::{
-    Message,
     message::BizType,
     topics::{
         AcctChange, BulletinMsg, ChainChange, CleanPermission, MultiSignTransAccept,
@@ -12,16 +7,38 @@ use super::{
         OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete,
         PermissionAccept, RpcChange, Topic,
     },
+    Message,
 };
 use crate::{
-    infrastructure::task_queue::{ MqttTask, task::Tasks},
+    error::service::ServiceError,
+    infrastructure::task_queue::{
+        mqtt_api::{ApiMqttStruct, EventType},
+        task::Tasks,
+        MqttTask,
+    },
     messaging::{
-        mqtt::topics::OutgoingPayload,
-        notify::{FrontendNotifyEvent, event::NotifyEvent},
+        mqtt::topics::{
+            api_wallet::{
+                cmd::{
+                    address_allock::AwmCmdAddrExpandMsg, unbind_uid::AwmCmdUidUnbindMsg,
+                    wallet_activation::AwmCmdActiveMsg,
+                },
+                trans::AwmOrderTransMsg,
+                trans_fee_result::AwmOrderTransFeeResMsg,
+                trans_result::AwmOrderTransResMsg,
+            },
+            OutgoingPayload,
+        },
+        notify::{event::NotifyEvent, FrontendNotifyEvent},
     },
     service::{app::AppService, device::DeviceService},
 };
-use crate::infrastructure::task_queue::mqtt_api::ApiMqttStruct;
+use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
+use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
+use wallet_transport_backend::api_response::{
+    ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
+};
+use wallet_utils::serde_func;
 
 pub(crate) async fn exec_incoming(
     client: &rumqttc::v5::AsyncClient,
@@ -178,6 +195,30 @@ pub(crate) async fn exec_payload(
         | BizType::AwmCmdActive
         | BizType::AwmCmdUidUnbind
         | BizType::AddressUse => {
+            let mut api_mqtt_st =
+                serde_func::serde_from_value::<ApiMqttStruct>(payload.body.clone())?;
+            if api_mqtt_st.sign.is_none() {
+                return Err(ServiceError::Parameter("missing sign".to_string()));
+            }
+            if api_mqtt_st.secret.is_none() {
+                return Err(ServiceError::Parameter("missing secret".to_string()));
+            }
+            // 验签
+            let data: String = serde_func::serde_from_value(api_mqtt_st.data.clone())?;
+            let res = ApiBackendResponse {
+                success: true,
+                code: None,
+                msg: Some("mqtt".to_string()),
+                data: Some(ApiBackendData {
+                    sign: api_mqtt_st.sign.clone().unwrap(),
+                    body: ApiBackendDataBody { key: api_mqtt_st.secret.clone().unwrap(), data },
+                }),
+            };
+
+            let data = exec_verify_api_mqtt_st(api_mqtt_st.event_type.clone(), &res).await?;
+            api_mqtt_st.data = data;
+            let mut payload = payload.clone();
+            payload.body = serde_func::serde_to_value(api_mqtt_st)?;
             exec_task::<ApiMqttStruct, _, _>(&payload, MqttTask::ApiMqttStruct).await?
         }
         // 如果没有匹配到任何已知的 BizType，则返回错误
@@ -247,6 +288,62 @@ async fn exec_incoming_connack(
     let data = NotifyEvent::MqttConnected;
     FrontendNotifyEvent::new(data).send().await?;
     Ok(())
+}
+
+async fn exec_verify_api_mqtt_st(
+    ev: EventType,
+    res: &ApiBackendResponse,
+) -> Result<serde_json::Value, ServiceError> {
+    match ev {
+        EventType::AwmOrderTrans => {
+            let data: Option<AwmOrderTransMsg> = res.process("AwmOrderTrans")?;
+            if let Some(data) = data {
+                return Ok(serde_func::serde_to_value(data)?);
+            } else {
+                return Err(ServiceError::Parameter("missing data".to_string()));
+            }
+        }
+        EventType::AwmOrderTransRes => {
+            let data: Option<AwmOrderTransResMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdAddrExpand => {
+            let data: Option<AwmCmdAddrExpandMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdUidUnbind => {
+            let data: Option<AwmCmdUidUnbindMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdActive => {
+            let data: Option<AwmCmdActiveMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdFeeRes => {
+            let data: Option<AwmOrderTransFeeResMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+    }
 }
 
 #[cfg(test)]

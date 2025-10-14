@@ -13,6 +13,7 @@ aes-gcm = {version = "0.10.3", features = ["aes"]}
 hkdf = "0.12"
 md5 = "0.7"
 uuid = "1.18.1"
+sha2 = "0.10.9"
 
 anyhow = {workspace = true}
 thiserror = {workspace = true}

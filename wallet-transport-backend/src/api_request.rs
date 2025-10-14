@@ -31,9 +31,10 @@ impl ApiBackendRequest {
         tracing::info!("Request encrypt 3 body : {:?}", body);
 
         // 签名
+        let tag = uuid::Uuid::new_v4().to_string();
         let body_data = key + ct.as_str();
         tracing::info!("Request sign 4: {:?}", body_data);
-        let vec_sign = GLOBAL_KEY.sign(body_data.as_bytes())?;
+        let vec_sign = GLOBAL_KEY.sign(&tag, body_data.as_bytes())?;
         let sign = wallet_utils::bytes_to_base64(&vec_sign);
         tracing::info!("Request sign 5 sig: {:?}", sign);
         let api_req = ApiBackendRequest{

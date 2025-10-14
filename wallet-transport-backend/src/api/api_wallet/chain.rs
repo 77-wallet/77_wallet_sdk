@@ -9,7 +9,6 @@ use crate::api::BackendApi;
 use crate::api_request::ApiBackendRequest;
 use crate::api_response::ApiBackendResponse;
 use crate::Error::Backend;
-use crate::response_vo::api_wallet::address::UsedAddressListResp;
 
 impl BackendApi {
     // api钱包查询链列表

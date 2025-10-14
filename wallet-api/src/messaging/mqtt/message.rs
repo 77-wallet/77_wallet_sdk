@@ -1,3 +1,4 @@
+use std::fmt;
 use crate::messaging::mqtt::topics::{
     AcctChange, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
@@ -99,6 +100,40 @@ pub enum BizType {
     // AWM_CMD_ACTIVE API钱包激活
     AwmCmdActive,
 }
+
+impl fmt::Display for BizType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            BizType::OrderMultiSignAccept => "OrderMultiSignAccept",
+            BizType::OrderMultiSignAcceptCompleteMsg => "OrderMultiSignAcceptCompleteMsg",
+            BizType::OrderMultiSignServiceComplete => "OrderMultiSignServiceComplete",
+            BizType::OrderMultiSignCreated => "OrderMultiSignCreated",
+            BizType::OrderMultiSignCancel => "OrderMultiSignCreated",
+            BizType::MultiSignTransAccept => "MultiSignTransAccept",
+            BizType::MultiSignTransCancel => "MultiSignTransCancel",
+            BizType::MultiSignTransAcceptCompleteMsg => "MultiSignTransAcceptCompleteMsg",
+            BizType::MultiSignTransAcceptHashComplete => "MultiSignTransAcceptHashComplete",
+            BizType::AcctChange => "AcctChange",
+            BizType::TokenPriceChange => "TokenPriceChange",
+            BizType::BulletinMsg => "BulletinMsg",
+            BizType::RpcAddressChange => "RpcAddressChange",
+            BizType::TronSignFreezeDelegateVoteChange => "TronSignFreezeDelegateVoteChange",
+            BizType::PermissionAccept => "PermissionAccept",
+            BizType::OrderMultiSignAllMemberAccepted => "OrderMultiSignAllMemberAccepted",
+            BizType::MultiSignTransExecute => "MultiSignTransExecute",
+            BizType::CleanPermission => "CleanPermission",
+            BizType::AddressUse => "AddressUse",
+            BizType::AwmOrderTrans => "AwmOrderTrans",
+            BizType::AwmOrderTransRes => "AwmOrderTransRes",
+            BizType::AwmCmdAddrExpand => "AwmCmdAddrExpand",
+            BizType::AwmCmdUidUnbind => "AwmCmdUidUnbind",
+            BizType::AwmCmdFeeRes => "AwmCmdFeeRes",
+            BizType::AwmCmdActive => "AwmCmdActive",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(untagged)]

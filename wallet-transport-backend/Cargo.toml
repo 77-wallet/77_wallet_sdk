@@ -38,3 +38,5 @@ tracing-subscriber = { workspace = true }
 
 urlencoding = { workspace = true }
 cfg-if = { workspace = true }
+hex = "0.4"
+uuid = { version = "1.18.1", features = ["v4"] }

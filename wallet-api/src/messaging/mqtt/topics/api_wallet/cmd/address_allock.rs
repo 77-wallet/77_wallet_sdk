@@ -17,7 +17,7 @@ pub struct AwmCmdAddrExpandMsg {
     /// 扩容编号  
     pub serial_no: String,
     /// 扩容数量（可空，CHA_BATCH 类型时有效）
-    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32")]
+    #[serde(deserialize_with = "wallet_utils::serde_func::string_to_u32", serialize_with = "wallet_utils::serde_func::u32_to_string")]
     pub number: u32,
 }
 

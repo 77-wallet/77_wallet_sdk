@@ -13,6 +13,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
+use sha2::Digest;
 use uuid::Uuid;
 
 pub mod data;
@@ -94,26 +95,39 @@ impl ExKey {
         }
     }
 
-    pub fn sign(&self, plaintext: &[u8]) -> Result<Vec<u8>, EncryptionError> {
+    pub fn sign(&self, tag:&str, plaintext: &[u8]) -> Result<Vec<u8>, EncryptionError> {
         let key = &plaintext[0..32];
-        tracing::info!("Got signing key: {:?}", hex::encode(key));
+        tracing::info!(tag=tag, "Got signing key: {:?}", hex::encode(key));
         let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
         if let Some(shared_secret) = &*r {
-            let res = sign_with_derived_ecdsa(plaintext, shared_secret, key)?;
+            let res = sign_with_derived_ecdsa(tag, plaintext, shared_secret, key)?;
             Ok(res.to_vec())
         } else {
             Err(EncryptionError::InvalidSharedKey)
         }
     }
 
-    pub fn verify(&self, plaintext: &[u8], sig: &[u8]) -> Result<(), EncryptionError> {
+    pub fn verify(&self, tag: &str, plaintext: &[u8], sig: &[u8]) -> Result<(), EncryptionError> {
         let key = &plaintext[0..32];
-        tracing::info!("Got signing key: {:?}", hex::encode(key));
-        let signature =
-            Signature::from_slice(sig).map_err(|e| EncryptionError::InvalidSignature)?;
+        tracing::info!(tag=tag, "verify, Got seed key: {:?}", hex::encode(key));
+        let signature = if sig.len() == 64 {
+            tracing::info!(tag=tag, "signature length 64");
+            tracing::info!(tag=tag, "msg hash = {}", hex::encode(sha2::Sha256::digest(plaintext)));
+            tracing::info!(tag=tag, "r = {}", hex::encode(&sig[..32]));
+            tracing::info!(tag=tag, "s = {}", hex::encode(&sig[32..]));
+            Signature::from_slice(sig).map_err(|_| EncryptionError::InvalidSignature)?
+        } else {
+            tracing::info!(tag=tag, "signature length 32");
+            Signature::from_der(sig).map_err(|_| EncryptionError::InvalidSignature)?
+        };
+
+        tracing::info!(tag=tag, "r = {}", signature.r());
+        tracing::info!(tag=tag, "s = {}", signature.s());
+
+
         let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
         if let Some(shared_secret) = &*r {
-            verify_derived_ecdsa_signature(plaintext, &signature, shared_secret, key)
+            verify_derived_ecdsa_signature(tag, plaintext, &signature, shared_secret, key)
         } else {
             Err(EncryptionError::InvalidSharedKey)
         }

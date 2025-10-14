@@ -35,7 +35,7 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret() ?;
         let mut req = HashMap::new();
         req.insert("uid", uid);
-        req.insert("serial_no", serial_no);
+        req.insert("serialNo", serial_no);
         let api_req = ApiBackendRequest::new( req)?;
         let res =
             self.client.post(ADDRESS_EXPAND_COMPLETE).json(api_req).send::<ApiBackendResponse>().await?;

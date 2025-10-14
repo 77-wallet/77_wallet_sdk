@@ -3,8 +3,8 @@ use crate::{
     infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
     messaging::mqtt::topics::api_wallet::{
         cmd::{
-            address_allock::AwmCmdAddrExpandMsg,
-            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
+            address_allock::AwmCmdAddrExpandMsg, unbind_uid::AwmCmdUidUnbindMsg,
+            wallet_activation::AwmCmdActiveMsg,
         },
         trans::AwmOrderTransMsg,
         trans_fee_result::AwmOrderTransFeeResMsg,
@@ -12,11 +12,8 @@ use crate::{
     },
 };
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
-use wallet_transport_backend::api_response::{
-    ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
-};
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub(crate) enum EventType {
     #[serde(rename = "1")]
     AwmOrderTrans,
@@ -67,62 +64,38 @@ impl TaskTrait for ApiMqttStruct {
     }
 
     async fn execute(&self, id: &str) -> Result<(), ServiceError> {
-        if self.sign.is_none() {
-            return Err(ServiceError::Parameter("missing sign".to_string()));
-        }
-        if self.secret.is_none() {
-            return Err(ServiceError::Parameter("missing secret".to_string()));
-        }
-        // 验签
-        let res = ApiBackendResponse {
-            success: true,
-            code: None,
-            msg: Some("mqtt".to_string()),
-            data: Some(ApiBackendData {
-                sign: self.sign.clone().unwrap(),
-                body: ApiBackendDataBody {
-                    key: self.secret.clone().unwrap(),
-                    data: self.data.clone().to_string(),
-                },
-            }),
-        };
-
         match &self.event_type {
             EventType::AwmOrderTrans => {
-                let data: Option<AwmOrderTransMsg>= res.process("AwmOrderTrans")?;
-                if let Some(data) = data {
-                    data.exec(id).await?
-                }
+                let data: AwmOrderTransMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec(id).await?
             }
             EventType::AwmOrderTransRes => {
-                let data: Option<AwmOrderTransResMsg> = res.process("AwmOrderTransRes")?;
-                if let Some(data) = data {
+                let data: AwmOrderTransResMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
                     data.exec(id).await?
-                }
+
             }
             EventType::AwmCmdAddrExpand => {
-                let data: Option<AwmCmdAddrExpandMsg> = res.process("AwmCmdAddrExpand")?;
-                if let Some(data) = data {
+                let data: AwmCmdAddrExpandMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
                     data.exec(id).await?
-                }
+
             }
             EventType::AwmCmdUidUnbind => {
-                let data: Option<AwmCmdUidUnbindMsg> = res.process("AwmCmdUidUnbind")?;
-                if let Some(data) = data {
-                    data.exec(id).await?
-                }
+                let data: AwmCmdUidUnbindMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec(id).await?
             }
             EventType::AwmCmdFeeRes => {
-                let data: Option<AwmOrderTransFeeResMsg> = res.process("AwmCmdFeeRes")?;
-                if let Some(data) = data {
-                    data.exec(id).await?
-                }
+                let data: AwmOrderTransFeeResMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec(id).await?
             }
             EventType::AwmCmdActive => {
-                let data: Option<AwmCmdActiveMsg> = res.process("AwmCmdActive")?;
-                if let Some(data) = data {
-                    data.exec(id).await?
-                }
+                let data: AwmCmdActiveMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec(id).await?
             }
         }
 
