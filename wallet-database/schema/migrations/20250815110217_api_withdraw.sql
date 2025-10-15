@@ -7,6 +7,7 @@ CREATE TABLE api_withdraws
     from_addr        VARCHAR(64)             NOT NULL,
     to_addr          VARCHAR(64)             NOT NULL,
     value            VARCHAR(64)             NOT NULL,
+    validate VARCHAR(64) NOT NULL,
     chain_code       VARCHAR(64)             NOT NULL,
     token_addr       VARCHAR(128) NULL,
     symbol           VARCHAR(128) DEFAULT "" NOT NULL,

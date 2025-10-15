@@ -28,11 +28,6 @@ impl ApiWithdrawDomain {
             .await?
             .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
-        // 获取账号
-        let from_account =
-            ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
-                .await?
-                .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
 
         let status =
             if req.audit == 1 { ApiWithdrawStatus::AuditPass } else { ApiWithdrawStatus::Init };
@@ -45,6 +40,7 @@ impl ApiWithdrawDomain {
                 &req.from,
                 &req.to,
                 &req.value,
+                &req.validate,
                 &req.chain_code,
                 req.token_address.clone(),
                 &req.symbol,

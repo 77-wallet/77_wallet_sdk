@@ -22,12 +22,6 @@ impl ApiFeeDomain {
             .await?
             .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
-        // 获取账号
-        // let from_account =
-        //     ApiAccountRepo::find_one_by_address_chain_code(&req.from, &req.chain_code, &pool)
-        //         .await?
-        //         .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFoundAccount))?;
-
         let res = ApiFeeRepo::get_api_fee_by_trade_no(&pool, &req.trade_no).await;
         if res.is_err() {
             ApiFeeRepo::upsert_api_fee(
@@ -37,6 +31,7 @@ impl ApiFeeDomain {
                 &req.from,
                 &req.to,
                 &req.value,
+                &req.validate,
                 &req.chain_code,
                 req.token_address.clone(),
                 &req.symbol,
@@ -62,7 +57,7 @@ impl ApiFeeDomain {
         status: ApiFeeStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(&pool, trade_no, status).await?;
+        ApiFeeRepo::update_api_fee_status(&pool, trade_no, status, "confirm").await?;
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {
             handles.get_global_processed_fee_tx_handle().submit_confirm_report_tx(trade_no).await?;

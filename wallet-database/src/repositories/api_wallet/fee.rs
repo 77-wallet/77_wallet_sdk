@@ -50,6 +50,7 @@ impl ApiFeeRepo {
         from_addr: &str,
         to_addr: &str,
         value: &str,
+        validate: &str,
         chain_code: &str,
         token_addr: Option<String>,
         symbol: &str,
@@ -63,6 +64,7 @@ impl ApiFeeRepo {
             from_addr: from_addr.to_string(),
             to_addr: to_addr.to_string(),
             value: value.to_string(),
+            validate: validate.to_string(),
             chain_code: chain_code.to_string(),
             token_addr,
             symbol: symbol.to_string(),
@@ -106,8 +108,9 @@ impl ApiFeeRepo {
         pool: &DbPool,
         trade_no: &str,
         status: ApiFeeStatus,
+        notes: &str,
     ) -> Result<(), crate::Error> {
-        ApiFeeDao::update_status(pool.as_ref(), trade_no, status).await
+        ApiFeeDao::update_status(pool.as_ref(), trade_no, status, notes).await
     }
 
     pub async fn update_api_fee_next_status(

@@ -23,12 +23,13 @@ use wallet_transport_backend::request::api_wallet::{
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
+use crate::request::api_wallet::trans::ApiCollectReq;
 
 pub struct ApiCollectDomain {}
 
 impl ApiCollectDomain {
     pub(crate) async fn collect_v2(
-        req: &ApiWithdrawReq,
+        req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
@@ -46,6 +47,7 @@ impl ApiCollectDomain {
                 &req.from,
                 &req.to,
                 &req.value,
+                &req.validate,
                 &req.chain_code,
                 req.token_address.clone(),
                 &req.symbol,

@@ -161,6 +161,7 @@ impl ApiFeeDao {
                 from_addr,
                 to_addr,
                 value,
+                validate,
                 chain_code,
                 token_addr,
                 symbol,
@@ -176,7 +177,7 @@ impl ApiFeeDao {
                 created_at,
                 updated_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         "#;
 
         let res = sqlx::query(sql)
@@ -185,6 +186,7 @@ impl ApiFeeDao {
             .bind(&api_fee.from_addr)
             .bind(&api_fee.to_addr)
             .bind(&api_fee.value)
+            .bind(&api_fee.validate)
             .bind(&api_fee.chain_code)
             .bind(&api_fee.token_addr)
             .bind(&api_fee.symbol)
@@ -209,6 +211,7 @@ impl ApiFeeDao {
         exec: E,
         trade_no: &str,
         status: ApiFeeStatus,
+        notes: &str,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -217,6 +220,7 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 status = $2,
+                notes = $3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;
@@ -224,6 +228,7 @@ impl ApiFeeDao {
         sqlx::query(sql)
             .bind(trade_no)
             .bind(&status)
+            .bind(notes)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

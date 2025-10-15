@@ -9,6 +9,7 @@ pub struct ApiCollectEntity {
     pub from_addr: String,
     pub to_addr: String,
     pub value: String,
+    pub validate: String,
     pub chain_code: String,
     pub token_addr: Option<String>,
     pub symbol: String,
