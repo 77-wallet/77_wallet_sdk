@@ -76,15 +76,14 @@ async fn run(
             1,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
+                chain_address_type: Some("Tron".to_string()),
                 normal_address: IndexAndAddress {
                     index: Some(0),
                     address: "TDiPH4z5x3kiPRFCBiw7pStpXb4GPFNohA".to_string(),
-                    chain_address_type: Some("Tron".to_string()),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
                     address: "TBEDk4ie1aSi46r3QeZLtMvkEFfEVDFpd1".to_string(),
-                    chain_address_type: Some("Tron".to_string()),
                 },
             }],
         )
@@ -105,15 +104,14 @@ async fn run(
             80,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
+                chain_address_type: Some("Tron".to_string()),
                 normal_address: IndexAndAddress {
                     index: Some(0),
                     address: "TF9bwZbfKAjschqBXHiw6SBUbRbpRv3ong".to_string(),
-                    chain_address_type: Some("Tron".to_string()),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
                     address: "TRjVhnopRbn4cRhh7y5aN65jZLVM1rixUc".to_string(),
-                    chain_address_type: Some("Tron".to_string()),
                 },
             }],
         )
