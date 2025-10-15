@@ -1,11 +1,11 @@
 use crate::{
     error::service::ServiceError,
-    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
     messaging::mqtt::topics::api_wallet::{
         cmd::{
-            address_allock::AwmCmdAddrExpandMsg, unbind_uid::AwmCmdUidUnbindMsg,
+            address_allock::AwmCmdAddrExpandMsg, dev_change::AwmCmdDevChangeMsg,
+            fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
             wallet_activation::AwmCmdActiveMsg,
-            fee_res::AwmCmdFeeResMsg,
         },
         trans::AwmOrderTransMsg,
         trans_result::AwmOrderTransResMsg,
@@ -27,6 +27,8 @@ pub(crate) enum EventType {
     AwmCmdActive,
     #[serde(rename = "6")]
     AwmCmdFeeRes,
+    #[serde(rename = "7")]
+    AwmCmdDevChange,
     // AddressUse,
 }
 
@@ -34,7 +36,7 @@ pub(crate) enum EventType {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ApiMqttStruct {
     pub(crate) event_no: String,
-    /// 1交易事件 / 2 交易最终结果 / 3 地址扩容 / 4平台解绑/ 5 激活钱包 / 6 交易手续费结果 /
+    /// 1交易事件 / 2 交易最终结果 / 3 地址扩容 / 4平台解绑/ 5 激活钱包 / 6 交易手续费结果 / 7 设备变更
     pub(crate) event_type: EventType,
     pub(crate) data: serde_json::Value,
     pub(crate) time: u64,
@@ -52,6 +54,7 @@ impl TaskTrait for ApiMqttStruct {
             EventType::AwmCmdUidUnbind => TaskName::Known(KnownTaskName::AwmCmdUidUnbind),
             EventType::AwmCmdFeeRes => TaskName::Known(KnownTaskName::AwmCmdFeeRes),
             EventType::AwmCmdActive => TaskName::Known(KnownTaskName::AwmCmdActive),
+            EventType::AwmCmdDevChange => TaskName::Known(KnownTaskName::AwmCmdDevChange),
         }
     }
 
@@ -73,14 +76,12 @@ impl TaskTrait for ApiMqttStruct {
             EventType::AwmOrderTransRes => {
                 let data: AwmOrderTransResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                    data.exec(id).await?
-
+                data.exec(id).await?
             }
             EventType::AwmCmdAddrExpand => {
                 let data: AwmCmdAddrExpandMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
-                    data.exec(id).await?
-
+                data.exec(id).await?
             }
             EventType::AwmCmdUidUnbind => {
                 let data: AwmCmdUidUnbindMsg =
@@ -94,6 +95,11 @@ impl TaskTrait for ApiMqttStruct {
             }
             EventType::AwmCmdActive => {
                 let data: AwmCmdActiveMsg =
+                    wallet_utils::serde_func::serde_from_value(self.data.clone())?;
+                data.exec(id).await?
+            }
+            EventType::AwmCmdDevChange => {
+                let data: AwmCmdDevChangeMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
                 data.exec(id).await?
             }

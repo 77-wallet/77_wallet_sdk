@@ -4,9 +4,7 @@ use crate::{
     domain::api_wallet::trans::{
         collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
-    request::api_wallet::trans::{
-        ApiBaseTransferReq, ApiCollectReq, ApiTransferFeeReq, ApiTransferReq, ApiWithdrawReq,
-    },
+    request::api_wallet::trans::{ApiCollectReq, ApiTransferFeeReq, ApiWithdrawReq},
 };
 
 // biz_type = RECHARGE

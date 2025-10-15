@@ -185,4 +185,5 @@ pub enum KnownTaskName {
     AwmCmdActive,
     AwmCmdUidUnbind,
     AddressUse,
+    AwmCmdDevChange,
 }

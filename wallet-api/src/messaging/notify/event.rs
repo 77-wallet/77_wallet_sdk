@@ -18,8 +18,8 @@ use crate::messaging::{
         BulletinMsg,
         api_wallet::{
             cmd::{
-                address_use::AddressUseMsg, fee_res::AwmCmdFeeResMsg,
-                unbind_uid::AwmCmdUidUnbindMsg,
+                address_use::AddressUseMsg, dev_change::AwmCmdDevChangeMsg,
+                fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
             },
             trans_result::AwmOrderTransResMsg,
         },
@@ -85,6 +85,7 @@ pub enum NotifyEvent {
     CollectFeeNotEnough(CollectFeeNotEnoughFront),
     Fee(FeeFront),
     AddressRecovery,
+    AwmCmdDevChange(AwmCmdDevChangeMsg),
 }
 
 impl NotifyEvent {
@@ -143,6 +144,7 @@ impl NotifyEvent {
             NotifyEvent::CollectFeeNotEnough(_) => "COLLECT_FEE_NOT_ENOUGH".to_string(),
             NotifyEvent::Fee(_) => "FEE".to_string(),
             NotifyEvent::AddressRecovery => "ADDRESS_RECOVERY".to_string(),
+            NotifyEvent::AwmCmdDevChange(_) => "AWM_CMD_DEV_CHANGE".to_string(),
         }
     }
 }

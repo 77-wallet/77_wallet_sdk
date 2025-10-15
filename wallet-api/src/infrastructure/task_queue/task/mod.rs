@@ -7,6 +7,7 @@ use crate::{
         CommonTask, MqttTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         initialization::InitializationTask,
+        mqtt_api::ApiMqttStruct,
         task::task_type::TaskType,
     },
     messaging::mqtt::topics,
@@ -21,7 +22,6 @@ use wallet_database::{
     repositories::task_queue::TaskQueueRepoTrait as _,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
-use crate::infrastructure::task_queue::mqtt_api::ApiMqttStruct;
 
 #[async_trait::async_trait]
 pub(crate) trait TaskTrait: Send + Sync {
@@ -218,6 +218,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::AwmCmdActive => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
         KnownTaskName::AwmCmdUidUnbind => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
         KnownTaskName::AddressUse => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdDevChange => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
 
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
         KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),

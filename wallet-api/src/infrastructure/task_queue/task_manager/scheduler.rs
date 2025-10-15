@@ -72,6 +72,7 @@ fn get_base_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 KnownTaskName::AwmCmdAddrExpand => 3,
                 KnownTaskName::AwmOrderTrans => 2,
                 KnownTaskName::AwmOrderTransRes => 2,
+                KnownTaskName::AwmCmdDevChange => 2,
             }
         }
         wallet_database::entities::task_queue::TaskName::Unknown(_) => 0,

@@ -68,4 +68,5 @@ pub struct QueryUidBindInfoRes {
     /// 商户id
     pub org_id: String,
     pub bind_status: bool,
+    pub sn: String,
 }
