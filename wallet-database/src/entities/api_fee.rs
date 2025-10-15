@@ -1,5 +1,6 @@
 use std::fmt::Display;
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiFeeEntity {
     pub id: i64,
     pub name: String,
@@ -38,13 +39,13 @@ pub struct ApiFeeEntity {
 )]
 #[repr(u8)]
 pub enum ApiFeeStatus {
-    Init, // 0
-    SendingTx, // 1
-    SendingTxFailed, // 2
-    SendingTxReport, // 3
+    Init,                  // 0
+    SendingTx,             // 1
+    SendingTxFailed,       // 2
+    SendingTxReport,       // 3
     SendingTxFailedReport, //4, 结束
-    Success, // 5,
-    Failure, // 6
+    Success,               // 5,
+    Failure,               // 6
     ReceivedConfirmReport, // 7, 结束
 }
 

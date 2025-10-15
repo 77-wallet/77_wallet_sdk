@@ -1,4 +1,7 @@
-use crate::entities::api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode};
+use crate::entities::{
+    api_chain::{ApiChainCreateVo, ApiChainEntity, ApiChainWithNode},
+    chain::ChainWithNode,
+};
 use sqlx::{Executor, Sqlite};
 
 pub(crate) struct ApiChainDao;
@@ -247,6 +250,20 @@ impl ApiChainDao {
             .bind(chain_code)
             .bind(node_id)
             .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn list_with_node_info<'a, E>(exec: E) -> Result<Vec<ApiChainWithNode>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
+                            from api_chain as q  
+                            left join node a on q.node_id = a.node_id WHERE q.status = 1;";
+
+        sqlx::query_as::<sqlx::Sqlite, ChainWithNode>(sql)
+            .fetch_all(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
     }

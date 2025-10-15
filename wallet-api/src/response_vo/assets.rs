@@ -4,7 +4,7 @@ use std::{
     cmp::Ordering,
     ops::{Deref, DerefMut},
 };
-use wallet_database::entities::assets::AssetsEntity;
+use wallet_database::entities::{api_assets::ApiAssetsEntity, assets::AssetsEntity};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +42,24 @@ pub struct CoinAssets {
 
 impl From<(BalanceInfo, AssetsEntity)> for CoinAssets {
     fn from((balance, value): (BalanceInfo, AssetsEntity)) -> Self {
+        CoinAssets {
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals,
+            address: value.address,
+            chain_code: value.chain_code,
+            token_address: value.token_address,
+            status: value.status,
+            balance,
+            is_multisig: value.is_multisig,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<(BalanceInfo, ApiAssetsEntity)> for CoinAssets {
+    fn from((balance, value): (BalanceInfo, ApiAssetsEntity)) -> Self {
         CoinAssets {
             name: value.name,
             symbol: value.symbol,

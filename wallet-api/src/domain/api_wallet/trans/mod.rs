@@ -1,9 +1,6 @@
 use crate::{
     domain::{
-        api_wallet::{
-            account::ApiAccountDomain,
-            adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
-        },
+        api_wallet::{account::ApiAccountDomain, adapter_factory::ApiChainAdapterFactory},
         chain::TransferResp,
     },
     error::service::ServiceError,

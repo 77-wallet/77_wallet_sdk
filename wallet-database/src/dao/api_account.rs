@@ -1,5 +1,6 @@
 use crate::{
     entities::{
+        account::AccountWalletMapping,
         api_account::{ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
@@ -269,18 +270,25 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = r#"
-            SELECT * FROM api_account WHERE wallet_address = $1 AND account_id = $2 AND api_wallet_type = $3
-            "#;
+        // let sql = r#"
+        //     SELECT * FROM api_account WHERE wallet_address = $1 AND account_id = $2 AND api_wallet_type = $3
+        //     "#;
 
-        sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
-            .bind(wallet_address)
-            .bind(account_id)
-            .bind(api_wallet_type)
+        // sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
+        //     .bind(wallet_address)
+        //     .bind(account_id)
+        //     .bind(api_wallet_type)
+        //     .fetch_optional(exec)
+        //     .await
+        //     .map(|v| v.is_some())
+        //     .map_err(|e| crate::Error::Database(e.into()))
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
+            .and_where_eq("api_wallet_type", api_wallet_type)
             .fetch_optional(exec)
             .await
-            .map(|v| v.is_some())
-            .map_err(|e| crate::Error::Database(e.into()))
+            .map(|v: Option<ApiAccountEntity>| v.is_some())
     }
 
     pub async fn account_detail_by_max_id_and_wallet_address<'a, E>(
@@ -291,17 +299,25 @@ impl ApiAccountDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = "SELECT * FROM api_account where wallet_address = $1
-            AND api_wallet_type = $2
-                   ORDER BY account_id DESC
-                   LIMIT 1;";
+        // let sql = "SELECT * FROM api_account where wallet_address = $1
+        //     AND api_wallet_type = $2
+        //            ORDER BY account_id DESC
+        //            LIMIT 1;";
 
-        sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
-            .bind(wallet_address)
-            .bind(api_wallet_type)
+        // sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
+        //     .bind(wallet_address)
+        //     .bind(api_wallet_type)
+        //     .fetch_optional(executor)
+        //     .await
+        //     .map_err(|e| crate::Error::Database(e.into()))
+
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("api_wallet_type", api_wallet_type)
+            .order_by("account_id DESC")
+            .limit(1)
             .fetch_optional(executor)
             .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn find_one_by_address_chain_code<'a, E>(
@@ -314,6 +330,23 @@ impl ApiAccountDao {
     {
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("address", address)
+            .and_where_eq("chain_code", chain_code)
+            .fetch_optional(exec)
+            .await
+    }
+
+    pub async fn find_one_by_wallet_address_account_id_chain_code<'a, E>(
+        wallet_address: &str,
+        account_id: u32,
+        chain_code: &str,
+        exec: E,
+    ) -> Result<Option<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT * FROM api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
             .and_where_eq("chain_code", chain_code)
             .fetch_optional(exec)
             .await
@@ -388,5 +421,30 @@ impl ApiAccountDao {
             .and_where_eq_opt("account_id", account_id)
             .fetch_all(executor)
             .await
+    }
+
+    pub async fn account_wallet_mapping<'a, E>(
+        executor: E,
+    ) -> Result<Vec<AccountWalletMapping>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            SELECT DISTINCT 
+                api_account.account_id,
+                api_account.name,
+                api_account.wallet_address,
+                api_wallet.uid
+            FROM 
+                api_account
+            LEFT JOIN 
+                api_wallet
+            ON 
+                api_account.wallet_address = api_wallet.address;
+            "#;
+        sqlx::query_as::<sqlx::Sqlite, AccountWalletMapping>(sql)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
     }
 }

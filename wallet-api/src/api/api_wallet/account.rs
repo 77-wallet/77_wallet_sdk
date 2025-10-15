@@ -2,7 +2,7 @@ use crate::{
     api::ReturnType,
     manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    request::api_wallet::account::CreateApiAccountReq,
+    request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
     response_vo::api_wallet::account::ApiAccountInfos,
     service::api_wallet::account::ApiAccountService,
 };
@@ -11,11 +11,9 @@ impl WalletManager {
     pub async fn get_api_account_list(
         &self,
         wallet_address: &str,
-        index: i32,
+        account_id: Option<u32>,
     ) -> ReturnType<ApiAccountInfos> {
-        ApiAccountService::new(self.ctx)
-            .list_api_accounts(wallet_address, Some(index as u32), None)
-            .await
+        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, account_id, None).await
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
@@ -27,6 +25,22 @@ impl WalletManager {
                 &req.name,
                 req.is_default_name,
                 req.api_wallet_type,
+            )
+            .await
+    }
+
+    pub async fn create_withdrawal_account(
+        &self,
+        req: CreateWithdrawalAccountReq,
+    ) -> ReturnType<()> {
+        ApiAccountService::new(self.ctx)
+            .create_withdrawal_account(
+                &req.wallet_address,
+                &req.wallet_password,
+                req.derivation_path,
+                req.index,
+                &req.name,
+                req.is_default_name,
             )
             .await
     }
@@ -65,7 +79,10 @@ impl WalletManager {
 
 #[cfg(test)]
 mod test {
-    use crate::{request::api_wallet::account::CreateApiAccountReq, test::env::get_manager};
+    use crate::{
+        request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
+        test::env::get_manager,
+    };
 
     use anyhow::Result;
 
@@ -93,6 +110,31 @@ mod test {
             api_wallet_type,
         );
         let res = wallet_manager.create_api_account(req).await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_create_withdrawal_account() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let wallet_address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
+        let wallet_password = "q1111111";
+        let index = Some(5);
+        let name = "666";
+        let is_default_name = true;
+
+        let req = CreateWithdrawalAccountReq::new(
+            wallet_address,
+            wallet_password,
+            None,
+            index,
+            name,
+            is_default_name,
+        );
+        let res = wallet_manager.create_withdrawal_account(req).await;
         tracing::info!("res: {res:?}");
         Ok(())
     }
@@ -136,7 +178,7 @@ mod test {
         // let chain_code = "tron";
 
         let res = wallet_manager
-            .get_api_account_list("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", 0)
+            .get_api_account_list("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", None)
             .await
             .unwrap();
         let res = serde_json::to_string(&res).unwrap();

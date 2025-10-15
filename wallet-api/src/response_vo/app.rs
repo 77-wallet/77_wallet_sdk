@@ -3,15 +3,24 @@ use wallet_database::entities::{
     multisig_queue::MultisigQueueEntity, wallet::WalletEntity,
 };
 
+use crate::response_vo::api_wallet::wallet::{ApiWalletList, WalletInfo};
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConfigRes {
     pub fiat: String,
     pub language: String,
     pub unread_count: UnreadCount,
-    pub wallet_list: Vec<WalletEntity>,
+    pub standard_wallet_list: Vec<WalletInfo>,
+    pub api_wallet_list: ApiWalletList,
     pub device_info: Option<DeviceEntity>,
     pub url: crate::request::init::UrlParams,
+}
+
+impl From<WalletEntity> for WalletInfo {
+    fn from(value: WalletEntity) -> Self {
+        WalletInfo { address: value.address, uid: value.uid, name: value.name, app_id: None }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]

@@ -4,7 +4,6 @@ use crate::{
         account::AccountDomain,
         api_wallet::{chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
-        coin::CoinDomain,
     },
     error::service::ServiceError,
     infrastructure::task_queue::{

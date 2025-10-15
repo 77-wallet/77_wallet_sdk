@@ -1,5 +1,8 @@
 use crate::{
-    entities::{api_assets::ApiAssetsEntity, assets::AssetsIdVo},
+    entities::{
+        api_assets::{ApiAssetsEntity, ApiAssetsEntityWithAddressType},
+        assets::AssetsIdVo,
+    },
     error::DatabaseError,
     sql_utils::{SqlExecutableNoReturn, update_builder::DynamicUpdateBuilder},
 };
@@ -221,12 +224,12 @@ impl ApiAssetsDao {
         let sql = r#"
             SELECT * FROM 
                 api_assets
-            WHERE status = 1 AND address =$1 AND symbol = $2 AND chain_code = $3 AND token_address = $4
+            WHERE status = 1 AND address =$1 AND chain_code = $2 AND token_address = $3
                 AND EXISTS (
                     SELECT 1
-                    FROM chain
-                    WHERE chain.chain_code = api_assets.chain_code
-                    AND chain.status = 1
+                    FROM api_chain
+                    WHERE api_chain.chain_code = api_assets.chain_code
+                    AND api_chain.status = 1
                 )
                 AND EXISTS (
                     SELECT 1
@@ -238,8 +241,8 @@ impl ApiAssetsDao {
                 );"#;
 
         let rs = sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(sql)
-            .bind(assets_id.address.clone())
-            .bind(assets_id.chain_code.clone())
+            .bind(assets_id.address)
+            .bind(assets_id.chain_code)
             .bind(assets_id.token_address.clone().unwrap_or_default())
             .fetch_optional(exec)
             .await;
@@ -307,6 +310,94 @@ impl ApiAssetsDao {
 
         if let Some(sym) = symbol {
             query = query.bind(sym);
+        }
+
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub(crate) async fn get_api_assets_by_address<'a, E>(
+        exec: E,
+        address: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Option<&str>,
+        token_address: Option<&str>,
+        is_multisig: Option<bool>,
+    ) -> Result<Vec<ApiAssetsEntityWithAddressType>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let addresses = crate::any_in_collection(address, "','");
+        let base_sql = |table_name: &str| -> String {
+            format!(
+                "SELECT a.name, a.symbol, a.decimals, a.address, a.chain_code, 
+                a.token_address, a.protocol, a.status, a.balance, a.is_multisig, 
+                a.created_at, a.updated_at, acc.address_type
+                FROM api_assets AS a
+                JOIN {table_name} AS acc 
+                ON a.address = acc.address AND a.chain_code = acc.chain_code
+                WHERE a.status = 1 
+                    AND EXISTS (
+                        SELECT 1
+                        FROM api_chain
+                        WHERE api_chain.chain_code = a.chain_code
+                        AND api_chain.status = 1
+                    )"
+            )
+        };
+
+        let add_dynamic_conditions = |sql: &mut String| {
+            if !addresses.is_empty() {
+                sql.push_str(&format!(" AND a.address IN ('{}')", addresses));
+            }
+            if chain_code.is_some() {
+                sql.push_str(" AND a.chain_code = ?");
+            }
+            if symbol.is_some() {
+                sql.push_str(" AND a.symbol = ?");
+            }
+            if token_address.is_some() {
+                sql.push_str(" AND a.token_address = ?");
+            }
+            if let Some(is_multisig) = is_multisig {
+                let is_multisig_values = if is_multisig { vec![1] } else { vec![0, 2] };
+                let is_multisig_str = crate::any_in_collection(is_multisig_values, "','");
+                sql.push_str(&format!(" AND a.is_multisig IN ('{}')", is_multisig_str));
+            }
+        };
+
+        let sql = match is_multisig {
+            Some(true) => {
+                let mut sql = base_sql("multisig_account");
+                add_dynamic_conditions(&mut sql);
+                format!("{sql} AND acc.is_del = 0")
+            }
+            Some(false) => {
+                let mut sql = base_sql("api_account");
+                add_dynamic_conditions(&mut sql);
+                sql
+            }
+            None => {
+                let mut sql1 = base_sql("api_account");
+
+                let mut sql2 = base_sql("multisig_account");
+                add_dynamic_conditions(&mut sql1);
+                add_dynamic_conditions(&mut sql2);
+                format!("{sql1} UNION {sql2}")
+            }
+        };
+
+        let mut query = sqlx::query_as::<_, ApiAssetsEntityWithAddressType>(&sql);
+
+        if let Some(code) = chain_code {
+            query = query.bind(code);
+        }
+
+        if let Some(sym) = symbol {
+            query = query.bind(sym);
+        }
+
+        if let Some(token_address) = token_address {
+            query = query.bind(token_address);
         }
 
         query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))

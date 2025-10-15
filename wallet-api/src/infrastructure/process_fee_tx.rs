@@ -263,7 +263,7 @@ impl ProcessFeeTx {
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed, &err.to_string()).await?;
+        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
         // 上报交易不影响交易偏移量计算
         let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
         Ok(())
@@ -459,11 +459,6 @@ impl ProcessFeeTxConfirmReport {
         tracing::info!("starting process fee tx confirm report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
-            let res = GLOBAL_KEY.is_exchange_shared_secret();
-            if res.is_err() {
-                sleep(tokio::time::Duration::from_secs(10)).await;
-                continue;
-            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process fee tx confirm report -------------------------------");

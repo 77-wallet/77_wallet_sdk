@@ -72,4 +72,8 @@ impl ApiChainRepo {
     ) -> Result<Vec<ApiChainEntity>, crate::Error> {
         Ok(ApiChainDao::set_api_chain_node(pool.as_ref(), chain_code, node_id).await?)
     }
+
+    pub async fn get_chain_node_list(pool: &DbPool) -> Result<Vec<ApiChainWithNode>, crate::Error> {
+        Ok(ApiChainDao::list_with_node_info(pool.as_ref()).await?)
+    }
 }

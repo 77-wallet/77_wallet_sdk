@@ -1,9 +1,11 @@
+use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
+
 use crate::{
     domain::api_wallet::wallet::ApiWalletDomain,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 
-// biz_type = ADDRESS_ALLOCK
+// biz_type = AWM_CMD_ADDR_EXPAND
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmCmdAddrExpandMsg {
@@ -44,7 +46,11 @@ impl AwmCmdAddrExpandMsg {
         )
         .await?;
 
-        let data = NotifyEvent::AwmCmdAddrExpand(self.to_owned());
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let mut msg_ack_req = MsgAckReq::default();
+        msg_ack_req.push(_msg_id);
+        backend.msg_ack(msg_ack_req).await?;
+        let data = NotifyEvent::AwmCmdAddrExpand(self.into());
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }

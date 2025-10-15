@@ -1,5 +1,5 @@
 use std::ops::{Deref, DerefMut};
-use wallet_database::entities::chain::ChainEntity;
+use wallet_database::entities::{api_chain::ApiChainEntity, chain::ChainEntity};
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
 
 use crate::{
@@ -206,6 +206,57 @@ impl TokenCurrencies {
         &self,
         data: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
         chains: Vec<ChainEntity>,
+    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
+        let mut res = Vec::new();
+
+        // 计算所有币种的总数
+        let mut sum = f64::default();
+        for assets in &data {
+            let balance = wallet_utils::parse_func::f64_from_str(&assets.balance)?;
+            sum += balance;
+        }
+
+        for assets in data {
+            if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
+                let balance = self
+                    .calculate_to_balance(
+                        &assets.balance,
+                        &assets.symbol,
+                        &assets.chain_code,
+                        assets.token_address(),
+                    )
+                    .await?;
+
+                let name = if assets.chain_code == "btc" || assets.chain_code == "ltc" {
+                    let address_category = AccountDomain::get_show_address_type(
+                        &assets.chain_code,
+                        assets.address_type(),
+                    )?;
+                    address_category.show_name().to_uppercase()
+                } else {
+                    chain.name.clone()
+                };
+
+                let asset_quantity_ratio = balance.amount / sum;
+                res.push(crate::response_vo::chain::ChainAssets {
+                    chain_code: assets.chain_code,
+                    name,
+                    address: assets.address,
+                    token_address: assets.token_address,
+                    balance,
+                    symbol: assets.symbol,
+                    is_multisig: assets.is_multisig,
+                    asset_quantity_ratio,
+                })
+            }
+        }
+        Ok(res)
+    }
+
+    pub async fn calculate_api_chain_assets_list(
+        &self,
+        data: Vec<wallet_database::entities::api_assets::ApiAssetsEntityWithAddressType>,
+        chains: Vec<ApiChainEntity>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let mut res = Vec::new();
 

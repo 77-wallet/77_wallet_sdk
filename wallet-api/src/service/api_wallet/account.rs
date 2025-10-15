@@ -1,4 +1,3 @@
-use crate::response_vo::api_wallet::account::ApiAccountInfos;
 use crate::{
     context::Context,
     domain::{
@@ -7,11 +6,14 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
+    response_vo::api_wallet::account::ApiAccountInfos,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
-    repositories::api_wallet::chain::ApiChainRepo,
+    repositories::api_wallet::{
+        account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo,
+    },
 };
 
 pub struct ApiAccountService {
@@ -78,6 +80,91 @@ impl ApiAccountService {
             name,
             is_default_name,
             api_wallet_type,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn create_withdrawal_account(
+        &self,
+        wallet_address: &str,
+        wallet_password: &str,
+        derivation_path: Option<String>,
+        index: Option<i32>,
+        name: &str,
+        is_default_name: bool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        WalletDomain::validate_password(wallet_password).await?;
+        // 根据钱包地址查询是否有钱包
+        let pool = self.ctx.get_global_sqlite_pool()?;
+        let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+        // 根据派生路径
+        let hd_path = if let Some(derivation_path) = &derivation_path {
+            let hd_path = wallet_chain_instance::derivation_path::get_account_hd_path_from_path(
+                derivation_path,
+            )?;
+            Some(hd_path)
+        } else {
+            None
+        };
+
+        // 如果有指定派生路径，就获取该链的所有chain_code
+        let chains: Vec<String> = if let Some(hd_path) = &hd_path {
+            hd_path.get_chain_codes()?.0.into_iter().map(|path| path.to_string()).collect()
+        }
+        // 或者使用默认链的链码
+        else {
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect()
+        };
+
+        // 获取该账户的最大索引，并加一
+        let account_index_map = if let Some(index) = index {
+            let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
+            if ApiAccountRepo::has_account_id(
+                &pool,
+                &api_wallet.address,
+                index.account_id,
+                ApiWalletType::Withdrawal,
+            )
+            .await?
+            {
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Account(
+                        crate::error::business::account::AccountError::AlreadyExist,
+                    ),
+                ));
+            };
+            index
+        } else if let Some(hd_path) = hd_path {
+            wallet_utils::address::AccountIndexMap::from_index(hd_path.get_account_id()?)?
+        } else if let Some(max_account) =
+            ApiAccountRepo::account_detail_by_max_id_and_wallet_address(
+                &pool,
+                &api_wallet.address,
+                ApiWalletType::Withdrawal,
+            )
+            .await?
+        {
+            wallet_utils::address::AccountIndexMap::from_account_id(max_account.account_id + 1)?
+        } else {
+            wallet_utils::address::AccountIndexMap::from_account_id(1)?
+        };
+
+        ApiAccountDomain::create_api_account(
+            wallet_address,
+            wallet_password,
+            chains,
+            vec![account_index_map.input_index],
+            name,
+            is_default_name,
+            ApiWalletType::Withdrawal,
         )
         .await?;
 

@@ -9,7 +9,6 @@ use super::task_handle::backend_handle::BackendTaskHandle;
 
 pub(crate) enum BackendApiTask {
     BackendApi(BackendApiTaskData),
-    ApiBackendApi(BackendApiTaskData),
 }
 
 impl BackendApiTask {
@@ -20,9 +19,6 @@ impl BackendApiTask {
     pub(crate) fn get_body(&self) -> Result<Option<String>, ServiceError> {
         match self {
             BackendApiTask::BackendApi(api_data) => {
-                Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
-            }
-            BackendApiTask::ApiBackendApi(api_data) => {
                 Ok(Some(wallet_utils::serde_func::serde_to_string(api_data)?))
             }
         }
@@ -45,10 +41,6 @@ impl TaskTrait for BackendApiTask {
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         match self {
             BackendApiTask::BackendApi(data) => {
-                BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
-                    .await?;
-            }
-            BackendApiTask::ApiBackendApi(data) => {
                 BackendTaskHandle::do_handle(&data.endpoint, data.body.clone(), backend_api)
                     .await?;
             }

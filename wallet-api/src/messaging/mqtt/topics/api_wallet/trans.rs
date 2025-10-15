@@ -10,6 +10,8 @@ use crate::{
         ApiBaseTransferReq, ApiCollectReq, ApiTransferFeeReq, ApiTransferReq, ApiWithdrawReq,
     },
 };
+use crate::domain::api_wallet::trans::fee::ApiFeeDomain;
+use crate::request::api_wallet::trans::ApiTransferFeeReq;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]

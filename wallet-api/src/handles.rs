@@ -59,7 +59,7 @@ impl Handles {
         self.process_fee_tx_handle.clone()
     }
 
-    pub(crate) fn get_global_processed_collect_tx_handle(&self) ->Arc<ProcessCollectTxHandle> {
+    pub(crate) fn get_global_processed_collect_tx_handle(&self) -> Arc<ProcessCollectTxHandle> {
         self.process_collect_tx_handle.clone()
     }
 

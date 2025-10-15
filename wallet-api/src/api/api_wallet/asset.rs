@@ -97,6 +97,17 @@ impl WalletManager {
     ) -> ReturnType<GetAccountAssetsRes> {
         ApiAssetsService::new(self.ctx).get_account_assets(account_id, wallet_address, chain_code).await
     }
+
+    pub async fn get_api_assets(
+        &self,
+        address: &str,
+        account_id: Option<u32>,
+        chain_code: &str,
+        token_address: Option<String>,
+    ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
+        let token_address = token_address.filter(|s| !s.is_empty());
+        ApiAssetsService::new().detail(address, account_id, chain_code, token_address).await
+    }
 }
 
 #[cfg(test)]
@@ -124,7 +135,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b";
+        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
         let chain_code = None;
 
         let account_id = Some(1);
@@ -134,6 +145,65 @@ mod test {
         // tracing::info!("get_account_chain_assets: {res:?}");
         let res = wallet_utils::serde_func::serde_to_string(&res)?;
         tracing::info!("get_account_chain_assets: {}", res);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_assets_list() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
+        let chain_code = None;
+
+        let account_id = Some(1);
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let res = wallet_manager.get_assets_list(address, account_id, chain_code, None).await?;
+        // tracing::info!("get_account_chain_assets: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("get_assets_list: {}", res);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_account_assets() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
+        let chain_code = None;
+
+        let account_id = 1;
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let res = wallet_manager.get_api_account_assets(account_id, address, chain_code).await?;
+        // tracing::info!("get_account_chain_assets: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("get_assets_list: {}", res);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_assets() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
+        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
+        let chain_code = "tron";
+        let token_address = Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string());
+
+        let account_id = Some(1);
+
+        let _ = wallet_manager.set_currency("USD").await;
+        let res =
+            wallet_manager.get_api_assets(address, account_id, chain_code, token_address).await?;
+        // tracing::info!("get_account_chain_assets: {res:?}");
+        let res = wallet_utils::serde_func::serde_to_string(&res)?;
+        tracing::info!("get_assets_list: {}", res);
         Ok(())
     }
 }

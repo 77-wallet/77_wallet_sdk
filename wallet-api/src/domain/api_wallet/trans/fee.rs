@@ -1,13 +1,14 @@
 use crate::{
     error::business::{BusinessError, api_wallet::ApiWalletError},
-    messaging::notify::{FrontendNotifyEvent, api_wallet::FeeFront, event::NotifyEvent},
     request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
-    entities::{api_fee::ApiFeeStatus, api_wallet::ApiWalletType},
-    repositories::{api_wallet::fee::ApiFeeRepo, api_wallet::wallet::ApiWalletRepo},
+    entities::api_fee::ApiFeeStatus,
+    repositories::api_wallet::{fee::ApiFeeRepo, wallet::ApiWalletRepo},
 };
-use wallet_transport_backend::request::api_wallet::transaction::{TransAckType, TransEventAckReq, TransType};
+use wallet_transport_backend::request::api_wallet::transaction::{
+    TransAckType, TransEventAckReq, TransType,
+};
 
 pub struct ApiFeeDomain {}
 
@@ -37,14 +38,17 @@ impl ApiFeeDomain {
                 &req.symbol,
                 &req.trade_no,
                 req.trade_type,
-            ).await?;
+            )
+            .await?;
             tracing::info!("upsert_api_fee ------------------- 5:");
 
             let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
-            let trans_event_req = TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
+            let trans_event_req =
+                TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
 
-            if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
+            if let Some(handles) =
+                crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
             {
                 handles.get_global_processed_fee_tx_handle().submit_tx(&req.trade_no).await?;
             }

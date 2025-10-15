@@ -2,7 +2,7 @@ use crate::{
     DbPool,
     dao::api_assets::ApiAssetsDao,
     entities::{
-        api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
+        api_assets::{ApiAssetsEntity, ApiAssetsEntityWithAddressType, ApiCreateAssetsVo},
         assets::AssetsIdVo,
     },
 };
@@ -73,5 +73,21 @@ impl ApiAssetsRepo {
         token_address: &str,
     ) -> Result<(), crate::Error> {
         ApiAssetsDao::delete_assets(pool.as_ref(), address, chain_code, token_address).await
+    }
+
+    pub async fn get_api_assets_by_address(
+        pool: &DbPool,
+        address: Vec<String>,
+        is_multisig: Option<bool>,
+    ) -> Result<Vec<ApiAssetsEntityWithAddressType>, crate::Error> {
+        ApiAssetsDao::get_api_assets_by_address(
+            pool.as_ref(),
+            address,
+            None,
+            None,
+            None,
+            is_multisig,
+        )
+        .await
     }
 }

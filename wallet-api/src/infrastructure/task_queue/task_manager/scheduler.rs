@@ -136,7 +136,6 @@ fn extract_backend_priority(task: &dyn TaskTrait) -> Result<u8, ServiceError> {
                 _ => 7,
             }
         }
-        BackendApiTask::ApiBackendApi(backend_api_task_data) => 2,
     };
 
     Ok(priority)

@@ -6,7 +6,6 @@ pub(crate) enum TaskType {
     BackendApi = 1,
     Mqtt = 2,
     Common = 3,
-    ApiBackendApi = 4,
 }
 
 impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for TaskType {

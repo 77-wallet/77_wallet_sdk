@@ -2,6 +2,7 @@ use crate::{
     DbPool,
     dao::api_withdraw::ApiWithdrawDao,
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    pagination::Pagination,
 };
 
 pub struct ApiWithdrawRepo;
@@ -17,10 +18,11 @@ impl ApiWithdrawRepo {
     pub async fn page_api_withdraw(
         pool: &DbPool,
         uid: &str,
+        status: Option<u8>,
         page: i64,
         page_size: i64,
-    ) -> Result<(i64, Vec<ApiWithdrawEntity>), crate::Error> {
-        ApiWithdrawDao::page_api_withdraw(pool.as_ref(), uid, page, page_size).await
+    ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
+        ApiWithdrawDao::page_api_withdraw(pool.as_ref(), uid, status, page, page_size).await
     }
 
     pub async fn page_api_withdraw_with_status(

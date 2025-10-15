@@ -95,17 +95,15 @@ impl ApiCollectDao {
         E: Executor<'a, Database = Sqlite>,
     {
         let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql =
-            format!("SELECT * FROM api_collect where trade_no = ? AND status in ({})", placeholders);
-        let mut query = sqlx::query_as::<_, ApiCollectEntity>(&sql)
-            .bind(trade_no);
+        let sql = format!(
+            "SELECT * FROM api_collect where trade_no = ? AND status in ({})",
+            placeholders
+        );
+        let mut query = sqlx::query_as::<_, ApiCollectEntity>(&sql).bind(trade_no);
         for status in vec_status {
             query = query.bind(status);
         }
-        let res= query
-            .fetch_one(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        let res = query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
         Ok(res)
     }
 
