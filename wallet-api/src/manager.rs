@@ -33,13 +33,14 @@ impl WalletManager {
         let base_path = infrastructure::log::format::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);
+
+
         // 现在的上报日志
         infrastructure::log::start_upload_scheduler(
             base_path,
             5 * 60,
             context.get_global_oss_client(),
-        )
-        .await?;
+        ).await?;
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
         handles.get_global_unconfirmed_msg_processor().start().await;
@@ -62,10 +63,9 @@ impl WalletManager {
             client_pub_key: GLOBAL_KEY.secret_pub_key(),
         };
         let res = backend.init_swap(&req).await?;
-        if let  Some(data) = res.data {
+        if let Some(data) = res.data {
             GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
         }
-
 
         tokio::spawn(async move {
             if let Err(e) = init_some_data().await {
@@ -84,26 +84,6 @@ impl WalletManager {
         &self,
     ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
         TaskQueueService::new(self.repo_factory.resource_repo()).get_task_queue_status().await
-    }
-
-    pub async fn init_log(
-        level: Option<&str>,
-        app_code: &str,
-        dirs: &Dirs,
-        sn: &str,
-    ) -> Result<(), crate::error::service::ServiceError> {
-        // 修改后的版本
-        let format = infrastructure::log::format::CustomEventFormat::new(
-            app_code.to_string(),
-            sn.to_string(),
-        );
-
-        let level = level.unwrap_or("info");
-
-        let path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
-        infrastructure::log::init_logger(format, path, level)?;
-
-        Ok(())
     }
 
     pub async fn set_frontend_notify_sender(
