@@ -5,7 +5,7 @@ mod wallet;
 
 pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
     wallet_utils::init_test_log();
-    let base_url = "https://walletapi.puke668.top";
+    let base_url = "https://test-api.puke668.top";
     Ok(BackendApi::new(Some(base_url.to_string()), None, create_aes_cryptor())?)
 }
 

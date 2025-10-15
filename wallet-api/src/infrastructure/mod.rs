@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod task_queue;
 
+pub mod asset_calc;
 pub mod inner_event;
 pub mod log;
 pub mod mqtt;
