@@ -1,4 +1,5 @@
 use crate::{
+    context::Context,
     domain::{
         api_wallet::{account::ApiAccountDomain, assets::ApiAssetsDomain},
         app::config::ConfigDomain,
@@ -26,7 +27,6 @@ use wallet_database::{
     },
 };
 use wallet_utils::unit;
-use crate::context::Context;
 
 #[derive(Debug, Clone)]
 pub struct AddressChainCode {
@@ -34,15 +34,13 @@ pub struct AddressChainCode {
     pub chain_code: String,
 }
 
-pub struct ApiAssetsService{
+pub struct ApiAssetsService {
     ctx: &'static Context,
 }
 
 impl ApiAssetsService {
     pub fn new(ctx: &'static Context) -> Self {
-        Self {
-            ctx
-        }
+        Self { ctx }
     }
 
     pub async fn add_assets(

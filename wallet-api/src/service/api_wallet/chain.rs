@@ -4,13 +4,15 @@ use wallet_database::repositories::api_wallet::{
     account::ApiAccountRepo, assets::ApiAssetsRepo, chain::ApiChainRepo,
 };
 
-use crate::{domain::coin::CoinDomain, response_vo::chain::ChainAssets};
+use crate::{context::Context, domain::coin::CoinDomain, response_vo::chain::ChainAssets};
 
-pub struct ApiChainService {}
+pub struct ApiChainService {
+    ctx: &'static Context,
+}
 
 impl ApiChainService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_chain_assets_list(
@@ -19,7 +21,7 @@ impl ApiChainService {
         account_id: Option<u32>,
         chain_list: HashMap<String, String>,
     ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         let token_currencies = CoinDomain::get_token_currencies_v2().await?;
 
         let mut account_addresses = Vec::<String>::new();
