@@ -16,7 +16,7 @@ impl WalletManager {
         page_size: i64,
     ) -> ReturnType<wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>>
     {
-        ApiCoinService::get_hot_coin_list(
+        ApiCoinService::new(self.ctx).get_hot_coin_list(
             wallet_address,
             Some(account_id),
             chain_code,

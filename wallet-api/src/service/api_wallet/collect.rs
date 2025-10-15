@@ -1,21 +1,24 @@
 use crate::{
-    domain::api_wallet::trans::collect::ApiCollectDomain, request::api_wallet::trans::ApiCollectReq,
+    context::Context, domain::api_wallet::trans::collect::ApiCollectDomain,
+    request::api_wallet::trans::ApiCollectReq,
 };
 use wallet_database::{
     entities::api_collect::ApiCollectEntity, repositories::api_wallet::collect::ApiCollectRepo,
 };
 
-pub struct CollectService {}
+pub struct CollectService {
+    ctx: &'static Context,
+}
 
 impl CollectService {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
     }
 
     pub async fn get_collect_order_list(
         &self,
     ) -> Result<Vec<ApiCollectEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         ApiCollectRepo::list_api_collect(&pool).await.map_err(|e| e.into())
     }
 
