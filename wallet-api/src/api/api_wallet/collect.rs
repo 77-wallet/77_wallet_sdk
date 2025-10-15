@@ -6,7 +6,7 @@ use crate::{
 
 impl WalletManager {
     pub async fn get_api_collect_order_list(&self) -> ReturnType<Vec<ApiCollectEntity>> {
-        CollectService::new().get_collect_order_list().await
+        CollectService::new(self.ctx).get_collect_order_list().await
     }
 
     pub async fn api_collect_order(
@@ -22,7 +22,7 @@ impl WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
-        CollectService::new()
+        CollectService::new(self.ctx)
             .collect_order(
                 from,
                 to,

@@ -2,12 +2,7 @@ use crate::{
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
     handles::Handles,
-    infrastructure::{
-        SharedCache,
-        process_fee_tx::ProcessFeeTxHandle,
-        process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
-        task_queue::task_manager::TaskManager,
-    },
+    infrastructure::SharedCache,
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use std::{
@@ -16,7 +11,7 @@ use std::{
 };
 use tokio::sync::RwLock;
 use tracing::log;
-use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
+use wallet_database::{entities::api_wallet::ApiWalletType, SqliteContext};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 
@@ -108,7 +103,7 @@ impl Context {
 
         Ok(Context {
             sn: sn.to_string(),
-            client_id : client_id.clone(),
+            client_id: client_id.clone(),
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
             aggregate_api,

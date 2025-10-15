@@ -1,4 +1,4 @@
-use crate::domain::coin::CoinDomain;
+use crate::{context::Context, domain::coin::CoinDomain};
 use wallet_database::{
     entities::coin::CoinId,
     repositories::{
@@ -7,11 +7,18 @@ use wallet_database::{
     },
 };
 
-pub struct ApiCoinService;
+pub struct ApiCoinService {
+    ctx: &'static Context,
+}
 
 impl ApiCoinService {
+    pub fn new(ctx: &'static Context) -> Self {
+        Self { ctx }
+    }
+
     // 热门币种列表 排除某个钱包已经添加的币种
     pub async fn get_hot_coin_list(
+        &self,
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
@@ -23,7 +30,7 @@ impl ApiCoinService {
         wallet_database::pagination::Pagination<crate::response_vo::coin::CoinInfo>,
         crate::error::service::ServiceError,
     > {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
 
         // 地址里列表
         let accounts =
@@ -56,14 +63,12 @@ impl ApiCoinService {
         .await?;
 
         let data = CoinDomain::merge_coin_to_list(list.data, keyword.is_some())?;
-
         let res = wallet_database::pagination::Pagination {
             page,
             page_size,
             total_count: list.total_count,
             data: data.0,
         };
-
         Ok(res)
     }
 }
