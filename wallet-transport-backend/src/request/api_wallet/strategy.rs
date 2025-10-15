@@ -10,6 +10,7 @@ pub struct Strategy {
 #[serde(rename_all = "camelCase")]
 pub struct ChainConfig {
     pub chain_code: String,
+    pub chain_address_type: Option<String>,
     pub normal_address: IndexAndAddress,
     pub risk_address: IndexAndAddress,
 }
@@ -19,7 +20,6 @@ pub struct ChainConfig {
 pub struct IndexAndAddress {
     pub index: Option<i32>,
     pub address: String,
-    pub chain_address_type: Option<String>,
 }
 
 impl Strategy {
