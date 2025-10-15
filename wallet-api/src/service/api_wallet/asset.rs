@@ -427,8 +427,8 @@ impl ApiAssetsService {
                 &pool, address, account_id, chain_code,
             )
             .await?
-            .ok_or(crate::error::business::BusinessError::Account(
-                crate::error::business::account::AccountError::NotFound(address.to_string()),
+            .ok_or(crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
             ))?;
             account.address
         } else {

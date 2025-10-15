@@ -44,8 +44,8 @@ async fn test_query_used_address_list() -> Result<(), wallet_transport_backend::
 
     let uid = "2b607a707cc4f0b4191bce26149e0310302905a59aed4c27b35d6429bfacd5d9";
     let chain_code = "tron";
-    let page_num = 0;
-    let page_size = 5;
+    let page_num = 1;
+    let page_size = 1;
     let req = AddressListReq::new(uid, chain_code, page_num, page_size);
     let res = backend_api.query_used_address_list(&req).await.unwrap();
     let res = serde_json::to_string(&res).unwrap();

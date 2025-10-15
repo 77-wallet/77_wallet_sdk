@@ -84,6 +84,7 @@ pub enum NotifyEvent {
     WithdrawNoPass(WithdrawNoPassFront),
     CollectFeeNotEnough(CollectFeeNotEnoughFront),
     Fee(FeeFront),
+    AddressRecovery,
 }
 
 impl NotifyEvent {
@@ -141,6 +142,7 @@ impl NotifyEvent {
             NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),
             NotifyEvent::CollectFeeNotEnough(_) => "COLLECT_FEE_NOT_ENOUGH".to_string(),
             NotifyEvent::Fee(_) => "FEE".to_string(),
+            NotifyEvent::AddressRecovery => "ADDRESS_RECOVERY".to_string(),
         }
     }
 }

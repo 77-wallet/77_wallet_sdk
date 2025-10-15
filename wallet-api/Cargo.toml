@@ -104,3 +104,5 @@ governor = "0.4"
 rust_decimal = { workspace = true }
 
 enum_dispatch = "0.3.1"
+
+rayon = { workspace = true }

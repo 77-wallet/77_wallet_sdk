@@ -28,7 +28,7 @@ use crate::{
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
-    messaging::notify::FrontendNotifyEvent,
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
 pub struct BackendTaskHandle;
 
@@ -453,6 +453,7 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
                 let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
 
+                tracing::info!("query address list req: {:?}", req);
                 if !status.bind_status {
                     tracing::info!("this wallet was not binded");
                     return Ok(());
@@ -464,6 +465,7 @@ impl EndpointHandler for SpecialHandler {
                     input_indices.push(address.index);
                 }
 
+                tracing::info!("-------------------- 1");
                 let password = ApiWalletDomain::get_passwd().await?;
                 if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
                     ApiAccountDomain::create_api_account(
@@ -478,7 +480,8 @@ impl EndpointHandler for SpecialHandler {
                     .await?;
                 }
 
-                if res.last {
+                tracing::info!("-------------------- 2");
+                if !res.last {
                     let page = res.number + 1;
                     let query_address_list_req =
                         AddressListReq::new(&req.uid, &req.chain_code, page, 1000);
@@ -489,6 +492,7 @@ impl EndpointHandler for SpecialHandler {
                     )?;
                     Tasks::new().push(BackendApiTask::BackendApi(query_address_list_task_data));
                 }
+                FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
             }
             _ => {
                 // 未知的 endpoint
