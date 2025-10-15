@@ -14,6 +14,7 @@ use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
 };
+use tokio::time::sleep;
 use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
@@ -27,6 +28,7 @@ use wallet_transport_backend::request::api_wallet::{
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
+use wallet_ecdh::GLOBAL_KEY;
 
 #[derive(Clone)]
 pub(crate) enum ProcessCollectTxCommand {
@@ -137,6 +139,11 @@ impl ProcessCollectTx {
         tracing::info!("starting process collect -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process collect tx -------------------------------");
@@ -277,7 +284,7 @@ impl ProcessCollectTx {
         chain_code: ChainCode,
         token_address: Option<String>,
         decimals: u8,
-    ) -> Result<String, crate::error::service::ServiceError> {
+    ) -> Result<String, ServiceError> {
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
         let account = adapter.balance(&owner_address, token_address).await?;
         let ammount = unit::format_to_string(account, decimals)?;
@@ -294,7 +301,7 @@ impl ProcessCollectTx {
         main_symbol: &str,
         token_address: Option<String>,
         decimals: u8,
-    ) -> Result<String, crate::error::service::ServiceError> {
+    ) -> Result<String, ServiceError> {
         let adapter = ApiChainAdapterFactory::new_transaction_adapter(chain_code).await?;
         let mut params = ApiBaseTransferReq::new(from, to, value, &chain_code.to_string());
         params.with_token(token_address, decimals, symbol);
@@ -319,7 +326,7 @@ impl ProcessCollectTx {
         &self,
         uid: &str,
         chain_code: &str,
-    ) -> Result<ChainConfig, crate::error::service::ServiceError> {
+    ) -> Result<ChainConfig, ServiceError> {
         // 查询策略
         let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let strategy = backend_api.query_collect_strategy(uid).await?;
@@ -340,13 +347,21 @@ impl ProcessCollectTx {
         if !pass {
             return Ok(());
         }
+        // check
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + req.value.as_str() + sn;
+        let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
+        if req.validate != digest {
+            return self.handle_collect_tx_failed(&req.trade_no, ServiceError::Parameter("validate failed".to_string())).await
+        }
+
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
         let mut params = ApiBaseTransferReq::new(
             &req.from_addr,
-            &req.to_addr.to_string(),
-            &req.value.to_string(),
-            &req.chain_code.to_string(),
+            &req.to_addr,
+            &req.value,
+            &req.chain_code,
         );
         let token_address = if coin.token_address.is_none() {
             None
@@ -434,6 +449,11 @@ impl ProcessCollectTxReport {
         tracing::info!("starting process collect tx report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process collect tx report -------------------------------");
@@ -602,6 +622,11 @@ impl ProcessFeeTxConfirmReport {
         );
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process collect tx confirm report -------------------------------");

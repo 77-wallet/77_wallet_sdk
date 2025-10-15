@@ -3,7 +3,7 @@ use crate::{consts::BASE_URL, response::BackendResponse};
 // const BASE_URL: &str = "https://api.hhxe43.com";
 // const BASE_URL: &str = "http://api.wallet.net";
 
-pub async fn send_request(
+pub(crate) async fn send_request(
     method: &str,
     base_url: Option<String>,
     path: &str,

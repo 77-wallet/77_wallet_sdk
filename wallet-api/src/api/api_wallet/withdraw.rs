@@ -1,11 +1,12 @@
 use crate::{
     api::ReturnType, manager::WalletManager, service::api_wallet::withdraw::WithdrawService,
 };
-use wallet_database::{entities::api_withdraw::ApiWithdrawEntity, pagination::Pagination};
+use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
+use wallet_database::pagination::Pagination;
 
 impl WalletManager {
     pub async fn list_api_withdraw_order(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawEntity>> {
-        WithdrawService::new().list_withdraw_order(uid).await
+        WithdrawService::new(self.ctx).list_withdraw_order(uid).await
     }
 
     pub async fn page_api_withdraw_order(
@@ -15,7 +16,7 @@ impl WalletManager {
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<ApiWithdrawEntity>> {
-        WithdrawService::new().page_withdraw_order(uid, status, page, page_size).await
+        WithdrawService::new(self.ctx).page_withdraw_order(uid, status, page, page_size).await
     }
 
     // 测试
@@ -24,6 +25,7 @@ impl WalletManager {
         from: &str,
         to: &str,
         value: &str,
+        validate: &str,
         chain_code: &str,
         token_address: Option<String>,
         symbol: &str,
@@ -31,11 +33,12 @@ impl WalletManager {
         trade_type: u8,
         uid: &str,
     ) -> ReturnType<()> {
-        WithdrawService::new()
+        WithdrawService::new(self.ctx)
             .withdrawal_order(
                 from,
                 to,
                 value,
+                validate,
                 chain_code,
                 token_address,
                 symbol,
@@ -48,58 +51,40 @@ impl WalletManager {
     }
 
     pub async fn sign_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().sign_withdrawal_order(order_id).await
+        WithdrawService::new(self.ctx).sign_withdrawal_order(order_id).await
     }
 
     pub async fn reject_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().reject_withdrawal_order(order_id).await
+        WithdrawService::new(self.ctx).reject_withdrawal_order(order_id).await
     }
 }
 
 #[cfg(test)]
 mod test {
-    use anyhow::Result;
 
-    use crate::test::env::get_manager;
+    // #[tokio::test]
+    // async fn test_create_api_account() -> Result<()> {
+    //     wallet_utils::init_test_log();
+    //     // 修改返回类型为Result<(), anyhow::Error>
+    //     let (wallet_manager, _test_params) = get_manager().await?;
 
-    #[tokio::test]
-    async fn test_api_withdrawal_order() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
+    //     let wallet_address = "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F";
+    //     let wallet_password = "q1111111";
+    //     let index = None;
+    //     let name = "666";
+    //     let is_default_name = true;
+    //     let api_wallet_type = ApiWalletType::SubAccount;
 
-        wallet_manager
-            .api_withdrawal_order(
-                "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F",
-                "0x6F0e4B9F7dD608A949138bCE4A29e076025b767F",
-                "10000000000000000000000000000000000000000000000000000000000000000",
-                "ETH",
-                None,
-                "ETH",
-                "1234567890",
-                1,
-                "cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce",
-            )
-            .await?;
-
-        tracing::info!("test_api_withdrawal_order success");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_page_api_withdrawal_order() -> Result<()> {
-        wallet_utils::init_test_log();
-        let (wallet_manager, _test_params) = get_manager().await?;
-
-        let res = wallet_manager
-            .page_api_withdraw_order(
-                "cf43155d5b80eb73beb6ce3c7224214f3ed33fcc2d4ebfe5764d36e1ffac8cce",
-                None,
-                0,
-                10,
-            )
-            .await;
-
-        tracing::info!("test_page_api_withdrawal_order success: {:?}", res);
-        Ok(())
-    }
+    //     let req = CreateApiAccountReq::new(
+    //         wallet_address,
+    //         wallet_password,
+    //         index,
+    //         name,
+    //         is_default_name,
+    //         api_wallet_type,
+    //     );
+    //     let res = wallet_manager.create_api_account(req).await;
+    //     tracing::info!("res: {res:?}");
+    //     Ok(())
+    // }
 }

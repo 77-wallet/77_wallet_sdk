@@ -1,160 +1,135 @@
-mod data;
-mod encryption;
-mod error;
-
-// 重新导出主要的加密功能
-pub use encryption::{
-    decrypt_with_aad, decrypt_with_shared_secret, encrypt_with_aad, encrypt_with_shared_secret,
+use crate::{
+    data::EncryptedData,
+    encryption::{decrypt_with_shared_secret, encrypt_with_shared_secret},
+    error::EncryptionError,
+    sign::{sign_with_derived_ecdsa, verify_derived_ecdsa_signature},
 };
-
-use anyhow::Result;
-use hkdf::Hkdf;
-use k256::sha2::Sha256;
 use k256::{
-    PublicKey, SecretKey,
-    ecdh::SharedSecret,
-    ecdsa::{Signature, SigningKey, signature::Signer},
+    ecdh, ecdh::SharedSecret, ecdsa::Signature, elliptic_curve::generic_array::GenericArray, PublicKey, Secp256k1,
+    SecretKey,
 };
+use once_cell::sync::Lazy;
+use std::{
+    str::FromStr,
+    sync::{Arc, RwLock},
+};
+use sha2::Digest;
+use uuid::Uuid;
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub mod data;
+pub mod encryption;
+pub mod error;
+pub mod sign;
+
+pub static GLOBAL_KEY: Lazy<Arc<ExKey>> = Lazy::new(|| {
+    let cache = Arc::new(ExKey::new());
+    cache
+});
+
+pub struct ExKey {
+    sn: RwLock<String>,
+    secret: SecretKey,
+    shared_secret: RwLock<Option<SharedSecret>>,
 }
 
-// 从 ECDH 共享密钥派生 ECDSA 密钥对
-pub fn derive_ecdsa_from_shared_secret(shared_secret: &SharedSecret) -> (SecretKey, PublicKey) {
-    // 1. 使用 HKDF 从共享密钥派生私钥
-    let shared_bytes = shared_secret.raw_secret_bytes();
-    let hkdf = Hkdf::<Sha256>::new(None, shared_bytes);
-
-    // 2. 派生 ECDSA 私钥
-    let mut private_key_bytes = [0u8; 32];
-    hkdf.expand(b"ecdsa_private_key", &mut private_key_bytes)
-        .unwrap();
-
-    // 3. 创建 ECDSA 密钥对
-    let secret_key = SecretKey::from_bytes(&private_key_bytes.into()).unwrap();
-    let public_key = secret_key.public_key();
-    (secret_key, public_key)
-}
-
-// 使用派生的 ECDSA 密钥进行签名
-pub fn sign_with_derived_ecdsa(message: &[u8], shared_secret: &SharedSecret) -> Result<Signature> {
-    let (secret_key, _) = derive_ecdsa_from_shared_secret(shared_secret);
-    // 创建 SigningKey
-    let signing_key = SigningKey::from_bytes(&secret_key.to_bytes())?;
-
-    // 生成签名
-    let (signature, _) = signing_key.sign(message);
-
-    Ok(signature)
-}
-
-// 验证使用派生 ECDSA 密钥的签名
-pub fn verify_derived_ecdsa_signature(
-    message: &[u8],
-    signature: &k256::ecdsa::Signature,
-    shared_secret: &k256::ecdh::SharedSecret,
-) -> bool {
-    use k256::ecdsa::signature::Verifier;
-
-    let (_, public_key) = derive_ecdsa_from_shared_secret(shared_secret);
-    let verifying_key = k256::ecdsa::VerifyingKey::from(public_key);
-    verifying_key.verify(message, signature).is_ok()
-}
-
-#[cfg(test)]
-mod tests {
-    use k256::ecdh::EphemeralSecret;
-    use rand_core::OsRng;
-
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl ExKey {
+    pub fn new() -> Self {
+        let alice_secret_key_hex =
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let alice_secret_key_bytes = hex::decode(alice_secret_key_hex).expect("Invalid hex string");
+        let alice_secret_key_array = GenericArray::clone_from_slice(&alice_secret_key_bytes);
+        let alice_secret = SecretKey::from_bytes(&alice_secret_key_array).unwrap();
+        ExKey {
+            sn: RwLock::new("".to_string()),
+            secret: alice_secret,
+            shared_secret: RwLock::new(None),
+        }
     }
 
-    #[test]
-    fn test_ecdh1() {
-        // 创建 secp256k1 对象
-        // let secp = Secp256k1::new();
-
-        // 1. 生成 Alice 和 Bob 的密钥对
-        // let (alice_secret, alice_public) = secp.generate_keypair(&mut thread_rng());
-        // let (bob_secret, bob_public) = secp.generate_keypair(&mut thread_rng());
-
-        // // 2. 计算共享密钥
-        // let alice_shared_secret = secp.ecdh(&bob_public, &alice_secret);
-        // let bob_shared_secret = secp.ecdh(&alice_public, &bob_secret);
-
-        // // 3. 打印结果
-        // println!("Alice's Shared Secret: {:?}", alice_shared_secret);
-        // println!("Bob's Shared Secret: {:?}", bob_shared_secret);
-
-        // // 验证共享密钥是否相同
-        // assert_eq!(alice_shared_secret, bob_shared_secret);
+    pub fn set_sn(&self, sn: &str) {
+        let mut w = self.sn.write().unwrap();
+        *w = sn.to_string();
     }
 
-    #[test]
-    fn test_ecdh_with_ephemeral_secret() {
-        // 使用 EphemeralSecret 进行 ECDH 交换
-
-        // Alice 生成临时密钥
-        let alice_secret = EphemeralSecret::random(&mut OsRng);
-        let alice_public = alice_secret.public_key();
-
-        // Bob 生成临时密钥
-        let bob_secret = EphemeralSecret::random(&mut OsRng);
-        let bob_public = bob_secret.public_key();
-
-        // 计算共享密钥
-        let alice_shared = alice_secret.diffie_hellman(&bob_public);
-        let bob_shared = bob_secret.diffie_hellman(&alice_public);
-
-        // 打印十六进制格式的共享密钥
-        println!(
-            "Alice's Shared Secret (hex): 0x{}",
-            hex::encode(alice_shared.raw_secret_bytes())
-        );
-        println!(
-            "Bob's Shared Secret (hex): 0x{}",
-            hex::encode(bob_shared.raw_secret_bytes())
-        );
-
-        // 验证共享密钥相同
-        assert_eq!(
-            alice_shared.raw_secret_bytes(),
-            bob_shared.raw_secret_bytes()
-        );
-
-        println!("Ephemeral ECDH 共享密钥生成成功！");
-        println!(
-            "共享密钥长度: {} 字节",
-            alice_shared.raw_secret_bytes().len()
-        );
+    pub fn sn(&self) -> String {
+        self.sn.read().unwrap().to_string()
     }
 
-    #[test]
-    fn test_derive_ecdsa_from_shared_secret() {
-        // 1. 生成 ECDH 共享密钥
-        let alice_secret = EphemeralSecret::random(&mut OsRng);
-        let bob_secret = EphemeralSecret::random(&mut OsRng);
-        let shared_secret1 = alice_secret.diffie_hellman(&bob_secret.public_key());
-        let shared_secret2 = bob_secret.diffie_hellman(&alice_secret.public_key());
+    pub fn secret_pub_key(&self) -> String {
+        let pub_key = self.secret.public_key();
+        pub_key.to_string()
+    }
 
-        // 5. 测试签名和验证
-        let message = b"Hello, ECDSA derived from ECDH!";
-        let signature = sign_with_derived_ecdsa(message, &shared_secret1).unwrap();
-        let is_valid = verify_derived_ecdsa_signature(message, &signature, &shared_secret2);
+    pub fn set_shared_secret(&self, s: &str) -> Result<(), crate::error::EncryptionError> {
+        // let pem_string = wallet_utils::base64_to_bytes(s)?;
+        let bob_public = PublicKey::from_str(s).map_err(|_| EncryptionError::InvalidPubKey)?;
+        let shared_key =
+            ecdh::diffie_hellman(self.secret.to_nonzero_scalar(), bob_public.as_affine());
+        tracing::info!("Got shared secret key: {:?}", hex::encode(shared_key.raw_secret_bytes()));
+        let mut w = self.shared_secret.write().map_err(|_| EncryptionError::LockPoisoned)?;
+        *w = Some(shared_key);
+        Ok(())
+    }
 
-        assert!(is_valid, "ECDSA 签名验证失败");
-        println!("ECDSA 签名验证成功！");
+    pub fn is_exchange_shared_secret(&self) -> Result<(), EncryptionError> {
+        let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
+        if r.is_some() { Ok(()) } else { Err(EncryptionError::InvalidSharedKey) }
+    }
 
-        // 6. 打印签名
-        println!(
-            "ECDSA Signature (hex): 0x{}",
-            hex::encode(signature.to_bytes())
-        );
+    pub fn encrypt(&self, plaintext: &[u8]) -> Result<EncryptedData, EncryptionError> {
+        let key = Uuid::new_v4().to_string();
+        let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
+        if let Some(shared_secret) = &*r {
+            encrypt_with_shared_secret(plaintext, &shared_secret, key.as_bytes())
+        } else {
+            Err(EncryptionError::InvalidSharedKey)
+        }
+    }
+
+    pub fn decrypt(&self, plaintext: &[u8], key: &[u8]) -> Result<Vec<u8>, EncryptionError> {
+        let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
+        if let Some(shared_secret) = &*r {
+            decrypt_with_shared_secret(plaintext, shared_secret, key)
+        } else {
+            Err(EncryptionError::InvalidSharedKey)
+        }
+    }
+
+    pub fn sign(&self, tag:&str, plaintext: &[u8]) -> Result<Vec<u8>, EncryptionError> {
+        let key = &plaintext[0..32];
+        tracing::info!(tag=tag, "Got signing key: {:?}", hex::encode(key));
+        let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
+        if let Some(shared_secret) = &*r {
+            let res = sign_with_derived_ecdsa(tag, plaintext, shared_secret, key)?;
+            Ok(res.to_vec())
+        } else {
+            Err(EncryptionError::InvalidSharedKey)
+        }
+    }
+
+    pub fn verify(&self, tag: &str, plaintext: &[u8], sig: &[u8]) -> Result<(), EncryptionError> {
+        let key = &plaintext[0..32];
+        tracing::info!(tag=tag, "verify, Got seed key: {:?}", hex::encode(key));
+        let signature = if sig.len() == 64 {
+            tracing::info!(tag=tag, "signature length 64");
+            tracing::info!(tag=tag, "msg hash = {}", hex::encode(sha2::Sha256::digest(plaintext)));
+            tracing::info!(tag=tag, "r = {}", hex::encode(&sig[..32]));
+            tracing::info!(tag=tag, "s = {}", hex::encode(&sig[32..]));
+            Signature::from_slice(sig).map_err(|_| EncryptionError::InvalidSignature)?
+        } else {
+            tracing::info!(tag=tag, "signature length 32");
+            Signature::from_der(sig).map_err(|_| EncryptionError::InvalidSignature)?
+        };
+
+        tracing::info!(tag=tag, "r = {}", signature.r());
+        tracing::info!(tag=tag, "s = {}", signature.s());
+
+
+        let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
+        if let Some(shared_secret) = &*r {
+            verify_derived_ecdsa_signature(tag, plaintext, &signature, shared_secret, key)
+        } else {
+            Err(EncryptionError::InvalidSharedKey)
+        }
     }
 }

@@ -12,10 +12,12 @@ use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
 };
+use tokio::time::sleep;
 use wallet_database::{
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
+use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
@@ -129,6 +131,11 @@ impl ProcessWithdrawTx {
         tracing::info!("starting process withdraw -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process withdraw tx -------------------------------");
@@ -200,14 +207,23 @@ impl ProcessWithdrawTx {
     ) -> Result<i32, ServiceError> {
         tracing::info!(id=%req.id,hash=%req.tx_hash,status=%req.status, "process_withdraw_single_tx ---------------------------------4");
 
+        // check
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + req.value.as_str() + sn;
+        let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
+        if req.validate != digest {
+            tracing::error!(raw_data=&raw_data,digest=%digest, "failed to process withdraw tx");
+            return self.handle_withdraw_tx_failed(&req.trade_no, ServiceError::Parameter("validate failed".to_string())).await
+        }
+
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
 
         let mut params = ApiBaseTransferReq::new(
             &req.from_addr,
-            &req.to_addr.to_string(),
-            &req.value.to_string(),
-            &req.chain_code.to_string(),
+            &req.to_addr,
+            &req.value,
+            &req.chain_code,
         );
         let token_address = if coin.token_address.is_none() {
             None
@@ -296,6 +312,11 @@ impl ProcessWithdrawTxReport {
         tracing::info!("starting process withdraw tx report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process withdraw tx report -------------------------------");
@@ -456,6 +477,11 @@ impl ProcessWithdrawTxConfirmReport {
         );
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process withdraw tx confirm report -------------------------------");

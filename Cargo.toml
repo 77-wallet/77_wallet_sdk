@@ -19,6 +19,7 @@ wallet-database = { version = "0.1.0", default-features = false, path = "wallet-
 wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree" }
+wallet-ecdh = { version = "0.1.0", default-features = false, path = "wallet-ecdh" }
 
 wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "3cbee9b4d501c518c5e1a7e4040959fbc3e1a428" }
 wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "3cbee9b4d501c518c5e1a7e4040959fbc3e1a428" }

@@ -1,6 +1,5 @@
 use crate::{
-    domain::api_wallet::trans::collect::ApiCollectDomain,
-    request::api_wallet::trans::ApiWithdrawReq,
+    domain::api_wallet::trans::collect::ApiCollectDomain, request::api_wallet::trans::ApiCollectReq,
 };
 use wallet_database::{
     entities::api_collect::ApiCollectEntity, repositories::api_wallet::collect::ApiCollectRepo,
@@ -25,25 +24,25 @@ impl CollectService {
         from: &str,
         to: &str,
         value: &str,
+        validate: &str,
         chain_code: &str,
         token_address: Option<String>,
         symbol: &str,
         trade_no: &str,
         trade_type: u8,
         uid: &str,
-        audit: u32,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let req = ApiWithdrawReq {
+        let req = ApiCollectReq {
             from: from.to_string(),
             to: to.to_string(),
             value: value.to_string(),
+            validate: validate.to_string(),
             chain_code: chain_code.to_string(),
             token_address,
             symbol: symbol.to_string(),
             trade_no: trade_no.to_string(),
             trade_type,
             uid: uid.to_string(),
-            audit: audit,
         };
         ApiCollectDomain::collect_v2(&req).await?;
         Ok(())

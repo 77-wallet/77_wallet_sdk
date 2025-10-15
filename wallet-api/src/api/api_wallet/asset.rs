@@ -15,14 +15,14 @@ impl WalletManager {
         account_id: Option<u32>,
         chain_code: Option<String>,
     ) -> ReturnType<ApiAccountChainAssetList> {
-        ApiAssetsService::new()
+        ApiAssetsService::new(self.ctx)
             .get_api_assets_list(wallet_address, account_id, chain_code, None)
             .await
     }
 
     // api钱包添加资产
     pub async fn api_add_assets(&self, req: crate::request::coin::AddCoinReq) -> ReturnType<()> {
-        ApiAssetsService::add_assets(req).await
+        ApiAssetsService::new(self.ctx).add_assets(req).await
     }
 
     pub async fn api_remove_assets(
@@ -31,7 +31,7 @@ impl WalletManager {
         account_id: Option<u32>,
         chain_list: response_vo::chain::ChainList,
     ) -> ReturnType<()> {
-        ApiAssetsService::remove_assets(wallet_address, account_id, chain_list, None).await
+        ApiAssetsService::new(self.ctx).remove_assets(wallet_address, account_id, chain_list, None).await
     }
 
     // 已添加的币种列表
@@ -43,7 +43,7 @@ impl WalletManager {
         keyword: Option<&str>,
         is_multisig: Option<bool>,
     ) -> ReturnType<crate::response_vo::coin::CoinInfoList> {
-        ApiAssetsService::get_added_coin_list(address, account_id, chain_code, keyword, is_multisig)
+        ApiAssetsService::new(self.ctx).get_added_coin_list(address, account_id, chain_code, keyword, is_multisig)
             .await
     }
 
@@ -54,7 +54,7 @@ impl WalletManager {
         account_id: Option<u32>,
         symbol: Vec<String>,
     ) -> ReturnType<()> {
-        let res = ApiAssetsService::new()
+        let res = ApiAssetsService::new(self.ctx)
             .sync_assets_by_wallet_backend(wallet_address, account_id, symbol)
             .await;
 
@@ -73,7 +73,7 @@ impl WalletManager {
         chain_code: String,
         token_address: String,
     ) -> ReturnType<Balance> {
-        ApiAssetsService::new().chain_balance(&address, &chain_code, &token_address).await
+        ApiAssetsService::new(self.ctx).chain_balance(&address, &chain_code, &token_address).await
     }
 
     // 资产列表
@@ -84,7 +84,7 @@ impl WalletManager {
         chain_code: Option<String>,
         is_multisig: Option<bool>,
     ) -> ReturnType<ApiAccountChainAssetList> {
-        ApiAssetsService::get_account_chain_assets(address, account_id, chain_code, is_multisig)
+        ApiAssetsService::new(self.ctx).get_account_chain_assets(address, account_id, chain_code, is_multisig)
             .await
     }
 
@@ -95,7 +95,7 @@ impl WalletManager {
         wallet_address: &str,
         chain_code: Option<String>,
     ) -> ReturnType<GetAccountAssetsRes> {
-        ApiAssetsService::get_account_assets(account_id, wallet_address, chain_code).await
+        ApiAssetsService::new(self.ctx).get_account_assets(account_id, wallet_address, chain_code).await
     }
 
     pub async fn get_api_assets(
@@ -106,7 +106,7 @@ impl WalletManager {
         token_address: Option<String>,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
         let token_address = token_address.filter(|s| !s.is_empty());
-        ApiAssetsService::new().detail(address, account_id, chain_code, token_address).await
+        ApiAssetsService::new(self.ctx).detail(address, account_id, chain_code, token_address).await
     }
 }
 

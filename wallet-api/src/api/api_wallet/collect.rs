@@ -14,6 +14,7 @@ impl WalletManager {
         from: &str,
         to: &str,
         value: &str,
+        validate: &str,
         chain_code: &str,
         token_address: Option<String>,
         symbol: &str,
@@ -26,13 +27,13 @@ impl WalletManager {
                 from,
                 to,
                 value,
+                validate,
                 chain_code,
                 token_address,
                 symbol,
                 trade_no,
                 trade_type,
                 uid,
-                1,
             )
             .await
     }

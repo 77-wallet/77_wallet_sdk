@@ -2,7 +2,12 @@ use crate::{
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
     handles::Handles,
-    infrastructure::SharedCache,
+    infrastructure::{
+        SharedCache,
+        process_fee_tx::ProcessFeeTxHandle,
+        process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
+        task_queue::task_manager::TaskManager,
+    },
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use std::{
@@ -37,6 +42,7 @@ pub(crate) async fn init_context<'a>(
 
 #[derive(Debug)]
 pub struct Context {
+    sn: String,
     client_id: String,
     dirs: Arc<Dirs>,
     aggregate_api: String,
@@ -79,13 +85,15 @@ impl Context {
         #[cfg(feature = "prod")]
         let aggregate_api = config.aggregate_api.prod_url;
 
-        log::info!("api_url: {}", api_url);
-        let headers_opt = Some(HashMap::from([("clientId".to_string(), client_id.clone())]));
+        log::info!("api_url: {}, client_id: {}", api_url, client_id);
+        let mut headers_opt = HashMap::new();
+        headers_opt.insert("clientId".to_string(), client_id.clone());
+        headers_opt.insert("AW-SEC-ID".to_string(), sn.to_string());
         let aes_cbc_cryptor =
             wallet_utils::cbc::AesCbcCryptor::new(&config.crypto.aes_key, &config.crypto.aes_iv);
         let backend_api = wallet_transport_backend::api::BackendApi::new(
             Some(api_url.to_string()),
-            headers_opt,
+            Some(headers_opt),
             aes_cbc_cryptor,
         )?;
 
@@ -99,7 +107,8 @@ impl Context {
         let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
         Ok(Context {
-            client_id: client_id.clone(),
+            sn: sn.to_string(),
+            client_id : client_id.clone(),
             dirs: Arc::new(dirs),
             backend_api: Arc::new(backend_api),
             aggregate_api,
@@ -113,6 +122,10 @@ impl Context {
             current_wallet_type: Arc::new(RwLock::new(ApiWalletType::InvalidValue)),
             handles: Mutex::new(Weak::new()),
         })
+    }
+
+    pub fn get_sn(&self) -> &str {
+        &self.sn
     }
 
     pub fn get_client_id(&self) -> &str {

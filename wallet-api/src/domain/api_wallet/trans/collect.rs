@@ -1,23 +1,35 @@
 use crate::{
-    domain::api_wallet::adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
-    request::api_wallet::trans::{ApiBaseTransferReq, ApiWithdrawReq},
+    domain::{
+        api_wallet::{
+            adapter_factory::{API_ADAPTER_FACTORY, ApiChainAdapterFactory},
+            trans::ApiTransDomain,
+            wallet::ApiWalletDomain,
+        },
+        chain::transaction::ChainTransDomain,
+        coin::CoinDomain,
+    },
+    messaging::notify::{api_wallet::WithdrawFront, event::NotifyEvent, FrontendNotifyEvent},
+    request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq, ApiWithdrawReq},
 };
 use wallet_database::{
-    entities::api_collect::ApiCollectStatus,
-    repositories::api_wallet::{collect::ApiCollectRepo, wallet::ApiWalletRepo},
+    entities::{api_collect::ApiCollectStatus, api_wallet::ApiWalletType},
+    repositories::{
+        api_wallet::collect::ApiCollectRepo, api_wallet::wallet::ApiWalletRepo, api_wallet::withdraw::ApiWithdrawRepo,
+    },
 };
 use wallet_transport_backend::request::api_wallet::{
     strategy::ChainConfig,
-    transaction::{TransAckType, TransEventAckReq, TransType},
+    transaction::{ServiceFeeUploadReq, TransAckType, TransEventAckReq, TransType},
 };
 use wallet_types::chain::chain::ChainCode;
-use wallet_utils::unit;
+use wallet_utils::{conversion, unit};
+use crate::request::api_wallet::trans::ApiCollectReq;
 
 pub struct ApiCollectDomain {}
 
 impl ApiCollectDomain {
     pub(crate) async fn collect_v2(
-        req: &ApiWithdrawReq,
+        req: &ApiCollectReq,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = ApiWalletRepo::find_by_uid(&pool, &req.uid).await?.ok_or(
@@ -35,6 +47,7 @@ impl ApiCollectDomain {
                 &req.from,
                 &req.to,
                 &req.value,
+                &req.validate,
                 &req.chain_code,
                 req.token_address.clone(),
                 &req.symbol,

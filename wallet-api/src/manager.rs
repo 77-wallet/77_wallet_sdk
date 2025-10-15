@@ -1,7 +1,7 @@
 use crate::{
     api::ReturnType,
-    context::{Context, init_context},
-    data::do_some_init,
+    context::{init_context, Context},
+    data::init_some_data,
     dirs::Dirs,
     domain,
     handles::Handles,
@@ -12,6 +12,8 @@ use crate::{
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use wallet_database::factory::RepositoryFactory;
+use wallet_ecdh::GLOBAL_KEY;
+use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 
 #[derive(Debug, Clone)]
 pub struct WalletManager {
@@ -30,6 +32,7 @@ impl WalletManager {
     ) -> Result<WalletManager, crate::error::service::ServiceError> {
         let base_path = infrastructure::log::format::LogBasePath(dir.get_log_dir());
         let context = init_context(sn, device_type, dir, sender, config).await?;
+        GLOBAL_KEY.set_sn(sn);
         // 现在的上报日志
         infrastructure::log::start_upload_scheduler(
             base_path,
@@ -50,7 +53,27 @@ impl WalletManager {
 
     pub async fn init(&self, req: crate::request::devices::InitDeviceReq) -> ReturnType<()> {
         DeviceService::new(self.repo_factory.resource_repo()).init_device(req).await?;
-        self.init_data().await.into()
+        // TODO ： 某个版本进行取消,
+        domain::app::DeviceDomain::check_wallet_password_is_null().await?;
+
+        let backend = self.ctx.get_global_backend_api();
+        let req = ApiInitSwapReq {
+            sn: self.ctx.get_sn().to_string(),
+            client_pub_key: GLOBAL_KEY.secret_pub_key(),
+        };
+        let res = backend.init_swap(&req).await?;
+        if let  Some(data) = res.data {
+            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+        }
+
+
+        tokio::spawn(async move {
+            if let Err(e) = init_some_data().await {
+                tracing::error!("init_data error: {}", e);
+            };
+        });
+
+        Ok(())
     }
 
     pub async fn process_jpush_message(&self, message: &str) -> ReturnType<()> {
@@ -61,19 +84,6 @@ impl WalletManager {
         &self,
     ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
         TaskQueueService::new(self.repo_factory.resource_repo()).get_task_queue_status().await
-    }
-
-    async fn init_data(&self) -> Result<(), crate::error::service::ServiceError> {
-        // TODO ： 某个版本进行取消,
-        domain::app::DeviceDomain::check_wallet_password_is_null().await?;
-
-        tokio::spawn(async move {
-            if let Err(e) = do_some_init().await {
-                tracing::error!("init_data error: {}", e);
-            };
-        });
-
-        Ok(())
     }
 
     pub async fn init_log(

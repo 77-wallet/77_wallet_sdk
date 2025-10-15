@@ -10,6 +10,7 @@ use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName},
     factory::RepositoryFactory,
 };
+use wallet_ecdh::GLOBAL_KEY;
 
 #[async_trait::async_trait]
 impl TaskTrait for InitializationTask {
@@ -68,6 +69,7 @@ impl TaskTrait for InitializationTask {
             }
             InitializationTask::InitMqtt => {
                 tracing::debug!("init mqtt start");
+                GLOBAL_KEY.is_exchange_shared_secret()?;
                 MqttDomain::init().await?;
                 tracing::debug!("init mqtt end");
             }

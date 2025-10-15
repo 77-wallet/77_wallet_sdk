@@ -153,6 +153,7 @@ impl ApiCollectDao {
                 from_addr,
                 to_addr,
                 value,
+                validate,
                 chain_code,
                 token_addr,
                 symbol,
@@ -168,7 +169,7 @@ impl ApiCollectDao {
                 created_at,
                 updated_at)
             VALUES
-                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         "#;
 
         let res = sqlx::query(sql)
@@ -177,6 +178,7 @@ impl ApiCollectDao {
             .bind(&api_withdraw.from_addr)
             .bind(&api_withdraw.to_addr)
             .bind(&api_withdraw.value)
+            .bind(&api_withdraw.validate)
             .bind(&api_withdraw.chain_code)
             .bind(&api_withdraw.token_addr)
             .bind(&api_withdraw.symbol)
@@ -235,7 +237,7 @@ impl ApiCollectDao {
             UPDATE api_collect
             SET
                 status = $2,
-                 notes = $3,
+                notes = $3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1
         "#;

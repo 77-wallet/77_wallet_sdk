@@ -18,7 +18,7 @@ impl TransferFeeService {
         &self,
         uid: &str,
     ) -> Result<Vec<ApiFeeEntity>, crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let pool = self.ctx.get_global_sqlite_pool()?;
         ApiFeeRepo::list_api_fee(&pool, uid).await.map_err(|e| e.into())
     }
 
@@ -27,6 +27,7 @@ impl TransferFeeService {
         from: &str,
         to: &str,
         value: &str,
+        validate: &str,
         chain_code: &str,
         token_address: Option<String>,
         symbol: &str,
@@ -38,6 +39,7 @@ impl TransferFeeService {
             from: from.to_string(),
             to: to.to_string(),
             value: value.to_string(),
+            validate: validate.to_string(),
             chain_code: chain_code.to_string(),
             token_address,
             symbol: symbol.to_string(),
