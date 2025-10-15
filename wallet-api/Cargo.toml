@@ -81,6 +81,7 @@ cfg-if = { workspace = true }
 # log
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-android = { workspace = true }
 
 # rust_decimal = { version = "1.35.0", features = ["maths"] }
 

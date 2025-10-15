@@ -1,8 +1,5 @@
 use tokio_stream::StreamExt as _;
-use wallet_api::{
-    dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent,
-    test::env::get_manager,
-};
+use wallet_api::{dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent, test::env::get_manager, xlog};
 
 // create wallet
 #[tokio::main]
@@ -36,5 +33,5 @@ async fn _log_report() {
         std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(client_id);
 
     let dirs = Dirs::new(&storage_dir.to_string_lossy()).unwrap();
-    WalletManager::init_log(None, "66a7577a2b2f3b0130375e6f", &dirs, "9528").await.unwrap();
+    xlog::init_log(None, "66a7577a2b2f3b0130375e6f", &dirs, "9528").await.unwrap();
 }

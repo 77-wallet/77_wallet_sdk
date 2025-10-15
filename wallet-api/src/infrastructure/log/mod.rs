@@ -16,7 +16,7 @@ use tokio::{
     io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncSeekExt as _, BufReader},
     time::interval,
 };
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 use wallet_oss::oss_client;
 
 // 初始化日志。
@@ -30,12 +30,29 @@ pub fn init_logger(
 
     let env_filter = EnvFilter::new(log_level);
 
-    tracing_subscriber::fmt()
+    let fmt_layer = fmt::layer()
         .with_writer(non_blocking)
         .with_ansi(false)
-        .with_env_filter(env_filter)
         .event_format(format)
-        .init();
+        .with_filter(env_filter);
+
+    // 构建总的 subscriber
+    #[cfg(target_os = "android")]
+    {
+        let android_layer = tracing_android::layer("plugin").unwrap();
+        let subscriber = Registry::default().with(android_layer).with(fmt_layer);
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("Failed to set global tracing subscriber");
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let subscriber = Registry::default().with(fmt_layer);
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("Failed to set global tracing subscriber");
+    }
 
     std::mem::forget(guard);
     Ok(())
