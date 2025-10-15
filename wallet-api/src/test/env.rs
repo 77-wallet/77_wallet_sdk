@@ -46,6 +46,7 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();
+    wallet_manager.init(test_params.device_req.clone()).await?;
 
     Ok((wallet_manager, test_params))
 }

@@ -58,4 +58,12 @@ impl StrategyService {
         let res = backend_api.query_withdrawal_strategy(&uid).await?;
         Ok(res)
     }
+
+    pub async fn query_api_wallet_configs(
+        self,
+    ) -> Result<serde_json::Value, crate::error::service::ServiceError> {
+        let backend_api = self.ctx.get_global_backend_api();
+        let res = backend_api.query_api_wallet_configs().await?;
+        Ok(res)
+    }
 }
