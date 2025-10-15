@@ -585,13 +585,14 @@ impl AccountService {
     }
 
     pub async fn current_chain_address(
-        uid: String,
+        address: String,
         account_id: u32,
         chain_code: &str,
     ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let res = AccountRepo::current_chain_address(uid, account_id, chain_code, &pool).await?;
+        let res =
+            AccountRepo::current_chain_address(address, account_id, chain_code, &pool).await?;
 
         let result = res
             .into_iter()

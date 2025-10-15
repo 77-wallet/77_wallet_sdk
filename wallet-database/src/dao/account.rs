@@ -444,7 +444,7 @@ impl AccountEntity {
     }
 
     pub async fn current_chain_address<'a, E>(
-        uid: String,
+        address: String,
         account_id: u32,
         chain_code: &str,
         executor: E,
@@ -454,7 +454,7 @@ impl AccountEntity {
     {
         DynamicQueryBuilder::new("SELECT account.* FROM account")
             .inner_join("wallet ON account.wallet_address = wallet.address")
-            .and_where_eq("wallet.uid", uid)
+            .and_where_eq("wallet.address", address)
             .and_where_eq("account.account_id", account_id)
             .and_where_eq("account.chain_code", chain_code)
             .fetch_all(executor)
