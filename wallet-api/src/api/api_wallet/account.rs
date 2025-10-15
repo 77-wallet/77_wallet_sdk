@@ -75,6 +75,14 @@ impl WalletManager {
     pub async fn address_used(&self, chain_code: &str, index: i32, uid: &str) -> ReturnType<()> {
         ApiAccountService::new(self.ctx).address_used(chain_code, index, uid).await
     }
+
+    // pub async fn get_api_account_list(
+    //     &self,
+    //     wallet_address: Option<&str>,
+    //     account_id: Option<u32>,
+    // ) -> ReturnType<Vec<ApiAccountEntity>> {
+    //     ApiAccountService::new(self.ctx).get_account_list(wallet_address, account_id).await
+    // }
 }
 
 #[cfg(test)]

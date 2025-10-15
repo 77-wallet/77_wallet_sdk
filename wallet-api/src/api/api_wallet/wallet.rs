@@ -304,7 +304,7 @@ mod test {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let uid = "d6fbab8189a1258696b716f20c6feb0165d03d0cd9512d338cd383f756938f8f";
+        let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
         let res = wallet_manager.query_uid_bind_info(uid).await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
@@ -318,8 +318,10 @@ mod test {
         let _ = wallet_manager.set_passwd_cache("q1111111").await;
 
         let sn = &_test_params.device_req.sn;
-        let key = "M1971511237015650304";
-        let merchain_id = "68be7271a7307e042404e276";
+        // let key = "M1971511237015650304";
+        let key = "2956f07a24d94fb6b6426abcfeaca2be";
+        // let merchain_id = "68be7271a7307e042404e276";
+        let merchain_id = "68db7992830c2a74f7862202";
         let subaccount_uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
         let withdrawal_uid = "2b607a707cc4f0b4191bce26149e0310302905a59aed4c27b35d6429bfacd5d9";
 

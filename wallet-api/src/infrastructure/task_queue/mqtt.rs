@@ -1,12 +1,12 @@
 use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use crate::{
-    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
-    messaging::mqtt::topics::{
-        self,
+    infrastructure::task_queue::{
+        mqtt_api::ApiMqttStruct,
+        task::{TaskTrait, task_type::TaskType},
     },
+    messaging::mqtt::topics::{self},
 };
-use crate::infrastructure::task_queue::mqtt_api::ApiMqttStruct;
 
 pub(crate) enum MqttTask {
     OrderMultiSignAccept(topics::OrderMultiSignAccept),
@@ -26,8 +26,6 @@ pub(crate) enum MqttTask {
 
     ApiMqttStruct(ApiMqttStruct),
 }
-
-
 
 #[async_trait::async_trait]
 impl TaskTrait for MqttTask {
@@ -141,4 +139,3 @@ impl TaskTrait for MqttTask {
         self
     }
 }
-

@@ -1,11 +1,10 @@
-use wallet_ecdh::GLOBAL_KEY;
 use crate::request::api_wallet::audit::*;
+use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
-    api::BackendApi, consts::endpoint::api_wallet::TRANS_AUDIT, response::BackendResponse,
+    api::BackendApi, api_request::ApiBackendRequest, api_response::ApiBackendResponse,
+    consts::endpoint::api_wallet::TRANS_AUDIT, response::BackendResponse,
 };
-use crate::api_request::ApiBackendRequest;
-use crate::api_response::ApiBackendResponse;
 
 impl BackendApi {
     // 交易记录恢复
@@ -13,8 +12,8 @@ impl BackendApi {
         &self,
         req: &AuditResultReportReq,
     ) -> Result<Option<()>, crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
-        let api_req = ApiBackendRequest::new( req)?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
+        let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(TRANS_AUDIT).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
         res.process(TRANS_AUDIT)

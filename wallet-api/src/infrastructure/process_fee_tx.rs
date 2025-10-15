@@ -1,5 +1,9 @@
 use crate::{
-    domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
+    domain::{
+        api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
+        chain::TransferResp,
+        coin::CoinDomain,
+    },
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
@@ -7,8 +11,8 @@ use chrono::TimeDelta;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
+    time::sleep,
 };
-use tokio::time::sleep;
 use wallet_database::{
     entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
     repositories::api_wallet::fee::ApiFeeRepo,
@@ -17,7 +21,6 @@ use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::transaction::{
     TransAckType, TransEventAckReq, TransStatus, TransType, TxExecReceiptUploadReq,
 };
-use crate::domain::api_wallet::wallet::ApiWalletDomain;
 
 #[derive(Clone)]
 pub(crate) enum ProcessFeeTxCommand {
@@ -197,16 +200,17 @@ impl ProcessFeeTx {
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + req.value.as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         if req.validate != digest {
-            return self.handle_fee_tx_failed(&req.trade_no, ServiceError::Parameter("validate failed".to_string())).await
+            return self
+                .handle_fee_tx_failed(
+                    &req.trade_no,
+                    ServiceError::Parameter("validate failed".to_string()),
+                )
+                .await;
         }
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
-        let mut params = ApiBaseTransferReq::new(
-            &req.from_addr,
-            &req.to_addr,
-            &req.value,
-            &req.chain_code,
-        );
+        let mut params =
+            ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
         let token_address = if coin.token_address.is_none() {
             None
         } else {
@@ -216,8 +220,7 @@ impl ProcessFeeTx {
         params.with_token(token_address, coin.decimals, &coin.symbol);
 
         let passwd = ApiWalletDomain::get_passwd().await?;
-        let transfer_req =
-            ApiTransferReq { base: params, password: passwd };
+        let transfer_req = ApiTransferReq { base: params, password: passwd };
 
         // 发交易
         let tx_resp = ApiTransDomain::transfer(transfer_req).await;
@@ -263,7 +266,13 @@ impl ProcessFeeTx {
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed, &err.to_string()).await?;
+        ApiFeeRepo::update_api_fee_status(
+            &pool,
+            trade_no,
+            ApiFeeStatus::SendingTxFailed,
+            &err.to_string(),
+        )
+        .await?;
         // 上报交易不影响交易偏移量计算
         let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
         Ok(())
@@ -368,10 +377,7 @@ impl ProcessFeeTxReport {
         Ok(())
     }
 
-    async fn process_fee_single_tx_report(
-        &self,
-        req: ApiFeeEntity,
-    ) -> Result<i32, ServiceError> {
+    async fn process_fee_single_tx_report(&self, req: ApiFeeEntity) -> Result<i32, ServiceError> {
         tracing::info!(trade_no=%req.trade_no, "process fee tx report -------------------------------");
         // 判断超时时间
         let now = chrono::Utc::now();

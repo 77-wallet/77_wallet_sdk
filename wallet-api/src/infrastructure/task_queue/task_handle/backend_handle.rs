@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use std::{collections::HashSet, sync::Arc};
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use wallet_database::{
     entities::api_wallet::ApiWalletType,
     repositories::{
@@ -392,7 +394,8 @@ impl EndpointHandler for SpecialHandler {
                 ChainDomain::upsert_multi_chain_than_toggle(input).await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
-                let body : HashMap<String, String> = wallet_utils::serde_func::serde_from_value(body)?;
+                let body: HashMap<String, String> =
+                    wallet_utils::serde_func::serde_from_value(body)?;
                 let app_version_code = body.get("appVersionCode");
                 let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
                 tracing::info!("API_WALLET_CHAIN_LIST ------------- 1");

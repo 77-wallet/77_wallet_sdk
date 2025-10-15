@@ -16,7 +16,7 @@ impl StrategyService {
     pub async fn update_collect_strategy(
         self,
         uid: &str,
-        threshold: f64,
+        threshold: u32,
         chain_config: Vec<ChainConfig>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
@@ -39,7 +39,7 @@ impl StrategyService {
     pub async fn update_withdrawal_strategy(
         self,
         uid: &str,
-        threshold: f64,
+        threshold: u32,
         chain_config: Vec<ChainConfig>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();

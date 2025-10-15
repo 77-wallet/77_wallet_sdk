@@ -10,7 +10,7 @@ impl WalletManager {
     pub async fn update_collect_strategy(
         &self,
         uid: &str,
-        threshold: f64,
+        threshold: u32,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
         StrategyService::new(self.ctx).update_collect_strategy(uid, threshold, chain_config).await
@@ -23,7 +23,7 @@ impl WalletManager {
     pub async fn update_withdrawal_strategy(
         &self,
         uid: &str,
-        threshold: f64,
+        threshold: u32,
         chain_config: Vec<ChainConfig>,
     ) -> ReturnType<()> {
         StrategyService::new(self.ctx)
@@ -54,7 +54,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
-        let threshold = 1.1;
+        let threshold = 1;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
             normal_address: IndexAndAddress {
@@ -92,7 +92,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let uid = "fbed6396c5a6249bb19af98b101701427be4d14a0721fd9258c3e495fb848e35";
-        let threshold = 1.1;
+        let threshold = 1;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
             normal_address: IndexAndAddress {

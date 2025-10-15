@@ -1,7 +1,7 @@
 use crate::{
     consts::endpoint::{
         api_wallet::{
-            APPID_IMPORT_WALLET, APP_ID_BIND, APP_ID_UNBIND, INIT_API_WALLET, QUERY_UID_BIND_INFO,
+            APP_ID_BIND, APP_ID_UNBIND, APPID_IMPORT_WALLET, INIT_API_WALLET, QUERY_UID_BIND_INFO,
             QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
         },
         old_wallet::OLD_KEYS_UID_CHECK,
@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
 
 use crate::{
-    api::BackendApi, api_request::ApiBackendRequest, api_response::ApiBackendResponse,
-    Error::Backend,
+    Error::Backend, api::BackendApi, api_request::ApiBackendRequest,
+    api_response::ApiBackendResponse,
 };
 
 impl BackendApi {
@@ -43,7 +43,7 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(APP_ID_BIND).json(api_req).send::<ApiBackendResponse>().await?;
-        let opt : Option<()> = res.process(APP_ID_BIND)?;
+        let opt: Option<()> = res.process(APP_ID_BIND)?;
         Ok(())
     }
 
@@ -54,7 +54,7 @@ impl BackendApi {
         let res =
             self.client.post(APP_ID_UNBIND).json(api_req).send::<ApiBackendResponse>().await?;
 
-        let opt : Option<()> = res.process(APP_ID_UNBIND)?;
+        let opt: Option<()> = res.process(APP_ID_UNBIND)?;
         Ok(())
     }
 
@@ -65,7 +65,7 @@ impl BackendApi {
         let res =
             self.client.post(INIT_API_WALLET).json(api_req).send::<ApiBackendResponse>().await?;
 
-        let opt : Option<()> = res.process(INIT_API_WALLET)?;
+        let opt: Option<()> = res.process(INIT_API_WALLET)?;
         Ok(())
     }
 

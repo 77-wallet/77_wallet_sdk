@@ -1,5 +1,5 @@
-use wallet_transport::errors::TransportError;
 use wallet_ecdh::error::EncryptionError;
+use wallet_transport::errors::TransportError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

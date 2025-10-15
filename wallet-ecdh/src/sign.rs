@@ -1,13 +1,13 @@
 use crate::error::EncryptionError;
 use hkdf::Hkdf;
 use k256::{
-    ecdh::SharedSecret, ecdsa::{
-        signature::{Signer, Verifier}, Signature,
-        SigningKey,
+    PublicKey, SecretKey,
+    ecdh::SharedSecret,
+    ecdsa::{
+        Signature, SigningKey,
+        signature::{Signer, Verifier},
     },
     sha2::Sha256,
-    PublicKey,
-    SecretKey,
 };
 use sha2::Digest;
 
@@ -28,7 +28,7 @@ fn derive_ecdsa_from_shared_secret(
 
     // 3. 创建 ECDSA 密钥对
     let secret_key = SecretKey::from_bytes(&private_key_bytes.into())?;
-    tracing::info!(tag=tag, "Got sign secret key: {:?}", hex::encode(secret_key.to_bytes()));
+    tracing::info!(tag = tag, "Got sign secret key: {:?}", hex::encode(secret_key.to_bytes()));
     let public_key = secret_key.public_key();
     Ok((secret_key, public_key))
 }
@@ -49,7 +49,7 @@ pub(crate) fn sign_with_derived_ecdsa(
     let (signature, _) = signing_key.sign(message);
 
     tracing::info!(
-        tag=tag,
+        tag = tag,
         "Got sign signature: {:?}, {}",
         signature.to_bytes(),
         signature.to_bytes().len()
@@ -69,12 +69,12 @@ pub(crate) fn verify_derived_ecdsa_signature(
 ) -> Result<(), EncryptionError> {
     let (_, public_key) = derive_ecdsa_from_shared_secret(tag, shared_secret, key)?;
     let verifying_key = k256::ecdsa::VerifyingKey::from(public_key);
-    tracing::info!(tag=tag, "verifying_key: {:?}", verifying_key.to_sec1_bytes());
+    tracing::info!(tag = tag, "verifying_key: {:?}", verifying_key.to_sec1_bytes());
     let res = verifying_key.verify(message, signature);
     match res {
         Ok(()) => Ok(()),
         Err(err) => {
-            tracing::error!(tag=tag, "failed to verify signature, error: {:?}", err);
+            tracing::error!(tag = tag, "failed to verify signature, error: {:?}", err);
             Err(EncryptionError::SignatureError(err))
         }
     }
@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_ecdsa_from_shared_secret() ->anyhow::Result<()> {
+    fn test_derive_ecdsa_from_shared_secret() -> anyhow::Result<()> {
         // 1. 生成 ECDH 共享密钥
         let alice_secret = EphemeralSecret::random(&mut OsRng);
         let bob_secret = EphemeralSecret::random(&mut OsRng);
@@ -154,7 +154,8 @@ mod tests {
         let message = b"Hello, ECDSA derived from ECDH!";
         let key = b"ecdsa_private_key";
         let signature = sign_with_derived_ecdsa("1111", message, &shared_secret1, key).unwrap();
-        let is_valid = verify_derived_ecdsa_signature("1111", message, &signature, &shared_secret2, key)?;
+        let is_valid =
+            verify_derived_ecdsa_signature("1111", message, &signature, &shared_secret2, key)?;
 
         assert!(true, "ECDSA 签名验证失败");
         println!("ECDSA 签名验证成功！");

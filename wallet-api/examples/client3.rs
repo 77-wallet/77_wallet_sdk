@@ -1,12 +1,9 @@
-use sqlx::encode::IsNull::No;
 use tokio_stream::StreamExt as _;
 use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
-    request::api_wallet::account::CreateApiAccountReq,
     test::env::{TestParams, get_manager},
 };
-use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
@@ -20,7 +17,7 @@ async fn run(
     let phrase = &test_params.create_wallet_req.phrase;
     let salt = "q1111111";
     let wallet_name = "api_wallet";
-    let wallet_password = "q1111111";
+    let wallet_password = "[REDACTED:password]";
     // let binding_address = None;
     // let wallet_uid = wallet_manager
     //     .create_api_wallet(
@@ -68,7 +65,6 @@ async fn run(
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
-
     let wallet_uid = "d4c1cbf36791b250cb01f20edb81325ce83d3c334a5e2ceb77daf1dee6f206db";
 
     let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
@@ -77,7 +73,7 @@ async fn run(
     let res = wallet_manager
         .update_collect_strategy(
             &wallet_uid,
-            1.1,
+            1,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 normal_address: IndexAndAddress {
@@ -106,7 +102,7 @@ async fn run(
     let res = wallet_manager
         .update_withdrawal_strategy(
             &wallet_uid,
-            80.1,
+            80,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 normal_address: IndexAndAddress {

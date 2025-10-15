@@ -2,7 +2,7 @@
 #[serde(rename_all = "camelCase")]
 pub struct Strategy {
     pub uid: String,
-    pub threshold: f64,
+    pub threshold: u32,
     pub chain_configs: Vec<ChainConfig>,
 }
 
@@ -23,7 +23,7 @@ pub struct IndexAndAddress {
 }
 
 impl Strategy {
-    pub fn new(uid: &str, threshold: f64, chain_configs: Vec<ChainConfig>) -> Self {
+    pub fn new(uid: &str, threshold: u32, chain_configs: Vec<ChainConfig>) -> Self {
         Self { uid: uid.to_string(), threshold, chain_configs }
     }
 }
