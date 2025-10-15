@@ -22,9 +22,9 @@ use crate::{
                 cmd::{
                     address_allock::AwmCmdAddrExpandMsg, unbind_uid::AwmCmdUidUnbindMsg,
                     wallet_activation::AwmCmdActiveMsg,
+                    fee_res::AwmCmdFeeResMsg,
                 },
                 trans::AwmOrderTransMsg,
-                trans_fee_result::AwmOrderTransFeeResMsg,
                 trans_result::AwmOrderTransResMsg,
             },
             OutgoingPayload,
@@ -336,7 +336,7 @@ async fn exec_verify_api_mqtt_st(
             }
         }
         EventType::AwmCmdFeeRes => {
-            let data: Option<AwmOrderTransFeeResMsg> = res.process("AwmOrderTransRes")?;
+            let data: Option<AwmCmdFeeResMsg> = res.process("AwmOrderTransRes")?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {

@@ -6,6 +6,7 @@ use wallet_database::{
     entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
+use wallet_database::pagination::Pagination;
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
 use crate::context::Context;
 
@@ -31,11 +32,12 @@ impl WithdrawService {
     pub async fn page_withdraw_order(
         &self,
         uid: &str,
+        status: Option<u8>,
         page: i64,
         page_size: i64,
-    ) -> Result<(i64, Vec<ApiWithdrawEntity>), ServiceError> {
+    ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        ApiWithdrawRepo::page_api_withdraw(&pool, uid, page, page_size).await.map_err(|e| e.into())
+        ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size).await.map_err(|e| e.into())
     }
 
     pub async fn withdrawal_order(

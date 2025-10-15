@@ -106,7 +106,7 @@ impl WalletManager {
         token_address: Option<String>,
     ) -> ReturnType<crate::response_vo::assets::CoinAssets> {
         let token_address = token_address.filter(|s| !s.is_empty());
-        ApiAssetsService::new().detail(address, account_id, chain_code, token_address).await
+        ApiAssetsService::new(self.ctx).detail(address, account_id, chain_code, token_address).await
     }
 }
 

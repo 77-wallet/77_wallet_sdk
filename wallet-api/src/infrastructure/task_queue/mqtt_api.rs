@@ -5,9 +5,9 @@ use crate::{
         cmd::{
             address_allock::AwmCmdAddrExpandMsg, unbind_uid::AwmCmdUidUnbindMsg,
             wallet_activation::AwmCmdActiveMsg,
+            fee_res::AwmCmdFeeResMsg,
         },
         trans::AwmOrderTransMsg,
-        trans_fee_result::AwmOrderTransFeeResMsg,
         trans_result::AwmOrderTransResMsg,
     },
 };
@@ -88,7 +88,7 @@ impl TaskTrait for ApiMqttStruct {
                 data.exec(id).await?
             }
             EventType::AwmCmdFeeRes => {
-                let data: AwmOrderTransFeeResMsg =
+                let data: AwmCmdFeeResMsg =
                     wallet_utils::serde_func::serde_from_value(self.data.clone())?;
                 data.exec(id).await?
             }

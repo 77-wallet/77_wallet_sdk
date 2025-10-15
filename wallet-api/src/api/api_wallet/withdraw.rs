@@ -2,6 +2,7 @@ use crate::{
     api::ReturnType, manager::WalletManager, service::api_wallet::withdraw::WithdrawService,
 };
 use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
+use wallet_database::pagination::Pagination;
 
 impl WalletManager {
     pub async fn list_api_withdraw_order(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawEntity>> {
@@ -11,10 +12,11 @@ impl WalletManager {
     pub async fn page_api_withdraw_order(
         &self,
         uid: &str,
+        status: Option<u8>,
         page: i64,
         page_size: i64,
-    ) -> ReturnType<(i64, Vec<ApiWithdrawEntity>)> {
-        WithdrawService::new(self.ctx).page_withdraw_order(uid, page, page_size).await
+    ) -> ReturnType<Pagination<ApiWithdrawEntity>> {
+        WithdrawService::new(self.ctx).page_withdraw_order(uid, status, page, page_size).await
     }
 
     // 测试
@@ -49,11 +51,11 @@ impl WalletManager {
     }
 
     pub async fn sign_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().sign_withdrawal_order(order_id).await
+        WithdrawService::new(self.ctx).sign_withdrawal_order(order_id).await
     }
 
     pub async fn reject_api_withdrawal_order(&self, order_id: &str) -> ReturnType<()> {
-        WithdrawService::new().reject_withdrawal_order(order_id).await
+        WithdrawService::new(self.ctx).reject_withdrawal_order(order_id).await
     }
 }
 

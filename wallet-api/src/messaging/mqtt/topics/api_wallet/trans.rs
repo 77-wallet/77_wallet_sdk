@@ -1,46 +1,42 @@
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
 use crate::{
-    domain::{
-        api_wallet::trans::{
-            collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
-        },
+    domain::api_wallet::trans::{
+        collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
     request::api_wallet::trans::{
         ApiBaseTransferReq, ApiCollectReq, ApiTransferFeeReq, ApiTransferReq, ApiWithdrawReq,
     },
 };
-use crate::domain::api_wallet::trans::fee::ApiFeeDomain;
-use crate::request::api_wallet::trans::ApiTransferFeeReq;
 
 // biz_type = RECHARGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AwmOrderTransMsg {
-    from: String,
-    to: String,
-    value: String,
+    pub from: String,
+    pub to: String,
+    pub value: String,
     #[serde(rename = "chain")]
-    chain_code: String,
+    pub chain_code: String,
     #[serde(rename = "tokenAddr")]
-    token_address: String,
+    pub token_address: String,
     #[serde(rename = "tokenCode")]
-    symbol: String,
+    pub symbol: String,
     /// 平台交易单号
-    trade_no: String,
+    pub trade_no: String,
     /// 交易类型： 1 提币 / 2 归集 / 3 归集手续费交易
     #[serde(
         deserialize_with = "wallet_utils::serde_func::string_to_u32",
         serialize_with = "wallet_utils::serde_func::u32_to_string"
     )]
-    trade_type: u32,
+    pub trade_type: u32,
     /// 是否需要审核（可空）： 1 不需要审核 / 2 需要审核
     #[serde(
         deserialize_with = "wallet_utils::serde_func::string_to_u32",
         serialize_with = "wallet_utils::serde_func::u32_to_string"
     )]
-    audit: u32,
-    uid: String,
+    pub audit: u32,
+    pub uid: String,
     validate: String,
 }
 
@@ -61,9 +57,7 @@ impl AwmOrderTransMsg {
         msg_ack_req.push(_msg_id);
         let res = backend.msg_ack(msg_ack_req).await;
         match res {
-            Ok(res) => {
-                Ok(())
-            }
+            Ok(res) => Ok(()),
             Err(e) => {
                 tracing::error!("transfer from {} to {} value {:?}", self.from, self.to, &e);
                 Err(e.into())

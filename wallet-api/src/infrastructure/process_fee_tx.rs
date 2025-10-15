@@ -263,7 +263,7 @@ impl ProcessFeeTx {
         err: ServiceError,
     ) -> Result<(), ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed).await?;
+        ApiFeeRepo::update_api_fee_status(&pool, trade_no, ApiFeeStatus::SendingTxFailed, &err.to_string()).await?;
         // 上报交易不影响交易偏移量计算
         let _ = self.report_tx.send(ProcessFeeTxReportCommand::Tx(trade_no.to_string()));
         Ok(())
