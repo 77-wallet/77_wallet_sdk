@@ -9,6 +9,7 @@ use wallet_api::{
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
+use wallet_api::xlog::init_log;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 async fn run(
@@ -102,6 +103,8 @@ async fn run(
     }
 
     let wallet_uid = "bafbedca53ae6339fa384dfe1778a3e70ef4d4e464bff75425ff19a0a16e6fcc";
+    let res = wallet_manager.get_withdrawal_strategy(wallet_uid).await?;
+    tracing::info!("get withdrawal strategy -------------------- {:?}", res);
     let res = wallet_manager
         .update_withdrawal_strategy(
             &wallet_uid,
@@ -183,7 +186,7 @@ async fn run(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    wallet_utils::init_test_log();
+
     let (wallet_manager, test_params) = get_manager().await?;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
