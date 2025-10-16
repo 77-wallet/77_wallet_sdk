@@ -87,9 +87,11 @@ impl TaskManager {
 
             let mut failed_queue = repo.failed_task_queue().await?;
             let pending_queue = repo.pending_task_queue().await?;
+            let hanging_queue = repo.hanging_task_queue().await?;
             let running_queue = repo.running_task_queue().await?;
             failed_queue.extend(running_queue);
             failed_queue.extend(pending_queue);
+            failed_queue.extend(hanging_queue);
 
             let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
 

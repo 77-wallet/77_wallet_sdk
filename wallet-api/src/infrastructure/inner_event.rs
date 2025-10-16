@@ -1,5 +1,5 @@
 use crate::{
-    domain::assets::AssetsDomain,
+    domain::{api_wallet::assets::ApiAssetsDomain, assets::AssetsDomain},
     error::service::ServiceError,
     messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
 };
@@ -14,6 +14,7 @@ pub type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
 pub enum InnerEvent {
     SyncAssets { addr_list: Vec<String>, chain_code: String, symbol: Vec<String> },
+    ApiWalletSyncAssets { addr_list: Vec<String>, chain_code: String, symbol: Vec<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -112,20 +113,29 @@ pub(crate) struct InnerEventHandle {
 impl InnerEventHandle {
     pub(crate) fn new() -> Self {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<InnerEvent>();
-        let buffer = Arc::new(EventBuffer::new());
-
+        let normal_buffer = Arc::new(EventBuffer::new());
+        let api_buffer = Arc::new(EventBuffer::new());
         // 接收事件任务
         {
-            let buffer = Arc::clone(&buffer);
+            let normal_buf = Arc::clone(&normal_buffer);
+            let api_buf = Arc::clone(&api_buffer);
 
             tokio::spawn(async move {
                 while let Some(event) = rx.recv().await {
-                    Self::handle_event(event, buffer.clone()).await;
+                    match event {
+                        InnerEvent::SyncAssets { addr_list, chain_code, symbol } => {
+                            normal_buf.push_assets(addr_list, chain_code, symbol)
+                        }
+                        InnerEvent::ApiWalletSyncAssets { addr_list, chain_code, symbol } => {
+                            api_buf.push_assets(addr_list, chain_code, symbol)
+                        }
+                    }
                 }
             });
         }
 
-        Self::sync_assets(buffer);
+        Self::start_sync_loop(Arc::clone(&normal_buffer), SyncTarget::Assets);
+        Self::start_sync_loop(Arc::clone(&api_buffer), SyncTarget::ApiAssets);
 
         Self { inner_event_sender: tx }
     }
@@ -143,21 +153,21 @@ impl InnerEventHandle {
                 // tracing::info!("收到资产变更通知，开始同步资产");
                 buffer.push_assets(addr_list, chain_code, symbol)
             }
+            InnerEvent::ApiWalletSyncAssets { addr_list, chain_code, symbol } => {
+                buffer.push_assets(addr_list, chain_code, symbol)
+            }
         }
     }
 
-    fn sync_assets(buffer: Arc<EventBuffer>) {
-        // 批量处理任务
-        let buffer = Arc::clone(&buffer);
-
+    fn start_sync_loop(buffer: Arc<EventBuffer>, target: SyncTarget) {
         tokio::spawn(async move {
             let mut stream = buffer.wait_and_drain_stream(5).await;
 
             while let Some(batch) = stream.next().await {
-                tracing::debug!("同步资产，batch: {:?}", batch);
                 if batch.is_empty() {
                     continue;
                 }
+
                 // 分组 chain+symbol → address list
                 let mut grouped: HashMap<(String, String), Vec<String>> = HashMap::new();
                 for key in batch {
@@ -167,21 +177,19 @@ impl InnerEventHandle {
                         .push(key.address.clone());
                 }
 
-                // 逐组执行
                 for ((chain_code, symbol), addr_list) in grouped {
-                    tracing::debug!(
-                        "Syncing assets: chain={} symbol={} addresses={:?}",
-                        chain_code,
-                        symbol,
-                        addr_list
-                    );
-                    if let Err(e) = Self::sync_assets_once(chain_code, symbol, addr_list).await {
-                        tracing::error!("SyncAssets error: {}", e);
+                    if let Err(e) =
+                        Self::sync_assets_once(chain_code, symbol, addr_list, target.clone()).await
+                    {
+                        tracing::error!("{:?} sync error: {}", target, e);
                     }
                 }
-                let data = NotifyEvent::SyncAssets;
-                if let Err(e) = FrontendNotifyEvent::new(data).send().await {
-                    tracing::error!("SyncAssets send error: {}", e);
+                let notify_type = match target {
+                    SyncTarget::Assets => NotifyEvent::SyncAssets,
+                    SyncTarget::ApiAssets => NotifyEvent::ApiWalletSyncAssets,
+                };
+                if let Err(e) = FrontendNotifyEvent::new(notify_type).send().await {
+                    tracing::error!("{:?} send error: {}", target, e);
                 }
             }
         });
@@ -191,11 +199,32 @@ impl InnerEventHandle {
         chain_code: String,
         symbol: String,
         addr_list: Vec<String>,
+        target: SyncTarget,
     ) -> Result<(), crate::error::service::ServiceError> {
         if addr_list.is_empty() {
             return Ok(());
         }
 
-        AssetsDomain::sync_assets_by_addr_chain(addr_list, Some(chain_code), vec![symbol]).await
+        match target {
+            SyncTarget::Assets => {
+                AssetsDomain::sync_assets_by_addr_chain(addr_list, Some(chain_code), vec![symbol])
+                    .await
+            }
+            SyncTarget::ApiAssets => {
+                tracing::info!("sync assets by addr chain: {:?}", addr_list);
+                ApiAssetsDomain::sync_assets_by_addr_chain(
+                    addr_list,
+                    Some(chain_code),
+                    vec![symbol],
+                )
+                .await
+            }
+        }
     }
+}
+
+#[derive(Debug, Clone)]
+enum SyncTarget {
+    Assets,
+    ApiAssets,
 }

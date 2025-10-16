@@ -60,13 +60,12 @@ mod test {
             normal_address: IndexAndAddress {
                 index: None,
                 address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
-                chain_address_type: None,
             },
             risk_address: IndexAndAddress {
                 index: None,
                 address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
-                chain_address_type: None,
             },
+            chain_address_type: None,
         }];
         let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;
         tracing::info!("res: {res:?}");
@@ -98,13 +97,12 @@ mod test {
             normal_address: IndexAndAddress {
                 index: Some(0),
                 address: "TCdNZCKVMsEXvW7tUzAYh3s852mpGMffUj".to_string(),
-                chain_address_type: None,
             },
             risk_address: IndexAndAddress {
                 index: Some(1),
                 address: "TEsdVAqnufo1ciSGd847yTBsFnRqY4mxan".to_string(),
-                chain_address_type: None,
             },
+            chain_address_type: None,
         }];
         let res = wallet_manager.update_withdrawal_strategy(uid, threshold, chain_config).await;
         tracing::info!("res: {res:?}");

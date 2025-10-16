@@ -1,3 +1,5 @@
+use wallet_database::entities::task_queue::WalletType;
+
 use crate::messaging::mqtt::topics::{
     AcctChange, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
@@ -35,6 +37,7 @@ pub(crate) struct Message {
     // 设备类型
     #[allow(dead_code)]
     pub(crate) device_type: String,
+    pub(crate) wallet_type: WalletType,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]

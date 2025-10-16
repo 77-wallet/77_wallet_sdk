@@ -33,15 +33,23 @@ static ASSET_VALUE_CACHE: Lazy<DashMap<i64, f64>> = Lazy::new(|| DashMap::new())
 static TOTAL_USDT: Lazy<RwLock<f64>> = Lazy::new(|| RwLock::new(0.0));
 
 /// Called when a new price arrives (price_real already as f64)
-pub fn on_price_update(symbol: &str, chain_code: &str, token_address: &str, price_real: f64) {
-    let key = make_key(symbol, chain_code, token_address);
+pub fn on_price_update(
+    symbol: &str,
+    chain_code: &str,
+    token_address: &Option<String>,
+    price_real: f64,
+) {
+    let key = make_key(symbol, chain_code, token_address.as_deref().unwrap_or(""));
     PRICE_CACHE.insert(key.clone(), PriceEntry { price: price_real });
     DIRTY_SET.insert(key);
 }
 
 /// Start the periodic batch recalculation background task.
 /// interval_ms: how often to run the batch recalculation (e.g. 500 or 1000)
-pub fn start_batch_recalculator(db: Arc<SqlitePool>, interval_ms: u64) {
+pub fn start_batch_recalculator(
+    interval_ms: u64,
+) -> Result<(), crate::error::service::ServiceError> {
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     tokio::spawn(async move {
         let interval = Duration::from_millis(interval_ms);
         loop {
@@ -74,7 +82,7 @@ pub fn start_batch_recalculator(db: Arc<SqlitePool>, interval_ms: u64) {
                     q = q.bind(k);
                 }
 
-                let rows = match q.fetch_all(db.as_ref()).await {
+                let rows = match q.fetch_all(pool.as_ref()).await {
                     Ok(r) => r,
                     Err(e) => {
                         tracing::error!("batch query error: {}", e);
@@ -129,6 +137,7 @@ pub fn start_batch_recalculator(db: Arc<SqlitePool>, interval_ms: u64) {
             }
         }
     });
+    Ok(())
 }
 
 /// Force full refresh: runs a full join query and repopulates ASSET_VALUE_CACHE (accurate, but heavy)
@@ -186,19 +195,27 @@ pub async fn get_total_usdt() -> f64 {
     *g
 }
 
+/// Get current price cache
+pub async fn get_price_cache() {
+    tracing::info!("get_price_cache: {:#?}", PRICE_CACHE);
+    // let g = PRICE_CACHE.read().await;
+    // g.clone()
+}
+
 /// Get a page of asset snapshot (id and usdt_value)
 /// This implementation fetches asset ids from DB by page, then maps to cached values.
 pub async fn get_asset_snapshot_page(
-    db: Arc<SqlitePool>,
     page: usize,
     page_size: usize,
-) -> Result<Vec<(i64, f64)>, sqlx::Error> {
+) -> Result<Vec<(i64, f64)>, crate::error::service::ServiceError> {
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let offset = ((page.saturating_sub(1) * page_size) as i64).max(0);
     let rows = sqlx::query("SELECT id FROM api_assets ORDER BY id LIMIT ? OFFSET ?")
         .bind(page_size as i64)
         .bind(offset)
-        .fetch_all(db.as_ref())
-        .await?;
+        .fetch_all(pool.as_ref())
+        .await
+        .unwrap();
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {

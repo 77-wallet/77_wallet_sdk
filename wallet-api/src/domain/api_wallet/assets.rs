@@ -1,6 +1,9 @@
 use wallet_database::{
-    entities::assets::AssetsIdVo, repositories::api_wallet::assets::ApiAssetsRepo,
+    entities::{api_assets::ApiAssetsEntity, assets::AssetsIdVo},
+    repositories::api_wallet::assets::ApiAssetsRepo,
 };
+
+use crate::domain::assets::ChainBalance;
 
 pub(crate) struct ApiAssetsDomain;
 
@@ -92,4 +95,42 @@ impl ApiAssetsDomain {
 
     //     Ok(())
     // }
+
+    pub async fn sync_assets_by_addr_chain(
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Vec<String>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        Self::do_async_balance(addr, chain_code, symbol).await
+    }
+
+    async fn do_async_balance(
+        addr: Vec<String>,
+        chain_code: Option<String>,
+        symbol: Vec<String>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let mut assets = ApiAssetsRepo::list(&pool, addr, chain_code).await?;
+        if !symbol.is_empty() {
+            assets.retain(|asset| symbol.contains(&asset.symbol));
+        }
+
+        let results = ChainBalance::sync_address_balance(assets.as_slice()).await?;
+
+        for (assets_id, balance) in &results {
+            if let Err(e) = ApiAssetsRepo::update_balance(
+                &pool,
+                &assets_id.address,
+                &assets_id.chain_code,
+                assets_id.token_address.clone(),
+                balance,
+            )
+            .await
+            {
+                tracing::error!("更新余额出错: {}", e);
+            }
+        }
+
+        Ok(())
+    }
 }

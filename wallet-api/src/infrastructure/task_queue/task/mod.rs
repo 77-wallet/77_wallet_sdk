@@ -219,6 +219,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::AwmCmdUidUnbind => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
         KnownTaskName::AddressUse => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
         KnownTaskName::AwmCmdDevChange => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::ApiWalletAcctChange => topics::api_wallet::acct_change::ApiWalletAcctChange => |parsed| Box::new(MqttTask::ApiWalletAcctChange(parsed)),
 
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
         KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),

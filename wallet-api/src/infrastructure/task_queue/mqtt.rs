@@ -1,4 +1,6 @@
-use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
+use reqwest::Identity;
+use wallet_database::entities::task_queue::{KnownTaskName, TaskName, WalletType};
+use wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus;
 
 use crate::{
     infrastructure::task_queue::{
@@ -20,6 +22,7 @@ pub(crate) enum MqttTask {
     MultiSignTransAcceptCompleteMsg(topics::MultiSignTransAcceptCompleteMsg),
     MultiSignTransExecute(topics::MultiSignTransExecute),
     AcctChange(topics::AcctChange),
+    ApiWalletAcctChange(topics::api_wallet::acct_change::ApiWalletAcctChange),
     BulletinMsg(topics::BulletinMsg),
     PermissionAccept(topics::PermissionAccept),
     CleanPermission(topics::CleanPermission),
@@ -66,6 +69,7 @@ impl TaskTrait for MqttTask {
             MqttTask::OrderAllConfirmed(_) => TaskName::Known(KnownTaskName::OrderAllConfirmed),
             // api wallet
             MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.get_name(),
+            MqttTask::ApiWalletAcctChange(_) => TaskName::Known(KnownTaskName::ApiWalletAcctChange),
         }
     }
     fn get_type(&self) -> TaskType {
@@ -110,6 +114,9 @@ impl TaskTrait for MqttTask {
             }
             MqttTask::CleanPermission(req) => Some(wallet_utils::serde_func::serde_to_string(req)?),
             MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.get_body()?,
+            MqttTask::ApiWalletAcctChange(req) => {
+                Some(wallet_utils::serde_func::serde_to_string(req)?)
+            }
         };
         Ok(res)
     }
@@ -131,6 +138,7 @@ impl TaskTrait for MqttTask {
             MqttTask::CleanPermission(data) => data.exec(id).await?,
             MqttTask::OrderAllConfirmed(data) => data.exec(id).await?,
             MqttTask::ApiMqttStruct(api_mqtt_struct) => api_mqtt_struct.execute(id).await?,
+            MqttTask::ApiWalletAcctChange(data) => data.exec(id).await?,
         }
         Ok(())
     }

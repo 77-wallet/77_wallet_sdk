@@ -131,7 +131,21 @@ impl CoinService {
         // 拉所有的币
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
 
+        for coin in coins.iter() {
+            if let Some(symbol) = coin.symbol.as_ref() {
+                if let Some(chain_code) = coin.chain_code.as_ref() {
+                    crate::infrastructure::asset_calc::on_price_update(
+                        symbol,
+                        chain_code,
+                        &coin.token_address,
+                        coin.price.unwrap_or_default(),
+                    );
+                }
+            }
+        }
+
         let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
+
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
 
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整

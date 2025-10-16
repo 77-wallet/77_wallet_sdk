@@ -57,7 +57,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::TOKEN_BALANCE_REFRESH,
         endpoint::SWAP_APPROVE_CANCEL,
         endpoint::SWAP_APPROVE_SAVE,
-        endpoint::api_wallet::ADDRESS_INIT,
+        // endpoint::api_wallet::ADDRESS_INIT,
     ]
     .iter()
     .cloned()
@@ -71,6 +71,7 @@ impl BackendTaskHandle {
         backend: Arc<BackendApi>,
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!("handle endpoint: {}", endpoint);
         let handler = Self::get_handler(endpoint);
         handler.handle(endpoint, body, backend.as_ref()).await?;
 
@@ -221,6 +222,49 @@ impl EndpointHandler for SpecialHandler {
                 ApiWalletRepo::mark_init(&pool, &req.uid).await?;
             }
 
+            endpoint::api_wallet::ADDRESS_INIT => {
+                tracing::info!("咋护士");
+                let status = ConfigDomain::get_keys_reset_status().await?;
+                if let Some(status) = status
+                    && let Some(false) = status.status
+                {
+                    return Err(crate::error::business::BusinessError::Config(
+                        crate::error::business::config::ConfigError::KeysNotReset,
+                    )
+                    .into());
+                }
+
+                let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
+                    wallet_utils::serde_func::serde_from_value(body.clone())?;
+
+                for address in req.address_list.0 {
+                    let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
+
+                    match wallet {
+                        Some(wallet) => {
+                            if wallet.is_init == 1 {
+                                ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
+                                    .await?;
+                                continue;
+                            } else {
+                                return Err(crate::error::business::BusinessError::ApiWallet(
+                                    crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
+                                )
+                                .into());
+                            }
+                        }
+                        None => {
+                            return Err(crate::error::business::BusinessError::ApiWallet(
+                                crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
+                            )
+                            .into());
+                        }
+                    }
+                }
+
+                let res = backend.post_req_str::<()>(endpoint, &body).await;
+                res?;
+            }
             endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
                 if let Some(status) = status
@@ -245,15 +289,15 @@ impl EndpointHandler for SpecialHandler {
                                     .await?;
                                 continue;
                             } else {
-                                return Err(crate::error::business::BusinessError::Wallet(
-                                    crate::error::business::wallet::WalletError::NotInit,
+                                return Err(crate::error::business::BusinessError::ApiWallet(
+                                    crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
                                 )
                                 .into());
                             }
                         }
                         None => {
-                            return Err(crate::error::business::BusinessError::Wallet(
-                                crate::error::business::wallet::WalletError::NotFound,
+                            return Err(crate::error::business::BusinessError::ApiWallet(
+                                crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
                             )
                             .into());
                         }
@@ -463,12 +507,12 @@ impl EndpointHandler for SpecialHandler {
                 }
                 let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
+                tracing::info!("-------------------- 1: {:?}", list);
                 let mut input_indices = Vec::new();
                 for address in list {
                     input_indices.push(address.index);
                 }
 
-                tracing::info!("-------------------- 1");
                 let password = ApiWalletDomain::get_passwd().await?;
                 if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
                     ApiAccountDomain::create_api_account(

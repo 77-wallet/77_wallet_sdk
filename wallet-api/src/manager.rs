@@ -45,6 +45,7 @@ impl WalletManager {
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
         handles.get_global_unconfirmed_msg_processor().start().await;
         handles.get_global_task_manager().start_task_check().await?;
+        infrastructure::asset_calc::start_batch_recalculator(1000)?;
         context.set_global_handles(Arc::downgrade(&handles));
         let pool = context.get_global_sqlite_pool()?;
         let repo_factory = RepositoryFactory::new(pool);

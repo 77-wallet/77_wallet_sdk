@@ -351,6 +351,8 @@ impl AcctChange {
 
 #[cfg(test)]
 mod test {
+    use wallet_database::entities::task_queue::WalletType;
+
     use crate::{messaging::mqtt::topics::AcctChange, test::env::get_manager};
 
     async fn init_manager() {

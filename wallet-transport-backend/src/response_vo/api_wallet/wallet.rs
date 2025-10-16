@@ -28,7 +28,7 @@ impl KeysUidCheckRes {
 }
 
 // #[derive(Debug, serde_repr::Deserialize_repr, serde_repr::Serialize_repr, PartialEq, Eq)]
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 // #[repr(u8)]
 pub enum UidStatus {

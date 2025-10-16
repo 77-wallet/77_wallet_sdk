@@ -10,11 +10,33 @@ pub struct TaskQueueEntity {
     pub r#type: u8,
     /// 0: pending, 1: running, 2: success, 3: failed, 4: hang up
     pub status: u8,
-    // pub wallet_type: Option<WalletType>,
     #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
     #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    strum_macros::EnumString,
+    strum_macros::AsRefStr,
+)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+// #[repr(u8)]
+pub enum WalletType {
+    /// 普通钱包
+    NormalWallet,
+    /// API钱包-收款钱包
+    ApiRaw,
+    /// API钱包-出款钱包
+    ApiWaw,
+    /// 4 UID不存在
+    NotFound,
 }
 
 #[derive(Debug, Clone)]
@@ -24,7 +46,6 @@ pub struct CreateTaskQueueEntity {
     pub request_body: Option<String>,
     pub r#type: u8,
     pub status: u8,
-    // pub wallet_type: Option<WalletType>,
 }
 
 impl CreateTaskQueueEntity {
@@ -34,23 +55,14 @@ impl CreateTaskQueueEntity {
         request_body: Option<String>,
         r#type: u8,
         status: u8,
-        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         let id = id.unwrap_or_else(|| wallet_utils::snowflake::get_uid().unwrap().to_string());
-        Ok(Self {
-            id,
-            task_name,
-            request_body,
-            r#type,
-            status,
-            // wallet_type,
-        })
+        Ok(Self { id, task_name, request_body, r#type, status })
     }
 
     pub fn with_backend_request_string(
         task_name: TaskName,
         request_body: Option<String>,
-        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         Self::new(None, task_name, request_body, 1, 0)
     }
@@ -59,7 +71,6 @@ impl CreateTaskQueueEntity {
         id: &str,
         task_name: TaskName,
         request_body: Option<String>,
-        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         Self::new(Some(id.to_string()), task_name, request_body, 2, 0)
     }
@@ -67,7 +78,6 @@ impl CreateTaskQueueEntity {
     pub fn with_backend_request<T: serde::Serialize>(
         task_name: TaskName,
         request_body: Option<&T>,
-        // wallet_type: Option<WalletType>,
     ) -> Result<Self, crate::Error> {
         let request_body =
             request_body.map(wallet_utils::serde_func::serde_to_string).transpose()?;
@@ -130,6 +140,56 @@ impl From<String> for TaskName {
     }
 }
 
+impl sqlx::Type<sqlx::Sqlite> for WalletType {
+    fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for WalletType {
+    // fn encode_by_ref(&self, buf: &mut sqlx::sqlite::SqliteArguments<'q>) -> IsNull {
+    //     let s: &str = match self {
+    //         TaskName::Known(k) => k.as_ref(),
+    //         TaskName::Unknown(s) => s.as_str(),
+    //     };
+    //     buf.add(SqliteArgumentValue::Text(s.into()));
+    //     IsNull::No
+    // }
+    fn encode_by_ref(
+        &self,
+        buf: &mut <sqlx::Sqlite as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+    ) -> sqlx::encode::IsNull {
+        // let s = match self {
+        //     UidStatus::Known(k) => k.as_ref().to_string(),
+        //     UidStatus::Unknown(s) => s.as_str().to_string(),
+        // };
+        let s = wallet_utils::serde_func::serde_to_string(&self).unwrap();
+
+        buf.push(sqlx::sqlite::SqliteArgumentValue::Text(s.into()));
+        sqlx::encode::IsNull::No
+    }
+}
+
+impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for WalletType {
+    fn decode(
+        value: <sqlx::Sqlite as sqlx::database::HasValueRef<'r>>::ValueRef,
+    ) -> Result<Self, sqlx::error::BoxDynError> {
+        let raw = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+        Ok(match WalletType::from_str(&raw) {
+            Ok(typ) => typ,
+            Err(_) => WalletType::NotFound,
+        })
+    }
+}
+
+impl From<String> for WalletType {
+    fn from(s: String) -> Self {
+        match s.parse::<WalletType>() {
+            Ok(k) => k,
+            Err(_) => WalletType::NotFound,
+        }
+    }
+}
+
 #[derive(
     Debug,
     Clone,
@@ -186,4 +246,5 @@ pub enum KnownTaskName {
     AwmCmdUidUnbind,
     AddressUse,
     AwmCmdDevChange,
+    ApiWalletAcctChange,
 }

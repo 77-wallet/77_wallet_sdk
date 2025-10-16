@@ -5,8 +5,8 @@ edition = "2024"
 
 [features]
 # default = ["prod"]
-default = ["dev"]
-# default = ["test"]
+default = ["dev", "token"]
+# default = ["test", "token"]
 
 response = []
 eth = []
@@ -27,7 +27,7 @@ wallet-utils = { workspace = true }
 wallet-crypto = { workspace = true }
 wallet-tree = { workspace = true }
 wallet-oss = { workspace = true }
-wallet-ecdh = {workspace = true}
+wallet-ecdh = { workspace = true }
 # wallet-error = { workspace = true }
 wallet-core = { workspace = true }
 wallet-transport = { workspace = true }

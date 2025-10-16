@@ -17,6 +17,7 @@ use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
         api_wallet::{
+            acct_change::ApiWalletAcctChange,
             cmd::{
                 address_use::AddressUseMsg, dev_change::AwmCmdDevChangeMsg,
                 fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
@@ -71,6 +72,7 @@ pub enum NotifyEvent {
     // 其他
     // 同步资产
     SyncAssets,
+    ApiWalletSyncAssets,
 
     // API wallet
     AwmCmdActive(AwmCmdActiveMsgFront),
@@ -86,6 +88,7 @@ pub enum NotifyEvent {
     Fee(FeeFront),
     AddressRecovery,
     AwmCmdDevChange(AwmCmdDevChangeMsg),
+    ApiWalletAcctChange(AcctChangeFrontend),
 }
 
 impl NotifyEvent {
@@ -130,6 +133,7 @@ impl NotifyEvent {
             // 其他
             // 同步资产
             NotifyEvent::SyncAssets => "SYNC_ASSETS".to_string(),
+            NotifyEvent::ApiWalletSyncAssets => "API_WALLET_SYNC_ASSETS".to_string(),
 
             // api wallet
             NotifyEvent::AwmCmdActive(_) => "AWM_CMD_ACTIVE".to_string(),
@@ -145,6 +149,7 @@ impl NotifyEvent {
             NotifyEvent::Fee(_) => "FEE".to_string(),
             NotifyEvent::AddressRecovery => "ADDRESS_RECOVERY".to_string(),
             NotifyEvent::AwmCmdDevChange(_) => "AWM_CMD_DEV_CHANGE".to_string(),
+            NotifyEvent::ApiWalletAcctChange(_) => "API_WALLET_ACCT_CHANGE".to_string(),
         }
     }
 }
