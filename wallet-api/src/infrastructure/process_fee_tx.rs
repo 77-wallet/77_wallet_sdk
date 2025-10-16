@@ -459,6 +459,11 @@ impl ProcessFeeTxConfirmReport {
         tracing::info!("starting process fee tx confirm report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process fee tx confirm report -------------------------------");
