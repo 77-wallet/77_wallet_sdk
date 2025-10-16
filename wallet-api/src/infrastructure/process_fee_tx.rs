@@ -1,9 +1,11 @@
+use std::str::FromStr;
 use crate::{
     domain::{api_wallet::trans::ApiTransDomain, chain::TransferResp, coin::CoinDomain},
     error::{business::api_wallet::ApiWalletError, service::ServiceError},
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use chrono::TimeDelta;
+use rust_decimal::Decimal;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
@@ -194,7 +196,9 @@ impl ProcessFeeTx {
         tracing::info!(trade_no=%req.trade_no, "process fee tx -------------------------------");
         // check
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + req.value.as_str() + sn;
+        let mut d = Decimal::from_str(req.value.as_str()).unwrap();
+        d = d.normalize();
+        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         if req.validate != digest {
             return self.handle_fee_tx_failed(&req.trade_no, ServiceError::Parameter("validate failed".to_string())).await
