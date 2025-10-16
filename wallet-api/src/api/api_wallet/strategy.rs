@@ -57,6 +57,7 @@ mod test {
         let threshold = 1;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
+            chain_address_type: Some("TRON".to_string()),
             normal_address: IndexAndAddress {
                 index: None,
                 address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
@@ -94,6 +95,7 @@ mod test {
         let threshold = 1;
         let chain_config = vec![ChainConfig {
             chain_code: ChainCode::Tron.to_string(),
+            chain_address_type: Some("TRON".to_string()),
             normal_address: IndexAndAddress {
                 index: Some(0),
                 address: "TCdNZCKVMsEXvW7tUzAYh3s852mpGMffUj".to_string(),

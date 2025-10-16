@@ -30,25 +30,37 @@ pub fn init_logger(
 
     let env_filter = EnvFilter::new(log_level);
 
-    let fmt_layer = fmt::layer()
+    let file_layer = fmt::layer()
         .with_writer(non_blocking)
         .with_ansi(false)
         .event_format(format)
-        .with_filter(env_filter);
+        .with_filter(env_filter.clone());
 
     // 构建总的 subscriber
     #[cfg(target_os = "android")]
     {
-        let android_layer = tracing_android::layer("plugin").unwrap();
-        let subscriber = Registry::default().with(android_layer).with(fmt_layer);
+        let android_layer = tracing_android::layer("plugin").unwrap().with_filter(env_filter.clone());
+        let subscriber = Registry::default().with(android_layer).with(file_layer);
 
         tracing::subscriber::set_global_default(subscriber)
             .expect("Failed to set global tracing subscriber");
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
     {
-        let subscriber = Registry::default().with(fmt_layer);
+        let subscriber = Registry::default().with(file_layer);
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("Failed to set global tracing subscriber");
+    }
+
+    #[cfg(all(not(target_os = "android"), not(target_os = "ios")))]
+    {
+        let stdout_layer = fmt::layer()
+            .with_writer(std::io::stdout) // <-- 新增
+            .with_ansi(true)
+            .with_filter(env_filter);
+
+        let subscriber = Registry::default().with(file_layer).with(stdout_layer);
 
         tracing::subscriber::set_global_default(subscriber)
             .expect("Failed to set global tracing subscriber");
