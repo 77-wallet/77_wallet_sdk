@@ -435,6 +435,7 @@ impl ProcessWithdrawTxReport {
                         &req.trade_no,
                         ApiWithdrawStatus::SendingTxFailed,
                         ApiWithdrawStatus::SendingTxFailedReport,
+                        "withdraw upload tx ok",
                     )
                     .await?;
                 } else {
@@ -444,6 +445,7 @@ impl ProcessWithdrawTxReport {
                         &req.trade_no,
                         ApiWithdrawStatus::SendingTx,
                         ApiWithdrawStatus::SendingTxReport,
+                        "withdraw upload tx ok",
                     )
                     .await?;
                 }
@@ -604,6 +606,7 @@ impl ProcessWithdrawTxConfirmReport {
                     &req.trade_no,
                     req.status,
                     ApiWithdrawStatus::ReceivedConfirmReport,
+                    "withdraw trans event ack"
                 )
                 .await?;
                 return Ok(());

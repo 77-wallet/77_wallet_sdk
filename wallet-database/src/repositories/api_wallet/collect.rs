@@ -120,8 +120,9 @@ impl ApiCollectRepo {
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
+        notes: &str,
     ) -> Result<(), crate::Error> {
-        ApiCollectDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+        ApiCollectDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes).await
     }
 
     pub async fn update_api_collect_post_tx_count(

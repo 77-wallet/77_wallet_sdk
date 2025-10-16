@@ -383,7 +383,7 @@ impl ProcessCollectTx {
         match tx_resp {
             Ok(tx) => self.handle_collect_tx_success(&req.trade_no, tx).await,
             Err(err) => {
-                tracing::error!("failed to process collect tx: {}", err);
+                tracing::error!(trade_no=%req.trade_no, "failed to process collect tx: {}", err);
                 self.handle_collect_tx_failed(&req.trade_no, err).await
             }
         }
@@ -569,6 +569,7 @@ impl ProcessCollectTxReport {
                         &req.trade_no,
                         ApiCollectStatus::SendingTxFailed,
                         ApiCollectStatus::SendingTxFailedReport,
+                        "uploaded tx ok",
                     )
                     .await?;
                 } else {
@@ -577,6 +578,7 @@ impl ProcessCollectTxReport {
                         &req.trade_no,
                         ApiCollectStatus::SendingTx,
                         ApiCollectStatus::SendingTxReport,
+                        "uploaded tx ok",
                     )
                     .await?;
                 }
@@ -752,6 +754,7 @@ impl ProcessFeeTxConfirmReport {
                     &req.trade_no,
                     req.status,
                     ApiCollectStatus::ReceivedConfirmReport,
+                    "trans event ack"
                 )
                 .await?;
                 return Ok(());

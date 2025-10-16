@@ -408,6 +408,7 @@ impl ProcessFeeTxReport {
                         &req.trade_no,
                         ApiFeeStatus::SendingTxFailed,
                         ApiFeeStatus::SendingTxFailedReport,
+                        "update api fee ok",
                     )
                     .await?;
                 } else {
@@ -416,6 +417,7 @@ impl ProcessFeeTxReport {
                         &req.trade_no,
                         ApiFeeStatus::SendingTx,
                         ApiFeeStatus::SendingTxReport,
+                        "update api fee ok",
                     )
                     .await?;
                 }
@@ -579,6 +581,7 @@ impl ProcessFeeTxConfirmReport {
                     &req.trade_no,
                     req.status,
                     ApiFeeStatus::ReceivedConfirmReport,
+                    "fee trans event ack"
                 )
                 .await?;
                 return Ok(());
