@@ -66,7 +66,6 @@ mod test {
                 index: None,
                 address: "TSdB5jJpdBGZLKHA1CpQeb3S5ZcVF9dceG".to_string(),
             },
-            chain_address_type: None,
         }];
         let res = wallet_manager.update_collect_strategy(uid, threshold, chain_config).await;
         tracing::info!("res: {res:?}");
@@ -104,7 +103,6 @@ mod test {
                 index: Some(1),
                 address: "TEsdVAqnufo1ciSGd847yTBsFnRqY4mxan".to_string(),
             },
-            chain_address_type: None,
         }];
         let res = wallet_manager.update_withdrawal_strategy(uid, threshold, chain_config).await;
         tracing::info!("res: {res:?}");
