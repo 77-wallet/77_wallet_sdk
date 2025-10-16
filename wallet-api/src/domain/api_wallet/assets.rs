@@ -111,6 +111,7 @@ impl ApiAssetsDomain {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut assets = ApiAssetsRepo::list(&pool, addr, chain_code).await?;
+        tracing::info!("assets: {assets:#?}");
         if !symbol.is_empty() {
             assets.retain(|asset| symbol.contains(&asset.symbol));
         }

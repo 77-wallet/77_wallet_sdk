@@ -1,7 +1,9 @@
 use crate::{
-    consts::endpoint::api_wallet::{ADDRESS_EXPAND_COMPLETE, ADDRESS_INIT, QUERY_ADDRESS_LIST},
+    consts::endpoint::api_wallet::{
+        ADDRESS_EXPAND_COMPLETE, ADDRESS_INIT, QUERY_ADDRESS_LIST, QUERY_ASSET_LIST,
+    },
     request::api_wallet::address::*,
-    response_vo::api_wallet::address::UsedAddressListResp,
+    response_vo::api_wallet::address::{AssetsListRes, UsedAddressListResp},
 };
 use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
@@ -19,7 +21,7 @@ impl BackendApi {
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(ADDRESS_INIT).json(api_req).send::<ApiBackendResponse>().await?;
         tracing::info!("res: {res:#?}");
-        let opt: Option<()> = res.process(ADDRESS_INIT)?;
+        res.process::<()>(ADDRESS_INIT)?;
         Ok(())
     }
 
@@ -41,7 +43,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
         tracing::info!("[expand_address_complete] res: {res:#?}");
-        let opt: Option<()> = res.process(ADDRESS_EXPAND_COMPLETE)?;
+        res.process::<()>(ADDRESS_EXPAND_COMPLETE)?;
         Ok(())
     }
 
@@ -56,5 +58,17 @@ impl BackendApi {
             self.client.post(QUERY_ADDRESS_LIST).json(api_req).send::<ApiBackendResponse>().await?;
         let opt: Option<UsedAddressListResp> = res.process(QUERY_ADDRESS_LIST)?;
         opt.ok_or(Backend(Some("no address list".to_string())))
+    }
+
+    pub async fn query_asset_list(
+        &self,
+        req: &AssetListReq,
+    ) -> Result<AssetsListRes, crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret()?;
+        let api_req = ApiBackendRequest::new(req)?;
+        let res =
+            self.client.post(QUERY_ASSET_LIST).json(api_req).send::<ApiBackendResponse>().await?;
+        let opt: Option<AssetsListRes> = res.process(QUERY_ASSET_LIST)?;
+        opt.ok_or(Backend(Some("no asset list".to_string())))
     }
 }

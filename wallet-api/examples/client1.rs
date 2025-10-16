@@ -89,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sync_res = wallet_manager
         .sync_api_assets_by_wallet(
-            "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b".to_string(),
+            "0x01a68baa7523f16D64AD63d8a82A40e838170b5b".to_string(),
             None,
             vec![],
         )

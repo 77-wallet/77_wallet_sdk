@@ -136,6 +136,8 @@ pub mod endpoint {
         pub const API_WALLET_CHAIN_LIST: &str = "awallet/aw/chain/list";
         /// api钱包查询配置
         pub const API_WALLET_CONFIG: &str = "awallet/aw/appid/configs";
+        /// 查询链下index的资产
+        pub const QUERY_ASSET_LIST: &str = "awallet/aw/address/assetList";
     }
 }
 

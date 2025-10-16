@@ -15,8 +15,8 @@ use wallet_database::{
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
-    request::{ChainRpcListReq, FindConfigByKey, api_wallet::address::AddressListReq},
-    response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
+    request::{api_wallet::address::AddressListReq, ChainRpcListReq, FindConfigByKey},
+    response_vo::{api_wallet::address::AssetsListRes, app::FindConfigByKeyRes, coin::TokenRates},
 };
 
 use crate::{
@@ -71,7 +71,6 @@ impl BackendTaskHandle {
         backend: Arc<BackendApi>,
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
-        tracing::info!("handle endpoint: {}", endpoint);
         let handler = Self::get_handler(endpoint);
         handler.handle(endpoint, body, backend.as_ref()).await?;
 
@@ -540,6 +539,14 @@ impl EndpointHandler for SpecialHandler {
                     Tasks::new().push(BackendApiTask::BackendApi(query_address_list_task_data));
                 }
                 FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
+            }
+            endpoint::api_wallet::QUERY_ASSET_LIST =>{
+                let list = backend.post_req_str::<AssetsListRes>(endpoint, &body).await?;
+                tracing::info!("-------------------- 1: {:?}", list);
+                for asset in list.0 {
+
+                }
+
             }
             _ => {
                 // 未知的 endpoint

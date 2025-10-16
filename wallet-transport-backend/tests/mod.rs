@@ -7,11 +7,12 @@ mod api_wallet;
 mod wallet;
 
 pub fn init() -> Result<BackendApi, wallet_transport_backend::Error> {
-    let pub_key = r#"-----BEGIN PUBLIC KEY-----
-MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEvuj2vgg8mlTp4Ex8IkKk7Q/vYgHfazxi
-dTva9NSNj/C1EYbx9Yy+126BjSomU9JSLI57RPIhhBFVx8zu/v6k2g==
------END PUBLIC KEY-----"#;
-    GLOBAL_KEY.set_shared_secret(pub_key)?;
+    //     let pub_key = r#"-----BEGIN PUBLIC KEY-----
+    // MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEvuj2vgg8mlTp4Ex8IkKk7Q/vYgHfazxi
+    // dTva9NSNj/C1EYbx9Yy+126BjSomU9JSLI57RPIhhBFVx8zu/v6k2g==
+    // -----END PUBLIC KEY-----"#;
+    // GLOBAL_KEY.set_shared_secret(pub_key)?;
+    GLOBAL_KEY.set_sn("wenjing");
 
     wallet_utils::init_test_log();
     // let base_url = "https://test-api.puke668.top";
@@ -21,7 +22,10 @@ dTva9NSNj/C1EYbx9Yy+126BjSomU9JSLI57RPIhhBFVx8zu/v6k2g==
     headers_opt.insert("clientId".to_string(), "5bc38769533b4ef6d209bb501b199ca0".to_string());
     headers_opt.insert("AW-SEC-ID".to_string(), "wenjing".to_string());
 
-    Ok(BackendApi::new(Some(base_url.to_string()), Some(headers_opt), create_aes_cryptor())?)
+    let backend_api =
+        BackendApi::new(Some(base_url.to_string()), Some(headers_opt), create_aes_cryptor())?;
+
+    Ok(backend_api)
 }
 
 pub(crate) fn create_aes_cryptor() -> wallet_utils::cbc::AesCbcCryptor {
