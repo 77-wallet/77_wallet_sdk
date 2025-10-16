@@ -1,6 +1,4 @@
-use reqwest::Identity;
-use wallet_database::entities::task_queue::{KnownTaskName, TaskName, WalletType};
-use wallet_transport_backend::response_vo::api_wallet::wallet::UidStatus;
+use wallet_database::entities::task_queue::{KnownTaskName, TaskName};
 
 use crate::{
     infrastructure::task_queue::{

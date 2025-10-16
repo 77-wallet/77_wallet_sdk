@@ -22,6 +22,7 @@ impl TokenPriceChange {
         let price = self.body.price;
         let unit = self.body.unit;
 
+        tracing::info!("TokenPriceChange: {:?}", self);
         crate::infrastructure::asset_calc::on_price_update(
             &self.body.symbol,
             &self.body.chain_code,

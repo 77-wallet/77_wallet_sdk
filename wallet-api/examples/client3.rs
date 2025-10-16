@@ -3,10 +3,10 @@ use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
     test::env::{TestParams, get_manager},
+    xlog::init_log,
 };
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
-use wallet_api::xlog::init_log;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 async fn run(
@@ -182,7 +182,6 @@ async fn run(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let (wallet_manager, test_params) = get_manager().await?;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);

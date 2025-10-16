@@ -21,8 +21,9 @@ impl ApiAssetsDao {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let mut sql = String::from("SELECT * FROM api_assets WHERE status = 1");
+        let mut sql = String::from("SELECT * FROM api_assets");
         let mut conditions = Vec::new();
+        conditions.push(" status = 1".to_string());
         conditions.push(
             " EXISTS (
                     SELECT 1
@@ -58,6 +59,8 @@ impl ApiAssetsDao {
             sql.push_str(" WHERE ");
             sql.push_str(&conditions.join(" AND "));
         }
+
+        tracing::info!("sql: {}", sql);
 
         sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(&sql)
             .fetch_all(exec)
@@ -103,7 +106,7 @@ impl ApiAssetsDao {
             name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-        ON CONFLICT (symbol, address, chain_code, token_address)
+        ON CONFLICT (address, chain_code, token_address)
         DO UPDATE SET
             status = EXCLUDED.status,
             is_multisig = EXCLUDED.is_multisig,

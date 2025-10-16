@@ -429,15 +429,15 @@ impl AssetsDomain {
     }
 }
 
-struct BalanceTask {
-    address: String,
-    chain_code: String,
-    symbol: String,
-    decimals: u8,
-    token_address: Option<String>,
+pub(crate) struct BalanceTask {
+    pub(crate) address: String,
+    pub(crate) chain_code: String,
+    pub(crate) symbol: String,
+    pub(crate) decimals: u8,
+    pub(crate) token_address: Option<String>,
 }
 
-pub(crate) struct BalanceTasks(Vec<BalanceTask>);
+pub(crate) struct BalanceTasks(pub(crate) Vec<BalanceTask>);
 pub(crate) struct ChainBalance;
 
 impl From<&[AssetsEntity]> for BalanceTasks {
@@ -489,7 +489,7 @@ impl ChainBalance {
             .filter_map(|x| async move { x })
             .collect::<Vec<_>>()
             .await;
-
+        tracing::info!("results: {results:#?}");
         Ok(results)
     }
 

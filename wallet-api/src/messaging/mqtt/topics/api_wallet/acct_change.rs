@@ -1,7 +1,7 @@
 use wallet_database::entities::bill::{BillExtraSwap, BillKind};
 
 use crate::{
-    infrastructure::inner_event::InnerEvent,
+    infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
         mqtt::topics::AcctChange,
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
@@ -63,14 +63,25 @@ impl ApiWalletAcctChange {
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
-            inner_event_handle.send(InnerEvent::ApiWalletSyncAssets {
-                addr_list: vec![
-                    acct_change.0.from_addr.to_string(),
-                    acct_change.0.to_addr.to_string(),
-                ],
-                chain_code: acct_change.0.chain_code.to_string(),
-                symbol: acct_change.get_sync_assets_symbol(),
-            })?;
+
+            let data = SyncAssetsData::new(
+                vec![acct_change.0.from_addr.clone(), acct_change.0.to_addr.clone()],
+                acct_change.0.chain_code.clone(),
+                acct_change.get_sync_assets_symbol(),
+                acct_change.0.token.clone(),
+            );
+            inner_event_handle.send(InnerEvent::ApiWalletSyncAssets(data))?;
+
+            crate::infrastructure::asset_calc::on_asset_update(
+                &acct_change.0.from_addr,
+                &acct_change.0.chain_code,
+                &acct_change.0.token.clone().unwrap_or_default(),
+            );
+            crate::infrastructure::asset_calc::on_asset_update(
+                &acct_change.0.to_addr,
+                &acct_change.0.chain_code,
+                &acct_change.0.token.clone().unwrap_or_default(),
+            );
         } else {
             tracing::warn!("acct_change status is false, skip sync assets");
         }

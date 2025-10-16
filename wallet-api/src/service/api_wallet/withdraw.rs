@@ -3,8 +3,7 @@ use crate::{
     error::service::ServiceError, request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
-    pagination::Pagination,
+    entities::api_withdraw::ApiWithdrawEntity, pagination::Pagination,
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;

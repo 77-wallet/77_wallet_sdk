@@ -59,14 +59,17 @@ pub struct AssetsItem {
 #[serde(rename_all = "camelCase")]
 pub struct AddressItem {
     pub address: String,
+    #[serde(default)]
     pub token_infos: Vec<TokenInfo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenInfo {
-    pub token_code: String,
+    #[serde(rename = "tokenCode")]
+    pub symbol: String,
     pub token_address: String,
     pub amount: f64,
-    pub assets: f64,
+    #[serde(rename = "assets")]
+    pub usdt_amount: f64,
 }

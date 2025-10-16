@@ -42,7 +42,7 @@ impl ApiChainDao {
     {
         let sql = r#"
                             select q.*, a.rpc_url, a.ws_url, a.http_url, a.network, a.name as node_name
-                            from chain as q
+                            from api_chain as q
                             join node a on q.node_id = a.node_id
                             where q.chain_code = ? and q.status = 1;"#;
         sqlx::query_as::<sqlx::Sqlite, ApiChainWithNode>(sql)

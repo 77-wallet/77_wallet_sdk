@@ -55,7 +55,7 @@ impl AwmOrderTransMsg {
         msg_ack_req.push(_msg_id);
         let res = backend.msg_ack(msg_ack_req).await;
         match res {
-            Ok(res) => Ok(()),
+            Ok(_res) => Ok(()),
             Err(e) => {
                 tracing::error!("transfer from {} to {} value {:?}", self.from, self.to, &e);
                 Err(e.into())

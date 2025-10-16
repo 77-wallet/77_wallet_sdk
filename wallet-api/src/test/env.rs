@@ -3,9 +3,11 @@ use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;
 
-use crate::request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq};
+use crate::{
+    request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq},
+    xlog::init_log,
+};
 use serde::Deserialize;
-use crate::xlog::init_log;
 
 #[derive(Deserialize, Debug)]
 pub struct TestParams {

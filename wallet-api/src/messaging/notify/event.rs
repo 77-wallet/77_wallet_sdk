@@ -17,7 +17,6 @@ use crate::messaging::{
     mqtt::topics::{
         BulletinMsg,
         api_wallet::{
-            acct_change::ApiWalletAcctChange,
             cmd::{
                 address_use::AddressUseMsg, dev_change::AwmCmdDevChangeMsg,
                 fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,

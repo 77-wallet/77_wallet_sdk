@@ -68,8 +68,9 @@ async fn test_query_asset_list() -> Result<(), wallet_transport_backend::Error> 
     }
 
     let uid = "2b607a707cc4f0b4191bce26149e0310302905a59aed4c27b35d6429bfacd5d9";
+    // let uid = "2b3c9d25a6d68fd127a77c4d8fefcb6c2466ac40e5605076ee3e1146f5f66993";
     let chain_code = "tron";
-    let req = AssetListReq::new(uid, chain_code, vec![0]);
+    let req = AssetListReq::new(uid, chain_code, vec![0, 1]);
     let res = backend_api.query_asset_list(&req).await.unwrap();
     let res = serde_json::to_string(&res).unwrap();
     println!("{res:#?}");

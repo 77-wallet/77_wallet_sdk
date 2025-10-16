@@ -39,7 +39,8 @@ pub fn init_logger(
     // 构建总的 subscriber
     #[cfg(target_os = "android")]
     {
-        let android_layer = tracing_android::layer("plugin").unwrap().with_filter(env_filter.clone());
+        let android_layer =
+            tracing_android::layer("plugin").unwrap().with_filter(env_filter.clone());
         let subscriber = Registry::default().with(android_layer).with(file_layer);
 
         tracing::subscriber::set_global_default(subscriber)

@@ -10,11 +10,31 @@ use std::{
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
 
-pub type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
+pub(crate) type InnerEventSender = tokio::sync::mpsc::UnboundedSender<InnerEvent>;
 
-pub enum InnerEvent {
-    SyncAssets { addr_list: Vec<String>, chain_code: String, symbol: Vec<String> },
-    ApiWalletSyncAssets { addr_list: Vec<String>, chain_code: String, symbol: Vec<String> },
+pub(crate) struct SyncAssetsData {
+    // pub(crate) uid: String,
+    pub(crate) addr_list: Vec<String>,
+    pub(crate) chain_code: String,
+    pub(crate) symbol: Vec<String>,
+    pub(crate) token_address: Option<String>,
+}
+
+impl SyncAssetsData {
+    pub(crate) fn new(
+        // uid: String,
+        addr_list: Vec<String>,
+        chain_code: String,
+        symbol: Vec<String>,
+        token_address: Option<String>,
+    ) -> Self {
+        Self { addr_list, chain_code, symbol, token_address }
+    }
+}
+
+pub(crate) enum InnerEvent {
+    SyncAssets(SyncAssetsData),
+    ApiWalletSyncAssets(SyncAssetsData),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -44,16 +64,16 @@ impl EventBuffer {
         Self { buffer: Arc::new(Mutex::new(HashSet::new())), notifier: Arc::new(Notify::new()) }
     }
 
-    fn push_assets(&self, addrs: Vec<String>, chain: String, symbol: Vec<String>) {
-        if addrs.is_empty() {
+    fn push_assets(&self, data: SyncAssetsData) {
+        if data.addr_list.is_empty() {
             return;
         }
 
         let mut buf = self.buffer.lock().unwrap();
         let was_empty = buf.is_empty();
-        for addr in addrs {
-            for s in &symbol {
-                buf.insert((addr.as_str(), chain.as_str(), s.as_str()).into());
+        for addr in data.addr_list {
+            for s in &data.symbol {
+                buf.insert(AssetKey::from((addr.as_str(), data.chain_code.as_str(), s.as_str())));
             }
         }
         if was_empty && !buf.is_empty() {
@@ -123,11 +143,11 @@ impl InnerEventHandle {
             tokio::spawn(async move {
                 while let Some(event) = rx.recv().await {
                     match event {
-                        InnerEvent::SyncAssets { addr_list, chain_code, symbol } => {
-                            normal_buf.push_assets(addr_list, chain_code, symbol)
+                        InnerEvent::SyncAssets(data) => {
+                            normal_buf.push_assets(data);
                         }
-                        InnerEvent::ApiWalletSyncAssets { addr_list, chain_code, symbol } => {
-                            api_buf.push_assets(addr_list, chain_code, symbol)
+                        InnerEvent::ApiWalletSyncAssets(data) => {
+                            api_buf.push_assets(data);
                         }
                     }
                 }
@@ -145,18 +165,6 @@ impl InnerEventHandle {
             .send(event)
             .map_err(|e| crate::error::system::SystemError::ChannelSendFailed(e.to_string()))?;
         Ok(())
-    }
-
-    async fn handle_event(event: InnerEvent, buffer: Arc<EventBuffer>) {
-        match event {
-            InnerEvent::SyncAssets { addr_list, chain_code, symbol } => {
-                // tracing::info!("收到资产变更通知，开始同步资产");
-                buffer.push_assets(addr_list, chain_code, symbol)
-            }
-            InnerEvent::ApiWalletSyncAssets { addr_list, chain_code, symbol } => {
-                buffer.push_assets(addr_list, chain_code, symbol)
-            }
-        }
     }
 
     fn start_sync_loop(buffer: Arc<EventBuffer>, target: SyncTarget) {
