@@ -18,7 +18,7 @@ impl ApiWithdrawRepo {
     pub async fn page_api_withdraw(
         pool: &DbPool,
         uid: &str,
-        status: Option<u8>,
+        status: Vec<u8>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {

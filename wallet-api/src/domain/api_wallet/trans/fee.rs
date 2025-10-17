@@ -1,5 +1,10 @@
 use crate::{
     error::business::{BusinessError, api_wallet::ApiWalletError},
+    messaging::notify::{
+        FrontendNotifyEvent,
+        api_wallet::{FeeFront, WithdrawFront},
+        event::NotifyEvent,
+    },
     request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
@@ -46,6 +51,14 @@ impl ApiFeeDomain {
             let trans_event_req =
                 TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
+
+            let data = NotifyEvent::Fee(FeeFront {
+                uid: req.uid.to_string(),
+                from_addr: req.from.to_string(),
+                to_addr: req.to.to_string(),
+                value: req.value.to_string(),
+            });
+            FrontendNotifyEvent::new(data).send().await?;
 
             if let Some(handles) =
                 crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
