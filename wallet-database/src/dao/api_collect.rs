@@ -1,4 +1,7 @@
-use crate::entities::api_collect::{ApiCollectEntity, ApiCollectStatus};
+use crate::{
+    entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
+    pagination::Pagination,
+};
 use chrono::SecondsFormat;
 use sqlx::{Executor, Sqlite};
 
@@ -18,18 +21,17 @@ impl ApiCollectDao {
     }
 
     pub async fn page_api_collect<'a, E>(
-        exec: E,
+        exec: &E,
         page: i64,
         page_size: i64,
-    ) -> Result<Vec<ApiCollectEntity>, crate::Error>
+    ) -> Result<Pagination<ApiCollectEntity>, crate::Error>
     where
-        E: Executor<'a, Database = Sqlite>,
+        for<'c> &'c E: Executor<'c, Database = Sqlite>,
     {
-        let count_sql = "SELECT count(*) FROM";
-        let sql = "SELECT * FROM api_collect ORDER BY created_at DESC LIMIT ? OFFSET ?";
-        // let paginate = Pagination::<Self>::init(page, page_size);
-        // Ok(paginate.page(exec, sql).await?)
-        Ok(vec![])
+        let mut sql = "SELECT * FROM api_collect".to_string();
+        sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
+        let paginate = Pagination::<ApiCollectEntity>::init(page, page_size);
+        Ok(paginate.page(exec, &sql).await?)
     }
 
     pub async fn page_api_collect_with_status<'a, E>(
@@ -56,7 +58,6 @@ impl ApiCollectDao {
         let count =
             query.fetch_one(exec.clone()).await.map_err(|e| crate::Error::Database(e.into()))?;
 
-        // tracing::info!(status=%vec_status[0], "sql: {}", sql);
         let mut query = sqlx::query_as::<_, ApiCollectEntity>(&sql);
         for status in vec_status {
             query = query.bind(status);

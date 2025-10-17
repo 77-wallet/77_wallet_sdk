@@ -8,7 +8,11 @@ use crate::{
         chain::transaction::ChainTransDomain,
         coin::CoinDomain,
     },
-    messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
+    messaging::notify::{
+        FrontendNotifyEvent,
+        api_wallet::{CollectFront, FeeFront, WithdrawFront},
+        event::NotifyEvent,
+    },
     request::api_wallet::trans::{
         ApiBaseTransferReq, ApiCollectReq, ApiTransferReq, ApiWithdrawReq,
     },
@@ -64,6 +68,14 @@ impl ApiCollectDomain {
             let trans_event_req =
                 TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
+
+            let data = NotifyEvent::Collect(CollectFront {
+                uid: req.uid.to_string(),
+                from_addr: req.from.to_string(),
+                to_addr: req.to.to_string(),
+                value: req.value.to_string(),
+            });
+            FrontendNotifyEvent::new(data).send().await?;
 
             // 可能发交易
             if let Some(handles) =
