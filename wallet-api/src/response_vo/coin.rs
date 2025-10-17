@@ -45,40 +45,6 @@ impl DerefMut for CoinInfoList {
         &mut self.0
     }
 }
-// impl CoinInfoList {
-// // 标记多链资产的 is_multi_chain 属性
-// pub(crate) fn mark_multi_chain_assets(&mut self) {
-//     // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
-//     let mut symbol_chain_map: std::collections::HashMap<String, HashSet<String>> =
-//         std::collections::HashMap::new();
-
-//     // 先填充 symbol_chain_map，每个 symbol 对应的 HashSet 包含不同的 chain_code
-//     for asset in self.iter() {
-//         for (chain_code, token_address) in asset.chain_list.iter() {
-//             symbol_chain_map
-//                 .entry(asset.symbol.clone())
-//                 .or_default()
-//                 .insert(chain_code.clone());
-//         }
-//     }
-
-//     // 再次遍历 self，设置 is_multi_chain 标记
-//     for asset in self.iter_mut() {
-//         if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
-//             // asset.is_multichain = chain_codes.len() > 1;
-//         }
-//     }
-// }
-// }
-
-// #[derive(Debug, serde::Deserialize, PartialEq, Eq, Hash, serde::Serialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct ChainInfo {
-//     pub chain_code: String,
-//     pub token_address: Option<String>,
-//     pub protocol: Option<String>,
-// }
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryHistoryPrice {
@@ -90,52 +56,7 @@ pub struct QueryHistoryPrice {
 #[serde(rename_all = "camelCase")]
 pub struct QueryHistoryPriceRes(pub Vec<QueryHistoryPrice>);
 
-// impl TryFrom<(TokenCurrency, TokenHistoryPrice)> for QueryHistoryPrice {
-//     type Error = crate::ServiceError;
-
-//     fn try_from(
-//         (token_currency, assets): (TokenCurrency, TokenHistoryPrice),
-//     ) -> Result<Self, Self::Error> {
-//         let balance = assets.price;
-//         let config = crate::config::CONFIG.read().await;
-//         let currency = config.currency();
-
-//         let price = wallet_types::Decimal::from_f64_retain(token_currency.get_price(currency))
-//             .unwrap_or_default();
-//         let fiat_balance = price * balance;
-
-//         Ok(QueryHistoryPrice {
-//             date: assets.date,
-//             price: BalanceInfo {
-//                 amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
-//                 currency: currency.to_string(),
-//                 unit_price: Some(wallet_utils::conversion::decimal_to_f64(&price)?),
-//                 fiat_value: Some(wallet_utils::conversion::decimal_to_f64(&fiat_balance)?),
-//             },
-//         })
-//     }
-// }
-
-// impl From<Vec<ExchangeRateEntity>> for TokenCurrencies {
-//     fn from(value: Vec<ExchangeRateEntity>) -> Self {
-//         let mut map = std::collections::HashMap::new();
-//         for entity in value {
-//             let symbol = entity.symbol.to_ascii_lowercase();
-//             let name = entity.name;
-//             let token_currency = TokenCurrency {
-//                 name,
-//                 chain_code: entity.chain_code,
-//                 code: entity.symbol,
-//                 price: entity.price.parse::<f64>().unwrap_or_default(),
-//                 currency_price: entity.currency.parse::<f64>().unwrap_or_default(),
-//             };
-//             map.insert(symbol, token_currency);
-//         }
-//         TokenCurrencies(map)
-//     }
-// }
-
-#[derive(Debug, serde::Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq, Hash)]
 pub struct TokenCurrencyId {
     pub symbol: String,
     pub chain_code: String,
@@ -150,9 +71,21 @@ impl TokenCurrencyId {
             token_address,
         }
     }
+
+    pub(crate) fn gen_key(&self) -> String {
+        Self::make_key(
+            &self.symbol,
+            &self.chain_code,
+            &self.token_address.clone().unwrap_or_default(),
+        )
+    }
+
+    pub(crate) fn make_key(symbol: &str, chain_code: &str, token_address: &str) -> String {
+        format!("{}:{}:{}", symbol, chain_code, token_address)
+    }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, Default)]
 pub struct TokenCurrencies(pub std::collections::HashMap<TokenCurrencyId, TokenCurrency>);
 
 impl Deref for TokenCurrencies {
@@ -314,6 +247,39 @@ impl TokenCurrencies {
         let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
 
         let currency = ConfigDomain::get_currency().await?;
+        let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);
+
+        let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
+            let price = token_currency
+                .get_price(&currency)
+                .and_then(wallet_types::Decimal::from_f64_retain);
+
+            let fiat_balance = price.map(|p| p * balance);
+            (price, fiat_balance)
+        } else {
+            (None, None)
+        };
+
+        Ok(BalanceInfo {
+            amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
+            currency: currency.to_string(),
+            unit_price: price.map(|p| wallet_utils::conversion::decimal_to_f64(&p)).transpose()?,
+            fiat_value: fiat_balance
+                .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
+                .transpose()?,
+        })
+    }
+
+    pub fn calculate_sync_to_balance(
+        &self,
+        currency: &str,
+        balance: &str,
+        symbol: &str,
+        chain_code: &str,
+        token_address: Option<String>,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
+
         let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);
 
         let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {

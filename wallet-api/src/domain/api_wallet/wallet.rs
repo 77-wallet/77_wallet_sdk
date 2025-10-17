@@ -355,6 +355,8 @@ impl ApiWalletDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let li = ApiWalletRepo::list(&pool, None).await?;
         let mut list = ApiWalletList::new();
+        let res = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
+
         for e in &li {
             match e.api_wallet_type {
                 ApiWalletType::InvalidValue => todo!(),

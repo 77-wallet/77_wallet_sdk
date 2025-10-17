@@ -78,3 +78,10 @@ impl CreateApiAccountVo {
         self
     }
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountToWalletAddress {
+    pub address: String,
+    pub wallet_address: String,
+}

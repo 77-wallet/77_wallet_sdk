@@ -199,4 +199,10 @@ impl ApiAccountRepo {
         Ok(ApiAccountDao::edit_account_name(pool.as_ref(), wallet_address, account_id, name)
             .await?)
     }
+
+    pub async fn account_to_wallet(
+        pool: &DbPool,
+    ) -> Result<Vec<AccountToWalletAddress>, crate::Error> {
+        ApiAccountDao::account_to_wallet(pool.as_ref()).await
+    }
 }

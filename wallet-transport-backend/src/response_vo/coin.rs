@@ -76,7 +76,7 @@ pub struct TokenPriceInfos {
     pub list: Vec<TokenPriceChangeBody>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenCurrency {
     pub chain_code: String,
@@ -90,6 +90,23 @@ pub struct TokenCurrency {
     pub rate: f64,
 }
 impl TokenCurrency {
+    pub fn new(
+        chain_code: &str,
+        code: &str,
+        name: &str,
+        price: Option<f64>,
+        currency_price: Option<f64>,
+        rate: f64,
+    ) -> Self {
+        Self {
+            chain_code: chain_code.to_string(),
+            code: code.to_string(),
+            name: name.to_string(),
+            price,
+            currency_price,
+            rate,
+        }
+    }
     pub fn get_price(&self, symbol: &str) -> Option<f64> {
         if symbol.eq_ignore_ascii_case("usdt") { self.price } else { self.currency_price }
     }

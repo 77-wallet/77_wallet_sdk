@@ -17,7 +17,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo,
         coin::{CoinRepo, CoinRepoTrait},
-        exchange_rate::ExchangeRateRepoTrait,
+        exchange_rate::{ExchangeRateRepo, ExchangeRateRepoTrait},
     },
 };
 use wallet_transport_backend::{CoinInfo, response_vo::coin::TokenCurrency};
@@ -57,13 +57,11 @@ impl CoinDomain {
     pub async fn get_token_currencies_v2()
     -> Result<TokenCurrencies, crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
         let currency = ConfigDomain::get_currency().await?;
 
-        let coins = repo.coin_list_v2(None, None).await?;
+        let coins = CoinRepo::coin_list_v2(pool.clone(), None, None).await?;
 
-        let exchange_rate_list = repo.list().await?;
+        let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
         // 查询本地的所有币符号
         let mut map = std::collections::HashMap::new();
         for coin in coins {
