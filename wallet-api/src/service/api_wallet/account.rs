@@ -8,7 +8,10 @@ use crate::{
         wallet::WalletDomain,
     },
     error::service::ServiceError,
-    infrastructure::task_queue::{backend::BackendApiTask, task::Tasks},
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     response_vo::api_wallet::account::ApiAccountInfos,
 };
@@ -18,10 +21,11 @@ use wallet_database::{
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         device::DeviceRepo,
+        wallet::WalletRepo,
     },
 };
+use wallet_transport_backend::request::AddressUpdateAccountNameReq;
 use wallet_types::constant::chain_code;
-use wallet_utils::address::AccountIndexMap;
 
 pub struct ApiAccountService {
     ctx: &'static Context,
@@ -204,6 +208,39 @@ impl ApiAccountService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         Ok(ApiAccountRepo::list_by_wallet_address_account_id(&pool, wallet_address, account_id)
             .await?)
+    }
+
+    pub async fn edit_account_name(
+        &self,
+        account_id: u32,
+        wallet_address: &str,
+        name: &str,
+    ) -> Result<(), ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
+        let accounts =
+            ApiAccountRepo::edit_account_name(&pool, wallet_address, account_id, name).await?;
+
+        let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?;
+        if wallet.is_none() {
+            return Err(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::NotFound,
+            )
+            .into());
+        }
+        let wallet = wallet.unwrap();
+
+        let account_index_map =
+            wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
+
+        let req =
+            AddressUpdateAccountNameReq::new(&wallet.uid, account_index_map.input_index, name);
+        let req = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
+            &req,
+        )?;
+        Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
+
+        Ok(())
     }
 
     pub async fn physical_delete_account(

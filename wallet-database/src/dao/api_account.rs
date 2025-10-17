@@ -1,6 +1,7 @@
 use crate::{
+    DbPool,
     entities::{
-        account::AccountWalletMapping,
+        account::{AccountEntity, AccountWalletMapping},
         api_account::{AccountToWalletAddress, ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
@@ -478,5 +479,23 @@ impl ApiAccountDao {
             .fetch_all(executor)
             .await
             .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn edit_account_name<'a, E>(
+        executor: E,
+        wallet_address: &str,
+        account_id: u32,
+        name: &str,
+    ) -> Result<Vec<AccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicUpdateBuilder::new("api_account")
+            .set("name", name)
+            .set_raw("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
+            .fetch_all(executor)
+            .await
     }
 }
