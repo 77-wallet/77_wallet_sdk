@@ -11,7 +11,7 @@ impl WalletManager {
     pub async fn page_api_withdraw_order(
         &self,
         uid: &str,
-        status: Option<u8>,
+        status: Vec<u8>,
         page: i64,
         page_size: i64,
     ) -> ReturnType<Pagination<ApiWithdrawEntity>> {

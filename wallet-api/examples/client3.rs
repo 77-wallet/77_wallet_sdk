@@ -92,7 +92,7 @@ async fn run_withdraw_order(
 
     let uid = "78da2f53e3ee6c651859b557a1c74067d6c44db356f0b2835c09c03f8541f78a";
     let res = wallet_manager
-        .page_api_withdraw_order(uid, Some(ApiWithdrawStatus::AuditReject as u8), 0, 10)
+        .page_api_withdraw_order(uid, vec![ApiWithdrawStatus::AuditReject as u8, ApiWithdrawStatus::SendingTxFailed as u8], 0, 10)
         .await?;
     for e in &res.data {
         let res = serde_json::to_string(e).unwrap();
