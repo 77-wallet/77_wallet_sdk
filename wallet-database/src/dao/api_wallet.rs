@@ -77,6 +77,32 @@ impl ApiWalletDao {
             .map_err(|e| crate::Error::Database(e.into()))
     }
 
+    pub async fn wallet_latest<'a, E>(exec: E) -> Result<Option<ApiWalletEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_wallet WHERE status = 1
+                   ORDER BY updated_at DESC
+                   LIMIT 1;";
+
+        sqlx::query_as::<sqlx::Sqlite, ApiWalletEntity>(sql)
+            .fetch_optional(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
+    pub async fn uid_list<'a, E>(exec: E) -> Result<Vec<(String,)>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT DISTINCT uid FROM api_wallet WHERE status = 1;";
+
+        sqlx::query_as::<sqlx::Sqlite, (String,)>(sql)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))
+    }
+
     pub async fn detail_by_uid<'a, E>(
         exec: E,
         uid: &str,
@@ -261,7 +287,7 @@ impl ApiWalletDao {
         Ok(res.pop().ok_or(crate::DatabaseError::ReturningNone)?)
     }
 
-    pub async fn delete_by_address<'a, E>(
+    pub async fn physical_delete<'a, E>(
         exec: E,
         addresses: &[&str],
     ) -> Result<Vec<ApiWalletEntity>, crate::Error>

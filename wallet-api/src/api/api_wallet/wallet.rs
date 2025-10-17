@@ -106,6 +106,16 @@ impl WalletManager {
             .await
     }
 
+    // pub async fn get_phrase(
+    //     &self,
+    //     wallet_address: &str,
+    //     password: &str,
+    // ) -> ReturnType<crate::response_vo::wallet::GetPhraseRes> {
+    //     WalletService::new(self.repo_factory.resource_repo())
+    //         .get_phrase(wallet_address, password)
+    //         .await
+    // }
+
     pub async fn unbind_merchant(
         &self,
         recharge_uid: &str,
@@ -140,12 +150,9 @@ impl WalletManager {
     //         .into()
     // }
 
-    // pub async fn physical_delete_api_wallet(&self, address: &str) -> ReturnType<()> {
-    //     WalletService::new(self.repo_factory.resource_repo())
-    //         .physical_delete(address)
-    //         .await?
-    //         .into()
-    // }
+    pub async fn physical_delete_api_wallet(&self, address: &str) -> ReturnType<()> {
+        ApiWalletService::new(self.ctx).physical_delete(address).await
+    }
 
     // pub async fn appid_withdrawal_wallet_change(
     //     &self,
@@ -387,6 +394,19 @@ mod test {
 
         let res = wallet_manager.get_api_wallet_list().await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_physical_delete_api_wallet() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let _ = wallet_manager.set_passwd_cache("q1111111").await;
+
+        let res = wallet_manager
+            .physical_delete_api_wallet("0x01a68baa7523f16D64AD63d8a82A40e838170b5b")
+            .await;
         tracing::info!("res: {res:?}");
         Ok(())
     }

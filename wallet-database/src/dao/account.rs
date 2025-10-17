@@ -317,17 +317,6 @@ impl AccountEntity {
             .fetch_one(exec)
             .await
             .map(|(count,)| count)
-        // let sql = r#"
-        //     SELECT COUNT(DISTINCT account_id) as count
-        //     FROM account
-        //     WHERE wallet_address = $1
-        //     "#;
-        // sqlx::query_as::<_, (u32,)>(sql)
-        //     .bind(wallet_address)
-        //     .fetch_one(exec)
-        //     .await
-        //     .map(|(count,)| count)
-        //     .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn init<'a, E>(
