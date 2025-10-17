@@ -600,13 +600,18 @@ impl ProcessWithdrawTxConfirmReport {
             .await
         {
             Ok(_) => {
+                let next_status = if req.status == ApiWithdrawStatus::Success {
+                    ApiWithdrawStatus::ConfirmSuccessReport
+                } else {
+                    ApiWithdrawStatus::ConfirmFailureReport
+                };
                 tracing::info!("process_withdraw_single_tx_confirm_report success");
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 ApiWithdrawRepo::update_api_withdraw_next_status(
                     &pool,
                     &req.trade_no,
                     req.status,
-                    ApiWithdrawStatus::ReceivedConfirmReport,
+                    next_status,
                     "withdraw trans event ack",
                 )
                 .await?;

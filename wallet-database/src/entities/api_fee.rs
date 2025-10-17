@@ -46,7 +46,8 @@ pub enum ApiFeeStatus {
     SendingTxFailedReport, //4, 结束
     Success,               // 5,
     Failure,               // 6
-    ReceivedConfirmReport, // 7, 结束
+    ConfirmSuccessReport,  // 7, 结束
+    ConfirmFailureReport,  // 8, 结束
 }
 
 impl Display for ApiFeeStatus {

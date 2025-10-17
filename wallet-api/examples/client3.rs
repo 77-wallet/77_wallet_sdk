@@ -86,7 +86,11 @@ async fn run_withdrawal_strategy(
 async fn run_withdraw_order(
     wallet_manager: &WalletManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // let trade_no = "W1979025709485711360";
+    let trade_no = "W1979072898652102656";
+
+    wallet_manager.sign_api_withdrawal_order(trade_no).await?;
+    tracing::info!("同意提币成功 --------------------- ");
+
     // wallet_manager.reject_api_withdrawal_order(trade_no).await?;
     // tracing::info!("拒绝提币策略成功 --------------------- ");
 

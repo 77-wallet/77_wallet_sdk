@@ -16,7 +16,10 @@ use tokio::{
     time::sleep,
 };
 use wallet_database::{
-    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+    entities::{
+        api_fee::{ApiFeeEntity, ApiFeeStatus},
+        api_withdraw::ApiWithdrawStatus,
+    },
     repositories::api_wallet::fee::ApiFeeRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -580,13 +583,18 @@ impl ProcessFeeTxConfirmReport {
             .await
         {
             Ok(_) => {
+                let next_status = if req.status == ApiFeeStatus::Success {
+                    ApiFeeStatus::ConfirmSuccessReport
+                } else {
+                    ApiFeeStatus::ConfirmFailureReport
+                };
                 tracing::info!("process_fee_single_tx_confirm_report success");
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 ApiFeeRepo::update_api_fee_next_status(
                     &pool,
                     &req.trade_no,
                     req.status,
-                    ApiFeeStatus::ReceivedConfirmReport,
+                    next_status,
                     "fee trans event ack",
                 )
                 .await?;

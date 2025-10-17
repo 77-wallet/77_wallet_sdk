@@ -52,7 +52,8 @@ pub enum ApiWithdrawStatus {
     SendingTxFailedReport, // 6,发送交易失败报告给服务器，结束
     Success,               // 7，收到成功确认
     Failure,               // 8，收到失败确认
-    ReceivedConfirmReport, // 9, 结束
+    ConfirmSuccessReport,  // 9, 结束
+    ConfirmFailureReport,  // 10, 结束
 }
 
 impl Display for ApiWithdrawStatus {
@@ -75,7 +76,8 @@ impl TryFrom<u8> for ApiWithdrawStatus {
             6 => Ok(ApiWithdrawStatus::SendingTxFailedReport),
             7 => Ok(ApiWithdrawStatus::Success),
             8 => Ok(ApiWithdrawStatus::Failure),
-            9 => Ok(ApiWithdrawStatus::ReceivedConfirmReport),
+            9 => Ok(ApiWithdrawStatus::ConfirmSuccessReport),
+            10 => Ok(ApiWithdrawStatus::ConfirmFailureReport),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid ApiWithdrawStatus",
