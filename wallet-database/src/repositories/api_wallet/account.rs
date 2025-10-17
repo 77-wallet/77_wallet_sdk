@@ -3,7 +3,7 @@ use crate::{
     dao::api_account::ApiAccountDao,
     entities::{
         account::{AccountEntity, AccountWalletMapping},
-        api_account::{ApiAccountEntity, CreateApiAccountVo},
+        api_account::{AccountToWalletAddress, ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
 };
