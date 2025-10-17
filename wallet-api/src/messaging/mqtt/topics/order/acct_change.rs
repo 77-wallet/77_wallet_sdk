@@ -14,7 +14,7 @@ use wallet_types::constant::chain_code;
 
 use crate::{
     domain::{bill::BillDomain, multisig::MultisigQueueDomain},
-    infrastructure::inner_event::InnerEvent,
+    infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
         notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
         system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
@@ -215,11 +215,14 @@ impl AcctChange {
         let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
         if let Some(handles) = handles.upgrade() {
             let inner_event_handle = handles.get_global_inner_event_handle();
-            inner_event_handle.send(InnerEvent::SyncAssets {
-                addr_list: vec![acct_change.from_addr.to_string(), acct_change.to_addr.to_string()],
-                chain_code: acct_change.chain_code.to_string(),
-                symbol: acct_change.get_sync_assets_symbol(),
-            })?;
+            let data = SyncAssetsData::new(
+                vec![acct_change.from_addr.clone(), acct_change.to_addr.clone()],
+                acct_change.chain_code.clone(),
+                acct_change.get_sync_assets_symbol(),
+                acct_change.token.clone(),
+            );
+
+            inner_event_handle.send(InnerEvent::SyncAssets(data))?;
         } else {
             tracing::warn!("acct_change status is false, skip sync assets");
         }
@@ -351,6 +354,7 @@ impl AcctChange {
 
 #[cfg(test)]
 mod test {
+
     use crate::{messaging::mqtt::topics::AcctChange, test::env::get_manager};
 
     async fn init_manager() {

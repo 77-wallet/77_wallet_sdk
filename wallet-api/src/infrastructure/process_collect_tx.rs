@@ -15,12 +15,13 @@ use rust_decimal::Decimal;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
+    time::sleep,
 };
-use tokio::time::sleep;
 use wallet_database::{
     entities::api_collect::{ApiCollectEntity, ApiCollectStatus},
     repositories::api_wallet::collect::ApiCollectRepo,
 };
+use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::request::api_wallet::{
     strategy::ChainConfig,
     transaction::{
@@ -30,7 +31,6 @@ use wallet_transport_backend::request::api_wallet::{
 };
 use wallet_types::chain::chain::ChainCode;
 use wallet_utils::{conversion, unit};
-use wallet_ecdh::GLOBAL_KEY;
 
 #[derive(Clone)]
 pub(crate) enum ProcessCollectTxCommand {
@@ -356,17 +356,18 @@ impl ProcessCollectTx {
         let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         if req.validate != digest {
-            return self.handle_collect_tx_failed(&req.trade_no, ServiceError::Parameter("validate failed".to_string())).await
+            return self
+                .handle_collect_tx_failed(
+                    &req.trade_no,
+                    ServiceError::Parameter("validate failed".to_string()),
+                )
+                .await;
         }
 
         let coin =
             CoinDomain::get_coin(&req.chain_code, &req.symbol, req.token_addr.clone()).await?;
-        let mut params = ApiBaseTransferReq::new(
-            &req.from_addr,
-            &req.to_addr,
-            &req.value,
-            &req.chain_code,
-        );
+        let mut params =
+            ApiBaseTransferReq::new(&req.from_addr, &req.to_addr, &req.value, &req.chain_code);
         let token_address = if coin.token_address.is_none() {
             None
         } else {

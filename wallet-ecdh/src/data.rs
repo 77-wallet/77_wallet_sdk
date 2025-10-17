@@ -31,15 +31,14 @@ impl EncryptedData {
         let ciphertext_len = u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize;
         let key_len = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
 
-
         if data.len() < 12 + nonce_len + ciphertext_len + key_len {
             return Err(EncryptionError::InvalidEncryptedData);
         }
 
-
         let nonce = data[12..12 + nonce_len].to_vec();
         let ciphertext = data[12 + nonce_len..12 + nonce_len + ciphertext_len].to_vec();
-        let key = data[12+ nonce_len + ciphertext_len..12 + nonce_len + ciphertext_len +key_len].to_vec();
+        let key = data[12 + nonce_len + ciphertext_len..12 + nonce_len + ciphertext_len + key_len]
+            .to_vec();
 
         Ok(EncryptedData { key, nonce, ciphertext })
     }
@@ -51,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_data() {
-        let d = EncryptedData{
+        let d = EncryptedData {
             nonce: vec![1, 2, 3, 4],
             ciphertext: vec![1, 2, 3, 4],
             key: vec![1, 2, 3, 4, 3, 4],

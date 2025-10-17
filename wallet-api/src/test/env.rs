@@ -3,9 +3,11 @@ use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;
 
-use crate::request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq};
+use crate::{
+    request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq},
+    xlog::init_log,
+};
 use serde::Deserialize;
-use crate::xlog::init_log;
 
 #[derive(Deserialize, Debug)]
 pub struct TestParams {
@@ -37,7 +39,7 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     info!("[setup_test_environment] storage_dir: {:?}", storage_dir);
 
     let dirs = Dirs::new(&storage_dir.to_string_lossy())?;
-    init_log(Some("info"), test_params.device_req.app_id.clone().unwrap().as_str(), &dirs, &test_params.device_req.sn).await?;
+    // init_log(Some("info"), test_params.device_req.app_id.clone().unwrap().as_str(), &dirs, &test_params.device_req.sn).await?;
     let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
     let wallet_manager = WalletManager::new(
         &test_params.device_req.sn,
@@ -48,6 +50,7 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();
+    wallet_manager.init(test_params.device_req.clone()).await?;
 
     Ok((wallet_manager, test_params))
 }

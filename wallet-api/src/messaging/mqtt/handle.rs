@@ -1,4 +1,5 @@
 use super::{
+    Message,
     message::BizType,
     topics::{
         AcctChange, BulletinMsg, ChainChange, CleanPermission, MultiSignTransAccept,
@@ -7,34 +8,37 @@ use super::{
         OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete,
         PermissionAccept, RpcChange, Topic,
     },
-    Message,
 };
 use crate::{
     error::service::ServiceError,
     infrastructure::task_queue::{
+        MqttTask,
         mqtt_api::{ApiMqttStruct, EventType},
         task::Tasks,
-        MqttTask,
     },
     messaging::{
         mqtt::topics::{
+            OutgoingPayload,
             api_wallet::{
+                acct_change::ApiWalletAcctChange,
                 cmd::{
-                    address_allock::AwmCmdAddrExpandMsg, unbind_uid::AwmCmdUidUnbindMsg,
+                    address_allock::AwmCmdAddrExpandMsg, dev_change::AwmCmdDevChangeMsg,
+                    fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
                     wallet_activation::AwmCmdActiveMsg,
-                    fee_res::AwmCmdFeeResMsg,
                 },
                 trans::AwmOrderTransMsg,
                 trans_result::AwmOrderTransResMsg,
             },
-            OutgoingPayload,
         },
-        notify::{event::NotifyEvent, FrontendNotifyEvent},
+        notify::{FrontendNotifyEvent, event::NotifyEvent},
     },
     service::{app::AppService, device::DeviceService},
 };
 use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
-use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
+use wallet_database::{
+    entities::task_queue::{TaskQueueEntity, WalletType},
+    factory::RepositoryFactory,
+};
 use wallet_transport_backend::api_response::{
     ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
 };
@@ -75,7 +79,7 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
 
     match topic.topic {
         Topic::Switch => {}
-        #[cfg(feature = "token")]
+        // #[cfg(feature = "token")]
         crate::messaging::mqtt::topics::Topic::Token => {
             let payload: crate::messaging::mqtt::topics::TokenPriceChange =
                 serde_json::from_slice(&publish.payload)?;
@@ -160,9 +164,16 @@ pub(crate) async fn exec_payload(
             )
             .await?
         }
-        BizType::AcctChange => {
-            exec_task::<AcctChange, _, _>(&payload, MqttTask::AcctChange).await?
-        }
+        BizType::AcctChange => match payload.wallet_type {
+            WalletType::NormalWallet => {
+                exec_task::<AcctChange, _, _>(&payload, MqttTask::AcctChange).await?
+            }
+            WalletType::ApiRaw | WalletType::ApiWaw => {
+                exec_task::<ApiWalletAcctChange, _, _>(&payload, MqttTask::ApiWalletAcctChange)
+                    .await?
+            }
+            WalletType::NotFound => todo!(),
+        },
         BizType::OrderMultiSignCreated => {
             exec_task::<OrderMultiSignCreated, _, _>(&payload, MqttTask::OrderMultiSignCreated)
                 .await?
@@ -194,7 +205,8 @@ pub(crate) async fn exec_payload(
         | BizType::AwmCmdFeeRes
         | BizType::AwmCmdActive
         | BizType::AwmCmdUidUnbind
-        | BizType::AddressUse => {
+        | BizType::AddressUse
+        | BizType::AwmCmdDevChange => {
             let mut api_mqtt_st =
                 serde_func::serde_from_value::<ApiMqttStruct>(payload.body.clone())?;
             if api_mqtt_st.sign.is_none() {
@@ -337,6 +349,14 @@ async fn exec_verify_api_mqtt_st(
         }
         EventType::AwmCmdFeeRes => {
             let data: Option<AwmCmdFeeResMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdDevChange => {
+            let data: Option<AwmCmdDevChangeMsg> = res.process("AwmCmdDevChange")?;
             if let Some(data) = data {
                 Ok(serde_func::serde_to_value(data)?)
             } else {

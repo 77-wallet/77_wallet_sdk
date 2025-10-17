@@ -16,7 +16,7 @@ impl StrategyService {
     pub async fn update_collect_strategy(
         self,
         uid: &str,
-        threshold: f64,
+        threshold: u32,
         chain_config: Vec<ChainConfig>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
@@ -39,7 +39,7 @@ impl StrategyService {
     pub async fn update_withdrawal_strategy(
         self,
         uid: &str,
-        threshold: f64,
+        threshold: u32,
         chain_config: Vec<ChainConfig>,
     ) -> Result<(), crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
@@ -56,6 +56,14 @@ impl StrategyService {
     ) -> Result<WithdrawStrategyResp, crate::error::service::ServiceError> {
         let backend_api = self.ctx.get_global_backend_api();
         let res = backend_api.query_withdrawal_strategy(&uid).await?;
+        Ok(res)
+    }
+
+    pub async fn query_api_wallet_configs(
+        self,
+    ) -> Result<serde_json::Value, crate::error::service::ServiceError> {
+        let backend_api = self.ctx.get_global_backend_api();
+        let res = backend_api.query_api_wallet_configs().await?;
         Ok(res)
     }
 }

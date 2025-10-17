@@ -13,18 +13,23 @@ use sqlx::{Executor, Sqlite};
 pub(crate) struct ApiAssetsDao;
 
 impl ApiAssetsDao {
-    pub async fn list<'a, E>(exec: E) -> Result<Vec<ApiAssetsEntity>, crate::Error>
+    pub async fn list<'a, E>(
+        exec: E,
+        addr: Vec<String>,
+        chain_code: Option<String>,
+    ) -> Result<Vec<ApiAssetsEntity>, crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = String::from("SELECT * FROM api_assets WHERE status = 1");
+        let mut sql = String::from("SELECT * FROM api_assets");
         let mut conditions = Vec::new();
+        conditions.push(" status = 1".to_string());
         conditions.push(
             " EXISTS (
                     SELECT 1
-                    FROM chain
-                    WHERE chain.chain_code = api_assets.chain_code
-                    AND chain.status = 1
+                    FROM api_chain
+                    WHERE api_chain.chain_code = api_assets.chain_code
+                    AND api_chain.status = 1
                 )"
             .to_string(),
         );
@@ -40,6 +45,22 @@ impl ApiAssetsDao {
                 )"
             .to_string(),
         );
+
+        if let Some(chain_code) = chain_code {
+            conditions.push(format!("chain_code = '{chain_code}'"));
+        }
+
+        if !addr.is_empty() {
+            let str = format!("address in ('{}')", addr.join("','"));
+            conditions.push(str)
+        }
+
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+
+        tracing::info!("sql: {}", sql);
 
         sqlx::query_as::<sqlx::Sqlite, ApiAssetsEntity>(&sql)
             .fetch_all(exec)
@@ -85,7 +106,7 @@ impl ApiAssetsDao {
             name, symbol, decimals, address, chain_code, token_address, protocol, status, balance, is_multisig, created_at, updated_at
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-        ON CONFLICT (symbol, address, chain_code, token_address)
+        ON CONFLICT (address, chain_code, token_address)
         DO UPDATE SET
             status = EXCLUDED.status,
             is_multisig = EXCLUDED.is_multisig,

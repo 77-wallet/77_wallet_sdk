@@ -132,6 +132,7 @@ impl CoinService {
         let coins = CoinDomain::fetch_all_coin(&pool).await?;
 
         let data = coins.into_iter().map(|d| coin_info_to_coin_data(d)).collect::<Vec<CoinData>>();
+
         CoinDomain::upsert_hot_coin_list(tx, data).await?;
 
         // TODO 1.6版本,修改那些能兑换的代币配置 1.7后面再调整
@@ -149,6 +150,17 @@ impl CoinService {
         CoinRepo::multi_update_swappable(swap_coins, &pool).await?;
 
         let _e = self.delete_wsol_error(&pool).await;
+
+        let list = CoinRepo::default_coin_list(&pool).await?;
+        tracing::info!("pull_hot_coins: {:?}", list);
+        for coin in list.iter() {
+            crate::infrastructure::asset_calc::on_price_update(
+                &coin.symbol,
+                &coin.chain_code,
+                &coin.token_address,
+                wallet_utils::unit::string_to_f64(&coin.price)?,
+            );
+        }
 
         Ok(())
     }

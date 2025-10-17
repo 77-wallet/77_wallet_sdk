@@ -10,7 +10,7 @@ use crate::{
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
-    entities::api_wallet::ApiWalletType,
+    entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
     repositories::api_wallet::{
         account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo,
     },
@@ -187,5 +187,15 @@ impl ApiAccountService {
         uid: &str,
     ) -> Result<(), ServiceError> {
         Ok(ApiAccountDomain::address_used(chain_code, index, uid).await?)
+    }
+
+    pub async fn get_account_list(
+        &self,
+        wallet_address: Option<&str>,
+        account_id: Option<u32>,
+    ) -> Result<Vec<ApiAccountEntity>, crate::error::service::ServiceError> {
+        let pool = self.ctx.get_global_sqlite_pool()?;
+        Ok(ApiAccountRepo::list_by_wallet_address_account_id(&pool, wallet_address, account_id)
+            .await?)
     }
 }

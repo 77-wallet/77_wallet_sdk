@@ -80,7 +80,9 @@ impl WalletService {
         self,
         password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!("validate_password");
         WalletDomain::validate_password(password).await?;
+        tracing::info!("validate_password end");
         Ok(())
     }
 

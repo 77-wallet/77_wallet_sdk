@@ -87,13 +87,15 @@ impl TaskManager {
 
             let mut failed_queue = repo.failed_task_queue().await?;
             let pending_queue = repo.pending_task_queue().await?;
+            let hanging_queue = repo.hanging_task_queue().await?;
             let running_queue = repo.running_task_queue().await?;
             failed_queue.extend(running_queue);
             failed_queue.extend(pending_queue);
+            failed_queue.extend(hanging_queue);
 
             let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
-
-            // tracing::info!("failed_queue: {:#?}", failed_queue);
+            tracing::info!("check handle running tasks: {running_tasks:?}");
+            tracing::info!("failed_queue: {:#?}", failed_queue);
             for task_entity in failed_queue.into_iter() {
                 if !running_tasks.contains(&task_entity.id) {
                     let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {

@@ -69,13 +69,16 @@ impl WalletDomain {
             let file_name = "verify";
             let file_path = dirs.root_dir.join(file_name);
             if wallet_utils::file_func::exists(&file_path)? {
+                tracing::info!("load verify file");
                 if KeystoreApi::load_verify_file(&*wallet_tree, &dirs.root_dir, password).is_err() {
                     return Err(crate::error::business::BusinessError::Wallet(
                         crate::error::business::wallet::WalletError::PasswordIncorrect,
                     )
                     .into());
                 }
+                tracing::info!("verify file exists");
             } else {
+                tracing::info!("verify file not exists");
                 KeystoreApi::store_verify_file(&*wallet_tree, &dirs.root_dir, password)?;
             }
         } else {

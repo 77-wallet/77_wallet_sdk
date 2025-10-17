@@ -20,6 +20,8 @@ pub enum ApiWalletError {
     WalletDoesNotExist,
     #[error("the order not exist")]
     OrderNotFound(String),
+    #[error("Wallet not init")]
+    WalletNotInit,
 }
 
 impl ApiWalletError {
@@ -35,6 +37,7 @@ impl ApiWalletError {
             ApiWalletError::ImportNotSupportedForThisAccountType => 4406,
             ApiWalletError::WalletDoesNotExist => 4407,
             ApiWalletError::OrderNotFound(_) => 4408,
+            ApiWalletError::WalletNotInit => 4409,
         }
     }
 }

@@ -1,5 +1,5 @@
-use wallet_ecdh::GLOBAL_KEY;
 use crate::init;
+use wallet_ecdh::GLOBAL_KEY;
 
 #[tokio::test]
 async fn test_api_wallet_chain_list() -> Result<(), wallet_transport_backend::Error> {

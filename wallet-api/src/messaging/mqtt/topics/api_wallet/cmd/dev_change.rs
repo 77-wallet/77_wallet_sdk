@@ -1,59 +1,26 @@
 use wallet_transport_backend::request::api_wallet::msg::MsgAckReq;
 
-use crate::{
-    domain::api_wallet::wallet::ApiWalletDomain,
-    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
-};
+use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 
-// biz_type = AWM_CMD_ADDR_EXPAND
+// biz_type = AWM_CMD_DEV_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AwmCmdAddrExpandMsg {
-    /// 扩容类型： CHA_ALL / CHA_INDEX
-    #[serde(rename = "type")]
-    pub typ: AddressAllockType,
-    #[serde(rename = "chain")]
-    pub chain_code: String,
-    pub index: Option<i32>,
+pub struct AwmCmdDevChangeMsg {
+    pub new_sn: String,
     pub uid: String,
-    /// 扩容编号  
-    pub serial_no: String,
-    /// 扩容数量（可空，CHA_BATCH 类型时有效）
-    #[serde(
-        deserialize_with = "wallet_utils::serde_func::string_to_u32",
-        serialize_with = "wallet_utils::serde_func::u32_to_string"
-    )]
-    pub number: u32,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum AddressAllockType {
-    ChaBatch,
-    ChaIndex,
-}
-
-// 地址池扩容
-impl AwmCmdAddrExpandMsg {
+// 更换设备
+impl AwmCmdDevChangeMsg {
     pub(crate) async fn exec(
         &self,
         _msg_id: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
-        ApiWalletDomain::expand_address(
-            &self.typ,
-            self.index,
-            &self.uid,
-            &self.chain_code,
-            self.number,
-            &self.serial_no,
-        )
-        .await?;
-
         let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut msg_ack_req = MsgAckReq::default();
         msg_ack_req.push(_msg_id);
         backend.msg_ack(msg_ack_req).await?;
-        let data = NotifyEvent::AwmCmdAddrExpand(self.into());
+        let data = NotifyEvent::AwmCmdDevChange(self.to_owned());
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())
     }

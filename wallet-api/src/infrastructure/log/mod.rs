@@ -16,7 +16,7 @@ use tokio::{
     io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncSeekExt as _, BufReader},
     time::interval,
 };
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
+use tracing_subscriber::{EnvFilter, Layer, Registry, fmt, layer::SubscriberExt};
 use wallet_oss::oss_client;
 
 // 初始化日志。
@@ -41,7 +41,8 @@ pub fn init_logger(
     // 构建总的 subscriber
     #[cfg(target_os = "android")]
     {
-        let android_layer = tracing_android::layer("plugin").unwrap().with_filter(env_filter.clone());
+        let android_layer =
+            tracing_android::layer("plugin").unwrap().with_filter(env_filter.clone());
         let subscriber = Registry::default().with(android_layer).with(file_layer);
 
         tracing::subscriber::set_global_default(subscriber)

@@ -83,11 +83,11 @@ impl WalletManager {
 
     pub async fn current_chain_address(
         &self,
-        uid: String,
+        address: String,
         account_id: u32,
         chain_code: String,
     ) -> ReturnType<Vec<QueryAccountDerivationPath>> {
-        AccountService::current_chain_address(uid, account_id, &chain_code).await
+        AccountService::current_chain_address(address, account_id, &chain_code).await
     }
 
     pub async fn current_account(

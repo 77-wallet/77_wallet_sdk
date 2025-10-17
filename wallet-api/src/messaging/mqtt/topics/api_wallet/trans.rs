@@ -4,9 +4,7 @@ use crate::{
     domain::api_wallet::trans::{
         collect::ApiCollectDomain, fee::ApiFeeDomain, withdraw::ApiWithdrawDomain,
     },
-    request::api_wallet::trans::{
-        ApiBaseTransferReq, ApiCollectReq, ApiTransferFeeReq, ApiTransferReq, ApiWithdrawReq,
-    },
+    request::api_wallet::trans::{ApiCollectReq, ApiTransferFeeReq, ApiWithdrawReq},
 };
 
 // biz_type = RECHARGE
@@ -57,7 +55,7 @@ impl AwmOrderTransMsg {
         msg_ack_req.push(_msg_id);
         let res = backend.msg_ack(msg_ack_req).await;
         match res {
-            Ok(res) => Ok(()),
+            Ok(_res) => Ok(()),
             Err(e) => {
                 tracing::error!("transfer from {} to {} value {:?}", self.from, self.to, &e);
                 Err(e.into())

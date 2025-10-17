@@ -1,4 +1,5 @@
-use std::fmt;
+use wallet_database::entities::task_queue::WalletType;
+
 use crate::messaging::mqtt::topics::{
     AcctChange, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
@@ -7,13 +8,14 @@ use crate::messaging::mqtt::topics::{
     api_wallet::{
         cmd::{
             address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg,
-            fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
-            wallet_activation::AwmCmdActiveMsg,
+            dev_change::AwmCmdDevChangeMsg, fee_res::AwmCmdFeeResMsg,
+            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
         },
         trans::AwmOrderTransMsg,
         trans_result::AwmOrderTransResMsg,
     },
 };
+use std::fmt;
 
 use super::topics::{CleanPermission, multisign_trans_execute::MultiSignTransExecute};
 
@@ -35,6 +37,7 @@ pub(crate) struct Message {
     // 设备类型
     #[allow(dead_code)]
     pub(crate) device_type: String,
+    pub(crate) wallet_type: WalletType,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -103,6 +106,8 @@ pub enum BizType {
     AwmCmdFeeRes,
     // AWM_CMD_ACTIVE API钱包激活
     AwmCmdActive,
+    // AWM_CMD_DEV_CHANGE API钱包设备变更
+    AwmCmdDevChange,
 }
 
 impl fmt::Display for BizType {
@@ -133,11 +138,11 @@ impl fmt::Display for BizType {
             BizType::AwmCmdUidUnbind => "AwmCmdUidUnbind",
             BizType::AwmCmdFeeRes => "AwmCmdFeeRes",
             BizType::AwmCmdActive => "AwmCmdActive",
+            BizType::AwmCmdDevChange => "AwmCmdDevChange",
         };
         write!(f, "{}", s)
     }
 }
-
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(untagged)]
@@ -176,4 +181,5 @@ pub enum Body {
     AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
     AddressUse(AddressUseMsg),
     AwmCmdOrderTransFeeRes(AwmCmdFeeResMsg),
+    AwmCmdDevChange(AwmCmdDevChangeMsg),
 }

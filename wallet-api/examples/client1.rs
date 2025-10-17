@@ -89,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sync_res = wallet_manager
         .sync_api_assets_by_wallet(
-            "0xF1C1FE41b1c50188faFDce5f21638e1701506f1b".to_string(),
+            "0x01a68baa7523f16D64AD63d8a82A40e838170b5b".to_string(),
             None,
             vec![],
         )
@@ -102,7 +102,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {config:#?}");
     // let res = wallet_utils::serde_func::serde_to_string(&config)?;
     // tracing::info!("config result: {res}");
+    subscribe(&wallet_manager).await;
 
+    // tokio::spawn(async {
+    //     loop {
+    //         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    //         let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
+    //         wallet_api::infrastructure::asset_calc::get_price_cache().await;
+    //         let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
+    //         tracing::info!("usdt: {usdt:#?}");
+    //         tracing::info!("page: {page:#?}");
+    //     }
+    // });
     loop {
         tokio::select! {
             msg = rx.next() => {

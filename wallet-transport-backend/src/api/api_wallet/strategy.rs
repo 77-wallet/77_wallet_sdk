@@ -1,18 +1,17 @@
 use crate::{
+    Error::Backend,
+    api::BackendApi,
+    api_request::ApiBackendRequest,
+    api_response::ApiBackendResponse,
     consts::endpoint::api_wallet::{
-        TRANS_STRATEGY_COLLECT_SAVE, TRANS_STRATEGY_GET_COLLECT_CONFIG,
+        API_WALLET_CONFIG, TRANS_STRATEGY_COLLECT_SAVE, TRANS_STRATEGY_GET_COLLECT_CONFIG,
         TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG, TRANS_STRATEGY_WITHDRAWAL_SAVE,
     },
-    request::api_wallet::strategy::*
-    ,
+    request::api_wallet::strategy::*,
     response_vo::api_wallet::strategy::{CollectionStrategyResp, WithdrawStrategyResp},
 };
 use std::collections::HashMap;
 use wallet_ecdh::GLOBAL_KEY;
-use crate::api::BackendApi;
-use crate::api_request::ApiBackendRequest;
-use crate::api_response::ApiBackendResponse;
-use crate::Error::Backend;
 
 impl BackendApi {
     // 保存&更新归集策略配置
@@ -20,7 +19,7 @@ impl BackendApi {
         &self,
         req: &SaveCollectStrategyReq,
     ) -> Result<Option<()>, crate::Error> {
-        GLOBAL_KEY.is_exchange_shared_secret() ?;
+        GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self
             .client
@@ -81,6 +80,14 @@ impl BackendApi {
             .await?;
 
         let opt = res.process(TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG)?;
+        opt.ok_or(Backend(Some("no fond list".to_string())))
+    }
+
+    // 查询策略默认值
+    pub async fn query_api_wallet_configs(&self) -> Result<serde_json::Value, crate::Error> {
+        let res = self.client.post(API_WALLET_CONFIG).send::<ApiBackendResponse>().await?;
+
+        let opt = res.process(API_WALLET_CONFIG)?;
         opt.ok_or(Backend(Some("no fond list".to_string())))
     }
 }

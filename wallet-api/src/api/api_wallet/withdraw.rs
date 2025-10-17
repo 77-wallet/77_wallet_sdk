@@ -1,8 +1,7 @@
 use crate::{
     api::ReturnType, manager::WalletManager, service::api_wallet::withdraw::WithdrawService,
 };
-use wallet_database::entities::api_withdraw::ApiWithdrawEntity;
-use wallet_database::pagination::Pagination;
+use wallet_database::{entities::api_withdraw::ApiWithdrawEntity, pagination::Pagination};
 
 impl WalletManager {
     pub async fn list_api_withdraw_order(&self, uid: &str) -> ReturnType<Vec<ApiWithdrawEntity>> {

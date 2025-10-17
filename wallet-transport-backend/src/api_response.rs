@@ -1,6 +1,4 @@
-use uuid::uuid;
 use wallet_ecdh::GLOBAL_KEY;
-use wallet_utils::hex_func::hex_encode;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ApiBackendDataBody {

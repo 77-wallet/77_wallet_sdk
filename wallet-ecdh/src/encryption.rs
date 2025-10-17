@@ -1,11 +1,10 @@
-use crate::data::EncryptedData;
-use crate::error::EncryptionError;
-use aes_gcm::aead::{Aead, OsRng};
-use aes_gcm::{AeadCore, AeadInPlace, Aes256Gcm, Key, KeyInit, Nonce};
-use aes_gcm::aead::generic_array::GenericArray;
+use crate::{data::EncryptedData, error::EncryptionError};
+use aes_gcm::{
+    AeadCore, AeadInPlace, Aes256Gcm, Key, KeyInit, Nonce,
+    aead::{Aead, OsRng, generic_array::GenericArray},
+};
 use hkdf::Hkdf;
-use k256::ecdh::SharedSecret;
-use k256::sha2::Sha256;
+use k256::{ecdh::SharedSecret, sha2::Sha256};
 
 /// 从共享密钥派生 AES 加密密钥
 pub(crate) fn derive_aes_key_from_shared_secret(
@@ -47,11 +46,7 @@ pub(crate) fn encrypt_with_shared_secret(
         .encrypt(&nonce, plaintext)
         .map_err(|e| EncryptionError::EncryptionFailed(e.to_string()))?;
 
-    Ok(EncryptedData {
-        key: key.to_vec(),
-        nonce: nonce.to_vec(),
-        ciphertext,
-    })
+    Ok(EncryptedData { key: key.to_vec(), nonce: nonce.to_vec(), ciphertext })
 }
 
 /// 使用共享密钥解密数据
@@ -104,11 +99,7 @@ pub(crate) fn encrypt_with_aad(
     let mut combined_ciphertext = nonce.to_vec();
     combined_ciphertext.extend_from_slice(&tag);
 
-    Ok(EncryptedData {
-        key: key.to_vec(),
-        nonce: nonce.to_vec(),
-        ciphertext: combined_ciphertext,
-    })
+    Ok(EncryptedData { key: key.to_vec(), nonce: nonce.to_vec(), ciphertext: combined_ciphertext })
 }
 
 /// 带认证的解密（包含额外数据）
@@ -137,8 +128,7 @@ pub(crate) fn decrypt_with_aad(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k256::ecdh::EphemeralSecret;
-    use k256::{ecdh, PublicKey, SecretKey};
+    use k256::{PublicKey, SecretKey, ecdh, ecdh::EphemeralSecret};
     use rand_core::OsRng;
 
     #[test]
@@ -157,7 +147,8 @@ mod tests {
         let encrypted = encrypt_with_shared_secret(plaintext, &shared_secret1, key).unwrap();
 
         // 解密
-        let decrypted = decrypt_with_shared_secret(&encrypted.ciphertext, &shared_secret2, key).unwrap();
+        let decrypted =
+            decrypt_with_shared_secret(&encrypted.ciphertext, &shared_secret2, key).unwrap();
 
         // 验证
         assert_eq!(plaintext, decrypted.as_slice());
@@ -188,7 +179,8 @@ mod tests {
         let deserialized = EncryptedData::from_bytes(&serialized).unwrap();
 
         // 解密
-        let decrypted = decrypt_with_shared_secret(&deserialized.ciphertext, &shared_secret2, key).unwrap();
+        let decrypted =
+            decrypt_with_shared_secret(&deserialized.ciphertext, &shared_secret2, key).unwrap();
 
         // 验证
         assert_eq!(plaintext, decrypted.as_slice());
@@ -204,21 +196,20 @@ mod tests {
         let shared_secret2 = bob_secret.diffie_hellman(&alice_secret.public_key());
 
         // 测试数据
-        let mut  plaintext = b"Sensitive data".to_vec();
+        let mut plaintext = b"Sensitive data".to_vec();
         let additional_data = b"Header information";
         let key = b"aes_encryption_key";
 
         // 加密（带额外认证数据）
-        let mut encrypted = encrypt_with_aad(&mut plaintext, additional_data, &shared_secret1, key).unwrap();
+        let mut encrypted =
+            encrypt_with_aad(&mut plaintext, additional_data, &shared_secret1, key).unwrap();
 
         // 解密（带额外认证数据）
-        let decrypted = decrypt_with_aad(&mut encrypted, additional_data, &shared_secret2, key).unwrap();
+        let decrypted =
+            decrypt_with_aad(&mut encrypted, additional_data, &shared_secret2, key).unwrap();
 
         // 验证
         assert_eq!(plaintext, decrypted.as_slice());
         println!("AAD 加密解密测试通过！");
     }
-
-
-
 }

@@ -1,14 +1,12 @@
 use crate::{
-    domain::api_wallet::trans::withdraw::ApiWithdrawDomain, error::service::ServiceError,
-    request::api_wallet::trans::ApiWithdrawReq,
+    context::Context, domain::api_wallet::trans::withdraw::ApiWithdrawDomain,
+    error::service::ServiceError, request::api_wallet::trans::ApiWithdrawReq,
 };
 use wallet_database::{
-    entities::api_withdraw::{ApiWithdrawEntity, ApiWithdrawStatus},
+    entities::api_withdraw::ApiWithdrawEntity, pagination::Pagination,
     repositories::api_wallet::withdraw::ApiWithdrawRepo,
 };
-use wallet_database::pagination::Pagination;
 use wallet_transport_backend::request::api_wallet::audit::AuditResultReportReq;
-use crate::context::Context;
 
 pub struct WithdrawService {
     ctx: &'static Context,
@@ -16,9 +14,7 @@ pub struct WithdrawService {
 
 impl WithdrawService {
     pub fn new(ctx: &'static Context) -> Self {
-        Self {
-            ctx
-        }
+        Self { ctx }
     }
 
     pub async fn list_withdraw_order(
@@ -37,7 +33,9 @@ impl WithdrawService {
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size).await.map_err(|e| e.into())
+        ApiWithdrawRepo::page_api_withdraw(&pool, uid, status, page, page_size)
+            .await
+            .map_err(|e| e.into())
     }
 
     pub async fn withdrawal_order(

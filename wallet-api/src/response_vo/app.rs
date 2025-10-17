@@ -3,7 +3,10 @@ use wallet_database::entities::{
     multisig_queue::MultisigQueueEntity, wallet::WalletEntity,
 };
 
-use crate::response_vo::api_wallet::wallet::{ApiWalletList, WalletInfo};
+use crate::response_vo::{
+    account::BalanceInfo,
+    api_wallet::wallet::{ApiWalletList, WalletInfo},
+};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +22,13 @@ pub struct GetConfigRes {
 
 impl From<WalletEntity> for WalletInfo {
     fn from(value: WalletEntity) -> Self {
-        WalletInfo { address: value.address, uid: value.uid, name: value.name, app_id: None }
+        WalletInfo {
+            address: value.address,
+            uid: value.uid,
+            name: value.name,
+            app_id: None,
+            balance: BalanceInfo::default(),
+        }
     }
 }
 

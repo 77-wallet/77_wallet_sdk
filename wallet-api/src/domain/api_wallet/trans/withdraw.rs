@@ -28,7 +28,6 @@ impl ApiWithdrawDomain {
             .await?
             .ok_or(BusinessError::ApiWallet(ApiWalletError::NotFound))?;
 
-
         let status =
             if req.audit == 1 { ApiWithdrawStatus::AuditPass } else { ApiWithdrawStatus::Init };
         let res = ApiWithdrawRepo::get_api_withdraw_by_trade_no(&pool, &req.trade_no).await;

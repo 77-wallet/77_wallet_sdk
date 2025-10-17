@@ -15,8 +15,9 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = String::from("SELECT * FROM assets WHERE status = 1");
+        let mut sql = String::from("SELECT * FROM assets");
         let mut conditions = Vec::new();
+        conditions.push(" status = 1".to_string());
         conditions.push(
             " EXISTS (
                     SELECT 1
@@ -26,7 +27,10 @@ impl AssetsEntity {
                 )"
             .to_string(),
         );
-
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
         sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
             .fetch_all(exec)
             .await

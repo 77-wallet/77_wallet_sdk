@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::sync::RwLock;
 use tracing::log;
-use wallet_database::{entities::api_wallet::ApiWalletType, SqliteContext};
+use wallet_database::{SqliteContext, entities::api_wallet::ApiWalletType};
 
 pub type FrontendNotifySender = Option<tokio::sync::mpsc::UnboundedSender<FrontendNotifyEvent>>;
 

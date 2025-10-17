@@ -10,9 +10,9 @@ pub use order::*;
 mod switch;
 pub(crate) use switch::*;
 pub(crate) mod api_wallet;
-#[cfg(feature = "token")]
+// #[cfg(feature = "token")]
 pub(crate) mod token_price;
-#[cfg(feature = "token")]
+// #[cfg(feature = "token")]
 pub(crate) use token_price::*;
 mod rpc;
 pub use rpc::*;

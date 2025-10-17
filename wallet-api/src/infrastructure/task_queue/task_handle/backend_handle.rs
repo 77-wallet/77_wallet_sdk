@@ -1,11 +1,14 @@
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use std::{collections::HashSet, sync::Arc};
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use wallet_database::{
-    entities::api_wallet::ApiWalletType,
+    entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
     repositories::{
-        api_wallet::{account::ApiAccountRepo, wallet::ApiWalletRepo},
+        api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo, wallet::ApiWalletRepo},
+        coin::CoinRepo,
         device::DeviceRepo,
         wallet::WalletRepoTrait,
     },
@@ -13,7 +16,10 @@ use wallet_database::{
 use wallet_transport_backend::{
     api::BackendApi,
     consts::endpoint,
-    request::{ChainRpcListReq, FindConfigByKey, api_wallet::address::AddressListReq},
+    request::{
+        ChainRpcListReq, FindConfigByKey,
+        api_wallet::address::{AddressListReq, AssetListReq},
+    },
     response_vo::{app::FindConfigByKeyRes, coin::TokenRates},
 };
 
@@ -55,7 +61,7 @@ static DEFAULT_ENDPOINTS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         endpoint::TOKEN_BALANCE_REFRESH,
         endpoint::SWAP_APPROVE_CANCEL,
         endpoint::SWAP_APPROVE_SAVE,
-        endpoint::api_wallet::ADDRESS_INIT,
+        // endpoint::api_wallet::ADDRESS_INIT,
     ]
     .iter()
     .cloned()
@@ -70,6 +76,7 @@ impl BackendTaskHandle {
         // wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
         let handler = Self::get_handler(endpoint);
+        tracing::info!("endpoint: {endpoint}, body: {body}");
         handler.handle(endpoint, body, backend.as_ref()).await?;
 
         Ok(())
@@ -219,6 +226,49 @@ impl EndpointHandler for SpecialHandler {
                 ApiWalletRepo::mark_init(&pool, &req.uid).await?;
             }
 
+            endpoint::api_wallet::ADDRESS_INIT => {
+                tracing::info!("咋护士");
+                let status = ConfigDomain::get_keys_reset_status().await?;
+                if let Some(status) = status
+                    && let Some(false) = status.status
+                {
+                    return Err(crate::error::business::BusinessError::Config(
+                        crate::error::business::config::ConfigError::KeysNotReset,
+                    )
+                    .into());
+                }
+
+                let req: wallet_transport_backend::request::api_wallet::address::ApiAddressInitReq =
+                    wallet_utils::serde_func::serde_from_value(body.clone())?;
+
+                for address in req.address_list.0 {
+                    let wallet = ApiWalletRepo::find_by_uid(&pool, &address.uid).await?;
+
+                    match wallet {
+                        Some(wallet) => {
+                            if wallet.is_init == 1 {
+                                ApiAccountRepo::init(&pool, &address.address, &address.chain_code)
+                                    .await?;
+                                continue;
+                            } else {
+                                return Err(crate::error::business::BusinessError::ApiWallet(
+                                    crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
+                                )
+                                .into());
+                            }
+                        }
+                        None => {
+                            return Err(crate::error::business::BusinessError::ApiWallet(
+                                crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
+                            )
+                            .into());
+                        }
+                    }
+                }
+
+                let res = backend.post_req_str::<()>(endpoint, &body).await;
+                res?;
+            }
             endpoint::old_wallet::OLD_ADDRESS_BATCH_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
                 if let Some(status) = status
@@ -243,15 +293,15 @@ impl EndpointHandler for SpecialHandler {
                                     .await?;
                                 continue;
                             } else {
-                                return Err(crate::error::business::BusinessError::Wallet(
-                                    crate::error::business::wallet::WalletError::NotInit,
+                                return Err(crate::error::business::BusinessError::ApiWallet(
+                                    crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
                                 )
                                 .into());
                             }
                         }
                         None => {
-                            return Err(crate::error::business::BusinessError::Wallet(
-                                crate::error::business::wallet::WalletError::NotFound,
+                            return Err(crate::error::business::BusinessError::ApiWallet(
+                                crate::error::business::api_wallet::ApiWalletError::WalletNotInit,
                             )
                             .into());
                         }
@@ -392,7 +442,8 @@ impl EndpointHandler for SpecialHandler {
                 ChainDomain::upsert_multi_chain_than_toggle(input).await?;
             }
             endpoint::api_wallet::API_WALLET_CHAIN_LIST => {
-                let body : HashMap<String, String> = wallet_utils::serde_func::serde_from_value(body)?;
+                let body: HashMap<String, String> =
+                    wallet_utils::serde_func::serde_from_value(body)?;
                 let app_version_code = body.get("appVersionCode");
                 let input = backend.api_wallet_chain_list(app_version_code.unwrap()).await?;
                 tracing::info!("API_WALLET_CHAIN_LIST ------------- 1");
@@ -460,12 +511,26 @@ impl EndpointHandler for SpecialHandler {
                 }
                 let res = backend.query_used_address_list(&req).await?;
                 let list = res.content;
+                tracing::info!("QUERY_ADDRESS_LIST -------------------- 1: {:?}", list);
+
                 let mut input_indices = Vec::new();
                 for address in list {
                     input_indices.push(address.index);
                 }
 
-                tracing::info!("-------------------- 1");
+                tracing::info!("QUERY_ADDRESS_LIST -------------------- 2");
+                let mut tasks = Tasks::new();
+                if !input_indices.is_empty() {
+                    let asset_list_req =
+                        AssetListReq::new(&req.uid, &req.chain_code, input_indices.clone());
+                    let asset_list_task_data = BackendApiTaskData::new(
+                        wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
+                        &asset_list_req,
+                    )?;
+                    tasks = tasks.push(BackendApiTask::BackendApi(asset_list_task_data));
+                }
+
+                tracing::info!("QUERY_ADDRESS_LIST -------------------- 3");
                 let password = ApiWalletDomain::get_passwd().await?;
                 if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
                     ApiAccountDomain::create_api_account(
@@ -475,12 +540,12 @@ impl EndpointHandler for SpecialHandler {
                         input_indices,
                         "name",
                         true,
-                        ApiWalletType::SubAccount,
+                        wallet.api_wallet_type,
                     )
                     .await?;
                 }
 
-                tracing::info!("-------------------- 2");
+                tasks.send().await?;
                 if !res.last {
                     let page = res.number + 1;
                     let query_address_list_req =
@@ -490,9 +555,59 @@ impl EndpointHandler for SpecialHandler {
                         wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ADDRESS_LIST,
                         &query_address_list_req,
                     )?;
-                    Tasks::new().push(BackendApiTask::BackendApi(query_address_list_task_data));
+                    Tasks::new()
+                        .push(BackendApiTask::BackendApi(query_address_list_task_data))
+                        .send()
+                        .await?;
                 }
+
                 FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
+            }
+            endpoint::api_wallet::QUERY_ASSET_LIST => {
+                tracing::info!("QUERY_ASSET_LIST --------------------");
+                let req = wallet_utils::serde_func::serde_from_value::<AssetListReq>(body.clone())?;
+                tracing::info!("QUERY_ASSET_LIST -------------------- req: {:?}", req);
+                let list = backend.query_asset_list(&req).await?;
+                // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
+                tracing::info!("QUERY_ASSET_LIST -------------------- list: {:?}", list);
+                let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
+
+                for asset in list.0 {
+                    for address in asset.address_list {
+                        for token in address.token_infos {
+                            if let Some(coin) = default_coins_list.iter().find(|coin| {
+                                coin.chain_code == req.chain_code
+                                    && coin.token_address.as_ref() == Some(&token.token_address)
+                            }) {
+                                let assets_id = AssetsId::new(
+                                    &address.address,
+                                    &req.chain_code,
+                                    &token.symbol,
+                                    Some(token.token_address.clone()),
+                                );
+                                let assets = ApiCreateAssetsVo::new(
+                                    assets_id,
+                                    coin.decimals,
+                                    coin.protocol.clone(),
+                                    0,
+                                )
+                                .with_name(&coin.name)
+                                .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+
+                                tracing::info!("upsert_assets: {:?}", assets);
+                                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                                ApiAssetsRepo::update_balance(
+                                    &pool,
+                                    &address.address,
+                                    &req.chain_code,
+                                    Some(token.token_address.clone()),
+                                    &token.amount.to_string(),
+                                )
+                                .await?;
+                            };
+                        }
+                    }
+                }
             }
             _ => {
                 // 未知的 endpoint

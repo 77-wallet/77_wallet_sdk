@@ -5,15 +5,15 @@ use crate::{
     sign::{sign_with_derived_ecdsa, verify_derived_ecdsa_signature},
 };
 use k256::{
-    ecdh, ecdh::SharedSecret, ecdsa::Signature, elliptic_curve::generic_array::GenericArray, PublicKey, Secp256k1,
-    SecretKey,
+    PublicKey, Secp256k1, SecretKey, ecdh, ecdh::SharedSecret, ecdsa::Signature,
+    elliptic_curve::generic_array::GenericArray,
 };
 use once_cell::sync::Lazy;
+use sha2::Digest;
 use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use sha2::Digest;
 use uuid::Uuid;
 
 pub mod data;
@@ -95,9 +95,9 @@ impl ExKey {
         }
     }
 
-    pub fn sign(&self, tag:&str, plaintext: &[u8]) -> Result<Vec<u8>, EncryptionError> {
+    pub fn sign(&self, tag: &str, plaintext: &[u8]) -> Result<Vec<u8>, EncryptionError> {
         let key = &plaintext[0..32];
-        tracing::info!(tag=tag, "Got signing key: {:?}", hex::encode(key));
+        tracing::info!(tag = tag, "Got signing key: {:?}", hex::encode(key));
         let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
         if let Some(shared_secret) = &*r {
             let res = sign_with_derived_ecdsa(tag, plaintext, shared_secret, key)?;
@@ -109,21 +109,24 @@ impl ExKey {
 
     pub fn verify(&self, tag: &str, plaintext: &[u8], sig: &[u8]) -> Result<(), EncryptionError> {
         let key = &plaintext[0..32];
-        tracing::info!(tag=tag, "verify, Got seed key: {:?}", hex::encode(key));
+        tracing::info!(tag = tag, "verify, Got seed key: {:?}", hex::encode(key));
         let signature = if sig.len() == 64 {
-            tracing::info!(tag=tag, "signature length 64");
-            tracing::info!(tag=tag, "msg hash = {}", hex::encode(sha2::Sha256::digest(plaintext)));
-            tracing::info!(tag=tag, "r = {}", hex::encode(&sig[..32]));
-            tracing::info!(tag=tag, "s = {}", hex::encode(&sig[32..]));
+            tracing::info!(tag = tag, "signature length 64");
+            tracing::info!(
+                tag = tag,
+                "msg hash = {}",
+                hex::encode(sha2::Sha256::digest(plaintext))
+            );
+            tracing::info!(tag = tag, "r = {}", hex::encode(&sig[..32]));
+            tracing::info!(tag = tag, "s = {}", hex::encode(&sig[32..]));
             Signature::from_slice(sig).map_err(|_| EncryptionError::InvalidSignature)?
         } else {
-            tracing::info!(tag=tag, "signature length 32");
+            tracing::info!(tag = tag, "signature length 32");
             Signature::from_der(sig).map_err(|_| EncryptionError::InvalidSignature)?
         };
 
-        tracing::info!(tag=tag, "r = {}", signature.r());
-        tracing::info!(tag=tag, "s = {}", signature.s());
-
+        tracing::info!(tag = tag, "r = {}", signature.r());
+        tracing::info!(tag = tag, "s = {}", signature.s());
 
         let r = self.shared_secret.read().map_err(|_| EncryptionError::LockPoisoned)?;
         if let Some(shared_secret) = &*r {
