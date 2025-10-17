@@ -33,6 +33,8 @@ pub fn init_logger(
     let file_layer = fmt::layer()
         .with_writer(non_blocking)
         .with_ansi(false)
+        // .with_file(true)         // ✅ 显示文件名
+        .with_line_number(true)
         .event_format(format)
         .with_filter(env_filter.clone());
 
@@ -59,6 +61,8 @@ pub fn init_logger(
         let stdout_layer = fmt::layer()
             .with_writer(std::io::stdout) // <-- 新增
             .with_ansi(true)
+            // .with_file(true)         // ✅ 显示文件名
+            .with_line_number(true)
             .with_filter(env_filter);
 
         let subscriber = Registry::default().with(file_layer).with(stdout_layer);

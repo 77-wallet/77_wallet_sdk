@@ -26,7 +26,7 @@ use crate::messaging::{
     },
     notify::api_wallet::{
         AwmCmdActiveMsgFront, AwmCmdAddrExpandMsgFront, AwmOrderTransMsgFront,
-        CollectFeeNotEnoughFront, FeeFront, WithdrawFront, WithdrawNoPassFront,
+        CollectFeeNotEnoughFront, CollectFront, FeeFront, WithdrawFront, WithdrawNoPassFront,
     },
 };
 
@@ -83,6 +83,7 @@ pub enum NotifyEvent {
     AddressUse(AddressUseMsg),
     Withdraw(WithdrawFront),
     WithdrawNoPass(WithdrawNoPassFront),
+    Collect(CollectFront),
     CollectFeeNotEnough(CollectFeeNotEnoughFront),
     Fee(FeeFront),
     AddressRecovery,
@@ -144,6 +145,7 @@ impl NotifyEvent {
             NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
             NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
             NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),
+            NotifyEvent::Collect(_) => "COLLECT".to_string(),
             NotifyEvent::CollectFeeNotEnough(_) => "COLLECT_FEE_NOT_ENOUGH".to_string(),
             NotifyEvent::Fee(_) => "FEE".to_string(),
             NotifyEvent::AddressRecovery => "ADDRESS_RECOVERY".to_string(),

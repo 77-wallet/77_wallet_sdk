@@ -39,7 +39,13 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     info!("[setup_test_environment] storage_dir: {:?}", storage_dir);
 
     let dirs = Dirs::new(&storage_dir.to_string_lossy())?;
-    // init_log(Some("info"), test_params.device_req.app_id.clone().unwrap().as_str(), &dirs, &test_params.device_req.sn).await?;
+    init_log(
+        Some("info"),
+        test_params.device_req.app_id.clone().unwrap().as_str(),
+        &dirs,
+        &test_params.device_req.sn,
+    )
+    .await?;
     let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
     let wallet_manager = WalletManager::new(
         &test_params.device_req.sn,

@@ -18,7 +18,7 @@ impl ApiWithdrawRepo {
     pub async fn page_api_withdraw(
         pool: &DbPool,
         uid: &str,
-        status: Option<u8>,
+        status: Vec<u8>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error> {
@@ -127,8 +127,10 @@ impl ApiWithdrawRepo {
         trade_no: &str,
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
+        notes: &str,
     ) -> Result<(), crate::Error> {
-        ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status).await
+        ApiWithdrawDao::update_next_status(pool.as_ref(), trade_no, status, next_status, notes)
+            .await
     }
 
     pub async fn update_api_fee_post_tx_count(

@@ -8,13 +8,18 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use chrono::TimeDelta;
+use rust_decimal::Decimal;
+use std::str::FromStr;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
     time::sleep,
 };
 use wallet_database::{
-    entities::api_fee::{ApiFeeEntity, ApiFeeStatus},
+    entities::{
+        api_fee::{ApiFeeEntity, ApiFeeStatus},
+        api_withdraw::ApiWithdrawStatus,
+    },
     repositories::api_wallet::fee::ApiFeeRepo,
 };
 use wallet_ecdh::GLOBAL_KEY;
@@ -197,7 +202,9 @@ impl ProcessFeeTx {
         tracing::info!(trade_no=%req.trade_no, "process fee tx -------------------------------");
         // check
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + req.value.as_str() + sn;
+        let mut d = Decimal::from_str(req.value.as_str()).unwrap();
+        d = d.normalize();
+        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         if req.validate != digest {
             return self
@@ -410,6 +417,7 @@ impl ProcessFeeTxReport {
                         &req.trade_no,
                         ApiFeeStatus::SendingTxFailed,
                         ApiFeeStatus::SendingTxFailedReport,
+                        "update api fee ok",
                     )
                     .await?;
                 } else {
@@ -418,6 +426,7 @@ impl ProcessFeeTxReport {
                         &req.trade_no,
                         ApiFeeStatus::SendingTx,
                         ApiFeeStatus::SendingTxReport,
+                        "update api fee ok",
                     )
                     .await?;
                 }
@@ -465,6 +474,11 @@ impl ProcessFeeTxConfirmReport {
         tracing::info!("starting process fee tx confirm report -------------------------------");
         let mut iv = tokio::time::interval(tokio::time::Duration::from_secs(10));
         loop {
+            let res = GLOBAL_KEY.is_exchange_shared_secret();
+            if res.is_err() {
+                sleep(tokio::time::Duration::from_secs(10)).await;
+                continue;
+            }
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     tracing::info!("closing process fee tx confirm report -------------------------------");
@@ -569,13 +583,19 @@ impl ProcessFeeTxConfirmReport {
             .await
         {
             Ok(_) => {
+                let next_status = if req.status == ApiFeeStatus::Success {
+                    ApiFeeStatus::ConfirmSuccessReport
+                } else {
+                    ApiFeeStatus::ConfirmFailureReport
+                };
                 tracing::info!("process_fee_single_tx_confirm_report success");
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 ApiFeeRepo::update_api_fee_next_status(
                     &pool,
                     &req.trade_no,
                     req.status,
-                    ApiFeeStatus::ReceivedConfirmReport,
+                    next_status,
+                    "fee trans event ack",
                 )
                 .await?;
                 return Ok(());

@@ -107,7 +107,14 @@ impl ApiWithdrawDomain {
         status: ApiWithdrawStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiWithdrawRepo::update_api_withdraw_status(&pool, trade_no, status, "confirm").await?;
+        ApiWithdrawRepo::update_api_withdraw_next_status(
+            &pool,
+            trade_no,
+            ApiWithdrawStatus::SendingTxReport,
+            status,
+            "confirm",
+        )
+        .await?;
 
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {

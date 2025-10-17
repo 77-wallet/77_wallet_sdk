@@ -8,7 +8,11 @@ use crate::{
         chain::transaction::ChainTransDomain,
         coin::CoinDomain,
     },
-    messaging::notify::{FrontendNotifyEvent, api_wallet::WithdrawFront, event::NotifyEvent},
+    messaging::notify::{
+        FrontendNotifyEvent,
+        api_wallet::{CollectFront, FeeFront, WithdrawFront},
+        event::NotifyEvent,
+    },
     request::api_wallet::trans::{
         ApiBaseTransferReq, ApiCollectReq, ApiTransferReq, ApiWithdrawReq,
     },
@@ -65,6 +69,14 @@ impl ApiCollectDomain {
                 TransEventAckReq::new(&req.trade_no, TransType::Col, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
 
+            let data = NotifyEvent::Collect(CollectFront {
+                uid: req.uid.to_string(),
+                from_addr: req.from.to_string(),
+                to_addr: req.to.to_string(),
+                value: req.value.to_string(),
+            });
+            FrontendNotifyEvent::new(data).send().await?;
+
             // 可能发交易
             if let Some(handles) =
                 crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
@@ -78,9 +90,10 @@ impl ApiCollectDomain {
 
     pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiCollectRepo::update_api_collect_status(
+        ApiCollectRepo::update_api_collect_next_status(
             &pool,
             trade_no,
+            ApiCollectStatus::InsufficientBalance,
             ApiCollectStatus::Init,
             "recover",
         )
@@ -104,7 +117,14 @@ impl ApiCollectDomain {
         status: ApiCollectStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiCollectRepo::update_api_collect_status(&pool, trade_no, status, "confirm").await?;
+        ApiCollectRepo::update_api_collect_next_status(
+            &pool,
+            trade_no,
+            ApiCollectStatus::SendingTxReport,
+            status,
+            "confirm",
+        )
+        .await?;
 
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {

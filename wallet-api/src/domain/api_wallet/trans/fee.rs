@@ -1,5 +1,10 @@
 use crate::{
     error::business::{BusinessError, api_wallet::ApiWalletError},
+    messaging::notify::{
+        FrontendNotifyEvent,
+        api_wallet::{FeeFront, WithdrawFront},
+        event::NotifyEvent,
+    },
     request::api_wallet::trans::ApiTransferFeeReq,
 };
 use wallet_database::{
@@ -47,6 +52,14 @@ impl ApiFeeDomain {
                 TransEventAckReq::new(&req.trade_no, TransType::ColFee, TransAckType::Tx);
             backend.trans_event_ack(&trans_event_req).await?;
 
+            let data = NotifyEvent::Fee(FeeFront {
+                uid: req.uid.to_string(),
+                from_addr: req.from.to_string(),
+                to_addr: req.to.to_string(),
+                value: req.value.to_string(),
+            });
+            FrontendNotifyEvent::new(data).send().await?;
+
             if let Some(handles) =
                 crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
             {
@@ -61,7 +74,14 @@ impl ApiFeeDomain {
         status: ApiFeeStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiFeeRepo::update_api_fee_status(&pool, trade_no, status, "confirm").await?;
+        ApiFeeRepo::update_api_fee_next_status(
+            &pool,
+            trade_no,
+            ApiFeeStatus::SendingTxReport,
+            status,
+            "confirm",
+        )
+        .await?;
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {
             handles.get_global_processed_fee_tx_handle().submit_confirm_report_tx(trade_no).await?;

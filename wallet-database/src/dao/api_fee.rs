@@ -241,6 +241,7 @@ impl ApiFeeDao {
         trade_no: &str,
         status: ApiFeeStatus,
         next_status: ApiFeeStatus,
+        notes: &str,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -249,6 +250,7 @@ impl ApiFeeDao {
             UPDATE api_fee
             SET
                 status = $3,
+                 notes = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
@@ -257,6 +259,7 @@ impl ApiFeeDao {
             .bind(trade_no)
             .bind(&status)
             .bind(&next_status)
+            .bind(notes)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

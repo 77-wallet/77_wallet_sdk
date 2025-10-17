@@ -27,7 +27,7 @@ impl ApiWithdrawDao {
     pub async fn page_api_withdraw<'a, E>(
         pool: &E,
         uid: &str,
-        status: Option<u8>,
+        vec_status: Vec<u8>,
         page: i64,
         page_size: i64,
     ) -> Result<Pagination<ApiWithdrawEntity>, crate::Error>
@@ -35,16 +35,19 @@ impl ApiWithdrawDao {
         for<'c> &'c E: sqlx::Executor<'c, Database = sqlx::Sqlite>,
     {
         let mut sql = "SELECT * FROM api_withdraws".to_string();
-        let mut conditions = Vec::new();
+        sql.push_str(" WHERE ");
+        sql.push_str(&format!("uid = '{uid}'"));
+        if !vec_status.is_empty() {
+            sql.push_str(" AND (");
+            for (i, status) in vec_status.iter().enumerate() {
+                sql.push_str(&format!("status = '{status}'"));
+                if i < vec_status.len() - 1 {
+                    sql.push_str(" OR ");
+                }
+            }
+            sql.push_str(" )");
+        }
 
-        if let Some(status) = status {
-            conditions.push(format!("status = '{status}'"));
-        }
-        conditions.push(format!("uid = '{uid}'"));
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
-        }
         sql.push_str(" ORDER BY updated_at DESC, created_at DESC");
         let paginate = Pagination::<ApiWithdrawEntity>::init(page, page_size);
         Ok(paginate.page(pool, &sql).await?)
@@ -251,6 +254,7 @@ impl ApiWithdrawDao {
         trade_no: &str,
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
+        notes: &str,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -259,6 +263,7 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 status = $3,
+                 notes = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
@@ -267,6 +272,7 @@ impl ApiWithdrawDao {
             .bind(trade_no)
             .bind(&status)
             .bind(&next_status)
+            .bind(notes)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;
