@@ -52,8 +52,8 @@ pub enum ApiWithdrawStatus {
     SendingTxFailedReport, // 6,发送交易失败报告给服务器，结束
     Success,               // 7，收到成功确认
     Failure,               // 8，收到失败确认
-    ConfirmSuccessReport, // 9, 结束
-    ConfirmFailureReport, // 10, 结束
+    ConfirmSuccessReport,  // 9, 结束
+    ConfirmFailureReport,  // 10, 结束
 }
 
 impl Display for ApiWithdrawStatus {
