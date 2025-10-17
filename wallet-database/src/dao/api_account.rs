@@ -2,7 +2,7 @@ use crate::{
     DbPool,
     entities::{
         account::{AccountEntity, AccountWalletMapping},
-        api_account::{ApiAccountEntity, CreateApiAccountVo},
+        api_account::{AccountToWalletAddress, ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
     sql_utils::{
@@ -441,6 +441,17 @@ impl ApiAccountDao {
             .and_where_eq_opt("address", address)
             .and_where_eq_opt("derivation_path", derivation_path)
             .and_where_eq_opt("account_id", account_id)
+            .fetch_all(executor)
+            .await
+    }
+
+    pub async fn account_to_wallet<'a, E>(
+        executor: E,
+    ) -> Result<Vec<AccountToWalletAddress>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT address, wallet_address FROM api_account")
             .fetch_all(executor)
             .await
     }

@@ -20,10 +20,12 @@ use wallet_database::{
     entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
+        device::DeviceRepo,
         wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::request::AddressUpdateAccountNameReq;
+use wallet_types::constant::chain_code;
 
 pub struct ApiAccountService {
     ctx: &'static Context,

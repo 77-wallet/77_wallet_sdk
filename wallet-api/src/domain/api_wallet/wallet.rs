@@ -95,7 +95,10 @@ impl ApiWalletDomain {
         Ok(data)
     }
 
-    pub(crate) async fn decrypt_phrase(password: &str, phrase: &str) -> Result<Vec<u8>, ServiceError> {
+    pub(crate) async fn decrypt_phrase(
+        password: &str,
+        phrase: &str,
+    ) -> Result<Vec<u8>, ServiceError> {
         let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), phrase)?;
         Ok(data)
     }
