@@ -22,7 +22,7 @@ async fn run_collect_strategy(
     let res = wallet_manager
         .update_collect_strategy(
             &wallet_uid,
-            80,
+            5,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 chain_address_type: Some("Tron".to_string()),
@@ -210,9 +210,13 @@ async fn run(
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
-    // run_collect_strategy(wallet_manager).await?;
+    wallet_manager
+        .edit_api_account_name(2, "0xa3dAEDC43D1a131b27B22B01D93E15B63583955A", "你还是娃娃")
+        .await?;
+
+    run_collect_strategy(wallet_manager).await?;
     // run_withdrawal_strategy(wallet_manager).await?;
-    run_withdraw_order(wallet_manager).await?;
+    // run_withdraw_order(wallet_manager).await?;
 
     Ok(())
 }

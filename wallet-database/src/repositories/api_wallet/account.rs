@@ -2,7 +2,7 @@ use crate::{
     DbPool,
     dao::api_account::ApiAccountDao,
     entities::{
-        account::AccountWalletMapping,
+        account::{AccountEntity, AccountWalletMapping},
         api_account::{ApiAccountEntity, CreateApiAccountVo},
         api_wallet::ApiWalletType,
     },
@@ -188,5 +188,15 @@ impl ApiAccountRepo {
             pool.as_ref(),
         )
         .await?)
+    }
+
+    pub async fn edit_account_name(
+        pool: &DbPool,
+        wallet_address: &str,
+        account_id: u32,
+        name: &str,
+    ) -> Result<Vec<AccountEntity>, crate::Error> {
+        Ok(ApiAccountDao::edit_account_name(pool.as_ref(), wallet_address, account_id, name)
+            .await?)
     }
 }
