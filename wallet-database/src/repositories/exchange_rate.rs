@@ -29,16 +29,15 @@ pub trait ExchangeRateRepoTrait: super::TransactionTrait {
         let req = crate::entities::exchange_rate::QueryReq { target_currency };
         crate::execute_with_executor!(executor, ExchangeRateEntity::detail, &req)
     }
-
-    async fn list(&mut self) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(executor, ExchangeRateEntity::list,)
-    }
 }
 
 pub struct ExchangeRateRepo;
 
 impl ExchangeRateRepo {
+    pub async fn list(pool: &DbPool) -> Result<Vec<ExchangeRateEntity>, crate::Error> {
+        ExchangeRateEntity::list(pool.as_ref()).await
+    }
+
     // get exchange rate by target currency
     pub async fn exchange_rate(
         target: &str,

@@ -1,25 +1,34 @@
 // src/asset_calc.rs
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use dashmap::{DashMap, DashSet};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use sqlx::{Row, SqlitePool};
 use tokio::sync::RwLock;
+use wallet_database::repositories::{
+    api_wallet::account::ApiAccountRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo,
+};
+use wallet_transport_backend::response_vo::coin::TokenCurrency;
+
+use crate::{
+    domain::app::config::ConfigDomain,
+    response_vo::{
+        account::BalanceInfo,
+        coin::{TokenCurrencies, TokenCurrencyId},
+    },
+};
 
 /// Key format for price lookup
-fn make_key(symbol: &str, chain_code: &str, token_address: &str) -> String {
-    format!("{}:{}:{}", symbol, chain_code, token_address)
-}
 
 fn make_asset_key(address: &str, chain_code: &str, token_address: &str) -> String {
     format!("{}:{}:{}", address, chain_code, token_address)
 }
 
-#[derive(Clone, Debug)]
-pub struct PriceEntry {
-    pub price: f64,
-}
+// #[derive(Clone, Debug)]
+// pub struct PriceEntry {
+//     pub price: f64,
+// }
 
 #[derive(Clone, Debug)]
 pub struct AssetEntry {
@@ -31,23 +40,51 @@ pub struct AssetEntry {
     pub decimals: i32,
 }
 
-static PRICE_CACHE: Lazy<DashMap<String, PriceEntry>> = Lazy::new(|| DashMap::new());
-static DIRTY_PRICE_SET: Lazy<DashSet<String>> = Lazy::new(|| DashSet::new());
+static TOKEN_CURRENCIES: Lazy<Arc<RwLock<TokenCurrencies>>> =
+    Lazy::new(|| Arc::new(RwLock::new(TokenCurrencies::default())));
+// static PRICE_CACHE: Lazy<DashMap<String, PriceEntry>> = Lazy::new(|| DashMap::new());
+static DIRTY_PRICE_SET: Lazy<DashSet<TokenCurrencyId>> = Lazy::new(|| DashSet::new());
 static ASSET_DIRTY_SET: Lazy<DashSet<String>> = Lazy::new(|| DashSet::new());
-static ASSET_VALUE_CACHE: Lazy<DashMap<String, f64>> = Lazy::new(|| DashMap::new());
+// static ASSET_DIRTY_SET: Lazy<DashSet<TokenCurrencyId>> = Lazy::new(|| DashSet::new());
+
+static ASSET_VALUE_CACHE: Lazy<DashMap<String, BalanceInfo>> = Lazy::new(|| DashMap::new());
 static TOTAL_USDT: Lazy<RwLock<f64>> = Lazy::new(|| RwLock::new(0.0));
 
-/// Called when a new price arrives (price_real already as f64)
-pub fn on_price_update(
+pub async fn update_token_price(
     symbol: &str,
     chain_code: &str,
     token_address: &Option<String>,
     price_real: f64,
-) {
-    let key = make_key(symbol, chain_code, token_address.as_deref().unwrap_or(""));
-    PRICE_CACHE.insert(key.clone(), PriceEntry { price: price_real });
-    tracing::info!("on_price_update: {:?}", key);
-    DIRTY_PRICE_SET.insert(key);
+) -> Result<(), crate::error::service::ServiceError> {
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let mut token_currencies = TOKEN_CURRENCIES.write().await;
+    let id = TokenCurrencyId::new(symbol, chain_code, token_address.clone());
+    let currency = ConfigDomain::get_currency().await?;
+
+    let (fiat_price, rate) = {
+        let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
+        if let Some(rate) = exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
+        {
+            (Some(price_real * rate.rate), rate.rate)
+        } else {
+            (None, 1.0)
+        }
+    };
+
+    // 更新缓存
+    token_currencies
+        .entry(id.clone())
+        .and_modify(|entry| {
+            entry.price = Some(price_real);
+            entry.currency_price = fiat_price;
+            entry.rate = rate;
+        })
+        .or_insert(TokenCurrency::new(chain_code, symbol, "", Some(price_real), fiat_price, rate));
+
+    // 标记 dirty，用于触发资产估值刷新
+    DIRTY_PRICE_SET.insert(id);
+
+    Ok(())
 }
 
 /// Called when a new asset is inserted or its balance changes
@@ -69,7 +106,8 @@ pub fn start_batch_recalculator(
             tokio::time::sleep(interval).await;
 
             // --- collect dirty sets ---
-            let price_keys: Vec<String> = DIRTY_PRICE_SET.iter().map(|k| k.clone()).collect();
+            let price_keys: Vec<TokenCurrencyId> =
+                DIRTY_PRICE_SET.iter().map(|k| k.clone()).collect();
             let asset_keys: Vec<String> = ASSET_DIRTY_SET.iter().map(|id| id.clone()).collect();
 
             if price_keys.is_empty() && asset_keys.is_empty() {
@@ -98,30 +136,33 @@ pub fn start_batch_recalculator(
                 process_asset_dirty_assets(&pool, &asset_keys).await;
             }
 
-            // recompute total (simple reduction)
-            let total: f64 = ASSET_VALUE_CACHE.iter().map(|kv| *kv.value()).sum();
-            tracing::info!("batch recalculation finished, total: {:?}", total);
-            if let Ok(mut t) = TOTAL_USDT.try_write() {
-                *t = total;
-            } else {
-                let total_clone = total;
-                tokio::spawn(async move {
-                    let mut guard = TOTAL_USDT.write().await;
-                    *guard = total_clone;
-                });
-            }
+            // // recompute total (simple reduction)
+            // let total: f64 = ASSET_VALUE_CACHE.iter().map(|kv| *kv.value()).sum();
+            // tracing::info!("batch recalculation finished, total: {:?}", total);
+            // if let Ok(mut t) = TOTAL_USDT.try_write() {
+            //     *t = total;
+            // } else {
+            //     let total_clone = total;
+            //     tokio::spawn(async move {
+            //         let mut guard = TOTAL_USDT.write().await;
+            //         *guard = total_clone;
+            //     });
+            // }
 
-            tracing::info!(
-                "batch recalculation finished: total_usdt={:.6}, cache_size={}",
-                *TOTAL_USDT.read().await,
-                ASSET_VALUE_CACHE.len()
-            );
+            // tracing::info!(
+            //     "batch recalculation finished: total_usdt={:.6}, cache_size={}",
+            //     *TOTAL_USDT.read().await,
+            //     ASSET_VALUE_CACHE.len()
+            // );
         }
     });
     Ok(())
 }
 
-async fn process_price_dirty_assets(pool: &Arc<SqlitePool>, keys: &[String]) {
+async fn process_price_dirty_assets(
+    pool: &Arc<SqlitePool>,
+    keys: &[TokenCurrencyId],
+) -> Result<(), Box<dyn std::error::Error>> {
     // process in chunks to avoid huge IN lists
     const CHUNK_KEYS: usize = 200;
     for chunk in keys.chunks(CHUNK_KEYS) {
@@ -134,7 +175,7 @@ async fn process_price_dirty_assets(pool: &Arc<SqlitePool>, keys: &[String]) {
         tracing::info!("batch query: {}", query);
         let mut q = sqlx::query(&query);
         for k in chunk {
-            q = q.bind(k);
+            q = q.bind(k.gen_key());
         }
 
         let rows = match q.fetch_all(pool.as_ref()).await {
@@ -161,23 +202,45 @@ async fn process_price_dirty_assets(pool: &Arc<SqlitePool>, keys: &[String]) {
             .collect();
 
         tracing::info!("batch recalculation finished, assets: {:?}", assets);
+
+        let token_currencies_snapshot = {
+            let guard = TOKEN_CURRENCIES.read().await;
+            guard.clone()
+        };
+        let currency = ConfigDomain::get_currency().await?;
+
         // parallel compute
         assets.par_iter().for_each(|a| {
-            let price_key = make_key(&a.symbol, &a.chain_code, &a.token_address);
+            // let price_key = TokenCurrencyId::make_key(&a.symbol, &a.chain_code, &a.token_address);
             let asset_key = make_asset_key(&a.address, &a.chain_code, &a.token_address);
-            let value = PRICE_CACHE
-                .get(&price_key)
-                .map(|p| (a.balance / 10f64.powi(a.decimals)) * p.price)
-                .unwrap_or(0.0);
-            ASSET_VALUE_CACHE.insert(asset_key, value);
+            let balance_info = token_currencies_snapshot
+                .calculate_sync_to_balance(
+                    &currency,
+                    &a.balance.to_string(),
+                    &a.symbol,
+                    &a.chain_code,
+                    Some(a.token_address.clone()),
+                )
+                .unwrap_or(BalanceInfo {
+                    amount: 0.0,
+                    currency: "".to_string(),
+                    unit_price: None,
+                    fiat_value: None,
+                });
+
+            ASSET_VALUE_CACHE.insert(asset_key, balance_info);
         });
     }
 
     tracing::info!("batch recalculation finished, keys: {:?}", keys);
+    Ok(())
 }
 
 /// Handle asset dirty IDs
-async fn process_asset_dirty_assets(pool: &Arc<SqlitePool>, keys: &[String]) {
+async fn process_asset_dirty_assets(
+    pool: &Arc<SqlitePool>,
+    keys: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
     const CHUNK_SIZE: usize = 200;
     for chunk in keys.chunks(CHUNK_SIZE) {
         let mut query = String::from(
@@ -215,66 +278,91 @@ async fn process_asset_dirty_assets(pool: &Arc<SqlitePool>, keys: &[String]) {
             })
             .collect();
 
+        let token_currencies_snapshot = {
+            let guard = TOKEN_CURRENCIES.read().await;
+            guard.clone()
+        };
+        let currency = ConfigDomain::get_currency().await?;
+
         assets.par_iter().for_each(|a| {
-            let price_key = make_key(&a.symbol, &a.chain_code, &a.token_address);
+            let id = TokenCurrencyId::new(&a.symbol, &a.chain_code, Some(a.token_address.clone()));
+            // let price_key = make_key(&a.symbol, &a.chain_code, &a.token_address);
             let asset_key = make_asset_key(&a.address, &a.chain_code, &a.token_address);
-            let value = PRICE_CACHE
-                .get(&price_key)
-                .map(|p| (a.balance / 10f64.powi(a.decimals)) * p.price)
-                .unwrap_or(0.0);
-            ASSET_VALUE_CACHE.insert(asset_key, value);
+            let balance_info = token_currencies_snapshot
+                .calculate_sync_to_balance(
+                    &currency,
+                    &a.balance.to_string(),
+                    &a.symbol,
+                    &a.chain_code,
+                    Some(a.token_address.clone()),
+                )
+                .unwrap_or(BalanceInfo {
+                    amount: 0.0,
+                    currency: "".to_string(),
+                    unit_price: None,
+                    fiat_value: None,
+                });
+            ASSET_VALUE_CACHE.insert(asset_key, balance_info);
         });
-    }
-}
-
-/// Force full refresh: runs a full join query and repopulates ASSET_VALUE_CACHE (accurate, but heavy)
-pub async fn force_refresh_all_assets(db: Arc<SqlitePool>) -> Result<(), sqlx::Error> {
-    let rows = sqlx::query(
-        r#"
-        SELECT a.address, a.symbol, a.chain_code, a.token_address, a.balance, a.decimals, c.price
-        FROM api_assets a
-        LEFT JOIN coin c
-           ON a.symbol = c.symbol
-          AND a.chain_code = c.chain_code
-          AND a.token_address = c.token_address
-        "#,
-    )
-    .fetch_all(db.as_ref())
-    .await?;
-
-    ASSET_VALUE_CACHE.clear();
-
-    let assets: Vec<AssetEntry> = rows
-        .into_iter()
-        .map(|r| AssetEntry {
-            address: r.get("address"),
-            symbol: r.get("symbol"),
-            chain_code: r.get("chain_code"),
-            token_address: r.get("token_address"),
-            balance: r
-                .get::<Option<String>, _>("balance")
-                .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(0.0),
-            decimals: r.get("decimals"),
-        })
-        .collect();
-
-    assets.par_iter().for_each(|a| {
-        let price_key = make_key(&a.symbol, &a.chain_code, &a.token_address);
-        let asset_key = make_asset_key(&a.address, &a.chain_code, &a.token_address);
-        let price = PRICE_CACHE.get(&price_key).map(|p| p.price).unwrap_or(0.0);
-        let value = (a.balance / 10f64.powi(a.decimals)) * price;
-        ASSET_VALUE_CACHE.insert(asset_key, value);
-    });
-
-    let total: f64 = ASSET_VALUE_CACHE.iter().map(|kv| *kv.value()).sum();
-    {
-        let mut guard = TOTAL_USDT.write().await;
-        *guard = total;
     }
 
     Ok(())
 }
+
+// /// Force full refresh: runs a full join query and repopulates ASSET_VALUE_CACHE (accurate, but heavy)
+// pub async fn force_refresh_all_assets(db: Arc<SqlitePool>) -> Result<(), sqlx::Error> {
+//     let rows = sqlx::query(
+//         r#"
+//         SELECT a.address, a.symbol, a.chain_code, a.token_address, a.balance, a.decimals, c.price
+//         FROM api_assets a
+//         LEFT JOIN coin c
+//            ON a.symbol = c.symbol
+//           AND a.chain_code = c.chain_code
+//           AND a.token_address = c.token_address
+//         "#,
+//     )
+//     .fetch_all(db.as_ref())
+//     .await?;
+
+//     ASSET_VALUE_CACHE.clear();
+
+//     let assets: Vec<AssetEntry> = rows
+//         .into_iter()
+//         .map(|r| AssetEntry {
+//             address: r.get("address"),
+//             symbol: r.get("symbol"),
+//             chain_code: r.get("chain_code"),
+//             token_address: r.get("token_address"),
+//             balance: r
+//                 .get::<Option<String>, _>("balance")
+//                 .and_then(|s| s.parse::<f64>().ok())
+//                 .unwrap_or(0.0),
+//             decimals: r.get("decimals"),
+//         })
+//         .collect();
+
+//     let token_currencies_snapshot = {
+//         let guard = TOKEN_CURRENCIES.read().await;
+//         guard.clone()
+//     };
+//     let currency = ConfigDomain::get_currency().await?;
+
+//     assets.par_iter().for_each(|a| {
+//         let id = TokenCurrencyId::new(&a.symbol, &a.chain_code, Some(a.token_address.clone()));
+//         let asset_key = make_asset_key(&a.address, &a.chain_code, &a.token_address);
+//         let price = token_currencies_snapshot.get(&id).map(|p| p.price).unwrap_or(0.0);
+//         let value = (a.balance / 10f64.powi(a.decimals)) * price;
+//         ASSET_VALUE_CACHE.insert(asset_key, value);
+//     });
+
+//     let total: f64 = ASSET_VALUE_CACHE.iter().map(|kv| *kv.value()).sum();
+//     {
+//         let mut guard = TOTAL_USDT.write().await;
+//         *guard = total;
+//     }
+
+//     Ok(())
+// }
 
 /// Get current total snapshot
 pub async fn get_total_usdt() -> f64 {
@@ -283,7 +371,7 @@ pub async fn get_total_usdt() -> f64 {
 
 /// Get current price cache
 pub async fn get_price_cache() {
-    tracing::info!("get_price_cache: {:#?}", PRICE_CACHE);
+    tracing::info!("get_price_cache: {:#?}", TOKEN_CURRENCIES);
     // let g = PRICE_CACHE.read().await;
     // g.clone()
 }
@@ -311,3 +399,40 @@ pub async fn get_price_cache() {
 //     }
 //     Ok(out)
 // }
+
+pub async fn get_wallet_balance_list()
+-> Result<HashMap<String, BalanceInfo>, crate::error::service::ServiceError> {
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+    // 1️⃣ 获取账户与钱包的映射
+    // account_address -> wallet_address
+    let list = ApiAccountRepo::account_to_wallet(&pool).await?;
+
+    let mut account_to_wallet: HashMap<String, String> = HashMap::new();
+    for row in list {
+        account_to_wallet.insert(row.address, row.wallet_address);
+    }
+
+    // 2️⃣ 聚合计算钱包总余额
+    let mut wallet_totals: HashMap<String, BalanceInfo> = HashMap::new();
+
+    tracing::info!("get_wallet_balance_list: {:?}", ASSET_VALUE_CACHE);
+    for entry in ASSET_VALUE_CACHE.iter() {
+        if let Some(address) = entry.key().split(':').next() {
+            if let Some(wallet_address) = account_to_wallet.get(address) {
+                tracing::info!("get_wallet_balance_list: wallet_address: {:?}", wallet_address);
+                let entry_value = entry.value();
+                wallet_totals
+                    .entry(wallet_address.clone())
+                    .and_modify(|total| {
+                        total.amount_add(entry_value.amount);
+                        total.fiat_add(entry_value.fiat_value);
+                    })
+                    .or_insert_with(|| entry_value.clone());
+                // 👆 用 or_insert_with + clone()，因为 entry_value 是引用
+            }
+        }
+    }
+
+    Ok(wallet_totals)
+}

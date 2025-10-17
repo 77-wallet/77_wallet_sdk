@@ -104,16 +104,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     subscribe(&wallet_manager).await;
 
-    // tokio::spawn(async {
-    //     loop {
-    //         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    //         let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
-    //         wallet_api::infrastructure::asset_calc::get_price_cache().await;
-    //         let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
-    //         tracing::info!("usdt: {usdt:#?}");
-    //         tracing::info!("page: {page:#?}");
-    //     }
-    // });
+    tokio::spawn(async {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            // let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
+            // wallet_api::infrastructure::asset_calc::get_price_cache().await;
+            // let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
+            // tracing::info!("usdt: {usdt:#?}");
+            // tracing::info!("page: {page:#?}");
+
+            let res = wallet_api::infrastructure::asset_calc::get_wallet_balance_list().await;
+            tracing::info!("get_wallet_balance_list: {res:#?}");
+        }
+    });
     loop {
         tokio::select! {
             msg = rx.next() => {
