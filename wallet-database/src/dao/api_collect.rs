@@ -293,6 +293,7 @@ impl ApiCollectDao {
         trade_no: &str,
         status: ApiCollectStatus,
         next_status: ApiCollectStatus,
+        notes: &str,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -301,6 +302,7 @@ impl ApiCollectDao {
             UPDATE api_collect
             SET
                 status = $3,
+                notes = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
@@ -309,6 +311,7 @@ impl ApiCollectDao {
             .bind(trade_no)
             .bind(&status)
             .bind(&next_status)
+            .bind(notes)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

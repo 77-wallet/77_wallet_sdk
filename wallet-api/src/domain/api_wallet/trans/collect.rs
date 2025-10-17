@@ -78,9 +78,10 @@ impl ApiCollectDomain {
 
     pub async fn recover(trade_no: &str) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiCollectRepo::update_api_collect_status(
+        ApiCollectRepo::update_api_collect_next_status(
             &pool,
             trade_no,
+            ApiCollectStatus::InsufficientBalance,
             ApiCollectStatus::Init,
             "recover",
         )
@@ -104,7 +105,14 @@ impl ApiCollectDomain {
         status: ApiCollectStatus,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        ApiCollectRepo::update_api_collect_status(&pool, trade_no, status, "confirm").await?;
+        ApiCollectRepo::update_api_collect_next_status(
+            &pool,
+            trade_no,
+            ApiCollectStatus::SendingTxReport,
+            status,
+            "confirm",
+        )
+        .await?;
 
         if let Some(handles) = crate::context::CONTEXT.get().unwrap().get_global_handles().upgrade()
         {

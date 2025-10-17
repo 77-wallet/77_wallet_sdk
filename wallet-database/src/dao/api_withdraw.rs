@@ -251,6 +251,7 @@ impl ApiWithdrawDao {
         trade_no: &str,
         status: ApiWithdrawStatus,
         next_status: ApiWithdrawStatus,
+        notes: &str,
     ) -> Result<(), crate::Error>
     where
         E: Executor<'a, Database = Sqlite>,
@@ -259,6 +260,7 @@ impl ApiWithdrawDao {
             UPDATE api_withdraws
             SET
                 status = $3,
+                 notes = $4,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE trade_no = $1 and status = $2
         "#;
@@ -267,6 +269,7 @@ impl ApiWithdrawDao {
             .bind(trade_no)
             .bind(&status)
             .bind(&next_status)
+            .bind(notes)
             .execute(exec)
             .await
             .map_err(|e| crate::Error::Database(e.into()))?;

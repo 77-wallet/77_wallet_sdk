@@ -10,6 +10,8 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use chrono::TimeDelta;
+use rust_decimal::Decimal;
+use std::str::FromStr;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
@@ -75,8 +77,8 @@ impl ProcessCollectTxHandle {
         let mut tx_confirm_report = ProcessFeeTxConfirmReport::new(shutdown_rx3, confirm_report_rx);
         let tx_confirm_report_handle = tokio::spawn(async move { tx_confirm_report.run().await });
         Self {
-            shutdown_tx: shutdown_tx,
-            tx_tx: tx_tx,
+            shutdown_tx,
+            tx_tx,
             confirm_report_tx,
             tx_handle: Mutex::new(Some(tx_handle)),
             tx_report_handle: Mutex::new(Some(tx_report_handle)),
@@ -349,7 +351,9 @@ impl ProcessCollectTx {
         }
         // check
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + req.value.as_str() + sn;
+        let mut d = Decimal::from_str(req.value.as_str()).unwrap();
+        d = d.normalize();
+        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         if req.validate != digest {
             return self
@@ -380,7 +384,7 @@ impl ProcessCollectTx {
         match tx_resp {
             Ok(tx) => self.handle_collect_tx_success(&req.trade_no, tx).await,
             Err(err) => {
-                tracing::error!("failed to process collect tx: {}", err);
+                tracing::error!(trade_no=%req.trade_no, "failed to process collect tx: {}", err);
                 self.handle_collect_tx_failed(&req.trade_no, err).await
             }
         }
@@ -566,6 +570,7 @@ impl ProcessCollectTxReport {
                         &req.trade_no,
                         ApiCollectStatus::SendingTxFailed,
                         ApiCollectStatus::SendingTxFailedReport,
+                        "uploaded tx ok",
                     )
                     .await?;
                 } else {
@@ -574,6 +579,7 @@ impl ProcessCollectTxReport {
                         &req.trade_no,
                         ApiCollectStatus::SendingTx,
                         ApiCollectStatus::SendingTxReport,
+                        "uploaded tx ok",
                     )
                     .await?;
                 }
@@ -749,6 +755,7 @@ impl ProcessFeeTxConfirmReport {
                     &req.trade_no,
                     req.status,
                     ApiCollectStatus::ReceivedConfirmReport,
+                    "trans event ack",
                 )
                 .await?;
                 return Ok(());

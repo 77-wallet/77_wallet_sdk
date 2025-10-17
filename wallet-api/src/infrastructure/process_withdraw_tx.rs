@@ -8,6 +8,8 @@ use crate::{
     request::api_wallet::trans::{ApiBaseTransferReq, ApiTransferReq},
 };
 use chrono::TimeDelta;
+use rust_decimal::Decimal;
+use std::str::FromStr;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
@@ -209,7 +211,9 @@ impl ProcessWithdrawTx {
 
         // check
         let sn = crate::context::CONTEXT.get().unwrap().get_sn();
-        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + req.value.as_str() + sn;
+        let mut d = Decimal::from_str(req.value.as_str()).unwrap();
+        d = d.normalize();
+        let raw_data = req.from_addr.clone() + req.to_addr.as_str() + d.to_string().as_str() + sn;
         let digest = wallet_utils::bytes_to_base64(&wallet_utils::md5_vec(&raw_data));
         if req.validate != digest {
             tracing::error!(raw_data=&raw_data,digest=%digest, "failed to process withdraw tx");
@@ -432,6 +436,7 @@ impl ProcessWithdrawTxReport {
                         &req.trade_no,
                         ApiWithdrawStatus::SendingTxFailed,
                         ApiWithdrawStatus::SendingTxFailedReport,
+                        "withdraw upload tx ok",
                     )
                     .await?;
                 } else {
@@ -441,6 +446,7 @@ impl ProcessWithdrawTxReport {
                         &req.trade_no,
                         ApiWithdrawStatus::SendingTx,
                         ApiWithdrawStatus::SendingTxReport,
+                        "withdraw upload tx ok",
                     )
                     .await?;
                 }
@@ -601,6 +607,7 @@ impl ProcessWithdrawTxConfirmReport {
                     &req.trade_no,
                     req.status,
                     ApiWithdrawStatus::ReceivedConfirmReport,
+                    "withdraw trans event ack",
                 )
                 .await?;
                 return Ok(());

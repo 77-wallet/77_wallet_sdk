@@ -83,9 +83,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-android = { workspace = true }
 
-# rust_decimal = { version = "1.35.0", features = ["maths"] }
-
-
 # sysinfo = "0.30.12"
 tempfile = "3.19.0"
 

@@ -1,10 +1,13 @@
+use sqlx::encode::IsNull::No;
 use tokio_stream::StreamExt as _;
 use wallet_api::{
     manager::WalletManager,
     messaging::notify::FrontendNotifyEvent,
+    request::api_wallet::account::CreateApiAccountReq,
     test::env::{TestParams, get_manager},
     xlog::init_log,
 };
+use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
@@ -18,7 +21,7 @@ async fn run(
     let phrase = &test_params.create_wallet_req.phrase;
     let salt = "q1111111";
     let wallet_name = "api_wallet";
-    let wallet_password = "[REDACTED:password]";
+    let wallet_password = "q1111111";
     // let binding_address = None;
     // let wallet_uid = wallet_manager
     //     .create_api_wallet(
@@ -58,15 +61,15 @@ async fn run(
 
     // let res = wallet_manager
     //     .scan_bind(
-    //         "b177849c23224df1a8480ed33f6acfc9",
-    //         "68db7992830c2a74f7862202",
+    //         "68098d05bbb74bf7a2516d39d4b0c503",
+    //         "68be7276a7307e042404e27b",
     //         &wallet_uid,
     //         &withdrawal_uid,
     //     )
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
 
-    let wallet_uid = "d4c1cbf36791b250cb01f20edb81325ce83d3c334a5e2ceb77daf1dee6f206db";
+    let wallet_uid = "f55898118f71e6938f2904b00f381a3bd850a085cee2be36cc462b5c57026643";
 
     let res = wallet_manager.get_collect_strategy(wallet_uid).await?;
     tracing::info!("get collect strategy -------------------- {:?}", res);
@@ -74,17 +77,17 @@ async fn run(
     let res = wallet_manager
         .update_collect_strategy(
             &wallet_uid,
-            1,
+            1.1,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 chain_address_type: Some("Tron".to_string()),
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TDiPH4z5x3kiPRFCBiw7pStpXb4GPFNohA".to_string(),
+                    address: "TDpBeopE7JD7sZQjXnJzQ4RqdopeQYB9nf".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TBEDk4ie1aSi46r3QeZLtMvkEFfEVDFpd1".to_string(),
+                    address: "TDpBeopE7JD7sZQjXnJzQ4RqdopeQYB9nf".to_string(),
                 },
             }],
         )
@@ -98,23 +101,23 @@ async fn run(
         }
     }
 
-    let wallet_uid = "bafbedca53ae6339fa384dfe1778a3e70ef4d4e464bff75425ff19a0a16e6fcc";
+    let wallet_uid = "fece98b84ef1cbd097e1606b172ed3f2af1bb0df48e6ffdfc54c775f3fac7bf6";
     let res = wallet_manager.get_withdrawal_strategy(wallet_uid).await?;
     tracing::info!("get withdrawal strategy -------------------- {:?}", res);
     let res = wallet_manager
         .update_withdrawal_strategy(
             &wallet_uid,
-            80,
+            80.1,
             vec![ChainConfig {
                 chain_code: ChainCode::Tron.to_string(),
                 chain_address_type: Some("Tron".to_string()),
                 normal_address: IndexAndAddress {
                     index: Some(0),
-                    address: "TF9bwZbfKAjschqBXHiw6SBUbRbpRv3ong".to_string(),
+                    address: "TPJZ6RaHKLey8Q2H6hABEbzqCgt2QJTZeh".to_string(),
                 },
                 risk_address: IndexAndAddress {
                     index: Some(1),
-                    address: "TRjVhnopRbn4cRhh7y5aN65jZLVM1rixUc".to_string(),
+                    address: "TBQScQ3fT9GBzfWJnH2MQcVmvt4CGT2csX".to_string(),
                 },
             }],
         )
