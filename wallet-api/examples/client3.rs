@@ -5,11 +5,11 @@ use wallet_api::{
     messaging::notify::FrontendNotifyEvent,
     request::api_wallet::account::CreateApiAccountReq,
     test::env::{TestParams, get_manager},
+    xlog::init_log,
 };
 use wallet_database::entities::api_wallet::ApiWalletType;
 use wallet_transport_backend::request::api_wallet::strategy::{ChainConfig, IndexAndAddress};
 use wallet_types::chain::chain::ChainCode;
-use wallet_api::xlog::init_log;
 // TFzMRRzQFhY9XFS37veoswLRuWLNtbyhiB
 
 async fn run(
@@ -68,7 +68,6 @@ async fn run(
     //     )
     //     .await?;
     // tracing::info!("绑定app成功 ------------------- 3: {res:#?}");
-
 
     let wallet_uid = "f55898118f71e6938f2904b00f381a3bd850a085cee2be36cc462b5c57026643";
 
@@ -186,7 +185,6 @@ async fn run(
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let (wallet_manager, test_params) = get_manager().await?;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);

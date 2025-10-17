@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use crate::{
     domain::{
         api_wallet::{trans::ApiTransDomain, wallet::ApiWalletDomain},
@@ -10,6 +9,7 @@ use crate::{
 };
 use chrono::TimeDelta;
 use rust_decimal::Decimal;
+use std::str::FromStr;
 use tokio::{
     sync::{Mutex, broadcast, mpsc},
     task::JoinHandle,
@@ -587,7 +587,7 @@ impl ProcessFeeTxConfirmReport {
                     &req.trade_no,
                     req.status,
                     ApiFeeStatus::ReceivedConfirmReport,
-                    "fee trans event ack"
+                    "fee trans event ack",
                 )
                 .await?;
                 return Ok(());
