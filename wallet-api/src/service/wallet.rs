@@ -94,7 +94,8 @@ impl WalletService {
         let wallet = tx.update_wallet_update_at(wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            tx.update_uid(Some(&wallet.uid)).await?;
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            DeviceRepo::update_uid(pool, Some(&wallet.uid)).await?;
 
             let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
             let Some(device) = DeviceRepo::get_device_info(pool).await? else {
@@ -432,7 +433,8 @@ impl WalletService {
         tracing::debug!("Child keystore initialization took: {:?}", child_keystore_start.elapsed());
 
         Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
-        tx.update_uid(Some(&uid)).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        DeviceRepo::update_uid(pool, Some(&uid)).await?;
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
 
@@ -672,7 +674,8 @@ impl WalletService {
 
         let uid =
             if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
-        tx.update_uid(uid.as_deref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        DeviceRepo::update_uid(pool, uid.as_deref()).await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool).await? else {
             return Err(crate::error::service::ServiceError::Business(
@@ -722,7 +725,7 @@ impl WalletService {
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
                     crate::error::business::device::DeviceError::Uninitialized,
@@ -745,7 +748,8 @@ impl WalletService {
             tx.update_password(None).await?;
             None
         };
-        tx.update_uid(uid.as_deref()).await?;
+
+        DeviceRepo::update_uid(pool.clone(), uid.as_deref()).await?;
         tx.commit_transaction().await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 

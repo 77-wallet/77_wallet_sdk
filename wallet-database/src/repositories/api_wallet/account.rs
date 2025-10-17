@@ -195,4 +195,18 @@ impl ApiAccountRepo {
     ) -> Result<Vec<AccountToWalletAddress>, crate::Error> {
         ApiAccountDao::account_to_wallet(pool.as_ref()).await
     }
+
+    pub async fn physical_delete_all(
+        pool: &DbPool,
+        wallet_addresses: &[&str],
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error> {
+        ApiAccountDao::physical_delete_all(pool.as_ref(), wallet_addresses).await
+    }
+
+    pub async fn count_unique_account_ids(
+        pool: &DbPool,
+        wallet_address: &str,
+    ) -> Result<u32, crate::Error> {
+        ApiAccountDao::count_unique_account_ids(pool.as_ref(), wallet_address).await
+    }
 }

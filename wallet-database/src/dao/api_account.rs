@@ -80,6 +80,49 @@ impl ApiAccountDao {
             .await
     }
 
+    pub async fn physical_delete_all<'a, E>(
+        exec: E,
+        wallet_addresses: &[&str],
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        // use crate::sql_utils::SqlExecutableReturn;
+        crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("api_account")
+            .and_where_in("wallet_address", wallet_addresses)
+            .fetch_all(exec)
+            .await
+    }
+
+    pub async fn count_unique_account_ids<'a, E>(
+        exec: E,
+        wallet_address: &str,
+    ) -> Result<u32, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        DynamicQueryBuilder::new("SELECT COUNT(DISTINCT account_id) as count FROM api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .fetch_one(exec)
+            .await
+            .map(|(count,)| count)
+    }
+
+    pub async fn physical_delete<'a, E>(
+        exec: E,
+        wallet_address: &str,
+        account_id: u32,
+    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        crate::sql_utils::delete_builder::DynamicDeleteBuilder::new("api_account")
+            .and_where_eq("wallet_address", wallet_address)
+            .and_where_eq("account_id", account_id)
+            .fetch_all(exec)
+            .await
+    }
+
     /// 编辑账户名
     pub async fn edit_name<'a, E>(
         exec: E,
@@ -237,28 +280,6 @@ impl ApiAccountDao {
             .and_where_eq("account_id", account_id)
             .fetch_all(exec)
             .await
-    }
-
-    pub async fn physical_delete<'a, E>(
-        exec: E,
-        wallet_address: &str,
-        account_id: u32,
-    ) -> Result<Vec<ApiAccountEntity>, crate::Error>
-    where
-        E: Executor<'a, Database = Sqlite>,
-    {
-        let sql = r#"
-        DELETE FROM api_account
-        WHERE wallet_address = $1 AND account_id = $2
-        RETURNING *
-        "#;
-
-        sqlx::query_as::<sqlx::Sqlite, ApiAccountEntity>(sql)
-            .bind(wallet_address)
-            .bind(account_id)
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn has_account_id<'a, E>(

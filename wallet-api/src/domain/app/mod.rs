@@ -96,6 +96,26 @@ impl DeviceDomain {
         Ok(device_unbind_address_task)
     }
 
+    pub(crate) async fn gen_device_unbind_all_api_address_task_data(
+        accounts: &[wallet_database::entities::api_account::ApiAccountEntity],
+        multisig_accounts: Vec<wallet_database::entities::multisig_account::MultisigAccountEntity>,
+        sn: &str,
+    ) -> Result<BackendApiTaskData, crate::error::service::ServiceError> {
+        let mut device_unbind_address_req =
+            wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
+        for account in accounts {
+            device_unbind_address_req.push(&account.chain_code, &account.address);
+        }
+        for multisig_account in multisig_accounts {
+            device_unbind_address_req.push(&multisig_account.chain_code, &multisig_account.address);
+        }
+        let device_unbind_address_task = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::DEVICE_UNBIND_ADDRESS,
+            &device_unbind_address_req,
+        )?;
+        Ok(device_unbind_address_task)
+    }
+
     pub(crate) async fn check_wallet_password_is_null()
     -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;

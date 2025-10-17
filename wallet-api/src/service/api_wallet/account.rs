@@ -1,20 +1,27 @@
 use crate::{
     context::Context,
     domain::{
+        self,
         api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        app::config::ConfigDomain,
+        permission::PermissionDomain,
         wallet::WalletDomain,
     },
     error::service::ServiceError,
+    infrastructure::task_queue::{backend::BackendApiTask, task::Tasks},
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     response_vo::api_wallet::account::ApiAccountInfos,
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
-    repositories::api_wallet::{
-        account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo,
+    repositories::{
+        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
+        device::DeviceRepo,
     },
 };
+use wallet_types::constant::chain_code;
+use wallet_utils::address::AccountIndexMap;
 
 pub struct ApiAccountService {
     ctx: &'static Context,
@@ -197,5 +204,50 @@ impl ApiAccountService {
         let pool = self.ctx.get_global_sqlite_pool()?;
         Ok(ApiAccountRepo::list_by_wallet_address_account_id(&pool, wallet_address, account_id)
             .await?)
+    }
+
+    pub async fn physical_delete_account(
+        self,
+        wallet_address: &str,
+        account_id: u32,
+        password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
+        };
+        WalletDomain::validate_password(password).await?;
+        // Check if this is the last account
+        let account_count = ApiAccountRepo::count_unique_account_ids(&pool, wallet_address).await?;
+        if account_count <= 1 {
+            return Err(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::CannotDeleteLastAccount,
+            )
+            .into());
+        }
+
+        let deleted = ApiAccountRepo::delete(&pool, wallet_address, account_id).await?;
+
+        let device_unbind_address_task =
+            domain::app::DeviceDomain::gen_device_unbind_all_api_address_task_data(
+                &deleted,
+                Vec::new(),
+                &device.sn,
+            )
+            .await?;
+
+        // delete permission
+        for account in deleted.iter() {
+            if account.chain_code == chain_code::TRON {
+                PermissionDomain::delete_by_address(&pool, &account.address).await?;
+            }
+        }
+
+        Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
+
+        Ok(())
     }
 }

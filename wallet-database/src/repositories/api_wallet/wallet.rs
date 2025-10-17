@@ -67,11 +67,11 @@ impl ApiWalletRepo {
         Ok(ApiWalletDao::mark_init(pool.as_ref(), uid).await?)
     }
 
-    pub async fn delete(
+    pub async fn physical_delete(
         pool: &DbPool,
         wallet_addresses: &[&str],
     ) -> Result<Vec<ApiWalletEntity>, crate::Error> {
-        Ok(ApiWalletDao::delete_by_address(pool.as_ref(), wallet_addresses).await?)
+        Ok(ApiWalletDao::physical_delete(pool.as_ref(), wallet_addresses).await?)
     }
 
     pub async fn list(
@@ -111,5 +111,13 @@ impl ApiWalletRepo {
             binding_address,
         )
         .await
+    }
+
+    pub async fn wallet_latest(pool: &DbPool) -> Result<Option<ApiWalletEntity>, crate::Error> {
+        Ok(ApiWalletDao::wallet_latest(pool.as_ref()).await?)
+    }
+
+    pub async fn uid_list(pool: &DbPool) -> Result<Vec<(String,)>, crate::Error> {
+        Ok(ApiWalletDao::uid_list(pool.as_ref()).await?)
     }
 }

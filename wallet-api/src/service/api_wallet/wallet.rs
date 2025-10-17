@@ -1,14 +1,17 @@
 use wallet_database::{
+    dao::multisig_member::MultisigMemberDaoV1,
     entities::api_wallet::ApiWalletType,
     repositories::{
-        api_wallet::{chain::ApiChainRepo, wallet::ApiWalletRepo},
+        api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         device::DeviceRepo,
     },
 };
 use wallet_transport_backend::{
-    request::{LanguageInitReq, api_wallet::address::AddressListReq},
+    consts::endpoint,
+    request::{DeviceDeleteReq, LanguageInitReq, api_wallet::address::AddressListReq},
     response_vo::api_wallet::wallet::{QueryUidBindInfoRes, QueryWalletActivationInfoResp},
 };
+use wallet_tree::api::KeystoreApi;
 
 use crate::{
     api::ReturnType,
@@ -16,10 +19,12 @@ use crate::{
     domain::{
         api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
         app::DeviceDomain,
+        multisig::MultisigDomain,
         wallet::WalletDomain,
     },
     error::service::ServiceError,
     infrastructure::task_queue::{
+        CommonTask, RecoverDataBody,
         backend::{BackendApiTask, BackendApiTaskData},
         task::Tasks,
     },
@@ -533,6 +538,103 @@ impl ApiWalletService {
         wallet_address: &str,
     ) -> Result<QueryWalletActivationInfoResp, crate::error::service::ServiceError> {
         ApiWalletDomain::query_wallet_activation_info(wallet_address).await
+    }
+
+    // pub async fn get_phrase(
+    //     &mut self,
+    //     wallet_address: &str,
+    //     password: &str,
+    // ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::error::service::ServiceError> {
+    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    //     let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+    //         crate::error::business::BusinessError::ApiWallet(
+    //             crate::error::business::api_wallet::ApiWalletError::NotFound,
+    //         ),
+    //     )?;
+
+    //     let phrase = ApiWalletDomain::decrypt_phrase(password, &api_wallet.phrase).await?;
+
+    //     Ok(crate::response_vo::wallet::GetPhraseRes { phrase: String::from_utf8(phrase)? })
+    // }
+
+    pub async fn physical_delete(
+        self,
+        address: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let wallet = ApiWalletRepo::find_by_address(&pool, address).await?;
+        ApiWalletRepo::physical_delete(&pool, &[address]).await?;
+        let accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
+        };
+
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+
+        let latest_wallet = ApiWalletRepo::wallet_latest(&pool).await?;
+
+        let rest_uids = ApiWalletRepo::uid_list(&pool)
+            .await?
+            .into_iter()
+            .map(|uid| uid.0)
+            .collect::<Vec<String>>();
+
+        let uid = if let Some(latest_wallet) = latest_wallet {
+            Some(latest_wallet.uid)
+        } else {
+            KeystoreApi::remove_verify_file(&dirs.root_dir)?;
+            // tx.update_password(None).await?;
+            None
+        };
+        DeviceRepo::update_uid(pool.clone(), uid.as_deref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        if let Some(wallet) = wallet {
+            let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
+
+            let members =
+                MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool).await.map_err(|e| {
+                    crate::error::service::ServiceError::Database(wallet_database::Error::Database(
+                        e,
+                    ))
+                })?;
+
+            let multisig_accounts =
+                MultisigDomain::physical_delete_wallet_account(members, &wallet.uid, pool.clone())
+                    .await?;
+
+            let device_unbind_address_task =
+                DeviceDomain::gen_device_unbind_all_api_address_task_data(
+                    accounts.as_slice(),
+                    multisig_accounts,
+                    &device.sn,
+                )
+                .await?;
+
+            Tasks::new()
+                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                    endpoint::DEVICE_DELETE,
+                    &req,
+                )?))
+                .push(BackendApiTask::BackendApi(device_unbind_address_task))
+                .send()
+                .await?;
+        };
+
+        // find tron address and del permission
+
+        for uid in rest_uids {
+            let body = RecoverDataBody::new(&uid);
+
+            Tasks::new().push(CommonTask::RecoverMultisigAccountData(body)).send().await?;
+        }
+        Ok(())
     }
 
     // pub async fn appid_withdrawal_wallet_change(

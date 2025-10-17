@@ -95,6 +95,11 @@ impl ApiWalletDomain {
         Ok(data)
     }
 
+    pub(crate) async fn decrypt_phrase(password: &str, phrase: &str) -> Result<Vec<u8>, ServiceError> {
+        let data = KeystoreJsonDecryptor.decrypt(password.as_ref(), phrase)?;
+        Ok(data)
+    }
+
     pub(crate) async fn check_normal_wallet_exist(address: &str) -> Result<bool, ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 

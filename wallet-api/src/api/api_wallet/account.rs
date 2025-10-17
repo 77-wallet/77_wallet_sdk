@@ -76,6 +76,17 @@ impl WalletManager {
         ApiAccountService::new(self.ctx).address_used(chain_code, index, uid).await
     }
 
+    pub async fn physical_delete_api_account(
+        &self,
+        wallet_address: &str,
+        account_id: u32,
+        password: &str,
+    ) -> ReturnType<()> {
+        ApiAccountService::new(self.ctx)
+            .physical_delete_account(wallet_address, account_id, password)
+            .await
+    }
+
     // pub async fn get_api_account_list(
     //     &self,
     //     wallet_address: Option<&str>,
@@ -103,7 +114,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0xDA32fc1346Fa1DF9719f701cbdd6855c901027C1";
-        let wallet_password = "q1111111";
+        let wallet_password = "[REDACTED:password]";
         let index = vec![9, 10];
         let name = "666";
         let is_default_name = true;
@@ -129,7 +140,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let wallet_address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
-        let wallet_password = "q1111111";
+        let wallet_password = "[REDACTED:password]";
         let index = Some(5);
         let name = "666";
         let is_default_name = true;
@@ -153,7 +164,7 @@ mod test {
         let (wallet_manager, _test_params) = get_manager().await?;
         let address = "1BUttKYoVhXZbAogpHmm2Mm7X8Xtrjn6XH";
         let chain_code = "btc";
-        let password = "q1111111";
+        let password = "[REDACTED:password]";
 
         let res = wallet_manager.get_api_account_private_key(address, chain_code, password).await;
         tracing::info!("res: {res:?}");
@@ -190,6 +201,23 @@ mod test {
             .await
             .unwrap();
         let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
+    #[tokio::test]
+    async fn test_physical_delete_api_account() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let chain_code = "tron";
+
+        let res = wallet_manager
+            .physical_delete_api_account(
+                "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+                2,
+                "q1111111",
+            )
+            .await;
         tracing::info!("res: {res:?}");
 
         Ok(())
