@@ -4,7 +4,7 @@ use crate::{
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
     response_vo::api_wallet::account::ApiAccountInfos,
-    service::api_wallet::account::ApiAccountService,
+    service::{account::AccountService, api_wallet::account::ApiAccountService},
 };
 
 impl WalletManager {
@@ -94,6 +94,15 @@ impl WalletManager {
     // ) -> ReturnType<Vec<ApiAccountEntity>> {
     //     ApiAccountService::new(self.ctx).get_account_list(wallet_address, account_id).await
     // }
+
+    pub async fn edit_api_account_name(
+        &self,
+        account_id: u32,
+        wallet_address: &str,
+        name: &str,
+    ) -> ReturnType<()> {
+        ApiAccountService::new(self.ctx).edit_account_name(account_id, wallet_address, name).await
+    }
 }
 
 #[cfg(test)]
