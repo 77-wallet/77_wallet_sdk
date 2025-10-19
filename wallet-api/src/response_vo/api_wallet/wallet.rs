@@ -24,6 +24,13 @@ impl From<&ApiWalletEntity> for WalletInfo {
     }
 }
 
+impl WalletInfo {
+    pub(crate) fn with_balance(mut self, balance: BalanceInfo) -> Self {
+        self.balance = balance;
+        self
+    }
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiWalletList(pub Vec<ApiWalletItem>);

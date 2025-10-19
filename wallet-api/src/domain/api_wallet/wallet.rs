@@ -359,14 +359,18 @@ impl ApiWalletDomain {
         Ok(backend_api.query_wallet_activation_info(&api_wallet.uid).await?)
     }
 
-    pub(crate) async fn get_api_wallet_list()
-    -> Result<ApiWalletList, crate::error::service::ServiceError> {
+    pub async fn get_api_wallet_list() -> Result<ApiWalletList, crate::error::service::ServiceError>
+    {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let li = ApiWalletRepo::list(&pool, None).await?;
         let mut list = ApiWalletList::new();
-        let res = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
-
+        let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
+        tracing::info!("get_api_wallet_list balance_list: {balance_list:#?}");
         for e in &li {
+            let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
+            if let Some(balance) = balance_list.get(&e.address) {
+                wallet = wallet.with_balance(balance.clone());
+            };
             match e.api_wallet_type {
                 ApiWalletType::InvalidValue => todo!(),
                 ApiWalletType::SubAccount => {
@@ -379,10 +383,10 @@ impl ApiWalletDomain {
                                 .unwrap_or(false)
                         })
                     {
-                        item.recharge_wallet = Some(e.into());
+                        item.recharge_wallet = Some(wallet);
                     } else {
                         list.push(ApiWalletItem {
-                            recharge_wallet: Some(e.into()),
+                            recharge_wallet: Some(wallet),
                             withdraw_wallet: None,
                         });
                     }
@@ -396,11 +400,11 @@ impl ApiWalletDomain {
                                 .unwrap_or(false)
                         })
                     {
-                        item.withdraw_wallet = Some(e.into());
+                        item.withdraw_wallet = Some(wallet);
                     } else {
                         list.push(ApiWalletItem {
                             recharge_wallet: None,
-                            withdraw_wallet: Some(e.into()),
+                            withdraw_wallet: Some(wallet),
                         });
                     }
                 }

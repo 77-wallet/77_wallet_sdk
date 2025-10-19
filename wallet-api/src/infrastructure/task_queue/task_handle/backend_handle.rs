@@ -604,6 +604,11 @@ impl EndpointHandler for SpecialHandler {
                                     &token.amount.to_string(),
                                 )
                                 .await?;
+                                crate::infrastructure::asset_calc::on_asset_update(
+                                    &address.address,
+                                    &req.chain_code,
+                                    &token.token_address,
+                                );
                             };
                         }
                     }

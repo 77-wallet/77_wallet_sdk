@@ -41,11 +41,16 @@ impl WalletManager {
             context.get_global_oss_client(),
         )
         .await?;
+        tracing::info!("start_upload_scheduler start");
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
         handles.get_global_unconfirmed_msg_processor().start().await;
+        tracing::info!("get_global_unconfirmed_msg_processor start");
         handles.get_global_task_manager().start_task_check().await?;
+        tracing::info!("start_task_check start");
         infrastructure::asset_calc::start_batch_recalculator(1000)?;
+
+        tracing::info!("start_batch_recalculator start");
         context.set_global_handles(Arc::downgrade(&handles));
         let pool = context.get_global_sqlite_pool()?;
         let repo_factory = RepositoryFactory::new(pool);

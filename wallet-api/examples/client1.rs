@@ -87,14 +87,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // subscribe(&wallet_manager).await;
 
-    let sync_res = wallet_manager
-        .sync_api_assets_by_wallet(
-            "0x01a68baa7523f16D64AD63d8a82A40e838170b5b".to_string(),
-            None,
-            vec![],
-        )
-        .await;
-    tracing::info!("sync res: {sync_res:#?}");
+    // let sync_res = wallet_manager
+    //     .sync_api_assets_by_wallet(
+    //         "0x01a68baa7523f16D64AD63d8a82A40e838170b5b".to_string(),
+    //         None,
+    //         vec![],
+    //     )
+    //     .await;
+    // tracing::info!("sync res: {sync_res:#?}");
     // let wallet = wallet.unwrap();
     // test_params.create_account_req.wallet_address = wallet.address.clone();
 
@@ -102,18 +102,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {config:#?}");
     // let res = wallet_utils::serde_func::serde_to_string(&config)?;
     // tracing::info!("config result: {res}");
-    subscribe(&wallet_manager).await;
+    // subscribe(&wallet_manager).await;
 
     tokio::spawn(async {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             // let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
             // wallet_api::infrastructure::asset_calc::get_price_cache().await;
             // let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
             // tracing::info!("usdt: {usdt:#?}");
             // tracing::info!("page: {page:#?}");
 
-            let res = wallet_api::infrastructure::asset_calc::get_wallet_balance_list().await;
+            // let res = wallet_api::infrastructure::asset_calc::get_wallet_balance_list().await;
+
+            let res =
+                wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list()
+                    .await;
             tracing::info!("get_wallet_balance_list: {res:#?}");
         }
     });

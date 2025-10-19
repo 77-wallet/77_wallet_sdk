@@ -7,7 +7,9 @@ use rayon::prelude::*;
 use sqlx::{Row, SqlitePool};
 use tokio::sync::RwLock;
 use wallet_database::repositories::{
-    api_wallet::account::ApiAccountRepo, coin::CoinRepo, exchange_rate::ExchangeRateRepo,
+    api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
+    coin::CoinRepo,
+    exchange_rate::ExchangeRateRepo,
 };
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
 
@@ -92,6 +94,17 @@ pub fn on_asset_update(address: &str, chain_code: &str, token_address: &str) {
     let k = make_asset_key(address, chain_code, token_address);
     tracing::info!("on_asset_update: {}", k);
     ASSET_DIRTY_SET.insert(k);
+}
+
+pub async fn init_assets() -> Result<(), crate::error::service::ServiceError> {
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+    let list = ApiAssetsRepo::list(&pool, vec![], None).await?;
+    tracing::info!("init_assets: list: {list:#?}");
+    list.into_iter().for_each(|asset| {
+        on_asset_update(&asset.address, &asset.chain_code, &asset.token_address);
+    });
+
+    Ok(())
 }
 
 /// Start the periodic batch recalculation background task.
@@ -416,12 +429,14 @@ pub async fn get_wallet_balance_list()
     // 2️⃣ 聚合计算钱包总余额
     let mut wallet_totals: HashMap<String, BalanceInfo> = HashMap::new();
 
-    tracing::info!("get_wallet_balance_list: {:?}", ASSET_VALUE_CACHE);
+    tracing::info!("get_wallet_balance_list: {:#?}", ASSET_VALUE_CACHE);
     for entry in ASSET_VALUE_CACHE.iter() {
         if let Some(address) = entry.key().split(':').next() {
+            tracing::info!("entry value: {}", address);
             if let Some(wallet_address) = account_to_wallet.get(address) {
                 tracing::info!("get_wallet_balance_list: wallet_address: {:?}", wallet_address);
                 let entry_value = entry.value();
+                tracing::info!("get_wallet_balance_list amount: {}", entry_value.amount);
                 wallet_totals
                     .entry(wallet_address.clone())
                     .and_modify(|total| {

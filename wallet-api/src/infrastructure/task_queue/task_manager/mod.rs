@@ -68,10 +68,11 @@ impl TaskManager {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool().unwrap();
 
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
+        tracing::info!("task check start");
         if let Err(e) = Self::check_handle(repo, &running_tasks).await {
             tracing::error!("task check error: {}", e);
         }
+        tracing::info!("task check end");
     }
 
     /// 检查并发送任务的处理函数
@@ -94,7 +95,6 @@ impl TaskManager {
             failed_queue.extend(hanging_queue);
 
             let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
-            tracing::info!("check handle running tasks: {running_tasks:?}");
             tracing::info!("failed_queue: {:#?}", failed_queue);
             for task_entity in failed_queue.into_iter() {
                 if !running_tasks.contains(&task_entity.id) {
@@ -117,6 +117,8 @@ impl TaskManager {
                     tracing::error!("send task queue error: {}", e);
                 }
             }
+        } else {
+            tracing::error!("handles is None");
         }
 
         Ok(())

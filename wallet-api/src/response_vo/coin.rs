@@ -292,7 +292,7 @@ impl TokenCurrencies {
         } else {
             (None, None)
         };
-
+        tracing::info!("fiat_balance: {fiat_balance:?}");
         Ok(BalanceInfo {
             amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
             currency: currency.to_string(),

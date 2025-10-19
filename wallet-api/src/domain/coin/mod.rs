@@ -158,16 +158,29 @@ impl CoinDomain {
         let pool = repo.pool();
         // check 本地表是否有数据,有则不进行新增
         let count = CoinRepo::coin_count(&pool).await?;
-        if count > 0 {
-            return Ok(());
+        if count <= 0 {
+            let list: Vec<CoinData> = crate::default_data::coin::init_default_coins_list()?
+                .coins
+                .iter()
+                .map(|coin| coin.to_owned().into())
+                .collect();
+            Self::upsert_hot_coin_list(repo, list).await?;
         }
 
-        let list: Vec<CoinData> = crate::default_data::coin::init_default_coins_list()?
-            .coins
-            .iter()
-            .map(|coin| coin.to_owned().into())
-            .collect();
-        Self::upsert_hot_coin_list(repo, list).await?;
+        let list = CoinRepo::default_coin_list(&pool).await?;
+        tracing::info!("init coins: {:?}", list);
+        for coin in list.iter() {
+            crate::infrastructure::asset_calc::update_token_price(
+                &coin.symbol,
+                &coin.chain_code,
+                &coin.token_address,
+                wallet_utils::unit::string_to_f64(&coin.price)?,
+            )
+            .await?;
+        }
+        tracing::info!("init_coins:init_assets start");
+        crate::infrastructure::asset_calc::init_assets().await?;
+        tracing::info!("init_coins:init_assets end");
 
         Ok(())
     }
