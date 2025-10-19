@@ -106,15 +106,13 @@ impl WalletManager {
             .await
     }
 
-    // pub async fn get_phrase(
-    //     &self,
-    //     wallet_address: &str,
-    //     password: &str,
-    // ) -> ReturnType<crate::response_vo::wallet::GetPhraseRes> {
-    //     WalletService::new(self.repo_factory.resource_repo())
-    //         .get_phrase(wallet_address, password)
-    //         .await
-    // }
+    pub async fn get_api_phrase(
+        &self,
+        wallet_address: &str,
+        password: &str,
+    ) -> ReturnType<crate::response_vo::wallet::GetPhraseRes> {
+        ApiWalletService::new(self.ctx).get_phrase(wallet_address, password).await
+    }
 
     pub async fn unbind_merchant(
         &self,
@@ -406,6 +404,19 @@ mod test {
 
         let res = wallet_manager
             .physical_delete_api_wallet("0x01a68baa7523f16D64AD63d8a82A40e838170b5b")
+            .await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_phrase() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let _ = wallet_manager.set_passwd_cache("q1111111").await;
+
+        let res = wallet_manager
+            .get_api_phrase("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24", "q1111111")
             .await;
         tracing::info!("res: {res:?}");
         Ok(())

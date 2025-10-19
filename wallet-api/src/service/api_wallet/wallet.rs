@@ -540,22 +540,22 @@ impl ApiWalletService {
         ApiWalletDomain::query_wallet_activation_info(wallet_address).await
     }
 
-    // pub async fn get_phrase(
-    //     &mut self,
-    //     wallet_address: &str,
-    //     password: &str,
-    // ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::error::service::ServiceError> {
-    //     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-    //     let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
-    //         crate::error::business::BusinessError::ApiWallet(
-    //             crate::error::business::api_wallet::ApiWalletError::NotFound,
-    //         ),
-    //     )?;
+    pub async fn get_phrase(
+        &mut self,
+        wallet_address: &str,
+        password: &str,
+    ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
 
-    //     let phrase = ApiWalletDomain::decrypt_phrase(password, &api_wallet.phrase).await?;
+        let phrase = ApiWalletDomain::decrypt_phrase(password, &api_wallet.phrase).await?;
 
-    //     Ok(crate::response_vo::wallet::GetPhraseRes { phrase: String::from_utf8(phrase)? })
-    // }
+        Ok(crate::response_vo::wallet::GetPhraseRes { phrase })
+    }
 
     pub async fn physical_delete(
         self,
