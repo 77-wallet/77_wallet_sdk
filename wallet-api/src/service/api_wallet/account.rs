@@ -2,7 +2,7 @@ use crate::{
     context::Context,
     domain::{
         self,
-        api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
+        api_wallet::{account::ApiAccountDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
         permission::PermissionDomain,
         wallet::WalletDomain,
@@ -13,7 +13,7 @@ use crate::{
         task::Tasks,
     },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    response_vo::api_wallet::account::ApiAccountInfos,
+    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfos},
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
@@ -25,7 +25,7 @@ use wallet_database::{
     },
 };
 use wallet_transport_backend::request::AddressUpdateAccountNameReq;
-use wallet_types::constant::chain_code;
+use wallet_types::{chain::chain::ChainCode, constant::chain_code};
 
 pub struct ApiAccountService {
     ctx: &'static Context,
@@ -286,5 +286,89 @@ impl ApiAccountService {
         Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
 
         Ok(())
+    }
+
+    pub async fn list_derived_addresses(
+        self,
+        wallet_address: &str,
+        index: i32,
+        password: &str,
+        all: bool,
+    ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        WalletDomain::validate_password(password).await?;
+
+        let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+
+        let seed = ApiWalletDomain::decrypt_seed(password, &api_wallet.seed).await?;
+
+        // 获取默认链和币
+        let chains = if !all {
+            vec!["btc".to_string(), "eth".to_string(), "tron".to_string(), "sol".to_string()]
+        } else {
+            let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+            // 如果有指定派生路径，就获取该链的所有chain_code
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect()
+        };
+
+        let mut res = Vec::new();
+        for chain in chains.iter() {
+            let code: ChainCode = chain.as_str().try_into()?;
+            let address_types = WalletDomain::address_type_by_chain(code);
+
+            let Ok(node) = ApiChainDomain::get_node(chain).await else {
+                continue;
+            };
+            for address_type in address_types {
+                let instance: wallet_chain_instance::instance::ChainObject =
+                    (&code, &address_type, node.network.as_str().into()).try_into()?;
+
+                let keypair = instance
+                    .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)?;
+
+                let address_type = instance.address_type().into();
+                let derivation_path = keypair.derivation_path();
+                let address = keypair.address();
+
+                let mut derived_address = DerivedAddressesList::new(
+                    &address,
+                    &derivation_path,
+                    &node.chain_code,
+                    address_type,
+                );
+
+                match code {
+                    ChainCode::Solana | ChainCode::Sui | ChainCode::Ton => {
+                        let account = ApiAccountRepo::find_one_by_address_chain_code(
+                            &address,
+                            &node.chain_code,
+                            &pool,
+                        )
+                        .await?;
+                        if let Some(account) = account {
+                            derived_address.with_mapping_account(account.account_id, account.name);
+                        };
+
+                        if account_index_map.input_index < 0 {
+                            derived_address
+                                .with_mapping_positive_index(account_index_map.unhardend_index);
+                        }
+                    }
+                    _ => {}
+                }
+
+                res.push(derived_address);
+            }
+        }
+
+        Ok(res)
     }
 }

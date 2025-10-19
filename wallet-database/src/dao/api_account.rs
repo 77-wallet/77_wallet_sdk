@@ -353,6 +353,7 @@ impl ApiAccountDao {
         DynamicQueryBuilder::new("SELECT * FROM api_account")
             .and_where_eq("address", address)
             .and_where_eq("chain_code", chain_code)
+            .and_where_eq("status", 1)
             .fetch_optional(exec)
             .await
     }

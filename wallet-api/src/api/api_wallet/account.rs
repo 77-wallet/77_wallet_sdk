@@ -3,7 +3,7 @@ use crate::{
     manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
-    response_vo::api_wallet::account::ApiAccountInfos,
+    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfos},
     service::{account::AccountService, api_wallet::account::ApiAccountService},
 };
 
@@ -102,6 +102,18 @@ impl WalletManager {
         name: &str,
     ) -> ReturnType<()> {
         ApiAccountService::new(self.ctx).edit_account_name(account_id, wallet_address, name).await
+    }
+
+    pub async fn list_api_wallet_derived_addresses(
+        &self,
+        wallet_address: &str,
+        index: i32,
+        password: &str,
+        all: bool,
+    ) -> ReturnType<Vec<DerivedAddressesList>> {
+        ApiAccountService::new(self.ctx)
+            .list_derived_addresses(wallet_address, index, password, all)
+            .await
     }
 }
 
@@ -227,6 +239,27 @@ mod test {
                 "q1111111",
             )
             .await;
+        tracing::info!("res: {res:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_list_api_wallet_derived_addresses() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        // let chain_code = "tron";
+
+        let res = wallet_manager
+            .list_api_wallet_derived_addresses(
+                "0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24",
+                1,
+                "q1111111",
+                true,
+            )
+            .await
+            .unwrap();
+        let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
 
         Ok(())

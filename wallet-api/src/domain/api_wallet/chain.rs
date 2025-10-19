@@ -5,7 +5,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo, TransactionTrait as _,
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
-        node::NodeRepoTrait,
+        node::{NodeRepo, NodeRepoTrait},
     },
 };
 use wallet_transport_backend::request::{
@@ -18,7 +18,7 @@ use crate::{
         api_wallet::{account::ApiAccountDomain, wallet::ApiWalletDomain},
         app::config::ConfigDomain,
         assets::AssetsDomain,
-        chain::ChainDomain,
+        chain::{ChainDomain, NodeInfo},
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{
@@ -365,5 +365,42 @@ impl ApiChainDomain {
         }
 
         Ok(())
+    }
+
+    pub(crate) async fn get_node(
+        chain_code: &str,
+    ) -> Result<NodeInfo, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let node = match ApiChainRepo::detail_with_node(&pool, chain_code).await? {
+            Some(node) => NodeInfo::new(
+                &node.chain_code,
+                &node.node_id,
+                &node.node_name,
+                &node.rpc_url,
+                &node.ws_url,
+                &node.http_url,
+                &node.network,
+                node.status,
+            ),
+            None => {
+                let node = NodeRepo::get_local_node_by_chain(&pool, chain_code)
+                    .await?
+                    .pop()
+                    .ok_or(crate::error::business::BusinessError::ChainNode(
+                        crate::error::business::chain_node::ChainNodeError::NodeNotFound,
+                    ))?;
+                NodeInfo::new(
+                    &node.chain_code,
+                    &node.node_id,
+                    &node.name,
+                    &node.rpc_url,
+                    &node.ws_url,
+                    &node.http_url,
+                    &node.network,
+                    node.status,
+                )
+            }
+        };
+        Ok(node)
     }
 }
