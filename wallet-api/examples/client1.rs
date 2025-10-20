@@ -126,6 +126,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await
                 .unwrap();
             tracing::info!("balance_list: {balance_list:#?}");
+
+            let res =
+                wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
+                    "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+                )
+                .await
+                .unwrap();
+            tracing::info!("get_api_wallet_assets: {res:#?}");
         }
     });
     loop {

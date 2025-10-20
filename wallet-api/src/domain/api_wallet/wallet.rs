@@ -21,7 +21,10 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
+    response_vo::{
+        account::BalanceInfo,
+        api_wallet::wallet::{ApiWalletItem, ApiWalletList},
+    },
 };
 
 pub struct ApiWalletDomain {}

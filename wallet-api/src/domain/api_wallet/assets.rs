@@ -3,19 +3,19 @@ use std::sync::Arc;
 use futures::{StreamExt, stream};
 use tokio::sync::Semaphore;
 use wallet_database::{
-    entities::{
-        api_assets::ApiAssetsEntity,
-        assets::{AssetsId, AssetsIdVo},
+    entities::assets::{AssetsId, AssetsIdVo},
+    repositories::api_wallet::{assets::ApiAssetsRepo, wallet::ApiWalletRepo},
+};
+
+use crate::{
+    domain::{
+        assets::{BalanceTask, BalanceTasks},
+        chain::adapter::ChainAdapterFactory,
     },
-    repositories::api_wallet::assets::ApiAssetsRepo,
+    response_vo::account::BalanceInfo,
 };
 
-use crate::domain::{
-    assets::{BalanceTask, BalanceTasks, ChainBalance},
-    chain::adapter::ChainAdapterFactory,
-};
-
-pub(crate) struct ApiAssetsDomain;
+pub struct ApiAssetsDomain;
 
 impl ApiAssetsDomain {
     pub async fn update_balance(
@@ -144,6 +144,35 @@ impl ApiAssetsDomain {
         }
 
         Ok(())
+    }
+
+    pub async fn get_api_wallet_assets(
+        wallet_address: &str,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::ApiWallet(
+                crate::error::business::api_wallet::ApiWalletError::NotFound,
+            ),
+        )?;
+        let balance_list = crate::infrastructure::asset_calc::get_wallet_balance_list().await?;
+        tracing::info!("get_api_wallet_assets balance_list: {balance_list:#?}");
+        let res = if let Some(balance) = balance_list.get(&api_wallet.address) {
+            balance.to_owned()
+        } else {
+            BalanceInfo::new_without_amount().await?
+        };
+
+        // let res = if let Some(ref e) = li {
+        //     let mut wallet: crate::response_vo::api_wallet::wallet::WalletInfo = e.into();
+        //     if let Some(balance) = balance_list.get(&e.address) {
+        //         wallet = wallet.with_balance(balance.clone());
+        //     };
+        //     wallet
+        // } else {
+        //     crate::response_vo::api_wallet::wallet::WalletInfo::default()
+        // };
+        Ok(res)
     }
 }
 

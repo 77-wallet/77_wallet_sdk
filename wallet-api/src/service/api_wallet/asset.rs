@@ -149,6 +149,13 @@ impl ApiAssetsService {
         Ok(BalanceInfo::default())
     }
 
+    pub async fn get_api_wallet_assets(
+        &self,
+        wallet_address: &str,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        ApiAssetsDomain::get_api_wallet_assets(wallet_address).await
+    }
+
     // pub async fn get_all_account_assets(
     //     &mut self,
     //     account_id: u32,

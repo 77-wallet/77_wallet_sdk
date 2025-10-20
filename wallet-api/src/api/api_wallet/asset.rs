@@ -15,6 +15,10 @@ impl WalletManager {
         ApiAssetsService::new(self.ctx).get_api_wallet_total_assets().await
     }
 
+    pub async fn get_api_wallet_assets(&self, wallet_address: &str) -> ReturnType<BalanceInfo> {
+        ApiAssetsService::new(self.ctx).get_api_wallet_assets(wallet_address).await
+    }
+
     pub async fn get_api_assets_list(
         &self,
         wallet_address: &str,
@@ -185,7 +189,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
         // let address = "0x531cCB9d552CBC5e16F0247b5657A5CDF2D77097";
-        let address = "0x0d8B30ED6837b2EF0465Be9EE840700A589eaDB6";
+        let address = "0x01a68baa7523f16D64AD63d8a82A40e838170b5b";
         let chain_code = None;
 
         let account_id = 1;
