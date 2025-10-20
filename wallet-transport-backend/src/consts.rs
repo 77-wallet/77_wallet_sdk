@@ -113,7 +113,7 @@ pub mod endpoint {
         /// 查询uid绑定信息
         pub const QUERY_UID_BIND_INFO: &str = "awallet/aw/appid/bindInfo";
         // /// Uid与Appid的绑定
-        // pub const APPID_WITHDRAWAL_WALLET_CHANGE: &str = "awallet/aw/appid/wdWallet/change";
+        pub const APPID_WITHDRAWAL_WALLET_CHANGE: &str = "awallet/aw/appid/wdWallet/change";
 
         // /// 导入子账户钱包
         // pub const APPID_IMPORT_SUB_ACCOUNT: &str = "awallet/aw/appid/rechargeWallet/import";

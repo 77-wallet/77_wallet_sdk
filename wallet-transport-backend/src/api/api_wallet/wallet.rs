@@ -1,8 +1,9 @@
 use crate::{
     consts::endpoint::{
         api_wallet::{
-            APP_ID_BIND, APP_ID_UNBIND, APPID_IMPORT_WALLET, INIT_API_WALLET, QUERY_UID_BIND_INFO,
-            QUERY_WALLET_ACTIVATION_CONFIG, SAVE_WALLET_ACTIVATION_CONFIG,
+            APP_ID_BIND, APP_ID_UNBIND, APPID_IMPORT_WALLET, APPID_WITHDRAWAL_WALLET_CHANGE,
+            INIT_API_WALLET, QUERY_UID_BIND_INFO, QUERY_WALLET_ACTIVATION_CONFIG,
+            SAVE_WALLET_ACTIVATION_CONFIG,
         },
         old_wallet::OLD_KEYS_UID_CHECK,
     },
@@ -43,7 +44,7 @@ impl BackendApi {
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let api_req = ApiBackendRequest::new(req)?;
         let res = self.client.post(APP_ID_BIND).json(api_req).send::<ApiBackendResponse>().await?;
-        let opt: Option<()> = res.process(APP_ID_BIND)?;
+        res.process::<()>(APP_ID_BIND)?;
         Ok(())
     }
 
@@ -54,7 +55,7 @@ impl BackendApi {
         let res =
             self.client.post(APP_ID_UNBIND).json(api_req).send::<ApiBackendResponse>().await?;
 
-        let opt: Option<()> = res.process(APP_ID_UNBIND)?;
+        res.process::<()>(APP_ID_UNBIND)?;
         Ok(())
     }
 
@@ -65,7 +66,7 @@ impl BackendApi {
         let res =
             self.client.post(INIT_API_WALLET).json(api_req).send::<ApiBackendResponse>().await?;
 
-        let opt: Option<()> = res.process(INIT_API_WALLET)?;
+        res.process::<()>(INIT_API_WALLET)?;
         Ok(())
     }
 
@@ -83,7 +84,7 @@ impl BackendApi {
             .send::<ApiBackendResponse>()
             .await?;
 
-        let opt: Option<()> = res.process(SAVE_WALLET_ACTIVATION_CONFIG)?;
+        res.process::<()>(SAVE_WALLET_ACTIVATION_CONFIG)?;
         Ok(())
     }
 
@@ -126,24 +127,26 @@ impl BackendApi {
         opt.ok_or(Backend(Some("no found list".to_string())))
     }
 
-    // /// uid与appid的绑定
-    // pub async fn appid_withdrawal_wallet_change(
-    //     &self,
-    //     withdrawal_uid: &str,
-    //     org_app_id: &str,
-    // ) -> Result<(), crate::Error> {
-    //     let res = self
-    //         .client
-    //         .post(APPID_WITHDRAWAL_WALLET_CHANGE)
-    //         .json(serde_json::json!({
-    //             "withdrawalUid": withdrawal_uid,
-    //             "orgAppId": org_app_id
-    //         }))
-    //         .send::<BackendResponse>()
-    //         .await?;
+    /// uid与appid的绑定
+    pub async fn appid_withdrawal_wallet_change(
+        &self,
+        withdrawal_uid: &str,
+        org_app_id: &str,
+    ) -> Result<(), crate::Error> {
+        GLOBAL_KEY.is_exchange_shared_secret()?;
 
-    //     res.process(&self.aes_cbc_cryptor)
-    // }
+        let res = self
+            .client
+            .post(APPID_WITHDRAWAL_WALLET_CHANGE)
+            .json(serde_json::json!({
+                "withdrawalUid": withdrawal_uid,
+                "orgAppId": org_app_id
+            }))
+            .send::<ApiBackendResponse>()
+            .await?;
+        res.process::<()>(APPID_WITHDRAWAL_WALLET_CHANGE)?;
+        Ok(())
+    }
 
     pub async fn appid_import(&self, req: AppIdImportReq) -> Result<(), crate::Error> {
         GLOBAL_KEY.is_exchange_shared_secret()?;
@@ -154,7 +157,7 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        let opt: Option<()> = res.process(APPID_IMPORT_WALLET)?;
+        res.process::<()>(APPID_IMPORT_WALLET)?;
         Ok(())
     }
 

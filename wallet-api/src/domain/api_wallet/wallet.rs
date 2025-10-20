@@ -79,6 +79,19 @@ impl ApiWalletDomain {
         .await?;
 
         if let Some(binding_address) = binding_address {
+            if api_wallet_type == ApiWalletType::Withdrawal {
+                let recharge_wallet = ApiWalletRepo::find_by_uid(&pool, uid).await?;
+                if let Some(recharge_wallet) = recharge_wallet {
+                    let info = ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
+                    if info.bind_status {
+                        let backend = CONTEXT.get().unwrap().get_global_backend_api();
+                        backend
+                            .appid_withdrawal_wallet_change(wallet_address, &info.app_id)
+                            .await?;
+                    }
+                }
+            }
+
             ApiWalletRepo::bind_withdraw_and_subaccount_relation(
                 pool,
                 binding_address,
