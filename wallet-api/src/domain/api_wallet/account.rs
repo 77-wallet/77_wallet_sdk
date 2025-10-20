@@ -71,11 +71,21 @@ impl ApiAccountDomain {
         let account_list =
             ApiAccountRepo::api_account_list(&pool, Some(wallet.address), account_id, chain_codes)
                 .await?;
+
+        let balance_list =
+            crate::infrastructure::asset_calc::get_account_balance_list_by_wallet(wallet_address)
+                .await?;
         for account in account_list {
             let address_type =
                 AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
 
             let name = chains.get(&account.chain_code);
+            let balance = if let Some(balance) = balance_list.get(&account.address) {
+                balance.clone()
+            } else {
+                BalanceInfo::new_without_amount().await?
+            };
+
             if let Some(info) = res.iter_mut().find(|info| info.account_id == account.account_id) {
                 info.chain.push(crate::response_vo::wallet::ChainInfo {
                     address: account.address,
@@ -90,7 +100,6 @@ impl ApiAccountDomain {
             } else {
                 let account_index_map =
                     wallet_utils::address::AccountIndexMap::from_account_id(account.account_id)?;
-                let balance = BalanceInfo::new_without_amount().await?;
                 res.push(ApiAccountInfo {
                     account_id: account.account_id,
                     account_index_map,

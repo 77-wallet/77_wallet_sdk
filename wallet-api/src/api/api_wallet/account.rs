@@ -4,11 +4,11 @@ use crate::{
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
     response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfos},
-    service::{account::AccountService, api_wallet::account::ApiAccountService},
+    service::api_wallet::account::ApiAccountService,
 };
 
 impl WalletManager {
-    pub async fn get_api_account_list(
+    pub async fn list_api_wallet_account(
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
@@ -218,7 +218,7 @@ mod test {
         // let chain_code = "tron";
 
         let res = wallet_manager
-            .get_api_account_list("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", None)
+            .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", None)
             .await
             .unwrap();
         let res = serde_json::to_string(&res).unwrap();

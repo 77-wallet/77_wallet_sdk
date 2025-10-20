@@ -451,3 +451,44 @@ pub async fn get_wallet_balance_list()
 
     Ok(wallet_totals)
 }
+
+pub async fn get_account_balance_list_by_wallet(
+    wallet_address: &str,
+) -> Result<HashMap<String, BalanceInfo>, crate::error::service::ServiceError> {
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+    // 1️⃣ 获取指定钱包下的所有账户（address -> wallet_address）
+    let list = ApiAccountRepo::account_to_wallet(&pool).await?;
+
+    // 过滤出属于当前 wallet 的账户
+    let mut account_addresses: Vec<String> = Vec::new();
+    for row in list {
+        if row.wallet_address == wallet_address {
+            account_addresses.push(row.address);
+        }
+    }
+
+    if account_addresses.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // 2️⃣ 聚合计算每个账户的资产总额
+    let mut account_totals: HashMap<String, BalanceInfo> = HashMap::new();
+
+    for entry in ASSET_VALUE_CACHE.iter() {
+        if let Some(address) = entry.key().split(':').next() {
+            if account_addresses.contains(&address.to_string()) {
+                let entry_value = entry.value();
+                account_totals
+                    .entry(address.to_string())
+                    .and_modify(|total| {
+                        total.amount_add(entry_value.amount);
+                        total.fiat_add(entry_value.fiat_value);
+                    })
+                    .or_insert_with(|| entry_value.clone());
+            }
+        }
+    }
+
+    Ok(account_totals)
+}

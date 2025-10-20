@@ -149,6 +149,24 @@ impl ApiAssetsService {
         Ok(BalanceInfo::default())
     }
 
+    // pub async fn get_all_account_assets(
+    //     &mut self,
+    //     account_id: u32,
+    //     wallet_address: Option<&str>,
+    // ) -> Result<GetAccountAssetsRes, crate::error::service::ServiceError> {
+    //     let accounts = ApiAccountRepo::get_account_list_by_wallet_address_and_account_id(wallet_address, Some(account_id))
+    //         .await?;
+    //     let token_currencies = CoinDomain::get_token_currencies_v2().await?;
+
+    //     let addresses = accounts.into_iter().map(|info| info.address).collect();
+
+    //     let mut data = tx.get_coin_assets_in_address(addresses).await?;
+
+    //     let account_total_assets =
+    //         token_currencies.calculate_account_total_assets(&mut data).await?;
+    //     Ok(GetAccountAssetsRes { account_total_assets })
+    // }
+
     pub async fn get_api_assets_list(
         &self,
         wallet_address: &str,

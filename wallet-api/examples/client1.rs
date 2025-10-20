@@ -104,7 +104,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    tokio::spawn(async {
+    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             // let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
@@ -118,7 +119,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let res =
                 wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list()
                     .await;
+
             tracing::info!("get_wallet_balance_list: {res:#?}");
+            let balance_list = manager_c
+                .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", Some(2))
+                .await
+                .unwrap();
+            tracing::info!("balance_list: {balance_list:#?}");
         }
     });
     loop {
