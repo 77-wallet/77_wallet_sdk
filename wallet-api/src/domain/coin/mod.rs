@@ -17,7 +17,7 @@ use wallet_database::{
     repositories::{
         ResourcesRepo,
         coin::{CoinRepo, CoinRepoTrait},
-        exchange_rate::{ExchangeRateRepo, ExchangeRateRepoTrait},
+        exchange_rate::ExchangeRateRepo,
     },
 };
 use wallet_transport_backend::{CoinInfo, response_vo::coin::TokenCurrency};
@@ -168,7 +168,6 @@ impl CoinDomain {
         }
 
         let list = CoinRepo::default_coin_list(&pool).await?;
-        tracing::info!("init coins: {:?}", list);
         for coin in list.iter() {
             crate::infrastructure::asset_calc::update_token_price(
                 &coin.symbol,
@@ -178,9 +177,7 @@ impl CoinDomain {
             )
             .await?;
         }
-        tracing::info!("init_coins:init_assets start");
         crate::infrastructure::asset_calc::init_assets().await?;
-        tracing::info!("init_coins:init_assets end");
 
         Ok(())
     }

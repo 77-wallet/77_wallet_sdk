@@ -74,7 +74,7 @@ impl TokenCurrencyId {
 
     pub(crate) fn gen_key(&self) -> String {
         Self::make_key(
-            &self.symbol,
+            &self.symbol.to_ascii_uppercase(),
             &self.chain_code,
             &self.token_address.clone().unwrap_or_default(),
         )
@@ -292,7 +292,6 @@ impl TokenCurrencies {
         } else {
             (None, None)
         };
-        tracing::info!("fiat_balance: {fiat_balance:?}");
         Ok(BalanceInfo {
             amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
             currency: currency.to_string(),

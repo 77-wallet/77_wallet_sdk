@@ -16,7 +16,6 @@ impl BackendApi {
         &self,
         app_version_code: &str,
     ) -> Result<ApiChainListResp, crate::Error> {
-        tracing::info!("api_wallet_chain_list ------------------------");
         GLOBAL_KEY.is_exchange_shared_secret()?;
         let mut req = HashMap::new();
         req.insert("appVersionCode", app_version_code);
@@ -28,7 +27,6 @@ impl BackendApi {
             .json(api_req)
             .send::<ApiBackendResponse>()
             .await?;
-        tracing::info!("res: {res:#?}");
         let opt = res.process(API_WALLET_CHAIN_LIST)?;
         opt.ok_or(Backend(Some("no address list".to_string())))
     }

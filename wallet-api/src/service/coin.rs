@@ -151,18 +151,6 @@ impl CoinService {
 
         let _e = self.delete_wsol_error(&pool).await;
 
-        let list = CoinRepo::default_coin_list(&pool).await?;
-        tracing::info!("pull_hot_coins: {:?}", list);
-        for coin in list.iter() {
-            crate::infrastructure::asset_calc::update_token_price(
-                &coin.symbol,
-                &coin.chain_code,
-                &coin.token_address,
-                wallet_utils::unit::string_to_f64(&coin.price)?,
-            )
-            .await?;
-        }
-
         Ok(())
     }
 

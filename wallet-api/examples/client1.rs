@@ -116,24 +116,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // let res = wallet_api::infrastructure::asset_calc::get_wallet_balance_list().await;
 
-            let res =
-                wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list()
-                    .await;
+            // let res =
+            //     wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list()
+            //         .await;
 
-            tracing::info!("get_wallet_balance_list: {res:#?}");
+            // tracing::info!("get_wallet_balance_list: {res:#?}");
             let balance_list = manager_c
                 .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", Some(1))
                 .await
                 .unwrap();
             tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
-
-            let res =
-                wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
+            let res = manager_c
+                .get_api_account_assets(
+                    1,
                     "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+                    Some("tron".to_string()),
                 )
-                .await
-                .unwrap();
-            tracing::info!("get_api_wallet_assets: {res:#?}");
+                .await;
+            tracing::info!("list_api_wallet_account get_api_account_assets: {res:#?}");
+
+            // let res =
+            //     wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
+            //         "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+            //     )
+            //     .await
+            //     .unwrap();
+            // tracing::info!("get_api_wallet_assets: {res:#?}");
         }
     });
     loop {
