@@ -67,12 +67,16 @@ pub async fn update_token_price(
         let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
         if let Some(rate) = exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
         {
+            tracing::info!("update_token_price symbol: {symbol}");
+            tracing::info!("update_token_price chain_code: {chain_code}");
+            tracing::info!("update_token_price token_address: {token_address:?}");
+            tracing::info!("update_token_price price_real: {price_real}");
             (Some(price_real * rate.rate), rate.rate)
         } else {
             (None, 1.0)
         }
     };
-
+    tracing::info!("update_token_price fiat_price: {fiat_price:#?}");
     // 更新缓存
     token_currencies
         .entry(id.clone())

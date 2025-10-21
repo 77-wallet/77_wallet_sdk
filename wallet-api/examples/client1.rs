@@ -122,10 +122,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             tracing::info!("get_wallet_balance_list: {res:#?}");
             let balance_list = manager_c
-                .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", Some(2))
+                .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", Some(1))
                 .await
                 .unwrap();
-            tracing::info!("balance_list: {balance_list:#?}");
+            tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
 
             let res =
                 wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
