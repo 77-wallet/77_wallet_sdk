@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tokio_stream::StreamExt as _;
 use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
 
@@ -104,7 +106,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    let manager_c = std::sync::Arc::new(wallet_manager.clone());
+    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
+
+    loop {
+        tokio::select! {
+            msg = rx.next() => {
+                tracing::info!("前端收到数据: {msg:?}");
+            }
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("ctrl_c");
+                let _ = wallet_manager.close().await;
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -121,12 +141,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             //         .await;
 
             // tracing::info!("get_wallet_balance_list: {res:#?}");
-            let balance_list = manager_c
+            let balance_list = wallet_manager
                 .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", Some(1))
                 .await
                 .unwrap();
             tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
-            let res = manager_c
+            let res = wallet_manager
                 .get_api_account_assets(
                     1,
                     "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
@@ -144,19 +164,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // tracing::info!("get_api_wallet_assets: {res:#?}");
         }
     });
-    loop {
-        tokio::select! {
-            msg = rx.next() => {
-                tracing::info!("前端收到数据: {msg:?}");
-            }
-            _ = tokio::signal::ctrl_c() => {
-                tracing::info!("ctrl_c");
-                let _ = wallet_manager.close().await;
-                break;
-            }
-        }
-    }
-    Ok(())
 }
 
 #[allow(dead_code)]

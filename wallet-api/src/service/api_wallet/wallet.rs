@@ -70,7 +70,18 @@ impl ApiWalletService {
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
+
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
+
+        let backend = self.ctx.get_global_backend_api();
+        let req = ApiInitSwapReq {
+            sn: self.ctx.get_sn().to_string(),
+            client_pub_key: GLOBAL_KEY.secret_pub_key(),
+        };
+        let res = backend.init_swap(&req).await?;
+        if let Some(data) = res.data {
+            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+        }
 
         let pool = self.ctx.get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
@@ -220,6 +231,16 @@ impl ApiWalletService {
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
         tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
+
+        let backend = self.ctx.get_global_backend_api();
+        let req = ApiInitSwapReq {
+            sn: self.ctx.get_sn().to_string(),
+            client_pub_key: GLOBAL_KEY.secret_pub_key(),
+        };
+        let res = backend.init_swap(&req).await?;
+        if let Some(data) = res.data {
+            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+        }
 
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
