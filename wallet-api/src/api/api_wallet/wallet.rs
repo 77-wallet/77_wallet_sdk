@@ -421,4 +421,14 @@ mod test {
         tracing::info!("res: {res:?}");
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_set_passwd_cache() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let res = wallet_manager.set_passwd_cache("q1111111").await;
+
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
 }

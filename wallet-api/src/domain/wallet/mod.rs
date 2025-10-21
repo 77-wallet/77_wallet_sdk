@@ -51,7 +51,9 @@ impl WalletDomain {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
-        if WalletEntity::wallet_latest(&*pool).await?.is_none() {
+        if WalletEntity::wallet_latest(&*pool).await?.is_none()
+            && ApiWalletRepo::wallet_latest(&pool).await?.is_none()
+        {
             KeystoreApi::remove_verify_file(&dirs.root_dir)?;
         };
 

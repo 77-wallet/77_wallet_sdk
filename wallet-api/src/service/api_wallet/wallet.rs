@@ -533,6 +533,7 @@ impl ApiWalletService {
         self,
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
+        WalletDomain::validate_password(wallet_password).await?;
         ApiWalletDomain::set_passwd(wallet_password).await?;
 
         let backend = self.ctx.get_global_backend_api();
