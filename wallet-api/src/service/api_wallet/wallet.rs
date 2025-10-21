@@ -9,10 +9,12 @@ use wallet_database::{
 use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     consts::endpoint,
-    request::{DeviceDeleteReq, LanguageInitReq, api_wallet::address::AddressListReq},
+    request::{
+        DeviceDeleteReq, LanguageInitReq,
+        api_wallet::{address::AddressListReq, swap::ApiInitSwapReq},
+    },
     response_vo::api_wallet::wallet::{QueryUidBindInfoRes, QueryWalletActivationInfoResp},
 };
-use wallet_transport_backend::request::api_wallet::swap::ApiInitSwapReq;
 use wallet_tree::api::KeystoreApi;
 
 use crate::{
