@@ -34,15 +34,6 @@ impl WalletManager {
         let context = init_context(sn, device_type, dir, sender, config).await?;
         GLOBAL_KEY.set_sn(sn);
 
-        // 现在的上报日志
-        infrastructure::log::start_upload_scheduler(
-            base_path,
-            5 * 60,
-            context.get_global_oss_client(),
-        )
-        .await?;
-        tracing::info!("start_upload_scheduler start");
-
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
         handles.get_global_unconfirmed_msg_processor().start().await;
         tracing::info!("get_global_unconfirmed_msg_processor start");
