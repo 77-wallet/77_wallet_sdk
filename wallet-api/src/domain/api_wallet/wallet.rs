@@ -21,10 +21,7 @@ use crate::{
     },
     error::service::ServiceError,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    response_vo::{
-        account::BalanceInfo,
-        api_wallet::wallet::{ApiWalletItem, ApiWalletList},
-    },
+    response_vo::api_wallet::wallet::{ApiWalletItem, ApiWalletList},
 };
 
 pub struct ApiWalletDomain {}
@@ -88,9 +85,7 @@ impl ApiWalletDomain {
                     let info = ApiWalletDomain::query_uid_bind_info(&recharge_wallet.uid).await?;
                     if info.bind_status {
                         let backend = CONTEXT.get().unwrap().get_global_backend_api();
-                        backend
-                            .appid_withdrawal_wallet_change(wallet_address, &info.app_id)
-                            .await?;
+                        backend.appid_withdrawal_wallet_change(uid, &info.app_id).await?;
                     }
                 }
             }
