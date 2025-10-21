@@ -6,9 +6,13 @@ use wallet_database::{
         device::DeviceRepo,
     },
 };
+use wallet_ecdh::GLOBAL_KEY;
 use wallet_transport_backend::{
     consts::endpoint,
-    request::{DeviceDeleteReq, LanguageInitReq, api_wallet::address::AddressListReq},
+    request::{
+        DeviceDeleteReq, LanguageInitReq,
+        api_wallet::{address::AddressListReq, swap::ApiInitSwapReq},
+    },
     response_vo::api_wallet::wallet::{QueryUidBindInfoRes, QueryWalletActivationInfoResp},
 };
 use wallet_tree::api::KeystoreApi;
@@ -530,6 +534,16 @@ impl ApiWalletService {
         wallet_password: &str,
     ) -> Result<(), crate::error::service::ServiceError> {
         ApiWalletDomain::set_passwd(wallet_password).await?;
+
+        let backend = self.ctx.get_global_backend_api();
+        let req = ApiInitSwapReq {
+            sn: self.ctx.get_sn().to_string(),
+            client_pub_key: GLOBAL_KEY.secret_pub_key(),
+        };
+        let res = backend.init_swap(&req).await?;
+        if let Some(data) = res.data {
+            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+        }
         Ok(())
     }
 
