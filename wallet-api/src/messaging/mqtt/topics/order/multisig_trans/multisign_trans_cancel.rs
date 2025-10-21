@@ -1,4 +1,4 @@
-use crate::{FrontendNotifyEvent, NotifyEvent};
+use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
 use wallet_database::{
     entities::multisig_queue::fail_reason, repositories::multisig_queue::MultisigQueueRepo,
 };
@@ -17,9 +17,9 @@ impl MultiSignTransCancel {
 }
 
 impl MultiSignTransCancel {
-    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         tracing::info!(
             event_name = %event_name,
@@ -32,8 +32,8 @@ impl MultiSignTransCancel {
             tracing::error!(
                 event_name = %event_name,
                 "Cancel multisig queue faild affetd :0");
-            return Err(crate::ServiceError::Business(
-                crate::MultisigQueueError::NotFound.into(),
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::multisig_queue::MultisigQueueError::NotFound.into(),
             ));
         }
 

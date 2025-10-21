@@ -1,9 +1,9 @@
 use super::ResourcesRepo;
 use crate::{
+    DbPool,
     dao::bill::BillDao,
     entities::bill::{BillEntity, BillKind, BillUpdateEntity, RecentBillListVo},
     pagination::Pagination,
-    DbPool,
 };
 use sqlx::{Executor, Sqlite};
 
@@ -13,9 +13,7 @@ pub struct BillRepo {
 
 impl BillRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            repo: ResourcesRepo::new(db_pool),
-        }
+        Self { repo: ResourcesRepo::new(db_pool) }
     }
 }
 
@@ -34,12 +32,12 @@ impl BillRepo {
         owner: &str,
         pool: &DbPool,
     ) -> Result<BillEntity, crate::Error> {
-        let bill = BillDao::get_by_hash_and_owner(pool.as_ref(), tx_hash, owner)
-            .await?
-            .ok_or(crate::Error::NotFound(format!(
+        let bill = BillDao::get_by_hash_and_owner(pool.as_ref(), tx_hash, owner).await?.ok_or(
+            crate::Error::NotFound(format!(
                 "bill not found,tx_hash = {} ,owenr = {}",
                 tx_hash, owner,
-            )))?;
+            )),
+        )?;
 
         Ok(bill)
     }
@@ -56,10 +54,7 @@ impl BillRepo {
     pub async fn find_by_id(id: &str, pool: &DbPool) -> Result<BillEntity, crate::Error> {
         let bill = BillDao::find_by_id(pool.as_ref(), id)
             .await?
-            .ok_or(crate::Error::NotFound(format!(
-                "bill not found,id = {}",
-                id,
-            )))?;
+            .ok_or(crate::Error::NotFound(format!("bill not found,id = {}", id,)))?;
 
         Ok(bill)
     }
@@ -69,7 +64,7 @@ impl BillRepo {
         hashs: Vec<String>,
         pool: &DbPool,
     ) -> Result<Vec<BillEntity>, crate::Error> {
-        Ok(BillDao::lists_by_hashs(pool.as_ref(), owner, hashs).await?)
+        BillDao::lists_by_hashs(pool.as_ref(), owner, hashs).await
     }
 
     pub async fn recent_bill(
@@ -94,7 +89,7 @@ impl BillRepo {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        Ok(BillDao::update(transaction, tx).await?)
+        BillDao::update(transaction, tx).await
     }
 
     pub async fn update_fail(tx_hash: &str, exec: &DbPool) -> Result<(), crate::Error> {

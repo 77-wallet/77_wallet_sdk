@@ -16,26 +16,22 @@ pub struct CoinInfo {
     pub protocol: Option<String>,
     #[serde(rename = "unit")]
     pub decimals: Option<u8>,
-    #[serde(
-        default,
-        deserialize_with = "wallet_utils::serde_func::deserialize_default_false"
-    )]
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub enable: bool,
     pub price: Option<f64>,
     // 币是否支持兑换
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub swappable: bool,
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub default_token: bool,
+    #[serde(default, deserialize_with = "wallet_utils::serde_func::deserialize_default_false")]
     pub popular_token: bool,
     pub create_time: String,
     pub update_time: String,
 }
 impl CoinInfo {
     pub fn get_status(&self) -> Option<i32> {
-        if self.enable {
-            Some(1)
-        } else {
-            Some(0)
-        }
+        if self.enable { Some(1) } else { Some(0) }
     }
 }
 
@@ -80,7 +76,7 @@ pub struct TokenPriceInfos {
     pub list: Vec<TokenPriceChangeBody>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenCurrency {
     pub chain_code: String,
@@ -94,12 +90,25 @@ pub struct TokenCurrency {
     pub rate: f64,
 }
 impl TokenCurrency {
-    pub fn get_price(&self, symbol: &str) -> Option<f64> {
-        if symbol.eq_ignore_ascii_case("usdt") {
-            self.price
-        } else {
-            self.currency_price
+    pub fn new(
+        chain_code: &str,
+        code: &str,
+        name: &str,
+        price: Option<f64>,
+        currency_price: Option<f64>,
+        rate: f64,
+    ) -> Self {
+        Self {
+            chain_code: chain_code.to_string(),
+            code: code.to_string(),
+            name: name.to_string(),
+            price,
+            currency_price,
+            rate,
         }
+    }
+    pub fn get_price(&self, symbol: &str) -> Option<f64> {
+        if symbol.eq_ignore_ascii_case("usdt") { self.price } else { self.currency_price }
     }
 }
 
@@ -174,11 +183,7 @@ pub struct TokenPriceChangeBody {
 
 impl TokenPriceChangeBody {
     pub fn get_status(&self) -> Option<i32> {
-        if self.enable {
-            Some(1)
-        } else {
-            Some(0)
-        }
+        if self.enable { Some(1) } else { Some(0) }
     }
 }
 

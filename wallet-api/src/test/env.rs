@@ -1,9 +1,12 @@
-use crate::{Dirs, WalletManager};
+use crate::{dirs::Dirs, manager::WalletManager};
 use anyhow::Result;
 use std::{env, path::PathBuf};
 use tracing::info;
 
-use crate::{CreateAccountReq, CreateWalletReq, InitDeviceReq};
+use crate::{
+    request::{account::CreateAccountReq, devices::InitDeviceReq, wallet::CreateWalletReq},
+    xlog::init_log,
+};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -36,6 +39,13 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     info!("[setup_test_environment] storage_dir: {:?}", storage_dir);
 
     let dirs = Dirs::new(&storage_dir.to_string_lossy())?;
+    // init_log(
+    //     Some("info"),
+    //     test_params.device_req.app_id.clone().unwrap().as_str(),
+    //     &dirs,
+    //     &test_params.device_req.sn,
+    // )
+    // .await?;
     let config = crate::config::Config::new(&crate::test::env::get_config()?)?;
     let wallet_manager = WalletManager::new(
         &test_params.device_req.sn,
@@ -46,17 +56,14 @@ pub async fn get_manager() -> Result<(WalletManager, TestParams)> {
     )
     .await?;
     // let derivation_path = "m/44'/60'/0'/0/1".to_string();
+    wallet_manager.init(test_params.device_req.clone()).await?;
 
     Ok((wallet_manager, test_params))
 }
 
 pub fn get_config() -> Result<String> {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned()
-    });
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().into_owned());
     let dir = PathBuf::from(manifest_dir);
     let config_dir = dir.join("examples").join("config.yaml");
     let config_data = std::fs::read_to_string(config_dir)?;

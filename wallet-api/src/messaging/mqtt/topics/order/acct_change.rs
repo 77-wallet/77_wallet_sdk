@@ -1,4 +1,5 @@
 use wallet_database::{
+    DbPool,
     dao::bill::BillDao,
     entities::{
         bill::{BillExtraSwap, BillKind, NewBillEntity},
@@ -8,15 +9,14 @@ use wallet_database::{
     repositories::{
         multisig_queue::MultisigQueueRepo, system_notification::SystemNotificationRepo,
     },
-    DbPool,
 };
 use wallet_types::constant::chain_code;
 
 use crate::{
     domain::{bill::BillDomain, multisig::MultisigQueueDomain},
-    infrastructure::inner_event::InnerEvent,
+    infrastructure::inner_event::{InnerEvent, SyncAssetsData},
     messaging::{
-        notify::{event::NotifyEvent, transaction::AcctChangeFrontend, FrontendNotifyEvent},
+        notify::{FrontendNotifyEvent, event::NotifyEvent, transaction::AcctChangeFrontend},
         system_notification::{AccountType, Notification, NotificationType, TransactionStatus},
     },
     service::system_notification::SystemNotificationService,
@@ -78,7 +78,7 @@ pub struct AcctChange {
 }
 
 impl TryFrom<&AcctChange> for NewBillEntity<serde_json::Value> {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &AcctChange) -> Result<Self, Self::Error> {
         let tx_kind = BillKind::try_from(value.tx_kind)?;
@@ -138,9 +138,12 @@ impl From<&AcctChange> for AcctChangeFrontend {
 }
 
 impl AcctChange {
-    pub(crate) async fn exec(&self, msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let event_name = self.name();
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // bill create
         let tx = NewBillEntity::<serde_json::Value>::try_from(self)?;
@@ -167,7 +170,7 @@ impl AcctChange {
             && !self.to_addr.is_empty()
             && !self.from_addr.is_empty()
         {
-            Self::system_notification(msg_id, &self, &pool).await?;
+            Self::system_notification(msg_id, self, &pool).await?;
         }
 
         // send acct_change to frontend
@@ -177,12 +180,12 @@ impl AcctChange {
         Ok(())
     }
 
-    async fn handle_queue(change: &AcctChange, pool: &DbPool) -> Result<(), crate::ServiceError> {
-        let status = if change.status {
-            MultisigQueueStatus::Success
-        } else {
-            MultisigQueueStatus::Fail
-        };
+    async fn handle_queue(
+        change: &AcctChange,
+        pool: &DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let status =
+            if change.status { MultisigQueueStatus::Success } else { MultisigQueueStatus::Fail };
 
         MultisigQueueRepo::update_status_hash(&change.queue_id, status, &change.tx_hash, pool)
             .await?;
@@ -192,7 +195,7 @@ impl AcctChange {
         match rs {
             Ok(_) => {}
             Err(e) => {
-                if !matches!(e, crate::ServiceError::Database(_)) {
+                if !matches!(e, crate::error::service::ServiceError::Database(_)) {
                     return Err(e);
                 };
                 tracing::error!(%e, "acct_change update queue fail");
@@ -202,21 +205,27 @@ impl AcctChange {
         Ok(())
     }
 
-    async fn sync_assets(acct_change: &AcctChange) -> Result<(), crate::ServiceError> {
+    async fn sync_assets(
+        acct_change: &AcctChange,
+    ) -> Result<(), crate::error::service::ServiceError> {
         if !acct_change.status {
             tracing::warn!("acct_change status is false, skip sync assets");
             return Ok(());
         }
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let inner_event_handle = handles.get_global_inner_event_handle();
+            let data = SyncAssetsData::new(
+                vec![acct_change.from_addr.clone(), acct_change.to_addr.clone()],
+                acct_change.chain_code.clone(),
+                acct_change.get_sync_assets_symbol(),
+                acct_change.token.clone(),
+            );
 
-        let inner_event_handle = crate::manager::Context::get_global_inner_event_handle()?;
-        inner_event_handle.send(InnerEvent::SyncAssets {
-            addr_list: vec![
-                acct_change.from_addr.to_string(),
-                acct_change.to_addr.to_string(),
-            ],
-            chain_code: acct_change.chain_code.to_string(),
-            symbol: acct_change.get_sync_assets_symbol(),
-        })?;
+            inner_event_handle.send(InnerEvent::SyncAssets(data))?;
+        } else {
+            tracing::warn!("acct_change status is false, skip sync assets");
+        }
         // tracing::info!("发送同步资产事件");
         Ok(())
     }
@@ -243,7 +252,7 @@ impl AcctChange {
     pub async fn handle_ton_bill(
         mut tx: NewBillEntity<serde_json::Value>,
         pool: &DbPool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let origin_hash = tx.hash.clone();
         let hashs = origin_hash.split(":").collect::<Vec<_>>();
 
@@ -268,7 +277,7 @@ impl AcctChange {
         msg_id: &str,
         acct_change: &AcctChange,
         pool: &DbPool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let transaction_hash = BillDomain::handle_hash(&acct_change.tx_hash);
         if let Some(bill) = BillDao::get_one_by_hash(&acct_change.tx_hash, pool.as_ref()).await? {
             if bill.tx_kind == BillKind::Swap.to_i8() {
@@ -284,10 +293,7 @@ impl AcctChange {
         };
 
         // check system notification exists
-        if SystemNotificationRepo::find_by_id(msg_id, pool)
-            .await?
-            .is_some()
-        {
+        if SystemNotificationRepo::find_by_id(msg_id, pool).await?.is_some() {
             tracing::warn!("system_noti already exists");
             return Ok(());
         }
@@ -295,11 +301,8 @@ impl AcctChange {
         let (transaction_status, notification_type) =
             Self::get_notify_status(acct_change.transfer_type, acct_change.status)?;
 
-        let account_type = if acct_change.is_multisig == 1 {
-            AccountType::Multisig
-        } else {
-            AccountType::Regular
-        };
+        let account_type =
+            if acct_change.is_multisig == 1 { AccountType::Multisig } else { AccountType::Regular };
 
         // build notify
         let notify = Notification::new_transaction_notification(
@@ -326,27 +329,23 @@ impl AcctChange {
         let repo = RepositoryFactory::repo(pool.clone());
         let system_notification_service = SystemNotificationService::new(repo);
 
-        system_notification_service
-            .add_multi_system_notification_with_key_value(&[req])
-            .await?;
+        system_notification_service.add_multi_system_notification_with_key_value(&[req]).await?;
         Ok(())
     }
 
     fn get_notify_status(
         transfer_type: i8,
         status: bool,
-    ) -> Result<(TransactionStatus, NotificationType), crate::ServiceError> {
+    ) -> Result<(TransactionStatus, NotificationType), crate::error::service::ServiceError> {
         let (transaction_status, notification_type) = match (transfer_type, status) {
-            (0, true) => (
-                TransactionStatus::Received,
-                NotificationType::ReceiveSuccess,
-            ),
+            (0, true) => (TransactionStatus::Received, NotificationType::ReceiveSuccess),
             (1, true) => (TransactionStatus::Sent, NotificationType::TransferSuccess),
-            (1, false) => (
-                TransactionStatus::NotSent,
-                NotificationType::TransferFailure,
-            ),
-            (_, _) => return Err(crate::ServiceError::Parameter("invaild status".to_string())),
+            (1, false) => (TransactionStatus::NotSent, NotificationType::TransferFailure),
+            (_, _) => {
+                return Err(crate::error::service::ServiceError::Parameter(
+                    "invaild status".to_string(),
+                ));
+            }
         };
 
         Ok((transaction_status, notification_type))
@@ -355,6 +354,7 @@ impl AcctChange {
 
 #[cfg(test)]
 mod test {
+
     use crate::{messaging::mqtt::topics::AcctChange, test::env::get_manager};
 
     async fn init_manager() {

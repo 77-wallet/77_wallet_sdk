@@ -1,8 +1,12 @@
 use wallet_database::{
     dao::multisig_member::MultisigMemberDaoV1,
     repositories::{
-        account::AccountRepoTrait, chain::ChainRepoTrait, coin::CoinRepoTrait,
-        device::DeviceRepoTrait, wallet::WalletRepoTrait, ResourcesRepo, TransactionTrait as _,
+        ResourcesRepo, TransactionTrait as _,
+        account::AccountRepoTrait,
+        chain::ChainRepo,
+        coin::CoinRepo,
+        device::{DeviceRepo, DeviceRepoTrait},
+        wallet::WalletRepoTrait,
     },
 };
 use wallet_transport_backend::{
@@ -16,7 +20,8 @@ use crate::{
     domain::{
         self,
         account::AccountDomain,
-        app::{config::ConfigDomain, DeviceDomain},
+        api_wallet::wallet::ApiWalletDomain,
+        app::{DeviceDomain, config::ConfigDomain},
         assets::AssetsDomain,
         chain::ChainDomain,
         coin::CoinDomain,
@@ -25,7 +30,9 @@ use crate::{
         wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
+        CommonTask, RecoverDataBody,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
     },
     response_vo::{
         account::BalanceInfo,
@@ -45,51 +52,60 @@ pub struct WalletService {
     pub repo: ResourcesRepo,
     wallet_domain: WalletDomain,
     assets_domain: AssetsDomain,
-    coin_domain: CoinDomain,
 }
 
 impl WalletService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            wallet_domain: WalletDomain::new(),
-            assets_domain: AssetsDomain::new(),
-            coin_domain: CoinDomain::new(),
-        }
+        Self { repo, wallet_domain: WalletDomain::new(), assets_domain: AssetsDomain::new() }
     }
 
     pub(crate) async fn encrypt_password(
-        mut self,
+        self,
         password: &str,
-    ) -> Result<String, crate::ServiceError> {
-        let Some(device) = self.repo.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
         };
 
         let encrypted_password = WalletDomain::encrypt_password(password, &device.sn)?;
         Ok(encrypted_password)
     }
 
-    pub(crate) async fn validate_password(self, password: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn validate_password(
+        self,
+        password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        tracing::info!("validate_password");
         WalletDomain::validate_password(password).await?;
+        tracing::info!("validate_password end");
         Ok(())
     }
 
     pub(crate) async fn switch_wallet(
         self,
         wallet_address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let wallet = tx.update_wallet_update_at(wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            tx.update_uid(Some(&wallet.uid)).await?;
-            let device = tx
-                .get_device_info()
-                .await?
-                .ok_or(crate::BusinessError::Device(
-                    crate::DeviceError::Uninitialized,
-                ))?;
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            DeviceRepo::update_uid(pool, Some(&wallet.uid)).await?;
+
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Device(
+                        crate::error::business::device::DeviceError::Uninitialized,
+                    ),
+                ));
+            };
+
             let config = crate::app_state::APP_STATE.read().await;
             let language = config.language();
 
@@ -102,10 +118,7 @@ impl WalletService {
                 wallet_transport_backend::consts::endpoint::LANGUAGE_INIT,
                 &language_req,
             )?;
-            Tasks::new()
-                .push(BackendApiTask::BackendApi(language_init_task_data))
-                .send()
-                .await?;
+            Tasks::new().push(BackendApiTask::BackendApi(language_init_task_data)).send().await?;
         }
 
         Ok(())
@@ -115,12 +128,17 @@ impl WalletService {
         self,
         wallet_name: &str,
         wallet_address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let wallet_list = tx.edit_wallet_name(wallet_address, wallet_name).await?;
 
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
         };
 
         for wallet in wallet_list {
@@ -134,10 +152,7 @@ impl WalletService {
                 wallet_transport_backend::consts::endpoint::KEYS_UPDATE_WALLET_NAME,
                 &keys_update_wallet_name,
             )?;
-            Tasks::new()
-                .push(BackendApiTask::BackendApi(keys_update_wallet_name))
-                .send()
-                .await?;
+            Tasks::new().push(BackendApiTask::BackendApi(keys_update_wallet_name)).send().await?;
         }
 
         Ok(())
@@ -150,21 +165,27 @@ impl WalletService {
         wallet_password: &str,
         account_name: &str,
         is_default_name: bool,
-    ) -> Result<crate::response_vo::wallet::ImportDerivationPathRes, crate::ServiceError> {
+    ) -> Result<
+        crate::response_vo::wallet::ImportDerivationPathRes,
+        crate::error::service::ServiceError,
+    > {
         let mut tx = self.repo;
 
         WalletDomain::validate_password(wallet_password).await?;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let mut buf = String::new();
         wallet_utils::file_func::read(&mut buf, path)?;
 
         let exports: Vec<Export> = wallet_utils::serde_func::serde_from_str(&buf)?;
-        let seed = WalletDomain::get_seed(dirs, wallet_address, wallet_password).await?;
+        let seed = WalletDomain::get_seed(dirs.as_ref(), wallet_address, wallet_password).await?;
 
-        let wallet = tx
-            .wallet_detail_by_address(wallet_address)
-            .await?
-            .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+        let wallet = tx.wallet_detail_by_address(wallet_address).await?.ok_or(
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Wallet(
+                    crate::error::business::wallet::WalletError::NotFound,
+                ),
+            ),
+        )?;
 
         let mut subkeys = Vec::<wallet_tree::file_ops::BulkSubkey>::new();
         let mut accounts = Vec::new();
@@ -175,7 +196,7 @@ impl WalletService {
             )?;
             let account_index_map =
                 wallet_utils::address::AccountIndexMap::from_account_id(hd_path.get_account_id()?)?;
-            let Ok(node) = ChainDomain::get_node(&mut tx, &data.chain_code).await else {
+            let Ok(node) = ChainDomain::get_node(&data.chain_code).await else {
                 continue;
             };
 
@@ -206,7 +227,11 @@ impl WalletService {
 
             let keypair = instance
                 .gen_keypair_with_index_address_type(&seed, account_index_map.input_index)
-                .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+                .map_err(|e| {
+                    crate::error::service::ServiceError::System(
+                        crate::error::system::SystemError::Service(e.to_string()),
+                    )
+                })?;
             let pk = keypair.private_key_bytes()?;
             let subkey = wallet_tree::file_ops::BulkSubkey::new(
                 account_index_map.clone(),
@@ -234,19 +259,19 @@ impl WalletService {
             wallet_transport_backend::consts::endpoint::ADDRESS_BATCH_INIT,
             &address_batch_init_task_data,
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(address_init_task_data))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(address_init_task_data)).send().await?;
         Ok(crate::response_vo::wallet::ImportDerivationPathRes { accounts })
     }
 
     pub async fn export_derivation_path(
         &mut self,
         wallet_address: &str,
-    ) -> Result<crate::response_vo::wallet::ExportDerivationPathRes, crate::ServiceError> {
+    ) -> Result<
+        crate::response_vo::wallet::ExportDerivationPathRes,
+        crate::error::service::ServiceError,
+    > {
         let tx = &mut self.repo;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let account_list = tx
             .get_account_list_by_wallet_address_and_account_id(Some(wallet_address), None)
             .await?;
@@ -280,57 +305,62 @@ impl WalletService {
         is_default_name: bool,
         wallet_password: &str,
         invite_code: Option<String>,
-    ) -> Result<CreateWalletRes, crate::ServiceError> {
+    ) -> Result<CreateWalletRes, crate::error::service::ServiceError> {
         let start = std::time::Instant::now();
+
         let tx = &mut self.repo;
 
         let password_validation_start = std::time::Instant::now();
         WalletDomain::validate_password(wallet_password).await?;
-        tracing::debug!(
-            "Password validation took: {:?}",
-            password_validation_start.elapsed()
-        );
+        tracing::debug!("Password validation took: {:?}", password_validation_start.elapsed());
 
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
         };
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         let master_key_start = std::time::Instant::now();
-        let wallet_tree::api::RootInfo {
-            private_key: _,
-            seed,
-            address,
-            phrase,
-        } = wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
-        tracing::debug!(
-            "Master key generation took: {:?}",
-            master_key_start.elapsed()
-        );
+        let wallet_tree::api::RootInfo { private_key: _, seed, address, phrase } =
+            wallet_tree::api::KeystoreApi::generate_master_key_info(language_code, phrase, salt)?;
+        tracing::debug!("Master key generation took: {:?}", master_key_start.elapsed());
+
+        let address = &address.to_string();
+
+        if WalletDomain::check_api_wallet_exist(address).await? {
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
+            )));
+        }
 
         // let uid = wallet_utils::md5(&format!("{phrase}{salt}"));
         let pbkdf2_string_start = std::time::Instant::now();
         let uid = wallet_utils::pbkdf2_string(&format!("{phrase}{salt}"), salt, 100000, 32)?;
         tracing::debug!("Pbkdf2 string took: {:?}", pbkdf2_string_start.elapsed());
-        let address = &address.to_string();
+
+        // 检查是否是api钱包
+        if ApiWalletDomain::check_keys_uid(&uid).await?.is_api_wallet() {
+            return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::MnemonicAlreadyImportedIntoApiWalletSystem,
+            )));
+        }
+
         let seed = seed.clone();
 
         // 检查钱包状态
-        let account_ids = self
-            .wallet_domain
-            .restart_existing_wallet(tx, address)
-            .await?;
+        let account_ids = self.wallet_domain.restart_existing_wallet(tx, address).await?;
         let storage_path = dirs.get_root_dir(address)?;
         wallet_utils::file_func::recreate_dir_all(&storage_path)?;
 
         let wallet_tree_start = std::time::Instant::now();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
-        tracing::debug!(
-            "Wallet tree strategy retrieval took: {:?}",
-            wallet_tree_start.elapsed()
-        );
+        tracing::debug!("Wallet tree strategy retrieval took: {:?}", wallet_tree_start.elapsed());
 
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
         let initialize_root_keystore_start = std::time::Instant::now();
@@ -348,12 +378,10 @@ impl WalletService {
             initialize_root_keystore_start.elapsed()
         );
         tx.upsert_wallet(address, &uid, wallet_name).await?;
-        let default_chain_list = tx.get_chain_list().await?;
-        let coins = tx.default_coin_list().await?;
-        let default_chain_list = default_chain_list
-            .into_iter()
-            .map(|chain| chain.chain_code)
-            .collect::<Vec<String>>();
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let coins = CoinRepo::default_coin_list(&pool).await?;
+        let default_chain_list =
+            default_chain_list.into_iter().map(|chain| chain.chain_code).collect::<Vec<String>>();
         // tracing::info!("coins: {:?}", coins);
         let account_creation_start = std::time::Instant::now();
         let mut req: TokenQueryPriceReq = TokenQueryPriceReq(Vec::new());
@@ -392,10 +420,8 @@ impl WalletService {
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
 
         // 波场的地址
-        let tron_address = subkeys
-            .iter()
-            .find(|s| s.chain_code == chain_code::TRON)
-            .map(|s| s.address.clone());
+        let tron_address =
+            subkeys.iter().find(|s| s.chain_code == chain_code::TRON).map(|s| s.address.clone());
 
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
@@ -404,16 +430,11 @@ impl WalletService {
             wallet_password,
             algorithm,
         )?;
-        tracing::debug!(
-            "Child keystore initialization took: {:?}",
-            child_keystore_start.elapsed()
-        );
+        tracing::debug!("Child keystore initialization took: {:?}", child_keystore_start.elapsed());
 
-        Tasks::new()
-            .push(CommonTask::QueryCoinPrice(req))
-            .send()
-            .await?;
-        tx.update_uid(Some(&uid)).await?;
+        Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        DeviceRepo::update_uid(pool, Some(&uid)).await?;
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
 
@@ -472,17 +493,15 @@ impl WalletService {
             .await?;
 
         tracing::debug!("cose time: {}", start.elapsed().as_millis());
-        Ok(CreateWalletRes {
-            address: address.to_string(),
-        })
+        Ok(CreateWalletRes { address: address.to_string() })
     }
 
     pub async fn get_phrase(
         &mut self,
         wallet_address: &str,
         password: &str,
-    ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::ServiceError> {
-        let dirs = crate::manager::Context::get_global_dirs()?;
+    ) -> Result<crate::response_vo::wallet::GetPhraseRes, crate::error::service::ServiceError> {
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let root_dir = dirs.get_root_dir(wallet_address)?;
 
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -501,13 +520,18 @@ impl WalletService {
         &self,
         language_code: u8,
         count: usize,
-    ) -> Result<GeneratePhraseRes, crate::ServiceError> {
-        let lang = wallet_core::language::Language::from_u8(language_code)
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    ) -> Result<GeneratePhraseRes, crate::error::service::ServiceError> {
+        let lang = wallet_core::language::Language::from_u8(language_code).map_err(|e| {
+            crate::error::service::ServiceError::System(crate::error::system::SystemError::Service(
+                e.to_string(),
+            ))
+        })?;
 
-        let phrases = lang
-            .gen_phrase(count)
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+        let phrases = lang.gen_phrase(count).map_err(|e| {
+            crate::error::service::ServiceError::System(crate::error::system::SystemError::Service(
+                e.to_string(),
+            ))
+        })?;
 
         Ok(GeneratePhraseRes { phrases })
     }
@@ -517,11 +541,18 @@ impl WalletService {
         language_code: u8,
         keyword: &str,
         mode: u8,
-    ) -> Result<QueryPhraseRes, crate::ServiceError> {
-        let wordlist_wrapper = wallet_core::language::WordlistWrapper::new(language_code)
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
-        let mode = wallet_core::language::QueryMode::from_u8(mode)
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    ) -> Result<QueryPhraseRes, crate::error::service::ServiceError> {
+        let wordlist_wrapper =
+            wallet_core::language::WordlistWrapper::new(language_code).map_err(|e| {
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::Service(e.to_string()),
+                )
+            })?;
+        let mode = wallet_core::language::QueryMode::from_u8(mode).map_err(|e| {
+            crate::error::service::ServiceError::System(crate::error::system::SystemError::Service(
+                e.to_string(),
+            ))
+        })?;
 
         let phrases = wordlist_wrapper.query_phrase(keyword, mode);
 
@@ -532,16 +563,16 @@ impl WalletService {
         &self,
         language_code: u8,
         phrases: Vec<&str>,
-    ) -> Result<Vec<String>, crate::ServiceError> {
-        let wordlist_wrapper = wallet_core::language::WordlistWrapper::new(language_code)
-            .map_err(|e| crate::SystemError::Service(e.to_string()))?;
+    ) -> Result<Vec<String>, crate::error::service::ServiceError> {
+        let wordlist_wrapper =
+            wallet_core::language::WordlistWrapper::new(language_code).map_err(|e| {
+                crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::Service(e.to_string()),
+                )
+            })?;
         let res = phrases
             .iter()
-            .map(|phrase| {
-                wordlist_wrapper
-                    .exact_query_phrase(phrase)
-                    .unwrap_or_default()
-            })
+            .map(|phrase| wordlist_wrapper.exact_query_phrase(phrase).unwrap_or_default())
             .collect();
 
         Ok(res)
@@ -552,27 +583,29 @@ impl WalletService {
         wallet_address: Option<String>,
         chain_code: Option<String>,
         account_id: Option<u32>,
-    ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::ServiceError> {
+    ) -> Result<Vec<crate::response_vo::wallet::WalletInfo>, crate::error::service::ServiceError>
+    {
         let tx = &mut self.repo;
-        let chains = tx.get_chain_list().await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let chains = ChainRepo::get_chain_list(&pool).await?;
         let chain_codes = if let Some(chain_code) = chain_code {
             vec![chain_code]
         } else {
-            chains
-                .iter()
-                .map(|chain| chain.chain_code.clone())
-                .collect()
+            chains.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         let chains: ChainCodeAndName = chains.into();
 
-        let token_currencies = self.coin_domain.get_token_currencies_v2(tx).await?;
+        let token_currencies = CoinDomain::get_token_currencies_v2().await?;
         // let service = Service::default();
         let wallet_list = if let Some(wallet_address) = &wallet_address {
-            let wallet = tx
-                .wallet_detail_by_address(wallet_address)
-                .await?
-                .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+            let wallet = tx.wallet_detail_by_address(wallet_address).await?.ok_or(
+                crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Wallet(
+                        crate::error::business::wallet::WalletError::NotFound,
+                    ),
+                ),
+            )?;
             vec![wallet]
         } else {
             tx.wallet_list().await?
@@ -586,9 +619,7 @@ impl WalletService {
                     account_id,
                 )
                 .await?;
-            let mut account_list = token_currencies
-                .calculate_account_infos(list, &chains)
-                .await?;
+            let mut account_list = token_currencies.calculate_account_infos(list, &chains).await?;
             // let mut account_cal_list = std::collections::HashMap::new();
             let mut wallet_assets = BalanceInfo::new_without_amount().await?;
             for account in account_list.iter_mut() {
@@ -628,7 +659,10 @@ impl WalletService {
         Ok(res)
     }
 
-    pub async fn logic_delete(self, address: &str) -> Result<(), crate::ServiceError> {
+    pub async fn logic_delete(
+        self,
+        address: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
         let wallet = tx.wallet_detail_by_address(address).await?;
@@ -636,30 +670,31 @@ impl WalletService {
         AccountRepoTrait::reset(&mut tx, address).await?;
         let latest_wallet = tx.wallet_latest().await?;
 
-        let rest_uids = tx
-            .uid_list()
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect::<Vec<String>>();
+        let rest_uids = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect::<Vec<String>>();
 
-        let uid = if let Some(latest_wallet) = latest_wallet {
-            Some(latest_wallet.uid)
-        } else {
-            None
+        let uid =
+            if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        DeviceRepo::update_uid(pool, uid.as_deref()).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
         };
-        tx.update_uid(uid.as_deref()).await?;
-        let device = tx.get_device_info().await?;
 
         tx.commit_transaction().await?;
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        if let Some(device) = device
-            && let Some(wallet) = wallet
-        {
-            let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+        if let Some(wallet) = wallet {
+            let members =
+                MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool).await.map_err(|e| {
+                    crate::error::service::ServiceError::Database(wallet_database::Error::Database(
+                        e,
+                    ))
+                })?;
             for member in members.0 {
                 MultisigDomain::logic_delete_account(&member.account_id, pool.clone()).await?;
             }
@@ -678,28 +713,33 @@ impl WalletService {
         Ok(())
     }
 
-    pub async fn physical_delete(self, address: &str) -> Result<(), crate::ServiceError> {
+    pub async fn physical_delete(
+        self,
+        address: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
 
         tx.begin_transaction().await?;
         let wallet = tx.wallet_detail_by_address(address).await?;
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
         };
-        let dirs = crate::manager::Context::get_global_dirs()?;
+
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(Some(address));
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
 
         let latest_wallet = tx.wallet_latest().await?;
 
-        let rest_uids = tx
-            .uid_list()
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect::<Vec<String>>();
+        let rest_uids = tx.uid_list().await?.into_iter().map(|uid| uid.0).collect::<Vec<String>>();
 
         let uid = if let Some(latest_wallet) = latest_wallet {
             Some(latest_wallet.uid)
@@ -708,16 +748,20 @@ impl WalletService {
             tx.update_password(None).await?;
             None
         };
-        tx.update_uid(uid.as_deref()).await?;
+
+        DeviceRepo::update_uid(pool.clone(), uid.as_deref()).await?;
         tx.commit_transaction().await?;
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
 
-            let members = MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool)
-                .await
-                .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            let members =
+                MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool).await.map_err(|e| {
+                    crate::error::service::ServiceError::Database(wallet_database::Error::Database(
+                        e,
+                    ))
+                })?;
 
             let multisig_accounts =
                 MultisigDomain::physical_delete_wallet_account(members, &wallet.uid, pool.clone())
@@ -750,47 +794,54 @@ impl WalletService {
         for uid in rest_uids {
             let body = RecoverDataBody::new(&uid);
 
-            Tasks::new()
-                .push(CommonTask::RecoverMultisigAccountData(body))
-                .send()
-                .await?;
+            Tasks::new().push(CommonTask::RecoverMultisigAccountData(body)).send().await?;
         }
         Ok(())
     }
 
-    pub async fn logic_reset(self) -> Result<(), crate::ServiceError> {
+    pub async fn logic_reset(self) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
         tx.begin_transaction().await?;
-        let device = tx.get_device_info().await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
+        };
 
         WalletRepoTrait::reset_all_wallet(&mut tx).await?;
         AccountRepoTrait::reset_all_account(&mut tx).await?;
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
         tx.commit_transaction().await?;
 
-        if let Some(device) = &device {
-            let req = DeviceDeleteReq::new(&device.sn, &[]);
+        let req = DeviceDeleteReq::new(&device.sn, &[]);
 
-            Tasks::new()
-                .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
-                    endpoint::DEVICE_DELETE,
-                    &req,
-                )?))
-                .send()
-                .await?;
-        };
+        Tasks::new()
+            .push(BackendApiTask::BackendApi(BackendApiTaskData::new(
+                endpoint::DEVICE_DELETE,
+                &req,
+            )?))
+            .send()
+            .await?;
 
         Ok(())
     }
 
-    pub async fn physical_reset(self) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    pub async fn physical_reset(self) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Device(
+                    crate::error::business::device::DeviceError::Uninitialized,
+                ),
+            ));
         };
 
         tx.update_password(None).await?;
@@ -823,7 +874,7 @@ impl WalletService {
             .send()
             .await?;
 
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(None);
         wallet_utils::file_func::remove_dir_all(&wallet_dir)?;
         wallet_utils::file_func::create_dir_all(wallet_dir)?;
@@ -836,7 +887,7 @@ impl WalletService {
     pub async fn recover_multisig_data(
         self,
         _wallet_address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 在创建钱包时，skd已经在任务里面添加了task 来恢复，这里没有必要给到前端一个接口再去执行一遍重复的逻辑
         // let mut tx = self.repo;
         // MultisigDomain::recover_multisig_account_and_queue_data(&mut tx, wallet_address).await?;
@@ -844,7 +895,10 @@ impl WalletService {
         Ok(())
     }
 
-    pub async fn upgrade_algorithm(&self, password: &str) -> Result<(), crate::ServiceError> {
+    pub async fn upgrade_algorithm(
+        &self,
+        password: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::upgrade_algorithm(password).await?;
         Ok(())
     }

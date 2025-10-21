@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use sqlx::Arguments as _;
-use sqlx::Sqlite;
+use sqlx::{Arguments as _, Sqlite};
 
 use crate::sql_utils::ArgFn;
 
@@ -49,11 +48,9 @@ impl<'a> DynamicQueryBuilder<'a> {
     {
         self.where_clauses.push(clause.to_string());
 
-        self.arg_fns.push(Arc::new(
-            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(val.clone());
-            },
-        ));
+        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+            args.add(val.clone());
+        }));
         self
     }
 
@@ -64,11 +61,9 @@ impl<'a> DynamicQueryBuilder<'a> {
         let clause = format!("{} = ?", field);
         self.where_clauses.push(clause);
 
-        self.arg_fns.push(Arc::new(
-            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(val.clone());
-            },
-        ));
+        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+            args.add(val.clone());
+        }));
         self
     }
 
@@ -87,11 +82,9 @@ impl<'a> DynamicQueryBuilder<'a> {
         let pattern = format!("%{}%", keyword);
         self.where_clauses.push(clause);
 
-        self.arg_fns.push(Arc::new(
-            move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                args.add(pattern.clone());
-            },
-        ));
+        self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+            args.add(pattern.clone());
+        }));
         self
     }
 
@@ -103,20 +96,15 @@ impl<'a> DynamicQueryBuilder<'a> {
             return self;
         }
 
-        let placeholders = (0..values.len())
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(", ");
+        let placeholders = (0..values.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
         let clause = format!("{} IN ({})", field, placeholders);
         self.where_clauses.push(clause);
 
         for v in values {
             let s = v.to_string();
-            self.arg_fns.push(Arc::new(
-                move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
-                    args.add(s.clone());
-                },
-            ));
+            self.arg_fns.push(Arc::new(move |args: &mut sqlx::sqlite::SqliteArguments<'a>| {
+                args.add(s.clone());
+            }));
         }
 
         self
@@ -165,12 +153,7 @@ impl<'q> super::SqlQueryBuilder<'q> for DynamicQueryBuilder<'q> {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
 
-        let arg_fns = self
-            .arg_fns
-            .iter()
-            .cloned()
-            .map(|f| f as ArgFn<'q>)
-            .collect();
+        let arg_fns = self.arg_fns.iter().cloned().map(|f| f as ArgFn<'q>).collect();
         (sql, arg_fns)
     }
 }

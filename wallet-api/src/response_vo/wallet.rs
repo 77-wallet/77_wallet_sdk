@@ -57,7 +57,9 @@ pub struct ChainInfo {
     pub chain_code: String,
     pub name: Option<String>,
     pub address_type: AddressCategory,
+    #[serde(skip_serializing)]
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
+    #[serde(skip_serializing)]
     pub updated_at: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
 }
 

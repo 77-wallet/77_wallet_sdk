@@ -1,5 +1,8 @@
 use tokio_stream::StreamExt as _;
-use wallet_api::{test::env::get_manager, Dirs, FrontendNotifyEvent, WalletManager};
+use wallet_api::{
+    dirs::Dirs, manager::WalletManager, messaging::notify::FrontendNotifyEvent,
+    test::env::get_manager, xlog,
+};
 
 // create wallet
 #[tokio::main]
@@ -7,24 +10,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wallet_utils::init_test_log();
 
     let (wallet_manager, test_params) = get_manager().await.unwrap();
-    wallet_manager.set_invite_code(None).await;
+    let _c = wallet_manager.set_invite_code(None).await;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<FrontendNotifyEvent>();
     let mut rx = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
 
     wallet_manager.set_frontend_notify_sender(tx).await?;
-
-    if wallet_manager.init(test_params.device_req).await.code != 200 {
-        tracing::error!("init failed");
-        return Ok(());
-    };
+    wallet_manager.init(test_params.device_req).await?;
 
     // 创建钱包
     if true {
-        let _wallet = wallet_manager
-            .create_wallet(test_params.create_wallet_req)
-            .await
-            .result;
+        let _wallet = wallet_manager.create_wallet(test_params.create_wallet_req).await.unwrap();
     }
 
     while let Some(_data) = rx.next().await {
@@ -40,7 +36,5 @@ async fn _log_report() {
         std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(client_id);
 
     let dirs = Dirs::new(&storage_dir.to_string_lossy()).unwrap();
-    WalletManager::init_log(None, "66a7577a2b2f3b0130375e6f", &dirs, "9528")
-        .await
-        .unwrap();
+    xlog::init_log(None, "66a7577a2b2f3b0130375e6f", &dirs, "9528").await.unwrap();
 }

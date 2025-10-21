@@ -1,0 +1,355 @@
+use crate::entities::{
+    api_fee::{ApiFeeEntity, ApiFeeStatus},
+    api_withdraw::ApiWithdrawEntity,
+};
+use chrono::SecondsFormat;
+use sqlx::{Executor, Sqlite};
+
+pub(crate) struct ApiFeeDao;
+
+impl ApiFeeDao {
+    pub async fn all_api_fee<'a, E>(exec: E, uid: &str) -> Result<Vec<ApiFeeEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"SELECT * FROM api_fee where uid = ?"#;
+        let result = sqlx::query_as::<_, ApiFeeEntity>(sql)
+            .bind(uid)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    pub async fn page_api_fee<'a, E>(
+        exec: E,
+        page: i64,
+        page_size: i64,
+    ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + Clone,
+    {
+        let count_sql = "SELECT count(*) FROM api_fee";
+        let count = sqlx::query_scalar::<_, i64>(count_sql)
+            .fetch_one(exec.clone())
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        let sql = "SELECT * FROM api_fee ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        let res = sqlx::query_as::<_, ApiFeeEntity>(sql)
+            .bind(page_size)
+            .bind(page)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok((count, res))
+    }
+
+    pub async fn page_api_fee_with_status<'a, E>(
+        exec: E,
+        _page: i64,
+        page_size: i64,
+        vec_status: &[ApiFeeStatus],
+    ) -> Result<(i64, Vec<ApiFeeEntity>), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite> + Clone,
+    {
+        let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let count_sql = format!("SELECT count(*) FROM api_fee where status in ({})", placeholders);
+        let sql = format!(
+            "SELECT * FROM api_fee where status in ({}) ORDER BY id ASC LIMIT ?",
+            placeholders
+        );
+
+        let mut query = sqlx::query_scalar::<_, i64>(&count_sql);
+        for status in vec_status {
+            query = query.bind(status);
+        }
+        let count =
+            query.fetch_one(exec.clone()).await.map_err(|e| crate::Error::Database(e.into()))?;
+
+        let mut query = sqlx::query_as::<_, ApiFeeEntity>(&sql);
+        for status in vec_status {
+            query = query.bind(status);
+        }
+        let res = query
+            .bind(page_size)
+            .fetch_all(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok((count, res))
+    }
+
+    pub async fn get_api_fee_by_trade_no<'a, E>(
+        exec: E,
+        trade_no: &str,
+    ) -> Result<ApiFeeEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "SELECT * FROM api_fee WHERE trade_no = ?";
+        let res = sqlx::query_as::<_, ApiFeeEntity>(sql)
+            .bind(trade_no)
+            .fetch_one(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
+    pub async fn get_api_fee_by_trade_no_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        vec_status: &[ApiFeeStatus],
+    ) -> Result<ApiFeeEntity, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let placeholders = vec_status.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql =
+            format!("SELECT * FROM api_fee where trade_no = ? AND status in ({})", placeholders);
+        let mut query = sqlx::query_as::<_, ApiFeeEntity>(&sql).bind(trade_no);
+        for status in vec_status {
+            query = query.bind(status);
+        }
+        let res = query.fetch_one(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(res)
+    }
+
+    async fn upsert<'c, E>(executor: E, input: ApiFeeEntity) -> Result<(), crate::Error>
+    where
+        E: Executor<'c, Database = Sqlite>,
+    {
+        let sql = r#"
+            Insert into api_fee
+                (id,uid,name,from_addr,to_addr,value,chain_code,token_addr,symbol,trade_no,trade_type,status,created_at,updated_at)
+            values
+                ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            on conflict (trade_no)
+            do update set
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            returning *
+        "#;
+
+        let mut rec = sqlx::query_as::<_, ApiFeeEntity>(sql)
+            .bind(&input.uid)
+            .bind(&input.name)
+            .bind(&input.from_addr)
+            .bind(&input.to_addr)
+            .bind(&input.value)
+            .bind(&input.chain_code)
+            .bind(&input.token_addr)
+            .bind(&input.symbol)
+            .bind(&input.trade_no)
+            .bind(&input.trade_type)
+            .bind(&input.status)
+            .fetch_all(executor)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn add<'a, E>(exec: E, api_fee: ApiFeeEntity) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            INSERT INTO api_fee
+                (uid,
+                name,
+                from_addr,
+                to_addr,
+                value,
+                validate,
+                chain_code,
+                token_addr,
+                symbol,
+                trade_no,
+                trade_type,
+                status,
+                tx_hash,
+                resource_consume,
+                transaction_fee,
+                transaction_time,
+                block_height,
+                notes,
+                created_at,
+                updated_at)
+            VALUES
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        "#;
+
+        let res = sqlx::query(sql)
+            .bind(&api_fee.uid)
+            .bind(&api_fee.name)
+            .bind(&api_fee.from_addr)
+            .bind(&api_fee.to_addr)
+            .bind(&api_fee.value)
+            .bind(&api_fee.validate)
+            .bind(&api_fee.chain_code)
+            .bind(&api_fee.token_addr)
+            .bind(&api_fee.symbol)
+            .bind(&api_fee.trade_no)
+            .bind(&api_fee.trade_type)
+            .bind(&api_fee.status)
+            .bind("") // hash
+            .bind(0) // consume
+            .bind(0) // fee
+            .bind(api_fee.created_at.to_rfc3339_opts(SecondsFormat::Secs, true))
+            .bind(0)
+            .bind(&api_fee.notes)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        tracing::info!(xx=%res.rows_affected(), "tx fee api");
+        Ok(())
+    }
+
+    pub async fn update_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiFeeStatus,
+        notes: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                status = $2,
+                notes = $3,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(notes)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_next_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiFeeStatus,
+        next_status: ApiFeeStatus,
+        notes: &str,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                status = $3,
+                 notes = $4,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .bind(&next_status)
+            .bind(notes)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_tx_status<'a, E>(
+        exec: E,
+        trade_no: &str,
+        tx_hash: &str,
+        resource_consume: &str,
+        transaction_fee: &str,
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                tx_hash = $2,
+                resource_consume = $3,
+                transaction_fee = $4,
+                status = $5,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(tx_hash)
+            .bind(resource_consume)
+            .bind(transaction_fee)
+            .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_post_tx_count<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                post_tx_count = MIN(post_tx_count + 1, 63),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+
+    pub async fn update_post_confirm_tx_count<'a, E>(
+        exec: E,
+        trade_no: &str,
+        status: ApiFeeStatus,
+    ) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = r#"
+            UPDATE api_fee
+            SET
+                post_confirm_tx_count = MIN(post_confirm_tx_count + 1, 63),
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE trade_no = $1 and status = $2
+        "#;
+        sqlx::query(sql)
+            .bind(trade_no)
+            .bind(&status)
+            .execute(exec)
+            .await
+            .map_err(|e| crate::Error::Database(e.into()))?;
+
+        Ok(())
+    }
+}

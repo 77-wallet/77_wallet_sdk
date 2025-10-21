@@ -1,23 +1,21 @@
 use crate::{
     api::ReturnType,
+    manager::WalletManager,
     response_vo::{
-        self, account::Balance, multisig_account::QueueInfo,
+        self, MultisigQueueFeeParams, account::Balance, multisig_account::QueueInfo,
         multisig_transaction::MultisigQueueInfoVo, transaction::TransferParams,
-        MultisigQueueFeeParams,
     },
     service::multisig_transaction::MultisigTransactionService,
 };
 use wallet_database::pagination::Pagination;
 
-impl crate::WalletManager {
+impl WalletManager {
     // only solana has create fee
     pub async fn create_queue_fee(
         &self,
         params: MultisigQueueFeeParams,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::create_queue_fee(params)
-            .await
-            .into()
+        MultisigTransactionService::create_queue_fee(params).await
     }
 
     /// Creates a new multisig transaction with the provided parameters.
@@ -26,9 +24,7 @@ impl crate::WalletManager {
         params: TransferParams,
         password: String,
     ) -> ReturnType<String> {
-        MultisigTransactionService::create_multisig_queue(params, password)
-            .await
-            .into()
+        MultisigTransactionService::create_multisig_queue(params, password).await
     }
 
     pub async fn multisig_queue_list(
@@ -47,13 +43,10 @@ impl crate::WalletManager {
             page_size,
         )
         .await
-        .into()
     }
 
     pub async fn multisig_queue_info(&self, queue_id: String) -> ReturnType<MultisigQueueInfoVo> {
-        MultisigTransactionService::multisig_queue_info(&queue_id)
-            .await
-            .into()
+        MultisigTransactionService::multisig_queue_info(&queue_id).await.into()
     }
 
     pub async fn sign_fee(
@@ -61,9 +54,7 @@ impl crate::WalletManager {
         queue_id: String,
         address: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::sign_fee(queue_id, address)
-            .await
-            .into()
+        MultisigTransactionService::sign_fee(queue_id, address).await.into()
     }
 
     pub async fn sign_transaction(
@@ -75,16 +66,13 @@ impl crate::WalletManager {
     ) -> ReturnType<()> {
         MultisigTransactionService::sign_multisig_transaction(&queue_id, status, &password, address)
             .await
-            .into()
     }
 
     pub async fn estimate_multisig_transfer_fee(
         &self,
         queue_id: String,
     ) -> ReturnType<response_vo::EstimateFeeResp> {
-        MultisigTransactionService::multisig_transfer_fee(&queue_id)
-            .await
-            .into()
+        MultisigTransactionService::multisig_transfer_fee(&queue_id).await
     }
 
     pub async fn exec_transaction(
@@ -101,7 +89,6 @@ impl crate::WalletManager {
             request_resource_id,
         )
         .await
-        .into()
     }
 
     // 多签的余额
@@ -119,7 +106,6 @@ impl crate::WalletManager {
             token_address,
         )
         .await
-        .into()
     }
 
     pub async fn check_ongoing_queue(
@@ -127,14 +113,10 @@ impl crate::WalletManager {
         chain_code: String,
         address: String,
     ) -> ReturnType<Option<QueueInfo>> {
-        MultisigTransactionService::check_ongoing_queue(chain_code, address)
-            .await
-            .into()
+        MultisigTransactionService::check_ongoing_queue(chain_code, address).await
     }
 
     pub async fn cancel_queue(&self, queue_id: String) -> ReturnType<()> {
-        MultisigTransactionService::cancel_queue(queue_id)
-            .await
-            .into()
+        MultisigTransactionService::cancel_queue(queue_id).await
     }
 }

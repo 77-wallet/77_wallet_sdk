@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::{
-    naming::{v1::LegacyNaming, FileMeta, FileType, NamingStrategy as _},
-    wallet_hierarchy::{v1::LegacyWalletTree, WalletTreeOps},
+    naming::{FileMeta, FileType, NamingStrategy as _, v1::LegacyNaming},
+    wallet_hierarchy::{WalletTreeOps, v1::LegacyWalletTree},
 };
 
 use super::LayoutStrategy;
@@ -17,28 +17,22 @@ impl LayoutStrategy for LegacyLayout {
         match meta.file_type() {
             FileType::Phrase | FileType::PrivateKey | FileType::Seed => {
                 // Root 文件存储路径：{base}/{address}/root/{filename}
-                Ok(
-                    PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
-                        .join("root")
-                        .join(self.generate_filename(meta)?),
-                )
+                Ok(PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
+                    .join("root")
+                    .join(self.generate_filename(meta)?))
             }
             FileType::DerivedData => {
                 // Subs 文件存储路径：{base}/{address}/subs/{filename}
-                Ok(
-                    PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
-                        .join("subs")
-                        .join(self.generate_filename(meta)?),
-                )
+                Ok(PathBuf::from(&meta.address().ok_or(crate::Error::MissingAddress)?)
+                    .join("subs")
+                    .join(self.generate_filename(meta)?))
             }
             _ => Err(crate::Error::UnsupportedFileType),
         }
     }
 
     fn scan(&self, base_path: &Path) -> Result<Box<dyn WalletTreeOps>, crate::Error> {
-        Ok(Box::new(LegacyWalletTree::traverse_directory_structure(
-            &base_path.to_path_buf(),
-        )?))
+        Ok(Box::new(LegacyWalletTree::traverse_directory_structure(&base_path.to_path_buf())?))
     }
 
     // fn scan(&self, base_path: &Path) -> Result<Box<dyn WalletTreeOps>, crate::Error> {
@@ -139,9 +133,7 @@ mod tests {
         println!("path: {path:?}");
         assert_eq!(
             path,
-            PathBuf::from(TEST_ADDRESS)
-                .join("root")
-                .join(format!("{}-pk", TEST_ADDRESS))
+            PathBuf::from(TEST_ADDRESS).join("root").join(format!("{}-pk", TEST_ADDRESS))
         );
     }
 
@@ -158,9 +150,9 @@ mod tests {
         let path = layout.resolve_path(meta).unwrap();
         assert_eq!(
             path,
-            PathBuf::from(TEST_ADDRESS)
-                .join("subs")
-                .join("eth-0x668fb1D3Df02391064CEe50F6A3ffdbAEOCDb406-m%2F44%27%2F60%27%2F0%27%2F0%2F0-pk")
+            PathBuf::from(TEST_ADDRESS).join("subs").join(
+                "eth-0x668fb1D3Df02391064CEe50F6A3ffdbAEOCDb406-m%2F44%27%2F60%27%2F0%27%2F0%2F0-pk"
+            )
         );
     }
 

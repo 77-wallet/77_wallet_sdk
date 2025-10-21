@@ -27,9 +27,7 @@ impl MultisigAccountDaoV1 {
         // 添加成员
         MultisigMemberDaoV1::batch_add(&params.member_list, tx.as_mut()).await?;
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
         Ok(())
     }
 
@@ -107,9 +105,7 @@ impl MultisigAccountDaoV1 {
 
         query.push_str(" ORDER BY created_at DESC LIMIT 1");
 
-        let res = sqlx::query_as::<_, MultisigAccountEntity>(&query)
-            .fetch_optional(exec)
-            .await?;
+        let res = sqlx::query_as::<_, MultisigAccountEntity>(&query).fetch_optional(exec).await?;
 
         Ok(res)
     }
@@ -167,9 +163,7 @@ impl MultisigAccountDaoV1 {
             query.push_str(&query_where.join(" AND "));
         }
 
-        let res = sqlx::query_as::<_, MultisigAccountEntity>(&query)
-            .fetch_all(exec)
-            .await?;
+        let res = sqlx::query_as::<_, MultisigAccountEntity>(&query).fetch_all(exec).await?;
         Ok(res)
     }
 
@@ -196,10 +190,7 @@ impl MultisigAccountDaoV1 {
     ) -> Result<i64, crate::DatabaseError> {
         let sql = "SELECT count(*) FROM multisig_account WHERE chain_code = ? and is_del = 0";
 
-        let count: (i64,) = sqlx::query_as(sql)
-            .bind(chain_code)
-            .fetch_one(pool.as_ref())
-            .await?;
+        let count: (i64,) = sqlx::query_as(sql).bind(chain_code).fetch_one(pool.as_ref()).await?;
 
         Ok(count.0)
     }
@@ -386,10 +377,7 @@ impl MultisigAccountDaoV1 {
             rs = rs.bind(pay_status);
         }
 
-        rs.bind(id)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        rs.bind(id).execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(())
     }
@@ -509,15 +497,10 @@ impl MultisigAccountDaoV1 {
             "DELETE FROM multisig_account RETURNING *".to_string()
         } else {
             let ids = crate::any_in_collection(ids, "','");
-            format!(
-                "DELETE FROM multisig_account WHERE id IN ('{}') RETURNING *",
-                ids
-            )
+            format!("DELETE FROM multisig_account WHERE id IN ('{}') RETURNING *", ids)
         };
 
-        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigAccountEntity>(&sql)
-            .fetch_all(exec)
-            .await?)
+        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigAccountEntity>(&sql).fetch_all(exec).await?)
     }
 
     pub async fn pending_handle<'a, E>(

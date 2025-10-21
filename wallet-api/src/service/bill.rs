@@ -24,8 +24,8 @@ impl BillService {
         transfer_type: Vec<i32>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<BillEntity>, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<Pagination<BillEntity>, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let adds = if let Some(addr) = addr {
             vec![addr]
         } else {
@@ -39,10 +39,8 @@ impl BillService {
             )
             .await?;
 
-            let mut address = account
-                .iter()
-                .map(|item| item.address.clone())
-                .collect::<Vec<String>>();
+            let mut address =
+                account.iter().map(|item| item.address.clone()).collect::<Vec<String>>();
 
             // 兼容权限里面的地址
             let users = PermissionRepo::permission_by_users(&pool, &address).await?;
@@ -74,10 +72,7 @@ impl BillService {
         )
         .await?;
 
-        lists
-            .data
-            .iter_mut()
-            .for_each(|item| item.truncate_to_8_decimals());
+        lists.data.iter_mut().for_each(|item| item.truncate_to_8_decimals());
 
         Ok(lists)
     }
@@ -85,16 +80,16 @@ impl BillService {
     pub async fn sync_bill_by_address(
         chain_code: &str,
         address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         BillDomain::sync_bills(chain_code, address).await
     }
 
     pub async fn sync_bill_by_wallet_and_account(
         wallet_address: String,
         account_id: u32,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // get all
-        let executor = crate::Context::get_global_sqlite_pool()?;
+        let executor = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let accounts = AccountEntity::account_list_v2(
             executor.as_ref(),
@@ -124,7 +119,7 @@ impl BillService {
         chain_code: String,
         symbol: String,
         token_address: Option<String>,
-    ) -> Result<CoinCurrency, crate::ServiceError> {
+    ) -> Result<CoinCurrency, crate::error::service::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
@@ -136,9 +131,6 @@ impl BillService {
         )
         .await?;
 
-        Ok(CoinCurrency {
-            currency: currency.to_string(),
-            unit_price: token.currency_price,
-        })
+        Ok(CoinCurrency { currency: currency.to_string(), unit_price: token.currency_price })
     }
 }

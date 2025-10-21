@@ -3,8 +3,8 @@ use crate::{
         AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
     },
     sql_utils::{
-        query_builder::DynamicQueryBuilder, update_builder::DynamicUpdateBuilder,
-        SqlExecutableReturn as _,
+        SqlExecutableReturn as _, query_builder::DynamicQueryBuilder,
+        update_builder::DynamicUpdateBuilder,
     },
 };
 use sqlx::{Executor, Sqlite};
@@ -49,11 +49,7 @@ impl AccountEntity {
 
         let query = query_builder.build();
 
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn edit_account_name<'a, E>(
@@ -321,17 +317,6 @@ impl AccountEntity {
             .fetch_one(exec)
             .await
             .map(|(count,)| count)
-        // let sql = r#"
-        //     SELECT COUNT(DISTINCT account_id) as count
-        //     FROM account
-        //     WHERE wallet_address = $1
-        //     "#;
-        // sqlx::query_as::<_, (u32,)>(sql)
-        //     .bind(wallet_address)
-        //     .fetch_one(exec)
-        //     .await
-        //     .map(|(count,)| count)
-        //     .map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn init<'a, E>(
@@ -448,7 +433,7 @@ impl AccountEntity {
     }
 
     pub async fn current_chain_address<'a, E>(
-        uid: String,
+        address: String,
         account_id: u32,
         chain_code: &str,
         executor: E,
@@ -458,7 +443,7 @@ impl AccountEntity {
     {
         DynamicQueryBuilder::new("SELECT account.* FROM account")
             .inner_join("wallet ON account.wallet_address = wallet.address")
-            .and_where_eq("wallet.uid", uid)
+            .and_where_eq("wallet.address", address)
             .and_where_eq("account.account_id", account_id)
             .and_where_eq("account.chain_code", chain_code)
             .fetch_all(executor)

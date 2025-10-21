@@ -1,5 +1,18 @@
-use crate::entities::node::{NodeCreateVo, NodeEntity};
+use crate::{
+    DbPool,
+    entities::node::{NodeCreateVo, NodeEntity},
+};
 
+pub struct NodeRepo;
+
+impl NodeRepo {
+    pub async fn get_local_node_by_chain(
+        pool: &DbPool,
+        chain_code: &str,
+    ) -> Result<Vec<NodeEntity>, crate::Error> {
+        Ok(NodeEntity::list(pool.as_ref(), &[chain_code.to_string()], Some(1), Some(1)).await?)
+    }
+}
 #[async_trait::async_trait]
 pub trait NodeRepoTrait: super::TransactionTrait {
     async fn add(&mut self, input: NodeCreateVo) -> Result<NodeEntity, crate::Error> {
@@ -19,20 +32,6 @@ pub trait NodeRepoTrait: super::TransactionTrait {
     ) -> Result<Vec<NodeEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, NodeEntity::list, chain_code, is_local, None)
-    }
-
-    async fn get_local_node_by_chain(
-        &mut self,
-        chain_code: &str,
-    ) -> Result<Vec<NodeEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            NodeEntity::list,
-            &[chain_code.to_string()],
-            Some(1),
-            Some(1)
-        )
     }
 
     async fn get_node_list_in_chain_codes(

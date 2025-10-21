@@ -1,8 +1,8 @@
 use crate::{
+    DbPool,
     entities::account::{
         AccountEntity, AccountWalletMapping, AccountWithWalletEntity, CreateAccountVo,
     },
-    DbPool,
 };
 
 // use super::TransactionTrait;
@@ -26,6 +26,12 @@ impl std::ops::DerefMut for AccountRepo {
 }
 
 // crate::delegate_transaction_trait!(AccountRepo, self.repo);
+
+impl AccountRepo {
+    pub async fn list(pool: &DbPool) -> Result<Vec<AccountEntity>, crate::Error> {
+        AccountEntity::account_list_v2(pool.as_ref(), None, None, None, vec![], None).await
+    }
+}
 
 #[async_trait::async_trait]
 pub trait AccountRepoTrait: super::TransactionTrait {
@@ -148,19 +154,6 @@ pub trait AccountRepoTrait: super::TransactionTrait {
             status: Some(1),
         };
         crate::execute_with_executor!(executor, AccountEntity::detail, &req)
-    }
-
-    async fn list(&mut self) -> Result<Vec<AccountEntity>, crate::Error> {
-        let executor = self.get_conn_or_tx()?;
-        crate::execute_with_executor!(
-            executor,
-            AccountEntity::account_list_v2,
-            None,
-            None,
-            None,
-            vec![],
-            None
-        )
     }
 
     async fn get_all_account_indices(&mut self) -> Result<Vec<u32>, crate::Error> {
@@ -294,23 +287,21 @@ impl AccountRepo {
         chain_code: &str,
         pool: &DbPool,
     ) -> Result<AccountWithWalletEntity, crate::Error> {
-        AccountEntity::account_with_wallet(address, chain_code, pool.as_ref())
-            .await?
-            .ok_or(crate::Error::NotFound(format!(
+        AccountEntity::account_with_wallet(address, chain_code, pool.as_ref()).await?.ok_or(
+            crate::Error::NotFound(format!(
                 "account not found: address: {}, chain_code: {}",
                 address, chain_code
-            )))
+            )),
+        )
     }
 
     pub async fn current_chain_address(
-        uid: String,
+        address: String,
         account_id: u32,
         chain_code: &str,
         pool: &DbPool,
     ) -> Result<Vec<AccountEntity>, crate::Error> {
-        Ok(
-            AccountEntity::current_chain_address(uid, account_id, chain_code, pool.as_ref())
-                .await?,
-        )
+        Ok(AccountEntity::current_chain_address(address, account_id, chain_code, pool.as_ref())
+            .await?)
     }
 }

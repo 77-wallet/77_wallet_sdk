@@ -13,9 +13,7 @@ async fn test_chain_list() {
         "bnb".to_string(),
         "0x55d398326f99059fF775485246999027B3197955".to_string(),
     )]);
-    let assets = wallet
-        .get_chain_list(&wallet_address, account, chain_list)
-        .await;
+    let assets = wallet.get_chain_list(&wallet_address, account, chain_list).await;
 
     tracing::warn!("chain_list: {:#?}", assets);
 }

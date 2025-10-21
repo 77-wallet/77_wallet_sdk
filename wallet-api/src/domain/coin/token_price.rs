@@ -13,8 +13,8 @@ impl TokenCurrencyGetter {
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
-    ) -> Result<TokenCurrency, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<TokenCurrency, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
         // get rate
@@ -42,7 +42,7 @@ impl TokenCurrencyGetter {
         symbol: &str,
         amount: f64,
         token_address: Option<String>,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型
@@ -51,11 +51,7 @@ impl TokenCurrencyGetter {
         let token_price =
             TokenCurrencyGetter::get_currency(&currency, chain_code, symbol, token_address).await?;
 
-        Ok(BalanceInfo::new(
-            amount,
-            token_price.get_price(&currency),
-            &currency,
-        ))
+        Ok(BalanceInfo::new(amount, token_price.get_price(&currency), &currency))
     }
 
     // 查询后端的币价，并转换为balance数据结构(修改为本地)
@@ -64,7 +60,7 @@ impl TokenCurrencyGetter {
         token_addr: &str,
         amount: &str,
         decimals: u8,
-    ) -> Result<BalanceStr, crate::ServiceError> {
+    ) -> Result<BalanceStr, crate::error::service::ServiceError> {
         let currency = {
             let state = crate::app_state::APP_STATE.read().await;
             state.currency().to_string() // 或复制 enum 值，取决于类型
@@ -72,8 +68,8 @@ impl TokenCurrencyGetter {
 
         // let backend = crate::manager::Context::get_global_backend_api()?;
         // let token_price = backend.token_price(chain_code, token_addr).await?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let token = CoinRepo::coin_by_chain_address(chain_code, token_addr, &pool).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let token = CoinRepo::coin_by_chain_address(chain_code, token_addr, &pool.clone()).await?;
 
         let price = unit::string_to_f64(&token.price)?;
 
@@ -81,18 +77,12 @@ impl TokenCurrencyGetter {
         let unit_price = if currency.eq_ignore_ascii_case("usdt") {
             price
         } else {
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
             let exchange = ExchangeRateRepo::exchange_rate(&currency, &pool).await?;
 
             exchange.rate * price
         };
         let amount = wallet_utils::unit::convert_to_u256(amount, decimals)?;
 
-        Ok(BalanceStr::new(
-            amount,
-            Some(unit_price),
-            &currency,
-            decimals,
-        )?)
+        Ok(BalanceStr::new(amount, Some(unit_price), &currency, decimals)?)
     }
 }

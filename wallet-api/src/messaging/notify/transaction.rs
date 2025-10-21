@@ -26,9 +26,9 @@ pub struct ConfirmationFrontend {
     pub created_at: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>,
 }
 impl TryFrom<&MultiSignTransAccept> for ConfirmationFrontend {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
-    fn try_from(value: &MultiSignTransAccept) -> Result<Self, crate::ServiceError> {
+    fn try_from(value: &MultiSignTransAccept) -> Result<Self, crate::error::service::ServiceError> {
         let value = &value.queue;
         Ok(Self {
             id: value.id.to_string(),

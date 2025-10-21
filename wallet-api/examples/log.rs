@@ -1,6 +1,9 @@
-use std::{env, path::PathBuf, time::Duration};
+use std::{env, path::PathBuf, sync::Arc, time::Duration};
 use tokio::time::interval;
-use wallet_api::{init_logger, start_upload_scheduler, CustomEventFormat, LogBasePath};
+use wallet_api::infrastructure::log::{
+    format::{CustomEventFormat, LogBasePath},
+    init_logger, start_upload_scheduler,
+};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
@@ -18,7 +21,7 @@ async fn main() {
     let oss_client = wallet_oss::oss_client::OssClient::new(&config.oss);
 
     println!("bucket_name: {}", config.oss.bucket_name);
-    let _c = start_upload_scheduler(base_path, 20, oss_client).await;
+    let _c = start_upload_scheduler(base_path, 20, Arc::new(oss_client)).await;
 
     loop {}
 }

@@ -37,10 +37,7 @@ pub struct MultisigQueueEntity {
 }
 impl MultisigQueueEntity {
     pub fn token_address(&self) -> Option<String> {
-        self.token_addr
-            .as_ref()
-            .filter(|token| !token.is_empty())
-            .cloned()
+        self.token_addr.as_ref().filter(|token| !token.is_empty()).cloned()
     }
 
     pub fn can_cancel(&self) -> bool {

@@ -3,24 +3,33 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::task_manager::dispatcher::PriorityTask;
 use crate::{
-    infrastructure::task_queue::{task::task_type::TaskType, *},
+    infrastructure::task_queue::{
+        CommonTask, MqttTask, RecoverDataBody,
+        backend::{BackendApiTask, BackendApiTaskData},
+        initialization::InitializationTask,
+        mqtt_api::ApiMqttStruct,
+        task::task_type::TaskType,
+    },
     messaging::mqtt::topics,
 };
 use std::any::Any;
-use wallet_database::entities::{
-    multisig_queue::QueueTaskEntity,
-    node::NodeEntity,
-    task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
+use wallet_database::{
+    entities::{
+        multisig_queue::QueueTaskEntity,
+        node::NodeEntity,
+        task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
+    },
+    repositories::task_queue::TaskQueueRepoTrait as _,
 };
-use wallet_database::repositories::task_queue::TaskQueueRepoTrait as _;
 use wallet_transport_backend::request::TokenQueryPriceReq;
+
 #[async_trait::async_trait]
 pub(crate) trait TaskTrait: Send + Sync {
     fn get_name(&self) -> TaskName;
     fn get_type(&self) -> TaskType;
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError>;
+    fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError>;
 
-    async fn execute(&self, id: &str) -> Result<(), crate::ServiceError>;
+    async fn execute(&self, id: &str) -> Result<(), crate::error::service::ServiceError>;
 
     fn as_any(&self) -> &dyn Any;
 }
@@ -32,17 +41,11 @@ pub(crate) struct TaskItem {
 
 impl TaskItem {
     pub fn new<T: TaskTrait + 'static>(task: T) -> Self {
-        Self {
-            id: None,
-            task: Box::new(task),
-        }
+        Self { id: None, task: Box::new(task) }
     }
 
     pub fn new_with_id<T: TaskTrait + 'static>(id: &str, task: T) -> Self {
-        Self {
-            id: Some(id.to_string()),
-            task: Box::new(task),
-        }
+        Self { id: Some(id.to_string()), task: Box::new(task) }
     }
 
     // pub fn new(task: Task) -> Self {
@@ -86,7 +89,7 @@ impl Tasks {
 
     async fn create_task_entities(
         &self,
-    ) -> Result<Vec<CreateTaskQueueEntity>, crate::ServiceError> {
+    ) -> Result<Vec<CreateTaskQueueEntity>, crate::error::service::ServiceError> {
         let mut create_entities = Vec::new();
         for task in self.0.iter() {
             let request_body = task.task.get_body()?;
@@ -108,47 +111,52 @@ impl Tasks {
         Ok(create_entities)
     }
 
-    async fn dispatch_tasks(entities: Vec<TaskQueueEntity>) -> Result<(), crate::ServiceError> {
-        let task_sender = crate::manager::Context::get_global_task_manager()?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
+    async fn dispatch_tasks(
+        entities: Vec<TaskQueueEntity>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let task_sender = handles.get_global_task_manager();
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+            let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
-        let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
-
-        for task_entity in entities.into_iter() {
-            match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
-                Ok(task) => {
-                    let priority = super::task_manager::scheduler::assign_priority(&*task, false)?;
-                    grouped_tasks.entry(priority).or_default().push(task_entity);
-                }
-                Err(e) => {
-                    tracing::error!("task_entity.try_into() error: {}", e);
-                    repo.delete_task(&task_entity.id).await?;
-                }
-            };
-        }
-
-        for (priority, tasks) in grouped_tasks {
-            if let Err(e) = task_sender
-                .get_task_sender()
-                .send(PriorityTask { priority, tasks })
-            {
-                tracing::error!("send task queue error: {}", e);
+            let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
+            // let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+            // let mut req = MsgAckReq::new();
+            for task_entity in entities.into_iter() {
+                // req.push(&task_entity.id);
+                match TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) {
+                    Ok(task) => {
+                        let priority =
+                            super::task_manager::scheduler::assign_priority(&*task, false)?;
+                        grouped_tasks.entry(priority).or_default().push(task_entity);
+                    }
+                    Err(e) => {
+                        tracing::error!("task_entity.try_into() error: {}", e);
+                        repo.delete_task(&task_entity.id).await?;
+                    }
+                };
             }
+
+            for (priority, tasks) in grouped_tasks {
+                if let Err(e) = task_sender.get_task_sender().send(PriorityTask { priority, tasks })
+                {
+                    tracing::error!("send task queue error: {}", e);
+                }
+            }
+
+            repo.delete_oldest_by_status_when_exceeded(200000, 2).await?;
+            // backend.msg_ack(req).await?;
         }
-
-        repo.delete_oldest_by_status_when_exceeded(200000, 2)
-            .await?;
-
         Ok(())
     }
 
-    pub(crate) async fn send(self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn send(self) -> Result<(), crate::error::service::ServiceError> {
         if self.0.is_empty() {
             return Ok(());
         }
         let create_entities = self.create_task_entities().await?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         let entities = repo.create_multi_task(&create_entities).await?;
         Self::dispatch_tasks(entities).await?;
@@ -156,7 +164,7 @@ impl Tasks {
     }
 }
 
-type TaskFactoryFn = fn(&str) -> Result<Box<dyn TaskTrait>, crate::ServiceError>;
+type TaskFactoryFn = fn(&str) -> Result<Box<dyn TaskTrait>, crate::error::service::ServiceError>;
 
 #[macro_export]
 macro_rules! register_tasks {
@@ -203,10 +211,20 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
         KnownTaskName::CleanPermission => topics::CleanPermission => |parsed| Box::new(MqttTask::CleanPermission(parsed)),
         KnownTaskName::OrderAllConfirmed => topics::OrderAllConfirmed => |parsed| Box::new(MqttTask::OrderAllConfirmed(parsed)),
 
+        KnownTaskName::AwmOrderTrans => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmOrderTransRes => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdAddrExpand => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdFeeRes => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdActive => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdUidUnbind => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AddressUse => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::AwmCmdDevChange => ApiMqttStruct => |parsed| Box::new(MqttTask::ApiMqttStruct(parsed)),
+        KnownTaskName::ApiWalletAcctChange => topics::api_wallet::acct_change::ApiWalletAcctChange => |parsed| Box::new(MqttTask::ApiWalletAcctChange(parsed)),
+
         KnownTaskName::QueryCoinPrice => TokenQueryPriceReq => |parsed| Box::new(CommonTask::QueryCoinPrice(parsed)),
-        KnownTaskName::QueryQueueResult => QueueTaskEntity =>|parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
-        KnownTaskName::RecoverMultisigAccountData => RecoverDataBody =>|parsed| Box::new(CommonTask::RecoverMultisigAccountData(parsed)),
-        KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> =>|parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed))
+        KnownTaskName::QueryQueueResult => QueueTaskEntity => |parsed| Box::new(CommonTask::QueryQueueResult(parsed)),
+        KnownTaskName::RecoverMultisigAccountData => RecoverDataBody => |parsed| Box::new(CommonTask::RecoverMultisigAccountData(parsed)),
+        KnownTaskName::SyncNodesAndLinkToChains => Vec<NodeEntity> => |parsed| Box::new(CommonTask::SyncNodesAndLinkToChains(parsed)),
     );
 
     // Initialization：不需要解析 request_body 的任务
@@ -223,7 +241,7 @@ static TASK_REGISTRY: once_cell::sync::Lazy<
 });
 
 impl TryFrom<&TaskQueueEntity> for Box<dyn TaskTrait> {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &TaskQueueEntity) -> Result<Self, Self::Error> {
         match &value.task_name {
@@ -231,10 +249,17 @@ impl TryFrom<&TaskQueueEntity> for Box<dyn TaskTrait> {
                 if let Some(builder) = TASK_REGISTRY.get(name) {
                     builder(&value.request_body)
                 } else {
-                    Err(crate::SystemError::Service(format!("Unknown task: {:?}", name)).into())
+                    Err(crate::error::service::ServiceError::System(
+                        crate::error::system::SystemError::Service(format!(
+                            "Unknown task: {:?}",
+                            name
+                        )),
+                    ))
                 }
             }
-            _ => Err(crate::SystemError::Service("Unsupported TaskName type".to_string()).into()),
+            _ => Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::Service("Unsupported TaskName type".to_string()),
+            )),
         }
     }
 }

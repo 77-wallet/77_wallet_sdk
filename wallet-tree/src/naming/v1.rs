@@ -36,26 +36,22 @@ pub struct LegacyNaming;
 impl NamingStrategy for LegacyNaming {
     fn encode(meta: Box<dyn FileMeta>) -> Result<String, crate::Error> {
         match meta.file_type() {
-            FileType::Phrase => Ok(format!(
-                "{}-phrase",
-                meta.address().ok_or(crate::Error::MissingAddress)?
-            )),
-            FileType::PrivateKey => Ok(format!(
-                "{}-pk",
-                meta.address().ok_or(crate::Error::MissingAddress)?
-            )),
-            FileType::Seed => Ok(format!(
-                "{}-seed",
-                meta.address().ok_or(crate::Error::MissingAddress)?
-            )),
+            FileType::Phrase => {
+                Ok(format!("{}-phrase", meta.address().ok_or(crate::Error::MissingAddress)?))
+            }
+            FileType::PrivateKey => {
+                Ok(format!("{}-pk", meta.address().ok_or(crate::Error::MissingAddress)?))
+            }
+            FileType::Seed => {
+                Ok(format!("{}-seed", meta.address().ok_or(crate::Error::MissingAddress)?))
+            }
             FileType::DerivedData => {
                 let chain = meta.chain_code();
                 let chain = chain.as_ref().ok_or(crate::Error::MissingChainCode)?;
                 let derivation_path = meta.derivation_path();
 
-                let derivation_path = derivation_path
-                    .as_ref()
-                    .ok_or(crate::Error::MissingDerivation)?;
+                let derivation_path =
+                    derivation_path.as_ref().ok_or(crate::Error::MissingDerivation)?;
                 let encoded_path =
                     wallet_utils::parse_func::derivation_path_percent_encode(derivation_path);
                 Ok(format!(
@@ -198,28 +194,28 @@ mod tests {
             (
                 "bnb-0x79276834D1c11039df3eFdE8204aA27CB661a0ff-m%2F44%27%2F60%27%2F0%27%2F0%2F0-pk",
                 "bnb",
-                "m/44'/60'/0'/0/0"
+                "m/44'/60'/0'/0/0",
             ),
             (
                 "btc-1Fykerj4TT5CuoXCUw6UxhS9ZrZync61Lf-m%2F44%27%2F0%27%2F0%27%2F0%2F0-pk",
                 "btc",
-                "m/44'/0'/0'/0/0"
+                "m/44'/0'/0'/0/0",
             ),
             (
                 "btc-bc1gr0wh89tnckm5g677aepcw37504qu5etf96gm20-m%2F84%27%2F0%27%2F0%27%2F0%2F0-pk",
                 "btc",
-                "m/84'/0'/0'/0/0"
+                "m/84'/0'/0'/0/0",
             ),
             (
                 "sol-33wDijijcuZwaBEGmgfMoFeyFbXphoCYmdNhHPwYJZ8e-m%2F44%27%2F501%27%2F0%27%2F0-pk",
                 "sol",
-                "m/44'/501'/0'/0"
+                "m/44'/501'/0'/0",
             ),
             (
                 "tron-TAqUJ9enU8KkZYySA51iQim7TxbbdLR2wn-m%2F44%27%2F195%27%2F0%27%2F0%2F0-pk",
                 "tron",
-                "m/44'/195'/0'/0/0"
-            )
+                "m/44'/195'/0'/0/0",
+            ),
         ];
 
         #[test]
@@ -238,10 +234,7 @@ mod tests {
             let filename = "btc-特殊地址-m%2Ftest%2Fpath%2Fwith%2Fchinese-%E4%B8%AD%E6%96%87-pk";
             let meta = LegacyNaming::decode("", filename).unwrap();
 
-            assert_eq!(
-                meta.derivation_path(),
-                Some("m/test/path/with/chinese-中文".to_string())
-            );
+            assert_eq!(meta.derivation_path(), Some("m/test/path/with/chinese-中文".to_string()));
         }
     }
 }
@@ -274,14 +267,10 @@ mod validate_tests {
     #[test]
     fn validate_edge_cases() {
         // 正确包含多个连字符的路径
-        assert!(LegacyNaming::validate(
-            "btc-addr-m%2Fpath%2Fwith-multiple-hyphens-pk"
-        ));
+        assert!(LegacyNaming::validate("btc-addr-m%2Fpath%2Fwith-multiple-hyphens-pk"));
 
         // 无效的编码格式
-        assert!(!LegacyNaming::validate(
-            "eth-addr-m/path/without/encoding-pk"
-        ));
+        assert!(!LegacyNaming::validate("eth-addr-m/path/without/encoding-pk"));
 
         // 错误的后缀
         assert!(!LegacyNaming::validate("eth-addr-m%2Fpath-wrongsuffix"));

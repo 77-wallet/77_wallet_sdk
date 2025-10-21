@@ -1,4 +1,4 @@
-use super::{tron_tx, TIME_OUT};
+use super::{TIME_OUT, tron_tx};
 use crate::{
     dispatch,
     domain::{
@@ -11,13 +11,12 @@ use crate::{
 };
 use std::collections::HashMap;
 use wallet_chain_interact::{
-    self as chain,
+    self as chain, BillResourceConsume,
     btc::{self, MultisigSignParams},
     eth::{self, operations},
     sol::{self, operations::SolInstructionOperation},
     tron::{self, operations::TronTxOperation},
     types::{self, ChainPrivateKey},
-    BillResourceConsume,
 };
 use wallet_database::entities::{
     assets::AssetsEntity, bill::BillKind, coin::CoinEntity,
@@ -57,7 +56,7 @@ impl MultisigAdapter {
         chain_code: ChainType,
         chian_node: wallet_database::entities::chain::ChainWithNode,
         header_opt: Option<HashMap<String, String>>,
-    ) -> Result<MultisigAdapter, crate::ServiceError> {
+    ) -> Result<MultisigAdapter, crate::error::service::ServiceError> {
         let network = wallet_types::chain::network::NetworkKind::Mainnet;
 
         let timeout = Some(std::time::Duration::from_secs(TIME_OUT));
@@ -94,8 +93,10 @@ impl MultisigAdapter {
 
                 Ok(MultisigAdapter::Tron(tron_chain))
             }
-            _ => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotSupportChain(chain_code.to_string()),
+            _ => Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    chain_code.to_string(),
+                ),
             ))?,
         }
     }
@@ -113,7 +114,7 @@ impl MultisigAdapter {
         &self,
         account: &MultisigAccountEntity,
         member: &MultisigMemberEntities,
-    ) -> Result<types::FetchMultisigAddressResp, crate::ServiceError> {
+    ) -> Result<types::FetchMultisigAddressResp, crate::error::service::ServiceError> {
         match self {
             Self::Ethereum(chain) => {
                 let params = operations::MultisigAccountOpt::new(
@@ -141,8 +142,10 @@ impl MultisigAdapter {
                 multisig_address: account.address.to_string(),
                 salt: "".to_string(),
             }),
-            _ => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            _ => Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -155,7 +158,7 @@ impl MultisigAdapter {
         member: &MultisigMemberEntities,
         fee_setting: Option<String>,
         key: ChainPrivateKey,
-    ) -> Result<(String, String), crate::ServiceError> {
+    ) -> Result<(String, String), crate::error::service::ServiceError> {
         match self {
             Self::Ethereum(chain) => {
                 let params = operations::MultisigAccountOpt::new(
@@ -172,12 +175,12 @@ impl MultisigAdapter {
                 // check transaction_fee
                 let balance = chain.balance(&account.initiator_addr, None).await?;
                 if balance < fee_setting.transaction_fee() {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientFeeBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientFeeBalance,
                     ))?;
                 }
 
-                let tx_hash = chain.exec_transaction(params, fee_setting, key).await?;
+                let tx_hash = chain.exec_transaction(params, fee_setting, key, None).await?;
                 Ok((tx_hash, "".to_string()))
             }
             Self::BitCoin(_chain) => Ok(("".to_string(), "".to_string())),
@@ -200,9 +203,7 @@ impl MultisigAdapter {
                     fee.original_fee(),
                 )?;
 
-                let tx_hash = chain
-                    .exec_transaction(params, key, None, instructions, 0)
-                    .await?;
+                let tx_hash = chain.exec_transaction(params, key, None, instructions, 0).await?;
 
                 Ok((tx_hash, "".to_string()))
             }
@@ -226,8 +227,8 @@ impl MultisigAdapter {
                 let fee = consumer.transaction_fee_i64();
                 let account = provider.account_info(&account.initiator_addr).await?;
                 if account.balance < fee {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
 
@@ -237,8 +238,10 @@ impl MultisigAdapter {
                 Ok((tx_hash, consumer.to_json_str()?))
                 // Ok(chain.exec_transaction_v1(tx, key).await?)
             }
-            _ => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            _ => Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -248,11 +251,11 @@ impl MultisigAdapter {
         account: &MultisigAccountEntity,
         member: MultisigMemberEntities,
         main_symbol: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let currency_lock = crate::app_state::APP_STATE.read().await;
         let currency = currency_lock.currency();
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
             currency,
@@ -278,7 +281,7 @@ impl MultisigAdapter {
                 let gas_oracle = domain::chain::transaction::ChainTransDomain::gas_oracle(
                     &account.chain_code,
                     &chain.provider,
-                    backend,
+                    backend.as_ref(),
                 )
                 .await?;
 
@@ -301,22 +304,17 @@ impl MultisigAdapter {
 
                 let instructions = params.instructions().await?;
                 // check transaction_fee
-                let fee = chain
-                    .estimate_fee_v1(&instructions, &params)
-                    .await?
-                    .transaction_fee();
+                let fee = chain.estimate_fee_v1(&instructions, &params).await?.transaction_fee();
 
                 CommonFeeDetails::new(fee, token_currency, currency)?.to_json_str()
             }
             Self::Tron(chain) => {
                 // check account is init an chain
-                let account_info = chain
-                    .get_provider()
-                    .account_info(&account.initiator_addr)
-                    .await?;
+                let account_info =
+                    chain.get_provider().account_info(&account.initiator_addr).await?;
                 if account_info.address.is_empty() {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::AddressNotInit,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::AddressNotInit,
                     ))?;
                 }
 
@@ -341,8 +339,10 @@ impl MultisigAdapter {
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)
             }
-            _ => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            _ => Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -354,8 +354,9 @@ impl MultisigAdapter {
         decimal: u8,
         token: Option<String>,
         main_symbol: &str,
-    ) -> Result<String, crate::ServiceError> {
-        let currency = crate::app_state::APP_STATE.read().await;
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let currency: tokio::sync::RwLockReadGuard<'_, crate::app_state::AppState> =
+            crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
         let token_currency = domain::coin::TokenCurrencyGetter::get_currency(
@@ -389,9 +390,8 @@ impl MultisigAdapter {
 
                 // create transaction fee
                 let base_fee = solana_chain.estimate_fee_v1(&instructions, &params).await?;
-                let mut fee_setting = params
-                    .create_transaction_fee(&args.transaction_message, base_fee)
-                    .await?;
+                let mut fee_setting =
+                    params.create_transaction_fee(&args.transaction_message, base_fee).await?;
 
                 ChainTransDomain::sol_priority_fee(&mut fee_setting, token.as_ref(), DEFAULT_UNITS);
 
@@ -435,7 +435,7 @@ impl MultisigAdapter {
         account: &MultisigAccountEntity,
         assets: &AssetsEntity,
         key: ChainPrivateKey,
-    ) -> Result<types::MultisigTxResp, crate::ServiceError> {
+    ) -> Result<types::MultisigTxResp, crate::error::service::ServiceError> {
         let decimal = assets.decimals;
         let token = assets.token_address();
 
@@ -485,8 +485,8 @@ impl MultisigAdapter {
                 // check multisig account balance
                 let multisig_balance = chain.balance(&req.from, token.clone()).await?;
                 if multisig_balance < value {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
                 let base = sol::operations::transfer::TransferOpt::new(
@@ -511,9 +511,8 @@ impl MultisigAdapter {
 
                 // create transaction fee
                 let base_fee = chain.estimate_fee_v1(&instructions, &params).await?;
-                let fee = params
-                    .create_transaction_fee(&args.transaction_message, base_fee)
-                    .await?;
+                let fee =
+                    params.create_transaction_fee(&args.transaction_message, base_fee).await?;
                 // check balance
                 let balance = chain.balance(&account.initiator_addr, None).await?;
                 domain::chain::transaction::ChainTransDomain::check_sol_transaction_fee(
@@ -523,25 +522,25 @@ impl MultisigAdapter {
 
                 // execute build transfer transaction
                 let pda = params.multisig_pda;
-                let tx_hash = chain
-                    .exec_transaction(params, key, None, instructions, 0)
-                    .await?;
+                let tx_hash = chain.exec_transaction(params, key, None, instructions, 0).await?;
 
                 Ok(args.get_raw_data(pda, tx_hash)?)
             }
             Self::Tron(chain) => {
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
 
                 tron_tx::build_build_tx(req, token, value, chain, account.threshold as i64, None)
                     .await
             }
-            _ => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            _ => Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -552,7 +551,7 @@ impl MultisigAdapter {
         req: &TransferParams,
         p: &PermissionEntity,
         coin: &CoinEntity,
-    ) -> Result<types::MultisigTxResp, crate::ServiceError> {
+    ) -> Result<types::MultisigTxResp, crate::error::service::ServiceError> {
         let decimal = coin.decimals;
         let token = coin.token_address();
 
@@ -562,16 +561,16 @@ impl MultisigAdapter {
             Self::Tron(chain) => {
                 let balance = chain.balance(&req.from, token.clone()).await?;
                 if balance < value {
-                    return Err(crate::BusinessError::Chain(
-                        crate::ChainError::InsufficientBalance,
+                    return Err(crate::error::business::BusinessError::Chain(
+                        crate::error::business::chain::ChainError::InsufficientBalance,
                     ))?;
                 }
 
                 let permission_id = Some(p.active_id);
                 tron_tx::build_build_tx(req, token, value, chain, p.threshold, permission_id).await
             }
-            _ => Err(crate::BusinessError::Permission(
-                crate::PermissionError::UnSupportPermissionChain,
+            _ => Err(crate::error::business::BusinessError::Permission(
+                crate::error::business::permission::PermissionError::UnSupportPermissionChain,
             ))?,
         }
     }
@@ -582,7 +581,7 @@ impl MultisigAdapter {
         address: &str,
         raw_data: &str,
         main_symbol: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         match self {
             MultisigAdapter::Solana(solana_chain) => {
                 let currency = crate::app_state::APP_STATE.read().await;
@@ -617,7 +616,7 @@ impl MultisigAdapter {
         address: &str,
         key: ChainPrivateKey,
         raw_data: &str,
-    ) -> Result<types::MultisigSignResp, crate::ServiceError> {
+    ) -> Result<types::MultisigSignResp, crate::error::service::ServiceError> {
         match self {
             Self::Ethereum(_chain) => {
                 use std::str::FromStr as _;
@@ -655,8 +654,10 @@ impl MultisigAdapter {
                     tron::operations::multisig::TransactionOpt::sign_transaction(raw_data, key)?;
                 Ok(res)
             }
-            _ => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            _ => Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }
@@ -668,7 +669,7 @@ impl MultisigAdapter {
         backend: &wallet_transport_backend::api::BackendApi,
         sign_list: Vec<String>,
         main_symbol: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
 
@@ -682,7 +683,7 @@ impl MultisigAdapter {
 
         match self {
             Self::Ethereum(chain) => {
-                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 let value = unit::convert_to_u256(&queue.value, coin.decimals)?;
                 let multisig_account = domain::multisig::MultisigDomain::account_by_address(
                     &queue.from_addr,
@@ -717,7 +718,7 @@ impl MultisigAdapter {
                 Ok(wallet_utils::serde_func::serde_to_string(&fee)?)
             }
             Self::BitCoin(chain) => {
-                let pool = crate::manager::Context::get_global_sqlite_pool()?;
+                let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
                 let multisig_account =
                     domain::multisig::MultisigDomain::account_by_id(&queue.account_id, pool)
                         .await?;
@@ -768,9 +769,7 @@ impl MultisigAdapter {
                         memo,
                     )?;
 
-                    chain
-                        .contract_fee(&queue.from_addr, signature_num, params)
-                        .await?
+                    chain.contract_fee(&queue.from_addr, signature_num, params).await?
                 } else {
                     let params =
                         tron::operations::multisig::TransactionOpt::data_from_str(&queue.raw_data)?;
@@ -799,8 +798,10 @@ impl MultisigAdapter {
                 let res = TronFeeDetails::new(consumer, token_currency, currency)?;
                 Ok(wallet_utils::serde_func::serde_to_string(&res)?)
             }
-            _ => Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::NotSupportChain(self.to_string()),
+            _ => Err(crate::error::business::BusinessError::MultisigAccount(
+                crate::error::business::multisig_account::MultisigAccountError::NotSupportChain(
+                    self.to_string(),
+                ),
             ))?,
         }
     }

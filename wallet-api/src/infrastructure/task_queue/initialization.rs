@@ -3,13 +3,14 @@ use crate::{
         app::{config::ConfigDomain, mqtt::MqttDomain},
         multisig::MultisigQueueDomain,
     },
-    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
     service::{announcement::AnnouncementService, coin::CoinService},
 };
 use wallet_database::{
     entities::task_queue::{KnownTaskName, TaskName},
     factory::RepositoryFactory,
 };
+use wallet_ecdh::GLOBAL_KEY;
 
 #[async_trait::async_trait]
 impl TaskTrait for InitializationTask {
@@ -32,12 +33,12 @@ impl TaskTrait for InitializationTask {
     fn get_type(&self) -> TaskType {
         TaskType::Initialization
     }
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+    fn get_body(&self) -> Result<Option<String>, crate::error::service::ServiceError> {
         Ok(None)
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    async fn execute(&self, _id: &str) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             InitializationTask::PullAnnouncement => {
                 let repo = RepositoryFactory::repo(pool.clone());
@@ -67,9 +68,9 @@ impl TaskTrait for InitializationTask {
                 MultisigQueueDomain::recover_all_uid_queue_data().await?;
             }
             InitializationTask::InitMqtt => {
-                let mut repo = RepositoryFactory::repo(pool.clone());
                 tracing::debug!("init mqtt start");
-                MqttDomain::init(&mut repo).await?;
+                GLOBAL_KEY.is_exchange_shared_secret()?;
+                MqttDomain::init().await?;
                 tracing::debug!("init mqtt end");
             }
         }

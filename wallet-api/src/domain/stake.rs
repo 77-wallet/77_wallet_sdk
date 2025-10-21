@@ -1,15 +1,14 @@
 use wallet_chain_interact::{
     tron::{
+        TronChain,
         operations::{
-            stake::{self, DelegatedResource},
             TronSimulateOperation, TronTxOperation,
+            stake::{self, DelegatedResource},
         },
         params::ResourceConsumer,
-        TronChain,
     },
     types::MultisigTxResp,
 };
-use wallet_utils::serde_func::serde_from_value;
 
 use crate::response_vo::stake::VoteListResp;
 
@@ -41,7 +40,7 @@ impl StakeArgs {
         self,
         account: &str,
         chain: &TronChain,
-    ) -> Result<ResourceConsumer, crate::ServiceError> {
+    ) -> Result<ResourceConsumer, crate::error::service::ServiceError> {
         let signature_num = 1;
         let res = match self {
             Self::Freeze(params) => chain.simple_fee(account, signature_num, params).await?,
@@ -51,21 +50,16 @@ impl StakeArgs {
             }
             Self::Withdraw(params) => chain.simple_fee(account, signature_num, params).await?,
             Self::Delegate(params) => {
-                chain
-                    .simulate_simple_fee(account, "", signature_num, params)
-                    .await?
+                chain.simulate_simple_fee(account, "", signature_num, params).await?
             }
             Self::UnDelegate(params) => {
-                chain
-                    .simulate_simple_fee(account, "", signature_num, params)
-                    .await?
+                chain.simulate_simple_fee(account, "", signature_num, params).await?
             }
             Self::BatchDelegate(mut params) => {
                 let item = params.remove(0);
 
-                let mut consumer = chain
-                    .simulate_simple_fee(account, "", signature_num, item)
-                    .await?;
+                let mut consumer =
+                    chain.simulate_simple_fee(account, "", signature_num, item).await?;
 
                 for item in params {
                     let raw_data_hex = item.simulate_raw_transaction()?;
@@ -78,9 +72,8 @@ impl StakeArgs {
             Self::BatchUnDelegate(mut params) => {
                 let item = params.remove(0);
 
-                let mut consumer = chain
-                    .simulate_simple_fee(account, "", signature_num, item)
-                    .await?;
+                let mut consumer =
+                    chain.simulate_simple_fee(account, "", signature_num, item).await?;
 
                 for item in params {
                     let raw_data_hex = item.simulate_raw_transaction()?;
@@ -119,7 +112,7 @@ impl StakeArgs {
         self,
         chain: &TronChain,
         expiration: u64,
-    ) -> Result<MultisigTxResp, crate::ServiceError> {
+    ) -> Result<MultisigTxResp, crate::error::service::ServiceError> {
         let res = match self {
             Self::Freeze(params) => chain.build_multisig_transaction(params, expiration).await?,
             Self::UnFreeze(params) => chain.build_multisig_transaction(params, expiration).await?,
@@ -136,9 +129,9 @@ impl StakeArgs {
                 chain.build_multisig_transaction(params, expiration).await?
             }
             _ => {
-                return Err(crate::BusinessError::Stake(
-                    crate::StakeError::MultisigUnSupportBillKind,
-                ))?
+                return Err(crate::error::business::BusinessError::Stake(
+                    crate::error::business::stake::StakeError::MultisigUnSupportBillKind,
+                ))?;
             }
         };
         Ok(res)
@@ -168,20 +161,20 @@ impl StakeDomain {
         from: &str,
         to: &str,
         chain: &TronChain,
-    ) -> Result<DelegatedResource, crate::ServiceError> {
+    ) -> Result<DelegatedResource, crate::error::service::ServiceError> {
         let key = format!("{}_{}_delegate", from, to);
 
         // 现从缓存中获取数据、没有在从链上获取
-        let cache = crate::Context::get_global_cache()?;
-        let res = cache.get_not_expriation(&key).await;
+        let cache = crate::context::CONTEXT.get().unwrap().get_global_cache();
+        let res: Option<DelegatedResource> = cache.get(&key).await;
         match res {
             Some(res) => {
-                let res = serde_from_value::<DelegatedResource>(res.data)?;
+                // let res = serde_from_value::<DelegatedResource>(res.data)?;
                 Ok(res)
             }
             None => {
                 let res = chain.provider.delegated_resource(from, to).await?;
-                cache.set_ex(&key, &res, 30).await?;
+                cache.set_with_expiration(&key, &res, 30).await?;
                 Ok(res)
             }
         }
@@ -214,23 +207,18 @@ impl StakeDomain {
         }
 
         // 使用迭代器计算加权总和和总投票数
-        let (weighted_sum, total_votes): (f64, f64) =
-            representatives.iter().fold((0.0, 0.0), |acc, rep| {
-                (acc.0 + rep.votes * rep.apr, acc.1 + rep.votes)
-            });
+        let (weighted_sum, total_votes): (f64, f64) = representatives
+            .iter()
+            .fold((0.0, 0.0), |acc, rep| (acc.0 + rep.votes * rep.apr, acc.1 + rep.votes));
 
         // 防止除以 0 的情况
-        if total_votes == 0.0 {
-            0.0
-        } else {
-            weighted_sum / total_votes
-        }
+        if total_votes == 0.0 { 0.0 } else { weighted_sum / total_votes }
     }
 
     // 从后端获取代表列表
-    pub(crate) async fn vote_list_from_backend() -> Result<VoteListResp, crate::error::ServiceError>
-    {
-        let backend = crate::Context::get_global_backend_api()?;
+    pub(crate) async fn vote_list_from_backend()
+    -> Result<VoteListResp, crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut list = backend.vote_list().await?;
         // let witness_list = list.node_resp_list;
         list.node_resp_list.iter_mut().for_each(|item| {
@@ -246,11 +234,7 @@ impl StakeDomain {
         let res = VoteListResp {
             total: list.total_node,
             total_votes: list.total_vote_count,
-            data: list
-                .node_resp_list
-                .into_iter()
-                .map(|node| node.into())
-                .collect(),
+            data: list.node_resp_list.into_iter().map(|node| node.into()).collect(),
         };
 
         Ok(res)
@@ -260,7 +244,7 @@ impl StakeDomain {
     #[allow(unused)]
     pub(crate) async fn vote_list(
         chain: &wallet_chain_interact::tron::Provider,
-    ) -> Result<VoteListResp, crate::error::ServiceError> {
+    ) -> Result<VoteListResp, crate::error::service::ServiceError> {
         let mut witness_list = chain.list_witnesses().await?.witnesses;
         witness_list.sort_by(|a, b| {
             let a_vote_count = a.vote_count;
@@ -301,11 +285,7 @@ impl StakeDomain {
                 apr,
             ));
         }
-        let res = VoteListResp {
-            total,
-            total_votes: total_sr_votes,
-            data,
-        };
+        let res = VoteListResp { total, total_votes: total_sr_votes, data };
         Ok(res)
     }
 }
@@ -350,7 +330,7 @@ mod cal_tests {
 
         let _voter_votes = 10_000_000.0; // Voter's votes
         let voter_share = 1.0; // Voter share (80%)
-                               // let voter_share = 0.90; // Voter share (80%)
+        // let voter_share = 0.90; // Voter share (80%)
 
         // Calculate voter reward
         let voter_reward =
@@ -377,16 +357,13 @@ pub struct EstimateTxConsumer {
 }
 impl EstimateTxConsumer {
     // 获取交易需要消耗的资源，TODO: 根据不同的网络来获取对应的代币地址
-    pub async fn new(_chain: &TronChain) -> Result<Self, crate::ServiceError> {
+    pub async fn new(_chain: &TronChain) -> Result<Self, crate::error::service::ServiceError> {
         // let contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
         // let from = "TFrszR3Bz1HUaEjL9ES1m424e5NJDsFsfT";
         // let to = "TTofbJMU2iMRhA39AJh51sYvhguWUnzeB1";
         // let value = unit::convert_to_u256("1", 6)?;
 
-        Ok(Self {
-            bandwidth: 268,
-            energy: 64285,
-        })
+        Ok(Self { bandwidth: 268, energy: 64285 })
 
         // let params =
         //     operations::transfer::ContractTransferOpt::new(&contract, from, to, value, None)?;

@@ -1,6 +1,6 @@
 use crate::{
     domain::app::config::ConfigDomain,
-    messaging::notify::{event::NotifyEvent, other::ChainChangeFrontend, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent, other::ChainChangeFrontend},
 };
 use wallet_transport_backend::response_vo::chain::ChainUrlInfo;
 
@@ -11,16 +11,13 @@ pub struct ChainChange(Vec<ChainUrlInfo>);
 
 // biz_type = CHAIN_CHANGE
 impl ChainChange {
-    pub(crate) async fn exec(&self) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(&self) -> Result<(), crate::error::service::ServiceError> {
         let ChainChange(body) = &self;
         ConfigDomain::set_block_browser_url(body).await?;
 
         let has_new_chain =
             crate::domain::chain::ChainDomain::upsert_multi_chain_than_toggle(body.into()).await?;
-        let data = ChainChangeFrontend {
-            has_new_chain,
-            chains: self.0.to_vec(),
-        };
+        let data = ChainChangeFrontend { has_new_chain, chains: self.0.to_vec() };
         let data = NotifyEvent::ChainChange(data);
         FrontendNotifyEvent::new(data).send().await?;
 
@@ -90,10 +87,7 @@ mod test {
         let balance = wallet_types::Decimal::from_str("1996.733").unwrap();
         let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), 6).unwrap();
         println!("balance: {balance}");
-        println!(
-            "balance: {}",
-            wallet_utils::unit::format_to_string(balance, 6).unwrap()
-        );
+        println!("balance: {}", wallet_utils::unit::format_to_string(balance, 6).unwrap());
         // let balance = wallet_utils::unit::u256_from_str(&balance.to_string()).unwrap();
     }
 }

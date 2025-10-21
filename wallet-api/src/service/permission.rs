@@ -7,36 +7,35 @@ use crate::{
         multisig::{MultisigDomain, MultisigQueueDomain},
     },
     messaging::notify::{
+        FrontendNotifyEvent,
         event::NotifyEvent,
         other::{Process, TransactionProcessFrontend},
-        FrontendNotifyEvent,
     },
     request::permission::PermissionReq,
     response_vo::{
+        EstimateFeeResp, TronFeeDetails,
         permission::{
             AccountPermission, Keys, ManagerPermissionResp, PermissionList, PermissionResp,
         },
-        EstimateFeeResp, TronFeeDetails,
     },
 };
 use alloy::primitives::map::HashSet;
 use wallet_chain_interact::{
-    tron::{
-        consts,
-        operations::{multisig::Permission, permissions::PermissionUpdateArgs, TronTxOperation},
-        TronChain,
-    },
     BillResourceConsume,
+    tron::{
+        TronChain, consts,
+        operations::{TronTxOperation, multisig::Permission, permissions::PermissionUpdateArgs},
+    },
 };
 use wallet_database::{
+    DbPool,
     entities::{
         bill::{BillKind, NewBillEntity},
         multisig_queue::NewMultisigQueueEntity,
     },
     repositories::{address_book::AddressBookRepo, permission::PermissionRepo},
-    DbPool,
 };
-use wallet_transport_backend::api::permission::PermissionAcceptReq;
+use wallet_transport_backend::api::wallet::permission::PermissionAcceptReq;
 use wallet_types::constant::chain_code;
 
 pub struct PermissionService {
@@ -44,7 +43,7 @@ pub struct PermissionService {
 }
 
 impl PermissionService {
-    pub async fn new() -> Result<Self, crate::ServiceError> {
+    pub async fn new() -> Result<Self, crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
         Ok(Self { chain })
     }
@@ -54,7 +53,7 @@ impl PermissionService {
         &self,
         pool: &DbPool,
         keys: &mut [Keys],
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         for key in keys.iter_mut() {
             let book = AddressBookRepo::find_by_address_chain(pool, &key.address, chain_code::TRON)
                 .await?;
@@ -71,7 +70,7 @@ impl PermissionService {
         from: &str,
         args: impl TronTxOperation<T>,
         password: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let data = NotifyEvent::TransactionProcess(TransactionProcessFrontend::new(
             BillKind::UpdatePermission,
             Process::Building,
@@ -82,19 +81,18 @@ impl PermissionService {
         let resp = args.build_raw_transaction(&self.chain.provider).await?;
         // 验证余额
         let balance = self.chain.balance(from, None).await?;
-        let mut consumer = self
-            .chain
-            .get_provider()
-            .transfer_fee(from, None, &resp.raw_data_hex, 1)
-            .await?;
+        let mut consumer =
+            self.chain.get_provider().transfer_fee(from, None, &resp.raw_data_hex, 1).await?;
 
         // upgrade fee
         consumer.set_extra_fee(100 * consts::TRX_VALUE);
 
         if balance.to::<i64>() < consumer.transaction_fee_i64() {
-            return Err(crate::BusinessError::Chain(
-                crate::ChainError::InsufficientFeeBalance,
-            ))?;
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Chain(
+                    crate::error::business::chain::ChainError::InsufficientFeeBalance,
+                ),
+            ));
         }
 
         // 广播交易交易事件
@@ -130,7 +128,7 @@ impl PermissionService {
         &self,
         from: &str,
         args: impl TronTxOperation<T>,
-    ) -> Result<EstimateFeeResp, crate::ServiceError> {
+    ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
         let currency = crate::app_state::APP_STATE.read().await;
         let currency = currency.currency();
         let token_currency =
@@ -144,24 +142,22 @@ impl PermissionService {
         let res = TronFeeDetails::new(consumer, token_currency, currency)?;
         let content = wallet_utils::serde_func::serde_to_string(&res)?;
 
-        Ok(EstimateFeeResp::new(
-            "TRX".to_string(),
-            chain_code::TRON.to_string(),
-            content,
-        ))
+        Ok(EstimateFeeResp::new("TRX".to_string(), chain_code::TRON.to_string(), content))
     }
 
     // 上报后端
-    async fn upload_backend(&self, params: PermissionAcceptReq) -> Result<(), crate::ServiceError> {
-        let backend = crate::Context::get_global_backend_api()?;
-
+    async fn upload_backend(
+        &self,
+        params: PermissionAcceptReq,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend.permission_accept(params).await?)
     }
 }
 
 impl PermissionService {
     // all permission category
-    pub fn permission_list() -> Result<PermissionList, crate::ServiceError> {
+    pub fn permission_list() -> Result<PermissionList, crate::error::service::ServiceError> {
         Ok(PermissionList::default())
     }
 
@@ -169,7 +165,7 @@ impl PermissionService {
     pub async fn account_permission(
         &self,
         address: String,
-    ) -> Result<Option<AccountPermission>, crate::ServiceError> {
+    ) -> Result<Option<AccountPermission>, crate::error::service::ServiceError> {
         let account = self.chain.account_info(&address).await?;
         if account.address.is_empty() {
             return Ok(None);
@@ -186,10 +182,9 @@ impl PermissionService {
             actives,
         };
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        self.mark_address_book_name(&pool, &mut result.owner.keys)
-            .await?;
+        self.mark_address_book_name(&pool, &mut result.owner.keys).await?;
 
         for item in result.actives.iter_mut() {
             self.mark_address_book_name(&pool, &mut item.keys).await?;
@@ -202,8 +197,8 @@ impl PermissionService {
     pub async fn manager_permission(
         &self,
         grantor_addr: String,
-    ) -> Result<Vec<ManagerPermissionResp>, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<Vec<ManagerPermissionResp>, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let permissions = PermissionRepo::all_permission_with_user(&pool, &grantor_addr).await?;
 
@@ -216,11 +211,7 @@ impl PermissionService {
 
             self.mark_address_book_name(&pool, &mut p.keys).await?;
 
-            result.push(ManagerPermissionResp {
-                grantor_addr,
-                name,
-                permission: p,
-            });
+            result.push(ManagerPermissionResp { grantor_addr, name, permission: p });
         }
 
         Ok(result)
@@ -233,14 +224,14 @@ impl PermissionService {
         types: &str,
         req: &PermissionReq,
         backup_params: Option<&mut PermissionAcceptReq>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         req.check_threshold()?;
         match types {
             PermissionReq::NEW => {
                 if args.actives.len() > 7 {
-                    return Err(crate::BusinessError::Permission(
-                        crate::PermissionError::ActivesPermissionMore,
-                    ))?;
+                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
+                        crate::error::business::permission::PermissionError::ActivesPermissionMore,
+                    )));
                 };
 
                 let permission = Permission::try_from(req)?;
@@ -264,10 +255,8 @@ impl PermissionService {
                 let id = req.active_id.unwrap_or_default();
                 let new_permission = Permission::try_from(req)?;
 
-                if let Some(permission) = args
-                    .actives
-                    .iter_mut()
-                    .find(|p| p.id.unwrap_or_default() == id)
+                if let Some(permission) =
+                    args.actives.iter_mut().find(|p| p.id.unwrap_or_default() == id)
                 {
                     // 拼接上报后端的参数
                     if let Some(params) = backup_params {
@@ -283,18 +272,15 @@ impl PermissionService {
 
                         users.extend(req.users());
 
-                        params.sender_user = users
-                            .into_iter()
-                            .collect::<HashSet<String>>()
-                            .into_iter()
-                            .collect();
+                        params.sender_user =
+                            users.into_iter().collect::<HashSet<String>>().into_iter().collect();
                     }
 
                     *permission = new_permission;
                 } else {
-                    return Err(crate::BusinessError::Permission(
-                        crate::PermissionError::ActivesPermissionNotFound,
-                    ))?;
+                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
+                        crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+                    )));
                 }
 
                 Ok(())
@@ -302,11 +288,8 @@ impl PermissionService {
             PermissionReq::DELETE => {
                 let active_id = req.active_id.unwrap_or_default();
                 // check exists
-                let permission = args
-                    .actives
-                    .iter()
-                    .find(|a| a.id.unwrap_or_default() == active_id)
-                    .cloned();
+                let permission =
+                    args.actives.iter().find(|a| a.id.unwrap_or_default() == active_id).cloned();
 
                 if let Some(permission) = permission {
                     // 拼接上报后端的参数
@@ -320,25 +303,28 @@ impl PermissionService {
                     }
 
                     // 删除权限
-                    args.actives
-                        .retain(|item| item.id.unwrap_or_default() != active_id);
+                    args.actives.retain(|item| item.id.unwrap_or_default() != active_id);
 
                     if args.actives.is_empty() {
-                        return Err(crate::BusinessError::Permission(
-                            crate::PermissionError::MissActivesPermission,
-                        ))?;
+                        return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
+                            crate::error::business::permission::PermissionError::MissActivesPermission,
+                        )));
                     }
 
                     Ok(())
                 } else {
-                    Err(crate::BusinessError::Permission(
-                        crate::PermissionError::ActivesPermissionNotFound,
-                    ))?
+                    return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::Permission(
+                        crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
+                    )));
                 }
             }
-            _ => Err(crate::BusinessError::Permission(
-                crate::PermissionError::UnSupportOpType(types.to_string()),
-            ))?,
+            _ => Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::Permission(
+                    crate::error::business::permission::PermissionError::UnSupportOpType(
+                        types.to_string(),
+                    ),
+                ),
+            )),
         }
     }
 
@@ -346,7 +332,7 @@ impl PermissionService {
         &self,
         req: PermissionReq,
         types: String,
-    ) -> Result<EstimateFeeResp, crate::ServiceError> {
+    ) -> Result<EstimateFeeResp, crate::error::service::ServiceError> {
         // 构建公用的参数
         let account = self.chain.account_info(&req.grantor_addr).await?;
         let mut args = PermissionUpdateArgs::try_from(&account)?;
@@ -361,7 +347,7 @@ impl PermissionService {
         req: PermissionReq,
         types: String,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         // 构建公用的参数
         let account = self.chain.account_info(&req.grantor_addr).await?;
         let mut args = PermissionUpdateArgs::try_from(&account)?;
@@ -382,9 +368,7 @@ impl PermissionService {
             }
         }
 
-        let tx_hash = self
-            .update_permission(&req.grantor_addr, args, &password)
-            .await?;
+        let tx_hash = self.update_permission(&req.grantor_addr, args, &password).await?;
 
         backend_params.hash = tx_hash.clone();
         backend_params.grantor_addr = req.grantor_addr.clone();
@@ -402,8 +386,8 @@ impl PermissionService {
         types: String,
         expiration: i64,
         password: String,
-    ) -> Result<String, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<String, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let bill_kind = BillKind::UpdatePermission;
 
         let account = MultisigDomain::account_by_address(&req.grantor_addr, true, &pool).await?;
@@ -428,10 +412,7 @@ impl PermissionService {
 
         // 构建多签交易
         let expiration = MultisigQueueDomain::sub_expiration(expiration);
-        let resp = self
-            .chain
-            .build_multisig_transaction(args, expiration as u64)
-            .await?;
+        let resp = self.chain.build_multisig_transaction(args, expiration as u64).await?;
 
         let mut queue = NewMultisigQueueEntity::new(
             account.id.to_string(),

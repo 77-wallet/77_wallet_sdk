@@ -7,12 +7,11 @@ use wallet_database::{
         config::config_key::{KEYSTORE_KDF_ALGORITHM, WALLET_TREE_STRATEGY},
         device::DeviceEntity,
     },
-    factory::RepositoryFactory,
-    repositories::device::DeviceRepoTrait,
+    repositories::device::DeviceRepo,
 };
 
 use crate::{
-    infrastructure::task_queue::{BackendApiTask, BackendApiTaskData},
+    infrastructure::task_queue::backend::{BackendApiTask, BackendApiTaskData},
     service::device::APP_ID,
 };
 
@@ -26,9 +25,7 @@ impl<T> Default for AppDomain<T> {
 }
 impl<T> AppDomain<T> {
     pub fn new() -> Self {
-        Self {
-            phantom: std::marker::PhantomData,
-        }
+        Self { phantom: std::marker::PhantomData }
     }
 }
 
@@ -37,13 +34,10 @@ pub struct DeviceDomain;
 impl DeviceDomain {
     pub fn device_content(
         device: &wallet_database::entities::device::DeviceEntity,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let identifier = DeviceDomain::device_identifier(&device.sn, &device.device_type);
 
-        Ok(wallet_utils::ecb::Aes128EcbCryptor::new(APP_ID)
-            .unwrap()
-            .encrypt(&identifier)
-            .unwrap())
+        Ok(wallet_utils::ecb::Aes128EcbCryptor::new(APP_ID).unwrap().encrypt(&identifier).unwrap())
     }
 
     pub fn md5_sn(sn: &str) -> String {
@@ -67,7 +61,7 @@ impl DeviceDomain {
 
     pub fn client_id_by_device(
         device: &wallet_database::entities::device::DeviceEntity,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let identifier = DeviceDomain::device_identifier(&device.sn, &device.device_type);
 
         Ok(DeviceDomain::client_id_by_identifier(&identifier))
@@ -86,7 +80,7 @@ impl DeviceDomain {
         accounts: &[wallet_database::entities::account::AccountEntity],
         multisig_accounts: Vec<wallet_database::entities::multisig_account::MultisigAccountEntity>,
         sn: &str,
-    ) -> Result<BackendApiTaskData, crate::ServiceError> {
+    ) -> Result<BackendApiTaskData, crate::error::service::ServiceError> {
         let mut device_unbind_address_req =
             wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
         for account in accounts {
@@ -102,14 +96,37 @@ impl DeviceDomain {
         Ok(device_unbind_address_task)
     }
 
-    pub(crate) async fn check_wallet_password_is_null() -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
-        let mut repo = RepositoryFactory::repo(pool.clone());
+    pub(crate) async fn gen_device_unbind_all_api_address_task_data(
+        accounts: &[wallet_database::entities::api_account::ApiAccountEntity],
+        multisig_accounts: Vec<wallet_database::entities::multisig_account::MultisigAccountEntity>,
+        sn: &str,
+    ) -> Result<BackendApiTaskData, crate::error::service::ServiceError> {
+        let mut device_unbind_address_req =
+            wallet_transport_backend::request::DeviceBindAddressReq::new(sn);
+        for account in accounts {
+            device_unbind_address_req.push(&account.chain_code, &account.address);
+        }
+        for multisig_account in multisig_accounts {
+            device_unbind_address_req.push(&multisig_account.chain_code, &multisig_account.address);
+        }
+        let device_unbind_address_task = BackendApiTaskData::new(
+            wallet_transport_backend::consts::endpoint::DEVICE_UNBIND_ADDRESS,
+            &device_unbind_address_req,
+        )?;
+        Ok(device_unbind_address_task)
+    }
 
-        let (keystore_kdf_algorithm, wallet_tree_strategy) = if let Some(device) =
-            DeviceRepoTrait::get_device_info(&mut repo).await?
-            && device.password.is_some()
-        {
+    pub(crate) async fn check_wallet_password_is_null()
+    -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
+        };
+
+        let (keystore_kdf_algorithm, wallet_tree_strategy) = if device.password.is_some() {
             let keystore_kdf_algorithm = wallet_database::entities::config::KeystoreKdfAlgorithm {
                 keystore_kdf_algorithm: KdfAlgorithm::Scrypt,
             };
@@ -127,11 +144,8 @@ impl DeviceDomain {
             (keystore_kdf_algorithm, wallet_tree_strategy)
         };
 
-        ConfigDomain::set_config(
-            KEYSTORE_KDF_ALGORITHM,
-            &keystore_kdf_algorithm.to_json_str()?,
-        )
-        .await?;
+        ConfigDomain::set_config(KEYSTORE_KDF_ALGORITHM, &keystore_kdf_algorithm.to_json_str()?)
+            .await?;
         ConfigDomain::set_config(WALLET_TREE_STRATEGY, &wallet_tree_strategy.to_json_str()?)
             .await?;
         Ok(())
@@ -140,7 +154,7 @@ impl DeviceDomain {
     pub(crate) async fn language_init(
         device_info: &DeviceEntity,
         language: &str,
-    ) -> Result<BackendApiTask, crate::ServiceError> {
+    ) -> Result<BackendApiTask, crate::error::service::ServiceError> {
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device_info)?;
         let language_req = wallet_transport_backend::request::LanguageInitReq {
             client_id,

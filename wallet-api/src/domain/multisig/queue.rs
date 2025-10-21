@@ -13,6 +13,7 @@ use serde_json::json;
 use std::{collections::HashSet, time::Duration};
 use wallet_chain_interact::tron::operations::multisig::TransactionOpt;
 use wallet_database::{
+    DbPool,
     dao::{
         multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1,
         multisig_queue::MultisigQueueDaoV1,
@@ -29,10 +30,9 @@ use wallet_database::{
         wallet::WalletEntity,
     },
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
-    DbPool,
 };
 use wallet_transport_backend::{
-    api::permission::PermissionAcceptReq,
+    api::wallet::permission::PermissionAcceptReq,
     consts::endpoint,
     request::{PermissionData, SignedTranAcceptReq, SignedTranCreateReq},
 };
@@ -42,40 +42,40 @@ impl MultisigQueueDomain {
     pub fn validate_queue(
         queue: &MultisigQueueEntity,
         execute: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // check queue is expired
         let time = sqlx::types::chrono::Utc::now().timestamp();
         if queue.expiration < time {
-            return Err(crate::BusinessError::MultisigQueue(
-                crate::MultisigQueueError::Expired,
+            return Err(crate::error::business::BusinessError::MultisigQueue(
+                crate::error::business::multisig_queue::MultisigQueueError::Expired,
             ))?;
         }
 
         // check status
         if queue.status == MultisigQueueStatus::InConfirmation.to_i8() {
-            return Err(crate::BusinessError::MultisigQueue(
-                crate::MultisigQueueError::AlreadyExecuted,
+            return Err(crate::error::business::BusinessError::MultisigQueue(
+                crate::error::business::multisig_queue::MultisigQueueError::AlreadyExecuted,
             ))?;
         }
 
         if queue.status == MultisigQueueStatus::Fail.to_i8() {
-            return Err(crate::BusinessError::MultisigQueue(
-                crate::MultisigQueueError::FailedQueue,
+            return Err(crate::error::business::BusinessError::MultisigQueue(
+                crate::error::business::multisig_queue::MultisigQueueError::FailedQueue,
             ))?;
         }
 
         // execute multisig tx need check status
         if execute && queue.status != MultisigQueueStatus::PendingExecution.to_i8() {
-            return Err(crate::BusinessError::MultisigQueue(
-                crate::MultisigQueueError::NotPendingExecStatus,
+            return Err(crate::error::business::BusinessError::MultisigQueue(
+                crate::error::business::multisig_queue::MultisigQueueError::NotPendingExecStatus,
             ))?;
         }
 
         Ok(())
     }
 
-    pub async fn recover_all_uid_queue_data() -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    pub async fn recover_all_uid_queue_data() -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let uid_list = WalletEntity::uid_list(&*pool)
             .await?
             .into_iter()
@@ -91,7 +91,9 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
-    pub async fn recover_all_queue_data(uid: &str) -> Result<(), crate::ServiceError> {
+    pub async fn recover_all_queue_data(
+        uid: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let raw_time = Self::get_raw_time(&[uid.to_string()]).await?;
         Self::recover_queue_data_with_raw_time(uid, raw_time).await?;
         Ok(())
@@ -99,11 +101,13 @@ impl MultisigQueueDomain {
 
     pub(crate) async fn get_raw_time(
         uid_list: &[String],
-    ) -> Result<Option<String>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<Option<String>, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account_ids = MultisigMemberDaoV1::list_by_uids(uid_list, &*pool)
             .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?
+            .map_err(|e| {
+                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
+            })?
             .0
             .into_iter()
             .map(|member| member.account_id)
@@ -112,7 +116,9 @@ impl MultisigQueueDomain {
         let account_ids_vec: Vec<String> = account_ids.into_iter().collect();
         let queue = MultisigQueueDaoV1::list_by_account_ids(&account_ids_vec, &*pool)
             .await
-            .map_err(|e| crate::ServiceError::Database(wallet_database::Error::Database(e)))?;
+            .map_err(|e| {
+                crate::error::service::ServiceError::Database(wallet_database::Error::Database(e))
+            })?;
 
         let raw_time = queue.map(|q| {
             let now = q.created_at - Duration::from_secs(86400);
@@ -121,7 +127,7 @@ impl MultisigQueueDomain {
         Ok(raw_time)
     }
 
-    pub async fn recover_queue_data(uid: &str) -> Result<(), crate::ServiceError> {
+    pub async fn recover_queue_data(uid: &str) -> Result<(), crate::error::service::ServiceError> {
         let raw_time = Self::get_raw_time(&[uid.to_string()]).await?;
 
         Self::recover_queue_data_with_raw_time(uid, raw_time).await?;
@@ -132,9 +138,9 @@ impl MultisigQueueDomain {
     pub(crate) async fn recover_queue_data_with_raw_time(
         uid: &str,
         raw_time: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let req = wallet_transport_backend::request::FindAddressRawDataReq::new_trans(
             Some(uid.to_string()),
@@ -162,7 +168,10 @@ impl MultisigQueueDomain {
         Ok(())
     }
 
-    pub async fn insert(pool: DbPool, data: MultisigQueueData) -> Result<(), crate::ServiceError> {
+    pub async fn insert(
+        pool: DbPool,
+        data: MultisigQueueData,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let MultisigQueueData { queue, signatures } = data;
         let id = queue.id.clone();
 
@@ -196,7 +205,8 @@ impl MultisigQueueDomain {
             if !queue.permission_id.is_empty() {
                 tracing::warn!(
                     "recover permission queue faild, perrmision not found and delete queue queue_id = {},permision_id = {}",
-                    queue.id,queue.permission_id
+                    queue.id,
+                    queue.permission_id
                 );
                 MultisigQueueRepo::delete_queue(&pool, &queue.id).await?;
             }
@@ -210,12 +220,14 @@ impl MultisigQueueDomain {
     }
 
     // For transactions in the confirmation queue, periodically query the transaction results.
-    pub async fn sync_queue_status(queue_id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    pub async fn sync_queue_status(
+        queue_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let queue = MultisigQueueDaoV1::find_by_id(queue_id, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
         let Some(queue) = queue else {
             return Ok(());
@@ -237,7 +249,7 @@ impl MultisigQueueDomain {
 
             MultisigQueueDaoV1::update_status(queue_id, tx_status, pool.as_ref())
                 .await
-                .map_err(|e| crate::ServiceError::Database(e.into()))?;
+                .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
             Self::update_raw_data(queue_id, pool).await?;
         }
@@ -246,12 +258,13 @@ impl MultisigQueueDomain {
     }
 
     // Report the successful transaction queue back to the backend to update the raw data.
-    pub async fn update_raw_data(queue_id: &str, pool: DbPool) -> Result<(), crate::ServiceError> {
-        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
-            .await?
-            .to_string()?;
+    pub async fn update_raw_data(
+        queue_id: &str,
+        pool: DbPool,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
 
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         Ok(backend_api.update_raw_data(queue_id, raw_data).await?)
     }
 
@@ -261,7 +274,7 @@ impl MultisigQueueDomain {
         account: &MultisigAccountEntity,
         password: String,
         pool: DbPool,
-    ) -> Result<MultisigQueueEntity, crate::ServiceError> {
+    ) -> Result<MultisigQueueEntity, crate::error::service::ServiceError> {
         let mut members = MultisigQueueRepo::self_member_by_account(&account.id, &pool).await?;
         members.prioritize_by_address(&account.initiator_addr);
 
@@ -302,7 +315,7 @@ impl MultisigQueueDomain {
         account: &MultisigAccountEntity,
         adapter: &MultisigAdapter,
         pool: &DbPool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut members = MultisigQueueRepo::self_member_by_account(&account.id, pool).await?;
         members.prioritize_by_address(&account.initiator_addr);
 
@@ -314,9 +327,8 @@ impl MultisigQueueDomain {
                 ChainTransDomain::get_key(&member.address, &queue.chain_code, password, &None)
                     .await?;
 
-            let sign_res = adapter
-                .sign_multisig_tx(account, &member.address, key, &queue.raw_data)
-                .await?;
+            let sign_res =
+                adapter.sign_multisig_tx(account, &member.address, key, &queue.raw_data).await?;
 
             let sign = NewSignatureEntity::new_approve(
                 &queue.id,
@@ -336,7 +348,7 @@ impl MultisigQueueDomain {
         password: &str,
         p: &PermissionWithUserEntity,
         pool: &DbPool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // sign num
         let mut signatures = p
             .user
@@ -351,10 +363,7 @@ impl MultisigQueueDomain {
         for user in signatures.iter_mut() {
             let query_req = QueryReq::new_address_chain(&user.address, &queue.chain_code);
 
-            if AccountEntity::detail(pool.as_ref(), &query_req)
-                .await?
-                .is_some()
-            {
+            if AccountEntity::detail(pool.as_ref(), &query_req).await?.is_some() {
                 let key =
                     ChainTransDomain::get_key(&user.address, &queue.chain_code, password, &None)
                         .await?;
@@ -383,7 +392,7 @@ impl MultisigQueueDomain {
         pool: &DbPool,
         backend_params: Option<PermissionAcceptReq>,
         opt_data: Option<PermissionData>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let raw_data = MultisigQueueRepo::multisig_queue_data(&queue_id, pool.clone()).await?;
 
         let req = SignedTranCreateReq {
@@ -430,16 +439,12 @@ impl MultisigQueueDomain {
         pool: DbPool,
         signed: Vec<NewSignatureEntity>,
         status: MultisigSignatureStatus,
-    ) -> Result<(), crate::ServiceError> {
-        let tx_str = signed
-            .iter()
-            .map(|i| i.into())
-            .collect::<Vec<MultiSignTransAcceptCompleteMsgBody>>();
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let tx_str =
+            signed.iter().map(|i| i.into()).collect::<Vec<MultiSignTransAcceptCompleteMsgBody>>();
         let accept_address = signed.iter().map(|v| v.address.clone()).collect();
 
-        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool)
-            .await?
-            .to_string()?;
+        let raw_data = MultisigQueueRepo::multisig_queue_data(queue_id, pool).await?.to_string()?;
         let req = SignedTranAcceptReq {
             withdraw_id: queue_id.to_string(),
             tx_str: json!(tx_str),
@@ -460,17 +465,13 @@ impl MultisigQueueDomain {
 
     // 过期时间 小时转换为秒
     pub fn sub_expiration(expiration: i64) -> i64 {
-        if expiration == 24 {
-            expiration * 3600 - 61
-        } else {
-            expiration * 3600
-        }
+        if expiration == 24 { expiration * 3600 - 61 } else { expiration * 3600 }
     }
 
     pub async fn handle_queue_extra(
         queue: &MultisigQueueSimpleEntity,
         pool: &DbPool,
-    ) -> Result<Option<ExtraData>, crate::ServiceError> {
+    ) -> Result<Option<ExtraData>, crate::error::service::ServiceError> {
         if !queue.account_id.is_empty() {
             let account =
                 MultisigAccountDaoV1::find_by_id(&queue.account_id, pool.as_ref()).await?;

@@ -1,7 +1,7 @@
 use crate::{
     domain::{chain::adapter::ChainAdapterFactory, permission::PermissionDomain},
     messaging::notify::{
-        event::NotifyEvent, permission::PermissionChangeFrontend, FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, permission::PermissionChangeFrontend,
     },
     request::permission::PermissionReq,
 };
@@ -10,12 +10,12 @@ use wallet_chain_interact::tron::{
     protocol::account::TronAccount,
 };
 use wallet_database::{
+    DbPool,
     entities::{
         permission::{PermissionEntity, PermissionWithUserEntity},
         permission_user::PermissionUserEntity,
     },
     repositories::permission::PermissionRepo,
-    DbPool,
 };
 use wallet_types::constant::chain_code;
 
@@ -56,7 +56,7 @@ pub struct NewPermissionUser {
 
 // 权限转换为数据库对应的实体
 impl TryFrom<(&Permission, &str)> for NewPermissionUser {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: (&Permission, &str)) -> Result<Self, Self::Error> {
         let permission = value.0;
@@ -95,24 +95,20 @@ impl TryFrom<(&Permission, &str)> for NewPermissionUser {
             users.push(user);
         }
 
-        Ok(NewPermissionUser {
-            permission: p,
-            users,
-        })
+        Ok(NewPermissionUser { permission: p, users })
     }
 }
 
 impl PermissionAccept {
-    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub async fn exec(&self, _msg_id: &str) -> Result<(), crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account = chain.account_info(&self.grantor_addr).await?;
 
         // 判断当前的事件是否是删除(删除需要同步所有的权限数据)
         if self.current.types == PermissionReq::DELETE {
-            self.recover_all_old_permission(pool.clone(), &account)
-                .await?;
+            self.recover_all_old_permission(pool.clone(), &account).await?;
 
             PermissionDomain::queue_fail_and_upload(&pool, &self.grantor_addr).await?;
         } else {
@@ -132,7 +128,7 @@ impl PermissionAccept {
         &self,
         pool: DbPool,
         account: &TronAccount,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 查询原来的数据并发送一个通知
         let old_permission = PermissionRepo::find_by_grantor_and_active(
             &pool,
@@ -167,7 +163,7 @@ impl PermissionAccept {
         &self,
         pool: DbPool,
         permissions: NewPermissionUser,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 查询出原来的权限
         let old_permission = PermissionRepo::permission_with_user(
             &pool,
@@ -207,7 +203,7 @@ impl PermissionAccept {
         pool: &DbPool,
         permissions: &NewPermissionUser,
         old_permission: PermissionWithUserEntity,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 是否成员发生了变化
         if old_permission.user_has_changed(&permissions.users) {
             self.update_user_change(pool.clone(), permissions, &old_permission.permission.id)
@@ -225,7 +221,7 @@ impl PermissionAccept {
         pool: DbPool,
         permissions: &NewPermissionUser,
         id: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut users = permissions.users.clone();
         PermissionDomain::mark_user_is_self(&pool, &mut users).await?;
 
@@ -245,7 +241,7 @@ impl PermissionAccept {
     async fn frontend_event(
         permission: &PermissionEntity,
         types: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 1. system notify
         // let repo = RepositoryFactory::repo(pool.clone());
         // let system_notification_service = SystemNotificationService::new(repo);

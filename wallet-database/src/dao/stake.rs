@@ -39,7 +39,7 @@ pub async fn unfreeze_list(
     let time = wallet_utils::time::now().timestamp();
     let sql = format!(
         "select * FROM unfreeze where owner_address = '{}' and resource_type = '{}' and freeze_time > {} order by created_at desc ",
-        owner, resource_type,time
+        owner, resource_type, time
     );
 
     let pagination = Pagination::init(page, page_size);
@@ -109,9 +109,6 @@ where
     E: Executor<'a, Database = Sqlite>,
 {
     let sql = "select * from delegate where id = ?";
-    let res = sqlx::query_as::<_, DelegateEntity>(sql)
-        .bind(id)
-        .fetch_one(exec)
-        .await?;
+    let res = sqlx::query_as::<_, DelegateEntity>(sql).bind(id).fetch_one(exec).await?;
     Ok(res)
 }

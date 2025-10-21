@@ -89,24 +89,18 @@ pub struct ModernNaming;
 impl NamingStrategy for ModernNaming {
     fn encode(meta: Box<dyn FileMeta>) -> Result<String, Error> {
         match meta.file_type() {
-            FileType::Phrase => Ok(format!(
-                "{}-phrase",
-                meta.address().ok_or(crate::Error::MissingAddress)?
-            )),
-            FileType::PrivateKey => Ok(format!(
-                "{}-pk",
-                meta.address().ok_or(crate::Error::MissingAddress)?
-            )),
-            FileType::Seed => Ok(format!(
-                "{}-seed",
-                meta.address().ok_or(crate::Error::MissingAddress)?
-            )),
+            FileType::Phrase => {
+                Ok(format!("{}-phrase", meta.address().ok_or(crate::Error::MissingAddress)?))
+            }
+            FileType::PrivateKey => {
+                Ok(format!("{}-pk", meta.address().ok_or(crate::Error::MissingAddress)?))
+            }
+            FileType::Seed => {
+                Ok(format!("{}-seed", meta.address().ok_or(crate::Error::MissingAddress)?))
+            }
             FileType::DerivedData => {
                 let idx = meta.account_index();
-                Ok(format!(
-                    "key{}.keystore",
-                    idx.ok_or(crate::Error::MissingIndex)?
-                ))
+                Ok(format!("key{}.keystore", idx.ok_or(crate::Error::MissingIndex)?))
             }
             FileType::DerivedMeta => Ok("derived_meta.json".to_string()),
             FileType::Root => Ok("root.keystore".to_string()),

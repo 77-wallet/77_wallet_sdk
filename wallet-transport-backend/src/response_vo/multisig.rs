@@ -139,10 +139,8 @@ impl SignedUpdateSignedHashReq {
         authority_addr: &str,
         tx_str: String,
     ) -> Self {
-        let element = SignedElement {
-            salt: salt.to_string(),
-            authority_addr: authority_addr.to_string(),
-        };
+        let element =
+            SignedElement { salt: salt.to_string(), authority_addr: authority_addr.to_string() };
         Self {
             order_id: order_id.to_string(),
             hash: hash.to_string(),

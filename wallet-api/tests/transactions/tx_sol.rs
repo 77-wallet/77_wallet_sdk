@@ -6,15 +6,13 @@ use wallet_api::request::transaction;
 async fn test_balance() {
     let wallet_manager = get_manager().await;
 
-    let addr = "HVWfJZUBx4Vxn8TgQivP4p3j5gm5pXzBDPeq3JUqZSW";
+    let addr = "37qZgmfhQNvjTfycUeXte3sAucAY4iaqoTZfhFxZb7L1";
     let chain_code = "sol";
     let symbol = "SOL";
-    // let symbol = "STK";
+    // let token_address = Some("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string());
     let token_address = None;
 
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await;
 
     println!("balance: {:?}", balance);
 }
@@ -30,13 +28,7 @@ async fn test_fee() {
     let chain_code = "sol";
     let symbol = "USDT";
 
-    let params = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     let res = wallet_manager.transaction_fee(params).await;
     tracing::info!("fee: {:#?}", res);
 }
@@ -46,22 +38,16 @@ async fn test_fee() {
 async fn test_transfer() {
     let wallet_manager = get_manager().await;
 
-    let from = "8m5viFq38A9De3zHffojwPYeXoxxFje6myZufdg3Z3Lj";
-    let to = "5ZB3WTyoEUST9o3vd111y4F6ecpHmYHk9y3zYWW6EBhS";
-    let value = "0.0001";
+    let from = "CynRxb8RZTuX3cAdTAPoKLLysUnDS482E9z54ySLimQ";
+    let to = "GE93MHXVvnsbhxu7Ttpp7zTiipJeCX3QFXueSK2dCJe6";
+    let value = "0.005";
     let chain_code = "sol";
     let symbol = "SOL";
     // let symbol = "STK";
     let password = "123456";
     // let notes = "test";
 
-    let base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     let params = transaction::TransferReq {
         base,
         password: password.to_string(),

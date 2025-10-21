@@ -45,10 +45,7 @@ impl DeriveResource {
         let query_req_type = if let Some(syn::Lit::Str(lit_str)) = &query_req {
             lit_str.parse::<syn::Type>()?
         } else {
-            return Err(syn::Error::new_spanned(
-                query_req,
-                "query_req must be a valid type path",
-            ));
+            return Err(syn::Error::new_spanned(query_req, "query_req must be a valid type path"));
         };
 
         let fields = match input.data {
@@ -69,10 +66,7 @@ impl DeriveResource {
                                 .map(|d| d.to_string()),
                             None => None,
                         };
-                        Some(Field {
-                            ident: ident.clone(),
-                            detail,
-                        })
+                        Some(Field { ident: ident.clone(), detail })
                     })
                     .collect::<Vec<_>>(),
                 _ => panic!("Only named fields are supported"),
@@ -140,10 +134,9 @@ impl DeriveResource {
 
 fn parse_lit_string(lit: &syn::Lit) -> syn::Result<TokenStream> {
     match lit {
-        syn::Lit::Str(lit_str) => lit_str
-            .value()
-            .parse()
-            .map_err(|_| syn::Error::new_spanned(lit, "attribute not valid")),
+        syn::Lit::Str(lit_str) => {
+            lit_str.value().parse().map_err(|_| syn::Error::new_spanned(lit, "attribute not valid"))
+        }
         _ => Err(syn::Error::new_spanned(lit, "attribute must be a string")),
     }
 }

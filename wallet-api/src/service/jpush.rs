@@ -9,11 +9,11 @@ pub struct JPushService {}
 
 impl JPushService {
     // 前端发来的消息
-    pub async fn jpush(message: &str) -> Result<(), crate::ServiceError> {
+    pub async fn jpush(message: &str) -> Result<(), crate::error::service::ServiceError> {
         // Self::jpush_multi(vec![message.to_string()], "JG").await?;
         match serde_func::serde_from_str::<Message>(message) {
             Ok(data) => {
-                let backend_api = crate::manager::Context::get_global_backend_api()?;
+                let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
                 // 重新查询一次,前端给到的数据不全面
                 let data = backend_api
@@ -44,46 +44,50 @@ impl JPushService {
     pub async fn jpush_multi(
         messages: Vec<String>,
         // source: MsgConfirmSource,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let unconfirmed_msg_collector =
-            crate::manager::Context::get_global_unconfirmed_msg_collector()?;
-        for message in messages {
-            let payload = match serde_func::serde_from_str::<Message>(message.as_str()) {
-                Ok(data) => data,
-                Err(e) => {
-                    tracing::error!("[jpush_multi] serde_from_str error: {}", e);
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
+            for message in messages {
+                let payload = match serde_func::serde_from_str::<Message>(message.as_str()) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        tracing::error!("[jpush_multi] serde_from_str error: {}", e);
+                        if let Err(e) =
+                            FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
+                        {
+                            tracing::error!("send_error error: {}", e);
+                        }
+                        continue;
+                    }
+                };
+
+                let id = payload.msg_id.clone();
+                if let Some(task_entity) =
+                    TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?
+                    && task_entity.status == 2
+                {
+                    unconfirmed_msg_collector.submit(vec![id])?;
+                } else if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
                     if let Err(e) =
                         FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
                     {
                         tracing::error!("send_error error: {}", e);
                     }
-                    continue;
-                }
-            };
-
-            let id = payload.msg_id.clone();
-            if let Some(task_entity) =
-                TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?
-                && task_entity.status == 2
-            {
-                unconfirmed_msg_collector.submit(vec![id])?;
-            } else if let Err(e) = crate::messaging::mqtt::handle::exec_payload(payload).await {
-                if let Err(e) = FrontendNotifyEvent::send_error("jpush_multi", e.to_string()).await
-                {
-                    tracing::error!("send_error error: {}", e);
-                }
-                tracing::error!("[jpush_multi] exec_payload error: {}", e);
-            };
+                    tracing::error!("[jpush_multi] exec_payload error: {}", e);
+                };
+            }
+        } else {
+            tracing::error!("jpush must be called before they received");
         }
-
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::messaging::mqtt::{topics::OrderMultiSignAcceptCompleteMsg, Message};
+    use crate::messaging::mqtt::{Message, topics::OrderMultiSignAcceptCompleteMsg};
 
     #[test]
     fn test_() {

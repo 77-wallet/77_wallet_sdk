@@ -3,20 +3,6 @@ use crate::{
     pagination::Pagination,
 };
 
-// pub struct ChainRepo {
-//     // pub repo: ResourcesRepo,
-// }
-
-// impl ChainRepo {
-//     pub fn new(db_pool: crate::DbPool) -> Self {
-//         Self {
-//             // repo: ResourcesRepo::new(db_pool),
-//         }
-//     }
-// }
-
-// impl ChainRepoTrait for ChainRepo {}
-
 #[async_trait::async_trait]
 pub trait AnnouncementRepoTrait: super::TransactionTrait {
     async fn add(&mut self, input: Vec<CreateAnnouncementVo>) -> Result<(), crate::Error> {

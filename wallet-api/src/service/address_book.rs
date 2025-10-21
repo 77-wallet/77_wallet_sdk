@@ -17,14 +17,14 @@ impl AddressBookService {
         name: &str,
         address: &str,
         chain_code: &str,
-    ) -> Result<Option<AddressBookEntity>, crate::ServiceError> {
+    ) -> Result<Option<AddressBookEntity>, crate::error::service::ServiceError> {
         AddressBookDomain::check_address(address.to_string(), chain_code.to_string()).await?;
 
         let condition = vec![("address", address), ("chain_code", chain_code)];
         let res = self.repo.find_by_conditions(condition).await?;
         if res.is_some() {
-            return Err(crate::BusinessError::Account(
-                crate::AccountError::AddressRepeat,
+            return Err(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::AddressRepeat,
             ))?;
         }
 
@@ -37,20 +37,20 @@ impl AddressBookService {
         name: &str,
         address: &str,
         chain_code: &str,
-    ) -> Result<Option<AddressBookEntity>, crate::ServiceError> {
+    ) -> Result<Option<AddressBookEntity>, crate::error::service::ServiceError> {
         AddressBookDomain::check_address(address.to_string(), chain_code.to_string()).await?;
 
         let res = self.repo.check_not_self(id, address, chain_code).await?;
         if res.is_some() {
-            return Err(crate::BusinessError::Account(
-                crate::AccountError::AddressRepeat,
+            return Err(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::AddressRepeat,
             ))?;
         }
 
         Ok(self.repo.update(id, name, address, chain_code).await?)
     }
 
-    pub async fn delete(mut self, id: i32) -> Result<(), crate::ServiceError> {
+    pub async fn delete(mut self, id: i32) -> Result<(), crate::error::service::ServiceError> {
         Ok(self.repo.delete(id).await?)
     }
 
@@ -59,7 +59,7 @@ impl AddressBookService {
         chain_code: Option<&str>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<AddressBookEntity>, crate::ServiceError> {
+    ) -> Result<Pagination<AddressBookEntity>, crate::error::service::ServiceError> {
         Ok(self.repo.list(chain_code, page, page_size).await?)
     }
 
@@ -67,7 +67,7 @@ impl AddressBookService {
         self,
         address: String,
         chain_code: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let net = wallet_types::chain::network::NetworkKind::Mainnet;
 
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code.as_ref())?;
@@ -82,20 +82,17 @@ impl AddressBookService {
         mut self,
         address: String,
         chain_code: String,
-    ) -> Result<AddressBookResp, crate::ServiceError> {
+    ) -> Result<AddressBookResp, crate::error::service::ServiceError> {
         // find address book
         let address_book = self.repo.find_by_address(&address, &chain_code).await?;
 
         // check is first transfer
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let bill = BillDao::first_transfer(&address, &chain_code, pool.as_ref())
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
-        Ok(AddressBookResp {
-            address_book,
-            first_transfer: bill.is_none(),
-        })
+        Ok(AddressBookResp { address_book, first_transfer: bill.is_none() })
     }
 
     // 查询地址的动态状态 0 正常的状态 1冻结
@@ -103,7 +100,7 @@ impl AddressBookService {
         self,
         address: String,
         chain_code: String,
-    ) -> Result<i64, crate::ServiceError> {
+    ) -> Result<i64, crate::error::service::ServiceError> {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code.as_ref())?;
 
         // query address is black

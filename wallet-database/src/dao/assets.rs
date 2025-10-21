@@ -6,11 +6,7 @@ use sqlx::{Executor, Sqlite};
 
 impl AssetsEntity {
     pub fn token_address(&self) -> Option<String> {
-        if self.token_address.is_empty() {
-            None
-        } else {
-            Some(self.token_address.clone())
-        }
+        if self.token_address.is_empty() { None } else { Some(self.token_address.clone()) }
     }
 }
 
@@ -19,8 +15,9 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let sql = String::from("SELECT * FROM assets WHERE status = 1");
+        let mut sql = String::from("SELECT * FROM assets");
         let mut conditions = Vec::new();
+        conditions.push(" status = 1".to_string());
         conditions.push(
             " EXISTS (
                     SELECT 1
@@ -30,7 +27,10 @@ impl AssetsEntity {
                 )"
             .to_string(),
         );
-
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
         sqlx::query_as::<sqlx::Sqlite, AssetsEntity>(&sql)
             .fetch_all(exec)
             .await
@@ -108,10 +108,7 @@ impl AssetsEntity {
         }
 
         // 执行查询并返回结果
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub(crate) async fn get_assets_by_address<'a, E>(
@@ -199,10 +196,7 @@ impl AssetsEntity {
             query = query.bind(token_address);
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_chain_assets_by_address_chain_code_symbol<'a, E>(
@@ -256,10 +250,7 @@ impl AssetsEntity {
             query = query.bind(sym);
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     // 获取资产
@@ -323,10 +314,7 @@ impl AssetsEntity {
             query = query.bind(param);
         }
 
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn get_by_addr_token<'a, E>(
@@ -432,15 +420,8 @@ impl AssetsEntity {
     where
         E: Executor<'a, Database = Sqlite>,
     {
-        let CreateAssetsVo {
-            assets_id,
-            name,
-            decimals,
-            protocol,
-            status,
-            is_multisig,
-            balance,
-        } = assets;
+        let CreateAssetsVo { assets_id, name, decimals, protocol, status, is_multisig, balance } =
+            assets;
 
         let token_address = assets_id.token_address.unwrap_or_default();
         let protocol = protocol.unwrap_or_default();
@@ -604,11 +585,7 @@ impl AssetsEntity {
         if assets_ids.is_empty() {
             return Ok(());
         }
-        let placeholders = assets_ids
-            .iter()
-            .map(|_| "(?, ?, ?, ?)")
-            .collect::<Vec<_>>()
-            .join(", ");
+        let placeholders = assets_ids.iter().map(|_| "(?, ?, ?, ?)").collect::<Vec<_>>().join(", ");
 
         // 构建 SQL 查询
         let sql = format!(
@@ -632,11 +609,7 @@ impl AssetsEntity {
         }
 
         // 执行查询
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn update_tron_multisig_assets<'a, E>(
@@ -663,6 +636,31 @@ impl AssetsEntity {
             .await
             .map(|_| ())
             .map_err(|_e| crate::Error::Database(crate::DatabaseError::UpdateFailed))
+    }
+
+    pub async fn error_wsol_assets<'a, E>(exec: E) -> Result<Vec<AssetsEntity>, crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "select * from assets where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112'".to_string();
+
+        let query = sqlx::query_as::<_, AssetsEntity>(&sql);
+        let result = query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
+        Ok(result)
+    }
+
+    pub async fn delete_error_wsol_assets<'a, E>(exec: E) -> Result<(), crate::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        let sql = "delete from assets where symbol = 'wSOL' and chain_code = 'sol' and token_address = 'So11111111111111111111111111111111111111112'".to_string();
+
+        let _c = sqlx::query(&sql)
+            .execute(exec)
+            .await
+            .map(|_| ())
+            .map_err(|_e| crate::Error::Database(crate::DatabaseError::UpdateFailed));
+        Ok(())
     }
 }
 

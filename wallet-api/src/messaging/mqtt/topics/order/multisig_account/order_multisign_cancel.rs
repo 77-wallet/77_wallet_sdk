@@ -4,7 +4,7 @@ use wallet_database::{
 };
 
 use crate::messaging::notify::{
-    event::NotifyEvent, multisig::OrderMultisignCanceledFrontend, FrontendNotifyEvent,
+    FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultisignCanceledFrontend,
 };
 
 // 发起方取消多签账号消息，参与方同步自己多签账号的状态
@@ -23,28 +23,29 @@ impl OrderMultiSignCancel {
 }
 
 impl OrderMultiSignCancel {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(
             event_name = %event_name,
             ?self,
             "Starting to process OrderMultiSignCancel"
         );
-        let OrderMultiSignCancel {
-            ref multisig_account_id,
-        } = self;
+        let &OrderMultiSignCancel { ref multisig_account_id } = self;
 
         let multisig_account = MultisigAccountRepo::found_one_id(multisig_account_id, &pool)
             .await?
-            .ok_or(crate::ServiceError::Business(
-                crate::MultisigAccountError::NotFound.into(),
+            .ok_or(crate::error::service::ServiceError::Business(
+                crate::error::business::multisig_account::MultisigAccountError::NotFound.into(),
             ))?;
 
         // check
         MultisigAccountDaoV1::delete_in_status(multisig_account_id, &*pool)
             .await
-            .map_err(|e| crate::ServiceError::Database(e.into()))?;
+            .map_err(|e| crate::error::service::ServiceError::Database(e.into()))?;
 
         let data = NotifyEvent::OrderMultisignCanceled(OrderMultisignCanceledFrontend {
             multisig_account_id: multisig_account.id,

@@ -1,56 +1,67 @@
-use crate::domain;
-use crate::domain::assets::AssetsDomain;
-use crate::domain::chain::adapter::ChainAdapterFactory;
-use crate::domain::chain::transaction::ChainTransDomain;
-use crate::domain::coin::CoinDomain;
-use crate::domain::multisig::MultisigDomain;
-use crate::domain::task_queue::TaskQueueDomain;
-use crate::infrastructure::task_queue::{task::Tasks, BackendApiTask, BackendApiTaskData};
-use crate::messaging::mqtt::topics::OrderMultiSignAccept;
-use crate::request::transaction;
-use crate::response_vo;
-use crate::response_vo::multisig_account::{
-    AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
+use crate::{
+    domain::{
+        self,
+        assets::AssetsDomain,
+        chain::{adapter::ChainAdapterFactory, transaction::ChainTransDomain},
+        coin::CoinDomain,
+        multisig::MultisigDomain,
+        task_queue::TaskQueueDomain,
+    },
+    infrastructure::task_queue::{
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
+    },
+    messaging::mqtt::topics::OrderMultiSignAccept,
+    request::transaction,
+    response_vo::{
+        self,
+        multisig_account::{
+            AddressStatus, MultisigAccountInfo, MultisigAccountList, MultisigFeeVo,
+        },
+    },
 };
-use std::collections::HashMap;
-use wallet_database::dao::multisig_account::MultisigAccountDaoV1;
-use wallet_database::entities::assets::AssetsEntity;
-use wallet_database::entities::bill::{BillKind, NewBillEntity};
-use wallet_database::entities::chain::ChainEntity;
-use wallet_database::entities::coin::CoinMultisigStatus;
-use wallet_database::entities::multisig_account::{
-    MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
-    NewMultisigAccountEntity,
+use std::{collections::HashMap, sync::Arc};
+use wallet_database::{
+    dao::multisig_account::MultisigAccountDaoV1,
+    entities::{
+        assets::AssetsEntity,
+        bill::{BillKind, NewBillEntity},
+        chain::ChainEntity,
+        coin::CoinMultisigStatus,
+        multisig_account::{
+            MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus,
+            MultisigAccountStatus, NewMultisigAccountEntity,
+        },
+        multisig_member::{MemberVo, MultisigMemberEntities},
+        wallet::WalletEntity,
+    },
+    pagination::Pagination,
+    repositories::account::AccountRepo,
 };
-use wallet_database::entities::multisig_member::{MemberVo, MultisigMemberEntities};
-use wallet_database::entities::wallet::WalletEntity;
-use wallet_database::pagination::Pagination;
-use wallet_database::repositories::account::AccountRepo;
-use wallet_transport_backend::consts::endpoint;
 use wallet_transport_backend::{
+    AddressList, ConfirmedAddress, OrderMultisigUpdateArg, SignedOrderAcceptReq,
+    SignedSaveAddressReq, SignedUpdateRechargeHashReq, SignedUpdateSignedHashReq,
+    SingedOrderCancelReq,
     api::BackendApi,
+    consts::endpoint,
     request::{SignedFeeListReq, SignedFindAddressReq},
-    SignedOrderAcceptReq, SignedSaveAddressReq, SignedUpdateRechargeHashReq,
-    SignedUpdateSignedHashReq,
 };
-use wallet_transport_backend::{
-    AddressList, ConfirmedAddress, OrderMultisigUpdateArg, SingedOrderCancelReq,
+use wallet_types::{
+    chain::address::{category::BtcAddressCategory, r#type::BtcAddressType},
+    constant::chain_code,
 };
-use wallet_types::chain::address::category::BtcAddressCategory;
-use wallet_types::chain::address::r#type::BtcAddressType;
-use wallet_types::constant::chain_code;
 use wallet_utils::serde_func;
 
 pub struct MultisigAccountService {
     repo: wallet_database::repositories::multisig_account::MultisigAccountRepo,
-    backend: BackendApi,
+    backend: Arc<BackendApi>,
 }
 
 impl MultisigAccountService {
     pub fn new(
         repo: wallet_database::repositories::multisig_account::MultisigAccountRepo,
-    ) -> Result<Self, crate::ServiceError> {
-        let backend = crate::manager::Context::get_global_backend_api()?.clone();
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api().clone();
         Ok(Self { repo, backend })
     }
 
@@ -62,14 +73,17 @@ impl MultisigAccountService {
         threshold: i32,
         mut member_list: Vec<MemberVo>,
         address_type: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // check address type
         let address_type = match chain_code.as_str() {
             chain_code::BTC => {
-                let address_type = address_type.ok_or(crate::BusinessError::Chain(
-                    crate::ChainError::BitcoinAddressEmpty,
-                ))?;
+                let address_type =
+                    address_type.ok_or(crate::error::service::ServiceError::Business(
+                        crate::error::business::BusinessError::Chain(
+                            crate::error::business::chain::ChainError::BitcoinAddressEmpty,
+                        ),
+                    ))?;
                 let category = BtcAddressCategory::try_from(address_type)?;
                 BtcAddressType::from(category).to_string()
             }
@@ -81,46 +95,34 @@ impl MultisigAccountService {
         if let Some(account) = account
             && account.chain_code == chain_code::TRON
         {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::AddressRepeat,
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::AddressRepeat,
+                ),
             ))?;
         }
 
-        let member_address = member_list
-            .iter()
-            .map(|m| m.address.clone())
-            .collect::<Vec<String>>();
+        let member_address = member_list.iter().map(|m| m.address.clone()).collect::<Vec<String>>();
 
         // 获取address对应的uid
-        let address_uid = self
-            .backend
-            .get_address_uid(chain_code.clone(), member_address)
-            .await?;
+        let address_uid = self.backend.get_address_uid(chain_code.clone(), member_address).await?;
         // 设置member 的ui
         for item in member_list.iter_mut() {
             if item.uid.is_empty() {
-                match address_uid
-                    .list
-                    .iter()
-                    .find(|uid| item.address == uid.address)
-                {
+                match address_uid.list.iter().find(|uid| item.address == uid.address) {
                     Some(find) if !find.uid.is_empty() => {
                         item.uid = find.uid.clone();
                     }
                     _ => {
-                        return Err(crate::BusinessError::MultisigAccount(
-                            crate::MultisigAccountError::NotPlatFormAddress,
-                        ))?;
+                        return Err(crate::error::service::ServiceError::Business(crate::error::business::BusinessError::MultisigAccount(
+                            crate::error::business::multisig_account::MultisigAccountError::NotPlatFormAddress,
+                        )))?;
                     }
                 }
             }
         }
 
-        let uid_list = WalletEntity::uid_list(&*pool)
-            .await?
-            .into_iter()
-            .map(|uid| uid.0)
-            .collect();
+        let uid_list = WalletEntity::uid_list(&*pool).await?.into_iter().map(|uid| uid.0).collect();
 
         let mut params = NewMultisigAccountEntity::new(
             None,
@@ -170,7 +172,7 @@ impl MultisigAccountService {
     async fn multisig_account_name(
         &mut self,
         params: &mut NewMultisigAccountEntity,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         if !params.name.is_empty() {
             return Ok(());
         }
@@ -184,14 +186,12 @@ impl MultisigAccountService {
     async fn mark_self_account(
         &mut self,
         params: &mut NewMultisigAccountEntity,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut flag = true;
 
         for item in params.member_list.iter_mut() {
-            if let Some(account) = self
-                .repo
-                .wallet_account(&item.address, &params.chain_code)
-                .await?
+            if let Some(account) =
+                self.repo.wallet_account(&item.address, &params.chain_code).await?
             {
                 item.confirmed = 1;
                 item.pubkey = account.pubkey.clone();
@@ -218,7 +218,7 @@ impl MultisigAccountService {
     pub async fn multisig_account_by_id(
         mut self,
         id: &str,
-    ) -> Result<Option<MultisigAccountInfo>, crate::ServiceError> {
+    ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
         let account = self.repo.found_by_id(id).await?;
 
         let mut account = match account {
@@ -235,7 +235,7 @@ impl MultisigAccountService {
     pub async fn multisig_account_by_address(
         &mut self,
         address: &str,
-    ) -> Result<Option<MultisigAccountInfo>, crate::ServiceError> {
+    ) -> Result<Option<MultisigAccountInfo>, crate::error::service::ServiceError> {
         let account = self.repo.found_by_address(address).await?;
 
         let mut account = match account {
@@ -252,22 +252,27 @@ impl MultisigAccountService {
         &mut self,
         account_id: String,
         name: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         Ok(self.repo.update_name(&account_id, &name).await?)
     }
 
-    pub async fn cancel_multisig(mut self, id: String) -> Result<(), crate::ServiceError> {
-        let account =
-            self.repo
-                .found_by_id(&id)
-                .await?
-                .ok_or(crate::BusinessError::MultisigAccount(
-                    crate::MultisigAccountError::NotFound,
-                ))?;
+    pub async fn cancel_multisig(
+        mut self,
+        id: String,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let account = self.repo.found_by_id(&id).await?.ok_or(
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::NotFound,
+                ),
+            ),
+        )?;
 
         if account.status == MultisigAccountStatus::OnChain.to_i8() {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::CannotCancel,
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::CannotCancel,
+                ),
             ))?;
         }
 
@@ -275,10 +280,7 @@ impl MultisigAccountService {
 
         // 上报后端
         let raw_data = self.repo.multisig_data(&account.id).await?.to_string()?;
-        let req = SingedOrderCancelReq {
-            order_id: account.id.clone(),
-            raw_data,
-        };
+        let req = SingedOrderCancelReq { order_id: account.id.clone(), raw_data };
         TaskQueueDomain::send_or_to_queue(req, endpoint::multisig::SIGNED_ORDER_CANCEL).await?;
 
         Ok(())
@@ -290,16 +292,13 @@ impl MultisigAccountService {
         chain_code: Option<&str>,
         page: i64,
         page_size: i64,
-    ) -> Result<Pagination<MultisigAccountList>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<Pagination<MultisigAccountList>, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 同步部署中多签账号的状态
         let _r = domain::multisig::MultisigDomain::sync_multisig_status(pool.clone()).await;
 
-        let mut res = self
-            .repo
-            .account_list(owner, chain_code, page, page_size)
-            .await?;
+        let mut res = self.repo.account_list(owner, chain_code, page, page_size).await?;
 
         let mut list = vec![];
         // main symbol
@@ -308,10 +307,7 @@ impl MultisigAccountService {
             if let Some(chain) = chain {
                 item.address_type_to_category();
                 list.push({
-                    MultisigAccountList {
-                        account: item.clone(),
-                        symbol: chain.main_symbol,
-                    }
+                    MultisigAccountList { account: item.clone(), symbol: chain.main_symbol }
                 });
             }
         }
@@ -329,13 +325,13 @@ impl MultisigAccountService {
     pub async fn fetch_deposit_address(
         self,
         chain_code: &str,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         let req = SignedFindAddressReq::new(chain_code);
         let res = self
             .backend
             .signed_find_address(req)
             .await
-            .map_err(crate::ServiceError::TransportBackend)?;
+            .map_err(crate::error::service::ServiceError::TransportBackend)?;
 
         Ok(res.address)
     }
@@ -345,8 +341,8 @@ impl MultisigAccountService {
         pay_chain: &str,
         account_chain: &str,
         pay_address: &str,
-    ) -> Result<MultisigFeeVo, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<MultisigFeeVo, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let account_with_wallet =
             AccountRepo::account_with_wallet(pay_address, pay_chain, &pool).await?;
@@ -361,9 +357,13 @@ impl MultisigAccountService {
     pub async fn check_participant_exists(
         &mut self,
         account_id: String,
-    ) -> Result<Vec<String>, crate::ServiceError> {
+    ) -> Result<Vec<String>, crate::error::service::ServiceError> {
         let multisig_account = self.repo.found_by_id(&account_id).await?.ok_or(
-            crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound),
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::NotFound,
+                ),
+            ),
         )?;
 
         // only my address
@@ -372,10 +372,8 @@ impl MultisigAccountService {
         let mut not_exits = vec![];
 
         for m in member.0 {
-            let account = self
-                .repo
-                .wallet_account(&m.address, &multisig_account.chain_code)
-                .await?;
+            let account =
+                self.repo.wallet_account(&m.address, &multisig_account.chain_code).await?;
             if account.is_none() {
                 not_exits.push(m.address);
             }
@@ -384,18 +382,23 @@ impl MultisigAccountService {
         Ok(not_exits)
     }
 
-    pub async fn confirm_participation(mut self, id: &str) -> Result<(), crate::ServiceError> {
-        let multisig_account =
-            self.repo
-                .found_by_id(id)
-                .await?
-                .ok_or(crate::BusinessError::MultisigAccount(
-                    crate::MultisigAccountError::NotFound,
-                ))?;
+    pub async fn confirm_participation(
+        mut self,
+        id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let multisig_account = self.repo.found_by_id(id).await?.ok_or(
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::NotFound,
+                ),
+            ),
+        )?;
 
         if multisig_account.is_del == 1 {
-            return Err(crate::BusinessError::MultisigAccount(
-                crate::MultisigAccountError::IsCancel,
+            return Err(crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::IsCancel,
+                ),
             ))?;
         }
 
@@ -446,9 +449,13 @@ impl MultisigAccountService {
         deploy_fee: Option<String>,
         payer: Option<transaction::ServiceFeePayer>,
         password: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let multisig_account = self.repo.found_by_id(account_id).await?.ok_or(
-            crate::BusinessError::MultisigAccount(crate::MultisigAccountError::NotFound),
+            crate::error::service::ServiceError::Business(
+                crate::error::business::BusinessError::MultisigAccount(
+                    crate::error::business::multisig_account::MultisigAccountError::NotFound,
+                ),
+            ),
         )?;
 
         let time = wallet_utils::time::now_utc_format_time();
@@ -456,9 +463,8 @@ impl MultisigAccountService {
         if multisig_account.pay_status != MultisigAccountPayStatus::Paid.to_i8() {
             if let Some(payer) = payer {
                 let fee_chain = payer.chain_code.clone();
-                let fee_res = self
-                    ._transfer_service_fee(&multisig_account, payer, password)
-                    .await?;
+                let fee_res =
+                    self._transfer_service_fee(&multisig_account, payer, password).await?;
 
                 // 服务费完成后更新本地数据
                 let params = HashMap::from([
@@ -469,8 +475,10 @@ impl MultisigAccountService {
                 ]);
                 let _ = self.repo.update_by_id(account_id, params).await?;
             } else {
-                return Err(crate::BusinessError::MultisigAccount(
-                    crate::MultisigAccountError::PayerNeed,
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::MultisigAccount(
+                        crate::error::business::multisig_account::MultisigAccountError::PayerNeed,
+                    ),
                 ))?;
             };
         }
@@ -485,10 +493,7 @@ impl MultisigAccountService {
 
                 let users = account.all_actives_user();
                 if users.len() > 1 || (users.len() == 1 && users[0] != multisig_account.address) {
-                    let _n = self
-                        .backend
-                        .permission_clean(&multisig_account.address, users)
-                        .await;
+                    let _n = self.backend.permission_clean(&multisig_account.address, users).await;
                 }
             }
 
@@ -499,9 +504,7 @@ impl MultisigAccountService {
 
             // 有交易hash验证是否成功，如果已经成功了不在重复部署
             if !multisig_account.deploy_hash.is_empty() {
-                let tx = multisig_adapter
-                    .query_tx_res(&multisig_account.deploy_hash)
-                    .await?;
+                let tx = multisig_adapter.query_tx_res(&multisig_account.deploy_hash).await?;
                 if let Some(tx) = tx {
                     if tx.status != 3 {
                         return Ok(());
@@ -510,9 +513,7 @@ impl MultisigAccountService {
             }
 
             // fetch multisig account address
-            let resp = multisig_adapter
-                .multisig_address(&multisig_account, &member)
-                .await?;
+            let resp = multisig_adapter.multisig_address(&multisig_account, &member).await?;
 
             // if chain_code is bitcoin the status is success on chain
             let status = if multisig_account.chain_code == chain_code::BTC {
@@ -527,12 +528,9 @@ impl MultisigAccountService {
                 ("authority_addr".to_string(), resp.authority_address.clone()),
                 ("updated_at".to_string(), time.clone()),
             ]);
-            let multisig_account = self
-                .repo
-                .update_by_id(&multisig_account.id, hash_map)
-                .await?;
+            let multisig_account = self.repo.update_by_id(&multisig_account.id, hash_map).await?;
 
-            let pool = crate::manager::Context::get_global_sqlite_pool()?;
+            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
             // 初始化默认资产资产(发起方如果是波场的情况单独处理,将这个地址的其他资产也同步为多签的)
             AssetsDomain::init_default_multisig_assets(
@@ -552,13 +550,7 @@ impl MultisigAccountService {
 
             // 部署多签账户到链上
             let hash = self
-                ._deploy_account(
-                    multisig_account,
-                    &member,
-                    deploy_fee,
-                    password,
-                    &multisig_adapter,
-                )
+                ._deploy_account(multisig_account, &member, deploy_fee, password, &multisig_adapter)
                 .await?;
 
             let params = HashMap::from([
@@ -589,7 +581,7 @@ impl MultisigAccountService {
         multisig_account: &MultisigAccountEntity,
         payer: transaction::ServiceFeePayer,
         password: &str,
-    ) -> Result<(String, String), crate::ServiceError> {
+    ) -> Result<(String, String), crate::error::service::ServiceError> {
         let adapter = ChainAdapterFactory::get_transaction_adapter(&payer.chain_code).await?;
 
         // 如果交易hash存在，验证交易是否成功了避免重复
@@ -603,15 +595,12 @@ impl MultisigAccountService {
                     } else {
                         MultisigAccountPayStatus::PaidPending
                     };
-                    return Ok((
-                        multisig_account.fee_hash.clone(),
-                        pay_status.to_i8().to_string(),
-                    ));
+                    return Ok((multisig_account.fee_hash.clone(), pay_status.to_i8().to_string()));
                 }
             }
         }
 
-        let backend = crate::manager::Context::get_global_backend_api()?;
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // fetch address
         let req = SignedFindAddressReq::new(&payer.chain_code);
@@ -619,7 +608,7 @@ impl MultisigAccountService {
         let to = &address.address;
 
         // fetch value
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let account_with_wallet =
             AccountRepo::account_with_wallet(&payer.from, &payer.chain_code, &pool).await?;
 
@@ -636,11 +625,11 @@ impl MultisigAccountService {
                 CoinDomain::get_coin(&payer.chain_code, &payer.symbol, payer.token_address).await?;
             // transfer parameter
             let mut base = transaction::BaseTransferReq::new(
-                payer.from,
-                to.to_string(),
-                value.clone(),
-                payer.chain_code.clone(),
-                payer.symbol,
+                &payer.from,
+                to,
+                &value,
+                &payer.chain_code,
+                &payer.symbol,
             );
             base.with_token(coin.token_address());
             base.with_decimals(coin.decimals);
@@ -651,7 +640,16 @@ impl MultisigAccountService {
                 signer: None,
             };
 
-            ChainTransDomain::transfer(params, BillKind::ServiceCharge, &adapter).await?
+            let private_key = ChainTransDomain::get_key(
+                &params.base.from,
+                &params.base.chain_code,
+                &params.password,
+                &params.signer,
+            )
+            .await?;
+
+            ChainTransDomain::transfer(params, BillKind::ServiceCharge, &adapter, private_key)
+                .await?
         } else {
             // 服务费为0的传入固定的hash
             MultisigAccountEntity::NONE_TRANS_HASH.to_string()
@@ -694,7 +692,7 @@ impl MultisigAccountService {
         deploy_fee: Option<String>,
         password: &str,
         adapter: &domain::chain::adapter::MultisigAdapter,
-    ) -> Result<String, crate::ServiceError> {
+    ) -> Result<String, crate::error::service::ServiceError> {
         // 1.执行链上部署交易
         let key = domain::account::open_subpk_with_password(
             &account.chain_code,
@@ -703,9 +701,8 @@ impl MultisigAccountService {
         )
         .await?;
 
-        let (hash, bill_consumer) = adapter
-            .deploy_multisig_account(&account, members, deploy_fee, key)
-            .await?;
+        let (hash, bill_consumer) =
+            adapter.deploy_multisig_account(&account, members, deploy_fee, key).await?;
 
         // 2. 不是btc的创建一个部署的bill
         if account.chain_code != chain_code::BTC {
@@ -754,8 +751,8 @@ impl MultisigAccountService {
     pub async fn deploy_multisig_fee(
         &mut self,
         account_id: &str,
-    ) -> Result<response_vo::EstimateFeeResp, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<response_vo::EstimateFeeResp, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let account = MultisigDomain::account_by_id(account_id, pool.clone()).await?;
 
@@ -766,9 +763,7 @@ impl MultisigAccountService {
 
         let member = self.repo.member_by_account_id(account_id).await?;
 
-        let fee = adapter
-            .deploy_multisig_fee(&account, member, &main_coin.symbol)
-            .await?;
+        let fee = adapter.deploy_multisig_fee(&account, member, &main_coin.symbol).await?;
 
         let fee_resp =
             response_vo::EstimateFeeResp::new(main_coin.symbol, main_coin.chain_code, fee);
@@ -780,19 +775,14 @@ impl MultisigAccountService {
         &mut self,
         address: String,
         chain_code: String,
-    ) -> Result<AddressStatus, crate::ServiceError> {
+    ) -> Result<AddressStatus, crate::error::service::ServiceError> {
         let adapter =
             domain::chain::adapter::ChainAdapterFactory::get_transaction_adapter(&chain_code)
                 .await?;
 
         let mut status = AddressStatus { address_status: 0 };
 
-        if self
-            .repo
-            .find_doing_account(&chain_code, &address)
-            .await?
-            .is_some()
-        {
+        if self.repo.find_doing_account(&chain_code, &address).await?.is_some() {
             status.address_status = 2;
         }
 

@@ -31,10 +31,10 @@ impl MqttClientBuilder {
         }
     }
 
-    pub fn build(self) -> Result<(MqttAsyncClient, EventLoop), crate::SystemError> {
+    pub fn build(self) -> Result<(MqttAsyncClient, EventLoop), crate::error::system::SystemError> {
         let url = format!("{}?client_id={}", self.url, self.client_id);
-        let mut mqtt_options =
-            MqttOptions::parse_url(url).map_err(|e| crate::SystemError::Service(e.to_string()))?;
+        let mut mqtt_options = MqttOptions::parse_url(url)
+            .map_err(|e| crate::error::system::SystemError::Service(e.to_string()))?;
 
         mqtt_options
             .set_transport(rumqttc::Transport::Tcp)
@@ -42,7 +42,7 @@ impl MqttClientBuilder {
             .set_credentials(self.username, self.password)
             .set_keep_alive(Duration::from_secs(10))
             .set_user_properties(self.user_property)
-            .set_clean_start(true)
+            .set_clean_start(false)
             .set_manual_acks(true);
 
         let (client, eventloop) = AsyncClient::new(mqtt_options, 50);

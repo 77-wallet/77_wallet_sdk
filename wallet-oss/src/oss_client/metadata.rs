@@ -81,26 +81,18 @@ impl ObjectMetadata {
         self.metadata.get("content-encoding").map(|s| s.to_string())
     }
     pub fn content_disposition(&self) -> Option<String> {
-        self.metadata
-            .get("content-disposition")
-            .map(|s| s.to_string())
+        self.metadata.get("content-disposition").map(|s| s.to_string())
     }
     pub fn cache_control(&self) -> Option<String> {
         self.metadata.get("cache-control").map(|s| s.to_string())
     }
     pub fn crc64(&self) -> Option<String> {
-        self.metadata
-            .get("x-oss-hash-crc64ecma")
-            .map(|s| s.to_string())
+        self.metadata.get("x-oss-hash-crc64ecma").map(|s| s.to_string())
     }
     pub fn server_side_encryption(&self) -> Option<String> {
-        self.metadata
-            .get("x-oss-server-side-encryption")
-            .map(|s| s.to_string())
+        self.metadata.get("x-oss-server-side-encryption").map(|s| s.to_string())
     }
     pub fn object_type(&self) -> Option<String> {
-        self.metadata
-            .get("x-oss-object-type")
-            .map(|s| s.to_string())
+        self.metadata.get("x-oss-object-type").map(|s| s.to_string())
     }
 }

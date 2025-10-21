@@ -1,8 +1,10 @@
 use crate::get_manager;
+use anyhow::Result;
 use wallet_api::request::transaction;
+
 // 余额测试
 #[tokio::test]
-async fn test_balance() {
+async fn test_balance() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let addr = "LPksEuS2ZeN89BwKQkJw4HAAivrruFDn3j";
@@ -10,16 +12,15 @@ async fn test_balance() {
     let symbol = "LTC";
     let token_address = None;
 
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await?;
 
     println!("balance: {:?}", balance);
+    Ok(())
 }
 
 //交易的手续费
 #[tokio::test]
-async fn test_fee() {
+async fn test_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "LPksEuS2ZeN89BwKQkJw4HAAivrruFDn3j";
@@ -29,22 +30,17 @@ async fn test_fee() {
     let chain_code = "ltc";
     let symbol = "LTC";
 
-    let mut params = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     params.with_spend_all(false);
 
-    let res = wallet_manager.transaction_fee(params).await;
+    let res = wallet_manager.transaction_fee(params).await?;
     tracing::info!("token_fee: {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 转账
 #[tokio::test]
-async fn test_transfer() {
+async fn test_transfer() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "LPksEuS2ZeN89BwKQkJw4HAAivrruFDn3j";
@@ -54,13 +50,7 @@ async fn test_transfer() {
     let symbol = "LTC";
     let password = "123456";
 
-    let mut base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     base.with_spend_all(false);
     let params = transaction::TransferReq {
         base,
@@ -69,9 +59,7 @@ async fn test_transfer() {
         signer: None,
     };
 
-    let token_fee = wallet_manager.transfer(params).await;
-    tracing::info!(
-        "test_transfer: {}",
-        serde_json::to_string(&token_fee).unwrap()
-    );
+    let token_fee = wallet_manager.transfer(params).await?;
+    tracing::info!("test_transfer: {}", serde_json::to_string(&token_fee).unwrap());
+    Ok(())
 }

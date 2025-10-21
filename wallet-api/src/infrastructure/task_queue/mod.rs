@@ -3,13 +3,13 @@ mod task_handle;
 pub(crate) mod task_manager;
 
 pub(crate) mod initialization;
-pub(crate) use initialization::*;
 
 pub(crate) mod backend;
-pub(crate) use backend::*;
 
 pub(crate) mod mqtt;
 pub(crate) use mqtt::*;
 
 pub(crate) mod common;
+pub(crate) mod mqtt_api;
+
 pub(crate) use common::*;

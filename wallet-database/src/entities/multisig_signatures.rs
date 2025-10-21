@@ -20,9 +20,7 @@ impl MultisigSignatureEntities {
         let mut list = self.0.clone();
         list.sort_by(|a, b| a.address.cmp(&b.address));
 
-        list.iter()
-            .map(|s| s.signature.clone())
-            .collect::<Vec<String>>()
+        list.iter().map(|s| s.signature.clone()).collect::<Vec<String>>()
     }
 
     pub fn contains_address(&self, address: &str) -> bool {
@@ -50,10 +48,7 @@ impl TryFrom<i32> for MultisigSignatureStatus {
             0 => Ok(MultisigSignatureStatus::UnSigned),
             1 => Ok(MultisigSignatureStatus::Approved),
             2 => Ok(MultisigSignatureStatus::Rejected),
-            _ => Err(crate::Error::Other(format!(
-                "invalid multisig signature status {}",
-                value
-            ))),
+            _ => Err(crate::Error::Other(format!("invalid multisig signature status {}", value))),
         }
     }
 }

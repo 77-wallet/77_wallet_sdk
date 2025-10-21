@@ -25,11 +25,6 @@ impl BlockBrowserUrl {
         hash_url: Option<String>,
         token_url: Option<String>,
     ) -> Self {
-        Self {
-            chain_code,
-            address_url,
-            hash_url,
-            token_url,
-        }
+        Self { chain_code, address_url, hash_url, token_url }
     }
 }

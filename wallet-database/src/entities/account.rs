@@ -2,10 +2,7 @@ use wallet_utils::address::AccountIndexMap;
 
 #[derive(Debug, Default, serde::Serialize, sqlx::FromRow, wallet_macro::macros ::Resource)]
 #[serde(rename_all = "camelCase")]
-#[resource(
-    query_req = "crate::entities::account::QueryReq",
-    sqlite_table_name = "account"
-)]
+#[resource(query_req = "crate::entities::account::QueryReq", sqlite_table_name = "account")]
 pub struct AccountEntity {
     #[resource(detail = "QueryReq")]
     pub account_id: u32,

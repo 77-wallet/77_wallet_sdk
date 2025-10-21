@@ -42,6 +42,11 @@ pub enum ChainError {
     ApproveRepeated,
     #[error("ApproveCanceling")]
     ApproveCanceling,
+    // 链兑换相关的错误
+    #[error("SwapSimulate error:{0}")]
+    SwapSimulate(String),
+    #[error("time error:{0}")]
+    SolSwapTime(String),
 }
 
 impl ChainError {
@@ -67,6 +72,8 @@ impl ChainError {
             ChainError::LockPeriodTooShort => 3518,
             ChainError::ApproveRepeated => 3519,
             ChainError::ApproveCanceling => 3520,
+            ChainError::SwapSimulate(_) => 3521,
+            ChainError::SolSwapTime(_) => 3522,
         }
     }
 }

@@ -50,8 +50,6 @@ pub struct QueryReq {
 
 impl QueryReq {
     pub fn new(node_id: &str) -> Self {
-        Self {
-            node_id: Some(node_id.to_string()),
-        }
+        Self { node_id: Some(node_id.to_string()) }
     }
 }

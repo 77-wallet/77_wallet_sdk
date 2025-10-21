@@ -1,19 +1,8 @@
 use crate::response::BackendResponse;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
-pub mod address;
-pub mod announcement;
-pub mod app;
-pub mod chain;
-pub mod coin;
-pub mod config;
-pub mod device;
-pub mod mqtt;
-pub mod permission;
-pub mod signed;
-pub mod stake;
-pub mod swap;
-pub mod transaction;
+pub mod api_wallet;
+pub mod wallet;
 
 #[derive(Debug, Clone)]
 pub struct BackendApi {
@@ -49,28 +38,18 @@ impl BackendApi {
     pub async fn post_request<T, R>(&self, endpoint: &str, req: T) -> Result<R, crate::Error>
     where
         T: serde::Serialize + std::fmt::Debug,
-        R: serde::de::DeserializeOwned + serde::Serialize,
+        R: serde::de::DeserializeOwned + serde::Serialize + Debug,
     {
-        let res = self
-            .client
-            .post(endpoint)
-            .json(req)
-            .send::<BackendResponse>()
-            .await?;
+        let res = self.client.post(endpoint).json(req).send::<BackendResponse>().await?;
         res.process::<R>(&self.aes_cbc_cryptor)
     }
 
     // 发送一个字符串的请求.
     pub async fn post_req_string<T>(&self, endpoint: &str, body: String) -> Result<T, crate::Error>
     where
-        T: serde::de::DeserializeOwned + serde::Serialize,
+        T: serde::de::DeserializeOwned + serde::Serialize + Debug,
     {
-        let res = self
-            .client
-            .post(endpoint)
-            .body(body)
-            .send::<BackendResponse>()
-            .await?;
+        let res = self.client.post(endpoint).body(body).send::<BackendResponse>().await?;
         res.process::<T>(&self.aes_cbc_cryptor)
     }
 
@@ -81,14 +60,10 @@ impl BackendApi {
         body: &serde_json::Value,
     ) -> Result<T, crate::Error>
     where
-        T: serde::de::DeserializeOwned + serde::Serialize,
+        T: serde::de::DeserializeOwned + serde::Serialize + Debug,
     {
-        let res = self
-            .client
-            .post(endpoint)
-            .body(body.to_string())
-            .send::<BackendResponse>()
-            .await?;
+        let res =
+            self.client.post(endpoint).body(body.to_string()).send::<BackendResponse>().await?;
         res.process::<T>(&self.aes_cbc_cryptor)
     }
 }

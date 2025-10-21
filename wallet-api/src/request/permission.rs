@@ -19,11 +19,11 @@ impl PermissionReq {
     pub const UPDATE: &'static str = "update";
     pub const DELETE: &'static str = "delete";
 
-    pub fn check_threshold(&self) -> Result<(), crate::BusinessError> {
+    pub fn check_threshold(&self) -> Result<(), crate::error::business::BusinessError> {
         let weight = self.keys.iter().map(|k| k.weight).sum::<i32>();
         if weight < self.threshold as i32 {
-            return Err(crate::BusinessError::Permission(
-                crate::PermissionError::WeightLessThreshold,
+            return Err(crate::error::business::BusinessError::Permission(
+                crate::error::business::permission::PermissionError::WeightLessThreshold,
             ))?;
         }
         Ok(())
@@ -40,7 +40,7 @@ impl PermissionReq {
 }
 
 impl TryFrom<&PermissionReq> for Permission {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &PermissionReq) -> Result<Self, Self::Error> {
         let operations = PermissionTypes::from_i8(value.operations.clone())?;

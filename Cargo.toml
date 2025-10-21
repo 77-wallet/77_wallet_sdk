@@ -19,22 +19,23 @@ wallet-database = { version = "0.1.0", default-features = false, path = "wallet-
 wallet-transport-backend = { version = "0.1.0", default-features = false, path = "wallet-transport-backend" }
 wallet-macro = { version = "0.1.0", default-features = false, path = "wallet-macro" }
 wallet-tree = { version = "0.1.0", default-features = false, path = "wallet-tree" }
+wallet-ecdh = { version = "0.1.0", default-features = false, path = "wallet-ecdh" }
 
-wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "9bc3a8498b5dbd2aecd51c4d0888f89ffd73c707" }
-wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "9bc3a8498b5dbd2aecd51c4d0888f89ffd73c707" }
-wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "9bc3a8498b5dbd2aecd51c4d0888f89ffd73c707" }
-wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "9bc3a8498b5dbd2aecd51c4d0888f89ffd73c707" }
-wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "9bc3a8498b5dbd2aecd51c4d0888f89ffd73c707" }
-wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "9bc3a8498b5dbd2aecd51c4d0888f89ffd73c707" }
-wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "9bc3a8498b5dbd2aecd51c4d0888f89ffd73c707" }
+wallet-crypto = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "2c5549774e6101262748719cbfc915428f5f9ef2" }
+wallet-chain-interact = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "2c5549774e6101262748719cbfc915428f5f9ef2" }
+wallet-chain-instance = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "2c5549774e6101262748719cbfc915428f5f9ef2" }
+wallet-transport = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "2c5549774e6101262748719cbfc915428f5f9ef2" }
+wallet-utils = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "2c5549774e6101262748719cbfc915428f5f9ef2" }
+wallet-types = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "2c5549774e6101262748719cbfc915428f5f9ef2" }
+wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client/wallet_core.git", rev = "2c5549774e6101262748719cbfc915428f5f9ef2" }
 
-# wallet-crypto = { default-features = false, path = "../wallet_core/wallet-crypto" }
-# wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
-# wallet-chain-instance = { default-features = false, path = "../wallet_core/wallet-chain-instance" }
-# wallet-transport = { default-features = false, path = "../wallet_core/wallet-transport" }
-# wallet-utils = { default-features = false, path = "../wallet_core/wallet-utils" }
-# wallet-types = { default-features = false, path = "../wallet_core/wallet-types" }
-# wallet-core = { default-features = false, path = "../wallet_core/wallet-core" }
+#  wallet-crypto = { default-features = false, path = "../wallet_core/wallet-crypto" }
+#  wallet-chain-interact = { default-features = false, path = "../wallet_core/wallet-chain-interact" }
+#  wallet-chain-instance = { default-features = false, path = "../wallet_core/wallet-chain-instance" }
+#  wallet-transport = { default-features = false, path = "../wallet_core/wallet-transport" }
+#  wallet-utils = { default-features = false, path = "../wallet_core/wallet-utils" }
+#  wallet-types = { default-features = false, path = "../wallet_core/wallet-types" }
+#  wallet-core = { default-features = false, path = "../wallet_core/wallet-core" }
 
 # wallet-crypto = { default-features = false, path = "../77_wallet_core/wallet-crypto" }
 # wallet-chain-interact = { default-features = false, path = "../77_wallet_core/wallet-chain-interact" }
@@ -42,11 +43,7 @@ wallet-core = { default-features = false, git = "http://git.ai.com/wallet/client
 # wallet-transport = { default-features = false, path = "../77_wallet_core/wallet-transport" }
 # wallet-utils = { default-features = false, path = "../77_wallet_core/wallet-utils" }
 # wallet-types = { default-features = false, path = "../77_wallet_core/wallet-types" }
-# # wallet-tree = { default-features = false, path = "../77_wallet_core/wallet-tree" }
 # wallet-core = { default-features = false, path = "../77_wallet_core/wallet-core" }
-
-# wallet-example = { version = "0.1.0", default-features = false, path = "wallet-example" }
-# wallet-error = { version = "0.1.0", default-features = false, path = "wallet-error" }
 
 
 # http
@@ -75,7 +72,7 @@ rumqttc = { version = "0.24.0", features = ["websocket", "url"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1.31"
 tracing-appender = "0.2.1"
-tracing-error = "0.2.0"
+tracing-android = "0.2.0"
 
 # 
 ctr = "0.9.2"
@@ -117,7 +114,7 @@ sqlx = { version = "0.7", features = [
 
 # async
 async-trait = "0.1.80"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tokio-stream = { version = "0.1" }
 
 # # chain
@@ -149,6 +146,7 @@ dashmap = { version = "6.1.0", features = ["serde"] }
 strum = "0.26"
 strum_macros = "0.26"
 
+rayon = "1.11.0"
 
 [patch.crates-io.aes-gcm-siv]
 git = "https://github.com/RustCrypto/AEADs"

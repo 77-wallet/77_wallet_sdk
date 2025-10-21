@@ -34,19 +34,13 @@ pub struct BaseTransferReq {
 }
 
 impl BaseTransferReq {
-    pub fn new(
-        from: String,
-        to: String,
-        value: String,
-        chain_code: String,
-        symbol: String,
-    ) -> Self {
+    pub fn new(from: &str, to: &str, value: &str, chain_code: &str, symbol: &str) -> Self {
         Self {
-            from,
-            to,
-            value,
-            chain_code,
-            symbol,
+            from: from.to_string(),
+            to: to.to_string(),
+            value: value.to_string(),
+            chain_code: chain_code.to_string(),
+            symbol: symbol.to_string(),
             decimals: 0,
             request_resource_id: None,
             token_address: None,
@@ -73,7 +67,7 @@ impl BaseTransferReq {
 }
 
 impl TryFrom<&BaseTransferReq> for eth::operations::TransferOpt {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(req: &BaseTransferReq) -> Result<Self, Self::Error> {
         let value = unit::convert_to_u256(&req.value, req.decimals)?;
@@ -90,7 +84,7 @@ impl TryFrom<&BaseTransferReq> for eth::operations::TransferOpt {
 }
 
 impl TryFrom<&TransferReq> for wallet_database::entities::bill::NewBillEntity {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(req: &TransferReq) -> Result<Self, Self::Error> {
         let value = wallet_utils::unit::string_to_f64(&req.base.value)?;

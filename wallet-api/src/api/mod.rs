@@ -1,6 +1,7 @@
 pub mod account;
 pub mod address_book;
 pub mod announcement;
+pub mod api_wallet;
 pub mod app;
 pub mod asset;
 pub mod chain;
@@ -14,78 +15,11 @@ pub mod phrase;
 pub mod stake;
 pub mod swap;
 pub mod system_notification;
-use crate::{
-    response::Response,
-    service::{device::DeviceService, task_queue::TaskQueueService},
-};
-
-#[cfg(not(feature = "result"))]
-pub type ReturnType<T> = Response<T>;
-#[cfg(feature = "result")]
-pub type ReturnType<T> = Result<T, crate::ServiceError>;
-
 // #[cfg(feature = "transaction")]
 pub mod transaction;
 pub mod wallet;
 
-impl super::WalletManager {
-    // /// Sets a new password for a wallet based on the provided wallet name, address, old password, and new password.
-    // ///
-    // /// This function calls the `set_password` function from the wallet manager handler to update the wallet's password.
-    // /// It performs the following steps:
-    // /// 1. Retrieves the paths to the root and subkeys directories for the specified wallet.
-    // /// 2. Traverses the directory structure to get the current wallet tree.
-    // /// 3. Calls the `set_password` function to update the password, passing in the necessary parameters.
-    // ///
-    // /// # Arguments
-    // ///
-    // /// * `wallet_name` - A `String` specifying the name of the wallet.
-    // /// * `address` - A `String` specifying the address associated with the wallet.
-    // /// * `old_password` - A `String` containing the current password for the wallet.
-    // /// * `new_password` - A `String` containing the new password for the wallet.
-    // ///
-    // /// # Returns
-    // ///
-    // /// * `ReturnType<()>` - A response indicating the success or failure of the operation.
-    // pub async fn set_password(
-    //     &self,
-    //     // wallet_name: &str,
-    //     address: &str,
-    //     chain_code: &str,
-    //     old_password: &str,
-    //     new_password: &str,
-    // ) -> ReturnType<()> {
-    //     let pool = crate::manager::Context::get_global_sqlite_pool()?;
-    //     let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-    //     AccountService::new(repo)
-    //         .set_password(address, chain_code, old_password, new_password)
-    //         .await?
-    //         .into()
-    // }
-
-    pub async fn process_jpush_message(&self, message: &str) -> ReturnType<()> {
-        crate::service::jpush::JPushService::jpush(message)
-            .await
-            .into()
-    }
-
-    pub async fn init(&self, req: crate::InitDeviceReq) -> ReturnType<()> {
-        DeviceService::new(self.repo_factory.resource_repo())
-            .init_device(req)
-            .await?;
-        self.init_data().await.into()
-    }
-
-    pub async fn get_task_queue_status(
-        &self,
-    ) -> ReturnType<crate::response_vo::task_queue::TaskQueueStatus> {
-        TaskQueueService::new(self.repo_factory.resource_repo())
-            .get_task_queue_status()
-            .await?
-            .into()
-    }
-}
+pub type ReturnType<T> = Result<T, crate::error::service::ServiceError>;
 
 #[cfg(test)]
 mod test {
@@ -104,7 +38,7 @@ mod test {
 
         let message = "{\"clientId\":\"wenjing\",\"sn\":\"device457\",\"deviceType\":\"ANDROID\",\"bizType\":\"ORDER_MULTI_SIGN_ACCEPT_COMPLETE_MSG\",\"body\":{\"status\":1,\"multisigAccountId\":\"order-1\",\"addressList\":[],\"acceptStatus\":false,\"acceptAddressList\":[\"THx9ao6pdLUFoS3CSc98pwj1HCrmGHoVUB\"]}}";
 
-        let account = wallet_manager.process_jpush_message(message).await;
+        let account = wallet_manager.process_jpush_message(message).await?;
         tracing::info!("[test_process_jpush_message] account: {account:?}");
 
         Ok(())
@@ -115,7 +49,7 @@ mod test {
         wallet_utils::init_test_log();
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let status = wallet_manager.get_task_queue_status().await;
+        let status = wallet_manager.get_task_queue_status().await?;
         tracing::info!("[test_get_task_queue_status] status: {status:?}");
         let res = wallet_utils::serde_func::serde_to_string(&status).unwrap();
         tracing::info!("[test_get_task_queue_status] res: {res}");

@@ -40,6 +40,11 @@ pub trait TaskQueueRepoTrait: super::TransactionTrait {
         crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(1), None)
     }
 
+    async fn hanging_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
+        let executor = self.get_conn_or_tx()?;
+        crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(4), None)
+    }
+
     async fn pending_task_queue(&mut self) -> Result<Vec<TaskQueueEntity>, crate::Error> {
         let executor = self.get_conn_or_tx()?;
         crate::execute_with_executor!(executor, TaskQueueEntity::list, Some(0), None)

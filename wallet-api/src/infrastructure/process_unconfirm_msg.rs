@@ -1,4 +1,7 @@
-use crate::{domain::app::mqtt::MqttDomain, FrontendNotifyEvent};
+use crate::{
+    domain::app::mqtt::MqttDomain, error::service::ServiceError,
+    messaging::notify::FrontendNotifyEvent,
+};
 use std::{collections::HashSet, sync::Arc};
 use tokio::time::Instant;
 use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
@@ -15,10 +18,10 @@ impl UnconfirmedMsgCollector {
         Self { tx }
     }
 
-    pub fn submit(&self, ids: Vec<String>) -> Result<(), crate::ServiceError> {
+    pub fn submit(&self, ids: Vec<String>) -> Result<(), ServiceError> {
         self.tx
             .send(ids)
-            .map_err(|e| crate::SystemError::ChannelSendFailed(e.to_string()))?;
+            .map_err(|e| crate::error::system::SystemError::ChannelSendFailed(e.to_string()))?;
         Ok(())
     }
 
@@ -68,8 +71,11 @@ impl UnconfirmedMsgCollector {
 
                             last_recv_time = None;
 
-                            let notify = crate::manager::Context::get_global_notify().unwrap();
-                            notify.notify_one();
+                            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+                            if let Some(handles) = handles.upgrade() {
+                                let notify = handles.get_global_notify();
+                                notify.notify_one();
+                            }
                             tracing::debug!("notify_one");
                         }else{
                             tracing::debug!("⏳ 等待消息确认");
@@ -90,14 +96,11 @@ pub struct UnconfirmedMsgProcessor {
 
 impl UnconfirmedMsgProcessor {
     pub fn new(client_id: &str, notify: Arc<tokio::sync::Notify>) -> Self {
-        Self {
-            client_id: client_id.into(),
-            notify,
-        }
+        Self { client_id: client_id.into(), notify }
     }
 
-    async fn handle_once(client_id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    async fn handle_once(client_id: &str) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         // 判断数据库中是否存在大量的未处理消息,如果有则跳过
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());

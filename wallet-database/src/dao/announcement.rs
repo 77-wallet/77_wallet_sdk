@@ -19,12 +19,8 @@ impl AnnouncementEntity {
 
         // 使用辅助函数生成 CASE 语句
         Self::append_case(&mut query_builder, "title", &reqs, |req| req.title.clone());
-        Self::append_case(&mut query_builder, "content", &reqs, |req| {
-            req.content.clone()
-        });
-        Self::append_case(&mut query_builder, "language", &reqs, |req| {
-            req.language.clone()
-        });
+        Self::append_case(&mut query_builder, "content", &reqs, |req| req.content.clone());
+        Self::append_case(&mut query_builder, "language", &reqs, |req| req.language.clone());
 
         // 更新更新时间字段
         query_builder.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ");
@@ -41,11 +37,7 @@ impl AnnouncementEntity {
 
         // 执行查询
         let query = query_builder.build();
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     /// 辅助函数：构造字段的 CASE 语句
@@ -114,11 +106,7 @@ impl AnnouncementEntity {
 
         let query = query_builder.build();
 
-        query
-            .execute(exec)
-            .await
-            .map(|_| ())
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.execute(exec).await.map(|_| ()).map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn list<'a, E>(exec: E) -> Result<Vec<Self>, crate::Error>
@@ -190,10 +178,7 @@ impl AnnouncementEntity {
         }
 
         // 执行查询并返回结果
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     pub async fn count_status_zero<'a, E>(exec: E) -> Result<i64, crate::Error>

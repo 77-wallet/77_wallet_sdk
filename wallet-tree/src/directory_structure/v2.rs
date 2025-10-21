@@ -8,12 +8,12 @@ use serde::Serialize;
 use crate::{
     directory_structure::LayoutStrategy,
     naming::{
-        v2::{ModernFileMetas, ModernNaming},
         FileMeta, FileType, NamingStrategy as _,
+        v2::{ModernFileMetas, ModernNaming},
     },
     wallet_hierarchy::{
-        v2::{ModernRoot, ModernWalletBranch, ModernWalletTree},
         WalletTreeOps,
+        v2::{ModernRoot, ModernWalletBranch, ModernWalletTree},
     },
 };
 
@@ -49,11 +49,7 @@ impl LayoutStrategy for ModernLayout {
         for entry in (wallet_utils::file_func::read_dir(base_path)?).flatten() {
             let wallet_dir = entry.path();
             if wallet_dir.is_dir() {
-                let address = wallet_dir
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string();
+                let address = wallet_dir.file_name().unwrap().to_string_lossy().to_string();
                 let root_dir = wallet_dir.join("root");
                 let subs_dir = wallet_dir.join("subs");
 
@@ -79,10 +75,7 @@ impl LayoutStrategy for ModernLayout {
                             }
                         }
                     }
-                    ModernWalletBranch {
-                        root: modern_root,
-                        subs: Default::default(),
-                    }
+                    ModernWalletBranch { root: modern_root, subs: Default::default() }
                 } else {
                     continue;
                 };

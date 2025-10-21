@@ -69,6 +69,76 @@ pub mod endpoint {
     //  swap 相关的交易
     pub const SWAP_APPROVE_CANCEL: &str = "swap/approve/cancel";
     pub const SWAP_APPROVE_SAVE: &str = "swap/approve/save";
+
+    pub mod old_wallet {
+        pub const OLD_KEYS_V2_INIT: &str = "owallet/keys/v2/init";
+        pub const OLD_ADDRESS_BATCH_INIT: &str = "owallet/address/batch/init";
+        /// uid 检查
+        pub const OLD_KEYS_UID_CHECK: &str = "owallet/keys/uidCheck";
+
+        pub const OLD_CHAIN_RPC_LIST: &str = "owallet/chain/rpcList";
+    }
+
+    pub mod api_wallet {
+        /// 上报打手续费
+        pub const TRANS_SERVICE_FEE_TRANS: &str = "awallet/aw/trans/serviceFeeTrans";
+        /// 上报执行结果
+        pub const TRANS_EXECUTE_COMPLETE: &str = "awallet/aw/trans/executeComplete";
+        /// 收到交易事件确认
+        pub const TRANS_EVENT_ACK: &str = "awallet/aw/trans/eventAck";
+
+        pub const TRANS_AUDIT: &str = "awallet/aw/trans/audit";
+
+        /// API钱包消息确认
+        pub const MSG_ACK: &str = "awallet/aw/msg/ack";
+        /// 查询uid的地址列表
+        pub const QUERY_ADDRESS_LIST: &str = "awallet/aw/address/list";
+
+        /// 地址初始化
+        pub const ADDRESS_INIT: &str = "awallet/aw/address/init";
+        /// 地址初始化
+        pub const ADDRESS_EXPAND_COMPLETE: &str = "awallet/aw/address/expand/complete";
+        pub const INIT_SWAP: &str = "awallet/aw/init/swap";
+        /// 设置UID为API钱包
+        pub const INIT_API_WALLET: &str = "awallet/aw/init/apiWallet";
+
+        /// UID绑定appId
+        pub const APP_ID_BIND: &str = "awallet/aw/appid/bind";
+        /// UID解绑appId
+        pub const APP_ID_UNBIND: &str = "awallet/aw/appid/unbind";
+        /// 保存钱包激活配置
+        pub const SAVE_WALLET_ACTIVATION_CONFIG: &str = "awallet/aw/appid/saveActiveInfo";
+        /// 查询钱包激活信息
+        pub const QUERY_WALLET_ACTIVATION_CONFIG: &str = "awallet/aw/appid/getActiveInfo";
+        /// 查询uid绑定信息
+        pub const QUERY_UID_BIND_INFO: &str = "awallet/aw/appid/bindInfo";
+        // /// Uid与Appid的绑定
+        pub const APPID_WITHDRAWAL_WALLET_CHANGE: &str = "awallet/aw/appid/wdWallet/change";
+
+        // /// 导入子账户钱包
+        // pub const APPID_IMPORT_SUB_ACCOUNT: &str = "awallet/aw/appid/rechargeWallet/import";
+        /// 导入钱包
+        pub const APPID_IMPORT_WALLET: &str = "awallet/aw/appid/import";
+        // /// 绑定子账户钱包
+        // pub const APPID_SUB_ACCOUNT_BIND: &str = "awallet/aw/appid/rechargeWallet/bind";
+
+        /// 提币策略保存
+        pub const TRANS_STRATEGY_WITHDRAWAL_SAVE: &str = "awallet/aw/strategy/withdrawal/save";
+        /// 获取提币策略
+        pub const TRANS_STRATEGY_GET_WITHDRAWAL_CONFIG: &str =
+            "awallet/aw/strategy/getWithdrawalConfig";
+        /// 归集策略保存
+        pub const TRANS_STRATEGY_COLLECT_SAVE: &str = "awallet/aw/strategy/collect/save";
+        /// 获取归集策略
+        pub const TRANS_STRATEGY_GET_COLLECT_CONFIG: &str = "awallet/aw/strategy/getCollectConfig";
+
+        /// api钱包查询链列表
+        pub const API_WALLET_CHAIN_LIST: &str = "awallet/aw/chain/list";
+        /// api钱包查询配置
+        pub const API_WALLET_CONFIG: &str = "awallet/aw/appid/configs";
+        /// 查询链下index的资产
+        pub const QUERY_ASSET_LIST: &str = "awallet/aw/address/assetList";
+    }
 }
 
 /// 代理的全局rpc节点

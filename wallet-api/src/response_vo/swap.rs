@@ -1,13 +1,13 @@
 use super::{
-    account::{BalanceInfo, BalanceStr},
     EstimateFeeResp,
+    account::{BalanceInfo, BalanceStr},
 };
 use crate::{
     domain::chain::swap::calc_slippage,
     request::transaction::{ApproveReq, DexRoute, QuoteReq},
 };
 use alloy::primitives::U256;
-use wallet_transport_backend::api::swap::ApproveInfo;
+use wallet_transport_backend::api::wallet::swap::ApproveInfo;
 
 // 查询报价的响应
 #[derive(serde::Serialize)]
@@ -116,7 +116,7 @@ impl ApiQuoteResp {
     }
 
     // amount out 计算  滑点
-    pub fn set_dex_amount_out(&mut self) -> Result<(), crate::ServiceError> {
+    pub fn set_dex_amount_out(&mut self) -> Result<(), crate::error::service::ServiceError> {
         for dex_route in self.dex_route_list.iter_mut() {
             let amount = wallet_utils::unit::u256_from_str(&dex_route.amount_out)?;
             dex_route.amount_out = calc_slippage(amount, self.slippage).to_string();

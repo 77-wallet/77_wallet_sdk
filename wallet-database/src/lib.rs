@@ -35,9 +35,7 @@ impl SqliteContext {
         let uri = format!("{db_path}/data.db");
         let provider = crate::init::SqlitePoolProvider::new(uri).await?;
 
-        Ok(SqliteContext {
-            sqlite_provider: provider,
-        })
+        Ok(SqliteContext { sqlite_provider: provider })
     }
 
     pub fn get_pool(&self) -> Result<std::sync::Arc<sqlx::SqlitePool>, crate::Error> {

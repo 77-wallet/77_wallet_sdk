@@ -11,10 +11,6 @@ pub struct PermissionChangeFrontend {
 
 impl PermissionChangeFrontend {
     pub fn new(grantor_addr: &str, types: &str, operations: Vec<i8>) -> Self {
-        Self {
-            grantor_addr: grantor_addr.to_owned(),
-            types: types.to_owned(),
-            operations,
-        }
+        Self { grantor_addr: grantor_addr.to_owned(), types: types.to_owned(), operations }
     }
 }

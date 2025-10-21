@@ -1,6 +1,6 @@
-use crate::{api::ReturnType, service::node::NodeService};
+use crate::{api::ReturnType, manager::WalletManager, service::node::NodeService};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn add_node(
         &self,
         name: &str,
@@ -12,17 +12,13 @@ impl crate::WalletManager {
         NodeService::new(self.repo_factory.resource_repo())
             .add_node(name, chain_code, rpc_url, ws_url, http_url)
             .await
-            .into()
     }
 
     pub async fn get_node_list(
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::chain::NodeListRes>> {
-        NodeService::new(self.repo_factory.resource_repo())
-            .get_node_list(chain_code)
-            .await
-            .into()
+        NodeService::new(self.repo_factory.resource_repo()).get_node_list(chain_code).await
     }
 
     // 区块链网络速率/快慢接口
@@ -30,10 +26,7 @@ impl crate::WalletManager {
         &self,
         chain_code: &str,
     ) -> ReturnType<Vec<crate::response_vo::chain::NodeDynData>> {
-        NodeService::new(self.repo_factory.resource_repo())
-            .get_node_dynamic_data(chain_code)
-            .await
-            .into()
+        NodeService::new(self.repo_factory.resource_repo()).get_node_dynamic_data(chain_code).await
     }
 }
 
@@ -54,9 +47,7 @@ mod tests {
         let rpc_url = "https://api.nileex.io/";
         let ws_url = "https://api.nileex.io/";
 
-        let add_node = wallet_manager
-            .add_node(name, chain_code, rpc_url, ws_url, None)
-            .await;
+        let add_node = wallet_manager.add_node(name, chain_code, rpc_url, ws_url, None).await;
         tracing::info!("add_node: {add_node:?}");
         Ok(())
     }
@@ -68,7 +59,7 @@ mod tests {
         let (wallet_manager, _test_params) = get_manager().await?;
 
         let chain_code = "eth";
-        let get_node_list = wallet_manager.get_node_list(chain_code).await;
+        let get_node_list = wallet_manager.get_node_list(chain_code).await?;
         let get_node_list = wallet_utils::serde_func::serde_to_string(&get_node_list).unwrap();
         tracing::info!("get_node_list: {get_node_list:?}");
         Ok(())
@@ -80,7 +71,7 @@ mod tests {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, _test_params) = get_manager().await?;
 
-        let res = wallet_manager.get_node_dynamic_data("tron").await;
+        let res = wallet_manager.get_node_dynamic_data("tron").await?;
 
         let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
         tracing::info!("res: {res:?}");

@@ -1,4 +1,5 @@
 pub mod account;
+pub mod api_wallet;
 pub mod app;
 pub mod assets;
 pub mod coin;
@@ -31,16 +32,15 @@ pub enum AccountRequest {
 impl TryFrom<(Option<String>, Option<u32>)> for AccountRequest {
     fn try_from(value: (Option<String>, Option<u32>)) -> Result<Self, Self::Error> {
         match value {
-            (Some(address), Some(account_id)) => Ok(AccountRequest::Wallet(WalletReq {
-                address,
-                account_id,
-            })),
+            (Some(address), Some(account_id)) => {
+                Ok(AccountRequest::Wallet(WalletReq { address, account_id }))
+            }
             (Some(address), None) => Ok(AccountRequest::Account(AccountReq { address })),
-            _ => Err(crate::ServiceError::Parameter(
+            _ => Err(crate::error::service::ServiceError::Parameter(
                 "Invalid request: need address".to_string(),
             )),
         }
     }
 
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 }

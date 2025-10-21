@@ -1,5 +1,5 @@
 use std::ops::{Deref, DerefMut};
-use wallet_database::entities::chain::ChainEntity;
+use wallet_database::entities::{api_chain::ApiChainEntity, chain::ChainEntity};
 use wallet_transport_backend::response_vo::coin::{TokenCurrency, TokenPriceChangeBody};
 
 use crate::{
@@ -45,40 +45,6 @@ impl DerefMut for CoinInfoList {
         &mut self.0
     }
 }
-// impl CoinInfoList {
-// // 标记多链资产的 is_multi_chain 属性
-// pub(crate) fn mark_multi_chain_assets(&mut self) {
-//     // 使用 HashSet 来存储每个 symbol 对应的不同 chain_code，以避免重复
-//     let mut symbol_chain_map: std::collections::HashMap<String, HashSet<String>> =
-//         std::collections::HashMap::new();
-
-//     // 先填充 symbol_chain_map，每个 symbol 对应的 HashSet 包含不同的 chain_code
-//     for asset in self.iter() {
-//         for (chain_code, token_address) in asset.chain_list.iter() {
-//             symbol_chain_map
-//                 .entry(asset.symbol.clone())
-//                 .or_default()
-//                 .insert(chain_code.clone());
-//         }
-//     }
-
-//     // 再次遍历 self，设置 is_multi_chain 标记
-//     for asset in self.iter_mut() {
-//         if let Some(chain_codes) = symbol_chain_map.get(&asset.symbol) {
-//             // asset.is_multichain = chain_codes.len() > 1;
-//         }
-//     }
-// }
-// }
-
-// #[derive(Debug, serde::Deserialize, PartialEq, Eq, Hash, serde::Serialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct ChainInfo {
-//     pub chain_code: String,
-//     pub token_address: Option<String>,
-//     pub protocol: Option<String>,
-// }
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryHistoryPrice {
@@ -90,52 +56,7 @@ pub struct QueryHistoryPrice {
 #[serde(rename_all = "camelCase")]
 pub struct QueryHistoryPriceRes(pub Vec<QueryHistoryPrice>);
 
-// impl TryFrom<(TokenCurrency, TokenHistoryPrice)> for QueryHistoryPrice {
-//     type Error = crate::ServiceError;
-
-//     fn try_from(
-//         (token_currency, assets): (TokenCurrency, TokenHistoryPrice),
-//     ) -> Result<Self, Self::Error> {
-//         let balance = assets.price;
-//         let config = crate::config::CONFIG.read().await;
-//         let currency = config.currency();
-
-//         let price = wallet_types::Decimal::from_f64_retain(token_currency.get_price(currency))
-//             .unwrap_or_default();
-//         let fiat_balance = price * balance;
-
-//         Ok(QueryHistoryPrice {
-//             date: assets.date,
-//             price: BalanceInfo {
-//                 amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
-//                 currency: currency.to_string(),
-//                 unit_price: Some(wallet_utils::conversion::decimal_to_f64(&price)?),
-//                 fiat_value: Some(wallet_utils::conversion::decimal_to_f64(&fiat_balance)?),
-//             },
-//         })
-//     }
-// }
-
-// impl From<Vec<ExchangeRateEntity>> for TokenCurrencies {
-//     fn from(value: Vec<ExchangeRateEntity>) -> Self {
-//         let mut map = std::collections::HashMap::new();
-//         for entity in value {
-//             let symbol = entity.symbol.to_ascii_lowercase();
-//             let name = entity.name;
-//             let token_currency = TokenCurrency {
-//                 name,
-//                 chain_code: entity.chain_code,
-//                 code: entity.symbol,
-//                 price: entity.price.parse::<f64>().unwrap_or_default(),
-//                 currency_price: entity.currency.parse::<f64>().unwrap_or_default(),
-//             };
-//             map.insert(symbol, token_currency);
-//         }
-//         TokenCurrencies(map)
-//     }
-// }
-
-#[derive(Debug, serde::Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq, Hash)]
 pub struct TokenCurrencyId {
     pub symbol: String,
     pub chain_code: String,
@@ -150,9 +71,21 @@ impl TokenCurrencyId {
             token_address,
         }
     }
+
+    pub(crate) fn gen_key(&self) -> String {
+        Self::make_key(
+            &self.symbol,
+            &self.chain_code,
+            &self.token_address.clone().unwrap_or_default(),
+        )
+    }
+
+    pub(crate) fn make_key(symbol: &str, chain_code: &str, token_address: &str) -> String {
+        format!("{}:{}:{}", symbol, chain_code, token_address)
+    }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, Default)]
 pub struct TokenCurrencies(pub std::collections::HashMap<TokenCurrencyId, TokenCurrency>);
 
 impl Deref for TokenCurrencies {
@@ -173,7 +106,7 @@ impl TokenCurrencies {
     pub async fn calculate_token_price_changes(
         data: &TokenPriceChangeBody,
         exchange_rate: f64,
-    ) -> Result<TokenPriceChangeRes, crate::ServiceError> {
+    ) -> Result<TokenPriceChangeRes, crate::error::service::ServiceError> {
         // let market_value = wallet_utils::conversion::decimal_from_f64(data.market_value)?;
         // let day_change_amount =
         //     wallet_utils::conversion::decimal_from_f64(data.day_change_amount.unwrap_or_default())?;
@@ -187,7 +120,7 @@ impl TokenCurrencies {
     pub async fn calculate(
         exchange_rate: f64,
         value: f64,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         // let config = crate::app_state::APP_STATE.read().await;
         // let currency = config.currency();
         // let currency = "USD";
@@ -206,7 +139,7 @@ impl TokenCurrencies {
         &self,
         data: Vec<wallet_database::entities::assets::AssetsEntityWithAddressType>,
         chains: Vec<ChainEntity>,
-    ) -> Result<Vec<ChainAssets>, crate::ServiceError> {
+    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
         let mut res = Vec::new();
 
         // 计算所有币种的总数
@@ -217,10 +150,58 @@ impl TokenCurrencies {
         }
 
         for assets in data {
-            if let Some(chain) = chains
-                .iter()
-                .find(|chain| chain.chain_code == assets.chain_code)
-            {
+            if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
+                let balance = self
+                    .calculate_to_balance(
+                        &assets.balance,
+                        &assets.symbol,
+                        &assets.chain_code,
+                        assets.token_address(),
+                    )
+                    .await?;
+
+                let name = if assets.chain_code == "btc" || assets.chain_code == "ltc" {
+                    let address_category = AccountDomain::get_show_address_type(
+                        &assets.chain_code,
+                        assets.address_type(),
+                    )?;
+                    address_category.show_name().to_uppercase()
+                } else {
+                    chain.name.clone()
+                };
+
+                let asset_quantity_ratio = balance.amount / sum;
+                res.push(crate::response_vo::chain::ChainAssets {
+                    chain_code: assets.chain_code,
+                    name,
+                    address: assets.address,
+                    token_address: assets.token_address,
+                    balance,
+                    symbol: assets.symbol,
+                    is_multisig: assets.is_multisig,
+                    asset_quantity_ratio,
+                })
+            }
+        }
+        Ok(res)
+    }
+
+    pub async fn calculate_api_chain_assets_list(
+        &self,
+        data: Vec<wallet_database::entities::api_assets::ApiAssetsEntityWithAddressType>,
+        chains: Vec<ApiChainEntity>,
+    ) -> Result<Vec<ChainAssets>, crate::error::service::ServiceError> {
+        let mut res = Vec::new();
+
+        // 计算所有币种的总数
+        let mut sum = f64::default();
+        for assets in &data {
+            let balance = wallet_utils::parse_func::f64_from_str(&assets.balance)?;
+            sum += balance;
+        }
+
+        for assets in data {
+            if let Some(chain) = chains.iter().find(|chain| chain.chain_code == assets.chain_code) {
                 let balance = self
                     .calculate_to_balance(
                         &assets.balance,
@@ -262,7 +243,7 @@ impl TokenCurrencies {
         symbol: &str,
         chain_code: &str,
         token_address: Option<String>,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
 
         let currency = ConfigDomain::get_currency().await?;
@@ -282,9 +263,40 @@ impl TokenCurrencies {
         Ok(BalanceInfo {
             amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
             currency: currency.to_string(),
-            unit_price: price
+            unit_price: price.map(|p| wallet_utils::conversion::decimal_to_f64(&p)).transpose()?,
+            fiat_value: fiat_balance
                 .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
                 .transpose()?,
+        })
+    }
+
+    pub fn calculate_sync_to_balance(
+        &self,
+        currency: &str,
+        balance: &str,
+        symbol: &str,
+        chain_code: &str,
+        token_address: Option<String>,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        let balance = wallet_utils::parse_func::decimal_from_str(&balance)?;
+
+        let token_currency_id = TokenCurrencyId::new(symbol, chain_code, token_address);
+
+        let (price, fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
+            let price = token_currency
+                .get_price(&currency)
+                .and_then(wallet_types::Decimal::from_f64_retain);
+
+            let fiat_balance = price.map(|p| p * balance);
+            (price, fiat_balance)
+        } else {
+            (None, None)
+        };
+        tracing::info!("fiat_balance: {fiat_balance:?}");
+        Ok(BalanceInfo {
+            amount: wallet_utils::conversion::decimal_to_f64(&balance)?,
+            currency: currency.to_string(),
+            unit_price: price.map(|p| wallet_utils::conversion::decimal_to_f64(&p)).transpose()?,
             fiat_value: fiat_balance
                 .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
                 .transpose()?,
@@ -294,26 +306,15 @@ impl TokenCurrencies {
     pub async fn calculate_account_total_assets(
         &self,
         data: &mut [wallet_database::entities::assets::AssetsEntity],
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let mut account_total_assets = Some(wallet_types::Decimal::default());
         let mut amount = wallet_types::Decimal::default();
-        // let config = crate::app_state::APP_STATE.read().await;
-        // let currency = config.currency();
-        // let currency = "USD";
+
         let currency = ConfigDomain::get_currency().await?;
+
         for assets in data.iter_mut() {
             let token_currency_id =
                 TokenCurrencyId::new(&assets.symbol, &assets.chain_code, assets.token_address());
-            // let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
-            //     let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
-
-            //     let price =
-            //         wallet_types::Decimal::from_f64_retain(token_currency.get_price(currency))
-            //             .unwrap_or_default();
-            //     price * balance
-            // } else {
-            //     wallet_types::Decimal::default()
-            // };
 
             let value = if let Some(token_currency) = self.0.get(&token_currency_id) {
                 let balance = wallet_utils::parse_func::decimal_from_str(&assets.balance)?;
@@ -332,6 +333,7 @@ impl TokenCurrencies {
             account_total_assets =
                 account_total_assets.map(|total| total + value.unwrap_or_default());
         }
+
         Ok(BalanceInfo {
             amount: wallet_utils::conversion::decimal_to_f64(&amount)?,
             currency: currency.to_string(),
@@ -346,7 +348,7 @@ impl TokenCurrencies {
         &self,
         data: wallet_database::entities::assets::AssetsEntity,
         existing_asset: &mut super::assets::AccountChainAsset,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let balance = wallet_utils::parse_func::decimal_from_str(&data.balance)?;
         if balance.is_zero() {
             return Ok(());
@@ -372,12 +374,53 @@ impl TokenCurrencies {
         //     .chain_list
         //     .insert(data.chain_code, data.token_address);
 
-        let BalanceInfo {
-            amount,
-            currency: _,
-            unit_price: _,
-            fiat_value,
-        } = &mut existing_asset.balance;
+        let BalanceInfo { amount, currency: _, unit_price: _, fiat_value } =
+            &mut existing_asset.balance;
+
+        let after_balance = *amount + balance_f;
+        *amount = after_balance;
+        let fiat_balance = price.map(|p| p * after_balance);
+        *fiat_value = fiat_balance;
+
+        // existing_asset.usdt_balance = (after_balance * unit_price).to_string();
+        // FIXME: btc 的资产是 非multisig 的，需要特殊处理
+        // existing_asset.is_multichain = true;
+
+        Ok(())
+    }
+
+    pub async fn calculate_api_assets(
+        &self,
+        data: wallet_database::entities::api_assets::ApiAssetsEntity,
+        existing_asset: &mut super::api_wallet::assets::ApiAccountChainAsset,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let balance = wallet_utils::parse_func::decimal_from_str(&data.balance)?;
+        if balance.is_zero() {
+            return Ok(());
+        }
+        let balance_f = wallet_utils::parse_func::f64_from_str(&data.balance)?;
+
+        let token_currency_id =
+            TokenCurrencyId::new(&data.symbol, &data.chain_code, data.token_address());
+        let (price, _fiat_balance) = if let Some(token_currency) = self.0.get(&token_currency_id) {
+            // let config = crate::app_state::APP_STATE.read().await;
+            // let currency = config.currency();
+            // let currency = "USD";
+            let currency = ConfigDomain::get_currency().await?;
+
+            let price = token_currency.get_price(&currency);
+            let fiat_balance = price.map(|p| p * balance_f);
+            (price, fiat_balance)
+        } else {
+            (None, None)
+        };
+
+        // existing_asset
+        //     .chain_list
+        //     .insert(data.chain_code, data.token_address);
+
+        let BalanceInfo { amount, currency: _, unit_price: _, fiat_value } =
+            &mut existing_asset.balance;
 
         let after_balance = *amount + balance_f;
         *amount = after_balance;
@@ -394,7 +437,20 @@ impl TokenCurrencies {
     pub async fn calculate_assets_entity(
         &self,
         assets: &wallet_database::entities::assets::AssetsEntity,
-    ) -> Result<BalanceInfo, crate::ServiceError> {
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
+        self.calculate_to_balance(
+            &assets.balance,
+            &assets.symbol,
+            &assets.chain_code,
+            assets.token_address(),
+        )
+        .await
+    }
+
+    pub async fn calculate_api_assets_entity(
+        &self,
+        assets: &wallet_database::entities::api_assets::ApiAssetsEntity,
+    ) -> Result<BalanceInfo, crate::error::service::ServiceError> {
         self.calculate_to_balance(
             &assets.balance,
             &assets.symbol,
@@ -408,7 +464,7 @@ impl TokenCurrencies {
         &self,
         data: Vec<wallet_database::entities::account::AccountEntity>,
         chains: &ChainCodeAndName,
-    ) -> Result<AccountInfos, crate::ServiceError> {
+    ) -> Result<AccountInfos, crate::error::service::ServiceError> {
         let mut account_list = Vec::<crate::response_vo::wallet::AccountInfo>::new();
         for account in data {
             // let btc_address_type_opt: AddressType = account.address_type().try_into()?;
@@ -417,9 +473,8 @@ impl TokenCurrencies {
             let address_type =
                 AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;
 
-            if let Some(info) = account_list
-                .iter_mut()
-                .find(|info| info.account_id == account.account_id)
+            if let Some(info) =
+                account_list.iter_mut().find(|info| info.account_id == account.account_id)
             {
                 let name = chains.get(&account.chain_code);
                 info.chain.push(crate::response_vo::wallet::ChainInfo {
@@ -466,10 +521,7 @@ pub struct TokenPriceChangeRes {
     // 链码
     pub chain_code: String,
     // 代币编码
-    #[serde(
-        rename = "code",
-        deserialize_with = "wallet_utils::serde_func::deserialize_uppercase"
-    )]
+    #[serde(rename = "code", deserialize_with = "wallet_utils::serde_func::deserialize_uppercase")]
     pub symbol: String,
     // 默认代币
     pub default_token: Option<bool>,

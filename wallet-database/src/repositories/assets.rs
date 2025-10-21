@@ -1,22 +1,8 @@
 use crate::{
+    DbPool,
     dao::assets::CreateAssetsVo,
     entities::assets::{AssetsEntity, AssetsEntityWithAddressType, AssetsId},
-    DbPool,
 };
-
-// pub struct ChainRepo {
-//     // pub repo: ResourcesRepo,
-// }
-
-// impl ChainRepo {
-//     pub fn new(db_pool: crate::DbPool) -> Self {
-//         Self {
-//             // repo: ResourcesRepo::new(db_pool),
-//         }
-//     }
-// }
-
-// impl ChainRepoTrait for ChainRepo {}
 
 #[async_trait::async_trait]
 pub trait AssetsRepoTrait: super::TransactionTrait {
@@ -181,5 +167,14 @@ impl AssetsRepo {
         address: &str,
     ) -> Result<Option<AssetsEntity>, crate::Error> {
         AssetsEntity::get_by_addr_token(pool.as_ref(), chain_code, token_address, address).await
+    }
+
+    // repair
+    pub async fn all_error_wsol(pool: &DbPool) -> Result<Vec<AssetsEntity>, crate::Error> {
+        AssetsEntity::error_wsol_assets(pool.as_ref()).await
+    }
+
+    pub async fn repair_wsol_error(pool: &DbPool) -> Result<(), crate::Error> {
+        AssetsEntity::delete_error_wsol_assets(pool.as_ref()).await
     }
 }

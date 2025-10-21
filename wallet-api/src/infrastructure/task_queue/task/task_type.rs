@@ -45,9 +45,7 @@ impl TryFrom<i64> for TaskType {
             1 => Ok(TaskType::BackendApi),
             2 => Ok(TaskType::Mqtt),
             3 => Ok(TaskType::Common),
-            _ => Err(Box::new(sqlx::Error::ColumnNotFound(
-                "Invalid TaskType value".into(),
-            ))),
+            _ => Err(Box::new(sqlx::Error::ColumnNotFound("Invalid TaskType value".into()))),
         }
     }
 }

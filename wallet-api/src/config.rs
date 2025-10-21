@@ -21,6 +21,7 @@ pub struct CryptoConfig {
 
 #[derive(Deserialize, Debug)]
 pub struct AggregateApi {
+    pub dev_url: String,
     pub test_url: String,
     pub prod_url: String,
 }
@@ -33,7 +34,7 @@ pub struct BackendApiConfig {
 }
 
 impl Config {
-    pub fn new(config_content: &str) -> Result<Self, crate::ServiceError> {
+    pub fn new(config_content: &str) -> Result<Self, crate::error::service::ServiceError> {
         let config: Config = wallet_utils::serde_func::serde_yaml_from_str(config_content)?;
         Ok(config)
     }

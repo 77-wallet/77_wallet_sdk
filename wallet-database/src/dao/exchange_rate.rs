@@ -99,9 +99,6 @@ impl ExchangeRateEntity {
         }
 
         // 执行查询
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 }

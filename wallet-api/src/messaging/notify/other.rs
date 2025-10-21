@@ -43,18 +43,10 @@ pub struct TransactionProcessFrontend {
 }
 impl TransactionProcessFrontend {
     pub fn new(bill_kind: BillKind, process: Process) -> Self {
-        Self {
-            bill_kind,
-            tx_num: None,
-            process,
-        }
+        Self { bill_kind, tx_num: None, process }
     }
     pub fn new_with_num(bill_kind: BillKind, tx_num: i64, process: Process) -> Self {
-        Self {
-            bill_kind,
-            tx_num: Some(tx_num),
-            process,
-        }
+        Self { bill_kind, tx_num: Some(tx_num), process }
     }
 }
 

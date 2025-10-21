@@ -39,10 +39,7 @@ impl MultisigMemberDaoV1 {
             updated_at = EXCLUDED.updated_at;",
         );
 
-        sqlx::query(&query)
-            .execute(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))?;
+        sqlx::query(&query).execute(exec).await.map_err(|e| crate::Error::Database(e.into()))?;
 
         Ok(())
     }
@@ -97,12 +94,8 @@ impl MultisigMemberDaoV1 {
         let query =
             r#"update multisig_member set confirmed = ? where account_id = ? and address = ?"#;
 
-        let _ = sqlx::query(query)
-            .bind(confirmed)
-            .bind(account_id)
-            .bind(address)
-            .execute(exec)
-            .await?;
+        let _ =
+            sqlx::query(query).bind(confirmed).bind(account_id).bind(address).execute(exec).await?;
 
         Ok(())
     }
@@ -161,10 +154,7 @@ impl MultisigMemberDaoV1 {
             WHERE uid = ?
         "#;
 
-        let res = sqlx::query_as::<_, MultisigMemberEntity>(sql)
-            .bind(uid)
-            .fetch_all(exec)
-            .await?;
+        let res = sqlx::query_as::<_, MultisigMemberEntity>(sql).bind(uid).fetch_all(exec).await?;
         Ok(MultisigMemberEntities(res))
     }
 
@@ -183,9 +173,7 @@ impl MultisigMemberDaoV1 {
             WHERE uid IN ('{}')",
             uids
         );
-        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql)
-            .fetch_all(exec)
-            .await?;
+        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql).fetch_all(exec).await?;
         Ok(MultisigMemberEntities(res))
     }
 
@@ -204,9 +192,7 @@ impl MultisigMemberDaoV1 {
             WHERE address IN ('{}')",
             addresses
         );
-        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql)
-            .fetch_all(exec)
-            .await?;
+        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql).fetch_all(exec).await?;
         Ok(MultisigMemberEntities(res))
     }
 
@@ -229,9 +215,7 @@ impl MultisigMemberDaoV1 {
             account_ids, addresses
         );
 
-        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql)
-            .fetch_all(exec)
-            .await?;
+        let res = sqlx::query_as::<_, MultisigMemberEntity>(&sql).fetch_all(exec).await?;
         Ok(MultisigMemberEntities(res))
     }
 
@@ -256,10 +240,7 @@ impl MultisigMemberDaoV1 {
         E: Executor<'a, Database = Sqlite>,
     {
         let sql = "DELETE FROM multisig_member WHERE account_id = $1 RETURNING *";
-        let rows = sqlx::query_as::<_, MultisigMemberEntity>(sql)
-            .bind(id)
-            .fetch_all(exec)
-            .await?;
+        let rows = sqlx::query_as::<_, MultisigMemberEntity>(sql).bind(id).fetch_all(exec).await?;
         Ok(rows)
     }
 
@@ -274,14 +255,9 @@ impl MultisigMemberDaoV1 {
             "DELETE FROM multisig_member RETURNING *".to_string()
         } else {
             let ids = crate::any_in_collection(ids, "','");
-            format!(
-                "DELETE FROM multisig_member WHERE account_id IN ('{}') RETURNING *",
-                ids
-            )
+            format!("DELETE FROM multisig_member WHERE account_id IN ('{}') RETURNING *", ids)
         };
 
-        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigMemberEntity>(&sql)
-            .fetch_all(exec)
-            .await?)
+        Ok(sqlx::query_as::<sqlx::Sqlite, MultisigMemberEntity>(&sql).fetch_all(exec).await?)
     }
 }

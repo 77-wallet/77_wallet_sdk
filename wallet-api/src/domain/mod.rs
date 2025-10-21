@@ -1,13 +1,13 @@
 pub mod account;
 pub mod address_book;
 pub mod announcement;
+pub mod api_wallet;
 pub mod app;
 pub mod assets;
 pub mod bill;
 pub mod chain;
 pub mod coin;
 pub mod exchange_rate;
-pub mod log;
 pub mod multisig;
 pub mod node;
 pub mod permission;

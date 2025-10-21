@@ -44,7 +44,7 @@ popular = true
 active = true
 
 [[coins]]
-name = "BNB-Test"
+name = "BNB"
 chain_code = "bnb"
 symbol = "BNB"
 decimals = 18
@@ -55,7 +55,7 @@ popular = true
 active = true
 
 [[coins]]
-name = "SOl-Test"
+name = "SOl"
 chain_code = "sol"
 symbol = "SOL"
 decimals = 9
@@ -64,17 +64,6 @@ protocol = ""
 default = true
 popular = true
 active = true
-
-[[coins]]
-name = "Wrapped SOL"
-chain_code = "sol"
-symbol = "wSOL"
-decimals = 9
-token_address = "So11111111111111111111111111111111111111112"
-protocol = ""
-default = false
-popular = false
-active = false
 
 [[coins]]
 name = "Tether USD"
@@ -88,7 +77,7 @@ popular = true
 active = true
 
 [[coins]]
-name = "BTC-Test"
+name = "BTC"
 chain_code = "btc"
 symbol = "BTC"
 decimals = 8
@@ -163,7 +152,6 @@ protocol = ""
 default = true
 popular = true
 active = true
-
 
 [[coins]]
 name = "Dogecoin"

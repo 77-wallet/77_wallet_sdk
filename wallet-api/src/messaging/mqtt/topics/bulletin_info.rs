@@ -1,7 +1,7 @@
 use wallet_database::entities::announcement::CreateAnnouncementVo;
 
 use crate::{
-    messaging::notify::{event::NotifyEvent, FrontendNotifyEvent},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     service::announcement::AnnouncementService,
 };
 
@@ -96,21 +96,18 @@ pub enum Operation {
 }
 
 impl BulletinMsg {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
-        let Self {
-            ref id,
-            ref operation,
-            ..
-        } = self;
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let Self { id, operation, .. } = self;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         if let Some(operation) = operation {
             match operation {
                 Operation::Send => {
-                    let send_time = self
-                        .send_time
-                        .clone()
-                        .or(Some(wallet_utils::time::now().to_string()));
+                    let send_time =
+                        self.send_time.clone().or(Some(wallet_utils::time::now().to_string()));
                     let input = CreateAnnouncementVo {
                         id: self.id.clone(),
                         title: self.title.clone(),

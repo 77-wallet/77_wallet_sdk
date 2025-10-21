@@ -9,6 +9,7 @@ pub mod transaction;
 pub use transaction::*;
 pub mod address_book;
 pub mod announcement;
+pub mod api_wallet;
 pub mod permission;
 pub mod stake;
 pub mod swap;

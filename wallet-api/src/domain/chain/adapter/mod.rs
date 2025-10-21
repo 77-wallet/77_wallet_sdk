@@ -13,10 +13,14 @@ use super::rpc_need_header;
 pub use multisig_adapter::*;
 pub mod eth;
 pub mod eth_tx;
+pub mod sol_tx;
 pub mod ton_tx;
 pub mod tron_tx;
 
-use wallet_database::entities::chain::{ChainEntity, ChainWithNode};
+use wallet_database::{
+    entities::chain::{ChainEntity, ChainWithNode},
+    repositories::api_wallet::chain::ApiChainRepo,
+};
 
 const TIME_OUT: u64 = 30;
 
@@ -38,26 +42,41 @@ macro_rules! dispatch {
 
 pub struct ChainAdapterFactory;
 impl ChainAdapterFactory {
-    async fn get_chain_node(chain_code: &str) -> Result<ChainWithNode, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    async fn get_chain_node(
+        chain_code: &str,
+    ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code)
-            .await?
-            .ok_or(crate::BusinessError::Chain(crate::ChainError::NotFound(
-                chain_code.to_string(),
-            )))?;
+        let node = ChainEntity::chain_node_info(pool.as_ref(), chain_code).await?.ok_or(
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+            ),
+        )?;
+        Ok(node)
+    }
+
+    async fn get_api_chain_node(
+        chain_code: &str,
+    ) -> Result<ChainWithNode, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+
+        let node = ApiChainRepo::detail_with_node(&pool, chain_code).await?.ok_or(
+            crate::error::business::BusinessError::Chain(
+                crate::error::business::chain::ChainError::NotFound(chain_code.to_string()),
+            ),
+        )?;
         Ok(node)
     }
 
     pub async fn get_multisig_adapter(
         chain_code: &str,
-    ) -> Result<MultisigAdapter, crate::ServiceError> {
+    ) -> Result<MultisigAdapter, crate::error::service::ServiceError> {
         let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
 
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };
@@ -67,12 +86,12 @@ impl ChainAdapterFactory {
 
     pub async fn get_transaction_adapter(
         chain_code: &str,
-    ) -> Result<TransactionAdapter, crate::ServiceError> {
+    ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
         let node = ChainAdapterFactory::get_chain_node(chain_code).await?;
         let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };
@@ -80,11 +99,26 @@ impl ChainAdapterFactory {
         Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt)?)
     }
 
-    pub async fn get_tron_adapter() -> Result<TronChain, crate::ServiceError> {
+    pub async fn get_api_wallet_transaction_adapter(
+        chain_code: &str,
+    ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
+        let node = ChainAdapterFactory::get_api_chain_node(chain_code).await?;
+        let chain = wallet_types::chain::chain::ChainCode::try_from(node.chain_code.as_str())?;
+
+        let header_opt = if rpc_need_header(&node.rpc_url)? {
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
+        } else {
+            None
+        };
+
+        Ok(TransactionAdapter::new(chain, &node.rpc_url, header_opt)?)
+    }
+
+    pub async fn get_tron_adapter() -> Result<TronChain, crate::error::service::ServiceError> {
         let node = ChainAdapterFactory::get_chain_node(chain_code::TRON).await?;
 
         let header_opt = if rpc_need_header(&node.rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };
@@ -99,11 +133,11 @@ impl ChainAdapterFactory {
     pub async fn get_node_transaction_adapter(
         chain_code: &str,
         rpc_url: &str,
-    ) -> Result<TransactionAdapter, crate::ServiceError> {
+    ) -> Result<TransactionAdapter, crate::error::service::ServiceError> {
         let chain = wallet_types::chain::chain::ChainCode::try_from(chain_code)?;
 
         let header_opt = if rpc_need_header(rpc_url)? {
-            Some(crate::Context::get_rpc_header().await?)
+            Some(crate::context::CONTEXT.get().unwrap().get_rpc_header().await?)
         } else {
             None
         };
@@ -122,12 +156,12 @@ pub trait ChainAction {
     async fn estimate_fee(
         &self,
         provider: Self::FeeInfo,
-    ) -> Result<Self::FeeInfo, crate::ServiceError>;
+    ) -> Result<Self::FeeInfo, crate::error::service::ServiceError>;
 
     // 执行操作（包含签名、广播）
     async fn execute(
         &self,
         fee: String,
         key: ChainPrivateKey,
-    ) -> Result<TransferReq, crate::ServiceError>;
+    ) -> Result<TransferReq, crate::error::service::ServiceError>;
 }

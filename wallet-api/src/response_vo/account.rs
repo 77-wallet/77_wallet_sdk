@@ -109,10 +109,7 @@ pub struct TrxResource {
 
 impl TrxResource {
     pub fn new(amount: i64, price: f64) -> Self {
-        Self {
-            amount,
-            value: (amount as f64 * price * 100.0).round() / 100.0,
-        }
+        Self { amount, value: (amount as f64 * price * 100.0).round() / 100.0 }
     }
 }
 
@@ -133,7 +130,7 @@ impl Resource {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceInfo {
     // amount of token
@@ -161,7 +158,7 @@ where
         let formatted = format!("{:.8}", x);
         // 去除多余的尾部 0
         let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
-        s.serialize_str(&trimmed)
+        s.serialize_str(trimmed)
     }
 }
 
@@ -198,15 +195,10 @@ where
 impl BalanceInfo {
     pub fn new(amount: f64, unit_price: Option<f64>, currency: &str) -> Self {
         let fiat_value = unit_price.map(|price| amount * price);
-        Self {
-            amount,
-            currency: currency.to_string(),
-            unit_price,
-            fiat_value,
-        }
+        Self { amount, currency: currency.to_string(), unit_price, fiat_value }
     }
 
-    pub async fn new_without_amount() -> Result<BalanceInfo, crate::ServiceError> {
+    pub async fn new_without_amount() -> Result<BalanceInfo, crate::error::service::ServiceError> {
         let currency = ConfigDomain::get_currency().await?;
 
         Ok(Self {
@@ -265,16 +257,14 @@ impl BalanceNotTruncate {
         amount: Decimal,
         unit_price: Option<Decimal>,
         currency: &str,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let fiat_decimal = unit_price.map(|p| amount * p);
 
-        let unit_price_f64 = unit_price
-            .map(|p| wallet_utils::conversion::decimal_to_f64(&p))
-            .transpose()?;
+        let unit_price_f64 =
+            unit_price.map(|p| wallet_utils::conversion::decimal_to_f64(&p)).transpose()?;
 
-        let fiat_value_f64 = fiat_decimal
-            .map(|v| wallet_utils::conversion::decimal_to_f64(&v))
-            .transpose()?;
+        let fiat_value_f64 =
+            fiat_decimal.map(|v| wallet_utils::conversion::decimal_to_f64(&v)).transpose()?;
 
         Ok(Self {
             amount,
@@ -306,7 +296,7 @@ impl BalanceStr {
         unit_price: Option<f64>,
         currency: &str,
         decimals: u8,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let price_precision = 1_000_000_00u64;
 
         let fiat_value = if let Some(price) = unit_price {
@@ -367,10 +357,7 @@ impl DerivedAddressesList {
     }
 
     pub fn with_mapping_account(&mut self, account_id: u32, account_name: String) -> &mut Self {
-        self.mapping_account = Some(MappingAccount {
-            account_id,
-            account_name,
-        });
+        self.mapping_account = Some(MappingAccount { account_id, account_name });
         self
     }
 
@@ -406,7 +393,7 @@ impl QueryAccountDerivationPath {
 }
 
 impl TryFrom<AccountEntity> for QueryAccountDerivationPath {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: AccountEntity) -> Result<Self, Self::Error> {
         let address_type =
@@ -440,11 +427,7 @@ mod tests {
         let json = serde_json::to_string(&balance).unwrap();
         println!("json: {}", json);
 
-        assert!(
-            json.contains("\"amount\":\"19.9\""),
-            "序列化结果不包含正确的金额: {}",
-            json
-        );
+        assert!(json.contains("\"amount\":\"19.9\""), "序列化结果不包含正确的金额: {}", json);
     }
 
     #[test]
@@ -454,11 +437,7 @@ mod tests {
         let json = serde_json::to_string(&balance).unwrap();
         println!("json: {}", json);
 
-        assert!(
-            json.contains("\"amount\":\"1\""),
-            "序列化结果不包含正确的金额: {}",
-            json
-        );
+        assert!(json.contains("\"amount\":\"1\""), "序列化结果不包含正确的金额: {}", json);
     }
 }
 

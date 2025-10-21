@@ -1,5 +1,5 @@
 use crate::messaging::notify::{
-    event::NotifyEvent, transaction::ConfirmationFrontend, FrontendNotifyEvent,
+    FrontendNotifyEvent, event::NotifyEvent, transaction::ConfirmationFrontend,
 };
 use wallet_database::{
     entities::{
@@ -26,8 +26,8 @@ impl MultiSignTransAccept {
 }
 
 impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
-    type Error = crate::ServiceError;
-    fn try_from(value: &MultiSignTransAccept) -> Result<Self, crate::ServiceError> {
+    type Error = crate::error::service::ServiceError;
+    fn try_from(value: &MultiSignTransAccept) -> Result<Self, crate::error::service::ServiceError> {
         let signatures = value
             .signatures
             .iter()
@@ -65,9 +65,12 @@ impl TryFrom<&MultiSignTransAccept> for NewMultisigQueueEntity {
 }
 
 impl MultiSignTransAccept {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         tracing::info!(
             event_name = %event_name,

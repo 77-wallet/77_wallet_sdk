@@ -1,5 +1,6 @@
 use crate::{
     api::ReturnType,
+    manager::WalletManager,
     request::transaction,
     response_vo::{
         self,
@@ -11,7 +12,7 @@ use crate::{
 };
 use wallet_database::{entities::multisig_member::MemberVo, pagination::Pagination};
 
-impl crate::WalletManager {
+impl WalletManager {
     pub async fn create_multisig_account(
         &self,
         name: String,
@@ -24,17 +25,7 @@ impl crate::WalletManager {
         // tracing::warn!("接收到前端参数{:?}", member_list);
 
         let service = MultisigAccountService::new(self.repo_factory.multisig_account_repo())?;
-        service
-            .crate_account(
-                name,
-                address,
-                chain_code,
-                threshold,
-                member_list,
-                address_type,
-            )
-            .await
-            .into()
+        service.crate_account(name, address, chain_code, threshold, member_list, address_type).await
     }
 
     pub async fn multisig_account_by_id(
@@ -44,7 +35,6 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .multisig_account_by_id(&id)
             .await
-            .into()
     }
 
     pub async fn multisig_account_by_address(
@@ -54,7 +44,6 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .multisig_account_by_address(&address)
             .await
-            .into()
     }
 
     pub async fn multisig_account_lists(
@@ -67,14 +56,12 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .account_list(owner, chain_code.as_deref(), page, page_size)
             .await
-            .into()
     }
 
     pub async fn update_multisig_name(&self, account_id: String, name: String) -> ReturnType<()> {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .update_multisig_name(account_id, name)
             .await
-            .into()
     }
 
     // cancel account
@@ -82,7 +69,6 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .cancel_multisig(account_id)
             .await
-            .into()
     }
 
     /// Deploys a new multisig account on the blockchain.
@@ -98,14 +84,12 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .deploy_multisig_account(&account_id, deploy_fee, payer, &password)
             .await
-            .into()
     }
 
     pub async fn check_participant_exists(&self, account_id: String) -> ReturnType<Vec<String>> {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .check_participant_exists(account_id)
             .await
-            .into()
     }
 
     // confirm
@@ -113,7 +97,6 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .confirm_participation(&account_id)
             .await
-            .into()
     }
 
     /// Gets deploy multisig account fee.
@@ -124,7 +107,6 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .deploy_multisig_fee(&account_id)
             .await
-            .into()
     }
 
     /// Gets the multisig service fee for the specified chain code.
@@ -137,7 +119,6 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .get_multisig_service_fee(&pay_chain, &account_chain, &pay_address)
             .await
-            .into()
     }
 
     /// Fetch the deposit address of the specified chain code.
@@ -145,7 +126,6 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .fetch_deposit_address(&chain_code)
             .await
-            .into()
     }
 
     pub async fn whether_multisig_address(
@@ -156,6 +136,5 @@ impl crate::WalletManager {
         MultisigAccountService::new(self.repo_factory.multisig_account_repo())?
             .whether_multisig_address(address, chain_code)
             .await
-            .into()
     }
 }

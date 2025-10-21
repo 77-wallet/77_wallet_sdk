@@ -1,4 +1,5 @@
 use crate::{
+    DbPool,
     dao::{multisig_account::MultisigAccountDaoV1, multisig_member::MultisigMemberDaoV1},
     entities::{
         self,
@@ -13,7 +14,6 @@ use crate::{
         wallet::WalletEntity,
     },
     pagination::Pagination,
-    DbPool,
 };
 
 use super::ResourcesRepo;
@@ -24,9 +24,7 @@ pub struct MultisigAccountRepo {
 
 impl MultisigAccountRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            repo: ResourcesRepo::new(db_pool),
-        }
+        Self { repo: ResourcesRepo::new(db_pool) }
     }
 }
 
@@ -66,9 +64,7 @@ impl MultisigAccountRepo {
             .await?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -161,9 +157,7 @@ impl MultisigAccountRepo {
             .await?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
 
         Ok(())
     }
@@ -193,9 +187,7 @@ impl MultisigAccountRepo {
             .await?;
         }
 
-        tx.commit()
-            .await
-            .map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
+        tx.commit().await.map_err(|e| crate::Error::Database(crate::DatabaseError::Sqlx(e)))?;
         Ok(())
     }
 

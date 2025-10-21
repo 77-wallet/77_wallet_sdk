@@ -155,10 +155,7 @@ pub struct RootData {
 
 impl RootData {
     pub fn new(phrase: &str, seed: &[u8]) -> Self {
-        Self {
-            phrase: phrase.to_string(),
-            seed: seed.to_vec(),
-        }
+        Self { phrase: phrase.to_string(), seed: seed.to_vec() }
     }
 
     pub fn phrase(&self) -> &str {

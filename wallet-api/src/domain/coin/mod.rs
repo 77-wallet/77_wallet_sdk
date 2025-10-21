@@ -1,22 +1,34 @@
 pub mod token_price;
+use std::collections::HashMap;
+
 use super::app::config::ConfigDomain;
 use crate::{
     infrastructure::parse_utc_datetime,
-    response_vo::coin::{TokenCurrencies, TokenCurrencyId},
+    response_vo::{
+        chain::ChainList,
+        coin::{CoinInfoList, TokenCurrencies, TokenCurrencyId},
+    },
 };
 use chrono::{DateTime, Utc};
 pub use token_price::TokenCurrencyGetter;
 use wallet_database::{
+    DbPool,
     entities::coin::{CoinData, CoinEntity},
     repositories::{
-        coin::{CoinRepo, CoinRepoTrait},
-        exchange_rate::ExchangeRateRepoTrait,
         ResourcesRepo,
+        coin::{CoinRepo, CoinRepoTrait},
+        exchange_rate::{ExchangeRateRepo, ExchangeRateRepoTrait},
     },
-    DbPool,
 };
-use wallet_transport_backend::{response_vo::coin::TokenCurrency, CoinInfo};
+use wallet_transport_backend::{CoinInfo, response_vo::coin::TokenCurrency};
 use wallet_types::chain::chain::ChainCode;
+
+mod chain_stable_coin {
+    pub const ETHEREUM: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+    pub const BNB_SMART_CHAIN: &str = "0x55d398326f99059fF775485246999027B3197955";
+    pub const TRON: &str = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    pub const SOLANA: &str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+}
 
 pub struct CoinDomain {}
 impl Default for CoinDomain {
@@ -33,8 +45,8 @@ impl CoinDomain {
         chain_code: &str,
         symbol: &str,
         token_address: Option<String>,
-    ) -> Result<CoinEntity, crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<CoinEntity, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let coin = CoinRepo::coin_by_symbol_chain(chain_code, symbol, token_address, &pool).await?;
 
@@ -42,22 +54,20 @@ impl CoinDomain {
     }
 
     /// 查询代币汇率
-    pub async fn get_token_currencies_v2(
-        &mut self,
-        repo: &mut ResourcesRepo,
-    ) -> Result<TokenCurrencies, crate::ServiceError> {
+    pub async fn get_token_currencies_v2()
+    -> Result<TokenCurrencies, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let currency = ConfigDomain::get_currency().await?;
 
-        let coins = repo.coin_list_v2(None, None).await?;
+        let coins = CoinRepo::coin_list_v2(pool.clone(), None, None).await?;
 
-        let exchange_rate_list = repo.list().await?;
+        let exchange_rate_list = ExchangeRateRepo::list(&pool).await?;
         // 查询本地的所有币符号
         let mut map = std::collections::HashMap::new();
         for coin in coins {
             let price = coin.price.parse::<f64>().unwrap_or_default();
-            let (currency_price, rate) = if let Some(rate) = exchange_rate_list
-                .iter()
-                .find(|rate| rate.target_currency == currency)
+            let (currency_price, rate) = if let Some(rate) =
+                exchange_rate_list.iter().find(|rate| rate.target_currency == currency)
             {
                 (price * rate.rate, rate.rate)
             } else {
@@ -87,10 +97,41 @@ impl CoinDomain {
         Ok(TokenCurrencies(map))
     }
 
+    pub(crate) fn merge_coin_to_list(
+        coins: Vec<CoinEntity>,
+        show_contract: bool,
+    ) -> Result<CoinInfoList, crate::error::service::ServiceError> {
+        let mut data = CoinInfoList::default();
+
+        for coin in coins.into_iter() {
+            if let Some(d) = data
+                .iter_mut()
+                .find(|info| info.symbol == coin.symbol && info.is_default && coin.is_default == 1)
+            {
+                d.chain_list
+                    .entry(coin.chain_code.clone())
+                    .or_insert(coin.token_address.unwrap_or_default());
+            } else {
+                data.push(crate::response_vo::coin::CoinInfo {
+                    symbol: coin.symbol.clone(),
+                    name: Some(coin.name.clone()),
+                    chain_list: ChainList(HashMap::from([(
+                        coin.chain_code.clone(),
+                        coin.token_address.unwrap_or_default(),
+                    )])),
+                    is_default: coin.is_default == 1,
+                    hot_coin: coin.status == 1,
+                    show_contract,
+                })
+            }
+        }
+        Ok(data)
+    }
+
     pub(crate) async fn upsert_hot_coin_list(
         repo: &mut ResourcesRepo,
         coins: Vec<CoinData>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut seen = std::collections::HashSet::new();
         let mut coin_data = Vec::with_capacity(coins.len());
 
@@ -111,41 +152,59 @@ impl CoinDomain {
         Ok(())
     }
 
-    pub async fn init_coins(repo: &mut ResourcesRepo) -> Result<(), crate::ServiceError> {
+    pub async fn init_coins(
+        repo: &mut ResourcesRepo,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let pool = repo.pool();
         // check 本地表是否有数据,有则不进行新增
         let count = CoinRepo::coin_count(&pool).await?;
-        if count > 0 {
-            return Ok(());
+        if count <= 0 {
+            let list: Vec<CoinData> = crate::default_data::coin::init_default_coins_list()?
+                .coins
+                .iter()
+                .map(|coin| coin.to_owned().into())
+                .collect();
+            Self::upsert_hot_coin_list(repo, list).await?;
         }
 
-        let list: Vec<CoinData> = crate::default_data::coin::init_default_coins_list()?
-            .coins
-            .iter()
-            .map(|coin| coin.to_owned().into())
-            .collect();
-        Self::upsert_hot_coin_list(repo, list).await?;
+        let list = CoinRepo::default_coin_list(&pool).await?;
+        tracing::info!("init coins: {:?}", list);
+        for coin in list.iter() {
+            crate::infrastructure::asset_calc::update_token_price(
+                &coin.symbol,
+                &coin.chain_code,
+                &coin.token_address,
+                wallet_utils::unit::string_to_f64(&coin.price)?,
+            )
+            .await?;
+        }
+        tracing::info!("init_coins:init_assets start");
+        crate::infrastructure::asset_calc::init_assets().await?;
+        tracing::info!("init_coins:init_assets end");
 
         Ok(())
     }
 
-    // 供兑换使用的的默认稳定币地址
-    pub fn get_stable_coin(chain_code: ChainCode) -> Result<String, crate::ServiceError> {
+    // 每个链的主流 usdt代币合约地址
+    pub fn get_stable_coin(
+        chain_code: ChainCode,
+    ) -> Result<&'static str, crate::error::service::ServiceError> {
         match chain_code {
-            ChainCode::Ethereum => Ok("0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string()),
-            ChainCode::BnbSmartChain => {
-                Ok("0x55d398326f99059fF775485246999027B3197955".to_string())
-            }
-            ChainCode::Tron => Ok("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string()),
-            _ => Err(crate::BusinessError::Coin(crate::CoinError::NotFound(
-                chain_code.to_string(),
-            )))?,
+            ChainCode::Ethereum => Ok(chain_stable_coin::ETHEREUM),
+            ChainCode::BnbSmartChain => Ok(chain_stable_coin::BNB_SMART_CHAIN),
+            ChainCode::Tron => Ok(chain_stable_coin::TRON),
+            ChainCode::Solana => Ok(chain_stable_coin::SOLANA),
+            _ => Err(crate::error::business::BusinessError::Coin(
+                crate::error::business::coin::CoinError::NotFound(chain_code.to_string()),
+            ))?,
         }
     }
 
-    pub async fn fetch_all_coin(pool: &DbPool) -> Result<Vec<CoinInfo>, crate::ServiceError> {
+    pub async fn fetch_all_coin(
+        pool: &DbPool,
+    ) -> Result<Vec<CoinInfo>, crate::error::service::ServiceError> {
         // 本地没有币拉服务端所有的币,有拉去创建时间后的币种
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         let mut coins = Vec::new();
 
         // TODO 1.5 版本验证币数量如果大于500说明已经同步过最新的币了,拉最新的。
@@ -162,13 +221,7 @@ impl CoinDomain {
             None
         };
 
-        let create_at = None;
-
-        coins.append(
-            &mut backend_api
-                .fetch_all_tokens(create_at.clone(), None)
-                .await?,
-        );
+        coins.append(&mut backend_api.fetch_all_tokens(create_at.clone(), None).await?);
 
         Ok(coins)
     }
@@ -214,65 +267,3 @@ pub fn coin_info_to_coin_data(coin: CoinInfo) -> CoinData {
         updated_at: parse_utc_datetime(&coin.update_time),
     }
 }
-
-// pub(crate) struct UpsertCoinVo {
-//     chain_code: Option<String>,
-//     symbol: Option<String>,
-//     name: Option<String>,
-//     token_address: Option<String>,
-//     decimals: Option<u8>,
-//     protocol: Option<String>,
-//     is_default: u8,
-//     is_popular: u8,
-//     status: u8,
-// }
-
-// impl From<wallet_transport_backend::CoinInfo> for CoinData {
-//     fn from(coin: wallet_transport_backend::CoinInfo) -> Self {
-//         Self {
-//             chain_code: coin.chain_code.unwrap_or_default(),
-//             symbol: coin.symbol.unwrap_or_default(),
-//             name: coin.name,
-//             token_address: coin.token_address,
-//             decimals: coin.decimals.unwrap_or_default(),
-//             protocol: coin.protocol,
-//             is_default: if coin.default_token { 1 } else { 0 },
-//             is_popular: if coin.popular_token { 1 } else { 0 },
-//             status: if coin.popular_token { 1 } else { 0 },
-//             is_custom: 0,
-//             price: Some("0".to_string()),
-//         }
-//     }
-// }
-
-// impl UpsertCoinVo {
-//     pub(crate) fn token_address(&self) -> Option<String> {
-//         match &self.token_address {
-//             Some(token_address) => {
-//                 if token_address.is_empty() {
-//                     None
-//                 } else {
-//                     Some(token_address.clone())
-//                 }
-//             }
-//             None => None,
-//         }
-//     }
-// }
-
-// impl From<wallet_transport_backend::CoinInfo> for UpsertCoinVo {
-//     fn from(coin: wallet_transport_backend::CoinInfo) -> Self {
-//         Self {
-//             chain_code: coin.chain_code,
-//             symbol: coin.symbol,
-//             name: coin.name,
-//             token_address: coin.token_address,
-//             decimals: coin.decimals,
-//             protocol: coin.protocol,
-//             is_default: if coin.default_token { 1 } else { 0 },
-//             is_popular: if coin.popular_token { 1 } else { 0 },
-//             // status: if coin.enable { 1 } else { 0 },
-//             status: 1,
-//         }
-//     }
-// }

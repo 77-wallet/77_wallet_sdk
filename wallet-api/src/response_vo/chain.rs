@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::account::BalanceInfo;
-use wallet_database::entities::chain::ChainEntity;
+use wallet_database::entities::{api_chain::ApiChainEntity, chain::ChainEntity};
 
 type ChainCode = String;
 type ChainName = String;
@@ -27,6 +27,16 @@ impl std::ops::DerefMut for ChainCodeAndName {
 
 impl From<Vec<ChainEntity>> for ChainCodeAndName {
     fn from(chain: Vec<ChainEntity>) -> Self {
+        let mut res = std::collections::HashMap::new();
+        for chain in chain {
+            res.insert(chain.chain_code, chain.name);
+        }
+        Self(res)
+    }
+}
+
+impl From<Vec<ApiChainEntity>> for ChainCodeAndName {
+    fn from(chain: Vec<ApiChainEntity>) -> Self {
         let mut res = std::collections::HashMap::new();
         for chain in chain {
             res.insert(chain.chain_code, chain.name);

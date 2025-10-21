@@ -3,14 +3,14 @@ use crate::messaging::mqtt::topics::NewPermissionUser;
 use super::{chain::adapter::ChainAdapterFactory, multisig::MultisigQueueDomain};
 use wallet_chain_interact::tron::protocol::account::TronAccount;
 use wallet_database::{
+    DbPool,
     entities::{
         account::{self, AccountEntity},
         permission_user::PermissionUserEntity,
     },
     repositories::{multisig_queue::MultisigQueueRepo, permission::PermissionRepo},
-    DbPool,
 };
-use wallet_transport_backend::api::permission::GetPermissionBackReq;
+use wallet_transport_backend::api::wallet::permission::GetPermissionBackReq;
 use wallet_types::constant::chain_code;
 
 pub struct PermissionDomain;
@@ -19,7 +19,7 @@ impl PermissionDomain {
     pub async fn mark_user_is_self(
         pool: &DbPool,
         users: &mut [PermissionUserEntity],
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         for user in users.iter_mut() {
             let req = account::QueryReq::new_address_chain(&user.address, chain_code::TRON);
             let account = AccountEntity::detail(pool.as_ref(), &req).await?;
@@ -31,16 +31,15 @@ impl PermissionDomain {
     }
 
     // 恢复权限数据
-    pub async fn recover_permission(addresses: Vec<String>) -> Result<(), crate::ServiceError> {
-        let backend = crate::Context::get_global_backend_api()?;
+    pub async fn recover_permission(
+        addresses: Vec<String>,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         for address in addresses {
-            let req = GetPermissionBackReq {
-                address: Some(address),
-                uid: None,
-            };
+            let req = GetPermissionBackReq { address: Some(address), uid: None };
             let result = backend.get_permission_backup(req).await?;
 
             for item in result.list {
@@ -58,7 +57,7 @@ impl PermissionDomain {
         pool: &DbPool,
         account: &TronAccount,
         address: &str,
-    ) -> Result<Vec<NewPermissionUser>, crate::ServiceError> {
+    ) -> Result<Vec<NewPermissionUser>, crate::error::service::ServiceError> {
         let mut result = vec![];
 
         let addresses = account.all_actives_user();
@@ -93,7 +92,7 @@ impl PermissionDomain {
         account: &TronAccount,
         id: i64,
         address: &str,
-    ) -> Result<NewPermissionUser, crate::ServiceError> {
+    ) -> Result<NewPermissionUser, crate::error::service::ServiceError> {
         for item in account.active_permission.iter() {
             if item.id.unwrap_or_default() as i64 == id {
                 let permission_with_user = NewPermissionUser::try_from((item, address))?;
@@ -101,8 +100,8 @@ impl PermissionDomain {
             }
         }
 
-        Err(crate::BusinessError::Permission(
-            crate::PermissionError::ActivesPermissionNotFound,
+        Err(crate::error::business::BusinessError::Permission(
+            crate::error::business::permission::PermissionError::ActivesPermissionNotFound,
         ))?
     }
 
@@ -110,7 +109,7 @@ impl PermissionDomain {
         pool: &DbPool,
         mut permissions: Vec<NewPermissionUser>,
         grantor_addr: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 标记那些是自己
         for p in permissions.iter_mut() {
             Self::mark_user_is_self(pool, &mut p.users).await?;
@@ -128,7 +127,10 @@ impl PermissionDomain {
         Ok(())
     }
 
-    async fn handel_one_item(pool: &DbPool, grantor_addr: &str) -> Result<(), crate::ServiceError> {
+    async fn handel_one_item(
+        pool: &DbPool,
+        grantor_addr: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let chain = ChainAdapterFactory::get_tron_adapter().await?;
         let account = chain.account_info(grantor_addr).await?;
 
@@ -146,17 +148,13 @@ impl PermissionDomain {
     pub async fn delete_by_address(
         pool: &DbPool,
         address: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // 1.all permission  about the address
         let mut permissions = PermissionRepo::all_permission_with_user(pool, address).await?;
 
         // 有当前地址的标记为is_self == 0
         permissions.iter_mut().for_each(|permission| {
-            permission
-                .user
-                .iter_mut()
-                .filter(|u| u.address == address)
-                .for_each(|u| u.is_self = 0)
+            permission.user.iter_mut().filter(|u| u.address == address).for_each(|u| u.is_self = 0)
         });
 
         // 2. handel permission
@@ -186,7 +184,7 @@ impl PermissionDomain {
     pub async fn queue_fail_and_upload(
         pool: &DbPool,
         grantor_addr: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let result = MultisigQueueRepo::permission_update_fail(grantor_addr, pool).await?;
 
         for queue in result {

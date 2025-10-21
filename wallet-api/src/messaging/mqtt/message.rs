@@ -1,11 +1,23 @@
+use wallet_database::entities::task_queue::WalletType;
+
 use crate::messaging::mqtt::topics::{
     AcctChange, BulletinMsg, MultiSignTransAccept, MultiSignTransAcceptCompleteMsg,
     MultiSignTransCancel, OrderMultiSignAccept, OrderMultiSignAcceptCompleteMsg,
     OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete, PermissionAccept,
     RpcChange,
+    api_wallet::{
+        cmd::{
+            address_allock::AwmCmdAddrExpandMsg, address_use::AddressUseMsg,
+            dev_change::AwmCmdDevChangeMsg, fee_res::AwmCmdFeeResMsg,
+            unbind_uid::AwmCmdUidUnbindMsg, wallet_activation::AwmCmdActiveMsg,
+        },
+        trans::AwmOrderTransMsg,
+        trans_result::AwmOrderTransResMsg,
+    },
 };
+use std::fmt;
 
-use super::topics::{multisign_trans_execute::MultiSignTransExecute, CleanPermission};
+use super::topics::{CleanPermission, multisign_trans_execute::MultiSignTransExecute};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +37,7 @@ pub(crate) struct Message {
     // 设备类型
     #[allow(dead_code)]
     pub(crate) device_type: String,
+    pub(crate) wallet_type: WalletType,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -76,6 +89,59 @@ pub enum BizType {
     MultiSignTransExecute,
     // 多签账号部署需要清空原来账号的权限
     CleanPermission,
+
+    // api wallet
+    // 地址使用
+    AddressUse,
+
+    // AWM_ORDER_TRANS API钱包的订单消息
+    AwmOrderTrans,
+    /// AWM_ORDER_TRANS_RES API钱包的订单结果消息
+    AwmOrderTransRes,
+    /// AWM_CMD_ADDR_EXPAND API钱包的地址扩容消息
+    AwmCmdAddrExpand,
+    // AWM_CMD_UID_UNBIND API钱包的钱包解绑消息
+    AwmCmdUidUnbind,
+    // AWM_CMD_FEE_RES API手续费结果事件
+    AwmCmdFeeRes,
+    // AWM_CMD_ACTIVE API钱包激活
+    AwmCmdActive,
+    // AWM_CMD_DEV_CHANGE API钱包设备变更
+    AwmCmdDevChange,
+}
+
+impl fmt::Display for BizType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            BizType::OrderMultiSignAccept => "OrderMultiSignAccept",
+            BizType::OrderMultiSignAcceptCompleteMsg => "OrderMultiSignAcceptCompleteMsg",
+            BizType::OrderMultiSignServiceComplete => "OrderMultiSignServiceComplete",
+            BizType::OrderMultiSignCreated => "OrderMultiSignCreated",
+            BizType::OrderMultiSignCancel => "OrderMultiSignCreated",
+            BizType::MultiSignTransAccept => "MultiSignTransAccept",
+            BizType::MultiSignTransCancel => "MultiSignTransCancel",
+            BizType::MultiSignTransAcceptCompleteMsg => "MultiSignTransAcceptCompleteMsg",
+            BizType::MultiSignTransAcceptHashComplete => "MultiSignTransAcceptHashComplete",
+            BizType::AcctChange => "AcctChange",
+            BizType::TokenPriceChange => "TokenPriceChange",
+            BizType::BulletinMsg => "BulletinMsg",
+            BizType::RpcAddressChange => "RpcAddressChange",
+            BizType::TronSignFreezeDelegateVoteChange => "TronSignFreezeDelegateVoteChange",
+            BizType::PermissionAccept => "PermissionAccept",
+            BizType::OrderMultiSignAllMemberAccepted => "OrderMultiSignAllMemberAccepted",
+            BizType::MultiSignTransExecute => "MultiSignTransExecute",
+            BizType::CleanPermission => "CleanPermission",
+            BizType::AddressUse => "AddressUse",
+            BizType::AwmOrderTrans => "AwmOrderTrans",
+            BizType::AwmOrderTransRes => "AwmOrderTransRes",
+            BizType::AwmCmdAddrExpand => "AwmCmdAddrExpand",
+            BizType::AwmCmdUidUnbind => "AwmCmdUidUnbind",
+            BizType::AwmCmdFeeRes => "AwmCmdFeeRes",
+            BizType::AwmCmdActive => "AwmCmdActive",
+            BizType::AwmCmdDevChange => "AwmCmdDevChange",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -105,4 +171,15 @@ pub enum Body {
     OrderMultiSignAllMemberAccepted,
     OrderMultiTransExecute(MultiSignTransExecute),
     CleanPermission(CleanPermission),
+
+    /// api wallet
+    AwmOrderTrans(AwmOrderTransMsg),
+    AwmOrderTransRes(AwmOrderTransResMsg),
+    AwmCmdAddrExpand(AwmCmdAddrExpandMsg),
+    // AwmCmdFeeRes(AwmCmdFeeResMsg),
+    AwmCmdActive(AwmCmdActiveMsg),
+    AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
+    AddressUse(AddressUseMsg),
+    AwmCmdOrderTransFeeRes(AwmCmdFeeResMsg),
+    AwmCmdDevChange(AwmCmdDevChangeMsg),
 }

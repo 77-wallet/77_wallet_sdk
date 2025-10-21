@@ -13,7 +13,22 @@ use super::{
         AcctChangeFrontend, ConfirmationFrontend, MultiSignTransAcceptCompleteMsgFrontend,
     },
 };
-use crate::messaging::mqtt::topics::BulletinMsg;
+use crate::messaging::{
+    mqtt::topics::{
+        BulletinMsg,
+        api_wallet::{
+            cmd::{
+                address_use::AddressUseMsg, dev_change::AwmCmdDevChangeMsg,
+                fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
+            },
+            trans_result::AwmOrderTransResMsg,
+        },
+    },
+    notify::api_wallet::{
+        AwmCmdActiveMsgFront, AwmCmdAddrExpandMsgFront, AwmOrderTransMsgFront,
+        CollectFeeNotEnoughFront, CollectFront, FeeFront, WithdrawFront, WithdrawNoPassFront,
+    },
+};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
@@ -56,6 +71,24 @@ pub enum NotifyEvent {
     // 其他
     // 同步资产
     SyncAssets,
+    ApiWalletSyncAssets,
+
+    // API wallet
+    AwmCmdActive(AwmCmdActiveMsgFront),
+    AwmCmdUidUnbind(AwmCmdUidUnbindMsg),
+    AwmCmdAddrExpand(AwmCmdAddrExpandMsgFront),
+    AwmCmdFeeRes(AwmCmdFeeResMsg),
+    AwmOrderTrans(AwmOrderTransMsgFront),
+    AwmOrderTransRes(AwmOrderTransResMsg),
+    AddressUse(AddressUseMsg),
+    Withdraw(WithdrawFront),
+    WithdrawNoPass(WithdrawNoPassFront),
+    Collect(CollectFront),
+    CollectFeeNotEnough(CollectFeeNotEnoughFront),
+    Fee(FeeFront),
+    AddressRecovery,
+    AwmCmdDevChange(AwmCmdDevChangeMsg),
+    ApiWalletAcctChange(AcctChangeFrontend),
 }
 
 impl NotifyEvent {
@@ -100,6 +133,24 @@ impl NotifyEvent {
             // 其他
             // 同步资产
             NotifyEvent::SyncAssets => "SYNC_ASSETS".to_string(),
+            NotifyEvent::ApiWalletSyncAssets => "API_WALLET_SYNC_ASSETS".to_string(),
+
+            // api wallet
+            NotifyEvent::AwmCmdActive(_) => "AWM_CMD_ACTIVE".to_string(),
+            NotifyEvent::AwmCmdUidUnbind(_) => "AWM_CMD_UID_UNBIND".to_string(),
+            NotifyEvent::AwmCmdAddrExpand(_) => "AWM_CMD_ADDR_EXPAND".to_string(),
+            NotifyEvent::AwmCmdFeeRes(_) => "AWM_CMD_FEE_RES".to_string(),
+            NotifyEvent::AwmOrderTrans(_) => "AWM_ORDER_TRANS".to_string(),
+            NotifyEvent::AwmOrderTransRes(_) => "AWM_ORDER_TRANS_RES".to_string(),
+            NotifyEvent::AddressUse(_) => "ADDRESS_USE".to_string(),
+            NotifyEvent::Withdraw(_) => "WITHDRAW".to_string(),
+            NotifyEvent::WithdrawNoPass(_) => "WITHDRAW_NO_PASS".to_string(),
+            NotifyEvent::Collect(_) => "COLLECT".to_string(),
+            NotifyEvent::CollectFeeNotEnough(_) => "COLLECT_FEE_NOT_ENOUGH".to_string(),
+            NotifyEvent::Fee(_) => "FEE".to_string(),
+            NotifyEvent::AddressRecovery => "ADDRESS_RECOVERY".to_string(),
+            NotifyEvent::AwmCmdDevChange(_) => "AWM_CMD_DEV_CHANGE".to_string(),
+            NotifyEvent::ApiWalletAcctChange(_) => "API_WALLET_ACCT_CHANGE".to_string(),
         }
     }
 }

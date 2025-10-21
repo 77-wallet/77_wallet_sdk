@@ -1,4 +1,4 @@
-use crate::domain::node::NodeDomain;
+use crate::domain::{chain::ChainDomain, node::NodeDomain};
 
 // biz_type = RPC_ADDRESS_CHANGE
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -26,8 +26,8 @@ pub struct RpcAddressInfoBody {
 }
 
 impl RpcChange {
-    pub(crate) async fn exec(&self) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    pub(crate) async fn exec(&self) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         // let list = crate::default_data::node::get_default_node_list()?;
 
@@ -36,10 +36,7 @@ impl RpcChange {
         let mut chains_set = std::collections::HashSet::new();
         let mut chain_codes = Vec::new();
         for rpc_change_body in body {
-            let RpcChangeBody {
-                chain_code,
-                rpc_address_info_body_list,
-            } = rpc_change_body;
+            let RpcChangeBody { chain_code, rpc_address_info_body_list } = rpc_change_body;
 
             for node in rpc_address_info_body_list.iter() {
                 let Some(id) = &node.id else {
@@ -65,7 +62,7 @@ impl RpcChange {
         }
 
         NodeDomain::prune_nodes(&mut repo, &mut chains_set, Some(0)).await?;
-        NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &backend_nodes).await?;
+        ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &backend_nodes).await?;
 
         // let data = crate::notify::NotifyEvent::Init(self);
         // crate::notify::FrontendNotifyEvent::new(data).send().await?;
@@ -137,10 +134,7 @@ mod test {
         let balance = wallet_types::Decimal::from_str("1996.733").unwrap();
         let balance = wallet_utils::unit::convert_to_u256(&balance.to_string(), 6).unwrap();
         println!("balance: {balance}");
-        println!(
-            "balance: {}",
-            wallet_utils::unit::format_to_string(balance, 6).unwrap()
-        );
+        println!("balance: {}", wallet_utils::unit::format_to_string(balance, 6).unwrap());
         // let balance = wallet_utils::unit::u256_from_str(&balance.to_string()).unwrap();
     }
 }

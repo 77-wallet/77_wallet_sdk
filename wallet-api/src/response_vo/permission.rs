@@ -100,7 +100,7 @@ pub struct ManagerPermissionResp {
 }
 
 impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for PermissionResp {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(
         value: &wallet_chain_interact::tron::operations::multisig::Permission,
@@ -123,7 +123,7 @@ impl TryFrom<&wallet_chain_interact::tron::operations::multisig::Permission> for
 }
 
 impl TryFrom<&PermissionWithUserEntity> for PermissionResp {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: &PermissionWithUserEntity) -> Result<Self, Self::Error> {
         let operations = PermissionTypes::from_hex(&value.permission.operations)?;
@@ -155,12 +155,7 @@ pub struct Keys {
 
 impl Keys {
     pub fn new(address: String, weight: i32, is_self: i64) -> Self {
-        Self {
-            name: String::new(),
-            address,
-            weight,
-            is_self,
-        }
+        Self { name: String::new(), address, weight, is_self }
     }
 }
 

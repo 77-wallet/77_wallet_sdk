@@ -11,9 +11,7 @@ pub struct StakeRepo {
 
 impl StakeRepo {
     pub fn new(db_pool: crate::DbPool) -> Self {
-        Self {
-            repo: ResourcesRepo::new(db_pool),
-        }
+        Self { repo: ResourcesRepo::new(db_pool) }
     }
 }
 

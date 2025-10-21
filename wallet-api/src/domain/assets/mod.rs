@@ -1,24 +1,27 @@
 use super::chain::adapter::ChainAdapterFactory;
 use crate::{
     domain::coin::CoinDomain,
+    error::service::ServiceError,
     request::transaction::SwapTokenInfo,
     response_vo::{chain::ChainList, coin::CoinInfoList},
 };
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
 use wallet_database::{
+    DbPool,
     dao::assets::CreateAssetsVo,
     entities::{
         account::AccountEntity,
+        api_assets::{ApiAssetsEntity, ApiCreateAssetsVo},
         assets::{AssetsEntity, AssetsId},
         coin::{CoinEntity, CoinMultisigStatus},
         wallet::WalletEntity,
     },
     repositories::{
-        account::AccountRepoTrait, assets::AssetsRepoTrait, coin::CoinRepo, ResourcesRepo,
+        ResourcesRepo, account::AccountRepoTrait, api_wallet::assets::ApiAssetsRepo,
+        assets::AssetsRepoTrait, coin::CoinRepo,
     },
-    DbPool,
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -42,7 +45,7 @@ impl AssetsDomain {
         wallet_address: &str,
         chain_codes: Vec<String>,
         is_multisig: Option<bool>,
-    ) -> Result<Vec<AssetsEntity>, crate::ServiceError> {
+    ) -> Result<Vec<AssetsEntity>, ServiceError> {
         let tx = repo;
 
         let accounts = tx
@@ -56,10 +59,7 @@ impl AssetsDomain {
         let data = tx.get_coin_assets_in_address(addresses).await?;
         if let Some(is_multisig) = is_multisig {
             if is_multisig {
-                return Ok(data
-                    .into_iter()
-                    .filter(|val| val.is_multisig == 2)
-                    .collect());
+                return Ok(data.into_iter().filter(|val| val.is_multisig == 2).collect());
             } else {
                 return Ok(data
                     .into_iter()
@@ -77,7 +77,7 @@ impl AssetsDomain {
         chain_code: Option<String>,
         keyword: Option<&str>,
         is_multisig: Option<bool>,
-    ) -> Result<crate::response_vo::coin::CoinInfoList, crate::ServiceError> {
+    ) -> Result<crate::response_vo::coin::CoinInfoList, ServiceError> {
         let tx = repo;
 
         let _is_multisig = if let Some(is_multisig) = is_multisig
@@ -91,7 +91,7 @@ impl AssetsDomain {
         let assets_list = tx
             .lists(addresses, chain_code, keyword, _is_multisig)
             .await
-            .map_err(crate::ServiceError::Database)?;
+            .map_err(ServiceError::Database)?;
 
         let show_contract = keyword.is_some();
         let mut res = crate::response_vo::coin::CoinInfoList::default();
@@ -99,13 +99,10 @@ impl AssetsDomain {
             let coin =
                 CoinDomain::get_coin(&assets.chain_code, &assets.symbol, assets.token_address())
                     .await?;
-            if let Some(info) = res
-                .iter_mut()
-                .find(|info| info.symbol == assets.symbol && coin.is_default == 1)
+            if let Some(info) =
+                res.iter_mut().find(|info| info.symbol == assets.symbol && coin.is_default == 1)
             {
-                info.chain_list
-                    .entry(assets.chain_code.clone())
-                    .or_insert(assets.token_address);
+                info.chain_list.entry(assets.chain_code.clone()).or_insert(assets.token_address);
             } else {
                 res.push(crate::response_vo::coin::CoinInfo {
                     symbol: assets.symbol,
@@ -131,7 +128,7 @@ impl AssetsDomain {
         pool: &DbPool,
         keyword: Option<&str>,
         res: &mut CoinInfoList,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let has_keyword = keyword.is_some();
 
         for coin in res.iter_mut() {
@@ -146,11 +143,8 @@ impl AssetsDomain {
             // 无 keyword 的逻辑
             match chain_len {
                 1 => {
-                    let chain_code = coin
-                        .chain_list
-                        .keys()
-                        .next()
-                        .expect("len()==1 已保证存在 key");
+                    let chain_code =
+                        coin.chain_list.keys().next().expect("len()==1 已保证存在 key");
 
                     let same_coin_num =
                         CoinRepo::same_coin_num(pool, &coin.symbol, chain_code).await?;
@@ -172,8 +166,8 @@ impl AssetsDomain {
         wallet_address: String,
         account_id: Option<u32>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let list = AccountEntity::lists_by_wallet_address(
             &wallet_address,
@@ -184,10 +178,7 @@ impl AssetsDomain {
         .await?;
 
         // 获取地址
-        let addr = list
-            .iter()
-            .map(|a| a.address.clone())
-            .collect::<Vec<String>>();
+        let addr = list.iter().map(|a| a.address.clone()).collect::<Vec<String>>();
 
         Self::do_async_balance(pool, addr, None, symbol).await
     }
@@ -196,8 +187,8 @@ impl AssetsDomain {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         Self::do_async_balance(pool, addr, chain_code, symbol).await
     }
@@ -206,11 +197,11 @@ impl AssetsDomain {
     pub async fn async_balance_from_backend_addr(
         addr: String,
         chain_code: Option<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         // 单个地址处理
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let backhand = crate::Context::get_global_backend_api()?;
+        let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
         // 获取这个地址对应的链码,如果未传
         let codes = if let Some(chain_code) = chain_code.clone() {
@@ -219,10 +210,7 @@ impl AssetsDomain {
             let account =
                 AccountEntity::list_in_address(pool.as_ref(), &[addr.clone()], None).await?;
 
-            account
-                .iter()
-                .map(|a| a.chain_code.clone())
-                .collect::<Vec<String>>()
+            account.iter().map(|a| a.chain_code.clone()).collect::<Vec<String>>()
         };
 
         for code in codes {
@@ -255,12 +243,12 @@ impl AssetsDomain {
     pub async fn async_balance_from_backend_wallet(
         wallet_address: String,
         account_id: Option<u32>,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let wallet = WalletEntity::detail(pool.as_ref(), &wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            let backhand = crate::Context::get_global_backend_api()?;
+            let backhand = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
 
             // 本地的index 进行了 + 1
             let index = account_id.map(|x| x - 1);
@@ -295,14 +283,14 @@ impl AssetsDomain {
         addr: Vec<String>,
         chain_code: Option<String>,
         symbol: Vec<String>,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         let mut assets =
             AssetsEntity::all_assets(pool.as_ref(), addr, chain_code, None, None).await?;
         if !symbol.is_empty() {
             assets.retain(|asset| symbol.contains(&asset.symbol));
         }
 
-        let results = ChainBalance::sync_address_balance(&assets).await?;
+        let results = ChainBalance::sync_address_balance(assets.as_slice()).await?;
 
         for (assets_id, balance) in &results {
             if let Err(e) = AssetsEntity::update_balance(pool.as_ref(), assets_id, balance).await {
@@ -318,16 +306,12 @@ impl AssetsDomain {
         address: &str,
         chain_code: &str,
         req: &mut TokenQueryPriceReq,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         for coin in coins {
             if chain_code == coin.chain_code {
-                let assets_id = AssetsId::new(
-                    address,
-                    &coin.chain_code,
-                    &coin.symbol,
-                    coin.token_address(),
-                );
+                let assets_id =
+                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
                 let assets =
                     CreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
                         .with_name(&coin.name)
@@ -344,13 +328,40 @@ impl AssetsDomain {
         Ok(())
     }
 
+    pub(crate) async fn init_default_api_assets(
+        coins: &[CoinEntity],
+        address: &str,
+        chain_code: &str,
+        req: &mut TokenQueryPriceReq,
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        for coin in coins {
+            if chain_code == coin.chain_code {
+                let assets_id =
+                    AssetsId::new(address, &coin.chain_code, &coin.symbol, coin.token_address());
+                let assets =
+                    ApiCreateAssetsVo::new(assets_id, coin.decimals, coin.protocol.clone(), 0)
+                        .with_name(&coin.name)
+                        .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                if coin.price.is_empty() {
+                    req.insert(
+                        chain_code,
+                        &assets.assets_id.token_address.clone().unwrap_or_default(),
+                    );
+                }
+                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+            }
+        }
+        Ok(())
+    }
+
     // 根据地址和链初始化多签账号里面的资产
     // address :multisig account address ,
     pub async fn init_default_multisig_assets(
         address: String,
         chain_code: String,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let default_coins =
             CoinEntity::list_v2(&*pool, None, Some(chain_code.clone()), Some(1)).await?;
         let mut symbols = Vec::new();
@@ -380,9 +391,9 @@ impl AssetsDomain {
         token: SwapTokenInfo,
         recipient: String,
         chain_code: String,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), ServiceError> {
         // notes 不能更新币价
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // let time = wallet_utils::time::now();
         let coin = CoinRepo::coin_by_chain_address(&chain_code, &token.token_addr, &pool).await?;
         // let coin_data = CoinData::new(
@@ -405,12 +416,8 @@ impl AssetsDomain {
         // };
 
         // 资产是否存在不存在新增
-        let assets_id = AssetsId::new(
-            &recipient,
-            &chain_code,
-            &token.symbol,
-            Some(token.token_addr),
-        );
+        let assets_id =
+            AssetsId::new(&recipient, &chain_code, &token.symbol, Some(token.token_addr));
         let assets =
             CreateAssetsVo::new(assets_id, token.decimals as u8, None, 0).with_name(&coin.name);
 
@@ -422,41 +429,67 @@ impl AssetsDomain {
     }
 }
 
-struct BalanceTask {
-    address: String,
-    chain_code: String,
-    symbol: String,
-    decimals: u8,
-    token_address: Option<String>,
+pub(crate) struct BalanceTask {
+    pub(crate) address: String,
+    pub(crate) chain_code: String,
+    pub(crate) symbol: String,
+    pub(crate) decimals: u8,
+    pub(crate) token_address: Option<String>,
 }
-struct ChainBalance;
+
+pub(crate) struct BalanceTasks(pub(crate) Vec<BalanceTask>);
+pub(crate) struct ChainBalance;
+
+impl From<&[AssetsEntity]> for BalanceTasks {
+    fn from(assets: &[AssetsEntity]) -> Self {
+        BalanceTasks(
+            assets
+                .iter()
+                .map(|asset| BalanceTask {
+                    address: asset.address.clone(),
+                    chain_code: asset.chain_code.clone(),
+                    symbol: asset.symbol.clone(),
+                    decimals: asset.decimals,
+                    token_address: asset.token_address(),
+                })
+                .collect(),
+        )
+    }
+}
+
+impl From<&[ApiAssetsEntity]> for BalanceTasks {
+    fn from(assets: &[ApiAssetsEntity]) -> Self {
+        BalanceTasks(
+            assets
+                .iter()
+                .map(|asset| BalanceTask {
+                    address: asset.address.clone(),
+                    chain_code: asset.chain_code.clone(),
+                    symbol: asset.symbol.clone(),
+                    decimals: asset.decimals,
+                    token_address: asset.token_address(),
+                })
+                .collect(),
+        )
+    }
+}
+
 impl ChainBalance {
-    async fn sync_address_balance(
-        assets: &[AssetsEntity],
-    ) -> Result<Vec<(AssetsId, String)>, crate::ServiceError> {
+    pub(crate) async fn sync_address_balance(
+        assets: impl Into<BalanceTasks>,
+    ) -> Result<Vec<(AssetsId, String)>, crate::error::service::ServiceError> {
         // 限制最大并发数为 10
         let sem = Arc::new(Semaphore::new(10));
-        let mut tasks = vec![];
-
-        for asset in assets.iter() {
-            let bal = BalanceTask {
-                address: asset.address.clone(),
-                chain_code: asset.chain_code.clone(),
-                symbol: asset.symbol.clone(),
-                decimals: asset.decimals,
-                token_address: asset.token_address(),
-            };
-            tasks.push(bal);
-        }
+        let tasks: BalanceTasks = assets.into();
 
         // 并发获取余额并格式化
-        let results = stream::iter(tasks)
+        let results = stream::iter(tasks.0)
             .map(|task| Self::fetch_balance(task, sem.clone()))
             .buffer_unordered(10)
             .filter_map(|x| async move { x })
             .collect::<Vec<_>>()
             .await;
-
+        tracing::info!("results: {results:#?}");
         Ok(results)
     }
 

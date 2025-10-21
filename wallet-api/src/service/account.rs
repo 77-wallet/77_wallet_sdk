@@ -1,13 +1,13 @@
 use wallet_database::{
     entities::account::AccountEntity,
     repositories::{
+        ResourcesRepo,
         account::{AccountRepo, AccountRepoTrait},
-        chain::ChainRepoTrait,
-        coin::CoinRepoTrait,
-        device::DeviceRepoTrait,
+        chain::ChainRepo,
+        coin::CoinRepo,
+        device::DeviceRepo,
         multisig_account::MultisigAccountRepo,
         wallet::WalletRepoTrait,
-        ResourcesRepo,
     },
 };
 use wallet_transport_backend::request::{
@@ -23,7 +23,9 @@ use crate::{
         permission::PermissionDomain, wallet::WalletDomain,
     },
     infrastructure::task_queue::{
-        task::Tasks, BackendApiTask, BackendApiTaskData, CommonTask, RecoverDataBody,
+        CommonTask, RecoverDataBody,
+        backend::{BackendApiTask, BackendApiTaskData},
+        task::Tasks,
     },
     response_vo::account::{CurrentAccountInfo, DerivedAddressesList, QueryAccountDerivationPath},
 };
@@ -36,17 +38,14 @@ pub struct AccountService {
 
 impl AccountService {
     pub fn new(repo: ResourcesRepo) -> Self {
-        Self {
-            repo,
-            wallet_domain: WalletDomain::new(),
-        }
+        Self { repo, wallet_domain: WalletDomain::new() }
     }
 
     pub(crate) async fn switch_account(
         self,
         _wallet_address: &str,
         _account_id: u32,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let pool = crate::manager::Context::get_global_sqlite_pool()?;
         // let mut tx = self.repo;
         // let accounts = tx
@@ -101,22 +100,24 @@ impl AccountService {
         index: Option<i32>,
         name: &str,
         is_default_name: bool,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         WalletDomain::validate_password(wallet_password).await?;
         // 根据钱包地址查询是否有钱包
-        let wallet = tx
-            .wallet_detail_by_address(wallet_address)
-            .await?
-            .ok_or(crate::BusinessError::Wallet(crate::WalletError::NotFound))?;
+        let wallet = tx.wallet_detail_by_address(wallet_address).await?.ok_or(
+            crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::NotFound,
+            ),
+        )?;
 
         // 获取种子
-        let seed = WalletDomain::get_seed(dirs, &wallet.address, wallet_password).await?;
+        let seed = WalletDomain::get_seed(dirs.as_ref(), &wallet.address, wallet_password).await?;
         // 获取默认链和币
-        let default_chain_list = tx.get_chain_list().await?;
-        let default_coins_list = tx.default_coin_list().await?;
+        let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
+        let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
 
         // 根据派生路径
         let hd_path = if let Some(derivation_path) = &derivation_path {
@@ -130,35 +131,28 @@ impl AccountService {
 
         // 如果有指定派生路径，就获取该链的所有chain_code
         let chains: Vec<String> = if let Some(hd_path) = &hd_path {
-            hd_path
-                .get_chain_codes()?
-                .0
-                .into_iter()
-                .map(|path| path.to_string())
-                .collect()
+            hd_path.get_chain_codes()?.0.into_iter().map(|path| path.to_string()).collect()
         }
         // 或者使用默认链的链码
         else {
-            default_chain_list
-                .iter()
-                .map(|chain| chain.chain_code.clone())
-                .collect()
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         // 获取该账户的最大索引，并加一
         let account_index_map = if let Some(index) = index {
             let index = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
             if tx.has_account_id(&wallet.address, index.account_id).await? {
-                return Err(crate::ServiceError::Business(
-                    crate::BusinessError::Account(crate::AccountError::AlreadyExist),
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Account(
+                        crate::error::business::account::AccountError::AlreadyExist,
+                    ),
                 ));
             };
             index
         } else if let Some(hd_path) = hd_path {
             wallet_utils::address::AccountIndexMap::from_index(hd_path.get_account_id()?)?
-        } else if let Some(max_account) = tx
-            .account_detail_by_max_id_and_wallet_address(&wallet.address)
-            .await?
+        } else if let Some(max_account) =
+            tx.account_detail_by_max_id_and_wallet_address(&wallet.address).await?
         {
             wallet_utils::address::AccountIndexMap::from_account_id(max_account.account_id + 1)?
         } else {
@@ -191,10 +185,8 @@ impl AccountService {
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
         let algorithm = ConfigDomain::get_keystore_kdf_algorithm().await?;
 
-        let tron_address = subkeys
-            .iter()
-            .find(|s| s.chain_code == chain_code::TRON)
-            .map(|s| s.address.clone());
+        let tron_address =
+            subkeys.iter().find(|s| s.chain_code == chain_code::TRON).map(|s| s.address.clone());
 
         KeystoreApi::initialize_child_keystores(
             wallet_tree,
@@ -240,7 +232,7 @@ impl AccountService {
         self,
         wallet_address: &str,
         index: u32,
-    ) -> Result<Vec<QueryAccountDerivationPath>, crate::ServiceError> {
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let list = tx
             .get_account_list_by_wallet_address_and_account_id(Some(wallet_address), Some(index))
@@ -266,13 +258,14 @@ impl AccountService {
         index: i32,
         password: &str,
         all: bool,
-    ) -> Result<Vec<DerivedAddressesList>, crate::ServiceError> {
+    ) -> Result<Vec<DerivedAddressesList>, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut tx = self.repo;
 
         WalletDomain::validate_password(password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         let root_dir = dirs.get_root_dir(wallet_address)?;
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
@@ -287,19 +280,11 @@ impl AccountService {
 
         // 获取默认链和币
         let chains = if !all {
-            vec![
-                "btc".to_string(),
-                "eth".to_string(),
-                "tron".to_string(),
-                "sol".to_string(),
-            ]
+            vec!["btc".to_string(), "eth".to_string(), "tron".to_string(), "sol".to_string()]
         } else {
-            let default_chain_list = tx.get_chain_list().await?;
+            let default_chain_list = ChainRepo::get_chain_list(&pool).await?;
             // 如果有指定派生路径，就获取该链的所有chain_code
-            default_chain_list
-                .iter()
-                .map(|chain| chain.chain_code.clone())
-                .collect()
+            default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect()
         };
 
         let mut res = Vec::new();
@@ -307,7 +292,7 @@ impl AccountService {
             let code: ChainCode = chain.as_str().try_into()?;
             let address_types = WalletDomain::address_type_by_chain(code);
 
-            let Ok(node) = ChainDomain::get_node(&mut tx, chain).await else {
+            let Ok(node) = ChainDomain::get_node(chain).await else {
                 continue;
             };
             for address_type in address_types {
@@ -330,9 +315,8 @@ impl AccountService {
 
                 match code {
                     ChainCode::Solana | ChainCode::Sui | ChainCode::Ton => {
-                        let account = tx
-                            .detail_by_address_and_chain_code(&address, &node.chain_code)
-                            .await?;
+                        let account =
+                            tx.detail_by_address_and_chain_code(&address, &node.chain_code).await?;
                         if let Some(account) = account {
                             derived_address.with_mapping_account(account.account_id, account.name);
                         };
@@ -355,7 +339,7 @@ impl AccountService {
     pub async fn account_details(
         self,
         address: &str,
-    ) -> Result<Option<AccountEntity>, crate::ServiceError> {
+    ) -> Result<Option<AccountEntity>, crate::error::service::ServiceError> {
         let mut tx = self.repo;
         let res = AccountRepoTrait::detail(&mut tx, address).await?;
         Ok(res)
@@ -366,15 +350,17 @@ impl AccountService {
         account_id: u32,
         wallet_address: &str,
         name: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         // let mut tx = self.repo.begin_transaction().await?;
         let mut tx = self.repo;
-        tx.edit_account_name(account_id, wallet_address, name)
-            .await?;
+        tx.edit_account_name(account_id, wallet_address, name).await?;
 
         // tx.commit_transaction().await?;
         let Some(wallet) = tx.wallet_detail_by_address(wallet_address).await? else {
-            return Err(crate::BusinessError::Wallet(crate::WalletError::NotFound).into());
+            return Err(crate::error::business::BusinessError::Wallet(
+                crate::error::business::wallet::WalletError::NotFound,
+            )
+            .into());
         };
         let account_index_map =
             wallet_utils::address::AccountIndexMap::from_account_id(account_id)?;
@@ -385,10 +371,7 @@ impl AccountService {
             wallet_transport_backend::consts::endpoint::ADDRESS_UPDATE_ACCOUNT_NAME,
             &req,
         )?;
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(req))
-            .send()
-            .await?;
+        Tasks::new().push(BackendApiTask::BackendApi(req)).send().await?;
 
         Ok(())
     }
@@ -398,17 +381,22 @@ impl AccountService {
         wallet_address: &str,
         account_id: u32,
         password: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         let mut tx = self.repo;
-        let Some(device) = tx.get_device_info().await? else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
         WalletDomain::validate_password(password).await?;
         // Check if this is the last account
         let account_count = tx.count_unique_account_ids(wallet_address).await?;
         if account_count <= 1 {
-            return Err(crate::BusinessError::Account(
-                crate::AccountError::CannotDeleteLastAccount,
+            return Err(crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::CannotDeleteLastAccount,
             )
             .into());
         }
@@ -424,7 +412,7 @@ impl AccountService {
             )
             .await?;
 
-        let pool = crate::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         // delete permission
         for account in deleted.iter() {
             if account.chain_code == chain_code::TRON {
@@ -432,11 +420,8 @@ impl AccountService {
             }
         }
 
-        Tasks::new()
-            .push(BackendApiTask::BackendApi(device_unbind_address_task))
-            .send()
-            .await?;
-        let dirs = crate::manager::Context::get_global_dirs()?;
+        Tasks::new().push(BackendApiTask::BackendApi(device_unbind_address_task)).send().await?;
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
@@ -452,7 +437,7 @@ impl AccountService {
         &mut self,
         old_password: &str,
         new_password: &str,
-    ) -> Result<(), crate::ServiceError> {
+    ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(old_password).await?;
         let tx = &mut self.repo;
 
@@ -479,16 +464,13 @@ impl AccountService {
 
     pub async fn set_sub_password(
         &mut self,
-        // wallet_address: &str,
         address: &str,
         chain_code: &str,
         old_password: &str,
         new_password: &str,
-    ) -> Result<(), crate::ServiceError> {
-        let tx = &mut self.repo;
-
-        let dirs = crate::manager::Context::get_global_dirs()?;
-        let db = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
+        let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let req = wallet_database::entities::account::QueryReq {
             wallet_address: None,
             address: Some(address.to_string()),
@@ -497,7 +479,9 @@ impl AccountService {
             status: Some(1),
         };
         let account = AccountEntity::detail(db.as_ref(), &req).await?.ok_or(
-            crate::BusinessError::Account(crate::AccountError::NotFound(address.to_string())),
+            crate::error::business::BusinessError::Account(
+                crate::error::business::account::AccountError::NotFound(address.to_string()),
+            ),
         )?;
 
         // Get the path to the subkeys directory for the given wallet name.
@@ -507,7 +491,7 @@ impl AccountService {
         let wallet_tree_strategy = ConfigDomain::get_wallet_tree_strategy().await?;
         let wallet_tree = wallet_tree_strategy.get_wallet_tree(&dirs.wallet_dir)?;
 
-        let node = ChainDomain::get_node(tx, chain_code).await?;
+        let node = ChainDomain::get_node(chain_code).await?;
 
         let instance = wallet_chain_instance::instance::ChainObject::new(
             chain_code,
@@ -526,7 +510,7 @@ impl AccountService {
             new_password,
             algorithm,
         )
-        .map_err(|e| crate::SystemError::Service(e.to_string()))?)
+        .map_err(|e| crate::error::system::SystemError::Service(e.to_string()))?)
     }
 
     pub async fn get_account_private_key(
@@ -534,8 +518,12 @@ impl AccountService {
         password: &str,
         wallet_address: &str,
         account_id: u32,
-    ) -> Result<crate::response_vo::account::GetAccountPrivateKeyRes, crate::ServiceError> {
+    ) -> Result<
+        crate::response_vo::account::GetAccountPrivateKeyRes,
+        crate::error::service::ServiceError,
+    > {
         WalletDomain::validate_password(password).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let tx = &mut self.repo;
 
         let account_list = tx
@@ -545,7 +533,7 @@ impl AccountService {
                 Vec::new(),
             )
             .await?;
-        let chains = tx.get_chain_list().await?;
+        let chains = ChainRepo::get_chain_list(&pool).await?;
 
         let mut res = Vec::new();
 
@@ -567,9 +555,8 @@ impl AccountService {
                     &account.chain_code,
                     account.address_type(),
                 )?;
-                if let Some(chain) = chains
-                    .iter()
-                    .find(|chain| chain.chain_code == account.chain_code)
+                if let Some(chain) =
+                    chains.iter().find(|chain| chain.chain_code == account.chain_code)
                 {
                     let data = crate::response_vo::account::GetAccountPrivateKey {
                         chain_code: account.chain_code,
@@ -590,7 +577,7 @@ impl AccountService {
         &mut self,
         wallet_address: Option<&str>,
         account_id: Option<u32>,
-    ) -> Result<Vec<AccountEntity>, crate::ServiceError> {
+    ) -> Result<Vec<AccountEntity>, crate::error::service::ServiceError> {
         Ok(self
             .repo
             .get_account_list_by_wallet_address_and_account_id(wallet_address, account_id)
@@ -598,13 +585,14 @@ impl AccountService {
     }
 
     pub async fn current_chain_address(
-        uid: String,
+        address: String,
         account_id: u32,
         chain_code: &str,
-    ) -> Result<Vec<QueryAccountDerivationPath>, crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<Vec<QueryAccountDerivationPath>, crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
-        let res = AccountRepo::current_chain_address(uid, account_id, chain_code, &pool).await?;
+        let res =
+            AccountRepo::current_chain_address(address, account_id, chain_code, &pool).await?;
 
         let result = res
             .into_iter()
@@ -618,7 +606,7 @@ impl AccountService {
         &mut self,
         wallet_address: &str,
         account_id: i32,
-    ) -> Result<Vec<CurrentAccountInfo>, crate::ServiceError> {
+    ) -> Result<Vec<CurrentAccountInfo>, crate::error::service::ServiceError> {
         let accounts = self
             .repo
             .get_account_list_by_wallet_address_and_account_id(
@@ -627,7 +615,7 @@ impl AccountService {
             )
             .await?;
 
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = MultisigAccountRepo::new(pool);
 
         let mut result = vec![];

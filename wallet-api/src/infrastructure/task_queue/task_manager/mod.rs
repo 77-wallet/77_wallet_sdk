@@ -1,19 +1,22 @@
 pub(crate) mod dispatcher;
 pub(crate) mod scheduler;
-use crate::domain::app::config::ConfigDomain;
-use crate::infrastructure::task_queue::task::task_type::TaskType;
-use crate::infrastructure::task_queue::task::TaskTrait;
+use crate::{
+    domain::app::config::ConfigDomain,
+    error::service::ServiceError,
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
+};
 
 use dashmap::DashSet;
 use dispatcher::{Dispatcher, PriorityTask, TaskSender};
 use rand::Rng as _;
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use wallet_database::entities::task_queue::TaskQueueEntity;
-use wallet_database::repositories::device::DeviceRepoTrait;
-use wallet_database::repositories::task_queue::TaskQueueRepoTrait;
-use wallet_transport_backend::consts::endpoint::SEND_MSG_CONFIRM;
-use wallet_transport_backend::request::ClientTaskLogUploadReq;
+use std::{collections::BTreeMap, sync::Arc};
+use wallet_database::{
+    entities::task_queue::TaskQueueEntity,
+    repositories::{device::DeviceRepo, task_queue::TaskQueueRepoTrait},
+};
+use wallet_transport_backend::{
+    consts::endpoint::SEND_MSG_CONFIRM, request::ClientTaskLogUploadReq,
+};
 
 /// 定义共享的 running_tasks 类型
 type RunningTasks = Arc<DashSet<String>>;
@@ -41,13 +44,12 @@ impl TaskManager {
     }
 
     /// 启动任务检查循环
-    pub async fn start_task_check(&self) -> Result<(), crate::ServiceError> {
+    pub async fn start_task_check(&self) -> Result<(), ServiceError> {
         let running_tasks = Arc::clone(&self.running_tasks);
 
-        let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        repo.delete_tasks_with_request_body_like(SEND_MSG_CONFIRM)
-            .await?;
+        repo.delete_tasks_with_request_body_like(SEND_MSG_CONFIRM).await?;
 
         tokio::spawn(async move {
             Self::task_check(running_tasks).await;
@@ -63,57 +65,62 @@ impl TaskManager {
     /// 任务检查函数
     async fn task_check(running_tasks: RunningTasks) {
         // 在 TaskManager 的方法中启动
-        let pool = crate::manager::Context::get_global_sqlite_pool().unwrap();
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool().unwrap();
 
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
+        tracing::info!("task check start");
         if let Err(e) = Self::check_handle(repo, &running_tasks).await {
             tracing::error!("task check error: {}", e);
         }
+        tracing::info!("task check end");
     }
 
     /// 检查并发送任务的处理函数
     async fn check_handle(
         mut repo: wallet_database::repositories::ResourcesRepo,
         running_tasks: &RunningTasks,
-    ) -> Result<(), crate::ServiceError> {
-        let manager = crate::manager::Context::get_global_task_manager()?;
+    ) -> Result<(), ServiceError> {
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let manager = handles.get_global_task_manager();
 
-        repo.delete_old(15).await?;
+            repo.delete_old(15).await?;
 
-        let mut failed_queue = repo.failed_task_queue().await?;
-        let pending_queue = repo.pending_task_queue().await?;
-        let running_queue = repo.running_task_queue().await?;
-        failed_queue.extend(running_queue);
-        failed_queue.extend(pending_queue);
+            let mut failed_queue = repo.failed_task_queue().await?;
+            let pending_queue = repo.pending_task_queue().await?;
+            let hanging_queue = repo.hanging_task_queue().await?;
+            let running_queue = repo.running_task_queue().await?;
+            failed_queue.extend(running_queue);
+            failed_queue.extend(pending_queue);
+            failed_queue.extend(hanging_queue);
 
-        let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
+            let mut grouped_tasks: BTreeMap<u8, Vec<TaskQueueEntity>> = BTreeMap::new();
+            tracing::info!("failed_queue: {:#?}", failed_queue);
+            for task_entity in failed_queue.into_iter() {
+                if !running_tasks.contains(&task_entity.id) {
+                    let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {
+                        tracing::error!(
+                            "task queue entity convert to task error: {}",
+                            task_entity.id
+                        );
+                        repo.delete_task(&task_entity.id).await?;
+                        continue;
+                    };
 
-        // tracing::info!("failed_queue: {:#?}", failed_queue);
-        for task_entity in failed_queue.into_iter() {
-            if !running_tasks.contains(&task_entity.id) {
-                let Ok(task) = TryInto::<Box<dyn TaskTrait>>::try_into(&task_entity) else {
-                    tracing::error!(
-                        "task queue entity convert to task error: {}",
-                        task_entity.id
-                    );
-                    repo.delete_task(&task_entity.id).await?;
-                    continue;
-                };
-
-                let priority = scheduler::assign_priority(&*task, true)?;
-                grouped_tasks.entry(priority).or_default().push(task_entity);
+                    let priority = scheduler::assign_priority(&*task, true)?;
+                    grouped_tasks.entry(priority).or_default().push(task_entity);
+                }
             }
+
+            for (priority, tasks) in grouped_tasks {
+                if let Err(e) = manager.get_task_sender().send(PriorityTask { priority, tasks }) {
+                    tracing::error!("send task queue error: {}", e);
+                }
+            }
+        } else {
+            tracing::error!("handles is None");
         }
 
-        for (priority, tasks) in grouped_tasks {
-            if let Err(e) = manager
-                .get_task_sender()
-                .send(PriorityTask { priority, tasks })
-            {
-                tracing::error!("send task queue error: {}", e);
-            }
-        }
         Ok(())
     }
 
@@ -122,7 +129,7 @@ impl TaskManager {
 
         let mut retry_count = 0;
         let mut delay = 200; // 初始延迟设为 200 毫秒
-                             // const MAX_RETRY_COUNT: i32 = 5;
+        // const MAX_RETRY_COUNT: i32 = 5;
 
         loop {
             // if retry_count >= MAX_RETRY_COUNT {
@@ -143,7 +150,7 @@ impl TaskManager {
                 Err(e) => {
                     tracing::error!(?task, "[task_process] error: {}", e);
                     let is_network = match &e {
-                        crate::ServiceError::Transport(transport_error) => {
+                        crate::error::service::ServiceError::Transport(transport_error) => {
                             transport_error.is_network_error()
                         }
                         _ => false,
@@ -162,7 +169,9 @@ impl TaskManager {
                         }
                     }
 
-                    if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                    if let Ok(pool) =
+                        crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
+                    {
                         let mut repo =
                             wallet_database::factory::RepositoryFactory::repo(pool.clone());
                         let _ = repo.task_failed(&task_id).await;
@@ -174,7 +183,9 @@ impl TaskManager {
                             task_id,
                             retry_count
                         );
-                        if let Ok(pool) = crate::manager::Context::get_global_sqlite_pool() {
+                        if let Ok(pool) =
+                            crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()
+                        {
                             let mut repo =
                                 wallet_database::factory::RepositoryFactory::repo(pool.clone());
                             let _ = repo.task_hang_up(&task_id).await;
@@ -217,13 +228,13 @@ impl TaskManager {
     async fn upload_task_error_info(
         task_entity: &TaskQueueEntity,
         error_info: &str,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
-        let Some(device) = repo.get_device_info().await? else {
-            tracing::error!("device not found");
-            return Ok(());
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
         };
 
         let client_id = crate::domain::app::DeviceDomain::client_id_by_device(&device)?;
@@ -240,25 +251,26 @@ impl TaskManager {
             error_info,
         );
 
-        let backend_api = crate::Context::get_global_backend_api()?;
+        let backend_api = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
         backend_api.client_task_log_upload(req).await?;
 
         let task: Box<dyn TaskTrait> = task_entity.try_into()?;
         if task.get_type() == TaskType::Mqtt {
-            let unconfirmed_msg_collector =
-                crate::manager::Context::get_global_unconfirmed_msg_collector()?;
-            tracing::info!("mqtt submit unconfirmed msg collector: {}", task_entity.id);
-            unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+            if let Some(handles) = handles.upgrade() {
+                let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
+                tracing::info!("mqtt submit unconfirmed msg collector: {}", task_entity.id);
+                unconfirmed_msg_collector.submit(vec![task_entity.id.to_string()])?;
+            }
         }
-
         Ok(())
     }
 
     async fn increase_retry_times(
         task_id: &str,
         retry_count: i32,
-    ) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         if retry_count > 0 {
@@ -268,8 +280,10 @@ impl TaskManager {
         Ok(())
     }
 
-    async fn handle_task(task_entity: &TaskQueueEntity) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    async fn handle_task(
+        task_entity: &TaskQueueEntity,
+    ) -> Result<(), crate::error::service::ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
 
         let id = task_entity.id.clone();
@@ -283,10 +297,12 @@ impl TaskManager {
         repo.task_done(&id).await?;
 
         if task_type == TaskType::Mqtt {
-            let unconfirmed_msg_collector =
-                crate::manager::Context::get_global_unconfirmed_msg_collector()?;
-            tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
-            unconfirmed_msg_collector.submit(vec![id])?;
+            let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+            if let Some(handles) = handles.upgrade() {
+                let unconfirmed_msg_collector = handles.get_global_unconfirmed_msg_collector();
+                tracing::info!("mqtt submit unconfirmed msg collector: {}", id);
+                unconfirmed_msg_collector.submit(vec![id])?;
+            }
         }
 
         Ok(())

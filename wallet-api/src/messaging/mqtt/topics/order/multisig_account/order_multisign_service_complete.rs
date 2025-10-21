@@ -1,16 +1,16 @@
 use wallet_database::{
+    DbPool,
     dao::multisig_account::MultisigAccountDaoV1,
     entities::multisig_account::{
         MultiAccountOwner, MultisigAccountEntity, MultisigAccountPayStatus, MultisigAccountStatus,
     },
-    DbPool,
 };
 
 use crate::{
     domain::multisig::MultisigDomain,
     messaging::notify::{
-        event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend, other::ErrFront,
-        FrontendNotifyEvent,
+        FrontendNotifyEvent, event::NotifyEvent, multisig::OrderMultiSignServiceCompleteFrontend,
+        other::ErrFront,
     },
 };
 
@@ -33,30 +33,29 @@ impl OrderMultiSignServiceComplete {
 }
 
 impl OrderMultiSignServiceComplete {
-    pub(crate) async fn exec(&self, _msg_id: &str) -> Result<(), crate::ServiceError> {
+    pub(crate) async fn exec(
+        &self,
+        _msg_id: &str,
+    ) -> Result<(), crate::error::service::ServiceError> {
         let event_name = self.name();
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         tracing::info!(
             event_name = %event_name,
             ?self,
             "Starting to process OrderMultiSignServiceComplete"
         );
 
-        let OrderMultiSignServiceComplete {
-            ref multisig_account_id,
-            status,
-            r#type,
-        } = self;
+        let &OrderMultiSignServiceComplete { ref multisig_account_id, status, r#type } = self;
 
         let account = Self::get_account_or_recover(multisig_account_id, &pool, &event_name).await?;
 
         let multi_account_id = account.id;
 
         // 更新多签账户手续费状态
-        let (status, pay_status) = Self::get_status(*r#type, *status);
+        let (status, pay_status) = Self::get_status(r#type, status);
         MultisigAccountDaoV1::update_status(&multi_account_id, status, pay_status, pool.as_ref())
             .await
-            .map_err(crate::ServiceError::Database)?;
+            .map_err(crate::error::service::ServiceError::Database)?;
 
         // 不是发起方更重新上报状态
         if account.owner != MultiAccountOwner::Participant.to_i8() {
@@ -67,7 +66,7 @@ impl OrderMultiSignServiceComplete {
             NotifyEvent::OrderMultiSignServiceComplete(OrderMultiSignServiceCompleteFrontend {
                 multisign_address: account.address,
                 status: self.status,
-                r#type: *r#type,
+                r#type: r#type,
             });
         FrontendNotifyEvent::new(data).send().await?;
 
@@ -78,7 +77,7 @@ impl OrderMultiSignServiceComplete {
         multisig_account_id: &str,
         pool: &DbPool,
         event_name: &str,
-    ) -> Result<MultisigAccountEntity, crate::ServiceError> {
+    ) -> Result<MultisigAccountEntity, crate::error::service::ServiceError> {
         // 第一次查询
         let mut account =
             MultisigAccountDaoV1::find_by_id(multisig_account_id, pool.as_ref()).await?;
@@ -96,7 +95,9 @@ impl OrderMultiSignServiceComplete {
                 multisig_account_id = %multisig_account_id,
                 "Multisig account not found"
             );
-            let err = crate::ServiceError::Business(crate::MultisigAccountError::NotFound.into());
+            let err = crate::error::service::ServiceError::Business(
+                crate::error::business::multisig_account::MultisigAccountError::NotFound.into(),
+            );
             let data = NotifyEvent::Err(ErrFront {
                 event: event_name.to_string(),
                 message: err.to_string(),

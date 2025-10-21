@@ -1,17 +1,5 @@
-use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
-use wallet_database::{entities::task_queue::TaskQueueEntity, factory::RepositoryFactory};
-use wallet_utils::serde_func;
-
-use crate::{
-    infrastructure::task_queue::{task::Tasks, MqttTask},
-    messaging::{
-        mqtt::topics::OutgoingPayload,
-        notify::{event::NotifyEvent, FrontendNotifyEvent},
-    },
-    service::{app::AppService, device::DeviceService},
-};
-
 use super::{
+    Message,
     message::BizType,
     topics::{
         AcctChange, BulletinMsg, ChainChange, CleanPermission, MultiSignTransAccept,
@@ -20,8 +8,41 @@ use super::{
         OrderMultiSignCancel, OrderMultiSignCreated, OrderMultiSignServiceComplete,
         PermissionAccept, RpcChange, Topic,
     },
-    Message,
 };
+use crate::{
+    error::service::ServiceError,
+    infrastructure::task_queue::{
+        MqttTask,
+        mqtt_api::{ApiMqttStruct, EventType},
+        task::Tasks,
+    },
+    messaging::{
+        mqtt::topics::{
+            OutgoingPayload,
+            api_wallet::{
+                acct_change::ApiWalletAcctChange,
+                cmd::{
+                    address_allock::AwmCmdAddrExpandMsg, dev_change::AwmCmdDevChangeMsg,
+                    fee_res::AwmCmdFeeResMsg, unbind_uid::AwmCmdUidUnbindMsg,
+                    wallet_activation::AwmCmdActiveMsg,
+                },
+                trans::AwmOrderTransMsg,
+                trans_result::AwmOrderTransResMsg,
+            },
+        },
+        notify::{FrontendNotifyEvent, event::NotifyEvent},
+    },
+    service::{app::AppService, device::DeviceService},
+};
+use rumqttc::v5::mqttbytes::v5::{Packet, Publish};
+use wallet_database::{
+    entities::task_queue::{TaskQueueEntity, WalletType},
+    factory::RepositoryFactory,
+};
+use wallet_transport_backend::api_response::{
+    ApiBackendData, ApiBackendDataBody, ApiBackendResponse,
+};
+use wallet_utils::serde_func;
 
 pub(crate) async fn exec_incoming(
     client: &rumqttc::v5::AsyncClient,
@@ -52,13 +73,13 @@ pub(crate) async fn exec_incoming(
 }
 
 pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Error> {
-    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
     let topic = Topic::from_bytes_v3(publish.topic.to_vec())?;
 
     match topic.topic {
         Topic::Switch => {}
-        #[cfg(feature = "token")]
+        // #[cfg(feature = "token")]
         crate::messaging::mqtt::topics::Topic::Token => {
             let payload: crate::messaging::mqtt::topics::TokenPriceChange =
                 serde_json::from_slice(&publish.payload)?;
@@ -77,30 +98,21 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
             let payload: ChainChange = serde_json::from_slice(&publish.payload)?;
             payload.exec().await?;
         }
-        Topic::Order | Topic::Common | Topic::BulletinInfo => {
+        Topic::Order
+        | Topic::Common
+        | Topic::BulletinInfo
+        | Topic::WalletMerchantCmd
+        | Topic::MerchantTrans
+        // | Topic::WalletMerchantTrans 
+        => {
             let payload: Message = serde_json::from_slice(&publish.payload)?;
             if let Err(e) = FrontendNotifyEvent::send_debug(&payload).await {
                 tracing::error!("[exec_incoming_publish] send debug error: {e}");
             };
 
-            // TODO: 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
-            // let send_msg_confirm_req = BackendApiTask::new(
-            //     SEND_MSG_CONFIRM,
-            //     &SendMsgConfirmReq::new(vec![SendMsgConfirm::new(
-            //         &payload.msg_id,
-            //         MsgConfirmSource::Mqtt,
-            //     )]),
-            // )?;
-            // Tasks::new()
-            //     .push(Task::BackendApi(send_msg_confirm_req))
-            //     .send()
-            //     .await?;
-
+            // 目前任务执行完后，会自动发送 send_msg_confirm，所以这里不需要再发送
             // 是否有相同的队列
-            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id)
-                .await?
-                .is_none()
-            {
+            if TaskQueueEntity::get_task_queue(pool.as_ref(), &payload.msg_id).await?.is_none() {
                 let event = serde_func::serde_to_string(&payload.biz_type)?;
                 if let Err(e) = exec_payload(payload).await {
                     tracing::error!("exec_payload error: {}", e);
@@ -115,64 +127,116 @@ pub async fn exec_incoming_publish(publish: &Publish) -> Result<(), anyhow::Erro
     Ok(())
 }
 
-pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceError> {
+pub(crate) async fn exec_payload(
+    payload: Message,
+) -> Result<(), crate::error::service::ServiceError> {
     match payload.biz_type {
         BizType::OrderMultiSignAccept => {
-            exec_task::<OrderMultiSignAccept, _>(&payload, MqttTask::OrderMultiSignAccept).await?
+            exec_task::<OrderMultiSignAccept, _, _>(&payload, MqttTask::OrderMultiSignAccept)
+                .await?
         }
         BizType::OrderMultiSignAcceptCompleteMsg => {
-            exec_task::<OrderMultiSignAcceptCompleteMsg, _>(
+            exec_task::<OrderMultiSignAcceptCompleteMsg, _, _>(
                 &payload,
                 MqttTask::OrderMultiSignAcceptCompleteMsg,
             )
             .await?
         }
         BizType::OrderMultiSignServiceComplete => {
-            exec_task::<OrderMultiSignServiceComplete, _>(
+            exec_task::<OrderMultiSignServiceComplete, _, _>(
                 &payload,
                 MqttTask::OrderMultiSignServiceComplete,
             )
             .await?
         }
         BizType::OrderMultiSignCancel => {
-            exec_task::<OrderMultiSignCancel, _>(&payload, MqttTask::OrderMultiSignCancel).await?
+            exec_task::<OrderMultiSignCancel, _, _>(&payload, MqttTask::OrderMultiSignCancel)
+                .await?
         }
         BizType::MultiSignTransAccept => {
-            exec_task::<MultiSignTransAccept, _>(&payload, MqttTask::MultiSignTransAccept).await?
+            exec_task::<MultiSignTransAccept, _, _>(&payload, MqttTask::MultiSignTransAccept)
+                .await?
         }
         BizType::MultiSignTransAcceptCompleteMsg => {
-            exec_task::<MultiSignTransAcceptCompleteMsg, _>(
+            exec_task::<MultiSignTransAcceptCompleteMsg, _, _>(
                 &payload,
                 MqttTask::MultiSignTransAcceptCompleteMsg,
             )
             .await?
         }
-        BizType::AcctChange => exec_task::<AcctChange, _>(&payload, MqttTask::AcctChange).await?,
+        BizType::AcctChange => match payload.wallet_type {
+            WalletType::NormalWallet => {
+                exec_task::<AcctChange, _, _>(&payload, MqttTask::AcctChange).await?
+            }
+            WalletType::ApiRaw | WalletType::ApiWaw => {
+                exec_task::<ApiWalletAcctChange, _, _>(&payload, MqttTask::ApiWalletAcctChange)
+                    .await?
+            }
+            WalletType::NotFound => todo!(),
+        },
         BizType::OrderMultiSignCreated => {
-            exec_task::<OrderMultiSignCreated, _>(&payload, MqttTask::OrderMultiSignCreated).await?
+            exec_task::<OrderMultiSignCreated, _, _>(&payload, MqttTask::OrderMultiSignCreated)
+                .await?
         }
         BizType::BulletinMsg => {
-            exec_task::<BulletinMsg, _>(&payload, MqttTask::BulletinMsg).await?
+            exec_task::<BulletinMsg, _, _>(&payload, MqttTask::BulletinMsg).await?
         }
         BizType::MultiSignTransCancel => {
-            exec_task::<MultiSignTransCancel, _>(&payload, MqttTask::MultiSignTransCancel).await?
+            exec_task::<MultiSignTransCancel, _, _>(&payload, MqttTask::MultiSignTransCancel)
+                .await?
         }
         BizType::PermissionAccept => {
-            exec_task::<PermissionAccept, _>(&payload, MqttTask::PermissionAccept).await?
+            exec_task::<PermissionAccept, _, _>(&payload, MqttTask::PermissionAccept).await?
         }
         BizType::MultiSignTransExecute => {
-            exec_task::<MultiSignTransExecute, _>(&payload, MqttTask::MultiSignTransExecute).await?
+            exec_task::<MultiSignTransExecute, _, _>(&payload, MqttTask::MultiSignTransExecute)
+                .await?
         }
         BizType::OrderMultiSignAllMemberAccepted => {
-            exec_task::<OrderAllConfirmed, _>(&payload, MqttTask::OrderAllConfirmed).await?
+            exec_task::<OrderAllConfirmed, _, _>(&payload, MqttTask::OrderAllConfirmed).await?
         }
         BizType::CleanPermission => {
-            exec_task::<CleanPermission, _>(&payload, MqttTask::CleanPermission).await?
+            exec_task::<CleanPermission, _, _>(&payload, MqttTask::CleanPermission).await?
+        }
+        // api wallet
+        BizType::AwmOrderTrans
+        | BizType::AwmOrderTransRes
+        | BizType::AwmCmdAddrExpand
+        | BizType::AwmCmdFeeRes
+        | BizType::AwmCmdActive
+        | BizType::AwmCmdUidUnbind
+        | BizType::AddressUse
+        | BizType::AwmCmdDevChange => {
+            let mut api_mqtt_st =
+                serde_func::serde_from_value::<ApiMqttStruct>(payload.body.clone())?;
+            if api_mqtt_st.sign.is_none() {
+                return Err(ServiceError::Parameter("missing sign".to_string()));
+            }
+            if api_mqtt_st.secret.is_none() {
+                return Err(ServiceError::Parameter("missing secret".to_string()));
+            }
+            // 验签
+            let data: String = serde_func::serde_from_value(api_mqtt_st.data.clone())?;
+            let res = ApiBackendResponse {
+                success: true,
+                code: None,
+                msg: Some("mqtt".to_string()),
+                data: Some(ApiBackendData {
+                    sign: api_mqtt_st.sign.clone().unwrap(),
+                    body: ApiBackendDataBody { key: api_mqtt_st.secret.clone().unwrap(), data },
+                }),
+            };
+
+            let data = exec_verify_api_mqtt_st(api_mqtt_st.event_type.clone(), &res).await?;
+            api_mqtt_st.data = data;
+            let mut payload = payload.clone();
+            payload.body = serde_func::serde_to_value(api_mqtt_st)?;
+            exec_task::<ApiMqttStruct, _, _>(&payload, MqttTask::ApiMqttStruct).await?
         }
         // 如果没有匹配到任何已知的 BizType，则返回错误
         biztype => {
-            return Err(crate::ServiceError::System(
-                crate::SystemError::MessageWrong(biztype, payload.body),
+            return Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::MessageWrong(biztype, payload.body),
             ));
         }
     }
@@ -180,10 +244,14 @@ pub(crate) async fn exec_payload(payload: Message) -> Result<(), crate::ServiceE
     Ok(())
 }
 
-async fn exec_task<T, F>(payload: &Message, task_ctor: F) -> Result<(), crate::ServiceError>
+async fn exec_task<T, F, R>(
+    payload: &Message,
+    task_ctor: F,
+) -> Result<(), crate::error::service::ServiceError>
 where
     T: serde::de::DeserializeOwned,
-    F: FnOnce(T) -> MqttTask,
+    F: FnOnce(T) -> R,
+    R: crate::infrastructure::task_queue::task::TaskTrait + 'static,
 {
     let data = serde_func::serde_from_value::<T>(payload.body.clone())?;
     Tasks::new()
@@ -200,12 +268,12 @@ async fn exec_incoming_connack(
     client: &rumqttc::v5::AsyncClient,
     conn_ack: rumqttc::v5::mqttbytes::v5::ConnAck,
 ) -> Result<(), anyhow::Error> {
-    let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
     let repo = RepositoryFactory::repo(pool.clone());
     let device_service = DeviceService::new(repo);
 
     if conn_ack.code == rumqttc::v5::mqttbytes::v5::ConnectReturnCode::Success {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
         AppService::new(repo).mqtt_resubscribe().await?;
     }
@@ -225,18 +293,77 @@ async fn exec_incoming_connack(
             client_id,
         };
         client
-            .publish(
-                Topic::Switch,
-                rumqttc::v5::mqttbytes::QoS::AtLeastOnce,
-                false,
-                body.to_vec()?,
-            )
+            .publish(Topic::Switch, rumqttc::v5::mqttbytes::QoS::AtLeastOnce, false, body.to_vec()?)
             .await?;
     }
 
     let data = NotifyEvent::MqttConnected;
     FrontendNotifyEvent::new(data).send().await?;
     Ok(())
+}
+
+async fn exec_verify_api_mqtt_st(
+    ev: EventType,
+    res: &ApiBackendResponse,
+) -> Result<serde_json::Value, ServiceError> {
+    match ev {
+        EventType::AwmOrderTrans => {
+            let data: Option<AwmOrderTransMsg> = res.process("AwmOrderTrans")?;
+            if let Some(data) = data {
+                return Ok(serde_func::serde_to_value(data)?);
+            } else {
+                return Err(ServiceError::Parameter("missing data".to_string()));
+            }
+        }
+        EventType::AwmOrderTransRes => {
+            let data: Option<AwmOrderTransResMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdAddrExpand => {
+            let data: Option<AwmCmdAddrExpandMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdUidUnbind => {
+            let data: Option<AwmCmdUidUnbindMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdActive => {
+            let data: Option<AwmCmdActiveMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdFeeRes => {
+            let data: Option<AwmCmdFeeResMsg> = res.process("AwmOrderTransRes")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+        EventType::AwmCmdDevChange => {
+            let data: Option<AwmCmdDevChangeMsg> = res.process("AwmCmdDevChange")?;
+            if let Some(data) = data {
+                Ok(serde_func::serde_to_value(data)?)
+            } else {
+                Err(ServiceError::Parameter("missing data".to_string()))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -296,11 +423,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -358,11 +481,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -420,11 +539,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -483,11 +598,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -545,11 +656,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -607,11 +714,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -667,11 +770,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -727,11 +826,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -786,11 +881,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -848,11 +939,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -910,11 +997,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -972,11 +1055,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -1031,11 +1110,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }
@@ -1078,11 +1153,7 @@ mod tests {
 
         // 调用 exec_incoming_publish 并断言结果
         let result = exec_incoming_publish(&publish).await;
-        assert!(
-            result.is_ok(),
-            "exec_incoming_publish failed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "exec_incoming_publish failed: {:?}", result.err());
 
         Ok(())
     }

@@ -138,10 +138,7 @@ impl NodeEntity {
         if let Some(status) = status {
             query = query.bind(status);
         }
-        query
-            .fetch_all(exec)
-            .await
-            .map_err(|e| crate::Error::Database(e.into()))
+        query.fetch_all(exec).await.map_err(|e| crate::Error::Database(e.into()))
     }
 
     // pub async fn get_node_list_in_chain_codes<'a, E>(

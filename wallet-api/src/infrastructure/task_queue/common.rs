@@ -11,13 +11,15 @@ use wallet_transport_backend::request::TokenQueryPriceReq;
 
 use crate::{
     domain::{
+        api_wallet::chain::ApiChainDomain,
+        chain::ChainDomain,
         multisig::{MultisigDomain, MultisigQueueDomain},
-        node::NodeDomain,
         permission::PermissionDomain,
     },
-    infrastructure::task_queue::task::{task_type::TaskType, TaskTrait},
+    error::service::ServiceError,
+    infrastructure::task_queue::task::{TaskTrait, task_type::TaskType},
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     service::coin::CoinService,
-    FrontendNotifyEvent, NotifyEvent,
 };
 
 #[async_trait::async_trait]
@@ -37,7 +39,7 @@ impl TaskTrait for CommonTask {
     fn get_type(&self) -> TaskType {
         TaskType::Common
     }
-    fn get_body(&self) -> Result<Option<String>, crate::ServiceError> {
+    fn get_body(&self) -> Result<Option<String>, ServiceError> {
         let res = match self {
             CommonTask::QueryCoinPrice(query_coin_price) => {
                 Some(wallet_utils::serde_func::serde_to_string(query_coin_price)?)
@@ -49,15 +51,15 @@ impl TaskTrait for CommonTask {
                 Some(wallet_utils::serde_func::serde_to_string(recover_data)?)
             }
             // CommonTask::RecoverPermission(uid) => Some(uid.to_string()),
-            CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => Some(
-                wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?,
-            ),
+            CommonTask::SyncNodesAndLinkToChains(sync_nodes_and_link_to_chains) => {
+                Some(wallet_utils::serde_func::serde_to_string(sync_nodes_and_link_to_chains)?)
+            }
         };
         Ok(res)
     }
 
-    async fn execute(&self, _id: &str) -> Result<(), crate::ServiceError> {
-        let pool = crate::manager::Context::get_global_sqlite_pool()?;
+    async fn execute(&self, _id: &str) -> Result<(), ServiceError> {
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         match self {
             CommonTask::QueryCoinPrice(data) => {
                 let repo = RepositoryFactory::repo(pool.clone());
@@ -85,8 +87,10 @@ impl TaskTrait for CommonTask {
                     .await?
                     .into_iter()
                     .map(|chain| chain.chain_code)
-                    .collect();
-                NodeDomain::sync_nodes_and_link_to_chains(&mut repo, chain_codes, &data).await?;
+                    .collect::<Vec<String>>();
+                ChainDomain::sync_nodes_and_link_to_chains(&mut repo, &chain_codes, &data).await?;
+                ApiChainDomain::sync_nodes_and_link_to_api_chains(&mut repo, &chain_codes, &data)
+                    .await?;
             }
         }
         Ok(())
@@ -112,9 +116,6 @@ pub struct RecoverDataBody {
 }
 impl RecoverDataBody {
     pub fn new(uid: &str) -> Self {
-        Self {
-            uid: uid.to_string(),
-            tron_address: None,
-        }
+        Self { uid: uid.to_string(), tron_address: None }
     }
 }

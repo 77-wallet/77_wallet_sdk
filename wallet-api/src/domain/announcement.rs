@@ -1,51 +1,54 @@
-use crate::messaging::notify::{event::NotifyEvent, FrontendNotifyEvent};
-use wallet_database::repositories::{announcement::AnnouncementRepoTrait, device::DeviceRepoTrait};
+use crate::messaging::notify::{FrontendNotifyEvent, event::NotifyEvent};
+use wallet_database::repositories::{announcement::AnnouncementRepoTrait, device::DeviceRepo};
 
 pub struct AnnouncementDomain;
 
 impl AnnouncementDomain {
     pub async fn pull_announcement(
         repo: &mut wallet_database::repositories::ResourcesRepo,
-    ) -> Result<(), crate::error::ServiceError> {
-        let backend = crate::Context::get_global_backend_api()?;
-
+    ) -> Result<(), crate::error::service::ServiceError> {
         let list = AnnouncementRepoTrait::list(repo).await?;
 
-        if let Some(device) = DeviceRepoTrait::get_device_info(repo).await? {
-            let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;
-            let req = wallet_transport_backend::request::AnnouncementListReq::new(client_id, 0, 50);
-            let res = backend.announcement_list(req).await?;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+            return Err(crate::error::business::BusinessError::Device(
+                crate::error::business::device::DeviceError::Uninitialized,
+            )
+            .into());
+        };
 
-            let res_ids: std::collections::HashSet<_> =
-                res.list.iter().map(|info| info.id.to_string()).collect();
-            let to_delete: Vec<_> = list
-                .into_iter()
-                .filter(|item| !res_ids.contains(&item.id))
-                .map(|item| item.id)
-                .collect();
+        let client_id = super::app::DeviceDomain::client_id_by_device(&device)?;
+        tracing::info!("client id: {} --------------", client_id);
+        let req = wallet_transport_backend::request::AnnouncementListReq::new(client_id, 0, 50);
+        let backend = crate::context::CONTEXT.get().unwrap().get_global_backend_api();
+        let res = backend.announcement_list(req).await?;
 
-            for id in to_delete {
-                AnnouncementRepoTrait::physical_delete(repo, &id).await?;
-            }
+        let res_ids: std::collections::HashSet<_> =
+            res.list.iter().map(|info| info.id.to_string()).collect();
+        let to_delete: Vec<_> = list
+            .into_iter()
+            .filter(|item| !res_ids.contains(&item.id))
+            .map(|item| item.id)
+            .collect();
 
-            let input = res
-                .list
-                .into_iter()
-                .map(
-                    |info| wallet_database::entities::announcement::CreateAnnouncementVo {
-                        id: info.id.to_string(),
-                        title: info.i18n.title,
-                        content: info.i18n.content,
-                        language: info.language,
-                        status: 0,
-                        send_time: info.send_time,
-                    },
-                )
-                .collect();
-            AnnouncementRepoTrait::update_existing(repo, input).await?;
-        } else {
-            return Err(crate::BusinessError::Device(crate::DeviceError::Uninitialized).into());
+        for id in to_delete {
+            AnnouncementRepoTrait::physical_delete(repo, &id).await?;
         }
+
+        let input = res
+            .list
+            .into_iter()
+            .map(|info| wallet_database::entities::announcement::CreateAnnouncementVo {
+                id: info.id.to_string(),
+                title: info.i18n.title,
+                content: info.i18n.content,
+                language: info.language,
+                status: 0,
+                send_time: info.send_time,
+            })
+            .collect();
+        AnnouncementRepoTrait::update_existing(repo, input).await?;
+
         let data = NotifyEvent::FetchBulletinMsg;
         FrontendNotifyEvent::new(data).send().await?;
         Ok(())

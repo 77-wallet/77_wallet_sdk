@@ -1,8 +1,9 @@
 use crate::get_manager;
+use anyhow::Result;
 use wallet_api::request::transaction::{self, Signer};
 
 #[tokio::test]
-async fn test_balance() {
+async fn test_balance() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let addr = "TQACP632EQvyecJTG5wTvMuqy8a4f4TJVr";
@@ -10,16 +11,15 @@ async fn test_balance() {
     let symbol = "TRX";
     // let symbol = "USDT";
     let token_address = None;
-    let balance = wallet_manager
-        .chain_balance(addr, chain_code, &symbol, token_address)
-        .await;
+    let balance = wallet_manager.chain_balance(addr, chain_code, &symbol, token_address).await?;
 
     tracing::info!("balance: {:?}", balance);
+    Ok(())
 }
 
 // 交易手续费
 #[tokio::test]
-async fn test_fee() {
+async fn test_fee() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
@@ -29,22 +29,17 @@ async fn test_fee() {
     let symbol = "TRX";
     // let symbol = "USDT";
 
-    let mut params = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let mut params = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     params.with_notes("test aa".to_string());
 
-    let res = wallet_manager.transaction_fee(params).await;
+    let res = wallet_manager.transaction_fee(params).await?;
     tracing::info!("res: {}", serde_json::to_string(&res).unwrap());
+    Ok(())
 }
 
 // 转账
 #[tokio::test]
-async fn test_transfer() {
+async fn test_transfer() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
@@ -56,17 +51,9 @@ async fn test_transfer() {
     // let password = "1111111";
     let notes = "test".to_string();
 
-    let _signer = Signer {
-        address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(),
-        permission_id: 3,
-    };
-    let mut base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
+    let _signer =
+        Signer { address: "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1".to_string(), permission_id: 3 };
+    let mut base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
     base.with_notes(notes);
 
     let params = transaction::TransferReq {
@@ -76,13 +63,14 @@ async fn test_transfer() {
         signer: None,
     };
 
-    let transfer = wallet_manager.transfer(params).await;
+    let transfer = wallet_manager.transfer(params).await?;
     println!("transfer: {:?}", transfer);
+    Ok(())
 }
 
 // 转账有补贴的情况
 #[tokio::test]
-async fn test_transfer_with_subsidy() {
+async fn test_transfer_with_subsidy() -> Result<()> {
     let wallet_manager = get_manager().await;
 
     let from = "TXDK1qjeyKxDTBUeFyEQiQC7BgDpQm64g1";
@@ -93,17 +81,11 @@ async fn test_transfer_with_subsidy() {
     let password = "123456";
 
     // request delegate
-    let res = wallet_manager.request_energy(from.to_string(), 50000).await;
+    let res = wallet_manager.request_energy(from.to_string(), 50000).await?;
     tracing::warn!("request_energy: {:?}", res);
 
-    let mut base = transaction::BaseTransferReq::new(
-        from.to_string(),
-        to.to_string(),
-        value.to_string(),
-        chain_code.to_string(),
-        symbol.to_string(),
-    );
-    base.request_resource_id = res.result;
+    let mut base = transaction::BaseTransferReq::new(from, to, value, chain_code, symbol);
+    base.request_resource_id = Some(res);
 
     let params = transaction::TransferReq {
         base,
@@ -112,6 +94,7 @@ async fn test_transfer_with_subsidy() {
         signer: None,
     };
 
-    let transfer = wallet_manager.transfer(params).await;
+    let transfer = wallet_manager.transfer(params).await?;
     tracing::info!("transfer: {:?}", transfer);
+    Ok(())
 }

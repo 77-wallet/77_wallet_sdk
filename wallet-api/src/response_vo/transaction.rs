@@ -1,13 +1,13 @@
-use super::account::default_unit_price_as_zero;
-use super::account::BalanceInfo;
-use super::account::BalanceNotTruncate;
+use super::account::{BalanceInfo, BalanceNotTruncate, default_unit_price_as_zero};
 use crate::request::transaction::Signer;
 use alloy::primitives::U256;
-use wallet_chain_interact::eth::FeeSetting;
-use wallet_chain_interact::{eth, tron};
-use wallet_database::entities::bill::BillKind;
+use wallet_chain_interact::{
+    BillResourceConsume,
+    eth::{self, FeeSetting},
+    tron,
+};
 use wallet_database::entities::{
-    bill::BillEntity,
+    bill::{BillEntity, BillKind},
     multisig_queue::{MemberSignedResult, MultisigQueueStatus, NewMultisigQueueEntity},
 };
 use wallet_transport_backend::response_vo::{chain::GasOracle, coin::TokenCurrency};
@@ -79,11 +79,35 @@ impl From<&TransferParams> for NewMultisigQueueEntity {
 pub struct BillDetailVo {
     #[serde(flatten)]
     pub bill: BillEntity,
-    pub resource_consume: Option<wallet_chain_interact::BillResourceConsume>,
+    pub resource_consume: Option<BillResourceConsume>,
     pub fee_symbol: String,
     pub signature: Option<Vec<MemberSignedResult>>,
     pub wallet_name: String,
     pub account_name: String,
+}
+
+impl BillDetailVo {
+    pub fn new(
+        bill: BillEntity,
+        fee_symbol: String,
+        signature: Option<Vec<MemberSignedResult>>,
+    ) -> Result<Self, crate::error::service::ServiceError> {
+        let resource_consume = if !bill.resource_consume.is_empty() && bill.resource_consume != "0"
+        {
+            Some(BillResourceConsume::from_json_str(&bill.resource_consume)?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            bill,
+            resource_consume,
+            fee_symbol,
+            signature,
+            wallet_name: "".to_string(),
+            account_name: "".to_string(),
+        })
+    }
 }
 
 // about fee estimate fee
@@ -96,11 +120,7 @@ pub struct EstimateFeeResp {
 }
 impl EstimateFeeResp {
     pub fn new(symbol: String, chain_code: String, content: String) -> Self {
-        Self {
-            symbol,
-            chain_code,
-            content,
-        }
+        Self { symbol, chain_code, content }
     }
 }
 
@@ -132,15 +152,12 @@ impl FeeDetails<EthereumFeeDetails> {
             };
             res.push(fee_structure);
         }
-        FeeDetailsVo {
-            default: "propose".to_string(),
-            data: res,
-        }
+        FeeDetailsVo { default: "propose".to_string(), data: res }
     }
 }
 
 impl TryFrom<(GasOracle, i64)> for FeeDetails<EthereumFeeDetails> {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from((gas_oracle, gas_limit): (GasOracle, i64)) -> Result<Self, Self::Error> {
         let base =
             unit::convert_to_u256(&gas_oracle.suggest_base_fee.unwrap_or("0".to_string()), 9)?;
@@ -199,7 +216,7 @@ impl FeeStructure<EthereumFeeDetails> {
         base_fee: U256,
         mut priority_fee: U256,
         types: &str,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let base_plus_tip = base_fee + priority_fee;
 
         // 1.2 倍
@@ -246,7 +263,7 @@ pub struct EthereumFeeDetails {
 }
 
 impl TryFrom<&str> for EthereumFeeDetails {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let rs: Self = serde_func::serde_from_str(value)?;
         Ok(rs)
@@ -254,7 +271,7 @@ impl TryFrom<&str> for EthereumFeeDetails {
 }
 
 impl TryFrom<EthereumFeeDetails> for wallet_chain_interact::eth::FeeSetting {
-    type Error = crate::ServiceError;
+    type Error = crate::error::service::ServiceError;
 
     fn try_from(value: EthereumFeeDetails) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -272,12 +289,7 @@ impl EthereumFeeDetails {
         priority_fee: String,
         max_fee_per_gas: String,
     ) -> Self {
-        Self {
-            gas_limit,
-            base_fee,
-            priority_fee,
-            max_fee_per_gas,
-        }
+        Self { gas_limit, base_fee, priority_fee, max_fee_per_gas }
     }
 }
 impl From<FeeSetting> for EthereumFeeDetails {
@@ -308,17 +320,13 @@ impl TronFeeDetails {
         consumer: tron::params::ResourceConsumer,
         token_currency: TokenCurrency,
         currency: &str,
-    ) -> Result<Self, crate::error::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let amount = consumer.transaction_fee();
         let amount = unit::string_to_f64(&amount)?;
         let fee = BalanceInfo::new(amount, token_currency.get_price(currency), currency);
 
         let (energy, energy_limit, energy_price) = if let Some(energy) = consumer.energy {
-            (
-                energy.consumer,
-                energy.limit,
-                energy.price as f64 / tron::consts::TRX_TO_SUN as f64,
-            )
+            (energy.consumer, energy.limit, energy.price as f64 / tron::consts::TRX_TO_SUN as f64)
         } else {
             (0, 0, 0.0)
         };
@@ -355,21 +363,18 @@ impl CommonFeeDetails {
         fee: f64,
         token_currency: TokenCurrency,
         currency: &str,
-    ) -> Result<Self, crate::ServiceError> {
+    ) -> Result<Self, crate::error::service::ServiceError> {
         let amount = wallet_utils::conversion::decimal_from_f64(fee).unwrap_or_default();
 
         let unit_pice = token_currency.get_price(currency);
 
-        let unit_price = unit_pice
-            .map(|p| wallet_utils::conversion::decimal_from_f64(p))
-            .transpose()?;
+        let unit_price =
+            unit_pice.map(|p| wallet_utils::conversion::decimal_from_f64(p)).transpose()?;
 
-        Ok(Self {
-            estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)?,
-        })
+        Ok(Self { estimate_fee: BalanceNotTruncate::new(amount, unit_price, currency)? })
     }
 
-    pub fn to_json_str(&self) -> Result<String, crate::ServiceError> {
+    pub fn to_json_str(&self) -> Result<String, crate::error::service::ServiceError> {
         Ok(wallet_utils::serde_func::serde_to_string(&self)?)
     }
 }
