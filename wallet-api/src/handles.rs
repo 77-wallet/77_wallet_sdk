@@ -1,10 +1,14 @@
-use crate::infrastructure::{
-    inner_event::InnerEventHandle,
-    process_collect_tx::ProcessCollectTxHandle,
-    process_fee_tx::ProcessFeeTxHandle,
-    process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
-    process_withdraw_tx::ProcessWithdrawTxHandle,
-    task_queue::task_manager::TaskManager,
+use crate::{
+    infrastructure,
+    infrastructure::{
+        inner_event::InnerEventHandle,
+        log::upload_log::UploadLogHandle,
+        process_collect_tx::ProcessCollectTxHandle,
+        process_fee_tx::ProcessFeeTxHandle,
+        process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
+        process_withdraw_tx::ProcessWithdrawTxHandle,
+        task_queue::task_manager::TaskManager,
+    },
 };
 use std::sync::Arc;
 
@@ -17,6 +21,7 @@ pub struct Handles {
     process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
     process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
+    upload_log: Arc<UploadLogHandle>,
 }
 
 impl Handles {
@@ -33,6 +38,11 @@ impl Handles {
         let process_withdraw_tx_handle = ProcessWithdrawTxHandle::new().await;
         let process_fee_tx_handle = ProcessFeeTxHandle::new().await;
         let process_collect_tx_handle = ProcessCollectTxHandle::new().await;
+        let context = crate::context::CONTEXT.get().unwrap();
+        let dirs = context.get_global_dirs();
+        let base_path = infrastructure::log::format::LogBasePath(dirs.get_log_dir());
+        let upload_log_handle =
+            UploadLogHandle::new(base_path, 5 * 60, context.get_global_oss_client()).await;
         Self {
             task_manager: Arc::new(task_manager),
             inner_event_handle: Arc::new(inner_event_handle),
@@ -41,6 +51,7 @@ impl Handles {
             process_withdraw_tx_handle: Arc::new(process_withdraw_tx_handle),
             process_fee_tx_handle: Arc::new(process_fee_tx_handle),
             process_collect_tx_handle: Arc::new(process_collect_tx_handle),
+            upload_log: Arc::new(upload_log_handle),
         }
     }
 
@@ -48,6 +59,7 @@ impl Handles {
         self.process_withdraw_tx_handle.close().await?;
         self.process_fee_tx_handle.close().await?;
         self.process_collect_tx_handle.close().await?;
+        self.upload_log.close().await?;
         Ok(())
     }
 
