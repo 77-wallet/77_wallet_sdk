@@ -35,8 +35,6 @@ impl WalletManager {
         GLOBAL_KEY.set_sn(sn);
 
         let handles = Arc::new(Handles::new(context.get_client_id()).await);
-        handles.get_global_unconfirmed_msg_processor().start().await;
-        tracing::info!("get_global_unconfirmed_msg_processor start");
         handles.get_global_task_manager().start_task_check().await?;
         tracing::info!("start_task_check start");
         infrastructure::asset_calc::start_batch_recalculator(1000)?;
