@@ -1,13 +1,10 @@
 use crate::{
     infrastructure,
     infrastructure::{
-        inner_event::InnerEventHandle,
-        log::upload_log::UploadLogHandle,
-        process_collect_tx::ProcessCollectTxHandle,
-        process_fee_tx::ProcessFeeTxHandle,
-        process_unconfirm_msg::{UnconfirmedMsgCollector, UnconfirmedMsgProcessor},
-        process_withdraw_tx::ProcessWithdrawTxHandle,
-        task_queue::task_manager::TaskManager,
+        collector_unconfirm_msg::UnconfirmedMsgCollector, inner_event::InnerEventHandle,
+        log::upload_log::UploadLogHandle, process_collect_tx::ProcessCollectTxHandle,
+        process_fee_tx::ProcessFeeTxHandle, process_unconfirm_msg::UnconfirmedMsgProcessorHandle,
+        process_withdraw_tx::ProcessWithdrawTxHandle, task_queue::task_manager::TaskManager,
     },
 };
 use std::sync::Arc;
@@ -17,7 +14,7 @@ pub struct Handles {
     task_manager: Arc<TaskManager>,
     inner_event_handle: Arc<InnerEventHandle>,
     unconfirmed_msg_collector: Arc<UnconfirmedMsgCollector>,
-    unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessor>,
+    unconfirmed_msg_processor: Arc<UnconfirmedMsgProcessorHandle>,
     process_withdraw_tx_handle: Arc<ProcessWithdrawTxHandle>,
     process_fee_tx_handle: Arc<ProcessFeeTxHandle>,
     process_collect_tx_handle: Arc<ProcessCollectTxHandle>,
@@ -31,7 +28,8 @@ impl Handles {
         let notify = Arc::new(tokio::sync::Notify::new());
         let task_manager = TaskManager::new(notify.clone());
 
-        let unconfirmed_msg_processor = UnconfirmedMsgProcessor::new(&client_id, notify);
+        let unconfirmed_msg_processor =
+            UnconfirmedMsgProcessorHandle::new(&client_id, notify).await;
 
         let inner_event_handle = InnerEventHandle::new();
 
@@ -60,6 +58,7 @@ impl Handles {
         self.process_fee_tx_handle.close().await?;
         self.process_collect_tx_handle.close().await?;
         self.upload_log.close().await?;
+        self.unconfirmed_msg_processor.close().await?;
         Ok(())
     }
 
@@ -91,7 +90,9 @@ impl Handles {
         self.unconfirmed_msg_collector.clone()
     }
 
-    pub(crate) fn get_global_unconfirmed_msg_processor(&self) -> Arc<UnconfirmedMsgProcessor> {
+    pub(crate) fn get_global_unconfirmed_msg_processor(
+        &self,
+    ) -> Arc<UnconfirmedMsgProcessorHandle> {
         self.unconfirmed_msg_processor.clone()
     }
 }
