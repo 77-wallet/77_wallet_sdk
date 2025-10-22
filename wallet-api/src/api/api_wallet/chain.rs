@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use wallet_database::entities::api_chain::ApiChainEntity;
+
 use crate::{
     api::ReturnType, manager::WalletManager, response_vo::chain::ChainAssets,
     service::api_wallet::chain::ApiChainService,
@@ -15,6 +17,10 @@ impl WalletManager {
         ApiChainService::new(self.ctx)
             .get_chain_assets_list(wallet_address, Some(account_id), chain_list)
             .await
+    }
+
+    pub async fn get_api_hot_chain_list(&self) -> ReturnType<Vec<ApiChainEntity>> {
+        ApiChainService::new(self.ctx).get_hot_chain_list().await
     }
 }
 
@@ -40,6 +46,18 @@ mod test {
             .get_api_chain_list(wallet_address, account_id, chain_list)
             .await
             .unwrap();
+        let res = serde_json::to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_api_hot_chain_list() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+
+        let res = wallet_manager.get_api_hot_chain_list().await.unwrap();
         let res = serde_json::to_string(&res).unwrap();
         tracing::info!("res: {res:?}");
         Ok(())

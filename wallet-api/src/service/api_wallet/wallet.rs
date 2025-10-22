@@ -379,6 +379,17 @@ impl ApiWalletService {
         let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
         if info.bind_status {
             ApiWalletDomain::bind_uid(address, &info.org_id, &info.app_id).await?;
+            let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
+            let chains: Vec<String> =
+                default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
+            ApiAccountDomain::create_withdrawal_account(
+                address,
+                wallet_password,
+                chains,
+                "账户",
+                true,
+            )
+            .await?;
         }
 
         let mut tasks = Tasks::new();
@@ -451,14 +462,6 @@ impl ApiWalletService {
         let chains: Vec<String> =
             default_chain_list.iter().map(|chain| chain.chain_code.clone()).collect();
         let password = ApiWalletDomain::get_passwd().await?;
-        // ApiWalletDomain::create_sub_account(
-        //     &recharge_wallet.address,
-        //     &password,
-        //     chains.clone(),
-        //     account_name,
-        //     is_default_name,
-        // )
-        // .await?;
         ApiAccountDomain::create_withdrawal_account(
             &withdrawal_wallet.address,
             &password,
