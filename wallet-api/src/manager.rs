@@ -7,7 +7,9 @@ use crate::{
     handles::Handles,
     infrastructure::{self},
     messaging::notify::FrontendNotifyEvent,
-    service::{device::DeviceService, task_queue::TaskQueueService},
+    service::{
+        api_wallet::wallet::ApiWalletService, device::DeviceService, task_queue::TaskQueueService,
+    },
 };
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -51,6 +53,8 @@ impl WalletManager {
         DeviceService::new(self.repo_factory.resource_repo()).init_device(req).await?;
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
+
+        ApiWalletService::new(self.ctx).init_swap().await?;
 
         tokio::spawn(async move {
             if let Err(e) = init_some_data().await {
