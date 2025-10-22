@@ -2,7 +2,7 @@ use crate::{
     data::{DeviceInfo, RpcToken},
     dirs::Dirs,
     handles::Handles,
-    infrastructure::SharedCache,
+    infrastructure::cache::SharedCache,
     messaging::{mqtt::subscribed::Topics, notify::FrontendNotifyEvent},
 };
 use std::{
