@@ -143,7 +143,7 @@ mod test {
         // 修改返回类型为Result<(), anyhow::Error>
         let (wallet_manager, mut test_params) = get_manager().await?;
 
-        test_params.create_wallet_req.salt = "q1111111".to_string();
+        test_params.create_wallet_req.salt = "nb".to_string();
 
         test_params.create_wallet_req.wallet_name = "oh".to_string();
 

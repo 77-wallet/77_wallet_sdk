@@ -12,7 +12,7 @@ use wallet_database::{
         multisig_account::MultisigAccountRepo,
         multisig_queue::MultisigQueueRepo,
         system_notification::SystemNotificationRepoTrait,
-        wallet::WalletRepoTrait,
+        wallet::{WalletRepo, WalletRepoTrait},
     },
 };
 use wallet_transport_backend::{
@@ -73,12 +73,12 @@ impl<T: WalletRepoTrait + DeviceRepoTrait + AnnouncementRepoTrait + SystemNotifi
             ConfigDomain::init_app_install_download_url().await?;
         }
         let mut tx = self.repo;
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let standard_wallet_list =
-            tx.wallet_list().await?.into_iter().map(|wallet| wallet.into()).collect();
+            WalletRepo::wallet_list(&pool).await?.into_iter().map(|wallet| wallet.into()).collect();
 
         let api_wallet_list = ApiWalletDomain::get_api_wallet_list().await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let device_info = DeviceRepo::get_device_info(pool).await?;
 
         let unread_announcement_count = AnnouncementRepoTrait::count_unread_status(&mut tx).await?;

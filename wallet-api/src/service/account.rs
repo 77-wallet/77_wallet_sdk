@@ -7,7 +7,7 @@ use wallet_database::{
         coin::CoinRepo,
         device::DeviceRepo,
         multisig_account::MultisigAccountRepo,
-        wallet::WalletRepoTrait,
+        wallet::{WalletRepo, WalletRepoTrait},
     },
 };
 use wallet_transport_backend::request::{
@@ -440,9 +440,9 @@ impl AccountService {
     ) -> Result<(), crate::error::service::ServiceError> {
         WalletDomain::validate_password(old_password).await?;
         let tx = &mut self.repo;
-
+        let db = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let indices = tx.get_all_account_indices().await?;
-        let wallet_list = tx.wallet_list().await?;
+        let wallet_list = WalletRepo::wallet_list(&db).await?;
 
         for wallet in wallet_list {
             AccountDomain::set_root_password(&wallet.address, old_password, new_password).await?;

@@ -6,7 +6,7 @@ use wallet_database::{
         chain::ChainRepo,
         coin::CoinRepo,
         device::{DeviceRepo, DeviceRepoTrait},
-        wallet::WalletRepoTrait,
+        wallet::{WalletRepo, WalletRepoTrait},
     },
 };
 use wallet_transport_backend::{
@@ -608,7 +608,7 @@ impl WalletService {
             )?;
             vec![wallet]
         } else {
-            tx.wallet_list().await?
+            WalletRepo::wallet_list(&pool).await?
         };
         let mut res = Vec::new();
         for wallet_info in wallet_list {
