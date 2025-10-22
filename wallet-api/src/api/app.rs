@@ -255,4 +255,15 @@ mod test {
         tracing::info!("res: {res:?}");
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_backend_config() -> Result<()> {
+        wallet_utils::init_test_log();
+        // 修改返回类型为Result<(), anyhow::Error>
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let res = wallet_manager.backend_config().await?;
+        let res = wallet_utils::serde_func::serde_to_string(&res).unwrap();
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
 }
