@@ -54,6 +54,7 @@ impl WalletManager {
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 
+        tracing::info!("init -------------------------------------------------------1");
         ApiWalletService::new(self.ctx).init_swap().await?;
 
         tokio::spawn(async move {
