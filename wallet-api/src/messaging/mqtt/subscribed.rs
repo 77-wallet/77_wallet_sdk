@@ -1,5 +1,3 @@
-use crate::infrastructure::mqtt::init::MQTT_PROCESSOR;
-
 #[derive(Debug, Clone)]
 pub struct TopicData {
     pub qos: rumqttc::v5::mqttbytes::QoS,
@@ -59,61 +57,40 @@ impl Topics {
         let unique_topics: Vec<String> =
             topics.into_iter().filter(|topic| !subscribed_topics.contains(topic)).collect();
 
-        let mqtt_processor =
-            MQTT_PROCESSOR.get().ok_or(crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::MqttClientNotInit,
-            ))?;
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let mqtt_processor = handles.get_normal_wallet_mqtt();
+            if let Some(mqtt_handle) = mqtt_processor.lock().await.as_ref() {
+                for topic in unique_topics.iter() {
+                    match mqtt_handle.try_subscribe(topic, qos) {
+                        Ok(_) => {
+                            tracing::debug!("订阅主题成功: {}", topic);
+                            let now = std::time::SystemTime::now();
+                            // 插入新的订阅数据到 HashMap
+                            self.data.insert(
+                                topic.clone(),
+                                TopicData { qos, last_updated: now, is_active: true },
+                            );
 
-        // let filters: Vec<rumqttc::v5::mqttbytes::v5::Filter> = unique_topics
-        //     .iter()
-        //     .map(|topic| rumqttc::v5::mqttbytes::v5::Filter::new(topic, qos))
-        //     .collect();
-        // match mqtt_processor.client().subscribe_many(filters).await {
-        //     Ok(_) => {
-        //         tracing::info!("订阅主题成功: {:?}", unique_topics);
-        //         let now = std::time::SystemTime::now();
-        //         // 插入新的订阅数据到 HashMap
-        //         for topic in unique_topics {
-        //             self.data.insert(
-        //                 topic.clone(),
-        //                 TopicData {
-        //                     qos,
-        //                     last_updated: now,
-        //                     is_active: true,
-        //                 },
-        //             );
-
-        //             // 更新 BTreeSet，进行排序
-        //             self.entry.insert(TopicEntry {
-        //                 topic: topic.clone(),
-        //                 last_updated: now,
-        //             });
-        //         }
-        //     }
-        //     Err(e) => {
-        //         tracing::error!("订阅主题失败: {:?}, 错误信息：{:?}", unique_topics, e);
-        //     }
-        // }
-        for topic in unique_topics.iter() {
-            match mqtt_processor.client().try_subscribe(topic, qos) {
-                Ok(_) => {
-                    tracing::debug!("订阅主题成功: {}", topic);
-                    let now = std::time::SystemTime::now();
-                    // 插入新的订阅数据到 HashMap
-                    self.data.insert(
-                        topic.clone(),
-                        TopicData { qos, last_updated: now, is_active: true },
-                    );
-
-                    // 更新 BTreeSet，进行排序
-                    self.entry.insert(TopicEntry { topic: topic.clone(), last_updated: now });
+                            // 更新 BTreeSet，进行排序
+                            self.entry
+                                .insert(TopicEntry { topic: topic.clone(), last_updated: now });
+                        }
+                        Err(e) => {
+                            tracing::error!("订阅主题失败: {}, 错误信息：{:?}", topic, e);
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("订阅主题失败: {}, 错误信息：{:?}", topic, e);
-                }
+            } else {
+                return Err(crate::error::service::ServiceError::System(
+                    crate::error::system::SystemError::MqttClientNotInit,
+                ));
             }
+        } else {
+            return Err(crate::error::service::ServiceError::System(
+                crate::error::system::SystemError::MqttClientNotInit,
+            ));
         }
-
         Ok(())
     }
 
@@ -133,50 +110,59 @@ impl Topics {
             return Ok(());
         }
 
-        let mqtt_processor =
-            MQTT_PROCESSOR.get().ok_or(crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::MqttClientNotInit,
-            ))?;
-        tracing::debug!("取消订阅的主题: {}", unique_topics.join(", "));
-        for topic in unique_topics.iter() {
-            match mqtt_processor.client().try_unsubscribe(topic) {
-                Ok(_) => {
-                    tracing::debug!("取消订阅成功: {}", topic);
-                    // 移除 HashMap 中的订阅数据
-                    if let Some(topic_data) = self.data.remove(topic) {
-                        // 从 BTreeSet 中移除对应的 TopicEntry
-                        self.entry.remove(&TopicEntry {
-                            topic: topic.clone(),
-                            last_updated: topic_data.last_updated,
-                        });
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let mqtt_processor = handles.get_normal_wallet_mqtt();
+            if let Some(mqtt_handle) = mqtt_processor.lock().await.as_ref() {
+                tracing::debug!("取消订阅的主题: {}", unique_topics.join(", "));
+                for topic in unique_topics.iter() {
+                    match mqtt_handle.try_unsubscribe(topic) {
+                        Ok(_) => {
+                            tracing::debug!("取消订阅成功: {}", topic);
+                            // 移除 HashMap 中的订阅数据
+                            if let Some(topic_data) = self.data.remove(topic) {
+                                // 从 BTreeSet 中移除对应的 TopicEntry
+                                self.entry.remove(&TopicEntry {
+                                    topic: topic.clone(),
+                                    last_updated: topic_data.last_updated,
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("取消订阅失败: {}, 错误信息：{:?}", topic, e);
+                        }
                     }
                 }
-                Err(e) => {
-                    tracing::error!("取消订阅失败: {}, 错误信息：{:?}", topic, e);
-                }
+                tracing::debug!("取消订阅完成");
+                return Ok(());
             }
         }
-        tracing::debug!("取消订阅完成");
-        Ok(())
+        Err(crate::error::service::ServiceError::System(
+            crate::error::system::SystemError::MqttClientNotInit,
+        ))
     }
 
     pub async fn resubscribe(&self) -> Result<(), crate::error::service::ServiceError> {
-        let mqtt_processor =
-            MQTT_PROCESSOR.get().ok_or(crate::error::service::ServiceError::System(
-                crate::error::system::SystemError::MqttClientNotInit,
-            ))?;
-
-        // 遍历 HashMap 中的所有主题，重新订阅
-        for (topic, topic_data) in self.data.iter() {
-            match mqtt_processor.client().try_subscribe(topic, topic_data.qos) {
-                Ok(_) => {
-                    tracing::debug!("重新订阅成功: {}", topic);
+        let handles = crate::context::CONTEXT.get().unwrap().get_global_handles();
+        if let Some(handles) = handles.upgrade() {
+            let mqtt_processor = handles.get_normal_wallet_mqtt();
+            if let Some(mqtt_handle) = mqtt_processor.lock().await.as_ref() {
+                // 遍历 HashMap 中的所有主题，重新订阅
+                for (topic, topic_data) in self.data.iter() {
+                    match mqtt_handle.try_subscribe(topic, topic_data.qos) {
+                        Ok(_) => {
+                            tracing::debug!("重新订阅成功: {}", topic);
+                        }
+                        Err(e) => {
+                            tracing::error!("重新订阅失败: {}, 错误信息：{:?}", topic, e);
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("重新订阅失败: {}, 错误信息：{:?}", topic, e);
-                }
+                return Ok(());
             }
         }
-        Ok(())
+        Err(crate::error::service::ServiceError::System(
+            crate::error::system::SystemError::MqttClientNotInit,
+        ))
     }
 }
