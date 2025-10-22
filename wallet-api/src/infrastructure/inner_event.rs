@@ -192,13 +192,6 @@ impl InnerEventHandle {
                         tracing::error!("{:?} sync error: {}", target, e);
                     }
                 }
-                let notify_type = match target {
-                    SyncTarget::Assets => NotifyEvent::SyncAssets,
-                    SyncTarget::ApiAssets => NotifyEvent::ApiWalletSyncAssets,
-                };
-                if let Err(e) = FrontendNotifyEvent::new(notify_type).send().await {
-                    tracing::error!("{:?} send error: {}", target, e);
-                }
             }
         });
     }

@@ -12,6 +12,7 @@ use crate::{
         assets::{BalanceTask, BalanceTasks},
         chain::adapter::ChainAdapterFactory,
     },
+    messaging::notify::{FrontendNotifyEvent, event::NotifyEvent},
     response_vo::account::BalanceInfo,
 };
 
@@ -128,9 +129,10 @@ impl ApiAssetsDomain {
         tracing::info!("assets: {assets:#?}");
         let results = ApiChainBalance::sync_address_balance(assets.as_slice()).await?;
 
+        let mut done = 0;
         for (assets_id, balance) in &results {
             tracing::info!("assets_id: {assets_id:#?}, balance: {balance:#?}");
-            if let Err(e) = ApiAssetsRepo::update_balance(
+            match ApiAssetsRepo::update_balance(
                 &pool,
                 &assets_id.address,
                 &assets_id.chain_code,
@@ -139,7 +141,18 @@ impl ApiAssetsDomain {
             )
             .await
             {
-                tracing::error!("更新余额出错: {}", e);
+                Ok(_) => {
+                    tracing::info!("更新余额成功: {:?}", assets_id);
+                    done += 1;
+                }
+                Err(e) => tracing::error!("更新余额出错: {:?}", e),
+            }
+        }
+
+        if done > 0 {
+            if let Err(e) = FrontendNotifyEvent::new(NotifyEvent::ApiWalletSyncAssets).send().await
+            {
+                tracing::error!("send error: {}", e);
             }
         }
 
