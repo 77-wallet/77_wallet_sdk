@@ -52,16 +52,6 @@ impl WalletManager {
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 
-        let backend = self.ctx.get_global_backend_api();
-        let req = ApiInitSwapReq {
-            sn: self.ctx.get_sn().to_string(),
-            client_pub_key: GLOBAL_KEY.secret_pub_key(),
-        };
-        let res = backend.init_swap(&req).await?;
-        if let Some(data) = res.data {
-            GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
-        }
-
         tokio::spawn(async move {
             if let Err(e) = init_some_data().await {
                 tracing::error!("init_data error: {}", e);

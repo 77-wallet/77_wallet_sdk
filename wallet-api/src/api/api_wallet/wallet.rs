@@ -179,7 +179,8 @@ mod test {
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
-        let salt = "7";
+        // let salt = "7";
+        let salt = "q3333333";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -217,7 +218,8 @@ mod test {
 
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
-        let salt = "10";
+        // let salt = "10";
+        let salt = "q2222222";
         // let binding_address = Some("0xF1C1FE41b1c50188faFDce5f21638e1701506f1b");
         // let binding_address = Some("0x7092d3B98B177e630efbA09c047D2bd448608Dda");
         // let binding_address = Some("0x007d2C90Cf619aDe1b090992f69Dc7394fD21f36");
@@ -246,7 +248,8 @@ mod test {
 
         let language_code = 1;
         let phrase = &test_params.create_wallet_req.phrase;
-        let salt = "7";
+        // let salt = "7";
+        let salt = "q1111111";
         let wallet_name = "api_wallet";
 
         let wallet_password = "q1111111";
@@ -285,7 +288,8 @@ mod test {
 
         let api_wallet_type = ApiWalletType::Withdrawal;
         let invite_code = None;
-        let salt = "10";
+        // let salt = "10";
+        let salt = "q1111111";
         // let binding_address = Some("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24");
         let binding_address = None;
         let res = wallet_manager
@@ -418,6 +422,16 @@ mod test {
         let res = wallet_manager
             .get_api_phrase("0x17f6a199862FD0ffb2d5C79f3DBBE37597162A24", "q1111111")
             .await;
+        tracing::info!("res: {res:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_set_passwd_cache() -> Result<()> {
+        wallet_utils::init_test_log();
+        let (wallet_manager, _test_params) = get_manager().await?;
+        let res = wallet_manager.set_passwd_cache("q1111111").await;
+
         tracing::info!("res: {res:?}");
         Ok(())
     }

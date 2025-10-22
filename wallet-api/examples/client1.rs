@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tokio_stream::StreamExt as _;
 use wallet_api::{messaging::notify::FrontendNotifyEvent, test::env::get_manager};
 
@@ -104,38 +106,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // tracing::info!("config result: {res}");
     // subscribe(&wallet_manager).await;
 
-    let manager_c = std::sync::Arc::new(wallet_manager.clone());
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            // let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
-            // wallet_api::infrastructure::asset_calc::get_price_cache().await;
-            // let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
-            // tracing::info!("usdt: {usdt:#?}");
-            // tracing::info!("page: {page:#?}");
+    // let manager_c = std::sync::Arc::new(wallet_manager.clone());
 
-            // let res = wallet_api::infrastructure::asset_calc::get_wallet_balance_list().await;
-
-            let res =
-                wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list()
-                    .await;
-
-            tracing::info!("get_wallet_balance_list: {res:#?}");
-            let balance_list = manager_c
-                .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", Some(2))
-                .await
-                .unwrap();
-            tracing::info!("balance_list: {balance_list:#?}");
-
-            let res =
-                wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
-                    "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
-                )
-                .await
-                .unwrap();
-            tracing::info!("get_api_wallet_assets: {res:#?}");
-        }
-    });
     loop {
         tokio::select! {
             msg = rx.next() => {
@@ -149,6 +121,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+#[allow(dead_code)]
+async fn test_balance(wallet_manager: Arc<wallet_api::manager::WalletManager>) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            // let usdt = wallet_api::infrastructure::asset_calc::get_total_usdt().await;
+            // wallet_api::infrastructure::asset_calc::get_price_cache().await;
+            // let page = wallet_api::infrastructure::asset_calc::get_asset_snapshot_page(0, 10).await;
+            // tracing::info!("usdt: {usdt:#?}");
+            // tracing::info!("page: {page:#?}");
+
+            // let res = wallet_api::infrastructure::asset_calc::get_wallet_balance_list().await;
+
+            // let res =
+            //     wallet_api::domain::api_wallet::wallet::ApiWalletDomain::get_api_wallet_list()
+            //         .await;
+
+            // tracing::info!("get_wallet_balance_list: {res:#?}");
+            let balance_list = wallet_manager
+                .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", Some(1))
+                .await
+                .unwrap();
+            tracing::info!("list_api_wallet_account balance_list: {balance_list:#?}");
+            let res = wallet_manager
+                .get_api_account_assets(
+                    1,
+                    "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+                    Some("tron".to_string()),
+                )
+                .await;
+            tracing::info!("list_api_wallet_account get_api_account_assets: {res:#?}");
+
+            // let res =
+            //     wallet_api::domain::api_wallet::assets::ApiAssetsDomain::get_api_wallet_assets(
+            //         "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+            //     )
+            //     .await
+            //     .unwrap();
+            // tracing::info!("get_api_wallet_assets: {res:#?}");
+        }
+    });
 }
 
 #[allow(dead_code)]
