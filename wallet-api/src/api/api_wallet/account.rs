@@ -1,9 +1,11 @@
+use wallet_database::pagination::Pagination;
+
 use crate::{
     api::ReturnType,
     manager::WalletManager,
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
     request::api_wallet::account::{CreateApiAccountReq, CreateWithdrawalAccountReq},
-    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfos},
+    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfo},
     service::api_wallet::account::ApiAccountService,
 };
 
@@ -13,8 +15,12 @@ impl WalletManager {
         wallet_address: &str,
         account_id: Option<u32>,
         chain: Option<String>,
-    ) -> ReturnType<ApiAccountInfos> {
-        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, account_id, chain).await
+        page: i64,
+        page_size: i64,
+    ) -> ReturnType<Pagination<ApiAccountInfo>> {
+        ApiAccountService::new(self.ctx)
+            .list_api_accounts(wallet_address, account_id, chain, page, page_size)
+            .await
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
@@ -219,7 +225,13 @@ mod test {
         // let chain_code = "tron";
 
         let res = wallet_manager
-            .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", None, None)
+            .list_api_wallet_account(
+                "0x01a68baa7523f16D64AD63d8a82A40e838170b5b",
+                None,
+                None,
+                1,
+                20,
+            )
             .await
             .unwrap();
         let res = serde_json::to_string(&res).unwrap();

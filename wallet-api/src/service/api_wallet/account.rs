@@ -3,7 +3,6 @@ use crate::{
     domain::{
         self,
         api_wallet::{account::ApiAccountDomain, chain::ApiChainDomain, wallet::ApiWalletDomain},
-        app::config::ConfigDomain,
         permission::PermissionDomain,
         wallet::WalletDomain,
     },
@@ -13,15 +12,15 @@ use crate::{
         task::Tasks,
     },
     messaging::mqtt::topics::api_wallet::cmd::address_allock::AddressAllockType,
-    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfos},
+    response_vo::{account::DerivedAddressesList, api_wallet::account::ApiAccountInfo},
 };
 use wallet_chain_interact::types::ChainPrivateKey;
 use wallet_database::{
     entities::{api_account::ApiAccountEntity, api_wallet::ApiWalletType},
+    pagination::Pagination,
     repositories::{
         api_wallet::{account::ApiAccountRepo, chain::ApiChainRepo, wallet::ApiWalletRepo},
         device::DeviceRepo,
-        wallet::WalletRepo,
     },
 };
 use wallet_transport_backend::request::AddressUpdateAccountNameReq;
@@ -41,8 +40,11 @@ impl ApiAccountService {
         wallet_address: &str,
         account_id: Option<u32>,
         chain_code: Option<String>,
-    ) -> Result<ApiAccountInfos, ServiceError> {
-        ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code).await
+        page: i64,
+        page_size: i64,
+    ) -> Result<Pagination<ApiAccountInfo>, ServiceError> {
+        ApiAccountDomain::list_api_accounts(wallet_address, account_id, chain_code, page, page_size)
+            .await
     }
 
     pub async fn expand_address(
@@ -217,8 +219,7 @@ impl ApiAccountService {
         name: &str,
     ) -> Result<(), ServiceError> {
         let pool = self.ctx.get_global_sqlite_pool()?;
-        let accounts =
-            ApiAccountRepo::edit_account_name(&pool, wallet_address, account_id, name).await?;
+        ApiAccountRepo::edit_account_name(&pool, wallet_address, account_id, name).await?;
 
         let wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?;
         if wallet.is_none() {
@@ -300,7 +301,6 @@ impl ApiAccountService {
         WalletDomain::validate_password(password).await?;
 
         let account_index_map = wallet_utils::address::AccountIndexMap::from_input_index(index)?;
-        let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
 
         let api_wallet = ApiWalletRepo::find_by_address(&pool, wallet_address).await?.ok_or(
             crate::error::business::BusinessError::ApiWallet(

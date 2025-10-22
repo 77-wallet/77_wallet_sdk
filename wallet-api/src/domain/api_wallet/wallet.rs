@@ -205,7 +205,7 @@ impl ApiWalletDomain {
                     &api_wallet.address,
                     &password,
                     vec![chain_code.to_string()],
-                    "name",
+                    "账户",
                     true,
                     number,
                 )
@@ -219,7 +219,7 @@ impl ApiWalletDomain {
                         &password,
                         vec![chain_code.to_string()],
                         vec![index],
-                        "name",
+                        "账户",
                         true,
                         ApiWalletType::SubAccount,
                     )
