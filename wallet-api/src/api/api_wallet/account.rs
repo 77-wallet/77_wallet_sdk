@@ -12,8 +12,9 @@ impl WalletManager {
         &self,
         wallet_address: &str,
         account_id: Option<u32>,
+        chain: Option<String>,
     ) -> ReturnType<ApiAccountInfos> {
-        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, account_id, None).await
+        ApiAccountService::new(self.ctx).list_api_accounts(wallet_address, account_id, chain).await
     }
 
     pub async fn create_api_account(&self, req: CreateApiAccountReq) -> ReturnType<()> {
@@ -218,7 +219,7 @@ mod test {
         // let chain_code = "tron";
 
         let res = wallet_manager
-            .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", None)
+            .list_api_wallet_account("0x01a68baa7523f16D64AD63d8a82A40e838170b5b", None, None)
             .await
             .unwrap();
         let res = serde_json::to_string(&res).unwrap();

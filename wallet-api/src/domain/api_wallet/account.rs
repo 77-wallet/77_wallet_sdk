@@ -51,8 +51,8 @@ impl ApiAccountDomain {
         let pool = CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         let chains = ApiChainRepo::get_chain_list(&pool).await?;
-        let chain_codes = if let Some(chain_code) = chain_code {
-            vec![chain_code]
+        let chain_codes = if let Some(ref chain_code) = chain_code {
+            vec![chain_code.to_string()]
         } else {
             chains.iter().map(|chain| chain.chain_code.clone()).collect()
         };
@@ -72,9 +72,11 @@ impl ApiAccountDomain {
             ApiAccountRepo::api_account_list(&pool, Some(wallet.address), account_id, chain_codes)
                 .await?;
 
-        let balance_list =
-            crate::infrastructure::asset_calc::get_account_balance_list_by_wallet(wallet_address)
-                .await?;
+        let balance_list = crate::infrastructure::asset_calc::get_account_balance_list_by_wallet(
+            wallet_address,
+            chain_code,
+        )
+        .await?;
         for account in account_list {
             let address_type =
                 AccountDomain::get_show_address_type(&account.chain_code, account.address_type())?;

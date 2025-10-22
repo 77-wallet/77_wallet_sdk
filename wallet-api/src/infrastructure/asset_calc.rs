@@ -8,7 +8,6 @@ use sqlx::{Row, SqlitePool};
 use tokio::sync::RwLock;
 use wallet_database::repositories::{
     api_wallet::{account::ApiAccountRepo, assets::ApiAssetsRepo},
-    coin::CoinRepo,
     exchange_rate::ExchangeRateRepo,
 };
 use wallet_transport_backend::response_vo::coin::TokenCurrency;
@@ -455,6 +454,7 @@ pub async fn get_wallet_balance_list()
 
 pub async fn get_account_balance_list_by_wallet(
     wallet_address: &str,
+    chain_code: Option<String>,
 ) -> Result<HashMap<String, BalanceInfo>, crate::error::service::ServiceError> {
     let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
@@ -477,18 +477,42 @@ pub async fn get_account_balance_list_by_wallet(
     let mut account_totals: HashMap<String, BalanceInfo> = HashMap::new();
 
     for entry in ASSET_VALUE_CACHE.iter() {
-        if let Some(address) = entry.key().split(':').next() {
-            if account_addresses.contains(&address.to_string()) {
-                let entry_value = entry.value();
-                account_totals
-                    .entry(address.to_string())
-                    .and_modify(|total| {
-                        total.amount_add(entry_value.amount);
-                        total.fiat_add(entry_value.fiat_value);
-                    })
-                    .or_insert_with(|| entry_value.clone());
-            }
+        let parts: Vec<&str> = entry.key().split(':').collect();
+        if parts.len() < 2 {
+            continue;
         }
+
+        let address = parts[0];
+        let asset_chain_code = parts[1];
+
+        let chain_match = match chain_code {
+            Some(ref code) => asset_chain_code == code,
+            None => true,
+        };
+
+        if chain_match && account_addresses.contains(&address.to_string()) {
+            let entry_value = entry.value();
+            account_totals
+                .entry(address.to_string())
+                .and_modify(|total| {
+                    total.amount_add(entry_value.amount);
+                    total.fiat_add(entry_value.fiat_value);
+                })
+                .or_insert_with(|| entry_value.clone());
+        }
+
+        // if let Some(address) = entry.key().split(':').next() {
+        //     if account_addresses.contains(&address.to_string()) {
+        //         let entry_value = entry.value();
+        //         account_totals
+        //             .entry(address.to_string())
+        //             .and_modify(|total| {
+        //                 total.amount_add(entry_value.amount);
+        //                 total.fiat_add(entry_value.fiat_value);
+        //             })
+        //             .or_insert_with(|| entry_value.clone());
+        //     }
+        // }
     }
 
     Ok(account_totals)
