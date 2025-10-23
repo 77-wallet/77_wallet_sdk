@@ -19,7 +19,7 @@ use wallet_database::{
         node::NodeEntity,
         task_queue::{CreateTaskQueueEntity, KnownTaskName, TaskName, TaskQueueEntity},
     },
-    repositories::task_queue::TaskQueueRepoTrait as _,
+    repositories::task_queue::{TaskQueueRepo, TaskQueueRepoTrait as _},
 };
 use wallet_transport_backend::request::TokenQueryPriceReq;
 
@@ -157,8 +157,7 @@ impl Tasks {
         }
         let create_entities = self.create_task_entities().await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-        let entities = repo.create_multi_task(&create_entities).await?;
+        let entities = TaskQueueRepo::create_multi_task(&pool, &create_entities).await?;
         Self::dispatch_tasks(entities).await?;
         Ok(())
     }
