@@ -121,7 +121,8 @@ impl EndpointHandler for DefaultHandler {
         // _wallet_type: WalletType,
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -161,13 +162,13 @@ impl EndpointHandler for SpecialHandler {
     ) -> Result<(), crate::error::service::ServiceError> {
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
-
+        let sn = crate::context::CONTEXT.get().unwrap().get_sn();
         match endpoint {
             endpoint::DEVICE_INIT => {
                 let res = backend.post_req_str::<Option<()>>(endpoint, &body).await;
                 res?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
-                repo.device_init().await?;
+                repo.device_init(sn).await?;
             }
             endpoint::KEYS_V2_INIT => {
                 let status = ConfigDomain::get_keys_reset_status().await?;
@@ -313,7 +314,7 @@ impl EndpointHandler for SpecialHandler {
 
             endpoint::DEVICE_EDIT_DEVICE_INVITEE_STATUS => {
                 let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-                let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+                let Some(device) = DeviceRepo::get_device_info(pool, sn).await? else {
                     return Err(crate::error::business::BusinessError::Device(
                         crate::error::business::device::DeviceError::Uninitialized,
                     )
@@ -339,7 +340,7 @@ impl EndpointHandler for SpecialHandler {
             endpoint::LANGUAGE_INIT => {
                 backend.post_req_str::<()>(endpoint, &body).await?;
                 use wallet_database::repositories::device::DeviceRepoTrait as _;
-                repo.language_init().await?;
+                repo.language_init(sn).await?;
                 let mut repo = wallet_database::factory::RepositoryFactory::repo(pool.clone());
                 crate::domain::announcement::AnnouncementDomain::pull_announcement(&mut repo)
                     .await?;

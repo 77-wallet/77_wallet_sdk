@@ -54,15 +54,18 @@ impl WalletManager {
         // TODO ： 某个版本进行取消,
         domain::app::DeviceDomain::check_wallet_password_is_null().await?;
 
-        tracing::info!("init -------------------------------------------------------1");
-        ApiWalletService::new(self.ctx).init_swap().await?;
-
         tokio::spawn(async move {
             if let Err(e) = init_some_data().await {
                 tracing::error!("init_data error: {}", e);
             };
         });
 
+        Ok(())
+    }
+
+    pub async fn init_api_swap(&self) -> ReturnType<()> {
+        tracing::info!("init -------------------------------------------------------1");
+        ApiWalletService::new(self.ctx).init_api_swap().await?;
         Ok(())
     }
 

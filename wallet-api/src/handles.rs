@@ -123,8 +123,9 @@ impl Handles {
     pub(crate) async fn init_normal_wallet_mqtt(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let ctx = crate::context::CONTEXT.get().unwrap();
+        let pool = ctx.get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
@@ -152,15 +153,16 @@ impl Handles {
     pub(crate) async fn init_api_wallet_mqtt(
         &self,
     ) -> Result<(), crate::error::service::ServiceError> {
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
+        let ctx = crate::context::CONTEXT.get().unwrap();
+        let pool = ctx.get_global_sqlite_pool()?;
+        let Some(device) = DeviceRepo::get_device_info(pool, ctx.get_sn()).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
             .into());
         };
         let content = DeviceDomain::device_content(&device)?;
-        let client_id = DeviceDomain::client_id_by_device(&device)?;
+        let client_id = DeviceDomain::client_id_by_device(&device)? + "_aw";
         let password = DeviceDomain::md5_sn(&device.sn);
 
         let app_version = ConfigDomain::get_app_version().await?;

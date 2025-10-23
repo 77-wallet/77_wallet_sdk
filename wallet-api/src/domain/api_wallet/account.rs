@@ -254,7 +254,8 @@ impl ApiAccountDomain {
             api_wallet_type,
         )
         .await?;
-        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+        let sn = CONTEXT.get().unwrap().get_sn();
+        let Some(device) = DeviceRepo::get_device_info(pool.clone(), sn).await? else {
             return Err(crate::error::business::BusinessError::Device(
                 crate::error::business::device::DeviceError::Uninitialized,
             )
