@@ -557,8 +557,6 @@ impl EndpointHandler for SpecialHandler {
                         .send()
                         .await?;
                 }
-
-                FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
             }
             endpoint::api_wallet::QUERY_ASSET_LIST => {
                 let req = wallet_utils::serde_func::serde_from_value::<AssetListReq>(body.clone())?;
@@ -606,6 +604,7 @@ impl EndpointHandler for SpecialHandler {
                         }
                     }
                 }
+                FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
             }
             _ => {
                 // 未知的 endpoint
