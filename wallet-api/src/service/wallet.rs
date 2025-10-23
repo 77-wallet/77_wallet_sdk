@@ -94,8 +94,7 @@ impl WalletService {
         let wallet = tx.update_wallet_update_at(wallet_address).await?;
 
         if let Some(wallet) = wallet {
-            let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-            DeviceRepo::update_uid(pool, Some(&wallet.uid)).await?;
+            DeviceRepo::update_uid(tx.pool_ref().as_ref(), Some(&wallet.uid)).await?;
 
             let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
             let Some(device) = DeviceRepo::get_device_info(pool).await? else {
@@ -433,8 +432,7 @@ impl WalletService {
         tracing::debug!("Child keystore initialization took: {:?}", child_keystore_start.elapsed());
 
         Tasks::new().push(CommonTask::QueryCoinPrice(req)).send().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        DeviceRepo::update_uid(pool, Some(&uid)).await?;
+        DeviceRepo::update_uid(tx.pool_ref().as_ref(), Some(&uid)).await?;
 
         let client_id = domain::app::DeviceDomain::client_id_by_device(&device)?;
 
@@ -674,20 +672,11 @@ impl WalletService {
 
         let uid =
             if let Some(latest_wallet) = latest_wallet { Some(latest_wallet.uid) } else { None };
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        DeviceRepo::update_uid(pool, uid.as_deref()).await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool).await? else {
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::Device(
-                    crate::error::business::device::DeviceError::Uninitialized,
-                ),
-            ));
-        };
+        DeviceRepo::update_uid(tx.get_mut_transaction()?.as_mut(), uid.as_deref()).await?;
 
         tx.commit_transaction().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         if let Some(wallet) = wallet {
             let members =
                 MultisigMemberDaoV1::list_by_uid(&wallet.uid, &*pool).await.map_err(|e| {
@@ -698,7 +687,13 @@ impl WalletService {
             for member in members.0 {
                 MultisigDomain::logic_delete_account(&member.account_id, pool.clone()).await?;
             }
-
+            let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Device(
+                        crate::error::business::device::DeviceError::Uninitialized,
+                    ),
+                ));
+            };
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
 
             Tasks::new()
@@ -724,15 +719,6 @@ impl WalletService {
         WalletRepoTrait::physical_delete(&mut tx, &[address]).await?;
         let accounts = AccountRepoTrait::physical_delete_all(&mut tx, &[address]).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
-        let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
-            return Err(crate::error::service::ServiceError::Business(
-                crate::error::business::BusinessError::Device(
-                    crate::error::business::device::DeviceError::Uninitialized,
-                ),
-            ));
-        };
-
         let dirs = crate::context::CONTEXT.get().unwrap().get_global_dirs();
         let wallet_dir = dirs.get_wallet_dir(Some(address));
         wallet_utils::file_func::remove_dir_all(wallet_dir)?;
@@ -749,11 +735,18 @@ impl WalletService {
             None
         };
 
-        DeviceRepo::update_uid(pool.clone(), uid.as_deref()).await?;
+        DeviceRepo::update_uid(tx.get_mut_transaction()?.as_mut(), uid.as_deref()).await?;
         tx.commit_transaction().await?;
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
+        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         if let Some(wallet) = wallet {
+            let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
+                return Err(crate::error::service::ServiceError::Business(
+                    crate::error::business::BusinessError::Device(
+                        crate::error::business::device::DeviceError::Uninitialized,
+                    ),
+                ));
+            };
             let req = DeviceDeleteReq::new(&device.sn, &rest_uids);
 
             let members =

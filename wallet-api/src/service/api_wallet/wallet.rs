@@ -589,7 +589,6 @@ impl ApiWalletService {
         ApiWalletRepo::physical_delete(&pool, &[address]).await?;
         let accounts = ApiAccountRepo::physical_delete_all(&pool, &[address]).await?;
 
-        let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
         let Some(device) = DeviceRepo::get_device_info(pool.clone()).await? else {
             return Err(crate::error::service::ServiceError::Business(
                 crate::error::business::BusinessError::Device(
@@ -615,7 +614,7 @@ impl ApiWalletService {
             // tx.update_password(None).await?;
             None
         };
-        DeviceRepo::update_uid(pool.clone(), uid.as_deref()).await?;
+        DeviceRepo::update_uid(pool.as_ref(), uid.as_deref()).await?;
         let pool = crate::context::CONTEXT.get().unwrap().get_global_sqlite_pool()?;
 
         if let Some(wallet) = wallet {
