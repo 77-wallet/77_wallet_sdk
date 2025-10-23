@@ -39,6 +39,24 @@ async fn test_keys_uid_check() -> Result<(), wallet_transport_backend::Error> {
 }
 
 #[tokio::test]
+async fn test_query_uid_bind_info() -> Result<(), wallet_transport_backend::Error> {
+    let backend_api = init()?;
+    let req =
+        ApiInitSwapReq { sn: "wenjing".to_string(), client_pub_key: GLOBAL_KEY.secret_pub_key() };
+    let res = backend_api.init_swap(&req).await?;
+    if let Some(data) = res.data {
+        GLOBAL_KEY.set_shared_secret(&data.pub_key)?;
+    }
+    let res = backend_api
+        .query_uid_bind_info("0206aab9be69a5949ed958613806793290dffa74a177107c38070fbc526374fb")
+        .await
+        .unwrap();
+
+    println!("[test_query_uid_bind_info] res: {res:#?}");
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_init_api_wallet() -> Result<(), wallet_transport_backend::Error> {
     let backend_api = init()?;
 

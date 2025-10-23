@@ -507,7 +507,8 @@ impl EndpointHandler for SpecialHandler {
                     wallet_utils::serde_func::serde_from_value::<AddressListReq>(body.clone())?;
                 let status = ApiWalletDomain::query_uid_bind_info(&req.uid).await?;
 
-                // tracing::info!("query address list req: {:?}", req);
+                tracing::info!("query address list req: {:?}", req);
+                tracing::info!("QUERY_ADDRESS_LIST --------------- 0: {:?}", status);
                 if !status.bind_status {
                     tracing::info!("this wallet was not binded");
                     return Ok(());
