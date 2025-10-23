@@ -1,9 +1,14 @@
 use async_trait::async_trait;
+use futures::stream::{self, StreamExt};
 use once_cell::sync::Lazy;
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
+use tracing::Instrument as _;
 use wallet_database::{
     entities::{api_assets::ApiCreateAssetsVo, assets::AssetsId},
     repositories::{
@@ -511,38 +516,88 @@ impl EndpointHandler for SpecialHandler {
                 let list = res.content;
                 tracing::info!("QUERY_ADDRESS_LIST --------------- 1: {:?}", list);
 
-                let mut input_indices = Vec::new();
-                for address in list {
-                    input_indices.push(address.index);
-                }
+                // let mut input_indices = Vec::new();
+                // for address in list {
+                //     input_indices.push(address.index);
+                // }
 
-                // tracing::info!("QUERY_ADDRESS_LIST -------------------- 2");
-                let mut tasks = Tasks::new();
-                if !input_indices.is_empty() {
-                    let asset_list_req =
-                        AssetListReq::new(&req.uid, &req.chain_code, input_indices.clone());
-                    let asset_list_task_data = BackendApiTaskData::new(
-                        wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
-                        &asset_list_req,
-                    )?;
-                    tasks = tasks.push(BackendApiTask::BackendApi(asset_list_task_data));
-                }
+                tracing::info!("QUERY_ADDRESS_LIST -------------------- 2");
+                // let mut tasks = Tasks::new();
+                // tracing::info!("QUERY_ADDRESS_LIST -------------------- 2 input_indices: {:?}", input_indices);
 
+                const BATCH_SIZE: usize = 10;
                 let password = ApiWalletDomain::get_passwd().await?;
-                if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
-                    ApiAccountDomain::create_api_account(
-                        &wallet.address,
-                        &password,
-                        vec![req.chain_code.clone()],
-                        input_indices,
-                        "账户",
-                        true,
-                        wallet.api_wallet_type,
-                    )
-                    .await?;
+
+                let mut all_input_indices = Vec::new();
+                let len = list.len();
+                tracing::info!("QUERY_ADDRESS_LIST -------------------- 3");
+                for (i, address) in list.into_iter().enumerate() {
+                    all_input_indices.push(address.index);
+
+                    if all_input_indices.len() >= BATCH_SIZE || i == len - 1 {
+                        let batch_indices = all_input_indices.clone();
+                        all_input_indices.clear(); // 下一批
+
+                        // 批量创建账户
+                        if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
+                            ApiAccountDomain::create_api_account(
+                                &wallet.address,
+                                &password,
+                                vec![req.chain_code.clone()],
+                                batch_indices.clone(),
+                                "账户",
+                                true,
+                                wallet.api_wallet_type,
+                            )
+                            .await?;
+                        }
+
+                        // 创建余额查询任务
+                        let asset_list_req =
+                            AssetListReq::new(&req.uid, &req.chain_code, batch_indices);
+                        let asset_list_task_data = BackendApiTaskData::new(
+                            wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
+                            &asset_list_req,
+                        )?;
+
+                        Tasks::new()
+                            .push(BackendApiTask::BackendApi(asset_list_task_data))
+                            .send()
+                            .await?;
+
+                        tracing::info!(
+                            "Dispatched asset query for a batch of {} addresses",
+                            BATCH_SIZE
+                        );
+                    }
                 }
 
-                tasks.send().await?;
+                // if !input_indices.is_empty() {
+                //     let asset_list_req =
+                //         AssetListReq::new(&req.uid, &req.chain_code, input_indices.clone());
+                //     let asset_list_task_data = BackendApiTaskData::new(
+                //         wallet_transport_backend::consts::endpoint::api_wallet::QUERY_ASSET_LIST,
+                //         &asset_list_req,
+                //     )?;
+                //     tasks = tasks.push(BackendApiTask::BackendApi(asset_list_task_data));
+                // }
+
+                // let password = ApiWalletDomain::get_passwd().await?;
+                // if let Some(wallet) = ApiWalletRepo::find_by_uid(&pool, &req.uid).await? {
+                //     ApiAccountDomain::create_api_account(
+                //         &wallet.address,
+                //         &password,
+                //         vec![req.chain_code.clone()],
+                //         input_indices,
+                //         "账户",
+                //         true,
+                //         wallet.api_wallet_type,
+                //     )
+                //     .await?;
+                // }
+
+                // tasks.send().await?;
+                tracing::info!("QUERY_ADDRESS_LIST -------------------- 4");
                 if !res.last {
                     let page = res.number + 1;
                     let query_address_list_req =
@@ -564,6 +619,11 @@ impl EndpointHandler for SpecialHandler {
                 // let list = backend.post_req_str::<serde_json::Value>(endpoint, &body).await?;
                 let default_coins_list = CoinRepo::default_coin_list(&pool).await?;
 
+                tracing::info!("QUERY_ASSET_LIST -------------------- 1 list: {list:?}");
+                tracing::info!(
+                    "QUERY_ASSET_LIST -------------------- 1 default_coins_list: {default_coins_list:?}"
+                );
+                let mut tasks = Vec::new();
                 for asset in list.0 {
                     for address in asset.address_list {
                         for token in address.token_infos {
@@ -571,12 +631,49 @@ impl EndpointHandler for SpecialHandler {
                                 coin.chain_code == req.chain_code
                                     && coin.token_address.as_ref() == Some(&token.token_address)
                             }) {
+                                let address_clone = address.address.clone();
+                                tasks.push((address_clone, token, coin));
+                            }
+                        }
+                    }
+                }
+                let total_tasks = tasks.len();
+                // 全局计数器：统计已处理的 asset 数量（用于验证子任务确实被执行）
+                let processed = Arc::new(AtomicUsize::new(0));
+
+                const BATCH_SIZE: usize = 10;
+
+                tracing::info!("DEBUG: total tasks = {}", tasks.len());
+                for (batch_idx, chunk) in tasks.chunks(BATCH_SIZE).enumerate() {
+                    let chunk_len = chunk.len();
+                    tracing::info!("Starting batch {} ({} items)", batch_idx + 1, chunk_len);
+
+                    // 把这一批克隆成 owned vec（避免借用/生命周期问题）
+                    let chunk_vec: Vec<_> = chunk.to_vec();
+
+                    // 克隆必要的环境变量到闭包
+                    let pool_for_tasks = pool.clone();
+                    let chain_code_for_tasks = req.chain_code.clone();
+                    let processed_for_tasks = processed.clone();
+
+                    stream::iter(chunk_vec.into_iter())
+                        .for_each_concurrent(10, move |(address, token, coin)| {
+                            // 为每个任务创建 span，保证 tracing context 被传递
+                            let span = tracing::info_span!("asset_process", address = %address, batch = batch_idx + 1);
+                            let pool = pool_for_tasks.clone();
+                            let chain_code = chain_code_for_tasks.clone();
+                            let processed = processed_for_tasks.clone();
+
+                            async move {
+                                tracing::info!("processing asset {}", address);
+
                                 let assets_id = AssetsId::new(
-                                    &address.address,
-                                    &req.chain_code,
+                                    &address,
+                                    &chain_code,
                                     &token.symbol,
                                     Some(token.token_address.clone()),
                                 );
+
                                 let assets = ApiCreateAssetsVo::new(
                                     assets_id,
                                     coin.decimals,
@@ -584,27 +681,103 @@ impl EndpointHandler for SpecialHandler {
                                     0,
                                 )
                                 .with_name(&coin.name)
-                                .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+                                .with_u256(alloy::primitives::U256::default(), coin.decimals)
+                                .unwrap_or_default();
 
-                                ApiAssetsRepo::upsert_assets(&pool, assets).await?;
-                                ApiAssetsRepo::update_balance(
+                                if let Err(e) = ApiAssetsRepo::upsert_assets(&pool, assets).await {
+                                    tracing::error!("upsert_assets failed for {}: {}", address, e);
+                                    return;
+                                }
+
+                                if let Err(e) = ApiAssetsRepo::update_balance(
                                     &pool,
-                                    &address.address,
-                                    &req.chain_code,
+                                    &address,
+                                    &chain_code,
                                     Some(token.token_address.clone()),
                                     &token.amount.to_string(),
                                 )
-                                .await?;
+                                .await
+                                {
+                                    tracing::error!("update_balance failed for {}: {}", address, e);
+                                    return;
+                                }
+
                                 crate::infrastructure::asset_calc::on_asset_update(
-                                    &address.address,
-                                    &req.chain_code,
+                                    &address,
+                                    &chain_code,
                                     &token.token_address,
                                 );
-                            };
-                        }
+
+                                // 增加计数，便于外部核对
+                                let prev = processed.fetch_add(1, Ordering::SeqCst);
+                                tracing::info!("TASK_DONE address={} batch={} processed_count={}", address, batch_idx + 1, prev + 1);
+                                tracing::info!("finished asset {}", address);
+                            }
+                            .instrument(span)
+                        })
+                        .await;
+
+                    // 每批完成后发送带 batch 信息的通知（确保唯一）
+                    let total_batches = (total_tasks + BATCH_SIZE - 1) / BATCH_SIZE;
+                    let partial_notify = NotifyEvent::AddressRecovery;
+
+                    // 打印并发送通知
+                    tracing::info!(
+                        "SENDING_PARTIAL_NOTIFY batch={}/{} processed_so_far={}",
+                        batch_idx + 1,
+                        total_batches,
+                        processed.load(Ordering::SeqCst)
+                    );
+                    tracing::info!("sending partial notify for batch {}", batch_idx + 1);
+                    if let Err(e) = FrontendNotifyEvent::new(partial_notify).send().await {
+                        tracing::warn!("Failed to send partial notify: {}", e);
                     }
+
+                    // 小延时，给消费者一点时间去接收（调试时可保留）
+                    // tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
-                FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
+
+                // for asset in list.0 {
+                //     for address in asset.address_list {
+                //         for token in address.token_infos {
+                //             if let Some(coin) = default_coins_list.iter().find(|coin| {
+                //                 coin.chain_code == req.chain_code
+                //                     && coin.token_address.as_ref() == Some(&token.token_address)
+                //             }) {
+                //                 let assets_id = AssetsId::new(
+                //                     &address.address,
+                //                     &req.chain_code,
+                //                     &token.symbol,
+                //                     Some(token.token_address.clone()),
+                //                 );
+                //                 let assets = ApiCreateAssetsVo::new(
+                //                     assets_id,
+                //                     coin.decimals,
+                //                     coin.protocol.clone(),
+                //                     0,
+                //                 )
+                //                 .with_name(&coin.name)
+                //                 .with_u256(alloy::primitives::U256::default(), coin.decimals)?;
+
+                //                 ApiAssetsRepo::upsert_assets(&pool, assets).await?;
+                //                 ApiAssetsRepo::update_balance(
+                //                     &pool,
+                //                     &address.address,
+                //                     &req.chain_code,
+                //                     Some(token.token_address.clone()),
+                //                     &token.amount.to_string(),
+                //                 )
+                //                 .await?;
+                //                 crate::infrastructure::asset_calc::on_asset_update(
+                //                     &address.address,
+                //                     &req.chain_code,
+                //                     &token.token_address,
+                //                 );
+                //             };
+                //         }
+                //     }
+                // }
+                // FrontendNotifyEvent::new(NotifyEvent::AddressRecovery).send().await?;
             }
             _ => {
                 // 未知的 endpoint

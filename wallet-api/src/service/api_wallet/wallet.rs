@@ -377,7 +377,8 @@ impl ApiWalletService {
 
         ApiWalletDomain::keys_init(&uid, &device, wallet_name, invite_code).await?;
         let info = ApiWalletDomain::query_uid_bind_info(&uid).await?;
-        if info.bind_status {
+
+        if api_wallet_type == ApiWalletType::Withdrawal && info.bind_status {
             ApiWalletDomain::bind_uid(address, &info.org_id, &info.app_id).await?;
             let default_chain_list = ApiChainRepo::get_chain_list(&pool).await?;
             let chains: Vec<String> =
